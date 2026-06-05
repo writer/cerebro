@@ -23,10 +23,10 @@ func awsGlobalAcceleratorListenerProjections(event *cerebrov1.EventEnvelope) ([]
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	listenerURN := projectionURN(tenantID, "aws_global_accelerator_listener", firstNonEmpty(attributes["listener_arn"], attributes["resource_id"]))
-	acceleratorURN := projectionURN(tenantID, "aws_global_accelerator_accelerator", attributes["accelerator_arn"])
+	listenerURN := projectionURN(tenantID, "aws_globalaccelerator_listener", firstNonEmpty(attributes["listener_arn"], attributes["resource_id"]))
+	acceleratorURN := projectionURN(tenantID, "aws_globalaccelerator_accelerator", attributes["accelerator_arn"])
 	if acceleratorURN != "" {
-		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), acceleratorURN, "aws.global_accelerator.accelerator", firstNonEmpty(attributes["accelerator_name"], attributes["accelerator_arn"]), map[string]string{
+		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), acceleratorURN, "aws.globalaccelerator.accelerator", firstNonEmpty(attributes["accelerator_name"], attributes["accelerator_arn"]), map[string]string{
 			"accelerator_arn": strings.TrimSpace(attributes["accelerator_arn"]),
 			"domain":          strings.TrimSpace(attributes["domain"]),
 			"region":          "global",
@@ -48,10 +48,10 @@ func awsGlobalAcceleratorEndpointGroupProjections(event *cerebrov1.EventEnvelope
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	groupURN := projectionURN(tenantID, "aws_global_accelerator_endpoint_group", firstNonEmpty(attributes["endpoint_group_arn"], attributes["resource_id"]))
-	listenerURN := projectionURN(tenantID, "aws_global_accelerator_listener", attributes["listener_arn"])
+	groupURN := projectionURN(tenantID, "aws_globalaccelerator_endpoint_group", firstNonEmpty(attributes["endpoint_group_arn"], attributes["resource_id"]))
+	listenerURN := projectionURN(tenantID, "aws_globalaccelerator_listener", attributes["listener_arn"])
 	if listenerURN != "" {
-		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), listenerURN, "aws.global_accelerator.listener", firstNonEmpty(attributes["listener_arn"], "global accelerator listener"), map[string]string{
+		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), listenerURN, "aws.globalaccelerator.listener", firstNonEmpty(attributes["listener_arn"], "global accelerator listener"), map[string]string{
 			"accelerator_arn": strings.TrimSpace(attributes["accelerator_arn"]),
 			"domain":          strings.TrimSpace(attributes["domain"]),
 			"listener_arn":    strings.TrimSpace(attributes["listener_arn"]),
@@ -60,11 +60,11 @@ func awsGlobalAcceleratorEndpointGroupProjections(event *cerebrov1.EventEnvelope
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), groupURN, listenerURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "global_accelerator_endpoint_group_listener"}))
 	}
 	for _, endpointID := range splitCloudAttributeList(attributes["endpoint_ids"]) {
-		endpointURN := projectionURN(tenantID, "aws_global_accelerator_endpoint", endpointID)
+		endpointURN := projectionURN(tenantID, "aws_globalaccelerator_endpoint", endpointID)
 		if endpointURN == "" {
 			continue
 		}
-		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), endpointURN, "aws.global_accelerator.endpoint", endpointID, map[string]string{
+		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), endpointURN, "aws.globalaccelerator.endpoint", endpointID, map[string]string{
 			"domain":      strings.TrimSpace(attributes["domain"]),
 			"endpoint_id": endpointID,
 			"region":      strings.TrimSpace(attributes["endpoint_group_region"]),
@@ -90,10 +90,10 @@ func awsVPCLatticeListenerProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	listenerURN := projectionURN(tenantID, "aws_vpc_lattice_listener", firstNonEmpty(attributes["listener_arn"], attributes["resource_id"], attributes["listener_id"]))
-	serviceURN := projectionURN(tenantID, "aws_vpc_lattice_service", firstNonEmpty(attributes["service_arn"], attributes["service_id"]))
+	listenerURN := projectionURN(tenantID, "aws_vpclattice_listener", firstNonEmpty(attributes["listener_arn"], attributes["resource_id"], attributes["listener_id"]))
+	serviceURN := projectionURN(tenantID, "aws_vpclattice_service", firstNonEmpty(attributes["service_arn"], attributes["service_id"]))
 	if serviceURN != "" {
-		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), serviceURN, "aws.vpc_lattice.service", firstNonEmpty(attributes["service_name"], attributes["service_id"], attributes["service_arn"]), map[string]string{
+		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), serviceURN, "aws.vpclattice.service", firstNonEmpty(attributes["service_name"], attributes["service_id"], attributes["service_arn"]), map[string]string{
 			"domain":      strings.TrimSpace(attributes["domain"]),
 			"region":      strings.TrimSpace(attributes["region"]),
 			"service_arn": strings.TrimSpace(attributes["service_arn"]),
@@ -106,7 +106,7 @@ func awsVPCLatticeListenerProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		if targetGroupURN == "" {
 			continue
 		}
-		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), targetGroupURN, "aws.vpc_lattice.target_group", targetGroupID, map[string]string{
+		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), targetGroupURN, "aws.vpclattice.target_group", targetGroupID, map[string]string{
 			"domain":          strings.TrimSpace(attributes["domain"]),
 			"region":          strings.TrimSpace(attributes["region"]),
 			"target_group_id": targetGroupID,
@@ -128,13 +128,13 @@ func awsVPCLatticeTargetGroupProjections(event *cerebrov1.EventEnvelope) ([]*por
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	targetGroupURN := projectionURN(tenantID, "aws_vpc_lattice_target_group", firstNonEmpty(attributes["target_group_arn"], attributes["resource_id"], attributes["target_group_id"]))
+	targetGroupURN := projectionURN(tenantID, "aws_vpclattice_target_group", firstNonEmpty(attributes["target_group_arn"], attributes["resource_id"], attributes["target_group_id"]))
 	for _, serviceARN := range splitCloudAttributeList(attributes["service_arns"]) {
-		serviceURN := projectionURN(tenantID, "aws_vpc_lattice_service", serviceARN)
+		serviceURN := projectionURN(tenantID, "aws_vpclattice_service", serviceARN)
 		if serviceURN == "" {
 			continue
 		}
-		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), serviceURN, "aws.vpc_lattice.service", serviceARN, map[string]string{
+		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), serviceURN, "aws.vpclattice.service", serviceARN, map[string]string{
 			"domain":      strings.TrimSpace(attributes["domain"]),
 			"region":      strings.TrimSpace(attributes["region"]),
 			"service_arn": serviceARN,
@@ -143,11 +143,11 @@ func awsVPCLatticeTargetGroupProjections(event *cerebrov1.EventEnvelope) ([]*por
 	}
 	addAWSNetworkContextLinks(entityMap, linkMap, tenantID, event.GetSourceId(), event, targetGroupURN, attributes)
 	for _, targetID := range splitCloudAttributeList(attributes["target_ids"]) {
-		targetURN := projectionURN(tenantID, "aws_vpc_lattice_target", firstNonEmpty(attributes["target_group_id"], attributes["target_group_arn"])+":"+targetID)
+		targetURN := projectionURN(tenantID, "aws_vpclattice_target", firstNonEmpty(attributes["target_group_id"], attributes["target_group_arn"])+":"+targetID)
 		if targetURN == "" {
 			continue
 		}
-		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), targetURN, "aws.vpc_lattice.target", targetID, map[string]string{
+		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), targetURN, "aws.vpclattice.target", targetID, map[string]string{
 			"domain":      strings.TrimSpace(attributes["domain"]),
 			"region":      strings.TrimSpace(attributes["region"]),
 			"target_id":   targetID,
@@ -184,5 +184,5 @@ func awsVPCLatticeTargetGroupURN(tenantID string, attributes map[string]string, 
 			identifier = "arn:aws:vpc-lattice:" + region + ":" + accountID + ":targetgroup/" + identifier
 		}
 	}
-	return projectionURN(tenantID, "aws_vpc_lattice_target_group", identifier)
+	return projectionURN(tenantID, "aws_vpclattice_target_group", identifier)
 }

@@ -3,8 +3,24 @@ name: AWS
 description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
+  - aws.acm_certificate
+  - aws.apprunner_service
   - asset.data_sensitivity
+  - aws.batch_compute_environment
+  - aws.batch_job_queue
+  - aws.backup_vault
+  - aws.backup_plan
+  - aws.backup_protected_resource
+  - aws.backup_recovery_point
   - aws.cloudtrail
+  - aws.datasync_location
+  - aws.datasync_task
+  - aws.ebs_snapshot
+  - aws.ebs_volume
+  - aws.athena_data_catalog
+  - aws.athena_workgroup
+  - aws.cloudwatch_alarm
+  - aws.cloudwatch_log_group
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
@@ -14,32 +30,92 @@ emitted_kinds:
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
+  - aws.globalaccelerator_accelerator
+  - aws.globalaccelerator_listener
+  - aws.globalaccelerator_endpoint_group
+  - aws.vpclattice_service
+  - aws.vpclattice_listener
+  - aws.vpclattice_target_group
+  - aws.elbv2_listener
+  - aws.elbv2_target_group
+  - aws.apigateway_stage
+  - aws.apigateway_route
+  - aws.apigateway_integration
+  - aws.cloudfront_origin_access_control
+  - aws.cloudfront_key_group
+  - aws.cloudfront_public_key
+  - aws.cloudfront_response_headers_policy
   - aws.effective_permission
-  - aws.global_accelerator_accelerator
-  - aws.global_accelerator_listener
-  - aws.global_accelerator_endpoint_group
+  - aws.eventbridge_archive
+  - aws.eventbridge_event_bus
+  - aws.eventbridge_pipe
+  - aws.eventbridge_rule
+  - aws.firehose_delivery_stream
+  - aws.glue_crawler
+  - aws.glue_database
+  - aws.glue_job
+  - aws.glue_table
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.kinesis_stream
   - aws.kms_key
+  - aws.lakeformation_lf_tag
+  - aws.lakeformation_permission
+  - aws.lakeformation_resource
+  - aws.msk_cluster
+  - aws.identitystore_group
+  - aws.identitystore_group_membership
+  - aws.identitystore_user
+  - aws.organizations_account
+  - aws.organizations_organizational_unit
+  - aws.organizations_policy
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
+  - aws.route53_resolver_endpoint
+  - aws.route53_resolver_rule
+  - aws.s3_access_point
   - aws.s3_bucket
+  - aws.s3_multi_region_access_point
+  - aws.scheduler_schedule
+  - aws.scheduler_schedule_group
   - aws.secret
   - aws.sns_topic
   - aws.sqs_queue
+  - aws.ssm_association
+  - aws.ssm_document
+  - aws.ssm_managed_instance
+  - aws.ssm_parameter
+  - aws.stepfunctions_activity
+  - aws.stepfunctions_state_machine
+  - aws.sso_account_assignment
+  - aws.sso_instance
+  - aws.sso_permission_set
   - aws.lambda_function
-  - aws.vpc_lattice_service
-  - aws.vpc_lattice_listener
-  - aws.vpc_lattice_target_group
 runtime_families:
   - access_key
+  - acm_certificate
+  - apprunner_service
   - asset_metadata
+  - batch_compute_environment
+  - batch_job_queue
+  - backup_vault
+  - backup_plan
+  - backup_protected_resource
+  - backup_recovery_point
   - cloudtrail
+  - datasync_location
+  - datasync_task
+  - ebs_snapshot
+  - ebs_volume
+  - athena_data_catalog
+  - athena_workgroup
+  - cloudwatch_alarm
+  - cloudwatch_log_group
   - ec2_instance
   - ecr_repository
   - ecs_service
@@ -49,25 +125,69 @@ runtime_families:
   - eks_nodegroup
   - eks_fargate_profile
   - eks_pod_identity_association
+  - globalaccelerator_accelerator
+  - globalaccelerator_listener
+  - globalaccelerator_endpoint_group
+  - vpclattice_service
+  - vpclattice_listener
+  - vpclattice_target_group
+  - elbv2_listener
+  - elbv2_target_group
+  - apigateway_stage
+  - apigateway_route
+  - apigateway_integration
+  - cloudfront_origin_access_control
+  - cloudfront_key_group
+  - cloudfront_public_key
+  - cloudfront_response_headers_policy
   - effective_permission
-  - global_accelerator_accelerator
-  - global_accelerator_listener
-  - global_accelerator_endpoint_group
+  - eventbridge_archive
+  - eventbridge_event_bus
+  - eventbridge_pipe
+  - eventbridge_rule
+  - firehose_delivery_stream
+  - glue_crawler
+  - glue_database
+  - glue_job
+  - glue_table
   - iam_group
   - iam_group_membership
   - iam_role
   - iam_role_assignment
   - iam_role_trust
   - iam_user
+  - kinesis_stream
   - kms_key
+  - lakeformation_lf_tag
+  - lakeformation_permission
+  - lakeformation_resource
+  - msk_cluster
+  - identitystore_group
+  - identitystore_group_membership
+  - identitystore_user
+  - organizations_account
+  - organizations_organizational_unit
+  - organizations_policy
   - public_endpoint
   - rds_instance
   - resource_exposure
+  - route53_resolver_endpoint
+  - route53_resolver_rule
+  - s3_access_point
   - s3_bucket
+  - s3_multi_region_access_point
+  - scheduler_schedule
+  - scheduler_schedule_group
   - secret
   - sns_topic
   - sqs_queue
+  - ssm_association
+  - ssm_document
+  - ssm_managed_instance
+  - ssm_parameter
+  - stepfunctions_activity
+  - stepfunctions_state_machine
+  - sso_account_assignment
+  - sso_instance
+  - sso_permission_set
   - lambda_function
-  - vpc_lattice_service
-  - vpc_lattice_listener
-  - vpc_lattice_target_group

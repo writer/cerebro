@@ -2,269 +2,84 @@ package aws
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/globalaccelerator"
-	globalacceleratortypes "github.com/aws/aws-sdk-go-v2/service/globalaccelerator/types"
-	"github.com/aws/aws-sdk-go-v2/service/vpclattice"
-	vpclatticetypes "github.com/aws/aws-sdk-go-v2/service/vpclattice/types"
+	"github.com/aws/aws-sdk-go-v2/service/acm"
+	acmtypes "github.com/aws/aws-sdk-go-v2/service/acm/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
+	route53resolvertypes "github.com/aws/aws-sdk-go-v2/service/route53resolver/types"
 
 	"github.com/writer/cerebro/internal/primitives"
 )
 
-type awsParentPageCursor struct {
-	ParentIndex int    `json:"parent_index,omitempty"`
-	NextToken   string `json:"next_token,omitempty"`
-}
-
-type awsGlobalAcceleratorAccelerator struct {
-	Accelerator globalacceleratortypes.Accelerator
+type awsACMCertificate struct {
+	Certificate acmtypes.CertificateDetail
 	Tags        map[string]string
 }
 
-type awsGlobalAcceleratorListener struct {
-	AcceleratorARN string
-	Listener       globalacceleratortypes.Listener
-	Tags           map[string]string
+type awsRoute53ResolverEndpoint struct {
+	Endpoint route53resolvertypes.ResolverEndpoint
+	Tags     map[string]string
 }
 
-type awsGlobalAcceleratorEndpointGroup struct {
-	AcceleratorARN string
-	ListenerARN    string
-	EndpointGroup  globalacceleratortypes.EndpointGroup
-	Tags           map[string]string
+type awsRoute53ResolverRule struct {
+	Rule route53resolvertypes.ResolverRule
+	Tags map[string]string
 }
 
-type awsVPCLatticeService struct {
-	Service vpclattice.GetServiceOutput
-	Tags    map[string]string
-}
-
-type awsVPCLatticeListener struct {
-	ServiceARN string
-	ServiceID  string
-	Listener   vpclattice.GetListenerOutput
-	Tags       map[string]string
-}
-
-type awsVPCLatticeTargetGroup struct {
-	TargetGroup vpclattice.GetTargetGroupOutput
-	Targets     []vpclatticetypes.TargetSummary
-	Tags        map[string]string
-}
-
-func listGlobalAcceleratorAccelerators(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsGlobalAcceleratorAccelerator, string, error) {
-	out, err := clients.globalAccelerator.ListAccelerators(ctx, &globalaccelerator.ListAcceleratorsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
-		NextToken:  stringPtr(cursor),
+func listACMCertificates(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsACMCertificate, string, error) {
+	out, err := clients.acm.ListCertificates(ctx, &acm.ListCertificatesInput{
+		CertificateStatuses: acmtypes.CertificateStatus("").Values(),
+		MaxItems:            awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		NextToken:           stringPtr(cursor),
 	})
 	if err != nil {
 		return nil, "", err
 	}
-	records := make([]awsGlobalAcceleratorAccelerator, 0, len(out.Accelerators))
-	for _, accelerator := range out.Accelerators {
-		record := awsGlobalAcceleratorAccelerator{Accelerator: accelerator}
-		if arn := awssdk.ToString(accelerator.AcceleratorArn); arn != "" {
-			tags, err := listGlobalAcceleratorTags(ctx, clients, arn)
-			if err != nil {
-				return nil, "", fmt.Errorf("list global accelerator tags %q: %w", arn, err)
-			}
-			record.Tags = tags
-		}
-		records = append(records, record)
-	}
-	return records, awssdk.ToString(out.NextToken), nil
-}
-
-func listGlobalAcceleratorListeners(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsGlobalAcceleratorListener, string, error) {
-	accelerators, err := listAllGlobalAcceleratorARNs(ctx, clients)
-	if err != nil {
-		return nil, "", err
-	}
-	state, err := decodeAWSParentPageCursor(cursor, "global accelerator listener")
-	if err != nil {
-		return nil, "", err
-	}
-	return listGlobalAcceleratorListenersFromAccelerators(ctx, clients, accelerators, state, limit)
-}
-
-func listGlobalAcceleratorEndpointGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsGlobalAcceleratorEndpointGroup, string, error) {
-	listeners, err := listAllGlobalAcceleratorListenerRefs(ctx, clients)
-	if err != nil {
-		return nil, "", err
-	}
-	state, err := decodeAWSParentPageCursor(cursor, "global accelerator endpoint group")
-	if err != nil {
-		return nil, "", err
-	}
-	if state.ParentIndex < 0 || state.ParentIndex >= len(listeners) {
-		state.ParentIndex = 0
-		state.NextToken = ""
-	}
-	remaining := limit
-	if remaining <= 0 {
-		remaining = defaultPageSize
-	}
-	records := make([]awsGlobalAcceleratorEndpointGroup, 0, remaining)
-	for state.ParentIndex < len(listeners) && len(records) < remaining {
-		parent := listeners[state.ParentIndex]
-		out, err := clients.globalAccelerator.ListEndpointGroups(ctx, &globalaccelerator.ListEndpointGroupsInput{
-			ListenerArn: awssdk.String(parent.ListenerARN),
-			MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
-			NextToken:   stringPtr(state.NextToken),
-		})
-		if err != nil {
-			return nil, "", fmt.Errorf("list endpoint groups for listener %q: %w", parent.ListenerARN, err)
-		}
-		for _, group := range out.EndpointGroups {
-			record := awsGlobalAcceleratorEndpointGroup{AcceleratorARN: parent.AcceleratorARN, ListenerARN: parent.ListenerARN, EndpointGroup: group}
-			if arn := awssdk.ToString(group.EndpointGroupArn); arn != "" {
-				tags, err := listGlobalAcceleratorTags(ctx, clients, arn)
-				if err != nil {
-					return nil, "", fmt.Errorf("list global accelerator endpoint group tags %q: %w", arn, err)
-				}
-				record.Tags = tags
-			}
-			records = append(records, record)
-		}
-		if awssdk.ToString(out.NextToken) != "" {
-			state.NextToken = awssdk.ToString(out.NextToken)
-			return records, encodeAWSParentPageCursor(state), nil
-		}
-		state.ParentIndex++
-		state.NextToken = ""
-	}
-	if state.ParentIndex < len(listeners) {
-		return records, encodeAWSParentPageCursor(state), nil
-	}
-	return records, "", nil
-}
-
-func listVPCLatticeServices(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsVPCLatticeService, string, error) {
-	out, err := clients.vpcLattice.ListServices(ctx, &vpclattice.ListServicesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
-		NextToken:  stringPtr(cursor),
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	records := make([]awsVPCLatticeService, 0, len(out.Items))
-	for _, summary := range out.Items {
-		identifier := firstNonEmpty(awssdk.ToString(summary.Arn), awssdk.ToString(summary.Id))
-		if identifier == "" {
+	records := make([]awsACMCertificate, 0, len(out.CertificateSummaryList))
+	for _, summary := range out.CertificateSummaryList {
+		arn := awssdk.ToString(summary.CertificateArn)
+		if arn == "" {
 			continue
 		}
-		service, err := clients.vpcLattice.GetService(ctx, &vpclattice.GetServiceInput{ServiceIdentifier: awssdk.String(identifier)})
+		describe, err := clients.acm.DescribeCertificate(ctx, &acm.DescribeCertificateInput{CertificateArn: awssdk.String(arn)})
 		if err != nil {
-			return nil, "", fmt.Errorf("get vpc lattice service %q: %w", identifier, err)
+			return nil, "", fmt.Errorf("describe acm certificate %q: %w", arn, err)
 		}
-		record := awsVPCLatticeService{Service: *service}
-		if arn := awssdk.ToString(service.Arn); arn != "" {
-			tags, err := listVPCLatticeTags(ctx, clients, arn)
-			if err != nil {
-				return nil, "", fmt.Errorf("list vpc lattice service tags %q: %w", arn, err)
-			}
-			record.Tags = tags
+		if describe.Certificate == nil {
+			continue
+		}
+		record := awsACMCertificate{Certificate: *describe.Certificate}
+		if tags, err := clients.acm.ListTagsForCertificate(ctx, &acm.ListTagsForCertificateInput{CertificateArn: awssdk.String(arn)}); err == nil {
+			record.Tags = acmTagMap(tags.Tags)
+		} else if !optionalAWSError(err, "ResourceNotFoundException") {
+			return nil, "", fmt.Errorf("list acm certificate tags %q: %w", arn, err)
 		}
 		records = append(records, record)
 	}
 	return records, awssdk.ToString(out.NextToken), nil
 }
 
-func listVPCLatticeListeners(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsVPCLatticeListener, string, error) {
-	services, err := listAllVPCLatticeServiceRefs(ctx, clients)
-	if err != nil {
-		return nil, "", err
-	}
-	state, err := decodeAWSParentPageCursor(cursor, "vpc lattice listener")
-	if err != nil {
-		return nil, "", err
-	}
-	if state.ParentIndex < 0 || state.ParentIndex >= len(services) {
-		state.ParentIndex = 0
-		state.NextToken = ""
-	}
-	remaining := limit
-	if remaining <= 0 {
-		remaining = defaultPageSize
-	}
-	records := make([]awsVPCLatticeListener, 0, remaining)
-	for state.ParentIndex < len(services) && len(records) < remaining {
-		service := services[state.ParentIndex]
-		out, err := clients.vpcLattice.ListListeners(ctx, &vpclattice.ListListenersInput{
-			ServiceIdentifier: awssdk.String(service.Identifier),
-			MaxResults:        awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
-			NextToken:         stringPtr(state.NextToken),
-		})
-		if err != nil {
-			return nil, "", fmt.Errorf("list vpc lattice listeners for service %q: %w", service.Identifier, err)
-		}
-		for _, summary := range out.Items {
-			listenerID := firstNonEmpty(awssdk.ToString(summary.Arn), awssdk.ToString(summary.Id))
-			if listenerID == "" {
-				continue
-			}
-			listener, err := clients.vpcLattice.GetListener(ctx, &vpclattice.GetListenerInput{ServiceIdentifier: awssdk.String(service.Identifier), ListenerIdentifier: awssdk.String(listenerID)})
-			if err != nil {
-				return nil, "", fmt.Errorf("get vpc lattice listener %q/%q: %w", service.Identifier, listenerID, err)
-			}
-			record := awsVPCLatticeListener{ServiceARN: service.ARN, ServiceID: service.ID, Listener: *listener}
-			if arn := awssdk.ToString(listener.Arn); arn != "" {
-				tags, err := listVPCLatticeTags(ctx, clients, arn)
-				if err != nil {
-					return nil, "", fmt.Errorf("list vpc lattice listener tags %q: %w", arn, err)
-				}
-				record.Tags = tags
-			}
-			records = append(records, record)
-		}
-		if awssdk.ToString(out.NextToken) != "" {
-			state.NextToken = awssdk.ToString(out.NextToken)
-			return records, encodeAWSParentPageCursor(state), nil
-		}
-		state.ParentIndex++
-		state.NextToken = ""
-	}
-	if state.ParentIndex < len(services) {
-		return records, encodeAWSParentPageCursor(state), nil
-	}
-	return records, "", nil
-}
-
-func listVPCLatticeTargetGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsVPCLatticeTargetGroup, string, error) {
-	out, err := clients.vpcLattice.ListTargetGroups(ctx, &vpclattice.ListTargetGroupsInput{
+func listRoute53ResolverEndpoints(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsRoute53ResolverEndpoint, string, error) {
+	out, err := clients.route53Resolver.ListResolverEndpoints(ctx, &route53resolver.ListResolverEndpointsInput{
 		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
 		return nil, "", err
 	}
-	records := make([]awsVPCLatticeTargetGroup, 0, len(out.Items))
-	for _, summary := range out.Items {
-		identifier := firstNonEmpty(awssdk.ToString(summary.Arn), awssdk.ToString(summary.Id))
-		if identifier == "" {
-			continue
-		}
-		group, err := clients.vpcLattice.GetTargetGroup(ctx, &vpclattice.GetTargetGroupInput{TargetGroupIdentifier: awssdk.String(identifier)})
-		if err != nil {
-			return nil, "", fmt.Errorf("get vpc lattice target group %q: %w", identifier, err)
-		}
-		targets, err := listAllVPCLatticeTargets(ctx, clients, identifier)
-		if err != nil {
-			return nil, "", fmt.Errorf("list vpc lattice targets %q: %w", identifier, err)
-		}
-		record := awsVPCLatticeTargetGroup{TargetGroup: *group, Targets: targets}
-		if arn := awssdk.ToString(group.Arn); arn != "" {
-			tags, err := listVPCLatticeTags(ctx, clients, arn)
+	records := make([]awsRoute53ResolverEndpoint, 0, len(out.ResolverEndpoints))
+	for _, endpoint := range out.ResolverEndpoints {
+		record := awsRoute53ResolverEndpoint{Endpoint: endpoint}
+		if arn := awssdk.ToString(endpoint.Arn); arn != "" {
+			tags, err := listRoute53ResolverTags(ctx, clients, arn)
 			if err != nil {
-				return nil, "", fmt.Errorf("list vpc lattice target group tags %q: %w", arn, err)
+				return nil, "", fmt.Errorf("list route53 resolver endpoint tags %q: %w", arn, err)
 			}
 			record.Tags = tags
 		}
@@ -273,317 +88,156 @@ func listVPCLatticeTargetGroups(ctx context.Context, clients awsClients, _ setti
 	return records, awssdk.ToString(out.NextToken), nil
 }
 
-func globalAcceleratorAcceleratorEvent(settings settings, record awsGlobalAcceleratorAccelerator) (*primitives.Event, error) {
-	accelerator := record.Accelerator
-	arn := awssdk.ToString(accelerator.AcceleratorArn)
-	name := awssdk.ToString(accelerator.Name)
-	attributes := commonCloudAssetAttributes(settings, "global", familyGlobalAcceleratorAccelerator, firstNonEmpty(arn, name), name, "global_accelerator", record.Tags)
-	attributes["arn"] = arn
-	attributes["accelerator_arn"] = arn
-	attributes["accelerator_name"] = name
-	attributes["dns_name"] = awssdk.ToString(accelerator.DnsName)
-	attributes["dual_stack_dns_name"] = awssdk.ToString(accelerator.DualStackDnsName)
-	attributes["enabled"] = boolString(awssdk.ToBool(accelerator.Enabled))
-	attributes["ip_address_type"] = string(accelerator.IpAddressType)
-	attributes["ip_addresses"] = strings.Join(globalAcceleratorIPAddresses(accelerator.IpSets), ",")
-	attributes["ip_families"] = strings.Join(globalAcceleratorIPFamilies(accelerator.IpSets), ",")
-	attributes["public"] = boolString(true)
-	attributes["internet_exposed"] = boolString(true)
-	attributes["state"] = string(accelerator.Status)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": "global", "accelerator": accelerator, "tags": record.Tags})
+func listRoute53ResolverRules(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsRoute53ResolverRule, string, error) {
+	out, err := clients.route53Resolver.ListResolverRules(ctx, &route53resolver.ListResolverRulesInput{
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		NextToken:  stringPtr(cursor),
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return sourceEvent(settings, "aws-global-accelerator-"+firstNonEmpty(arn, name), "aws.global_accelerator_accelerator", "aws/global_accelerator_accelerator/v1", payload, attributes, firstTime(accelerator.LastModifiedTime, accelerator.CreatedTime))
+	records := make([]awsRoute53ResolverRule, 0, len(out.ResolverRules))
+	for _, rule := range out.ResolverRules {
+		record := awsRoute53ResolverRule{Rule: rule}
+		if arn := awssdk.ToString(rule.Arn); arn != "" {
+			tags, err := listRoute53ResolverTags(ctx, clients, arn)
+			if err != nil {
+				return nil, "", fmt.Errorf("list route53 resolver rule tags %q: %w", arn, err)
+			}
+			record.Tags = tags
+		}
+		records = append(records, record)
+	}
+	return records, awssdk.ToString(out.NextToken), nil
 }
 
-func globalAcceleratorListenerEvent(settings settings, record awsGlobalAcceleratorListener) (*primitives.Event, error) {
-	listener := record.Listener
-	arn := awssdk.ToString(listener.ListenerArn)
-	attributes := commonCloudAssetAttributes(settings, "global", familyGlobalAcceleratorListener, arn, globalAcceleratorListenerName(arn), "global_accelerator_listener", record.Tags)
-	attributes["arn"] = arn
-	attributes["accelerator_arn"] = record.AcceleratorARN
-	attributes["client_affinity"] = string(listener.ClientAffinity)
-	attributes["listener_arn"] = arn
-	attributes["port_ranges"] = strings.Join(globalAcceleratorPortRanges(listener.PortRanges), ",")
-	attributes["protocol"] = string(listener.Protocol)
-	attributes["public"] = boolString(true)
-	attributes["internet_exposed"] = boolString(true)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": "global", "accelerator_arn": record.AcceleratorARN, "listener": listener, "tags": record.Tags})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "aws-global-accelerator-listener-"+arn, "aws.global_accelerator_listener", "aws/global_accelerator_listener/v1", payload, attributes, time.Now().UTC())
-}
-
-func globalAcceleratorEndpointGroupEvent(settings settings, record awsGlobalAcceleratorEndpointGroup) (*primitives.Event, error) {
-	group := record.EndpointGroup
-	arn := awssdk.ToString(group.EndpointGroupArn)
-	attributes := commonCloudAssetAttributes(settings, awssdk.ToString(group.EndpointGroupRegion), familyGlobalAcceleratorEndpointGroup, arn, globalAcceleratorListenerName(arn), "global_accelerator_endpoint_group", record.Tags)
-	attributes["arn"] = arn
-	attributes["accelerator_arn"] = record.AcceleratorARN
-	attributes["endpoint_group_arn"] = arn
-	attributes["endpoint_group_region"] = awssdk.ToString(group.EndpointGroupRegion)
-	attributes["endpoint_ids"] = strings.Join(globalAcceleratorEndpointIDs(group.EndpointDescriptions), ",")
-	attributes["endpoint_health_states"] = strings.Join(globalAcceleratorEndpointHealthStates(group.EndpointDescriptions), ",")
-	attributes["endpoint_weights"] = strings.Join(globalAcceleratorEndpointWeights(group.EndpointDescriptions), ",")
-	attributes["health_check_interval_seconds"] = int32AttrString(group.HealthCheckIntervalSeconds)
-	attributes["health_check_path"] = awssdk.ToString(group.HealthCheckPath)
-	attributes["health_check_port"] = int32AttrString(group.HealthCheckPort)
-	attributes["health_check_protocol"] = string(group.HealthCheckProtocol)
-	attributes["listener_arn"] = record.ListenerARN
-	attributes["threshold_count"] = int32AttrString(group.ThresholdCount)
-	attributes["traffic_dial_percentage"] = float32AttrString(group.TrafficDialPercentage)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": awssdk.ToString(group.EndpointGroupRegion), "accelerator_arn": record.AcceleratorARN, "listener_arn": record.ListenerARN, "endpoint_group": group, "tags": record.Tags})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "aws-global-accelerator-endpoint-group-"+arn, "aws.global_accelerator_endpoint_group", "aws/global_accelerator_endpoint_group/v1", payload, attributes, time.Now().UTC())
-}
-
-func vpcLatticeServiceEvent(settings settings, record awsVPCLatticeService) (*primitives.Event, error) {
-	service := record.Service
-	arn := awssdk.ToString(service.Arn)
-	name := awssdk.ToString(service.Name)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyVPCLatticeService, firstNonEmpty(arn, awssdk.ToString(service.Id), name), name, "vpc_lattice_service", record.Tags)
-	attributes["arn"] = arn
-	attributes["auth_type"] = string(service.AuthType)
-	attributes["certificate_arn"] = awssdk.ToString(service.CertificateArn)
-	attributes["custom_domain_name"] = awssdk.ToString(service.CustomDomainName)
-	attributes["dns_name"] = vpcLatticeDNSEntryName(service.DnsEntry)
-	attributes["hosted_zone_id"] = vpcLatticeDNSEntryZoneID(service.DnsEntry)
-	attributes["service_arn"] = arn
-	attributes["service_id"] = awssdk.ToString(service.Id)
-	attributes["service_name"] = name
-	attributes["state"] = string(service.Status)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "service": service, "tags": record.Tags})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "aws-vpc-lattice-service-"+firstNonEmpty(arn, awssdk.ToString(service.Id), name), "aws.vpc_lattice_service", "aws/vpc_lattice_service/v1", payload, attributes, firstTime(service.LastUpdatedAt, service.CreatedAt))
-}
-
-func vpcLatticeListenerEvent(settings settings, record awsVPCLatticeListener) (*primitives.Event, error) {
-	listener := record.Listener
-	arn := awssdk.ToString(listener.Arn)
-	name := awssdk.ToString(listener.Name)
-	targetGroupIDs, targetGroupWeights, actionType, fixedStatus := vpcLatticeRuleActionSummary(listener.DefaultAction)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyVPCLatticeListener, firstNonEmpty(arn, awssdk.ToString(listener.Id), name), name, "vpc_lattice_listener", record.Tags)
-	attributes["arn"] = arn
-	attributes["default_action"] = actionType
-	attributes["fixed_response_status_code"] = fixedStatus
-	attributes["listener_arn"] = arn
-	attributes["listener_id"] = awssdk.ToString(listener.Id)
-	attributes["listener_name"] = name
-	attributes["port"] = int32AttrString(listener.Port)
-	attributes["protocol"] = string(listener.Protocol)
-	attributes["service_arn"] = firstNonEmpty(awssdk.ToString(listener.ServiceArn), record.ServiceARN)
-	attributes["service_id"] = firstNonEmpty(awssdk.ToString(listener.ServiceId), record.ServiceID)
-	attributes["target_group_ids"] = strings.Join(targetGroupIDs, ",")
-	attributes["target_group_weights"] = strings.Join(targetGroupWeights, ",")
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "service_arn": attributes["service_arn"], "listener": listener, "tags": record.Tags})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "aws-vpc-lattice-listener-"+firstNonEmpty(arn, awssdk.ToString(listener.Id), name), "aws.vpc_lattice_listener", "aws/vpc_lattice_listener/v1", payload, attributes, firstTime(listener.LastUpdatedAt, listener.CreatedAt))
-}
-
-func vpcLatticeTargetGroupEvent(settings settings, record awsVPCLatticeTargetGroup) (*primitives.Event, error) {
-	group := record.TargetGroup
-	arn := awssdk.ToString(group.Arn)
-	name := awssdk.ToString(group.Name)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyVPCLatticeTargetGroup, firstNonEmpty(arn, awssdk.ToString(group.Id), name), name, "vpc_lattice_target_group", record.Tags)
-	attributes["arn"] = arn
-	if group.Config != nil {
-		attributes["health_check_enabled"] = vpcLatticeHealthCheckEnabled(group.Config.HealthCheck)
-		attributes["ip_address_type"] = string(group.Config.IpAddressType)
-		attributes["lambda_event_structure_version"] = string(group.Config.LambdaEventStructureVersion)
-		attributes["port"] = int32AttrString(group.Config.Port)
-		attributes["protocol"] = string(group.Config.Protocol)
-		attributes["protocol_version"] = string(group.Config.ProtocolVersion)
-		attributes["vpc_id"] = awssdk.ToString(group.Config.VpcIdentifier)
-	}
-	attributes["service_arns"] = strings.Join(cleanStrings(group.ServiceArns), ",")
-	attributes["state"] = string(group.Status)
-	attributes["target_group_arn"] = arn
-	attributes["target_group_id"] = awssdk.ToString(group.Id)
-	attributes["target_group_name"] = name
-	attributes["target_ids"] = strings.Join(vpcLatticeTargetIDs(record.Targets), ",")
-	attributes["target_statuses"] = strings.Join(vpcLatticeTargetStatuses(record.Targets), ",")
-	attributes["target_type"] = string(group.Type)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "target_group": group, "targets": record.Targets, "tags": record.Tags})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "aws-vpc-lattice-target-group-"+firstNonEmpty(arn, awssdk.ToString(group.Id), name), "aws.vpc_lattice_target_group", "aws/vpc_lattice_target_group/v1", payload, attributes, firstTime(group.LastUpdatedAt, group.CreatedAt))
-}
-
-func listAllGlobalAcceleratorARNs(ctx context.Context, clients awsClients) ([]string, error) {
-	var arns []string
+func listRoute53ResolverTags(ctx context.Context, clients awsClients, arn string) (map[string]string, error) {
+	tags := map[string]string{}
 	var next *string
 	for {
-		out, err := clients.globalAccelerator.ListAccelerators(ctx, &globalaccelerator.ListAcceleratorsInput{MaxResults: awssdk.Int32(100), NextToken: next})
-		if err != nil {
-			return nil, err
-		}
-		for _, accelerator := range out.Accelerators {
-			if arn := awssdk.ToString(accelerator.AcceleratorArn); arn != "" {
-				arns = append(arns, arn)
-			}
-		}
-		if awssdk.ToString(out.NextToken) == "" {
-			break
-		}
-		next = out.NextToken
-	}
-	sort.Strings(arns)
-	return arns, nil
-}
-
-type globalAcceleratorListenerRef struct {
-	AcceleratorARN string
-	ListenerARN    string
-}
-
-func listAllGlobalAcceleratorListenerRefs(ctx context.Context, clients awsClients) ([]globalAcceleratorListenerRef, error) {
-	accelerators, err := listAllGlobalAcceleratorARNs(ctx, clients)
-	if err != nil {
-		return nil, err
-	}
-	var refs []globalAcceleratorListenerRef
-	state := awsParentPageCursor{}
-	for {
-		listeners, next, err := listGlobalAcceleratorListenersFromAccelerators(ctx, clients, accelerators, state, 100)
-		if err != nil {
-			return nil, err
-		}
-		for _, listener := range listeners {
-			if arn := awssdk.ToString(listener.Listener.ListenerArn); arn != "" {
-				refs = append(refs, globalAcceleratorListenerRef{AcceleratorARN: listener.AcceleratorARN, ListenerARN: arn})
-			}
-		}
-		if next == "" {
-			break
-		}
-		state, err = decodeAWSParentPageCursor(next, "global accelerator listener")
-		if err != nil {
-			return nil, err
-		}
-	}
-	sort.Slice(refs, func(i int, j int) bool {
-		return refs[i].AcceleratorARN+"/"+refs[i].ListenerARN < refs[j].AcceleratorARN+"/"+refs[j].ListenerARN
-	})
-	return refs, nil
-}
-
-func listGlobalAcceleratorListenersFromAccelerators(ctx context.Context, clients awsClients, accelerators []string, state awsParentPageCursor, limit int) ([]awsGlobalAcceleratorListener, string, error) {
-	if state.ParentIndex < 0 || state.ParentIndex >= len(accelerators) {
-		state.ParentIndex = 0
-		state.NextToken = ""
-	}
-	remaining := limit
-	if remaining <= 0 {
-		remaining = defaultPageSize
-	}
-	records := make([]awsGlobalAcceleratorListener, 0, remaining)
-	for state.ParentIndex < len(accelerators) && len(records) < remaining {
-		acceleratorARN := accelerators[state.ParentIndex]
-		out, err := clients.globalAccelerator.ListListeners(ctx, &globalaccelerator.ListListenersInput{
-			AcceleratorArn: awssdk.String(acceleratorARN),
-			MaxResults:     awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
-			NextToken:      stringPtr(state.NextToken),
+		out, err := clients.route53Resolver.ListTagsForResource(ctx, &route53resolver.ListTagsForResourceInput{
+			ResourceArn: awssdk.String(arn),
+			MaxResults:  awssdk.Int32(100),
+			NextToken:   next,
 		})
 		if err != nil {
-			return nil, "", fmt.Errorf("list listeners for accelerator %q: %w", acceleratorARN, err)
-		}
-		for _, listener := range out.Listeners {
-			record := awsGlobalAcceleratorListener{AcceleratorARN: acceleratorARN, Listener: listener}
-			if arn := awssdk.ToString(listener.ListenerArn); arn != "" {
-				tags, err := listGlobalAcceleratorTags(ctx, clients, arn)
-				if err != nil {
-					return nil, "", fmt.Errorf("list global accelerator listener tags %q: %w", arn, err)
-				}
-				record.Tags = tags
-			}
-			records = append(records, record)
-		}
-		if awssdk.ToString(out.NextToken) != "" {
-			state.NextToken = awssdk.ToString(out.NextToken)
-			return records, encodeAWSParentPageCursor(state), nil
-		}
-		state.ParentIndex++
-		state.NextToken = ""
-	}
-	if state.ParentIndex < len(accelerators) {
-		return records, encodeAWSParentPageCursor(state), nil
-	}
-	return records, "", nil
-}
-
-type vpcLatticeServiceRef struct {
-	Identifier string
-	ARN        string
-	ID         string
-}
-
-func listAllVPCLatticeServiceRefs(ctx context.Context, clients awsClients) ([]vpcLatticeServiceRef, error) {
-	var refs []vpcLatticeServiceRef
-	var next *string
-	for {
-		out, err := clients.vpcLattice.ListServices(ctx, &vpclattice.ListServicesInput{MaxResults: awssdk.Int32(100), NextToken: next})
-		if err != nil {
 			return nil, err
 		}
-		for _, service := range out.Items {
-			arn := awssdk.ToString(service.Arn)
-			id := awssdk.ToString(service.Id)
-			if identifier := firstNonEmpty(arn, id); identifier != "" {
-				refs = append(refs, vpcLatticeServiceRef{Identifier: identifier, ARN: arn, ID: id})
-			}
+		for key, value := range route53ResolverTagMap(out.Tags) {
+			tags[key] = value
 		}
 		if awssdk.ToString(out.NextToken) == "" {
-			break
+			return tags, nil
 		}
 		next = out.NextToken
 	}
-	sort.Slice(refs, func(i int, j int) bool { return refs[i].Identifier < refs[j].Identifier })
-	return refs, nil
 }
 
-func listAllVPCLatticeTargets(ctx context.Context, clients awsClients, targetGroupID string) ([]vpclatticetypes.TargetSummary, error) {
-	var targets []vpclatticetypes.TargetSummary
-	var next *string
-	for {
-		out, err := clients.vpcLattice.ListTargets(ctx, &vpclattice.ListTargetsInput{TargetGroupIdentifier: awssdk.String(targetGroupID), MaxResults: awssdk.Int32(100), NextToken: next})
-		if err != nil {
-			return nil, err
-		}
-		targets = append(targets, out.Items...)
-		if awssdk.ToString(out.NextToken) == "" {
-			break
-		}
-		next = out.NextToken
-	}
-	return targets, nil
-}
-
-func listGlobalAcceleratorTags(ctx context.Context, clients awsClients, arn string) (map[string]string, error) {
-	out, err := clients.globalAccelerator.ListTagsForResource(ctx, &globalaccelerator.ListTagsForResourceInput{ResourceArn: awssdk.String(arn)})
+func acmCertificateEvent(settings settings, record awsACMCertificate) (*primitives.Event, error) {
+	certificate := record.Certificate
+	arn := awssdk.ToString(certificate.CertificateArn)
+	domainName := awssdk.ToString(certificate.DomainName)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyACMCertificate, firstNonEmpty(arn, domainName), domainName, "acm_certificate", record.Tags)
+	attributes["arn"] = arn
+	attributes["certificate_arn"] = arn
+	attributes["certificate_authority_arn"] = awssdk.ToString(certificate.CertificateAuthorityArn)
+	attributes["domain_name"] = domainName
+	attributes["failure_reason"] = string(certificate.FailureReason)
+	attributes["in_use_by"] = strings.Join(cleanStrings(certificate.InUseBy), ",")
+	attributes["issuer"] = awssdk.ToString(certificate.Issuer)
+	attributes["key_algorithm"] = string(certificate.KeyAlgorithm)
+	attributes["managed_by"] = string(certificate.ManagedBy)
+	attributes["public"] = boolString(false)
+	attributes["internet_exposed"] = boolString(false)
+	attributes["renewal_eligibility"] = string(certificate.RenewalEligibility)
+	attributes["revocation_reason"] = string(certificate.RevocationReason)
+	attributes["serial"] = awssdk.ToString(certificate.Serial)
+	attributes["signature_algorithm"] = awssdk.ToString(certificate.SignatureAlgorithm)
+	attributes["status"] = string(certificate.Status)
+	attributes["subject"] = awssdk.ToString(certificate.Subject)
+	attributes["subject_alternative_names"] = strings.Join(cleanStrings(certificate.SubjectAlternativeNames), ",")
+	attributes["type"] = string(certificate.Type)
+	addTimeAttribute(attributes, "created_at", certificate.CreatedAt)
+	addTimeAttribute(attributes, "imported_at", certificate.ImportedAt)
+	addTimeAttribute(attributes, "issued_at", certificate.IssuedAt)
+	addTimeAttribute(attributes, "not_after", certificate.NotAfter)
+	addTimeAttribute(attributes, "not_before", certificate.NotBefore)
+	addTimeAttribute(attributes, "revoked_at", certificate.RevokedAt)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "certificate": certificate, "tags": record.Tags})
 	if err != nil {
 		return nil, err
 	}
-	return globalAcceleratorTagMap(out.Tags), nil
+	return sourceEvent(settings, "aws-acm-certificate-"+firstNonEmpty(arn, domainName), "aws.acm_certificate", "aws/acm_certificate/v1", payload, attributes, firstTime(certificate.CreatedAt, certificate.ImportedAt, certificate.IssuedAt, certificate.NotBefore))
 }
 
-func listVPCLatticeTags(ctx context.Context, clients awsClients, arn string) (map[string]string, error) {
-	out, err := clients.vpcLattice.ListTagsForResource(ctx, &vpclattice.ListTagsForResourceInput{ResourceArn: awssdk.String(arn)})
+func route53ResolverEndpointEvent(settings settings, record awsRoute53ResolverEndpoint) (*primitives.Event, error) {
+	endpoint := record.Endpoint
+	arn := awssdk.ToString(endpoint.Arn)
+	endpointID := awssdk.ToString(endpoint.Id)
+	name := firstNonEmpty(awssdk.ToString(endpoint.Name), endpointID)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyRoute53ResolverEndpoint, firstNonEmpty(arn, endpointID), name, "route53_resolver_endpoint", record.Tags)
+	attributes["arn"] = arn
+	attributes["endpoint_arn"] = arn
+	attributes["endpoint_id"] = endpointID
+	attributes["endpoint_name"] = name
+	attributes["direction"] = string(endpoint.Direction)
+	attributes["dns64_enabled"] = boolString(awssdk.ToBool(endpoint.Dns64Enabled))
+	attributes["host_vpc_id"] = awssdk.ToString(endpoint.HostVPCId)
+	attributes["ip_address_count"] = int32AttrString(endpoint.IpAddressCount)
+	attributes["ipv6_internet_access_enabled"] = boolString(awssdk.ToBool(endpoint.Ipv6InternetAccessEnabled))
+	attributes["outpost_arn"] = awssdk.ToString(endpoint.OutpostArn)
+	attributes["preferred_instance_type"] = awssdk.ToString(endpoint.PreferredInstanceType)
+	attributes["protocols"] = strings.Join(route53ResolverProtocols(endpoint.Protocols), ",")
+	attributes["public"] = boolString(false)
+	attributes["internet_exposed"] = boolString(false)
+	attributes["resolver_endpoint_type"] = string(endpoint.ResolverEndpointType)
+	attributes["rni_enhanced_metrics_enabled"] = boolString(awssdk.ToBool(endpoint.RniEnhancedMetricsEnabled))
+	attributes["security_group_ids"] = strings.Join(cleanStrings(endpoint.SecurityGroupIds), ",")
+	attributes["status"] = string(endpoint.Status)
+	attributes["status_message"] = awssdk.ToString(endpoint.StatusMessage)
+	attributes["target_name_server_metrics_enabled"] = boolString(awssdk.ToBool(endpoint.TargetNameServerMetricsEnabled))
+	addAWSStringTimeAttribute(attributes, "created_at", awssdk.ToString(endpoint.CreationTime))
+	addAWSStringTimeAttribute(attributes, "modified_at", awssdk.ToString(endpoint.ModificationTime))
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "endpoint": endpoint, "tags": record.Tags})
 	if err != nil {
 		return nil, err
 	}
-	return out.Tags, nil
+	return sourceEvent(settings, "aws-route53-resolver-endpoint-"+firstNonEmpty(arn, endpointID), "aws.route53_resolver_endpoint", "aws/route53_resolver_endpoint/v1", payload, attributes, firstAWSStringTime(awssdk.ToString(endpoint.CreationTime), awssdk.ToString(endpoint.ModificationTime)))
 }
 
-func globalAcceleratorTagMap(tags []globalacceleratortypes.Tag) map[string]string {
+func route53ResolverRuleEvent(settings settings, record awsRoute53ResolverRule) (*primitives.Event, error) {
+	rule := record.Rule
+	arn := awssdk.ToString(rule.Arn)
+	ruleID := awssdk.ToString(rule.Id)
+	name := firstNonEmpty(awssdk.ToString(rule.Name), ruleID)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyRoute53ResolverRule, firstNonEmpty(arn, ruleID), name, "route53_resolver_rule", record.Tags)
+	attributes["arn"] = arn
+	attributes["rule_arn"] = arn
+	attributes["rule_id"] = ruleID
+	attributes["rule_name"] = name
+	attributes["delegation_record"] = awssdk.ToString(rule.DelegationRecord)
+	attributes["domain_name"] = awssdk.ToString(rule.DomainName)
+	attributes["owner_id"] = awssdk.ToString(rule.OwnerId)
+	attributes["public"] = boolString(false)
+	attributes["internet_exposed"] = boolString(false)
+	attributes["resolver_endpoint_id"] = awssdk.ToString(rule.ResolverEndpointId)
+	attributes["rule_type"] = string(rule.RuleType)
+	attributes["share_status"] = string(rule.ShareStatus)
+	attributes["status"] = string(rule.Status)
+	attributes["status_message"] = awssdk.ToString(rule.StatusMessage)
+	attributes["target_ips"] = strings.Join(route53ResolverTargetIPs(rule.TargetIps), ",")
+	attributes["target_ports"] = strings.Join(route53ResolverTargetPorts(rule.TargetIps), ",")
+	attributes["target_protocols"] = strings.Join(route53ResolverTargetProtocols(rule.TargetIps), ",")
+	addAWSStringTimeAttribute(attributes, "created_at", awssdk.ToString(rule.CreationTime))
+	addAWSStringTimeAttribute(attributes, "modified_at", awssdk.ToString(rule.ModificationTime))
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "rule": rule, "tags": record.Tags})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-route53-resolver-rule-"+firstNonEmpty(arn, ruleID), "aws.route53_resolver_rule", "aws/route53_resolver_rule/v1", payload, attributes, firstAWSStringTime(awssdk.ToString(rule.CreationTime), awssdk.ToString(rule.ModificationTime)))
+}
+
+func acmTagMap(tags []acmtypes.Tag) map[string]string {
 	out := make(map[string]string, len(tags))
 	for _, tag := range tags {
 		if key := strings.TrimSpace(awssdk.ToString(tag.Key)); key != "" {
@@ -593,155 +247,63 @@ func globalAcceleratorTagMap(tags []globalacceleratortypes.Tag) map[string]strin
 	return out
 }
 
-func globalAcceleratorIPAddresses(sets []globalacceleratortypes.IpSet) []string {
-	var values []string
-	for _, set := range sets {
-		values = append(values, set.IpAddresses...)
-	}
-	return cleanStrings(values)
-}
-
-func globalAcceleratorIPFamilies(sets []globalacceleratortypes.IpSet) []string {
-	values := make([]string, 0, len(sets))
-	for _, set := range sets {
-		values = append(values, string(set.IpAddressFamily))
-	}
-	return cleanStrings(values)
-}
-
-func globalAcceleratorPortRanges(ranges []globalacceleratortypes.PortRange) []string {
-	values := make([]string, 0, len(ranges))
-	for _, portRange := range ranges {
-		from := awssdk.ToInt32(portRange.FromPort)
-		to := awssdk.ToInt32(portRange.ToPort)
-		if from == 0 && to == 0 {
-			continue
-		}
-		if from == to || to == 0 {
-			values = append(values, strconv.FormatInt(int64(from), 10))
-			continue
-		}
-		values = append(values, strconv.FormatInt(int64(from), 10)+"-"+strconv.FormatInt(int64(to), 10))
-	}
-	return values
-}
-
-func globalAcceleratorEndpointIDs(endpoints []globalacceleratortypes.EndpointDescription) []string {
-	values := make([]string, 0, len(endpoints))
-	for _, endpoint := range endpoints {
-		values = append(values, awssdk.ToString(endpoint.EndpointId))
-	}
-	return cleanStrings(values)
-}
-
-func globalAcceleratorEndpointHealthStates(endpoints []globalacceleratortypes.EndpointDescription) []string {
-	values := make([]string, 0, len(endpoints))
-	for _, endpoint := range endpoints {
-		values = append(values, string(endpoint.HealthState))
-	}
-	return cleanStrings(values)
-}
-
-func globalAcceleratorEndpointWeights(endpoints []globalacceleratortypes.EndpointDescription) []string {
-	values := make([]string, 0, len(endpoints))
-	for _, endpoint := range endpoints {
-		if endpoint.Weight != nil {
-			values = append(values, int32AttrString(endpoint.Weight))
+func route53ResolverTagMap(tags []route53resolvertypes.Tag) map[string]string {
+	out := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		if key := strings.TrimSpace(awssdk.ToString(tag.Key)); key != "" {
+			out[key] = strings.TrimSpace(awssdk.ToString(tag.Value))
 		}
 	}
-	return cleanStrings(values)
+	return out
 }
 
-func globalAcceleratorListenerName(arn string) string {
-	arn = strings.TrimSpace(arn)
-	if arn == "" {
-		return ""
+func route53ResolverProtocols(values []route53resolvertypes.Protocol) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		result = append(result, string(value))
 	}
-	parts := strings.Split(arn, "/")
-	return parts[len(parts)-1]
+	return cleanStrings(result)
 }
 
-func vpcLatticeRuleActionSummary(action vpclatticetypes.RuleAction) ([]string, []string, string, string) {
-	switch value := action.(type) {
-	case *vpclatticetypes.RuleActionMemberForward:
-		ids := make([]string, 0, len(value.Value.TargetGroups))
-		weights := make([]string, 0, len(value.Value.TargetGroups))
-		for _, group := range value.Value.TargetGroups {
-			ids = append(ids, awssdk.ToString(group.TargetGroupIdentifier))
-			weights = append(weights, int32AttrString(group.Weight))
+func route53ResolverTargetIPs(values []route53resolvertypes.TargetAddress) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		result = append(result, firstNonEmpty(awssdk.ToString(value.Ip), awssdk.ToString(value.Ipv6)))
+	}
+	return cleanStrings(result)
+}
+
+func route53ResolverTargetPorts(values []route53resolvertypes.TargetAddress) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value.Port != nil {
+			result = append(result, strconv.FormatInt(int64(awssdk.ToInt32(value.Port)), 10))
 		}
-		return cleanStrings(ids), cleanStrings(weights), "forward", ""
-	case *vpclatticetypes.RuleActionMemberFixedResponse:
-		return nil, nil, "fixed_response", int32AttrString(value.Value.StatusCode)
-	default:
-		return nil, nil, "", ""
 	}
+	return cleanStrings(result)
 }
 
-func vpcLatticeDNSEntryName(entry *vpclatticetypes.DnsEntry) string {
-	if entry == nil {
-		return ""
+func route53ResolverTargetProtocols(values []route53resolvertypes.TargetAddress) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		result = append(result, string(value.Protocol))
 	}
-	return awssdk.ToString(entry.DomainName)
+	return cleanStrings(result)
 }
 
-func vpcLatticeDNSEntryZoneID(entry *vpclatticetypes.DnsEntry) string {
-	if entry == nil {
-		return ""
+func addAWSStringTimeAttribute(attributes map[string]string, key string, value string) {
+	parsed := parseAWSStringTime(value)
+	if parsed.IsZero() {
+		return
 	}
-	return awssdk.ToString(entry.HostedZoneId)
+	attributes[key] = parsed.UTC().Format(time.RFC3339)
 }
 
-func vpcLatticeHealthCheckEnabled(config *vpclatticetypes.HealthCheckConfig) string {
-	if config == nil || config.Enabled == nil {
-		return ""
+func firstAWSStringTime(values ...string) time.Time {
+	for _, value := range values {
+		if parsed := parseAWSStringTime(value); !parsed.IsZero() {
+			return parsed.UTC()
+		}
 	}
-	return boolString(awssdk.ToBool(config.Enabled))
-}
-
-func vpcLatticeTargetIDs(targets []vpclatticetypes.TargetSummary) []string {
-	values := make([]string, 0, len(targets))
-	for _, target := range targets {
-		values = append(values, awssdk.ToString(target.Id))
-	}
-	return cleanStrings(values)
-}
-
-func vpcLatticeTargetStatuses(targets []vpclatticetypes.TargetSummary) []string {
-	values := make([]string, 0, len(targets))
-	for _, target := range targets {
-		values = append(values, string(target.Status))
-	}
-	return cleanStrings(values)
-}
-
-func float32AttrString(value *float32) string {
-	if value == nil {
-		return ""
-	}
-	return strconv.FormatFloat(float64(*value), 'f', -1, 32)
-}
-
-func decodeAWSParentPageCursor(raw string, label string) (awsParentPageCursor, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return awsParentPageCursor{}, nil
-	}
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return awsParentPageCursor{}, fmt.Errorf("decode %s cursor: %w", label, err)
-	}
-	var cursor awsParentPageCursor
-	if err := json.Unmarshal(decoded, &cursor); err != nil {
-		return awsParentPageCursor{}, fmt.Errorf("parse %s cursor: %w", label, err)
-	}
-	return cursor, nil
-}
-
-func encodeAWSParentPageCursor(cursor awsParentPageCursor) string {
-	payload, err := json.Marshal(cursor)
-	if err != nil {
-		return ""
-	}
-	return base64.RawURLEncoding.EncodeToString(payload)
+	return time.Now().UTC()
 }

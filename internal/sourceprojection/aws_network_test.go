@@ -20,35 +20,35 @@ func TestProjectAWSGlobalAcceleratorNetworkRelationships(t *testing.T) {
 			Id:       "ga-1",
 			TenantId: "writer",
 			SourceId: "aws",
-			Kind:     "aws.global_accelerator_accelerator",
+			Kind:     "aws.globalaccelerator_accelerator",
 			Attributes: map[string]string{
 				"accelerator_arn":   acceleratorARN,
 				"domain":            "123456789012",
 				"resource_id":       acceleratorARN,
 				"resource_name":     "edge-prod",
 				"resource_provider": "aws",
-				"resource_type":     "global_accelerator",
+				"resource_type":     "globalaccelerator",
 			},
 		},
 		{
 			Id:       "ga-listener-1",
 			TenantId: "writer",
 			SourceId: "aws",
-			Kind:     "aws.global_accelerator_listener",
+			Kind:     "aws.globalaccelerator_listener",
 			Attributes: map[string]string{
 				"accelerator_arn":   acceleratorARN,
 				"domain":            "123456789012",
 				"listener_arn":      listenerARN,
 				"resource_id":       listenerARN,
 				"resource_provider": "aws",
-				"resource_type":     "global_accelerator_listener",
+				"resource_type":     "globalaccelerator_listener",
 			},
 		},
 		{
 			Id:       "ga-eg-1",
 			TenantId: "writer",
 			SourceId: "aws",
-			Kind:     "aws.global_accelerator_endpoint_group",
+			Kind:     "aws.globalaccelerator_endpoint_group",
 			Attributes: map[string]string{
 				"accelerator_arn":       acceleratorARN,
 				"domain":                "123456789012",
@@ -58,7 +58,7 @@ func TestProjectAWSGlobalAcceleratorNetworkRelationships(t *testing.T) {
 				"listener_arn":          listenerARN,
 				"resource_id":           endpointGroupARN,
 				"resource_provider":     "aws",
-				"resource_type":         "global_accelerator_endpoint_group",
+				"resource_type":         "globalaccelerator_endpoint_group",
 			},
 		},
 	} {
@@ -67,10 +67,10 @@ func TestProjectAWSGlobalAcceleratorNetworkRelationships(t *testing.T) {
 		}
 	}
 
-	acceleratorURN := "urn:cerebro:writer:aws_global_accelerator_accelerator:" + acceleratorARN
-	listenerURNProjected := "urn:cerebro:writer:aws_global_accelerator_listener:" + listenerARN
-	endpointGroupURNProjected := "urn:cerebro:writer:aws_global_accelerator_endpoint_group:" + endpointGroupARN
-	endpointURNProjected := "urn:cerebro:writer:aws_global_accelerator_endpoint:" + endpointARN
+	acceleratorURN := "urn:cerebro:writer:aws_globalaccelerator_accelerator:" + acceleratorARN
+	listenerURNProjected := "urn:cerebro:writer:aws_globalaccelerator_listener:" + listenerARN
+	endpointGroupURNProjected := "urn:cerebro:writer:aws_globalaccelerator_endpoint_group:" + endpointGroupARN
+	endpointURNProjected := "urn:cerebro:writer:aws_globalaccelerator_endpoint:" + endpointARN
 	assertProjectedLink(t, state, listenerURNProjected, relationBelongsTo, acceleratorURN)
 	assertProjectedLink(t, state, endpointGroupURNProjected, relationBelongsTo, listenerURNProjected)
 	assertProjectedLink(t, state, endpointGroupURNProjected, relationTargeted, endpointURNProjected)
@@ -88,13 +88,13 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 			Id:       "lattice-service-1",
 			TenantId: "writer",
 			SourceId: "aws",
-			Kind:     "aws.vpc_lattice_service",
+			Kind:     "aws.vpclattice_service",
 			Attributes: map[string]string{
 				"domain":            "123456789012",
 				"resource_id":       serviceARN,
 				"resource_name":     "orders",
 				"resource_provider": "aws",
-				"resource_type":     "vpc_lattice_service",
+				"resource_type":     "vpclattice_service",
 				"service_arn":       serviceARN,
 			},
 		},
@@ -102,13 +102,13 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 			Id:       "lattice-listener-1",
 			TenantId: "writer",
 			SourceId: "aws",
-			Kind:     "aws.vpc_lattice_listener",
+			Kind:     "aws.vpclattice_listener",
 			Attributes: map[string]string{
 				"domain":            "123456789012",
 				"listener_arn":      listenerARN,
 				"resource_id":       listenerARN,
 				"resource_provider": "aws",
-				"resource_type":     "vpc_lattice_listener",
+				"resource_type":     "vpclattice_listener",
 				"service_arn":       serviceARN,
 				"target_group_ids":  targetGroupARN,
 			},
@@ -117,12 +117,12 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 			Id:       "lattice-tg-1",
 			TenantId: "writer",
 			SourceId: "aws",
-			Kind:     "aws.vpc_lattice_target_group",
+			Kind:     "aws.vpclattice_target_group",
 			Attributes: map[string]string{
 				"domain":            "123456789012",
 				"resource_id":       targetGroupARN,
 				"resource_provider": "aws",
-				"resource_type":     "vpc_lattice_target_group",
+				"resource_type":     "vpclattice_target_group",
 				"service_arns":      serviceARN,
 				"target_group_arn":  targetGroupARN,
 				"target_group_id":   "tg-123",
@@ -137,10 +137,10 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 		}
 	}
 
-	serviceURNProjected := "urn:cerebro:writer:aws_vpc_lattice_service:" + serviceARN
-	listenerURNProjected := "urn:cerebro:writer:aws_vpc_lattice_listener:" + listenerARN
-	targetGroupURNProjected := "urn:cerebro:writer:aws_vpc_lattice_target_group:" + targetGroupARN
-	targetURN := "urn:cerebro:writer:aws_vpc_lattice_target:tg-123:i-123"
+	serviceURNProjected := "urn:cerebro:writer:aws_vpclattice_service:" + serviceARN
+	listenerURNProjected := "urn:cerebro:writer:aws_vpclattice_listener:" + listenerARN
+	targetGroupURNProjected := "urn:cerebro:writer:aws_vpclattice_target_group:" + targetGroupARN
+	targetURN := "urn:cerebro:writer:aws_vpclattice_target:tg-123:i-123"
 	assertProjectedLink(t, state, listenerURNProjected, relationBelongsTo, serviceURNProjected)
 	assertProjectedLink(t, state, listenerURNProjected, relationDependsOn, targetGroupURNProjected)
 	assertProjectedLink(t, state, targetGroupURNProjected, relationBelongsTo, serviceURNProjected)
