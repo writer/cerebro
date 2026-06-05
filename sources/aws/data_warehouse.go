@@ -204,7 +204,7 @@ func docDBInstanceEvent(settings settings, record awsDocDBInstance) (*primitives
 	name := awssdk.ToString(instance.DBInstanceIdentifier)
 	clusterName := awssdk.ToString(instance.DBClusterIdentifier)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyDocDBInstance, firstNonEmpty(arn, name), name, "docdb_instance", record.Tags)
-	addSharedDBInstanceAttributes(attributes, settings, "docdb", arn, name, clusterName, awssdk.ToString(instance.Engine), awssdk.ToString(instance.EngineVersion), awssdk.ToString(instance.DBInstanceStatus), instance.InstanceCreateTime, docDBInstanceEndpointAddress(instance), docDBInstanceEndpointPort(instance), awssdk.ToString(instance.DBInstanceClass), awssdk.ToString(instance.AvailabilityZone), docDBSubnetGroupName(instance.DBSubnetGroup), docDBInstanceVPCID(instance.DBSubnetGroup), docDBSecurityGroupIDs(instance.VpcSecurityGroups))
+	addSharedDBInstanceAttributes(attributes, settings, "docdb", arn, name, clusterName, awssdk.ToString(instance.Engine), awssdk.ToString(instance.EngineVersion), awssdk.ToString(instance.DBInstanceStatus), instance.InstanceCreateTime, docDBInstanceEndpointAddress(instance), docDBInstanceEndpointPort(instance), awssdk.ToString(instance.DBInstanceClass), awssdk.ToString(instance.AvailabilityZone), docDBSubnetGroupName(instance.DBSubnetGroup), docDBInstanceVPCID(instance.DBSubnetGroup), docDBSecurityGroupIDs(instance.VpcSecurityGroups), awssdk.ToBool(instance.PubliclyAccessible))
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "instance": instance, "tags": record.Tags})
 	if err != nil {
 		return nil, err
@@ -231,7 +231,7 @@ func neptuneInstanceEvent(settings settings, record awsNeptuneInstance) (*primit
 	name := awssdk.ToString(instance.DBInstanceIdentifier)
 	clusterName := awssdk.ToString(instance.DBClusterIdentifier)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyNeptuneInstance, firstNonEmpty(arn, name), name, "neptune_instance", record.Tags)
-	addSharedDBInstanceAttributes(attributes, settings, "neptune", arn, name, clusterName, awssdk.ToString(instance.Engine), awssdk.ToString(instance.EngineVersion), awssdk.ToString(instance.DBInstanceStatus), instance.InstanceCreateTime, neptuneInstanceEndpointAddress(instance), neptuneInstanceEndpointPort(instance), awssdk.ToString(instance.DBInstanceClass), awssdk.ToString(instance.AvailabilityZone), neptuneSubnetGroupName(instance.DBSubnetGroup), neptuneInstanceVPCID(instance.DBSubnetGroup), neptuneSecurityGroupIDs(instance.VpcSecurityGroups))
+	addSharedDBInstanceAttributes(attributes, settings, "neptune", arn, name, clusterName, awssdk.ToString(instance.Engine), awssdk.ToString(instance.EngineVersion), awssdk.ToString(instance.DBInstanceStatus), instance.InstanceCreateTime, neptuneInstanceEndpointAddress(instance), neptuneInstanceEndpointPort(instance), awssdk.ToString(instance.DBInstanceClass), awssdk.ToString(instance.AvailabilityZone), neptuneSubnetGroupName(instance.DBSubnetGroup), neptuneInstanceVPCID(instance.DBSubnetGroup), neptuneSecurityGroupIDs(instance.VpcSecurityGroups), awssdk.ToBool(instance.PubliclyAccessible))
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "instance": instance, "tags": record.Tags})
 	if err != nil {
 		return nil, err
@@ -264,7 +264,7 @@ func addSharedDBClusterAttributes(attributes map[string]string, engineFamily str
 	addTimeAttribute(attributes, "created_at", createdAt)
 }
 
-func addSharedDBInstanceAttributes(attributes map[string]string, settings settings, engineFamily string, arn string, name string, clusterName string, engine string, engineVersion string, state string, createdAt *time.Time, endpoint string, port *int32, instanceClass string, availabilityZone string, subnetGroupName string, vpcID string, securityGroupIDs []string) {
+func addSharedDBInstanceAttributes(attributes map[string]string, settings settings, engineFamily string, arn string, name string, clusterName string, engine string, engineVersion string, state string, createdAt *time.Time, endpoint string, port *int32, instanceClass string, availabilityZone string, subnetGroupName string, vpcID string, securityGroupIDs []string, publiclyAccessible bool) {
 	clusterARN := awsRDSStyleClusterARN(settings, clusterName)
 	attributes["arn"] = arn
 	attributes["availability_zone"] = availabilityZone
@@ -276,9 +276,9 @@ func addSharedDBInstanceAttributes(attributes map[string]string, settings settin
 	attributes["engine"] = firstNonEmpty(engine, engineFamily)
 	attributes["engine_version"] = engineVersion
 	attributes["instance_class"] = instanceClass
-	attributes["internet_exposed"] = boolString(false)
+	attributes["internet_exposed"] = boolString(publiclyAccessible)
 	attributes["port"] = int32AttrString(port)
-	attributes["public"] = boolString(false)
+	attributes["public"] = boolString(publiclyAccessible)
 	attributes["security_group_ids"] = strings.Join(securityGroupIDs, ",")
 	attributes["state"] = state
 	attributes["subnet_group_name"] = subnetGroupName
