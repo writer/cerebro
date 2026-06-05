@@ -232,12 +232,17 @@ type settings struct {
 	principalName              string
 	userName                   string
 	identityStoreID            string
-	lookupKey                  string
-	lookupValue                string
-	startTime                  string
-	endTime                    string
-	since                      string
+	cloudTrail                 cloudTrailSettings
+	wafv2Scope                 string
 	perPage                    int
+}
+
+type cloudTrailSettings struct {
+	lookupKey   string
+	lookupValue string
+	startTime   string
+	endTime     string
+	since       string
 }
 
 type awsClientFactory func(context.Context, settings) (awsClients, error)
@@ -248,6 +253,7 @@ type awsClients struct {
 	awsAnalyticsClients
 	awsGovernanceClients
 	awsStorageClients
+	awsSecurityClients
 }
 
 type awsACMAPI interface {
@@ -865,7 +871,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
-	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family },
+	families := []sourcecdk.Family[settings]{
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.AccessKeyMetadata]{
 			Name:  familyAccessKey,
 			Label: "aws iam access keys",
@@ -1948,7 +1954,9 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(user iamtypes.User) string { return awssdk.ToString(user.UserName) },
 		}),
-	)
+	}
+	families = append(families, awsSecurityFamilies(s.clients)...)
+	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
 func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T]) sourcecdk.Family[settings] {
@@ -2079,6 +2087,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			dynamodbStreams: dynamodbstreams.NewFromConfig(cfg),
 			efs:             efs.NewFromConfig(cfg),
 		},
+		awsSecurityClients: newAWSSecurityClients(cfg),
 	}, nil
 }
 
@@ -2102,12 +2111,15 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		principalName:              configValue(cfg, "principal_name"),
 		userName:                   configValue(cfg, "user_name"),
 		identityStoreID:            configValue(cfg, "identity_store_id"),
-		lookupKey:                  configValue(cfg, "lookup_key"),
-		lookupValue:                configValue(cfg, "lookup_value"),
-		startTime:                  configValue(cfg, "start_time"),
-		endTime:                    configValue(cfg, "end_time"),
-		since:                      configValue(cfg, "since"),
-		perPage:                    defaultPageSize,
+		cloudTrail: cloudTrailSettings{
+			lookupKey:   configValue(cfg, "lookup_key"),
+			lookupValue: configValue(cfg, "lookup_value"),
+			startTime:   configValue(cfg, "start_time"),
+			endTime:     configValue(cfg, "end_time"),
+			since:       configValue(cfg, "since"),
+		},
+		wafv2Scope: configValue(cfg, "wafv2_scope"),
+		perPage:    defaultPageSize,
 	}
 	if settings.family == "" {
 		settings.family = defaultFamily
@@ -2136,7 +2148,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEFSAccessPoint, familyEFSFileSystem, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEFSAccessPoint, familyEFSFileSystem, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -3287,18 +3299,18 @@ func listCloudTrailEvents(ctx context.Context, clients awsClients, settings sett
 			input.EndTime = &parsed
 		}
 	}
-	if settings.lookupKey != "" && settings.lookupValue != "" {
-		input.LookupAttributes = []cloudtrailtypes.LookupAttribute{{AttributeKey: cloudtrailtypes.LookupAttributeKey(settings.lookupKey), AttributeValue: awssdk.String(settings.lookupValue)}}
+	if settings.cloudTrail.lookupKey != "" && settings.cloudTrail.lookupValue != "" {
+		input.LookupAttributes = []cloudtrailtypes.LookupAttribute{{AttributeKey: cloudtrailtypes.LookupAttributeKey(settings.cloudTrail.lookupKey), AttributeValue: awssdk.String(settings.cloudTrail.lookupValue)}}
 	}
-	if !resume && firstNonEmpty(settings.startTime, settings.since) != "" {
-		parsed, err := parseAWSTimeSelector(firstNonEmpty(settings.startTime, settings.since), now)
+	if !resume && firstNonEmpty(settings.cloudTrail.startTime, settings.cloudTrail.since) != "" {
+		parsed, err := parseAWSTimeSelector(firstNonEmpty(settings.cloudTrail.startTime, settings.cloudTrail.since), now)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse aws start_time: %w", err)
 		}
 		input.StartTime = &parsed
 	}
-	if !resume && settings.endTime != "" {
-		parsed, err := time.Parse(time.RFC3339, settings.endTime)
+	if !resume && settings.cloudTrail.endTime != "" {
+		parsed, err := time.Parse(time.RFC3339, settings.cloudTrail.endTime)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse aws end_time: %w", err)
 		}
@@ -3348,10 +3360,10 @@ func parseCloudTrailCursor(raw string, settings settings, now time.Time) (cloudT
 			return cloudTrailCursor{}, false
 		}
 	}
-	if cursor.StartSelector != firstNonEmpty(settings.startTime, settings.since) ||
-		cursor.EndSelector != strings.TrimSpace(settings.endTime) ||
-		cursor.LookupKey != strings.TrimSpace(settings.lookupKey) ||
-		cursor.LookupValue != strings.TrimSpace(settings.lookupValue) {
+	if cursor.StartSelector != firstNonEmpty(settings.cloudTrail.startTime, settings.cloudTrail.since) ||
+		cursor.EndSelector != strings.TrimSpace(settings.cloudTrail.endTime) ||
+		cursor.LookupKey != strings.TrimSpace(settings.cloudTrail.lookupKey) ||
+		cursor.LookupValue != strings.TrimSpace(settings.cloudTrail.lookupValue) {
 		return cloudTrailCursor{}, false
 	}
 	cursor.Token = strings.TrimSpace(cursor.Token)
@@ -3366,10 +3378,10 @@ func encodeCloudTrailCursor(settings settings, input *cloudtrail.LookupEventsInp
 	cursor := cloudTrailCursor{
 		Version:       cloudTrailCursorVersion,
 		Token:         token,
-		StartSelector: firstNonEmpty(settings.startTime, settings.since),
-		EndSelector:   strings.TrimSpace(settings.endTime),
-		LookupKey:     strings.TrimSpace(settings.lookupKey),
-		LookupValue:   strings.TrimSpace(settings.lookupValue),
+		StartSelector: firstNonEmpty(settings.cloudTrail.startTime, settings.cloudTrail.since),
+		EndSelector:   strings.TrimSpace(settings.cloudTrail.endTime),
+		LookupKey:     strings.TrimSpace(settings.cloudTrail.lookupKey),
+		LookupValue:   strings.TrimSpace(settings.cloudTrail.lookupValue),
 		IssuedAt:      issuedAt.UTC().Format(time.RFC3339Nano),
 	}
 	if input != nil && input.StartTime != nil {
