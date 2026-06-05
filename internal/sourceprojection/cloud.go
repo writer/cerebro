@@ -71,6 +71,14 @@ func awsEffectivePermissionProjections(event *cerebrov1.EventEnvelope) ([]*ports
 	return cloudEffectivePermissionProjections(event, awsIdentityProfile)
 }
 
+func awsIdentityCenterPermissionSetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudResourceMetadataProjections(event, awsIdentityProfile, cloudResourceProjectionOptions{})
+}
+
+func awsIdentityCenterAccountAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudPrivilegePathProjections(event, awsIdentityProfile)
+}
+
 func azureEffectivePermissionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return cloudEffectivePermissionProjections(event, azureIdentityProfile)
 }

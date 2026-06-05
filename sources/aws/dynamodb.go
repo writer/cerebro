@@ -100,17 +100,42 @@ func listDynamoDBStreams(ctx context.Context, clients awsClients, _ settings, cu
 		if arn == "" {
 			continue
 		}
-		describe, err := clients.dynamodbStreams.DescribeStream(ctx, &dynamodbstreams.DescribeStreamInput{
-			StreamArn: awssdk.String(arn),
-		})
+		describe, err := describeDynamoDBStream(ctx, clients, arn)
 		if err != nil {
 			return nil, "", fmt.Errorf("describe dynamodb stream %q: %w", arn, err)
 		}
-		if describe.StreamDescription != nil {
-			records = append(records, awsDynamoDBStream{Stream: *describe.StreamDescription})
+		if describe != nil {
+			records = append(records, awsDynamoDBStream{Stream: *describe})
 		}
 	}
 	return records, awssdk.ToString(out.LastEvaluatedStreamArn), nil
+}
+
+func describeDynamoDBStream(ctx context.Context, clients awsClients, arn string) (*dynamodbstreamstypes.StreamDescription, error) {
+	var description *dynamodbstreamstypes.StreamDescription
+	var shardCursor *string
+	for {
+		out, err := clients.dynamodbStreams.DescribeStream(ctx, &dynamodbstreams.DescribeStreamInput{
+			ExclusiveStartShardId: shardCursor,
+			StreamArn:             awssdk.String(arn),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if out.StreamDescription == nil {
+			return description, nil
+		}
+		if description == nil {
+			copyDescription := *out.StreamDescription
+			description = &copyDescription
+		} else {
+			description.Shards = append(description.Shards, out.StreamDescription.Shards...)
+		}
+		if awssdk.ToString(out.StreamDescription.LastEvaluatedShardId) == "" {
+			return description, nil
+		}
+		shardCursor = out.StreamDescription.LastEvaluatedShardId
+	}
 }
 
 func dynamoDBTableEvent(settings settings, record awsDynamoDBTable) (*primitives.Event, error) {
@@ -131,7 +156,7 @@ func dynamoDBTableEvent(settings settings, record awsDynamoDBTable) (*primitives
 	attributes["stream_enabled"] = boolString(table.StreamSpecification != nil && awssdk.ToBool(table.StreamSpecification.StreamEnabled))
 	attributes["latest_stream_arn"] = awssdk.ToString(table.LatestStreamArn)
 	attributes["latest_stream_label"] = awssdk.ToString(table.LatestStreamLabel)
-	attributes["encryption"] = boolString(table.SSEDescription != nil && table.SSEDescription.Status == dynamodbtypes.SSEStatusEnabled)
+	attributes["encryption"] = boolString(table.SSEDescription == nil || table.SSEDescription.Status == dynamodbtypes.SSEStatusEnabled)
 	attributes["gsi_count"] = strconv.Itoa(len(table.GlobalSecondaryIndexes))
 	attributes["lsi_count"] = strconv.Itoa(len(table.LocalSecondaryIndexes))
 	attributes["replica_count"] = strconv.Itoa(len(table.Replicas))

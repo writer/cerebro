@@ -619,8 +619,53 @@ func unixAttributeTime(value string) time.Time {
 }
 
 func policyAllowsWildcardPrincipal(policy string) bool {
-	normalized := strings.ReplaceAll(strings.ToLower(policy), " ", "")
-	return strings.Contains(normalized, `"principal":"*"`) || strings.Contains(normalized, `"aws":"*"`)
+	var document any
+	if err := json.Unmarshal([]byte(policy), &document); err != nil {
+		normalized := strings.ReplaceAll(strings.ToLower(policy), " ", "")
+		return strings.Contains(normalized, `"principal":"*"`) || strings.Contains(normalized, `"aws":"*"`) || strings.Contains(normalized, `"aws":["*"]`)
+	}
+	return policyPrincipalAllowsWildcard(document)
+}
+
+func policyPrincipalAllowsWildcard(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			if strings.EqualFold(key, "Principal") && policyPrincipalValueAllowsWildcard(item) {
+				return true
+			}
+			if policyPrincipalAllowsWildcard(item) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if policyPrincipalAllowsWildcard(item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func policyPrincipalValueAllowsWildcard(value any) bool {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed) == "*"
+	case map[string]any:
+		for key, item := range typed {
+			if (strings.EqualFold(key, "AWS") || strings.EqualFold(key, "CanonicalUser")) && policyPrincipalValueAllowsWildcard(item) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if policyPrincipalValueAllowsWildcard(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func optionalAWSError(err error, codes ...string) bool {

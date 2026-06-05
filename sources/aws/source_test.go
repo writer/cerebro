@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -480,6 +481,11 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyIAMGroup, kind: "aws.iam_group"},
 		{family: familyIAMMembership, config: map[string]string{"group_name": "Security"}, kind: "aws.iam_group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
+		{family: familyIdentityCenterAssignment, kind: "aws.identity_center_account_assignment"},
+		{family: familyIdentityCenterPermission, kind: "aws.identity_center_permission_set"},
+		{family: familyIdentityStoreLegacyGroup, kind: "aws.identity_store_group"},
+		{family: familyIdentityStoreLegacyMember, kind: "aws.identity_store_group_membership"},
+		{family: familyIdentityStoreLegacyUser, kind: "aws.identity_store_user"},
 		{family: familyIdentityStoreGroup, kind: "aws.identitystore_group"},
 		{family: familyIdentityStoreMember, kind: "aws.identitystore_group_membership"},
 		{family: familyIdentityStoreUser, kind: "aws.identitystore_user"},
@@ -510,6 +516,53 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
+			}
+		})
+	}
+}
+
+func TestReadAWSLegacyIdentityCenterInventoryEvents(t *testing.T) {
+	instanceARN := "arn:aws:sso:::instance/ssoins-123"
+	permissionSetARN := "arn:aws:sso:::permissionSet/ssoins-123/ps-admin"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSGovernance: fakeAWSGovernance{
+			ssoInstances:      []ssoadmintypes.InstanceMetadata{{InstanceArn: awssdk.String(instanceARN), IdentityStoreId: awssdk.String("d-1234567890"), OwnerAccountId: awssdk.String("123456789012")}},
+			ssoPermissionSets: []ssoadmintypes.PermissionSet{{PermissionSetArn: awssdk.String(permissionSetARN), Name: awssdk.String("AdministratorAccess"), SessionDuration: awssdk.String("PT8H")}},
+			ssoAssignments: map[string][]ssoadmintypes.AccountAssignment{
+				"210987654321|" + permissionSetARN: {{AccountId: awssdk.String("210987654321"), PermissionSetArn: awssdk.String(permissionSetARN), PrincipalId: awssdk.String("u-123"), PrincipalType: ssoadmintypes.PrincipalTypeUser}},
+			},
+			identityUsers:  []identitystoretypes.User{{IdentityStoreId: awssdk.String("d-1234567890"), UserId: awssdk.String("u-123"), UserName: awssdk.String("alice"), DisplayName: awssdk.String("Alice Admin"), Emails: []identitystoretypes.Email{{Value: awssdk.String("alice@writer.com"), Primary: true}}, UserStatus: identitystoretypes.UserStatusEnabled}},
+			identityGroups: []identitystoretypes.Group{{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("g-admins"), DisplayName: awssdk.String("Admins")}},
+			identityMemberships: map[string][]identitystoretypes.GroupMembership{
+				"g-admins": {{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("g-admins"), MembershipId: awssdk.String("m-123"), MemberId: &identitystoretypes.MemberIdMemberUserId{Value: "u-123"}}},
+			},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyIdentityCenterPermission, kind: "aws.identity_center_permission_set", attr: "permission_set_name", want: "AdministratorAccess"},
+		{family: familyIdentityCenterAssignment, kind: "aws.identity_center_account_assignment", attr: "principal_id", want: "u-123"},
+		{family: familyIdentityStoreLegacyUser, kind: "aws.identity_store_user", attr: "email", want: "alice@writer.com"},
+		{family: familyIdentityStoreLegacyGroup, kind: "aws.identity_store_group", attr: "group_name", want: "Admins"},
+		{family: familyIdentityStoreLegacyMember, kind: "aws.identity_store_group_membership", attr: "member_user_id", want: "u-123"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
 	}
@@ -3953,6 +4006,7 @@ type fakeAWSGovernance struct {
 	organizationPolicyTargets map[string][]organizationstypes.PolicyTargetSummary
 	ssoInstances              []ssoadmintypes.InstanceMetadata
 	ssoPermissionSets         []ssoadmintypes.PermissionSet
+	ssoProvisionedAccounts    map[string][]string
 	ssoAssignments            map[string][]ssoadmintypes.AccountAssignment
 	identityUsers             []identitystoretypes.User
 	identityGroups            []identitystoretypes.Group
@@ -4123,6 +4177,11 @@ func (f *recordingAWS) ListPermissionSets(ctx context.Context, input *ssoadmin.L
 func (f *recordingAWS) DescribePermissionSet(ctx context.Context, input *ssoadmin.DescribePermissionSetInput, options ...func(*ssoadmin.Options)) (*ssoadmin.DescribePermissionSetOutput, error) {
 	f.record("sso:DescribePermissionSet")
 	return f.fakeAWS.DescribePermissionSet(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAccountsForProvisionedPermissionSet(ctx context.Context, input *ssoadmin.ListAccountsForProvisionedPermissionSetInput, options ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountsForProvisionedPermissionSetOutput, error) {
+	f.record("sso:ListAccountsForProvisionedPermissionSet")
+	return f.fakeAWS.ListAccountsForProvisionedPermissionSet(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListAccountAssignments(ctx context.Context, input *ssoadmin.ListAccountAssignmentsInput, options ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountAssignmentsOutput, error) {
@@ -5945,6 +6004,24 @@ func (f fakeAWS) DescribePermissionSet(_ context.Context, input *ssoadmin.Descri
 		}
 	}
 	return &ssoadmin.DescribePermissionSetOutput{}, nil
+}
+
+func (f fakeAWS) ListAccountsForProvisionedPermissionSet(_ context.Context, input *ssoadmin.ListAccountsForProvisionedPermissionSetInput, _ ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountsForProvisionedPermissionSetOutput, error) {
+	permissionSetARN := awssdk.ToString(input.PermissionSetArn)
+	key := awssdk.ToString(input.InstanceArn) + "|" + permissionSetARN
+	accounts := append([]string(nil), f.ssoProvisionedAccounts[key]...)
+	if len(accounts) == 0 {
+		seen := map[string]bool{}
+		for assignmentKey := range f.ssoAssignments {
+			parts := strings.SplitN(assignmentKey, "|", 2)
+			if len(parts) == 2 && parts[1] == permissionSetARN && !seen[parts[0]] {
+				seen[parts[0]] = true
+				accounts = append(accounts, parts[0])
+			}
+		}
+		sort.Strings(accounts)
+	}
+	return &ssoadmin.ListAccountsForProvisionedPermissionSetOutput{AccountIds: accounts}, nil
 }
 
 func (f fakeAWS) ListAccountAssignments(_ context.Context, input *ssoadmin.ListAccountAssignmentsInput, _ ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountAssignmentsOutput, error) {

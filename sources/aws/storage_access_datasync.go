@@ -124,7 +124,7 @@ func listS3MultiRegionAccessPoints(ctx context.Context, clients awsClients, sett
 		} else if !optionalAWSError(err, "NoSuchMultiRegionAccessPoint", "NoSuchAccessPoint", "NotFound") {
 			return nil, "", fmt.Errorf("get s3 multi-region access point %q: %w", name, err)
 		}
-		arn := s3MultiRegionAccessPointARN(settings, name)
+		arn := s3MultiRegionAccessPointARN(settings, awssdk.ToString(record.Report.Alias), name)
 		if tags, err := clients.s3control.ListTagsForResource(ctx, &s3control.ListTagsForResourceInput{AccountId: awssdk.String(settings.accountID), ResourceArn: awssdk.String(arn)}); err == nil {
 			record.Tags = s3ControlTagMap(tags.Tags)
 		} else if !optionalAWSError(err, "NoSuchMultiRegionAccessPoint", "NoSuchAccessPoint", "NoSuchTagSet", "NotFound") {
@@ -268,7 +268,7 @@ func s3AccessPointEvent(settings settings, record awsS3AccessPoint) (*primitives
 
 func s3MultiRegionAccessPointEvent(settings settings, record awsS3MultiRegionAccessPoint) (*primitives.Event, error) {
 	name := awssdk.ToString(record.Report.Name)
-	arn := s3MultiRegionAccessPointARN(settings, name)
+	arn := s3MultiRegionAccessPointARN(settings, awssdk.ToString(record.Report.Alias), name)
 	public := s3MultiRegionAccessPointPublic(record.Report.PublicAccessBlock, record.PublicPolicy)
 	attributes := commonCloudAssetAttributes(settings, "global", familyS3MultiRegionAccessPoint, firstNonEmpty(arn, name), name, "s3_multi_region_access_point", record.Tags)
 	attributes["arn"] = arn
@@ -678,11 +678,12 @@ func s3AccessPointARN(settings settings, arn string, name string) string {
 	return fmt.Sprintf("arn:aws:s3:%s:%s:accesspoint/%s", settings.region, settings.accountID, strings.TrimSpace(name))
 }
 
-func s3MultiRegionAccessPointARN(settings settings, name string) string {
-	if strings.TrimSpace(name) == "" {
+func s3MultiRegionAccessPointARN(settings settings, alias string, name string) string {
+	resourceName := firstNonEmpty(alias, name)
+	if strings.TrimSpace(resourceName) == "" {
 		return ""
 	}
-	return fmt.Sprintf("arn:aws:s3::%s:accesspoint/%s", settings.accountID, strings.TrimSpace(name))
+	return fmt.Sprintf("arn:aws:s3::%s:accesspoint/%s", settings.accountID, strings.TrimSpace(resourceName))
 }
 
 func ebsVolumeARN(settings settings, volumeID string) string {

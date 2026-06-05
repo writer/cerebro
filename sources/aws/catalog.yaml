@@ -74,6 +74,11 @@ emitted_kinds:
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.identity_center_account_assignment
+  - aws.identity_center_permission_set
+  - aws.identity_store_group
+  - aws.identity_store_group_membership
+  - aws.identity_store_user
   - aws.inspector2_finding
   - aws.macie2_finding
   - aws.network_firewall
@@ -110,10 +115,20 @@ emitted_kinds:
   - aws.securityhub_finding
   - aws.sns_topic
   - aws.sqs_queue
+  - aws.ssm_association
+  - aws.ssm_document
+  - aws.ssm_managed_instance
+  - aws.ssm_parameter
+  - aws.stepfunctions_activity
+  - aws.stepfunctions_state_machine
+  - aws.sso_account_assignment
+  - aws.sso_instance
+  - aws.sso_permission_set
   - aws.wafv2_web_acl
   - aws.lambda_function
 runtime_families:
   - access_key
+  - access_analyzer
   - acm_certificate
   - apprunner_service
   - asset_metadata
@@ -184,6 +199,11 @@ runtime_families:
   - iam_role_assignment
   - iam_role_trust
   - iam_user
+  - identity_center_account_assignment
+  - identity_center_permission_set
+  - identity_store_group
+  - identity_store_group_membership
+  - identity_store_user
   - inspector2_finding
   - fsx_file_system
   - kms_key
@@ -221,7 +241,6 @@ runtime_families:
   - securityhub_finding
   - sns_topic
   - sqs_queue
-  - wafv2_web_acl
   - ssm_association
   - ssm_document
   - ssm_managed_instance
@@ -231,4 +250,5 @@ runtime_families:
   - sso_account_assignment
   - sso_instance
   - sso_permission_set
+  - wafv2_web_acl
   - lambda_function

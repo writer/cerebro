@@ -34,7 +34,8 @@ func addElastiCacheContextLinks(entities map[string]*ports.ProjectedEntity, link
 	}
 	accountID := strings.TrimSpace(attributes["domain"])
 	if replicationGroupID := strings.TrimSpace(attributes["replication_group_id"]); replicationGroupID != "" && resourceType != "elasticache_replication_group" {
-		replicationGroupURN := projectionURN(tenantID, "aws_elasticache_replication_group", replicationGroupID)
+		replicationGroupResourceID := firstNonEmpty(attributes["replication_group_arn"], elasticacheARN(attributes, "replicationgroup", replicationGroupID), replicationGroupID)
+		replicationGroupURN := projectionURN(tenantID, "aws_elasticache_replication_group", replicationGroupResourceID)
 		if replicationGroupURN != "" {
 			addEntity(entities, &ports.ProjectedEntity{
 				URN:        replicationGroupURN,
@@ -45,7 +46,7 @@ func addElastiCacheContextLinks(entities map[string]*ports.ProjectedEntity, link
 				Attributes: map[string]string{
 					"domain":               accountID,
 					"replication_group_id": replicationGroupID,
-					"resource_id":          replicationGroupID,
+					"resource_id":          replicationGroupResourceID,
 					"resource_provider":    "aws",
 					"resource_type":        "elasticache_replication_group",
 				},
@@ -55,7 +56,8 @@ func addElastiCacheContextLinks(entities map[string]*ports.ProjectedEntity, link
 		}
 	}
 	if subnetGroupName := strings.TrimSpace(attributes["cache_subnet_group_name"]); subnetGroupName != "" && resourceType != "elasticache_subnet_group" {
-		subnetGroupURN := projectionURN(tenantID, "aws_elasticache_subnet_group", subnetGroupName)
+		subnetGroupResourceID := firstNonEmpty(attributes["cache_subnet_group_arn"], elasticacheARN(attributes, "subnetgroup", subnetGroupName), subnetGroupName)
+		subnetGroupURN := projectionURN(tenantID, "aws_elasticache_subnet_group", subnetGroupResourceID)
 		if subnetGroupURN != "" {
 			addEntity(entities, &ports.ProjectedEntity{
 				URN:        subnetGroupURN,
@@ -66,7 +68,7 @@ func addElastiCacheContextLinks(entities map[string]*ports.ProjectedEntity, link
 				Attributes: map[string]string{
 					"cache_subnet_group_name": subnetGroupName,
 					"domain":                  accountID,
-					"resource_id":             subnetGroupName,
+					"resource_id":             subnetGroupResourceID,
 					"resource_provider":       "aws",
 					"resource_type":           "elasticache_subnet_group",
 				},
@@ -76,7 +78,8 @@ func addElastiCacheContextLinks(entities map[string]*ports.ProjectedEntity, link
 		}
 	}
 	for _, memberClusterID := range splitCloudAttributeList(attributes["member_cluster_ids"]) {
-		clusterURN := projectionURN(tenantID, "aws_elasticache_cluster", memberClusterID)
+		clusterResourceID := elasticacheARN(attributes, "cluster", memberClusterID)
+		clusterURN := projectionURN(tenantID, "aws_elasticache_cluster", firstNonEmpty(clusterResourceID, memberClusterID))
 		if clusterURN == "" {
 			continue
 		}
@@ -89,7 +92,7 @@ func addElastiCacheContextLinks(entities map[string]*ports.ProjectedEntity, link
 			Attributes: map[string]string{
 				"cache_cluster_id":  memberClusterID,
 				"domain":            accountID,
-				"resource_id":       memberClusterID,
+				"resource_id":       firstNonEmpty(clusterResourceID, memberClusterID),
 				"resource_provider": "aws",
 				"resource_type":     "elasticache_cluster",
 			},
@@ -97,4 +100,14 @@ func addElastiCacheContextLinks(entities map[string]*ports.ProjectedEntity, link
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), clusterURN, resourceURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "elasticache_member_cluster"}))
 		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, clusterURN, accountID, "aws")
 	}
+}
+
+func elasticacheARN(attributes map[string]string, resourceType string, name string) string {
+	region := strings.TrimSpace(attributes["region"])
+	accountID := strings.TrimSpace(attributes["domain"])
+	name = strings.TrimSpace(name)
+	if region == "" || accountID == "" || name == "" {
+		return ""
+	}
+	return "arn:aws:elasticache:" + region + ":" + accountID + ":" + resourceType + ":" + name
 }

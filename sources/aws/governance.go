@@ -759,8 +759,8 @@ func listAllOrganizationAccountIDs(ctx context.Context, clients awsClients, sett
 }
 
 func identityStoreIDs(ctx context.Context, clients awsClients, settings settings) ([]string, error) {
-	if settings.identityStoreID != "" {
-		return []string{settings.identityStoreID}, nil
+	if settings.identityCenter.storeID != "" {
+		return []string{settings.identityCenter.storeID}, nil
 	}
 	instances, err := listAllSSOInstances(ctx, clients)
 	if err != nil {
@@ -864,7 +864,7 @@ func organizationPolicyTargetField(targets []organizationstypes.PolicyTargetSumm
 	for _, target := range targets {
 		fields = append(fields, strings.TrimSpace(value(target)))
 	}
-	return cleanStrings(fields)
+	return fields
 }
 
 func organizationsRootPolicyTypes(root organizationstypes.Root) []string {

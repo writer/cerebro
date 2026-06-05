@@ -605,6 +605,11 @@ func firehoseDeliveryStreamEvent(settings settings, record awsFirehoseDeliverySt
 	attributes["source_kinesis_stream_arn"] = firehoseSourceKinesisARN(stream.Source)
 	attributes["source_msk_cluster_arn"] = firehoseSourceMSKClusterARN(stream.Source)
 	attributes["source_msk_topic"] = firehoseSourceMSKTopic(stream.Source)
+	roleARNs := firehoseRoleARNs(stream.Source, stream.Destinations)
+	if len(roleARNs) > 0 {
+		attributes["role_arn"] = roleARNs[0]
+	}
+	attributes["role_arns"] = strings.Join(roleARNs, ",")
 	attributes["destination_types"] = strings.Join(firehoseDestinationTypes(stream.Destinations), ",")
 	attributes["destination_bucket_arns"] = strings.Join(firehoseDestinationBucketARNs(stream.Destinations), ",")
 	attributes["public"] = boolString(false)
@@ -1080,6 +1085,41 @@ func firehoseDestinationBucketARNs(destinations []firehosetypes.DestinationDescr
 	return cleanStrings(values)
 }
 
+func firehoseRoleARNs(source *firehosetypes.SourceDescription, destinations []firehosetypes.DestinationDescription) []string {
+	values := []string{}
+	if source != nil {
+		if source.KinesisStreamSourceDescription != nil {
+			values = append(values, awssdk.ToString(source.KinesisStreamSourceDescription.RoleARN))
+		}
+		if source.MSKSourceDescription != nil && source.MSKSourceDescription.AuthenticationConfiguration != nil {
+			values = append(values, awssdk.ToString(source.MSKSourceDescription.AuthenticationConfiguration.RoleARN))
+		}
+	}
+	for _, destination := range destinations {
+		switch {
+		case destination.ExtendedS3DestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.ExtendedS3DestinationDescription.RoleARN))
+		case destination.S3DestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.S3DestinationDescription.RoleARN))
+		case destination.RedshiftDestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.RedshiftDestinationDescription.RoleARN))
+		case destination.ElasticsearchDestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.ElasticsearchDestinationDescription.RoleARN))
+		case destination.AmazonopensearchserviceDestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.AmazonopensearchserviceDestinationDescription.RoleARN))
+		case destination.AmazonOpenSearchServerlessDestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.AmazonOpenSearchServerlessDestinationDescription.RoleARN))
+		case destination.HttpEndpointDestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.HttpEndpointDestinationDescription.RoleARN))
+		case destination.IcebergDestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.IcebergDestinationDescription.RoleARN))
+		case destination.SnowflakeDestinationDescription != nil:
+			values = append(values, awssdk.ToString(destination.SnowflakeDestinationDescription.RoleARN))
+		}
+	}
+	return cleanStrings(values)
+}
+
 func mskBrokerCount(cluster kafkatypes.Cluster) *int32 {
 	if cluster.Provisioned != nil {
 		return cluster.Provisioned.NumberOfBrokerNodes
@@ -1169,7 +1209,7 @@ func mskClusterPublic(cluster kafkatypes.Cluster) bool {
 	if cluster.Provisioned == nil || cluster.Provisioned.BrokerNodeGroupInfo == nil || cluster.Provisioned.BrokerNodeGroupInfo.ConnectivityInfo == nil || cluster.Provisioned.BrokerNodeGroupInfo.ConnectivityInfo.PublicAccess == nil {
 		return false
 	}
-	return !strings.EqualFold(strings.TrimSpace(awssdk.ToString(cluster.Provisioned.BrokerNodeGroupInfo.ConnectivityInfo.PublicAccess.Type)), "DISABLED")
+	return strings.EqualFold(strings.TrimSpace(awssdk.ToString(cluster.Provisioned.BrokerNodeGroupInfo.ConnectivityInfo.PublicAccess.Type)), "SERVICE_PROVIDED_EIPS")
 }
 
 func mergeStringMaps(values ...map[string]string) map[string]string {

@@ -286,16 +286,15 @@ func awsOrganizationsValueAt(values []string, index int) string {
 }
 
 func splitCloudAttributeListAligned(value string) []string {
-	fields := strings.FieldsFunc(value, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n' || r == '\t'
-	})
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	normalized := strings.NewReplacer(";", ",", "\n", ",", "\t", ",").Replace(value)
+	fields := strings.Split(normalized, ",")
 	result := make([]string, 0, len(fields))
 	for _, field := range fields {
-		trimmed := strings.TrimSpace(field)
-		if trimmed == "" {
-			continue
-		}
-		result = append(result, trimmed)
+		result = append(result, strings.TrimSpace(field))
 	}
 	return result
 }
