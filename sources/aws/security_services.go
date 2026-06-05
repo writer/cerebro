@@ -964,6 +964,9 @@ func macie2AffectedS3(finding macie2types.Finding) (string, string, string, stri
 	if bucket := finding.ResourcesAffected.S3Bucket; bucket != nil {
 		bucketARN = awssdk.ToString(bucket.Arn)
 		bucketName = awssdk.ToString(bucket.Name)
+		if bucket.PublicAccess != nil && bucket.PublicAccess.EffectivePermission == macie2types.EffectivePermissionPublic {
+			publicAccess = true
+		}
 	}
 	if object := finding.ResourcesAffected.S3Object; object != nil {
 		bucketARN = firstNonEmpty(awssdk.ToString(object.BucketArn), bucketARN)
