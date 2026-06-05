@@ -729,4 +729,3 @@ func encodeAWSChildCursor(cursor awsChildPageCursor) string {
 	}
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
-
