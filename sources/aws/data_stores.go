@@ -706,23 +706,23 @@ func policyDocumentMentionsPublic(document any) bool {
 	if err != nil {
 		return false
 	}
-	var parsed map[string]any
+	var parsed any
 	if err := json.Unmarshal(payload, &parsed); err != nil {
 		return false
 	}
-	if allow, ok := parsed["AllowFromPublic"].(bool); ok && allow {
-		return true
+	var statements []any
+	switch value := parsed.(type) {
+	case []any:
+		statements = value
+	case map[string]any:
+		statements = append(statements, value)
 	}
-	rules, ok := parsed["Rules"].([]any)
-	if !ok {
-		return false
-	}
-	for _, rule := range rules {
-		ruleMap, ok := rule.(map[string]any)
+	for _, statement := range statements {
+		statementMap, ok := statement.(map[string]any)
 		if !ok {
 			continue
 		}
-		if allow, ok := ruleMap["AllowFromPublic"].(bool); ok && allow {
+		if allow, ok := statementMap["AllowFromPublic"].(bool); ok && allow {
 			return true
 		}
 	}
