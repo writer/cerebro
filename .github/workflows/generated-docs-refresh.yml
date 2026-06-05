@@ -26,9 +26,12 @@ jobs:
     steps:
       - name: Refuse to update protected base directly
         shell: bash
+        env:
+          TARGET_BRANCH: ${{ inputs.branch }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
         run: |
-          if [ "${{ inputs.branch }}" = "${{ inputs.base_branch }}" ]; then
-            echo "Refusing to push generated-doc refresh directly to ${{ inputs.base_branch }}" >&2
+          if [ "${TARGET_BRANCH}" = "${BASE_BRANCH}" ]; then
+            echo "Refusing to push generated-doc refresh directly to ${BASE_BRANCH}" >&2
             exit 1
           fi
 
@@ -68,9 +71,12 @@ jobs:
 
       - name: Report result
         shell: bash
+        env:
+          TARGET_BRANCH: ${{ inputs.branch }}
+          PUSHED: ${{ steps.refresh.outputs.pushed }}
         run: |
-          if [ "${{ steps.refresh.outputs.pushed }}" = "true" ]; then
-            echo "Generated docs refresh pushed to ${{ inputs.branch }}."
+          if [ "${PUSHED}" = "true" ]; then
+            echo "Generated docs refresh pushed to ${TARGET_BRANCH}."
           else
-            echo "No generated docs refresh was needed for ${{ inputs.branch }}."
+            echo "No generated docs refresh was needed for ${TARGET_BRANCH}."
           fi

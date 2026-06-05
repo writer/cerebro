@@ -6,11 +6,19 @@ import scripts.govulncheck_gate as gate
 
 
 class GovulncheckGateTests(unittest.TestCase):
-    def test_severity_prefers_highest_affected_severity(self):
+    def test_severity_reads_top_level_cvss_vectors(self):
         osv = {
-            "affected": [
-                {"ecosystem_specific": {"severity": "MEDIUM"}},
-                {"ecosystem_specific": {"severity": "CRITICAL"}},
+            "severity": [
+                {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},
+            ]
+        }
+        self.assertEqual(gate.severity_from_osv(osv), "CRITICAL")
+
+    def test_severity_prefers_highest_available_rating(self):
+        osv = {
+            "severity": [
+                {"type": "CVSS_V3", "score": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:L/I:N/A:N"},
+                {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"},
             ]
         }
         self.assertEqual(gate.severity_from_osv(osv), "CRITICAL")
@@ -27,6 +35,11 @@ class GovulncheckGateTests(unittest.TestCase):
     def test_finding_osv_id_accepts_string_and_object_shapes(self):
         self.assertEqual(gate.finding_osv_id({"osv": "GO-2026-0001"}), "GO-2026-0001")
         self.assertEqual(gate.finding_osv_id({"osv": {"id": "GO-2026-0002"}}), "GO-2026-0002")
+
+    def test_reachable_finding_requires_symbol_trace(self):
+        self.assertFalse(gate.is_reachable_finding({"osv": "GO-2026-0001"}))
+        self.assertFalse(gate.is_reachable_finding({"osv": "GO-2026-0001", "trace": [{"package": "net/http"}]}))
+        self.assertTrue(gate.is_reachable_finding({"osv": "GO-2026-0001", "trace": [{"function": "ReadMIMEHeader"}]}))
 
     def test_parse_json_stream_accepts_pretty_concatenated_objects(self):
         output = '{\n  "osv": {"id": "GO-2026-0001"}\n}\n{\n  "finding": {"osv": "GO-2026-0001"}\n}\n'

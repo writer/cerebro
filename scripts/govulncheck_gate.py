@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -21,6 +22,64 @@ SEVERITY_RANK = {
     "HIGH": 3,
     "CRITICAL": 4,
 }
+
+
+def cvss3_base_score(vector: str) -> float | None:
+    metrics = dict(part.split(":", 1) for part in vector.split("/") if ":" in part)
+    required = {"AV", "AC", "PR", "UI", "S", "C", "I", "A"}
+    if not required.issubset(metrics):
+        return None
+    impact_values = {"H": 0.56, "L": 0.22, "N": 0.0}
+    exploitability_values = {
+        "AV": {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.2},
+        "AC": {"L": 0.77, "H": 0.44},
+        "UI": {"N": 0.85, "R": 0.62},
+    }
+    privileges_required = {
+        "U": {"N": 0.85, "L": 0.62, "H": 0.27},
+        "C": {"N": 0.85, "L": 0.68, "H": 0.5},
+    }
+    scope = metrics["S"]
+    try:
+        isc_base = 1 - (
+            (1 - impact_values[metrics["C"]])
+            * (1 - impact_values[metrics["I"]])
+            * (1 - impact_values[metrics["A"]])
+        )
+        if scope == "U":
+            impact = 6.42 * isc_base
+        elif scope == "C":
+            impact = 7.52 * (isc_base - 0.029) - 3.25 * (isc_base - 0.02) ** 15
+        else:
+            return None
+        exploitability = (
+            8.22
+            * exploitability_values["AV"][metrics["AV"]]
+            * exploitability_values["AC"][metrics["AC"]]
+            * privileges_required[scope][metrics["PR"]]
+            * exploitability_values["UI"][metrics["UI"]]
+        )
+    except KeyError:
+        return None
+    if impact <= 0:
+        return 0.0
+    if scope == "U":
+        score = min(impact + exploitability, 10)
+    else:
+        score = min(1.08 * (impact + exploitability), 10)
+    return math.ceil(score * 10) / 10
+
+
+def severity_from_score(score: float) -> str:
+    if score >= 9:
+        return "CRITICAL"
+    if score >= 7:
+        return "HIGH"
+    if score >= 4:
+        return "MEDIUM"
+    if score > 0:
+        return "LOW"
+    return "UNKNOWN"
 
 
 def parse_ignore_file(path: Path) -> tuple[set[str], list[str]]:
@@ -44,6 +103,21 @@ def parse_ignore_file(path: Path) -> tuple[set[str], list[str]]:
 
 def severity_from_osv(osv: dict[str, Any]) -> str:
     severities: list[str] = []
+    for severity in osv.get("severity") or []:
+        if not isinstance(severity, dict):
+            continue
+        score = severity.get("score")
+        if not isinstance(score, str):
+            continue
+        try:
+            severities.append(severity_from_score(float(score)))
+            continue
+        except ValueError:
+            pass
+        if score.startswith("CVSS:3."):
+            parsed = cvss3_base_score(score)
+            if parsed is not None:
+                severities.append(severity_from_score(parsed))
     database_specific = osv.get("database_specific")
     if isinstance(database_specific, dict):
         value = database_specific.get("severity")
@@ -88,6 +162,14 @@ def finding_osv_id(finding: dict[str, Any]) -> str:
         if isinstance(osv_id, str):
             return osv_id
     return ""
+
+
+def is_reachable_finding(finding: dict[str, Any]) -> bool:
+    trace = finding.get("trace")
+    if not isinstance(trace, list) or not trace:
+        return False
+    top_frame = trace[0]
+    return isinstance(top_frame, dict) and isinstance(top_frame.get("function"), str) and top_frame["function"] != ""
 
 
 def run_govulncheck(patterns: list[str]) -> tuple[int, str, str]:
@@ -138,6 +220,8 @@ def main() -> int:
     blocking: list[tuple[str, str, str]] = []
     suppressed: list[str] = []
     for finding in findings:
+        if not is_reachable_finding(finding):
+            continue
         osv_id = finding_osv_id(finding)
         if not osv_id:
             continue
