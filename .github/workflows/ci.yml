@@ -39,6 +39,8 @@ jobs:
             command: make readme-check
           - name: oss-audit
             command: make oss-audit
+          - name: govulncheck
+            command: make govulncheck
           - name: release-smoke
             command: make release-smoke
           - name: docker-smoke

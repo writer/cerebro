@@ -1,0 +1,6 @@
+# Accepted govulncheck findings.
+#
+# Format:
+#   GO-YYYY-NNNN  # justification with owner/date or tracking issue
+#
+# Only reachable HIGH/CRITICAL findings need suppression. Empty by default.

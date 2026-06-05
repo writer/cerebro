@@ -69,7 +69,7 @@ External dependency drivers are opt-in. With no external drivers configured, the
 
 ### Prerequisites
 
-- Go 1.26+; this repo pins toolchain `go1.26.3`.
+- Go 1.26+; this repo pins toolchain `go1.26.4`.
 - Optional: NATS JetStream for append-log-backed sync/replay.
 - Optional: Postgres for durable source runtime, claim, finding, evidence, evaluation, and report state.
 - Optional: Neo4j or AuraDB for graph projection/query operations.
@@ -402,7 +402,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 
 | Component | Technology |
 | --- | --- |
-| Language | Go 1.26+ (`go1.26.3` toolchain) |
+| Language | Go 1.26+ (`go1.26.4` toolchain) |
 | HTTP server | Go `net/http` `ServeMux` |
 | RPC | Connect |
 | CLI | Standard Go CLI under `cmd/cerebro` |
