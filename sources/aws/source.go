@@ -39,6 +39,7 @@ import (
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/identitystore"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
@@ -51,6 +52,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -67,42 +69,47 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily             = familyCloudTrail
-	defaultRegion             = "us-east-1"
-	defaultPageSize           = 10
-	maxPageSize               = 200
-	cloudTrailCursorVersion   = 1
-	cloudTrailCursorMaxAge    = 55 * time.Minute
-	publicEndpointCursorV2    = 2
-	awsAssumeRoleSessionName  = "cerebro-source-runtime"
-	familyAccessKey           = "access_key"
-	familyAssetMetadata       = "asset_metadata"
-	familyCloudTrail          = "cloudtrail"
-	familyEC2Instance         = "ec2_instance"
-	familyECRRepository       = "ecr_repository"
-	familyECSService          = "ecs_service"
-	familyECSTask             = "ecs_task"
-	familyECSTaskDefinition   = "ecs_task_definition"
-	familyEKSCluster          = "eks_cluster"
-	familyEKSNodegroup        = "eks_nodegroup"
-	familyEKSFargateProfile   = "eks_fargate_profile"
-	familyEKSPodIdentity      = "eks_pod_identity_association"
-	familyEffectivePermission = "effective_permission"
-	familyIAMGroup            = "iam_group"
-	familyIAMMembership       = "iam_group_membership"
-	familyIAMRoleTrust        = "iam_role_trust"
-	familyIAMRoleAssign       = "iam_role_assignment"
-	familyIAMRole             = "iam_role"
-	familyIAMUser             = "iam_user"
-	familyKMSKey              = "kms_key"
-	familyPublicEndpoint      = "public_endpoint"
-	familyRDSInstance         = "rds_instance"
-	familyResourceExposure    = "resource_exposure"
-	familyS3Bucket            = "s3_bucket"
-	familySecret              = "secret"
-	familySNSTopic            = "sns_topic"
-	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
+	defaultFamily                  = familyCloudTrail
+	defaultRegion                  = "us-east-1"
+	defaultPageSize                = 10
+	maxPageSize                    = 200
+	cloudTrailCursorVersion        = 1
+	cloudTrailCursorMaxAge         = 55 * time.Minute
+	publicEndpointCursorV2         = 2
+	awsAssumeRoleSessionName       = "cerebro-source-runtime"
+	familyAccessKey                = "access_key"
+	familyAssetMetadata            = "asset_metadata"
+	familyCloudTrail               = "cloudtrail"
+	familyEC2Instance              = "ec2_instance"
+	familyECRRepository            = "ecr_repository"
+	familyECSService               = "ecs_service"
+	familyECSTask                  = "ecs_task"
+	familyECSTaskDefinition        = "ecs_task_definition"
+	familyEKSCluster               = "eks_cluster"
+	familyEKSNodegroup             = "eks_nodegroup"
+	familyEKSFargateProfile        = "eks_fargate_profile"
+	familyEKSPodIdentity           = "eks_pod_identity_association"
+	familyEffectivePermission      = "effective_permission"
+	familyIAMGroup                 = "iam_group"
+	familyIAMMembership            = "iam_group_membership"
+	familyIAMRoleTrust             = "iam_role_trust"
+	familyIAMRoleAssign            = "iam_role_assignment"
+	familyIAMRole                  = "iam_role"
+	familyIAMUser                  = "iam_user"
+	familyIdentityCenterAssignment = "identity_center_account_assignment"
+	familyIdentityCenterPermission = "identity_center_permission_set"
+	familyIdentityStoreGroup       = "identity_store_group"
+	familyIdentityStoreMembership  = "identity_store_group_membership"
+	familyIdentityStoreUser        = "identity_store_user"
+	familyKMSKey                   = "kms_key"
+	familyPublicEndpoint           = "public_endpoint"
+	familyRDSInstance              = "rds_instance"
+	familyResourceExposure         = "resource_exposure"
+	familyS3Bucket                 = "s3_bucket"
+	familySecret                   = "secret"
+	familySNSTopic                 = "sns_topic"
+	familySQSQueue                 = "sqs_queue"
+	familyLambdaFunction           = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -127,6 +134,11 @@ type settings struct {
 	legacyTenantlessAssumeRole bool
 	includeGlobal              bool
 	groupName                  string
+	groupID                    string
+	identityStoreID            string
+	identityCenterInstanceARN  string
+	permissionSetARN           string
+	targetAccountID            string
 	principalType              string
 	principalName              string
 	userName                   string
@@ -141,27 +153,29 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg          awssdk.Config
-	iam          awsIAMAPI
-	cloudTrail   awsCloudTrailAPI
-	ec2          awsEC2API
-	route53      awsRoute53API
-	cloudFront   awsCloudFrontAPI
-	elbv2        awsELBV2API
-	ecs          awsECSAPI
-	eks          awsEKSAPI
-	ecr          awsECRAPI
-	apiGateway   awsAPIGatewayAPI
-	apiGatewayV2 awsAPIGatewayV2API
-	lambda       awsLambdaAPI
-	tagging      awsResourceGroupsTaggingAPI
-	s3           awsS3API
-	s3ByRegion   func(string) awsS3API
-	rds          awsRDSAPI
-	kms          awsKMSAPI
-	secrets      awsSecretsManagerAPI
-	sqs          awsSQSAPI
-	sns          awsSNSAPI
+	cfg           awssdk.Config
+	iam           awsIAMAPI
+	cloudTrail    awsCloudTrailAPI
+	ec2           awsEC2API
+	route53       awsRoute53API
+	cloudFront    awsCloudFrontAPI
+	elbv2         awsELBV2API
+	ecs           awsECSAPI
+	eks           awsEKSAPI
+	ecr           awsECRAPI
+	apiGateway    awsAPIGatewayAPI
+	apiGatewayV2  awsAPIGatewayV2API
+	lambda        awsLambdaAPI
+	tagging       awsResourceGroupsTaggingAPI
+	s3            awsS3API
+	s3ByRegion    func(string) awsS3API
+	rds           awsRDSAPI
+	kms           awsKMSAPI
+	secrets       awsSecretsManagerAPI
+	sqs           awsSQSAPI
+	sns           awsSNSAPI
+	ssoAdmin      awsSSOAdminAPI
+	identityStore awsIdentityStoreAPI
 }
 
 type awsIAMAPI interface {
@@ -800,6 +814,58 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(user iamtypes.User) string { return awssdk.ToString(user.UserName) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[identityCenterPermissionSet]{
+			Name:  familyIdentityCenterPermission,
+			Label: "aws identity center permission sets",
+			List:  listIdentityCenterPermissionSets,
+			Event: identityCenterPermissionSetEvent,
+			URN: func(settings settings, record identityCenterPermissionSet) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identity_center_permission_set:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.PermissionSet.PermissionSetArn), awssdk.ToString(record.PermissionSet.Name))), nil
+			},
+			CursorFallback: func(record identityCenterPermissionSet) string {
+				return firstNonEmpty(awssdk.ToString(record.PermissionSet.PermissionSetArn), awssdk.ToString(record.PermissionSet.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[identityCenterAccountAssignment]{
+			Name:  familyIdentityCenterAssignment,
+			Label: "aws identity center account assignments",
+			List:  listIdentityCenterAccountAssignments,
+			Event: identityCenterAccountAssignmentEvent,
+			URN: func(settings settings, record identityCenterAccountAssignment) (string, error) {
+				assignment := record.Assignment
+				return fmt.Sprintf("urn:cerebro:%s:aws_identity_center_account_assignment:%s:%s:%s", settings.accountID, awssdk.ToString(assignment.AccountId), firstNonEmpty(awssdk.ToString(assignment.PermissionSetArn), record.PermissionSetName), awssdk.ToString(assignment.PrincipalId)), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[identitystoretypesUser]{
+			Name:  familyIdentityStoreUser,
+			Label: "aws identitystore users",
+			List:  listIdentityStoreUsers,
+			Event: identityStoreUserEvent,
+			URN: func(settings settings, user identitystoretypesUser) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_user:%s", settings.accountID, firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName))), nil
+			},
+			CursorFallback: func(user identitystoretypesUser) string { return awssdk.ToString(user.UserId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[identitystoretypesGroup]{
+			Name:  familyIdentityStoreGroup,
+			Label: "aws identitystore groups",
+			List:  listIdentityStoreGroups,
+			Event: identityStoreGroupEvent,
+			URN: func(settings settings, group identitystoretypesGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(group.GroupId), awssdk.ToString(group.DisplayName))), nil
+			},
+			CursorFallback: func(group identitystoretypesGroup) string { return awssdk.ToString(group.GroupId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[identityStoreGroupMembership]{
+			Name:  familyIdentityStoreMembership,
+			Label: "aws identitystore group memberships",
+			List:  listIdentityStoreGroupMemberships,
+			Event: identityStoreGroupMembershipEvent,
+			URN: func(settings settings, record identityStoreGroupMembership) (string, error) {
+				membership := record.Membership
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_group_membership:%s:%s", settings.accountID, firstNonEmpty(awssdk.ToString(membership.GroupId), awssdk.ToString(record.Group.GroupId)), identityStoreMembershipUserID(membership.MemberId)), nil
+			},
+		}),
 	)
 }
 
@@ -888,11 +954,13 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:     rds.NewFromConfig(cfg),
-		kms:     kms.NewFromConfig(cfg),
-		secrets: secretsmanager.NewFromConfig(cfg),
-		sqs:     sqs.NewFromConfig(cfg),
-		sns:     sns.NewFromConfig(cfg),
+		rds:           rds.NewFromConfig(cfg),
+		kms:           kms.NewFromConfig(cfg),
+		secrets:       secretsmanager.NewFromConfig(cfg),
+		sqs:           sqs.NewFromConfig(cfg),
+		sns:           sns.NewFromConfig(cfg),
+		ssoAdmin:      ssoadmin.NewFromConfig(cfg),
+		identityStore: identitystore.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -912,6 +980,11 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		legacyTenantlessAssumeRole: configBool(cfg, sourceconfig.LegacyTenantlessAssumeRoleKey, false),
 		includeGlobal:              configBool(cfg, "include_global", true),
 		groupName:                  configValue(cfg, "group_name"),
+		groupID:                    configValue(cfg, "group_id"),
+		identityStoreID:            configValue(cfg, "identity_store_id"),
+		identityCenterInstanceARN:  configValue(cfg, "instance_arn"),
+		permissionSetARN:           configValue(cfg, "permission_set_arn"),
+		targetAccountID:            configValue(cfg, "target_account_id"),
 		principalType:              configValue(cfg, "principal_type"),
 		principalName:              configValue(cfg, "principal_name"),
 		userName:                   configValue(cfg, "user_name"),
@@ -949,7 +1022,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMembership, familyIdentityStoreUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1037,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, identity_center_account_assignment, identity_center_permission_set, identity_store_group, identity_store_group_membership, identity_store_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }

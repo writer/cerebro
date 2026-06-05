@@ -21,6 +21,11 @@ emitted_kinds:
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.identity_center_account_assignment
+  - aws.identity_center_permission_set
+  - aws.identity_store_group
+  - aws.identity_store_group_membership
+  - aws.identity_store_user
   - aws.kms_key
   - aws.public_endpoint
   - aws.rds_instance
@@ -50,6 +55,11 @@ runtime_families:
   - iam_role_assignment
   - iam_role_trust
   - iam_user
+  - identity_center_account_assignment
+  - identity_center_permission_set
+  - identity_store_group
+  - identity_store_group_membership
+  - identity_store_user
   - kms_key
   - public_endpoint
   - rds_instance

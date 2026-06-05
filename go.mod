@@ -23,6 +23,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/eks v1.84.5
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.3
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.3
+	github.com/aws/aws-sdk-go-v2/service/identitystore v1.37.5
 	github.com/aws/aws-sdk-go-v2/service/kms v1.53.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.0
@@ -32,6 +33,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.21
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.43.1
+	github.com/aws/aws-sdk-go-v2/service/ssoadmin v1.39.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.2
 	github.com/aws/smithy-go v1.27.1
 	github.com/google/go-github/v66 v66.0.0
