@@ -909,13 +909,6 @@ func floatAttrString(value *float64) string {
 	return strconv.FormatFloat(*value, 'f', -1, 64)
 }
 
-func boolPtrString(value *bool) string {
-	if value == nil {
-		return ""
-	}
-	return boolString(*value)
-}
-
 func int64PtrString(value *int64) string {
 	if value == nil {
 		return ""

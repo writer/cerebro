@@ -570,7 +570,13 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 	links := map[string]*ports.ProjectedLink{}
 	actorEmail := firstNonEmpty(attributes["actor_email"], attributes["email"])
 	actorIdentifier := firstNonEmpty(actorEmail, attributes["actor_alternate_id"])
-	actorURN := identityUserURN(tenantID, provider, firstNonEmpty(attributes["actor_id"], actorIdentifier), actorIdentifier)
+	actorID := firstNonEmpty(attributes["actor_id"], actorIdentifier)
+	actorURN := identityUserURN(tenantID, provider, actorID, actorIdentifier)
+	actorEntityType := profile.entityType("user")
+	if isAWSAssumedRoleActor(profile, attributes["actor_type"], actorID) {
+		actorURN = projectionURN(tenantID, "aws_assumed_role_session", actorID)
+		actorEntityType = profile.entityType("assumed_role_session")
+	}
 	resourceID := firstNonEmpty(attributes["resource_id"], attributes["target_id"], attributes["app_id"], attributes["group_id"], attributes["role_id"])
 	resourceEmail := firstNonEmpty(attributes["resource_email"], attributes["target_email"])
 	if resourceID == "" && extractEmailIdentifier(attributes["target_alternate_id"]) != "" {
@@ -584,7 +590,7 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 			URN:        actorURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: profile.entityType("user"),
+			EntityType: actorEntityType,
 			Label:      firstNonEmpty(attributes["actor_name"], actorEmail, attributes["actor_alternate_id"], attributes["actor_id"]),
 			Attributes: map[string]string{"email": actorEmail, "actor_id": strings.TrimSpace(attributes["actor_id"])},
 		})
@@ -619,6 +625,18 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 	}
 	addAzureResourceGroupLinks(entities, links, tenantID, event.GetSourceId(), event, profile, attributes, resourceURN)
 	return identityProjectionResult(entities, links)
+}
+
+func isAWSAssumedRoleActor(profile identityProjectionProfile, actorType string, actorID string) bool {
+	if profile.Provider != "aws" {
+		return false
+	}
+	normalizedType := normalizeIdentifier(actorType)
+	trimmedID := strings.TrimSpace(actorID)
+	return normalizedType == "assumedrole" ||
+		normalizedType == "assumed_role" ||
+		strings.Contains(trimmedID, ":assumed-role/") ||
+		(strings.HasPrefix(trimmedID, "ARO") && strings.Contains(trimmedID, ":"))
 }
 
 func identityProjectionResult(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
