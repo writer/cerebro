@@ -5,6 +5,8 @@ emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
   - aws.cloudtrail
+  - aws.docdb_cluster
+  - aws.docdb_instance
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
@@ -14,7 +16,11 @@ emitted_kinds:
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
+  - aws.elasticache_cluster
+  - aws.elasticache_replication_group
+  - aws.elasticache_subnet_group
   - aws.effective_permission
+  - aws.fsx_file_system
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
@@ -22,8 +28,14 @@ emitted_kinds:
   - aws.iam_role_trust
   - aws.iam_user
   - aws.kms_key
+  - aws.neptune_cluster
+  - aws.neptune_instance
+  - aws.opensearch_domain
+  - aws.opensearch_serverless_collection
+  - aws.opensearch_serverless_security_policy
   - aws.public_endpoint
   - aws.rds_instance
+  - aws.redshift_cluster
   - aws.resource_exposure
   - aws.s3_bucket
   - aws.secret
@@ -34,6 +46,8 @@ runtime_families:
   - access_key
   - asset_metadata
   - cloudtrail
+  - docdb_cluster
+  - docdb_instance
   - ec2_instance
   - ecr_repository
   - ecs_service
@@ -43,7 +57,11 @@ runtime_families:
   - eks_nodegroup
   - eks_fargate_profile
   - eks_pod_identity_association
+  - elasticache_cluster
+  - elasticache_replication_group
+  - elasticache_subnet_group
   - effective_permission
+  - fsx_file_system
   - iam_group
   - iam_group_membership
   - iam_role
@@ -51,8 +69,14 @@ runtime_families:
   - iam_role_trust
   - iam_user
   - kms_key
+  - neptune_cluster
+  - neptune_instance
+  - opensearch_domain
+  - opensearch_serverless_collection
+  - opensearch_serverless_security_policy
   - public_endpoint
   - rds_instance
+  - redshift_cluster
   - resource_exposure
   - s3_bucket
   - secret

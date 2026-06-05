@@ -28,6 +28,7 @@ import (
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/docdb"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -35,14 +36,20 @@ import (
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticache"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/fsx"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/neptune"
+	"github.com/aws/aws-sdk-go-v2/service/opensearch"
+	"github.com/aws/aws-sdk-go-v2/service/opensearchserverless"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
+	"github.com/aws/aws-sdk-go-v2/service/redshift"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -67,42 +74,54 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily             = familyCloudTrail
-	defaultRegion             = "us-east-1"
-	defaultPageSize           = 10
-	maxPageSize               = 200
-	cloudTrailCursorVersion   = 1
-	cloudTrailCursorMaxAge    = 55 * time.Minute
-	publicEndpointCursorV2    = 2
-	awsAssumeRoleSessionName  = "cerebro-source-runtime"
-	familyAccessKey           = "access_key"
-	familyAssetMetadata       = "asset_metadata"
-	familyCloudTrail          = "cloudtrail"
-	familyEC2Instance         = "ec2_instance"
-	familyECRRepository       = "ecr_repository"
-	familyECSService          = "ecs_service"
-	familyECSTask             = "ecs_task"
-	familyECSTaskDefinition   = "ecs_task_definition"
-	familyEKSCluster          = "eks_cluster"
-	familyEKSNodegroup        = "eks_nodegroup"
-	familyEKSFargateProfile   = "eks_fargate_profile"
-	familyEKSPodIdentity      = "eks_pod_identity_association"
-	familyEffectivePermission = "effective_permission"
-	familyIAMGroup            = "iam_group"
-	familyIAMMembership       = "iam_group_membership"
-	familyIAMRoleTrust        = "iam_role_trust"
-	familyIAMRoleAssign       = "iam_role_assignment"
-	familyIAMRole             = "iam_role"
-	familyIAMUser             = "iam_user"
-	familyKMSKey              = "kms_key"
-	familyPublicEndpoint      = "public_endpoint"
-	familyRDSInstance         = "rds_instance"
-	familyResourceExposure    = "resource_exposure"
-	familyS3Bucket            = "s3_bucket"
-	familySecret              = "secret"
-	familySNSTopic            = "sns_topic"
-	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
+	defaultFamily                        = familyCloudTrail
+	defaultRegion                        = "us-east-1"
+	defaultPageSize                      = 10
+	maxPageSize                          = 200
+	cloudTrailCursorVersion              = 1
+	cloudTrailCursorMaxAge               = 55 * time.Minute
+	publicEndpointCursorV2               = 2
+	awsAssumeRoleSessionName             = "cerebro-source-runtime"
+	familyAccessKey                      = "access_key"
+	familyAssetMetadata                  = "asset_metadata"
+	familyCloudTrail                     = "cloudtrail"
+	familyDocDBCluster                   = "docdb_cluster"
+	familyDocDBInstance                  = "docdb_instance"
+	familyEC2Instance                    = "ec2_instance"
+	familyECRRepository                  = "ecr_repository"
+	familyECSService                     = "ecs_service"
+	familyECSTask                        = "ecs_task"
+	familyECSTaskDefinition              = "ecs_task_definition"
+	familyEKSCluster                     = "eks_cluster"
+	familyEKSNodegroup                   = "eks_nodegroup"
+	familyEKSFargateProfile              = "eks_fargate_profile"
+	familyEKSPodIdentity                 = "eks_pod_identity_association"
+	familyElastiCacheCluster             = "elasticache_cluster"
+	familyElastiCacheReplica             = "elasticache_replication_group"
+	familyElastiCacheSubnet              = "elasticache_subnet_group"
+	familyEffectivePermission            = "effective_permission"
+	familyFSxFileSystem                  = "fsx_file_system"
+	familyIAMGroup                       = "iam_group"
+	familyIAMMembership                  = "iam_group_membership"
+	familyIAMRoleTrust                   = "iam_role_trust"
+	familyIAMRoleAssign                  = "iam_role_assignment"
+	familyIAMRole                        = "iam_role"
+	familyIAMUser                        = "iam_user"
+	familyKMSKey                         = "kms_key"
+	familyNeptuneCluster                 = "neptune_cluster"
+	familyNeptuneInstance                = "neptune_instance"
+	familyOpenSearchDomain               = "opensearch_domain"
+	familyOpenSearchServerlessCollection = "opensearch_serverless_collection"
+	familyOpenSearchServerlessPolicy     = "opensearch_serverless_security_policy"
+	familyPublicEndpoint                 = "public_endpoint"
+	familyRDSInstance                    = "rds_instance"
+	familyRedshiftCluster                = "redshift_cluster"
+	familyResourceExposure               = "resource_exposure"
+	familyS3Bucket                       = "s3_bucket"
+	familySecret                         = "secret"
+	familySNSTopic                       = "sns_topic"
+	familySQSQueue                       = "sqs_queue"
+	familyLambdaFunction                 = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -141,27 +160,34 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg          awssdk.Config
-	iam          awsIAMAPI
-	cloudTrail   awsCloudTrailAPI
-	ec2          awsEC2API
-	route53      awsRoute53API
-	cloudFront   awsCloudFrontAPI
-	elbv2        awsELBV2API
-	ecs          awsECSAPI
-	eks          awsEKSAPI
-	ecr          awsECRAPI
-	apiGateway   awsAPIGatewayAPI
-	apiGatewayV2 awsAPIGatewayV2API
-	lambda       awsLambdaAPI
-	tagging      awsResourceGroupsTaggingAPI
-	s3           awsS3API
-	s3ByRegion   func(string) awsS3API
-	rds          awsRDSAPI
-	kms          awsKMSAPI
-	secrets      awsSecretsManagerAPI
-	sqs          awsSQSAPI
-	sns          awsSNSAPI
+	cfg                  awssdk.Config
+	iam                  awsIAMAPI
+	cloudTrail           awsCloudTrailAPI
+	docdb                awsDocDBAPI
+	ec2                  awsEC2API
+	route53              awsRoute53API
+	cloudFront           awsCloudFrontAPI
+	elbv2                awsELBV2API
+	elasticache          awsElastiCacheAPI
+	ecs                  awsECSAPI
+	eks                  awsEKSAPI
+	ecr                  awsECRAPI
+	fsx                  awsFSxAPI
+	apiGateway           awsAPIGatewayAPI
+	apiGatewayV2         awsAPIGatewayV2API
+	lambda               awsLambdaAPI
+	neptune              awsNeptuneAPI
+	openSearch           awsOpenSearchAPI
+	openSearchServerless awsOpenSearchServerlessAPI
+	tagging              awsResourceGroupsTaggingAPI
+	s3                   awsS3API
+	s3ByRegion           func(string) awsS3API
+	rds                  awsRDSAPI
+	redshift             awsRedshiftAPI
+	kms                  awsKMSAPI
+	secrets              awsSecretsManagerAPI
+	sqs                  awsSQSAPI
+	sns                  awsSNSAPI
 }
 
 type awsIAMAPI interface {
@@ -527,6 +553,150 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsFSxFileSystem]{
+			Name:  familyFSxFileSystem,
+			Label: "aws fsx file systems",
+			List:  listFSxFileSystems,
+			Event: fsxFileSystemEvent,
+			URN: func(settings settings, fs awsFSxFileSystem) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_fsx_file_system:%s", settings.accountID, firstNonEmpty(awssdk.ToString(fs.ResourceARN), awssdk.ToString(fs.FileSystemId))), nil
+			},
+			CursorFallback: func(fs awsFSxFileSystem) string {
+				return firstNonEmpty(awssdk.ToString(fs.ResourceARN), awssdk.ToString(fs.FileSystemId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOpenSearchDomain]{
+			Name:  familyOpenSearchDomain,
+			Label: "aws opensearch domains",
+			List:  listOpenSearchDomains,
+			Event: openSearchDomainEvent,
+			URN: func(settings settings, record awsOpenSearchDomain) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_opensearch_domain:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Domain.ARN), awssdk.ToString(record.Domain.DomainName))), nil
+			},
+			CursorFallback: func(record awsOpenSearchDomain) string {
+				return firstNonEmpty(awssdk.ToString(record.Domain.ARN), awssdk.ToString(record.Domain.DomainName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOpenSearchServerlessCollection]{
+			Name:  familyOpenSearchServerlessCollection,
+			Label: "aws opensearch serverless collections",
+			List:  listOpenSearchServerlessCollections,
+			Event: openSearchServerlessCollectionEvent,
+			URN: func(settings settings, collection awsOpenSearchServerlessCollection) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_opensearch_serverless_collection:%s", settings.accountID, firstNonEmpty(awssdk.ToString(collection.Arn), awssdk.ToString(collection.Name))), nil
+			},
+			CursorFallback: func(collection awsOpenSearchServerlessCollection) string {
+				return firstNonEmpty(awssdk.ToString(collection.Arn), awssdk.ToString(collection.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOpenSearchServerlessPolicy]{
+			Name:  familyOpenSearchServerlessPolicy,
+			Label: "aws opensearch serverless security policies",
+			List:  listOpenSearchServerlessSecurityPolicies,
+			Event: openSearchServerlessSecurityPolicyEvent,
+			URN: func(settings settings, record awsOpenSearchServerlessPolicy) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_opensearch_serverless_security_policy:%s:%s", settings.accountID, record.Policy.Type, awssdk.ToString(record.Policy.Name)), nil
+			},
+			CursorFallback: func(record awsOpenSearchServerlessPolicy) string {
+				return string(record.Policy.Type) + ":" + awssdk.ToString(record.Policy.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsElastiCacheReplicationGroup]{
+			Name:  familyElastiCacheReplica,
+			Label: "aws elasticache replication groups",
+			List:  listElastiCacheReplicationGroups,
+			Event: elastiCacheReplicationGroupEvent,
+			URN: func(settings settings, record awsElastiCacheReplicationGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elasticache_replication_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Group.ARN), awssdk.ToString(record.Group.ReplicationGroupId))), nil
+			},
+			CursorFallback: func(record awsElastiCacheReplicationGroup) string {
+				return firstNonEmpty(awssdk.ToString(record.Group.ARN), awssdk.ToString(record.Group.ReplicationGroupId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsElastiCacheCluster]{
+			Name:  familyElastiCacheCluster,
+			Label: "aws elasticache clusters",
+			List:  listElastiCacheClusters,
+			Event: elastiCacheClusterEvent,
+			URN: func(settings settings, record awsElastiCacheCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elasticache_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Cluster.ARN), awssdk.ToString(record.Cluster.CacheClusterId))), nil
+			},
+			CursorFallback: func(record awsElastiCacheCluster) string {
+				return firstNonEmpty(awssdk.ToString(record.Cluster.ARN), awssdk.ToString(record.Cluster.CacheClusterId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsElastiCacheSubnetGroup]{
+			Name:  familyElastiCacheSubnet,
+			Label: "aws elasticache subnet groups",
+			List:  listElastiCacheSubnetGroups,
+			Event: elastiCacheSubnetGroupEvent,
+			URN: func(settings settings, record awsElastiCacheSubnetGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elasticache_subnet_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Group.ARN), awssdk.ToString(record.Group.CacheSubnetGroupName))), nil
+			},
+			CursorFallback: func(record awsElastiCacheSubnetGroup) string {
+				return firstNonEmpty(awssdk.ToString(record.Group.ARN), awssdk.ToString(record.Group.CacheSubnetGroupName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRedshiftCluster]{
+			Name:  familyRedshiftCluster,
+			Label: "aws redshift clusters",
+			List:  listRedshiftClusters,
+			Event: redshiftClusterEvent,
+			URN: func(settings settings, cluster awsRedshiftCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_redshift_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(cluster.ClusterNamespaceArn), awssdk.ToString(cluster.ClusterIdentifier))), nil
+			},
+			CursorFallback: func(cluster awsRedshiftCluster) string {
+				return firstNonEmpty(awssdk.ToString(cluster.ClusterNamespaceArn), awssdk.ToString(cluster.ClusterIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDocDBCluster]{
+			Name:  familyDocDBCluster,
+			Label: "aws documentdb clusters",
+			List:  listDocDBClusters,
+			Event: docdbClusterEvent,
+			URN: func(settings settings, record awsDocDBCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_docdb_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))), nil
+			},
+			CursorFallback: func(record awsDocDBCluster) string {
+				return firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDocDBInstance]{
+			Name:  familyDocDBInstance,
+			Label: "aws documentdb instances",
+			List:  listDocDBInstances,
+			Event: docdbInstanceEvent,
+			URN: func(settings settings, record awsDocDBInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_docdb_instance:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))), nil
+			},
+			CursorFallback: func(record awsDocDBInstance) string {
+				return firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsNeptuneCluster]{
+			Name:  familyNeptuneCluster,
+			Label: "aws neptune clusters",
+			List:  listNeptuneClusters,
+			Event: neptuneClusterEvent,
+			URN: func(settings settings, record awsNeptuneCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_neptune_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))), nil
+			},
+			CursorFallback: func(record awsNeptuneCluster) string {
+				return firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsNeptuneInstance]{
+			Name:  familyNeptuneInstance,
+			Label: "aws neptune instances",
+			List:  listNeptuneInstances,
+			Event: neptuneInstanceEvent,
+			URN: func(settings settings, record awsNeptuneInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_neptune_instance:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))), nil
+			},
+			CursorFallback: func(record awsNeptuneInstance) string {
+				return firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsS3Bucket]{
 			Name:  familyS3Bucket,
 			Label: "aws s3 buckets",
@@ -868,31 +1038,38 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:          cfg,
-		iam:          iam.NewFromConfig(cfg),
-		cloudTrail:   cloudtrail.NewFromConfig(cfg),
-		ec2:          ec2.NewFromConfig(cfg),
-		route53:      route53.NewFromConfig(cfg),
-		cloudFront:   cloudfront.NewFromConfig(cfg),
-		elbv2:        elbv2.NewFromConfig(cfg),
-		ecs:          ecs.NewFromConfig(cfg),
-		eks:          eks.NewFromConfig(cfg),
-		ecr:          ecr.NewFromConfig(cfg),
-		apiGateway:   apigateway.NewFromConfig(cfg),
-		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
-		lambda:       lambda.NewFromConfig(cfg),
-		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:           s3.NewFromConfig(cfg),
+		cfg:                  cfg,
+		iam:                  iam.NewFromConfig(cfg),
+		cloudTrail:           cloudtrail.NewFromConfig(cfg),
+		docdb:                docdb.NewFromConfig(cfg),
+		ec2:                  ec2.NewFromConfig(cfg),
+		route53:              route53.NewFromConfig(cfg),
+		cloudFront:           cloudfront.NewFromConfig(cfg),
+		elbv2:                elbv2.NewFromConfig(cfg),
+		elasticache:          elasticache.NewFromConfig(cfg),
+		ecs:                  ecs.NewFromConfig(cfg),
+		eks:                  eks.NewFromConfig(cfg),
+		ecr:                  ecr.NewFromConfig(cfg),
+		fsx:                  fsx.NewFromConfig(cfg),
+		apiGateway:           apigateway.NewFromConfig(cfg),
+		apiGatewayV2:         apigatewayv2.NewFromConfig(cfg),
+		lambda:               lambda.NewFromConfig(cfg),
+		neptune:              neptune.NewFromConfig(cfg),
+		openSearch:           opensearch.NewFromConfig(cfg),
+		openSearchServerless: opensearchserverless.NewFromConfig(cfg),
+		tagging:              resourcegroupstaggingapi.NewFromConfig(cfg),
+		s3:                   s3.NewFromConfig(cfg),
 		s3ByRegion: func(region string) awsS3API {
 			regionalCfg := cfg
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:     rds.NewFromConfig(cfg),
-		kms:     kms.NewFromConfig(cfg),
-		secrets: secretsmanager.NewFromConfig(cfg),
-		sqs:     sqs.NewFromConfig(cfg),
-		sns:     sns.NewFromConfig(cfg),
+		rds:      rds.NewFromConfig(cfg),
+		redshift: redshift.NewFromConfig(cfg),
+		kms:      kms.NewFromConfig(cfg),
+		secrets:  secretsmanager.NewFromConfig(cfg),
+		sqs:      sqs.NewFromConfig(cfg),
+		sns:      sns.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -949,7 +1126,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyCloudTrail, familyDocDBCluster, familyDocDBInstance, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyElastiCacheCluster, familyElastiCacheReplica, familyElastiCacheSubnet, familyEffectivePermission, familyFSxFileSystem, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyNeptuneCluster, familyNeptuneInstance, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessPolicy, familyPublicEndpoint, familyRDSInstance, familyRedshiftCluster, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1141,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, docdb_cluster, docdb_instance, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, elasticache_cluster, elasticache_replication_group, elasticache_subnet_group, effective_permission, fsx_file_system, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, neptune_cluster, neptune_instance, opensearch_domain, opensearch_serverless_collection, opensearch_serverless_security_policy, public_endpoint, rds_instance, redshift_cluster, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }
