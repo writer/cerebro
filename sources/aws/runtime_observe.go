@@ -328,7 +328,10 @@ func ssmDocumentEvent(settings settings, document ssmtypes.DocumentIdentifier) (
 	attributes["document_format"] = string(document.DocumentFormat)
 	attributes["document_version"] = awssdk.ToString(document.DocumentVersion)
 	attributes["version_name"] = awssdk.ToString(document.VersionName)
-	attributes["owner"] = firstNonEmpty(attributes["owner"], awssdk.ToString(document.Owner))
+	documentOwner := strings.TrimSpace(awssdk.ToString(document.Owner))
+	if attributes["owner"] == "" && useSSMDocumentOwner(documentOwner, settings.accountID) {
+		attributes["owner"] = documentOwner
+	}
 	attributes["author"] = awssdk.ToString(document.Author)
 	attributes["schema_version"] = awssdk.ToString(document.SchemaVersion)
 	attributes["target_type"] = awssdk.ToString(document.TargetType)
@@ -550,10 +553,38 @@ func ssmAssociationARN(settings settings, id string) string {
 }
 
 func ssmParameterARN(settings settings, name string) string {
-	if strings.TrimSpace(name) == "" {
+	normalizedName := strings.TrimSpace(name)
+	if normalizedName == "" {
 		return ""
 	}
-	return fmt.Sprintf("arn:aws:ssm:%s:%s:parameter%s", settings.region, settings.accountID, strings.TrimSpace(name))
+	if !strings.HasPrefix(normalizedName, "/") {
+		normalizedName = "/" + normalizedName
+	}
+	return fmt.Sprintf("arn:aws:ssm:%s:%s:parameter%s", settings.region, settings.accountID, normalizedName)
+}
+
+func useSSMDocumentOwner(owner, accountID string) bool {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return false
+	}
+	if owner == strings.TrimSpace(accountID) {
+		return false
+	}
+	return !looksLikeAWSAccountID(owner)
+}
+
+func looksLikeAWSAccountID(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != 12 {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func ssmPlatformTypes(values []ssmtypes.PlatformType) []string {

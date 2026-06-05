@@ -1987,6 +1987,90 @@ func TestReadAWSRoleAssignmentAndCloudTrailPreview(t *testing.T) {
 	}
 }
 
+func TestSSMDocumentEventSuppressesAccountIDOwner(t *testing.T) {
+	baseSettings := settings{accountID: "123456789012", region: "us-east-1"}
+	for _, tt := range []struct {
+		name string
+		doc  ssmtypes.DocumentIdentifier
+		want string
+	}{
+		{
+			name: "suppresses matching account id owner",
+			doc: ssmtypes.DocumentIdentifier{
+				Name:  awssdk.String("Cerebro-ConfigureAgent"),
+				Owner: awssdk.String("123456789012"),
+			},
+			want: "",
+		},
+		{
+			name: "suppresses other aws account id owner",
+			doc: ssmtypes.DocumentIdentifier{
+				Name:  awssdk.String("Cerebro-ConfigureAgent"),
+				Owner: awssdk.String("210987654321"),
+			},
+			want: "",
+		},
+		{
+			name: "keeps non-account owner",
+			doc: ssmtypes.DocumentIdentifier{
+				Name:  awssdk.String("Cerebro-ConfigureAgent"),
+				Owner: awssdk.String("Amazon"),
+			},
+			want: "Amazon",
+		},
+		{
+			name: "preserves owner from tags",
+			doc: ssmtypes.DocumentIdentifier{
+				Name:  awssdk.String("Cerebro-ConfigureAgent"),
+				Owner: awssdk.String("123456789012"),
+				Tags:  []ssmtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+			},
+			want: "platform@writer.com",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event, err := ssmDocumentEvent(baseSettings, tt.doc)
+			if err != nil {
+				t.Fatalf("ssmDocumentEvent() error = %v", err)
+			}
+			if got := event.Attributes["owner"]; got != tt.want {
+				t.Fatalf("owner = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSSMParameterARNNormalizesLeadingSlash(t *testing.T) {
+	cfg := settings{accountID: "123456789012", region: "us-east-1"}
+	for _, tt := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "keeps existing leading slash",
+			in:   "/prod/api/db-password",
+			want: "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api/db-password",
+		},
+		{
+			name: "adds missing leading slash",
+			in:   "prod/api/db-password",
+			want: "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api/db-password",
+		},
+		{
+			name: "trims whitespace before normalization",
+			in:   "  prod/api/db-password  ",
+			want: "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api/db-password",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ssmParameterARN(cfg, tt.in); got != tt.want {
+				t.Fatalf("ssmParameterARN(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func newTestSource(t *testing.T, fake fakeAWS) *Source {
 	t.Helper()
 	spec, err := loadSpec()
