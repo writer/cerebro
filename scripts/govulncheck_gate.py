@@ -109,11 +109,14 @@ def severity_from_osv(osv: dict[str, Any]) -> str:
         score = severity.get("score")
         if not isinstance(score, str):
             continue
+        numeric_score: float | None = None
         try:
-            severities.append(severity_from_score(float(score)))
-            continue
+            numeric_score = float(score)
         except ValueError:
-            pass
+            numeric_score = None
+        if numeric_score is not None:
+            severities.append(severity_from_score(numeric_score))
+            continue
         if score.startswith("CVSS:3."):
             parsed = cvss3_base_score(score)
             if parsed is not None:
