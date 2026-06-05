@@ -1679,7 +1679,19 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 			"login":  login,
 			"status": strings.TrimSpace(attributes["status"]),
 		}
-		for _, key := range []string{"mfa_enrolled", "mfa_factor_count", "mfa_factor_types", "mfa_phishing_resistant"} {
+		for _, key := range []string{
+			"department",
+			"employee_number",
+			"job_title",
+			"manager",
+			"manager_id",
+			"mfa_enrolled",
+			"mfa_factor_count",
+			"mfa_factor_types",
+			"mfa_phishing_resistant",
+			"organization",
+			"user_type",
+		} {
 			if v := strings.TrimSpace(attributes[key]); v != "" {
 				userAttrs[key] = v
 			}

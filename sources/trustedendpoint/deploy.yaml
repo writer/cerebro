@@ -1,0 +1,5 @@
+sourceId: trusted_endpoint
+runtimes:
+  - localId: telemetry
+    config:
+      integration: trusted_endpoint

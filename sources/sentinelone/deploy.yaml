@@ -21,3 +21,27 @@ runtimes:
       family: application
       per_page: "50"
       token: env:SENTINELONE_API_TOKEN
+  - localId: exclusion
+    config:
+      base_url: env:SENTINELONE_BASE_URL
+      family: exclusion
+      per_page: "200"
+      token: env:SENTINELONE_API_TOKEN
+  - localId: group
+    config:
+      base_url: env:SENTINELONE_BASE_URL
+      family: group
+      per_page: "200"
+      token: env:SENTINELONE_API_TOKEN
+  - localId: site
+    config:
+      base_url: env:SENTINELONE_BASE_URL
+      family: site
+      per_page: "200"
+      token: env:SENTINELONE_API_TOKEN
+  - localId: activity
+    config:
+      base_url: env:SENTINELONE_BASE_URL
+      family: activity
+      per_page: "200"
+      token: env:SENTINELONE_API_TOKEN
