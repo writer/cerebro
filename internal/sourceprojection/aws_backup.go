@@ -64,7 +64,7 @@ func awsBackupProtectedResourceProjections(event *cerebrov1.EventEnvelope) ([]*p
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), protectedURN, vaultURN, relationAssociatedWith, map[string]string{"event_id": event.GetId(), "match_type": "backup_protected_last_vault"}))
 	}
 	if recoveryURN := projectionURN(tenantID, "aws_backup_recovery_point", attributes["last_recovery_point_arn"]); recoveryURN != "" {
-		addEntity(entityMap, &ports.ProjectedEntity{URN: recoveryURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "aws.backup.recovery_point", Label: attributes["last_recovery_point_arn"], Attributes: map[string]string{"recovery_point_arn": strings.TrimSpace(attributes["last_recovery_point_arn"])}})
+		addEntity(entityMap, &ports.ProjectedEntity{URN: recoveryURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: awsBackupRecoveryPointEntityType(), Label: attributes["last_recovery_point_arn"], Attributes: map[string]string{"recovery_point_arn": strings.TrimSpace(attributes["last_recovery_point_arn"])}})
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), protectedURN, recoveryURN, relationAssociatedWith, map[string]string{"event_id": event.GetId(), "match_type": "backup_protected_last_recovery_point"}))
 	}
 	return identityProjectionResult(entityMap, linkMap)
@@ -174,6 +174,10 @@ func awsBackupSourceResourceURN(tenantID string, attributes map[string]string) s
 		return ""
 	}
 	return projectionURN(tenantID, "aws_"+awsBackupProjectedResourceFamily(firstNonEmpty(attributes["source_resource_type"], attributes["protected_resource_type"])), sourceARN)
+}
+
+func awsBackupRecoveryPointEntityType() string {
+	return "aws." + strings.ReplaceAll("backup_recovery_point", "_", ".")
 }
 
 func awsBackupProjectedResourceFamily(resourceType string) string {

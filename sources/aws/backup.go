@@ -15,8 +15,8 @@ import (
 )
 
 type backupRecoveryPointCursor struct {
-	VaultIndex int    `json:"vault_index,omitempty"`
-	NextToken  string `json:"next_token,omitempty"`
+	VaultName string `json:"vault_name,omitempty"`
+	NextToken string `json:"next_token,omitempty"`
 }
 
 type awsBackupVault struct {
@@ -125,16 +125,29 @@ func listBackupRecoveryPoints(ctx context.Context, clients awsClients, _ setting
 	if err != nil {
 		return nil, "", err
 	}
-	if state.VaultIndex < 0 || state.VaultIndex >= len(vaults) {
-		state = backupRecoveryPointCursor{}
+	vaultIndex := 0
+	if state.VaultName != "" {
+		found := false
+		for index, name := range vaults {
+			if name == state.VaultName {
+				vaultIndex = index
+				found = true
+				break
+			}
+		}
+		if !found {
+			state = backupRecoveryPointCursor{}
+			vaultIndex = 0
+		}
 	}
 	remaining := limit
 	if remaining <= 0 {
 		remaining = defaultPageSize
 	}
 	records := make([]awsBackupRecoveryPoint, 0, remaining)
-	for state.VaultIndex < len(vaults) && len(records) < remaining {
-		vaultName := vaults[state.VaultIndex]
+	for vaultIndex < len(vaults) && len(records) < remaining {
+		vaultName := vaults[vaultIndex]
+		state.VaultName = vaultName
 		out, err := clients.backup.ListRecoveryPointsByBackupVault(ctx, &backup.ListRecoveryPointsByBackupVaultInput{
 			BackupVaultName: awssdk.String(vaultName),
 			MaxResults:      awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 1000))),
@@ -150,10 +163,11 @@ func listBackupRecoveryPoints(ctx context.Context, clients awsClients, _ setting
 			state.NextToken = awssdk.ToString(out.NextToken)
 			return records, encodeBackupRecoveryPointCursor(state), nil
 		}
-		state.VaultIndex++
+		vaultIndex++
 		state.NextToken = ""
 	}
-	if state.VaultIndex < len(vaults) {
+	if vaultIndex < len(vaults) {
+		state.VaultName = vaults[vaultIndex]
 		return records, encodeBackupRecoveryPointCursor(state), nil
 	}
 	return records, "", nil
