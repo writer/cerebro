@@ -135,6 +135,7 @@ type settings struct {
 	startTime                  string
 	endTime                    string
 	since                      string
+	wafv2Scope                 string
 	perPage                    int
 }
 
@@ -162,6 +163,7 @@ type awsClients struct {
 	secrets      awsSecretsManagerAPI
 	sqs          awsSQSAPI
 	sns          awsSNSAPI
+	awsSecurityClients
 }
 
 type awsIAMAPI interface {
@@ -506,7 +508,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
-	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family },
+	families := []sourcecdk.Family[settings]{
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.AccessKeyMetadata]{
 			Name:  familyAccessKey,
 			Label: "aws iam access keys",
@@ -800,7 +802,9 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(user iamtypes.User) string { return awssdk.ToString(user.UserName) },
 		}),
-	)
+	}
+	families = append(families, awsSecurityFamilies(s.clients)...)
+	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
 func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T]) sourcecdk.Family[settings] {
@@ -888,11 +892,12 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:     rds.NewFromConfig(cfg),
-		kms:     kms.NewFromConfig(cfg),
-		secrets: secretsmanager.NewFromConfig(cfg),
-		sqs:     sqs.NewFromConfig(cfg),
-		sns:     sns.NewFromConfig(cfg),
+		rds:                rds.NewFromConfig(cfg),
+		kms:                kms.NewFromConfig(cfg),
+		secrets:            secretsmanager.NewFromConfig(cfg),
+		sqs:                sqs.NewFromConfig(cfg),
+		sns:                sns.NewFromConfig(cfg),
+		awsSecurityClients: newAWSSecurityClients(cfg),
 	}, nil
 }
 
@@ -920,6 +925,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		startTime:                  configValue(cfg, "start_time"),
 		endTime:                    configValue(cfg, "end_time"),
 		since:                      configValue(cfg, "since"),
+		wafv2Scope:                 configValue(cfg, "wafv2_scope"),
 		perPage:                    defaultPageSize,
 	}
 	if settings.family == "" {
@@ -949,7 +955,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAccessAnalyzer, familyAssetMetadata, familyCloudTrail, familyConfigRecorder, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyInspector2Finding, familyKMSKey, familyLambdaFunction, familyMacie2Finding, familyNetworkFirewall, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familyWAFV2WebACL:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +970,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_analyzer, access_key, asset_metadata, cloudtrail, config_recorder, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, guardduty_finding, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, inspector2_finding, kms_key, lambda_function, macie2_finding, network_firewall, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, securityhub_finding, sns_topic, sqs_queue, or wafv2_web_acl")
 	}
 	return settings, nil
 }

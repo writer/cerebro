@@ -3,8 +3,10 @@ name: AWS
 description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
+  - aws.access_analyzer
   - asset.data_sensitivity
   - aws.cloudtrail
+  - aws.config_recorder
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
@@ -15,25 +17,33 @@ emitted_kinds:
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
   - aws.effective_permission
+  - aws.guardduty_finding
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.inspector2_finding
   - aws.kms_key
+  - aws.macie2_finding
+  - aws.network_firewall
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
   - aws.s3_bucket
   - aws.secret
+  - aws.securityhub_finding
   - aws.sns_topic
   - aws.sqs_queue
+  - aws.wafv2_web_acl
   - aws.lambda_function
 runtime_families:
   - access_key
+  - access_analyzer
   - asset_metadata
   - cloudtrail
+  - config_recorder
   - ec2_instance
   - ecr_repository
   - ecs_service
@@ -44,18 +54,24 @@ runtime_families:
   - eks_fargate_profile
   - eks_pod_identity_association
   - effective_permission
+  - guardduty_finding
   - iam_group
   - iam_group_membership
   - iam_role
   - iam_role_assignment
   - iam_role_trust
   - iam_user
+  - inspector2_finding
   - kms_key
+  - macie2_finding
+  - network_firewall
   - public_endpoint
   - rds_instance
   - resource_exposure
   - s3_bucket
   - secret
+  - securityhub_finding
   - sns_topic
   - sqs_queue
+  - wafv2_web_acl
   - lambda_function

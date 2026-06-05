@@ -18,7 +18,7 @@ func NewFixture() (sourcecdk.Source, error) {
 		return nil, err
 	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{familyAccessKey, familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMMembership, familyIAMRole, familyIAMRoleAssign, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue} {
+	for _, family := range []string{familyAccessKey, familyAccessAnalyzer, familyAssetMetadata, familyCloudTrail, familyConfigRecorder, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyGuardDutyFinding, familyIAMGroup, familyIAMMembership, familyIAMRole, familyIAMRoleAssign, familyIAMRoleTrust, familyIAMUser, familyInspector2Finding, familyKMSKey, familyLambdaFunction, familyMacie2Finding, familyNetworkFirewall, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familyWAFV2WebACL} {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err
