@@ -180,6 +180,78 @@ func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, userIdentityURN)
 }
 
+func TestProjectAWSDataResourceLinksNetworkAndElastiCacheContext(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-elasticache-cluster-orders",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.elasticache_cluster",
+		Attributes: map[string]string{
+			"cache_cluster_id":        "orders-001",
+			"cache_subnet_group_name": "cache-subnets",
+			"domain":                  "123456789012",
+			"replication_group_id":    "orders-rg",
+			"resource_id":             "arn:aws:elasticache:us-east-1:123456789012:cluster:orders-001",
+			"resource_name":           "orders-001",
+			"resource_provider":       "aws",
+			"resource_type":           "elasticache_cluster",
+			"security_group_ids":      "sg-cache",
+			"subnet_ids":              "subnet-cache",
+			"vpc_id":                  "vpc-1",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_elasticache_cluster:arn:aws:elasticache:us-east-1:123456789012:cluster:orders-001"
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_vpc:vpc-1")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_subnet:subnet-cache")
+	assertProjectedLink(t, state, resourceURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-cache")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_elasticache_replication_group:orders-rg")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_elasticache_subnet_group:cache-subnets")
+}
+
+func TestProjectAWSDatabaseInstanceLinksClusterAndAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-docdb-instance",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.docdb_instance",
+		Attributes: map[string]string{
+			"cluster_arn":            "arn:aws:rds:us-east-1:123456789012:cluster:docdb-prod",
+			"cluster_name":           "docdb-prod",
+			"db_cluster_identifier":  "docdb-prod",
+			"db_instance_identifier": "docdb-prod-1",
+			"domain":                 "123456789012",
+			"owner":                  "database@writer.com",
+			"region":                 "us-east-1",
+			"resource_id":            "arn:aws:rds:us-east-1:123456789012:db:docdb-prod-1",
+			"resource_name":          "docdb-prod-1",
+			"resource_provider":      "aws",
+			"resource_type":          "docdb_instance",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	instanceURN := "urn:cerebro:writer:aws_docdb_instance:arn:aws:rds:us-east-1:123456789012:db:docdb-prod-1"
+	clusterURN := "urn:cerebro:writer:aws_docdb_cluster:arn:aws:rds:us-east-1:123456789012:cluster:docdb-prod"
+	if entity := state.entities[clusterURN]; entity == nil || entity.EntityType != "aws.docdb.cluster" {
+		t.Fatalf("docdb cluster entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, instanceURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
 func TestProjectAWSNetworkEdgeCloudResources(t *testing.T) {
 	for _, tt := range []struct {
 		kind         string

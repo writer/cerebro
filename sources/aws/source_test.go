@@ -34,6 +34,8 @@ import (
 	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	datasynctypes "github.com/aws/aws-sdk-go-v2/service/datasync/types"
+	"github.com/aws/aws-sdk-go-v2/service/docdb"
+	docdbtypes "github.com/aws/aws-sdk-go-v2/service/docdb/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
@@ -48,12 +50,16 @@ import (
 	efstypes "github.com/aws/aws-sdk-go-v2/service/efs/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticache"
+	elasticachetypes "github.com/aws/aws-sdk-go-v2/service/elasticache/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	eventbridgetypes "github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 	"github.com/aws/aws-sdk-go-v2/service/firehose"
 	firehosetypes "github.com/aws/aws-sdk-go-v2/service/firehose/types"
+	"github.com/aws/aws-sdk-go-v2/service/fsx"
+	fsxtypes "github.com/aws/aws-sdk-go-v2/service/fsx/types"
 	"github.com/aws/aws-sdk-go-v2/service/globalaccelerator"
 	globalacceleratortypes "github.com/aws/aws-sdk-go-v2/service/globalaccelerator/types"
 	"github.com/aws/aws-sdk-go-v2/service/glue"
@@ -72,12 +78,20 @@ import (
 	lakeformationtypes "github.com/aws/aws-sdk-go-v2/service/lakeformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/neptune"
+	neptunetypes "github.com/aws/aws-sdk-go-v2/service/neptune/types"
+	"github.com/aws/aws-sdk-go-v2/service/opensearch"
+	opensearchtypes "github.com/aws/aws-sdk-go-v2/service/opensearch/types"
+	"github.com/aws/aws-sdk-go-v2/service/opensearchserverless"
+	opensearchserverlesstypes "github.com/aws/aws-sdk-go-v2/service/opensearchserverless/types"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	pipestypes "github.com/aws/aws-sdk-go-v2/service/pipes/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
+	"github.com/aws/aws-sdk-go-v2/service/redshift"
+	redshifttypes "github.com/aws/aws-sdk-go-v2/service/redshift/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -409,8 +423,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
 		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
 		{family: familyElastiCacheCluster, kind: "aws.elasticache_cluster"},
-		{family: familyElastiCacheReplica, kind: "aws.elasticache_replication_group"},
-		{family: familyElastiCacheSubnet, kind: "aws.elasticache_subnet_group"},
+		{family: familyElastiCacheReplicationGroup, kind: "aws.elasticache_replication_group"},
+		{family: familyElastiCacheSubnetGroup, kind: "aws.elasticache_subnet_group"},
 		{family: familyGlobalAccelerator, kind: "aws.globalaccelerator_accelerator"},
 		{family: familyGAListener, kind: "aws.globalaccelerator_listener"},
 		{family: familyGAEndpointGroup, kind: "aws.globalaccelerator_endpoint_group"},
@@ -445,12 +459,12 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
 		{family: familyMacie2Finding, kind: "aws.macie2_finding"},
 		{family: familyNetworkFirewall, kind: "aws.network_firewall"},
-		{family: familyNeptuneCluster, kind: "aws.neptune_cluster"},
-		{family: familyNeptuneInstance, kind: "aws.neptune_instance"},
 		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyOpenSearchDomain, kind: "aws.opensearch_domain"},
 		{family: familyOpenSearchServerlessCollection, kind: "aws.opensearch_serverless_collection"},
-		{family: familyOpenSearchServerlessPolicy, kind: "aws.opensearch_serverless_security_policy"},
+		{family: familyOpenSearchServerlessSecurityPolicy, kind: "aws.opensearch_serverless_security_policy"},
+		{family: familyNeptuneCluster, kind: "aws.neptune_cluster"},
+		{family: familyNeptuneInstance, kind: "aws.neptune_instance"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
 		{family: familyRedshiftCluster, kind: "aws.redshift_cluster"},
 		{family: familyS3AccessPoint, kind: "aws.s3_access_point"},
@@ -838,6 +852,11 @@ func TestReadAWSBatchRuntimeEvents(t *testing.T) {
 
 func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	rdsARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
+	redshiftARN := "arn:aws:redshift:us-east-1:123456789012:cluster:warehouse-prod"
+	docdbClusterARN := "arn:aws:rds:us-east-1:123456789012:cluster:docdb-prod"
+	docdbInstanceARN := "arn:aws:rds:us-east-1:123456789012:db:docdb-prod-1"
+	neptuneClusterARN := "arn:aws:rds:us-east-1:123456789012:cluster:graph-prod"
+	neptuneInstanceARN := "arn:aws:rds:us-east-1:123456789012:db:graph-prod-1"
 	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
 	secretARN := "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-AbCd"
 	sqsARN := "arn:aws:sqs:us-east-1:123456789012:orders"
@@ -934,6 +953,86 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
 				}},
 				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
+			fakeAWSDataWarehouseData: fakeAWSDataWarehouseData{
+				redshiftClusters: []redshifttypes.Cluster{{
+					ClusterIdentifier:                awssdk.String("warehouse-prod"),
+					ClusterStatus:                    awssdk.String("available"),
+					ClusterCreateTime:                timePtr("2026-04-23T00:00:00Z"),
+					ClusterVersion:                   awssdk.String("1.0"),
+					Encrypted:                        awssdk.Bool(true),
+					EnhancedVpcRouting:               awssdk.Bool(true),
+					KmsKeyId:                         awssdk.String(kmsARN),
+					NodeType:                         awssdk.String("ra3.xlplus"),
+					NumberOfNodes:                    awssdk.Int32(2),
+					PubliclyAccessible:               awssdk.Bool(false),
+					AutomatedSnapshotRetentionPeriod: awssdk.Int32(7),
+					Tags:                             []redshifttypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}},
+					VpcId:                            awssdk.String("vpc-data"),
+					VpcSecurityGroups:                []redshifttypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-redshift")}},
+				}},
+				docdbClusters: []docdbtypes.DBCluster{{
+					DBClusterArn:          awssdk.String(docdbClusterARN),
+					DBClusterIdentifier:   awssdk.String("docdb-prod"),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					ClusterCreateTime:     timePtr("2026-04-23T00:00:00Z"),
+					DBSubnetGroup:         awssdk.String("data-subnets"),
+					DeletionProtection:    awssdk.Bool(true),
+					Engine:                awssdk.String("docdb"),
+					EngineVersion:         awssdk.String("5.0.0"),
+					KmsKeyId:              awssdk.String(kmsARN),
+					Port:                  awssdk.Int32(27017),
+					Status:                awssdk.String("available"),
+					StorageEncrypted:      awssdk.Bool(true),
+					VpcSecurityGroups:     []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
+				}},
+				docdbInstances: []docdbtypes.DBInstance{{
+					DBClusterIdentifier:  awssdk.String("docdb-prod"),
+					DBInstanceArn:        awssdk.String(docdbInstanceARN),
+					DBInstanceClass:      awssdk.String("db.r6g.large"),
+					DBInstanceIdentifier: awssdk.String("docdb-prod-1"),
+					DBInstanceStatus:     awssdk.String("available"),
+					Endpoint:             &docdbtypes.Endpoint{Address: awssdk.String("docdb-prod-1.cluster.local"), Port: awssdk.Int32(27017)},
+					Engine:               awssdk.String("docdb"),
+					EngineVersion:        awssdk.String("5.0.0"),
+					InstanceCreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					VpcSecurityGroups:    []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
+				}},
+				docdbTags: map[string][]docdbtypes.Tag{
+					docdbClusterARN:  {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+					docdbInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				},
+				neptuneClusters: []neptunetypes.DBCluster{{
+					DBClusterArn:          awssdk.String(neptuneClusterARN),
+					DBClusterIdentifier:   awssdk.String("graph-prod"),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					ClusterCreateTime:     timePtr("2026-04-23T00:00:00Z"),
+					DBSubnetGroup:         awssdk.String("data-subnets"),
+					DeletionProtection:    awssdk.Bool(true),
+					Engine:                awssdk.String("neptune"),
+					EngineVersion:         awssdk.String("1.3.2.0"),
+					KmsKeyId:              awssdk.String(kmsARN),
+					Port:                  awssdk.Int32(8182),
+					Status:                awssdk.String("available"),
+					StorageEncrypted:      awssdk.Bool(true),
+					VpcSecurityGroups:     []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
+				}},
+				neptuneInstances: []neptunetypes.DBInstance{{
+					DBClusterIdentifier:  awssdk.String("graph-prod"),
+					DBInstanceArn:        awssdk.String(neptuneInstanceARN),
+					DBInstanceClass:      awssdk.String("db.r6g.large"),
+					DBInstanceIdentifier: awssdk.String("graph-prod-1"),
+					DBInstanceStatus:     awssdk.String("available"),
+					Endpoint:             &neptunetypes.Endpoint{Address: awssdk.String("graph-prod-1.cluster.local"), Port: awssdk.Int32(8182)},
+					Engine:               awssdk.String("neptune"),
+					EngineVersion:        awssdk.String("1.3.2.0"),
+					InstanceCreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					VpcSecurityGroups:    []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
+				}},
+				neptuneTags: map[string][]neptunetypes.Tag{
+					neptuneClusterARN:  {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+					neptuneInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				},
 			},
 			fakeAWSStorageAccessData: fakeAWSStorageAccessData{
 				s3AccessPoints: []s3controltypes.AccessPoint{{
@@ -1051,11 +1150,142 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familyDataSyncTask, kind: "aws.datasync_task", attr: "backups", want: "true"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location", attr: "location_type", want: "s3"},
 		{family: familyRDSInstance, kind: "aws.rds_instance", attr: "deletion_protection", want: "true"},
+		{family: familyRedshiftCluster, kind: "aws.redshift_cluster", attr: "arn", want: redshiftARN},
+		{family: familyDocDBCluster, kind: "aws.docdb_cluster", attr: "deletion_protection", want: "true"},
+		{family: familyDocDBInstance, kind: "aws.docdb_instance", attr: "cluster_name", want: "docdb-prod"},
+		{family: familyNeptuneCluster, kind: "aws.neptune_cluster", attr: "deletion_protection", want: "true"},
+		{family: familyNeptuneInstance, kind: "aws.neptune_instance", attr: "cluster_name", want: "graph-prod"},
 		{family: familyKMSKey, kind: "aws.kms_key", attr: "rotation", want: "true"},
 		{family: familySecret, kind: "aws.secret", attr: "rotation", want: "true"},
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSDataManagerInventoryEvents(t *testing.T) {
+	openSearchARN := "arn:aws:es:us-east-1:123456789012:domain/search-prod"
+	aossCollectionARN := "arn:aws:aoss:us-east-1:123456789012:collection/col-123"
+	elasticacheReplicationGroupARN := "arn:aws:elasticache:us-east-1:123456789012:replicationgroup:orders-rg"
+	elasticacheClusterARN := "arn:aws:elasticache:us-east-1:123456789012:cluster:orders-001"
+	elasticacheSubnetGroupARN := "arn:aws:elasticache:us-east-1:123456789012:subnetgroup:cache-subnets"
+	fsxARN := "arn:aws:fsx:us-east-1:123456789012:file-system/fs-123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSData: fakeAWSData{
+			fakeAWSDataManager: fakeAWSDataManager{
+				openSearchDomains: []opensearchtypes.DomainStatus{{
+					ARN:           awssdk.String(openSearchARN),
+					Created:       awssdk.Bool(true),
+					DomainId:      awssdk.String("123456789012/search-prod"),
+					DomainName:    awssdk.String("search-prod"),
+					Endpoint:      awssdk.String("search-prod.us-east-1.es.amazonaws.com"),
+					EngineVersion: awssdk.String("OpenSearch_2.11"),
+					ClusterConfig: &opensearchtypes.ClusterConfig{
+						InstanceCount: awssdk.Int32(3),
+					},
+					DomainEndpointOptions:       &opensearchtypes.DomainEndpointOptions{EnforceHTTPS: awssdk.Bool(true)},
+					EncryptionAtRestOptions:     &opensearchtypes.EncryptionAtRestOptions{Enabled: awssdk.Bool(true), KmsKeyId: awssdk.String("key-123")},
+					NodeToNodeEncryptionOptions: &opensearchtypes.NodeToNodeEncryptionOptions{Enabled: awssdk.Bool(true)},
+					VPCOptions:                  &opensearchtypes.VPCDerivedInfo{SecurityGroupIds: []string{"sg-search"}, SubnetIds: []string{"subnet-search"}, VPCId: awssdk.String("vpc-1")},
+				}},
+				openSearchTags: map[string][]opensearchtypes.Tag{openSearchARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("search@writer.com")}}},
+				aossCollections: []opensearchserverlesstypes.CollectionDetail{{
+					Arn:                awssdk.String(aossCollectionARN),
+					CollectionEndpoint: awssdk.String("https://col-123.us-east-1.aoss.amazonaws.com"),
+					CreatedDate:        awssdk.Int64(1776902400000),
+					Id:                 awssdk.String("col-123"),
+					KmsKeyArn:          awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+					Name:               awssdk.String("vectors"),
+					Status:             opensearchserverlesstypes.CollectionStatusActive,
+					Type:               opensearchserverlesstypes.CollectionTypeVectorsearch,
+				}},
+				aossTags: map[string][]opensearchserverlesstypes.Tag{aossCollectionARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}}},
+				aossSecurityPolicies: []opensearchserverlesstypes.SecurityPolicyDetail{{
+					Name:          awssdk.String("vectors-encryption"),
+					PolicyVersion: awssdk.String("v1"),
+					Type:          opensearchserverlesstypes.SecurityPolicyTypeEncryption,
+				}},
+				elasticacheReplicationGroups: []elasticachetypes.ReplicationGroup{{
+					ARN:                        awssdk.String(elasticacheReplicationGroupARN),
+					AtRestEncryptionEnabled:    awssdk.Bool(true),
+					CacheNodeType:              awssdk.String("cache.r7g.large"),
+					Engine:                     awssdk.String("redis"),
+					KmsKeyId:                   awssdk.String("key-123"),
+					MemberClusters:             []string{"orders-001"},
+					ReplicationGroupCreateTime: timePtr("2026-04-23T00:00:00Z"),
+					ReplicationGroupId:         awssdk.String("orders-rg"),
+					Status:                     awssdk.String("available"),
+					TransitEncryptionEnabled:   awssdk.Bool(true),
+				}},
+				elasticacheClusters: []elasticachetypes.CacheCluster{{
+					ARN:                      awssdk.String(elasticacheClusterARN),
+					AtRestEncryptionEnabled:  awssdk.Bool(true),
+					CacheClusterCreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					CacheClusterId:           awssdk.String("orders-001"),
+					CacheClusterStatus:       awssdk.String("available"),
+					CacheNodeType:            awssdk.String("cache.r7g.large"),
+					CacheSubnetGroupName:     awssdk.String("cache-subnets"),
+					Engine:                   awssdk.String("redis"),
+					ReplicationGroupId:       awssdk.String("orders-rg"),
+					SecurityGroups:           []elasticachetypes.SecurityGroupMembership{{SecurityGroupId: awssdk.String("sg-cache")}},
+					TransitEncryptionEnabled: awssdk.Bool(true),
+				}},
+				elasticacheSubnetGroups: []elasticachetypes.CacheSubnetGroup{{
+					ARN:                  awssdk.String(elasticacheSubnetGroupARN),
+					CacheSubnetGroupName: awssdk.String("cache-subnets"),
+					Subnets:              []elasticachetypes.Subnet{{SubnetIdentifier: awssdk.String("subnet-cache")}},
+					VpcId:                awssdk.String("vpc-1"),
+				}},
+				elasticacheTags: map[string][]elasticachetypes.Tag{
+					elasticacheReplicationGroupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+					elasticacheClusterARN:          {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+					elasticacheSubnetGroupARN:      {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+				},
+				fsxFileSystems: []fsxtypes.FileSystem{{
+					CreationTime:        timePtr("2026-04-23T00:00:00Z"),
+					DNSName:             awssdk.String("fs-123.fsx.us-east-1.amazonaws.com"),
+					FileSystemId:        awssdk.String("fs-123"),
+					FileSystemType:      fsxtypes.FileSystemTypeOpenzfs,
+					KmsKeyId:            awssdk.String("key-123"),
+					NetworkInterfaceIds: []string{"eni-fsx"},
+					ResourceARN:         awssdk.String(fsxARN),
+					StorageCapacity:     awssdk.Int32(1024),
+					SubnetIds:           []string{"subnet-fsx"},
+					VpcId:               awssdk.String("vpc-1"),
+				}},
+				fsxTags: map[string][]fsxtypes.Tag{fsxARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}},
+			},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyOpenSearchDomain, kind: "aws.opensearch_domain", attr: "node_to_node_encryption", want: "true"},
+		{family: familyOpenSearchServerlessCollection, kind: "aws.opensearch_serverless_collection", attr: "collection_type", want: "VECTORSEARCH"},
+		{family: familyOpenSearchServerlessSecurityPolicy, kind: "aws.opensearch_serverless_security_policy", attr: "policy_type", want: "encryption"},
+		{family: familyElastiCacheReplicationGroup, kind: "aws.elasticache_replication_group", attr: "transit_encryption", want: "true"},
+		{family: familyElastiCacheCluster, kind: "aws.elasticache_cluster", attr: "replication_group_id", want: "orders-rg"},
+		{family: familyElastiCacheSubnetGroup, kind: "aws.elasticache_subnet_group", attr: "subnet_ids", want: "subnet-cache"},
+		{family: familyFSxFileSystem, kind: "aws.fsx_file_system", attr: "network_interface_ids", want: "eni-fsx"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -2546,6 +2776,27 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.snsTags = map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		openSearchARN := "arn:aws:es:us-east-1:123456789012:domain/search-prod"
+		aossARN := "arn:aws:aoss:us-east-1:123456789012:collection/col-123"
+		elasticacheReplicationGroupARN := "arn:aws:elasticache:us-east-1:123456789012:replicationgroup:orders-rg"
+		elasticacheClusterARN := "arn:aws:elasticache:us-east-1:123456789012:cluster:orders-001"
+		elasticacheSubnetGroupARN := "arn:aws:elasticache:us-east-1:123456789012:subnetgroup:cache-subnets"
+		fsxARN := "arn:aws:fsx:us-east-1:123456789012:file-system/fs-123"
+		fake.openSearchDomains = []opensearchtypes.DomainStatus{{ARN: awssdk.String(openSearchARN), DomainName: awssdk.String("search-prod")}}
+		fake.openSearchTags = map[string][]opensearchtypes.Tag{openSearchARN: {{Key: awssdk.String("Team"), Value: awssdk.String("search")}}}
+		fake.aossCollections = []opensearchserverlesstypes.CollectionDetail{{Arn: awssdk.String(aossARN), Id: awssdk.String("col-123"), Name: awssdk.String("vectors")}}
+		fake.aossTags = map[string][]opensearchserverlesstypes.Tag{aossARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}}}
+		fake.aossSecurityPolicies = []opensearchserverlesstypes.SecurityPolicyDetail{{Name: awssdk.String("vectors-encryption"), Type: opensearchserverlesstypes.SecurityPolicyTypeEncryption}}
+		fake.elasticacheReplicationGroups = []elasticachetypes.ReplicationGroup{{ARN: awssdk.String(elasticacheReplicationGroupARN), ReplicationGroupId: awssdk.String("orders-rg")}}
+		fake.elasticacheClusters = []elasticachetypes.CacheCluster{{ARN: awssdk.String(elasticacheClusterARN), CacheClusterId: awssdk.String("orders-001")}}
+		fake.elasticacheSubnetGroups = []elasticachetypes.CacheSubnetGroup{{ARN: awssdk.String(elasticacheSubnetGroupARN), CacheSubnetGroupName: awssdk.String("cache-subnets")}}
+		fake.elasticacheTags = map[string][]elasticachetypes.Tag{
+			elasticacheReplicationGroupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+			elasticacheClusterARN:          {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+			elasticacheSubnetGroupARN:      {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+		}
+		fake.fsxFileSystems = []fsxtypes.FileSystem{{ResourceARN: awssdk.String(fsxARN), FileSystemId: awssdk.String("fs-123")}}
+		fake.fsxTags = map[string][]fsxtypes.Tag{fsxARN: {{Key: awssdk.String("Team"), Value: awssdk.String("storage")}}}
 		s3APARN := "arn:aws:s3:us-east-1:123456789012:accesspoint/prod-data-ap"
 		mrapARN := "arn:aws:s3::123456789012:accesspoint/prod-global"
 		fake.s3AccessPoints = []s3controltypes.AccessPoint{{AccessPointArn: awssdk.String(s3APARN), Bucket: awssdk.String("prod-data"), Name: awssdk.String("prod-data-ap"), NetworkOrigin: s3controltypes.NetworkOriginVpc}}
@@ -2726,6 +2977,41 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECRRepository,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
+		},
+		{
+			family:  familyOpenSearchDomain,
+			seed:    cloudAssetData,
+			wantAPI: []string{"opensearch:DescribeDomains", "opensearch:ListDomainNames", "opensearch:ListTags"},
+		},
+		{
+			family:  familyOpenSearchServerlessCollection,
+			seed:    cloudAssetData,
+			wantAPI: []string{"opensearchserverless:BatchGetCollection", "opensearchserverless:ListCollections", "opensearchserverless:ListTagsForResource"},
+		},
+		{
+			family:  familyOpenSearchServerlessSecurityPolicy,
+			seed:    cloudAssetData,
+			wantAPI: []string{"opensearchserverless:GetSecurityPolicy", "opensearchserverless:ListSecurityPolicies"},
+		},
+		{
+			family:  familyElastiCacheReplicationGroup,
+			seed:    cloudAssetData,
+			wantAPI: []string{"elasticache:DescribeReplicationGroups", "elasticache:ListTagsForResource"},
+		},
+		{
+			family:  familyElastiCacheCluster,
+			seed:    cloudAssetData,
+			wantAPI: []string{"elasticache:DescribeCacheClusters", "elasticache:ListTagsForResource"},
+		},
+		{
+			family:  familyElastiCacheSubnetGroup,
+			seed:    cloudAssetData,
+			wantAPI: []string{"elasticache:DescribeCacheSubnetGroups", "elasticache:ListTagsForResource"},
+		},
+		{
+			family:  familyFSxFileSystem,
+			seed:    cloudAssetData,
+			wantAPI: []string{"fsx:DescribeFileSystems", "fsx:ListTagsForResource"},
 		},
 		{
 			family:  familyDataSyncTask,
@@ -3316,9 +3602,10 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				ssm:            fakeSSM{runtime: fake.fakeAWSRuntime},
 			},
 			awsAnalyticsClients: awsAnalyticsClients{
-				kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake},
+				kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake}, redshift: fake, docdb: fakeDocDB{data: fake.fakeAWSData}, neptune: fakeNeptune{data: fake.fakeAWSData},
 			},
 			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: fakeIdentityStore{fake: &fake}},
+			awsDataClients:       awsDataClients{elasticache: fakeElastiCache{fake: &fake}, fsx: fakeFSx{fake: &fake}, openSearch: fakeOpenSearch{fake: &fake}, openSearchServerless: fakeOpenSearchServerless{fake: &fake}},
 			awsStorageClients:    awsStorageClients{s3control: fakeS3Control{fake: &fake}, datasync: fakeDataSync{fake: &fake}, backup: fake, dynamodb: fake, dynamodbStreams: fake, efs: fake},
 		}, nil
 	}}
@@ -3372,9 +3659,10 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				ssm:            fakeSSM{runtime: fake.fakeAWSRuntime},
 			},
 			awsAnalyticsClients: awsAnalyticsClients{
-				kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake},
+				kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake}, redshift: fake, docdb: recordingDocDB{fake: fake}, neptune: recordingNeptune{fake: fake},
 			},
 			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: recordingIdentityStore{fake: fake}},
+			awsDataClients:       awsDataClients{elasticache: recordingElastiCache{fake: fake}, fsx: recordingFSx{fake: fake}, openSearch: recordingOpenSearch{fake: fake}, openSearchServerless: recordingOpenSearchServerless{fake: fake}},
 			awsStorageClients:    awsStorageClients{s3control: recordingS3Control{fake: fake}, datasync: recordingDataSync{fake: fake}, backup: fake, dynamodb: fake, dynamodbStreams: fake, efs: fake},
 		}, nil
 	}}
@@ -3498,6 +3786,8 @@ type fakeAWSData struct {
 	fakeAWSCoreData
 	fakeAWSBackupData
 	fakeAWSStorageAccessData
+	fakeAWSDataManager
+	fakeAWSDataWarehouseData
 }
 
 type fakeAWSCoreData struct {
@@ -3534,6 +3824,16 @@ type fakeAWSBackupData struct {
 	backupRecoveryPoints     map[string][]backuptypes.RecoveryPointByBackupVault
 }
 
+type fakeAWSDataWarehouseData struct {
+	redshiftClusters []redshifttypes.Cluster
+	docdbClusters    []docdbtypes.DBCluster
+	docdbInstances   []docdbtypes.DBInstance
+	docdbTags        map[string][]docdbtypes.Tag
+	neptuneClusters  []neptunetypes.DBCluster
+	neptuneInstances []neptunetypes.DBInstance
+	neptuneTags      map[string][]neptunetypes.Tag
+}
+
 type fakeAWSStorageAccessData struct {
 	s3AccessPoints                 []s3controltypes.AccessPoint
 	s3AccessPointDetails           map[string]*s3control.GetAccessPointOutput
@@ -3559,6 +3859,20 @@ type fakeAWSStorageAccessData struct {
 	datasyncLocations              []datasynctypes.LocationListEntry
 	datasyncLocationS3             map[string]*datasync.DescribeLocationS3Output
 	datasyncTags                   map[string][]datasynctypes.TagListEntry
+}
+
+type fakeAWSDataManager struct {
+	openSearchDomains            []opensearchtypes.DomainStatus
+	openSearchTags               map[string][]opensearchtypes.Tag
+	aossCollections              []opensearchserverlesstypes.CollectionDetail
+	aossTags                     map[string][]opensearchserverlesstypes.Tag
+	aossSecurityPolicies         []opensearchserverlesstypes.SecurityPolicyDetail
+	elasticacheReplicationGroups []elasticachetypes.ReplicationGroup
+	elasticacheClusters          []elasticachetypes.CacheCluster
+	elasticacheSubnetGroups      []elasticachetypes.CacheSubnetGroup
+	elasticacheTags              map[string][]elasticachetypes.Tag
+	fsxFileSystems               []fsxtypes.FileSystem
+	fsxTags                      map[string][]fsxtypes.Tag
 }
 
 type fakeAWSRuntime struct {
@@ -4731,6 +5045,76 @@ func (f fakeSSM) ListTagsForResource(_ context.Context, input *ssm.ListTagsForRe
 	return &ssm.ListTagsForResourceOutput{TagList: f.runtime.ssmTags[string(input.ResourceType)+"/"+awssdk.ToString(input.ResourceId)]}, nil
 }
 
+type fakeDocDB struct {
+	data fakeAWSData
+}
+
+type recordingDocDB struct {
+	fake *recordingAWS
+}
+
+func (f recordingDocDB) DescribeDBClusters(ctx context.Context, input *docdb.DescribeDBClustersInput, options ...func(*docdb.Options)) (*docdb.DescribeDBClustersOutput, error) {
+	f.fake.record("docdb:DescribeDBClusters")
+	return fakeDocDB{data: f.fake.fakeAWSData}.DescribeDBClusters(ctx, input, options...)
+}
+
+func (f recordingDocDB) DescribeDBInstances(ctx context.Context, input *docdb.DescribeDBInstancesInput, options ...func(*docdb.Options)) (*docdb.DescribeDBInstancesOutput, error) {
+	f.fake.record("docdb:DescribeDBInstances")
+	return fakeDocDB{data: f.fake.fakeAWSData}.DescribeDBInstances(ctx, input, options...)
+}
+
+func (f recordingDocDB) ListTagsForResource(ctx context.Context, input *docdb.ListTagsForResourceInput, options ...func(*docdb.Options)) (*docdb.ListTagsForResourceOutput, error) {
+	f.fake.record("docdb:ListTagsForResource")
+	return fakeDocDB{data: f.fake.fakeAWSData}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeDocDB) DescribeDBClusters(context.Context, *docdb.DescribeDBClustersInput, ...func(*docdb.Options)) (*docdb.DescribeDBClustersOutput, error) {
+	return &docdb.DescribeDBClustersOutput{DBClusters: f.data.docdbClusters}, nil
+}
+
+func (f fakeDocDB) DescribeDBInstances(context.Context, *docdb.DescribeDBInstancesInput, ...func(*docdb.Options)) (*docdb.DescribeDBInstancesOutput, error) {
+	return &docdb.DescribeDBInstancesOutput{DBInstances: f.data.docdbInstances}, nil
+}
+
+func (f fakeDocDB) ListTagsForResource(_ context.Context, input *docdb.ListTagsForResourceInput, _ ...func(*docdb.Options)) (*docdb.ListTagsForResourceOutput, error) {
+	return &docdb.ListTagsForResourceOutput{TagList: f.data.docdbTags[awssdk.ToString(input.ResourceName)]}, nil
+}
+
+type fakeNeptune struct {
+	data fakeAWSData
+}
+
+type recordingNeptune struct {
+	fake *recordingAWS
+}
+
+func (f recordingNeptune) DescribeDBClusters(ctx context.Context, input *neptune.DescribeDBClustersInput, options ...func(*neptune.Options)) (*neptune.DescribeDBClustersOutput, error) {
+	f.fake.record("neptune:DescribeDBClusters")
+	return fakeNeptune{data: f.fake.fakeAWSData}.DescribeDBClusters(ctx, input, options...)
+}
+
+func (f recordingNeptune) DescribeDBInstances(ctx context.Context, input *neptune.DescribeDBInstancesInput, options ...func(*neptune.Options)) (*neptune.DescribeDBInstancesOutput, error) {
+	f.fake.record("neptune:DescribeDBInstances")
+	return fakeNeptune{data: f.fake.fakeAWSData}.DescribeDBInstances(ctx, input, options...)
+}
+
+func (f recordingNeptune) ListTagsForResource(ctx context.Context, input *neptune.ListTagsForResourceInput, options ...func(*neptune.Options)) (*neptune.ListTagsForResourceOutput, error) {
+	f.fake.record("neptune:ListTagsForResource")
+	return fakeNeptune{data: f.fake.fakeAWSData}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeNeptune) DescribeDBClusters(context.Context, *neptune.DescribeDBClustersInput, ...func(*neptune.Options)) (*neptune.DescribeDBClustersOutput, error) {
+	return &neptune.DescribeDBClustersOutput{DBClusters: f.data.neptuneClusters}, nil
+}
+
+func (f fakeNeptune) DescribeDBInstances(context.Context, *neptune.DescribeDBInstancesInput, ...func(*neptune.Options)) (*neptune.DescribeDBInstancesOutput, error) {
+	return &neptune.DescribeDBInstancesOutput{DBInstances: f.data.neptuneInstances}, nil
+}
+
+func (f fakeNeptune) ListTagsForResource(_ context.Context, input *neptune.ListTagsForResourceInput, _ ...func(*neptune.Options)) (*neptune.ListTagsForResourceOutput, error) {
+	return &neptune.ListTagsForResourceOutput{TagList: f.data.neptuneTags[awssdk.ToString(input.ResourceName)]}, nil
+}
+
 type fakeKinesis struct {
 	fake *fakeAWS
 }
@@ -5082,6 +5466,204 @@ func (f fakeLakeFormation) ListLFTags(context.Context, *lakeformation.ListLFTags
 
 func (f fakeLakeFormation) ListPermissions(context.Context, *lakeformation.ListPermissionsInput, ...func(*lakeformation.Options)) (*lakeformation.ListPermissionsOutput, error) {
 	return &lakeformation.ListPermissionsOutput{PrincipalResourcePermissions: f.fake.lakeFormationPermissions}, nil
+}
+
+type fakeOpenSearch struct {
+	fake *fakeAWS
+}
+
+type recordingOpenSearch struct {
+	fake *recordingAWS
+}
+
+func (f recordingOpenSearch) ListDomainNames(ctx context.Context, input *opensearch.ListDomainNamesInput, options ...func(*opensearch.Options)) (*opensearch.ListDomainNamesOutput, error) {
+	f.fake.record("opensearch:ListDomainNames")
+	return fakeOpenSearch{fake: &f.fake.fakeAWS}.ListDomainNames(ctx, input, options...)
+}
+
+func (f recordingOpenSearch) DescribeDomains(ctx context.Context, input *opensearch.DescribeDomainsInput, options ...func(*opensearch.Options)) (*opensearch.DescribeDomainsOutput, error) {
+	f.fake.record("opensearch:DescribeDomains")
+	return fakeOpenSearch{fake: &f.fake.fakeAWS}.DescribeDomains(ctx, input, options...)
+}
+
+func (f recordingOpenSearch) ListTags(ctx context.Context, input *opensearch.ListTagsInput, options ...func(*opensearch.Options)) (*opensearch.ListTagsOutput, error) {
+	f.fake.record("opensearch:ListTags")
+	return fakeOpenSearch{fake: &f.fake.fakeAWS}.ListTags(ctx, input, options...)
+}
+
+func (f fakeOpenSearch) ListDomainNames(context.Context, *opensearch.ListDomainNamesInput, ...func(*opensearch.Options)) (*opensearch.ListDomainNamesOutput, error) {
+	domains := make([]opensearchtypes.DomainInfo, 0, len(f.fake.openSearchDomains))
+	for _, domain := range f.fake.openSearchDomains {
+		domains = append(domains, opensearchtypes.DomainInfo{DomainName: domain.DomainName})
+	}
+	return &opensearch.ListDomainNamesOutput{DomainNames: domains}, nil
+}
+
+func (f fakeOpenSearch) DescribeDomains(_ context.Context, input *opensearch.DescribeDomainsInput, _ ...func(*opensearch.Options)) (*opensearch.DescribeDomainsOutput, error) {
+	names := map[string]bool{}
+	for _, name := range input.DomainNames {
+		names[name] = true
+	}
+	domains := make([]opensearchtypes.DomainStatus, 0, len(f.fake.openSearchDomains))
+	for _, domain := range f.fake.openSearchDomains {
+		if names[awssdk.ToString(domain.DomainName)] {
+			domains = append(domains, domain)
+		}
+	}
+	return &opensearch.DescribeDomainsOutput{DomainStatusList: domains}, nil
+}
+
+func (f fakeOpenSearch) ListTags(_ context.Context, input *opensearch.ListTagsInput, _ ...func(*opensearch.Options)) (*opensearch.ListTagsOutput, error) {
+	return &opensearch.ListTagsOutput{TagList: f.fake.openSearchTags[awssdk.ToString(input.ARN)]}, nil
+}
+
+type fakeOpenSearchServerless struct {
+	fake *fakeAWS
+}
+
+type recordingOpenSearchServerless struct {
+	fake *recordingAWS
+}
+
+func (f recordingOpenSearchServerless) ListCollections(ctx context.Context, input *opensearchserverless.ListCollectionsInput, options ...func(*opensearchserverless.Options)) (*opensearchserverless.ListCollectionsOutput, error) {
+	f.fake.record("opensearchserverless:ListCollections")
+	return fakeOpenSearchServerless{fake: &f.fake.fakeAWS}.ListCollections(ctx, input, options...)
+}
+
+func (f recordingOpenSearchServerless) BatchGetCollection(ctx context.Context, input *opensearchserverless.BatchGetCollectionInput, options ...func(*opensearchserverless.Options)) (*opensearchserverless.BatchGetCollectionOutput, error) {
+	f.fake.record("opensearchserverless:BatchGetCollection")
+	return fakeOpenSearchServerless{fake: &f.fake.fakeAWS}.BatchGetCollection(ctx, input, options...)
+}
+
+func (f recordingOpenSearchServerless) ListTagsForResource(ctx context.Context, input *opensearchserverless.ListTagsForResourceInput, options ...func(*opensearchserverless.Options)) (*opensearchserverless.ListTagsForResourceOutput, error) {
+	f.fake.record("opensearchserverless:ListTagsForResource")
+	return fakeOpenSearchServerless{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f recordingOpenSearchServerless) ListSecurityPolicies(ctx context.Context, input *opensearchserverless.ListSecurityPoliciesInput, options ...func(*opensearchserverless.Options)) (*opensearchserverless.ListSecurityPoliciesOutput, error) {
+	f.fake.record("opensearchserverless:ListSecurityPolicies")
+	return fakeOpenSearchServerless{fake: &f.fake.fakeAWS}.ListSecurityPolicies(ctx, input, options...)
+}
+
+func (f recordingOpenSearchServerless) GetSecurityPolicy(ctx context.Context, input *opensearchserverless.GetSecurityPolicyInput, options ...func(*opensearchserverless.Options)) (*opensearchserverless.GetSecurityPolicyOutput, error) {
+	f.fake.record("opensearchserverless:GetSecurityPolicy")
+	return fakeOpenSearchServerless{fake: &f.fake.fakeAWS}.GetSecurityPolicy(ctx, input, options...)
+}
+
+func (f fakeOpenSearchServerless) ListCollections(context.Context, *opensearchserverless.ListCollectionsInput, ...func(*opensearchserverless.Options)) (*opensearchserverless.ListCollectionsOutput, error) {
+	summaries := make([]opensearchserverlesstypes.CollectionSummary, 0, len(f.fake.aossCollections))
+	for _, collection := range f.fake.aossCollections {
+		summaries = append(summaries, opensearchserverlesstypes.CollectionSummary{Arn: collection.Arn, Id: collection.Id, Name: collection.Name, Status: collection.Status})
+	}
+	return &opensearchserverless.ListCollectionsOutput{CollectionSummaries: summaries}, nil
+}
+
+func (f fakeOpenSearchServerless) BatchGetCollection(_ context.Context, input *opensearchserverless.BatchGetCollectionInput, _ ...func(*opensearchserverless.Options)) (*opensearchserverless.BatchGetCollectionOutput, error) {
+	ids := map[string]bool{}
+	for _, id := range input.Ids {
+		ids[id] = true
+	}
+	collections := make([]opensearchserverlesstypes.CollectionDetail, 0, len(f.fake.aossCollections))
+	for _, collection := range f.fake.aossCollections {
+		if ids[awssdk.ToString(collection.Id)] {
+			collections = append(collections, collection)
+		}
+	}
+	return &opensearchserverless.BatchGetCollectionOutput{CollectionDetails: collections}, nil
+}
+
+func (f fakeOpenSearchServerless) ListTagsForResource(_ context.Context, input *opensearchserverless.ListTagsForResourceInput, _ ...func(*opensearchserverless.Options)) (*opensearchserverless.ListTagsForResourceOutput, error) {
+	return &opensearchserverless.ListTagsForResourceOutput{Tags: f.fake.aossTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+func (f fakeOpenSearchServerless) ListSecurityPolicies(_ context.Context, input *opensearchserverless.ListSecurityPoliciesInput, _ ...func(*opensearchserverless.Options)) (*opensearchserverless.ListSecurityPoliciesOutput, error) {
+	summaries := make([]opensearchserverlesstypes.SecurityPolicySummary, 0, len(f.fake.aossSecurityPolicies))
+	for _, policy := range f.fake.aossSecurityPolicies {
+		if policy.Type == input.Type {
+			summaries = append(summaries, opensearchserverlesstypes.SecurityPolicySummary{Name: policy.Name, Type: policy.Type, PolicyVersion: policy.PolicyVersion})
+		}
+	}
+	return &opensearchserverless.ListSecurityPoliciesOutput{SecurityPolicySummaries: summaries}, nil
+}
+
+func (f fakeOpenSearchServerless) GetSecurityPolicy(_ context.Context, input *opensearchserverless.GetSecurityPolicyInput, _ ...func(*opensearchserverless.Options)) (*opensearchserverless.GetSecurityPolicyOutput, error) {
+	for _, policy := range f.fake.aossSecurityPolicies {
+		if awssdk.ToString(policy.Name) == awssdk.ToString(input.Name) && policy.Type == input.Type {
+			copy := policy
+			return &opensearchserverless.GetSecurityPolicyOutput{SecurityPolicyDetail: &copy}, nil
+		}
+	}
+	return &opensearchserverless.GetSecurityPolicyOutput{}, nil
+}
+
+type fakeElastiCache struct {
+	fake *fakeAWS
+}
+
+type recordingElastiCache struct {
+	fake *recordingAWS
+}
+
+func (f recordingElastiCache) DescribeReplicationGroups(ctx context.Context, input *elasticache.DescribeReplicationGroupsInput, options ...func(*elasticache.Options)) (*elasticache.DescribeReplicationGroupsOutput, error) {
+	f.fake.record("elasticache:DescribeReplicationGroups")
+	return fakeElastiCache{fake: &f.fake.fakeAWS}.DescribeReplicationGroups(ctx, input, options...)
+}
+
+func (f recordingElastiCache) DescribeCacheClusters(ctx context.Context, input *elasticache.DescribeCacheClustersInput, options ...func(*elasticache.Options)) (*elasticache.DescribeCacheClustersOutput, error) {
+	f.fake.record("elasticache:DescribeCacheClusters")
+	return fakeElastiCache{fake: &f.fake.fakeAWS}.DescribeCacheClusters(ctx, input, options...)
+}
+
+func (f recordingElastiCache) DescribeCacheSubnetGroups(ctx context.Context, input *elasticache.DescribeCacheSubnetGroupsInput, options ...func(*elasticache.Options)) (*elasticache.DescribeCacheSubnetGroupsOutput, error) {
+	f.fake.record("elasticache:DescribeCacheSubnetGroups")
+	return fakeElastiCache{fake: &f.fake.fakeAWS}.DescribeCacheSubnetGroups(ctx, input, options...)
+}
+
+func (f recordingElastiCache) ListTagsForResource(ctx context.Context, input *elasticache.ListTagsForResourceInput, options ...func(*elasticache.Options)) (*elasticache.ListTagsForResourceOutput, error) {
+	f.fake.record("elasticache:ListTagsForResource")
+	return fakeElastiCache{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeElastiCache) DescribeReplicationGroups(context.Context, *elasticache.DescribeReplicationGroupsInput, ...func(*elasticache.Options)) (*elasticache.DescribeReplicationGroupsOutput, error) {
+	return &elasticache.DescribeReplicationGroupsOutput{ReplicationGroups: f.fake.elasticacheReplicationGroups}, nil
+}
+
+func (f fakeElastiCache) DescribeCacheClusters(context.Context, *elasticache.DescribeCacheClustersInput, ...func(*elasticache.Options)) (*elasticache.DescribeCacheClustersOutput, error) {
+	return &elasticache.DescribeCacheClustersOutput{CacheClusters: f.fake.elasticacheClusters}, nil
+}
+
+func (f fakeElastiCache) DescribeCacheSubnetGroups(context.Context, *elasticache.DescribeCacheSubnetGroupsInput, ...func(*elasticache.Options)) (*elasticache.DescribeCacheSubnetGroupsOutput, error) {
+	return &elasticache.DescribeCacheSubnetGroupsOutput{CacheSubnetGroups: f.fake.elasticacheSubnetGroups}, nil
+}
+
+func (f fakeElastiCache) ListTagsForResource(_ context.Context, input *elasticache.ListTagsForResourceInput, _ ...func(*elasticache.Options)) (*elasticache.ListTagsForResourceOutput, error) {
+	return &elasticache.ListTagsForResourceOutput{TagList: f.fake.elasticacheTags[awssdk.ToString(input.ResourceName)]}, nil
+}
+
+type fakeFSx struct {
+	fake *fakeAWS
+}
+
+type recordingFSx struct {
+	fake *recordingAWS
+}
+
+func (f recordingFSx) DescribeFileSystems(ctx context.Context, input *fsx.DescribeFileSystemsInput, options ...func(*fsx.Options)) (*fsx.DescribeFileSystemsOutput, error) {
+	f.fake.record("fsx:DescribeFileSystems")
+	return fakeFSx{fake: &f.fake.fakeAWS}.DescribeFileSystems(ctx, input, options...)
+}
+
+func (f recordingFSx) ListTagsForResource(ctx context.Context, input *fsx.ListTagsForResourceInput, options ...func(*fsx.Options)) (*fsx.ListTagsForResourceOutput, error) {
+	f.fake.record("fsx:ListTagsForResource")
+	return fakeFSx{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeFSx) DescribeFileSystems(context.Context, *fsx.DescribeFileSystemsInput, ...func(*fsx.Options)) (*fsx.DescribeFileSystemsOutput, error) {
+	return &fsx.DescribeFileSystemsOutput{FileSystems: f.fake.fsxFileSystems}, nil
+}
+
+func (f fakeFSx) ListTagsForResource(_ context.Context, input *fsx.ListTagsForResourceInput, _ ...func(*fsx.Options)) (*fsx.ListTagsForResourceOutput, error) {
+	return &fsx.ListTagsForResourceOutput{Tags: f.fake.fsxTags[awssdk.ToString(input.ResourceARN)]}, nil
 }
 
 type fakeEKS struct {
@@ -5884,6 +6466,10 @@ func (f fakeAWS) GetPublicAccessBlock(_ context.Context, input *s3.GetPublicAcce
 
 func (f fakeAWS) DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error) {
 	return &rds.DescribeDBInstancesOutput{DBInstances: f.rdsInstances}, nil
+}
+
+func (f fakeAWS) DescribeClusters(context.Context, *redshift.DescribeClustersInput, ...func(*redshift.Options)) (*redshift.DescribeClustersOutput, error) {
+	return &redshift.DescribeClustersOutput{Clusters: f.redshiftClusters}, nil
 }
 
 func (f fakeAWS) ListKeys(context.Context, *kms.ListKeysInput, ...func(*kms.Options)) (*kms.ListKeysOutput, error) {

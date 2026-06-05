@@ -1,1 +1,1 @@
-["urn:cerebro:123456789012:aws_redshift_cluster:arn:aws:redshift:us-east-1:123456789012:namespace:warehouse"]
+["urn:cerebro:123456789012:aws_redshift_cluster:arn:aws:redshift:us-east-1:123456789012:cluster:warehouse-prod"]
