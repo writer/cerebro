@@ -664,6 +664,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	mskARN := "arn:aws:kafka:us-east-1:123456789012:cluster/orders/uuid-1"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
+			fakeAWSCoreData: fakeAWSCoreData{
 			s3Buckets: []s3types.Bucket{{
 				Name:         awssdk.String("prod-data"),
 				CreationDate: timePtr("2026-04-23T00:00:00Z"),
@@ -746,6 +747,8 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
 			}},
 			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
+			fakeAWSStreamingData: fakeAWSStreamingData{
 			kinesisStreams: []kinesistypes.StreamDescriptionSummary{{
 				EncryptionType:          kinesistypes.EncryptionTypeKms,
 				KeyId:                   awssdk.String(kmsARN),
@@ -808,6 +811,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				Tags:  map[string]string{"Team": "streaming"},
 			}},
 			mskTags: map[string]map[string]string{mskARN: {"Owner": "streaming@writer.com"}},
+			},
 		},
 	})
 	for _, tt := range []struct {
@@ -892,8 +896,10 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 	}
 	records, _, err := listSNSTopics(context.Background(), awsClients{sns: fakeSNS{fake: &fakeAWS{
 		fakeAWSData: fakeAWSData{
+			fakeAWSCoreData: fakeAWSCoreData{
 			snsTopics:     topics,
 			snsAttributes: attributes,
+			},
 		},
 	}}}, settings{}, "", 10)
 	if err != nil {
@@ -945,18 +951,22 @@ func TestS3BucketPublicTreatsMissingPublicAccessBlockAsExposed(t *testing.T) {
 
 func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 	base := fakeAWS{fakeAWSData: fakeAWSData{
+		fakeAWSCoreData: fakeAWSCoreData{
 		s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
 		s3BucketRegions: map[string]s3types.BucketLocationConstraint{
 			"legacy-eu": s3types.BucketLocationConstraint("EU"),
 		},
+		},
 	}}
 	regional := fakeAWS{fakeAWSData: fakeAWSData{
+		fakeAWSCoreData: fakeAWSCoreData{
 		s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
 		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
 			ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
 		}}}},
 		s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
 		s3Logging:    map[string]bool{"legacy-eu": true},
+		},
 	}}
 	records, _, err := listS3Buckets(context.Background(), awsClients{
 		cfg: awssdk.Config{Region: "us-east-1"},
@@ -2073,6 +2083,11 @@ type fakeAWSNetwork struct {
 }
 
 type fakeAWSData struct {
+	fakeAWSCoreData
+	fakeAWSStreamingData
+}
+
+type fakeAWSCoreData struct {
 	s3Buckets            []s3types.Bucket
 	s3BucketRegions      map[string]s3types.BucketLocationConstraint
 	s3Tags               map[string][]s3types.Tag
@@ -2094,13 +2109,16 @@ type fakeAWSData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
-	kinesisStreams       []kinesistypes.StreamDescriptionSummary
-	kinesisTags          map[string][]kinesistypes.Tag
-	kinesisPolicies      map[string]string
-	firehoseStreams      []firehosetypes.DeliveryStreamDescription
-	firehoseTags         map[string][]firehosetypes.Tag
-	mskClusters          []kafkatypes.Cluster
-	mskTags              map[string]map[string]string
+}
+
+type fakeAWSStreamingData struct {
+	kinesisStreams  []kinesistypes.StreamDescriptionSummary
+	kinesisTags     map[string][]kinesistypes.Tag
+	kinesisPolicies map[string]string
+	firehoseStreams []firehosetypes.DeliveryStreamDescription
+	firehoseTags    map[string][]firehosetypes.Tag
+	mskClusters     []kafkatypes.Cluster
+	mskTags         map[string]map[string]string
 }
 
 type fakeAWSCompute struct {
