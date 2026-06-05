@@ -8,3 +8,22 @@ runtimes:
       owner: writer
       per_page: "100"
       token: env:GITHUB_TOKEN
+  - localId: repository
+    config:
+      family: repository
+      owner: writer
+      per_page: "100"
+      token: env:GITHUB_TOKEN
+  - localId: org-inventory
+    config:
+      family: org_inventory
+      owner: writer
+      per_page: "100"
+      token: env:GITHUB_TOKEN
+  - localId: secret-scanning-alert
+    config:
+      family: secret_scanning_alert
+      owner: writer
+      per_page: "100"
+      state: open
+      token: env:GITHUB_TOKEN
