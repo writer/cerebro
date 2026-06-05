@@ -225,14 +225,38 @@ func listVPCLatticeTargetGroups(ctx context.Context, clients awsClients, _ setti
 }
 
 func listELBV2Listeners(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]elbv2types.Listener, string, error) {
-	out, err := clients.elbv2.DescribeListeners(ctx, &elbv2.DescribeListenersInput{
-		Marker:   stringPtr(cursor),
-		PageSize: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 400))),
-	})
+	loadBalancers, err := listAllELBV2LoadBalancers(ctx, clients)
 	if err != nil {
 		return nil, "", err
 	}
-	return out.Listeners, awssdk.ToString(out.NextMarker), nil
+	state, err := decodeIndexedCursor(cursor, "elbv2 listener")
+	if err != nil {
+		return nil, "", err
+	}
+	remaining := boundedAWSPageSize(limit, 1, maxPageSize)
+	records := make([]elbv2types.Listener, 0, remaining)
+	for state.Index < len(loadBalancers) && len(records) < remaining {
+		loadBalancerARN := awssdk.ToString(loadBalancers[state.Index].LoadBalancerArn)
+		out, err := clients.elbv2.DescribeListeners(ctx, &elbv2.DescribeListenersInput{
+			LoadBalancerArn: awssdk.String(loadBalancerARN),
+			Marker:          stringPtr(state.Token),
+			PageSize:        awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 400))),
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("describe elbv2 listeners %q: %w", loadBalancerARN, err)
+		}
+		records = append(records, out.Listeners...)
+		if awssdk.ToString(out.NextMarker) != "" {
+			state.Token = awssdk.ToString(out.NextMarker)
+			return records, encodeIndexedCursor(state), nil
+		}
+		state.Index++
+		state.Token = ""
+	}
+	if state.Index < len(loadBalancers) {
+		return records, encodeIndexedCursor(state), nil
+	}
+	return records, "", nil
 }
 
 func listELBV2TargetGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]elbv2types.TargetGroup, string, error) {
@@ -268,12 +292,23 @@ func listAPIGatewayStages(ctx context.Context, clients awsClients, settings sett
 	}
 	for _, api := range apiV2s {
 		apiID := awssdk.ToString(api.ApiId)
-		out, err := clients.apiGatewayV2.GetStages(ctx, &apigatewayv2.GetStagesInput{ApiId: awssdk.String(apiID), MaxResults: stringPtr(strconv.Itoa(settings.perPage))})
-		if err != nil {
-			return nil, "", fmt.Errorf("get apigatewayv2 stages %q: %w", apiID, err)
-		}
-		for _, stage := range out.Items {
-			records = append(records, awsAPIGatewayStage{Kind: "v2", APIV2: api, V2: stage})
+		var token string
+		for {
+			out, err := clients.apiGatewayV2.GetStages(ctx, &apigatewayv2.GetStagesInput{
+				ApiId:      awssdk.String(apiID),
+				MaxResults: stringPtr(strconv.Itoa(settings.perPage)),
+				NextToken:  stringPtr(token),
+			})
+			if err != nil {
+				return nil, "", fmt.Errorf("get apigatewayv2 stages %q: %w", apiID, err)
+			}
+			for _, stage := range out.Items {
+				records = append(records, awsAPIGatewayStage{Kind: "v2", APIV2: api, V2: stage})
+			}
+			if awssdk.ToString(out.NextToken) == "" {
+				break
+			}
+			token = awssdk.ToString(out.NextToken)
 		}
 	}
 	return records, "", nil
@@ -302,12 +337,23 @@ func listAPIGatewayRoutes(ctx context.Context, clients awsClients, settings sett
 	}
 	for _, api := range apiV2s {
 		apiID := awssdk.ToString(api.ApiId)
-		out, err := clients.apiGatewayV2.GetRoutes(ctx, &apigatewayv2.GetRoutesInput{ApiId: awssdk.String(apiID), MaxResults: stringPtr(strconv.Itoa(settings.perPage))})
-		if err != nil {
-			return nil, "", fmt.Errorf("get apigatewayv2 routes %q: %w", apiID, err)
-		}
-		for _, route := range out.Items {
-			records = append(records, awsAPIGatewayRoute{Kind: "v2", APIV2: api, Route: route})
+		var token string
+		for {
+			out, err := clients.apiGatewayV2.GetRoutes(ctx, &apigatewayv2.GetRoutesInput{
+				ApiId:      awssdk.String(apiID),
+				MaxResults: stringPtr(strconv.Itoa(settings.perPage)),
+				NextToken:  stringPtr(token),
+			})
+			if err != nil {
+				return nil, "", fmt.Errorf("get apigatewayv2 routes %q: %w", apiID, err)
+			}
+			for _, route := range out.Items {
+				records = append(records, awsAPIGatewayRoute{Kind: "v2", APIV2: api, Route: route})
+			}
+			if awssdk.ToString(out.NextToken) == "" {
+				break
+			}
+			token = awssdk.ToString(out.NextToken)
 		}
 	}
 	return records, "", nil
@@ -346,12 +392,23 @@ func listAPIGatewayIntegrations(ctx context.Context, clients awsClients, setting
 	}
 	for _, api := range apiV2s {
 		apiID := awssdk.ToString(api.ApiId)
-		out, err := clients.apiGatewayV2.GetIntegrations(ctx, &apigatewayv2.GetIntegrationsInput{ApiId: awssdk.String(apiID), MaxResults: stringPtr(strconv.Itoa(settings.perPage))})
-		if err != nil {
-			return nil, "", fmt.Errorf("get apigatewayv2 integrations %q: %w", apiID, err)
-		}
-		for _, integration := range out.Items {
-			records = append(records, awsAPIGatewayIntegration{Kind: "v2", APIV2: api, V2: integration})
+		var token string
+		for {
+			out, err := clients.apiGatewayV2.GetIntegrations(ctx, &apigatewayv2.GetIntegrationsInput{
+				ApiId:      awssdk.String(apiID),
+				MaxResults: stringPtr(strconv.Itoa(settings.perPage)),
+				NextToken:  stringPtr(token),
+			})
+			if err != nil {
+				return nil, "", fmt.Errorf("get apigatewayv2 integrations %q: %w", apiID, err)
+			}
+			for _, integration := range out.Items {
+				records = append(records, awsAPIGatewayIntegration{Kind: "v2", APIV2: api, V2: integration})
+			}
+			if awssdk.ToString(out.NextToken) == "" {
+				break
+			}
+			token = awssdk.ToString(out.NextToken)
 		}
 	}
 	return records, "", nil
@@ -742,6 +799,29 @@ func listAllVPCLatticeServices(ctx context.Context, clients awsClients, settings
 		cursor = next
 	}
 	sort.Slice(records, func(i, j int) bool { return awssdk.ToString(records[i].Arn) < awssdk.ToString(records[j].Arn) })
+	return records, nil
+}
+
+func listAllELBV2LoadBalancers(ctx context.Context, clients awsClients) ([]elbv2types.LoadBalancer, error) {
+	var records []elbv2types.LoadBalancer
+	var cursor string
+	for {
+		out, err := clients.elbv2.DescribeLoadBalancers(ctx, &elbv2.DescribeLoadBalancersInput{
+			Marker:   stringPtr(cursor),
+			PageSize: awssdk.Int32(int32(boundedAWSPageSize(maxPageSize, 1, 400))),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("describe elbv2 load balancers: %w", err)
+		}
+		records = append(records, out.LoadBalancers...)
+		if awssdk.ToString(out.NextMarker) == "" {
+			break
+		}
+		cursor = awssdk.ToString(out.NextMarker)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return awssdk.ToString(records[i].LoadBalancerArn) < awssdk.ToString(records[j].LoadBalancerArn)
+	})
 	return records, nil
 }
 

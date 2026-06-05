@@ -801,6 +801,11 @@ func TestReadAWSNetworkEdgeInventoryEvents(t *testing.T) {
 	apiV2ID := "v2abc"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSNetwork: fakeAWSNetwork{
+			fakeAWSNetworkExposure: fakeAWSNetworkExposure{
+				loadBalancers: []elbv2types.LoadBalancer{{
+					LoadBalancerArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-lb/50dc6c495c0c9188"),
+				}},
+			},
 			fakeAWSNetworkEdge: fakeAWSNetworkEdge{
 				accelerators: []globalacceleratortypes.Accelerator{{
 					AcceleratorArn: awssdk.String(acceleratorARN),
@@ -1686,7 +1691,8 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.latticeServices = []vpclatticetypes.ServiceSummary{{Arn: awssdk.String(latticeServiceARN), Id: awssdk.String("svc-123"), Name: awssdk.String("orders")}}
 		fake.latticeListeners = map[string][]vpclatticetypes.ListenerSummary{"svc-123": {{Arn: awssdk.String("arn:aws:vpc-lattice:us-east-1:123456789012:service/svc-123/listener/listener-123"), Id: awssdk.String("listener-123")}}}
 		fake.latticeTargets = []vpclatticetypes.TargetGroupSummary{{Arn: awssdk.String("arn:aws:vpc-lattice:us-east-1:123456789012:targetgroup/tg-123"), Id: awssdk.String("tg-123")}}
-		fake.elbv2Listeners = []elbv2types.Listener{{ListenerArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/app-lb/50dc6c495c0c9188/6d0ecf831eec9f09")}}
+		fake.loadBalancers = []elbv2types.LoadBalancer{{LoadBalancerArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-lb/50dc6c495c0c9188")}}
+		fake.elbv2Listeners = []elbv2types.Listener{{ListenerArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/app-lb/50dc6c495c0c9188/6d0ecf831eec9f09"), LoadBalancerArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-lb/50dc6c495c0c9188")}}
 		fake.elbv2TargetGroups = []elbv2types.TargetGroup{{TargetGroupArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/6d0ecf831eec9f09")}}
 		fake.restAPIs = []apigatewaytypes.RestApi{{Id: awssdk.String(restAPIID), Name: awssdk.String("orders")}}
 		fake.restStages = map[string][]apigatewaytypes.Stage{restAPIID: {{StageName: awssdk.String("prod")}}}
@@ -1824,7 +1830,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyELBV2Listener,
 			seed:    networkEdgeData,
-			wantAPI: []string{"elasticloadbalancing:DescribeListeners"},
+			wantAPI: []string{"elasticloadbalancing:DescribeLoadBalancers", "elasticloadbalancing:DescribeListeners"},
 		},
 		{
 			family:  familyELBV2TargetGroup,
@@ -3246,8 +3252,18 @@ func (f fakeAWS) DescribeLoadBalancers(context.Context, *elbv2.DescribeLoadBalan
 	return &elbv2.DescribeLoadBalancersOutput{LoadBalancers: f.loadBalancers}, nil
 }
 
-func (f fakeAWS) DescribeListeners(context.Context, *elbv2.DescribeListenersInput, ...func(*elbv2.Options)) (*elbv2.DescribeListenersOutput, error) {
-	return &elbv2.DescribeListenersOutput{Listeners: f.elbv2Listeners}, nil
+func (f fakeAWS) DescribeListeners(_ context.Context, input *elbv2.DescribeListenersInput, _ ...func(*elbv2.Options)) (*elbv2.DescribeListenersOutput, error) {
+	loadBalancerARN := awssdk.ToString(input.LoadBalancerArn)
+	if loadBalancerARN == "" {
+		return &elbv2.DescribeListenersOutput{}, nil
+	}
+	listeners := make([]elbv2types.Listener, 0, len(f.elbv2Listeners))
+	for _, listener := range f.elbv2Listeners {
+		if awssdk.ToString(listener.LoadBalancerArn) == loadBalancerARN {
+			listeners = append(listeners, listener)
+		}
+	}
+	return &elbv2.DescribeListenersOutput{Listeners: listeners}, nil
 }
 
 func (f fakeAWS) DescribeTargetGroups(context.Context, *elbv2.DescribeTargetGroupsInput, ...func(*elbv2.Options)) (*elbv2.DescribeTargetGroupsOutput, error) {
