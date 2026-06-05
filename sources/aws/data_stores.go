@@ -450,7 +450,7 @@ func openSearchServerlessSecurityPolicyEvent(settings settings, record awsOpenSe
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-opensearch-serverless-security-policy-"+policyType+"-"+name, "aws.opensearch_serverless_security_policy", "aws/opensearch_serverless_security_policy/v1", payload, attrs, time.Now().UTC())
+	return sourceEvent(settings, "aws-opensearch-serverless-security-policy-"+policyType+"-"+name, "aws.opensearch_serverless_security_policy", "aws/opensearch_serverless_security_policy/v1", payload, attrs, awsEpochMillisTime(policy.CreatedDate))
 }
 
 func elastiCacheReplicationGroupEvent(settings settings, record awsElastiCacheReplicationGroup) (*primitives.Event, error) {
@@ -566,7 +566,7 @@ func docdbClusterEvent(settings settings, record awsDocDBCluster) (*primitives.E
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-docdb-cluster-"+firstNonEmpty(arn, id), "aws.docdb_cluster", "aws/docdb_cluster/v1", payload, attrs, time.Now().UTC())
+	return sourceEvent(settings, "aws-docdb-cluster-"+firstNonEmpty(arn, id), "aws.docdb_cluster", "aws/docdb_cluster/v1", payload, attrs, firstTime(cluster.ClusterCreateTime))
 }
 
 func docdbInstanceEvent(settings settings, record awsDocDBInstance) (*primitives.Event, error) {
@@ -593,7 +593,7 @@ func docdbInstanceEvent(settings settings, record awsDocDBInstance) (*primitives
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-docdb-instance-"+firstNonEmpty(arn, id), "aws.docdb_instance", "aws/docdb_instance/v1", payload, attrs, time.Now().UTC())
+	return sourceEvent(settings, "aws-docdb-instance-"+firstNonEmpty(arn, id), "aws.docdb_instance", "aws/docdb_instance/v1", payload, attrs, firstTime(instance.InstanceCreateTime))
 }
 
 func neptuneClusterEvent(settings settings, record awsNeptuneCluster) (*primitives.Event, error) {
@@ -609,7 +609,7 @@ func neptuneClusterEvent(settings settings, record awsNeptuneCluster) (*primitiv
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-neptune-cluster-"+firstNonEmpty(arn, id), "aws.neptune_cluster", "aws/neptune_cluster/v1", payload, attrs, time.Now().UTC())
+	return sourceEvent(settings, "aws-neptune-cluster-"+firstNonEmpty(arn, id), "aws.neptune_cluster", "aws/neptune_cluster/v1", payload, attrs, firstTime(cluster.ClusterCreateTime))
 }
 
 func neptuneInstanceEvent(settings settings, record awsNeptuneInstance) (*primitives.Event, error) {
@@ -639,7 +639,7 @@ func neptuneInstanceEvent(settings settings, record awsNeptuneInstance) (*primit
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-neptune-instance-"+firstNonEmpty(arn, id), "aws.neptune_instance", "aws/neptune_instance/v1", payload, attrs, time.Now().UTC())
+	return sourceEvent(settings, "aws-neptune-instance-"+firstNonEmpty(arn, id), "aws.neptune_instance", "aws/neptune_instance/v1", payload, attrs, firstTime(instance.InstanceCreateTime))
 }
 
 func addDBClusterAttrs(attrs map[string]string, endpoint string, port *int32, engine string, engineVersion string, encrypted bool, kmsKeyID string, deletionProtection bool, backupRetentionDays *int32, securityGroupIDs []string, subnetGroup string) {
