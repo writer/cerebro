@@ -164,27 +164,31 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg            awssdk.Config
-	iam            awsIAMAPI
-	cloudTrail     awsCloudTrailAPI
-	ec2            awsEC2API
-	route53        awsRoute53API
-	cloudFront     awsCloudFrontAPI
-	elbv2          awsELBV2API
-	ecs            awsECSAPI
-	eks            awsEKSAPI
-	ecr            awsECRAPI
-	apiGateway     awsAPIGatewayAPI
-	apiGatewayV2   awsAPIGatewayV2API
-	lambda         awsLambdaAPI
-	tagging        awsResourceGroupsTaggingAPI
-	s3             awsS3API
-	s3ByRegion     func(string) awsS3API
-	rds            awsRDSAPI
-	kms            awsKMSAPI
-	secrets        awsSecretsManagerAPI
-	sqs            awsSQSAPI
-	sns            awsSNSAPI
+	cfg          awssdk.Config
+	iam          awsIAMAPI
+	cloudTrail   awsCloudTrailAPI
+	ec2          awsEC2API
+	route53      awsRoute53API
+	cloudFront   awsCloudFrontAPI
+	elbv2        awsELBV2API
+	ecs          awsECSAPI
+	eks          awsEKSAPI
+	ecr          awsECRAPI
+	apiGateway   awsAPIGatewayAPI
+	apiGatewayV2 awsAPIGatewayV2API
+	lambda       awsLambdaAPI
+	tagging      awsResourceGroupsTaggingAPI
+	s3           awsS3API
+	s3ByRegion   func(string) awsS3API
+	rds          awsRDSAPI
+	kms          awsKMSAPI
+	secrets      awsSecretsManagerAPI
+	sqs          awsSQSAPI
+	sns          awsSNSAPI
+	awsRuntimeClients
+}
+
+type awsRuntimeClients struct {
 	appRunner      awsAppRunnerAPI
 	stepFunctions  awsStepFunctionsAPI
 	eventBridge    awsEventBridgeAPI
@@ -1121,19 +1125,12 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:            rds.NewFromConfig(cfg),
-		kms:            kms.NewFromConfig(cfg),
-		secrets:        secretsmanager.NewFromConfig(cfg),
-		sqs:            sqs.NewFromConfig(cfg),
-		sns:            sns.NewFromConfig(cfg),
-		appRunner:      apprunner.NewFromConfig(cfg),
-		stepFunctions:  sfn.NewFromConfig(cfg),
-		eventBridge:    eventbridge.NewFromConfig(cfg),
-		pipes:          pipes.NewFromConfig(cfg),
-		scheduler:      scheduler.NewFromConfig(cfg),
-		cloudWatch:     cloudwatch.NewFromConfig(cfg),
-		cloudWatchLogs: cloudwatchlogs.NewFromConfig(cfg),
-		ssm:            ssm.NewFromConfig(cfg),
+		rds:               rds.NewFromConfig(cfg),
+		kms:               kms.NewFromConfig(cfg),
+		secrets:           secretsmanager.NewFromConfig(cfg),
+		sqs:               sqs.NewFromConfig(cfg),
+		sns:               sns.NewFromConfig(cfg),
+		awsRuntimeClients: awsRuntimeClients{appRunner: apprunner.NewFromConfig(cfg), stepFunctions: sfn.NewFromConfig(cfg), eventBridge: eventbridge.NewFromConfig(cfg), pipes: pipes.NewFromConfig(cfg), scheduler: scheduler.NewFromConfig(cfg), cloudWatch: cloudwatch.NewFromConfig(cfg), cloudWatchLogs: cloudwatchlogs.NewFromConfig(cfg), ssm: ssm.NewFromConfig(cfg)},
 	}, nil
 }
 
