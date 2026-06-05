@@ -3668,6 +3668,7 @@ type fakeAWSRuntimeApplication struct {
 type fakeAWSRuntimeEventing struct {
 	eventBuses         []eventbridgetypes.EventBus
 	eventRules         map[string][]eventbridgetypes.Rule
+	eventTargets       map[string][]eventbridgetypes.Target
 	eventArchives      []eventbridgetypes.Archive
 	eventTags          map[string][]eventbridgetypes.Tag
 	pipes              []pipestypes.Pipe
@@ -4721,6 +4722,11 @@ func (f fakeEventBridge) ListEventBuses(context.Context, *eventbridge.ListEventB
 
 func (f fakeEventBridge) ListRules(_ context.Context, input *eventbridge.ListRulesInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListRulesOutput, error) {
 	return &eventbridge.ListRulesOutput{Rules: f.runtime.eventRules[awssdk.ToString(input.EventBusName)]}, nil
+}
+
+func (f fakeEventBridge) ListTargetsByRule(_ context.Context, input *eventbridge.ListTargetsByRuleInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListTargetsByRuleOutput, error) {
+	key := awssdk.ToString(input.EventBusName) + "/" + awssdk.ToString(input.Rule)
+	return &eventbridge.ListTargetsByRuleOutput{Targets: f.runtime.eventTargets[key]}, nil
 }
 
 func (f fakeEventBridge) ListArchives(context.Context, *eventbridge.ListArchivesInput, ...func(*eventbridge.Options)) (*eventbridge.ListArchivesOutput, error) {
