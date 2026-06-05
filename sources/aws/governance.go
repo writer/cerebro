@@ -24,6 +24,7 @@ type awsOrganizationsAccount struct {
 	Account organizationstypes.Account
 	ID      string
 	OrgID   string
+	Parent  organizationstypes.Parent
 }
 
 type awsOrganizationsOU struct {
@@ -36,7 +37,13 @@ type awsOrganizationsOU struct {
 type awsOrganizationsPolicy struct {
 	Policy  organizationstypes.PolicySummary
 	ID      string
+	Content string
 	Targets []organizationstypes.PolicyTargetSummary
+}
+
+type awsOrganizationsRoot struct {
+	Root organizationstypes.Root
+	ID   string
 }
 
 type awsSSOInstance struct {
@@ -106,7 +113,11 @@ func listAllOrganizationsAccounts(ctx context.Context, clients awsClients) ([]aw
 			if id == "" {
 				continue
 			}
-			records = append(records, awsOrganizationsAccount{Account: account, ID: id, OrgID: organizationsIDFromARN(awssdk.ToString(account.Arn))})
+			parent, err := organizationParent(ctx, clients, id)
+			if err != nil {
+				return nil, fmt.Errorf("list organizations parent for account %q: %w", id, err)
+			}
+			records = append(records, awsOrganizationsAccount{Account: account, ID: id, OrgID: organizationsIDFromARN(awssdk.ToString(account.Arn)), Parent: parent})
 		}
 		if awssdk.ToString(output.NextToken) == "" {
 			break
@@ -138,6 +149,23 @@ func listOrganizationsOUs(ctx context.Context, clients awsClients, _ settings, c
 	return governancePage(records, cursor, limit)
 }
 
+func listOrganizationsRoots(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsOrganizationsRoot, string, error) {
+	roots, err := listOrganizationRoots(ctx, clients)
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsOrganizationsRoot, 0, len(roots))
+	for _, root := range roots {
+		id := awssdk.ToString(root.Id)
+		if id == "" {
+			continue
+		}
+		records = append(records, awsOrganizationsRoot{Root: root, ID: id})
+	}
+	sort.Slice(records, func(i, j int) bool { return records[i].ID < records[j].ID })
+	return governancePage(records, cursor, limit)
+}
+
 func listOrganizationsPolicies(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsOrganizationsPolicy, string, error) {
 	var records []awsOrganizationsPolicy
 	for _, policyType := range organizationstypes.PolicyType("").Values() {
@@ -159,11 +187,23 @@ func listOrganizationsPolicies(ctx context.Context, clients awsClients, _ settin
 				if id == "" {
 					continue
 				}
+				record := awsOrganizationsPolicy{Policy: policy, ID: id}
+				detail, err := clients.organizations.DescribePolicy(ctx, &organizations.DescribePolicyInput{PolicyId: awssdk.String(id)})
+				if err != nil {
+					return nil, "", fmt.Errorf("describe organizations policy %q: %w", id, err)
+				}
+				if detail.Policy != nil {
+					record.Content = awssdk.ToString(detail.Policy.Content)
+					if detail.Policy.PolicySummary != nil {
+						record.Policy = *detail.Policy.PolicySummary
+					}
+				}
 				targets, err := listOrganizationPolicyTargets(ctx, clients, id)
 				if err != nil {
 					return nil, "", err
 				}
-				records = append(records, awsOrganizationsPolicy{Policy: policy, ID: id, Targets: targets})
+				record.Targets = targets
+				records = append(records, record)
 			}
 			if awssdk.ToString(output.NextToken) == "" {
 				break
@@ -371,12 +411,18 @@ func organizationsAccountEvent(settings settings, record awsOrganizationsAccount
 	account := record.Account
 	id := record.ID
 	arn := firstNonEmpty(awssdk.ToString(account.Arn), organizationsAccountARN(settings, id))
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyOrganizationsAcct, id, firstNonEmpty(awssdk.ToString(account.Name), id), "organizations_account", nil)
+	attributes := commonCloudAssetAttributes(settings, "global", familyOrganizationsAcct, id, firstNonEmpty(awssdk.ToString(account.Name), id), "organizations_account", nil)
 	attributes["account_id"] = id
+	attributes["account_arn"] = arn
+	attributes["account_email"] = awssdk.ToString(account.Email)
+	attributes["account_name"] = firstNonEmpty(awssdk.ToString(account.Name), id)
 	attributes["arn"] = arn
 	attributes["email"] = awssdk.ToString(account.Email)
 	attributes["joined_method"] = string(account.JoinedMethod)
 	attributes["organization_id"] = record.OrgID
+	attributes["parent_id"] = awssdk.ToString(record.Parent.Id)
+	attributes["parent_type"] = string(record.Parent.Type)
+	attributes["relationship"] = "member_of"
 	attributes["state"] = string(account.State)
 	attributes["status"] = string(account.Status)
 	addTimeAttribute(attributes, "joined_at", account.JoinedTimestamp)
@@ -391,10 +437,15 @@ func organizationsOUEvent(settings settings, record awsOrganizationsOU) (*primit
 	ou := record.OU
 	id := record.ID
 	arn := awssdk.ToString(ou.Arn)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyOrganizationsOU, id, firstNonEmpty(awssdk.ToString(ou.Name), id), "organizations_organizational_unit", nil)
+	attributes := commonCloudAssetAttributes(settings, "global", familyOrganizationsOU, id, firstNonEmpty(awssdk.ToString(ou.Name), id), "organizations_organizational_unit", nil)
 	attributes["arn"] = arn
+	attributes["ou_arn"] = arn
+	attributes["ou_id"] = id
+	attributes["ou_name"] = firstNonEmpty(awssdk.ToString(ou.Name), id)
 	attributes["organizational_unit_id"] = id
 	attributes["parent_id"] = record.ParentID
+	attributes["parent_type"] = organizationParentType(record.ParentID, record.RootID)
+	attributes["relationship"] = "belongs_to"
 	attributes["root_id"] = record.RootID
 	payload, err := json.Marshal(map[string]any{"organizational_unit": ou, "management_account_id": settings.accountID, "parent_id": record.ParentID, "root_id": record.RootID})
 	if err != nil {
@@ -403,19 +454,44 @@ func organizationsOUEvent(settings settings, record awsOrganizationsOU) (*primit
 	return sourceEvent(settings, "aws-organizations-ou-"+id, "aws.organizations_organizational_unit", "aws/organizations_organizational_unit/v1", payload, attributes, time.Now().UTC())
 }
 
+func organizationsRootEvent(settings settings, record awsOrganizationsRoot) (*primitives.Event, error) {
+	root := record.Root
+	id := record.ID
+	arn := awssdk.ToString(root.Arn)
+	attributes := commonCloudAssetAttributes(settings, "global", familyOrganizationsRoot, firstNonEmpty(id, arn), firstNonEmpty(awssdk.ToString(root.Name), id), "organizations_root", nil)
+	attributes["arn"] = arn
+	attributes["policy_types"] = strings.Join(organizationsRootPolicyTypes(root), ",")
+	attributes["root_arn"] = arn
+	attributes["root_id"] = id
+	attributes["root_name"] = firstNonEmpty(awssdk.ToString(root.Name), id)
+	payload, err := json.Marshal(map[string]any{"root": root, "management_account_id": settings.accountID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-organizations-root-"+id, "aws.organizations_root", "aws/organizations_root/v1", payload, attributes, time.Now().UTC())
+}
+
 func organizationsPolicyEvent(settings settings, record awsOrganizationsPolicy) (*primitives.Event, error) {
 	policy := record.Policy
 	id := record.ID
 	arn := awssdk.ToString(policy.Arn)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyOrganizationsPolicy, firstNonEmpty(arn, id), firstNonEmpty(awssdk.ToString(policy.Name), id), "organizations_policy", nil)
+	attributes := commonCloudAssetAttributes(settings, "global", familyOrganizationsPolicy, firstNonEmpty(arn, id), firstNonEmpty(awssdk.ToString(policy.Name), id), "organizations_policy", nil)
 	attributes["arn"] = arn
 	attributes["aws_managed"] = boolString(policy.AwsManaged)
 	attributes["description"] = awssdk.ToString(policy.Description)
+	attributes["policy_arn"] = arn
+	attributes["policy_content"] = record.Content
 	attributes["policy_id"] = id
+	attributes["policy_name"] = firstNonEmpty(awssdk.ToString(policy.Name), id)
 	attributes["policy_type"] = string(policy.Type)
+	attributes["relationship"] = "attached_to"
 	attributes["target_account_ids"] = strings.Join(organizationPolicyTargetIDs(record.Targets, organizationstypes.TargetTypeAccount), ",")
+	attributes["target_arns"] = strings.Join(organizationPolicyTargetARNs(record.Targets), ",")
+	attributes["target_ids"] = strings.Join(organizationPolicyTargetField(record.Targets, func(target organizationstypes.PolicyTargetSummary) string { return awssdk.ToString(target.TargetId) }), ",")
+	attributes["target_names"] = strings.Join(organizationPolicyTargetField(record.Targets, func(target organizationstypes.PolicyTargetSummary) string { return awssdk.ToString(target.Name) }), ",")
 	attributes["target_organizational_unit_ids"] = strings.Join(organizationPolicyTargetIDs(record.Targets, organizationstypes.TargetTypeOrganizationalUnit), ",")
 	attributes["target_root_ids"] = strings.Join(organizationPolicyTargetIDs(record.Targets, organizationstypes.TargetTypeRoot), ",")
+	attributes["target_types"] = strings.Join(organizationPolicyTargetField(record.Targets, func(target organizationstypes.PolicyTargetSummary) string { return string(target.Type) }), ",")
 	payload, err := json.Marshal(map[string]any{"policy": policy, "targets": record.Targets, "management_account_id": settings.accountID})
 	if err != nil {
 		return nil, err
@@ -576,6 +652,20 @@ func listOrganizationRoots(ctx context.Context, clients awsClients) ([]organizat
 	return roots, nil
 }
 
+func organizationParent(ctx context.Context, clients awsClients, childID string) (organizationstypes.Parent, error) {
+	if strings.TrimSpace(childID) == "" {
+		return organizationstypes.Parent{}, nil
+	}
+	output, err := clients.organizations.ListParents(ctx, &organizations.ListParentsInput{ChildId: awssdk.String(childID)})
+	if err != nil {
+		return organizationstypes.Parent{}, err
+	}
+	if len(output.Parents) == 0 {
+		return organizationstypes.Parent{}, nil
+	}
+	return output.Parents[0], nil
+}
+
 func listOrganizationOUsForParent(ctx context.Context, clients awsClients, parentID string, rootID string) ([]awsOrganizationsOU, error) {
 	var records []awsOrganizationsOU
 	var next *string
@@ -647,13 +737,20 @@ func listAllSSOInstances(ctx context.Context, clients awsClients) ([]awsSSOInsta
 }
 
 func listAllOrganizationAccountIDs(ctx context.Context, clients awsClients, settings settings) ([]string, error) {
-	records, err := listAllOrganizationsAccounts(ctx, clients)
-	if err != nil {
-		return nil, err
-	}
-	ids := make([]string, 0, len(records))
-	for _, record := range records {
-		ids = append(ids, record.ID)
+	var ids []string
+	var next *string
+	for {
+		output, err := clients.organizations.ListAccounts(ctx, &organizations.ListAccountsInput{MaxResults: awssdk.Int32(20), NextToken: next})
+		if err != nil {
+			return nil, err
+		}
+		for _, account := range output.Accounts {
+			ids = append(ids, awssdk.ToString(account.Id))
+		}
+		if awssdk.ToString(output.NextToken) == "" {
+			break
+		}
+		next = output.NextToken
 	}
 	if len(ids) == 0 && settings.accountID != "" {
 		ids = append(ids, settings.accountID)
@@ -754,6 +851,39 @@ func organizationPolicyTargetIDs(targets []organizationstypes.PolicyTargetSummar
 		}
 	}
 	return cleanStrings(ids)
+}
+
+func organizationPolicyTargetARNs(targets []organizationstypes.PolicyTargetSummary) []string {
+	return organizationPolicyTargetField(targets, func(target organizationstypes.PolicyTargetSummary) string {
+		return awssdk.ToString(target.Arn)
+	})
+}
+
+func organizationPolicyTargetField(targets []organizationstypes.PolicyTargetSummary, value func(organizationstypes.PolicyTargetSummary) string) []string {
+	fields := make([]string, 0, len(targets))
+	for _, target := range targets {
+		fields = append(fields, strings.TrimSpace(value(target)))
+	}
+	return cleanStrings(fields)
+}
+
+func organizationsRootPolicyTypes(root organizationstypes.Root) []string {
+	values := make([]string, 0, len(root.PolicyTypes))
+	for _, policyType := range root.PolicyTypes {
+		values = append(values, string(policyType.Type)+":"+string(policyType.Status))
+	}
+	sort.Strings(values)
+	return values
+}
+
+func organizationParentType(parentID string, rootID string) string {
+	if strings.TrimSpace(parentID) == "" {
+		return ""
+	}
+	if parentID == rootID {
+		return string(organizationstypes.ParentTypeRoot)
+	}
+	return string(organizationstypes.ParentTypeOrganizationalUnit)
 }
 
 func identityStorePrimaryEmail(emails []identitystoretypes.Email) string {
