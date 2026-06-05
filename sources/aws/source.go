@@ -180,12 +180,16 @@ type awsClients struct {
 	secrets      awsSecretsManagerAPI
 	sqs          awsSQSAPI
 	sns          awsSNSAPI
-	kinesis      awsKinesisAPI
-	firehose     awsFirehoseAPI
-	kafka        awsKafkaAPI
-	glue         awsGlueAPI
-	athena       awsAthenaAPI
-	lake         awsLakeFormationAPI
+	awsAnalyticsClients
+}
+
+type awsAnalyticsClients struct {
+	kinesis  awsKinesisAPI
+	firehose awsFirehoseAPI
+	kafka    awsKafkaAPI
+	glue     awsGlueAPI
+	athena   awsAthenaAPI
+	lake     awsLakeFormationAPI
 }
 
 type awsIAMAPI interface {
@@ -1095,17 +1099,12 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:      rds.NewFromConfig(cfg),
-		kms:      kms.NewFromConfig(cfg),
-		secrets:  secretsmanager.NewFromConfig(cfg),
-		sqs:      sqs.NewFromConfig(cfg),
-		sns:      sns.NewFromConfig(cfg),
-		kinesis:  kinesis.NewFromConfig(cfg),
-		firehose: firehose.NewFromConfig(cfg),
-		kafka:    kafka.NewFromConfig(cfg),
-		glue:     glue.NewFromConfig(cfg),
-		athena:   athena.NewFromConfig(cfg),
-		lake:     lakeformation.NewFromConfig(cfg),
+		rds:                 rds.NewFromConfig(cfg),
+		kms:                 kms.NewFromConfig(cfg),
+		secrets:             secretsmanager.NewFromConfig(cfg),
+		sqs:                 sqs.NewFromConfig(cfg),
+		sns:                 sns.NewFromConfig(cfg),
+		awsAnalyticsClients: awsAnalyticsClients{kinesis: kinesis.NewFromConfig(cfg), firehose: firehose.NewFromConfig(cfg), kafka: kafka.NewFromConfig(cfg), glue: glue.NewFromConfig(cfg), athena: athena.NewFromConfig(cfg), lake: lakeformation.NewFromConfig(cfg)},
 	}, nil
 }
 
