@@ -424,13 +424,15 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 	podIdentityARN := "arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSNetwork: fakeAWSNetwork{
-			networkInterfaces: []ec2types.NetworkInterface{{
-				NetworkInterfaceId: awssdk.String("eni-task"),
-				Groups:             []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-task")}},
-				PrivateIpAddress:   awssdk.String("10.0.2.25"),
-				SubnetId:           awssdk.String("subnet-task"),
-				VpcId:              awssdk.String("vpc-1"),
-			}},
+			fakeAWSNetworkExposure: fakeAWSNetworkExposure{
+				networkInterfaces: []ec2types.NetworkInterface{{
+					NetworkInterfaceId: awssdk.String("eni-task"),
+					Groups:             []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-task")}},
+					PrivateIpAddress:   awssdk.String("10.0.2.25"),
+					SubnetId:           awssdk.String("subnet-task"),
+					VpcId:              awssdk.String("vpc-1"),
+				}},
+			},
 		},
 		compute: fakeAWSCompute{
 			instances: []ec2types.Instance{{
@@ -799,108 +801,112 @@ func TestReadAWSNetworkEdgeInventoryEvents(t *testing.T) {
 	apiV2ID := "v2abc"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSNetwork: fakeAWSNetwork{
-			accelerators: []globalacceleratortypes.Accelerator{{
-				AcceleratorArn: awssdk.String(acceleratorARN),
-				DnsName:        awssdk.String("a123.awsglobalaccelerator.com"),
-				Enabled:        awssdk.Bool(true),
-				Name:           awssdk.String("prod-edge"),
-				Status:         globalacceleratortypes.AcceleratorStatusDeployed,
-			}},
-			gaListeners: map[string][]globalacceleratortypes.Listener{acceleratorARN: {{
-				ListenerArn: awssdk.String(gaListenerARN),
-				PortRanges:  []globalacceleratortypes.PortRange{{FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443)}},
-				Protocol:    globalacceleratortypes.ProtocolTcp,
-			}}},
-			gaEndpointGroups: map[string][]globalacceleratortypes.EndpointGroup{gaListenerARN: {{
-				EndpointGroupArn:    awssdk.String(gaEndpointGroupARN),
-				EndpointGroupRegion: awssdk.String("us-east-1"),
-				EndpointDescriptions: []globalacceleratortypes.EndpointDescription{{
-					EndpointId: awssdk.String(elbListenerARN),
+			fakeAWSNetworkEdge: fakeAWSNetworkEdge{
+				accelerators: []globalacceleratortypes.Accelerator{{
+					AcceleratorArn: awssdk.String(acceleratorARN),
+					DnsName:        awssdk.String("a123.awsglobalaccelerator.com"),
+					Enabled:        awssdk.Bool(true),
+					Name:           awssdk.String("prod-edge"),
+					Status:         globalacceleratortypes.AcceleratorStatusDeployed,
 				}},
-			}}},
-			latticeServices: []vpclatticetypes.ServiceSummary{{
-				Arn:    awssdk.String(latticeServiceARN),
-				Id:     awssdk.String("svc-123"),
-				Name:   awssdk.String("orders"),
-				Status: vpclatticetypes.ServiceStatusActive,
-				DnsEntry: &vpclatticetypes.DnsEntry{
-					DomainName:   awssdk.String("orders.123.vpc-lattice-svcs.us-east-1.on.aws"),
-					HostedZoneId: awssdk.String("ZLATTICE"),
-				},
-			}},
-			latticeListeners: map[string][]vpclatticetypes.ListenerSummary{"svc-123": {{
-				Arn:      awssdk.String(latticeListenerARN),
-				Id:       awssdk.String("listener-123"),
-				Name:     awssdk.String("https"),
-				Port:     awssdk.Int32(443),
-				Protocol: vpclatticetypes.ListenerProtocolHttps,
-			}}},
-			latticeTargets: []vpclatticetypes.TargetGroupSummary{{
-				Arn:           awssdk.String(latticeTargetARN),
-				Id:            awssdk.String("tg-123"),
-				Name:          awssdk.String("orders"),
-				Port:          awssdk.Int32(8080),
-				Protocol:      vpclatticetypes.TargetGroupProtocolHttp,
-				ServiceArns:   []string{latticeServiceARN},
-				Status:        vpclatticetypes.TargetGroupStatusActive,
-				Type:          vpclatticetypes.TargetGroupTypeIp,
-				VpcIdentifier: awssdk.String("vpc-123"),
-			}},
-			elbv2Listeners: []elbv2types.Listener{{
-				ListenerArn:     awssdk.String(elbListenerARN),
-				LoadBalancerArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-lb/50dc6c495c0c9188"),
-				Port:            awssdk.Int32(443),
-				Protocol:        elbv2types.ProtocolEnumHttps,
-				DefaultActions:  []elbv2types.Action{{Type: elbv2types.ActionTypeEnumForward, TargetGroupArn: awssdk.String(elbTargetARN)}},
-			}},
-			elbv2TargetGroups: []elbv2types.TargetGroup{{
-				TargetGroupArn:  awssdk.String(elbTargetARN),
-				TargetGroupName: awssdk.String("orders"),
-				Port:            awssdk.Int32(8080),
-				Protocol:        elbv2types.ProtocolEnumHttp,
-				TargetType:      elbv2types.TargetTypeEnumIp,
-				VpcId:           awssdk.String("vpc-123"),
-			}},
-			apiV2APIs: []apigatewayv2types.Api{{ApiId: awssdk.String(apiV2ID), Name: awssdk.String("events"), ProtocolType: apigatewayv2types.ProtocolTypeHttp}},
-			apiV2Stages: map[string][]apigatewayv2types.Stage{apiV2ID: {{
-				StageName:  awssdk.String("$default"),
-				AutoDeploy: awssdk.Bool(true),
-			}}},
-			apiV2Routes: map[string][]apigatewayv2types.Route{apiV2ID: {{
-				RouteId:           awssdk.String("route-123"),
-				RouteKey:          awssdk.String("GET /events"),
-				AuthorizationType: apigatewayv2types.AuthorizationTypeJwt,
-				Target:            awssdk.String("integrations/integ-123"),
-			}}},
-			apiV2Integrations: map[string][]apigatewayv2types.Integration{apiV2ID: {{
-				IntegrationId:   awssdk.String("integ-123"),
-				IntegrationType: apigatewayv2types.IntegrationTypeHttpProxy,
-				IntegrationUri:  awssdk.String("https://events.internal"),
-			}}},
-			originAccessCtrls: []cloudfronttypes.OriginAccessControlSummary{{
-				Id:                              awssdk.String("oac-123"),
-				Name:                            awssdk.String("prod-oac"),
-				OriginAccessControlOriginType:   cloudfronttypes.OriginAccessControlOriginTypesS3,
-				SigningBehavior:                 cloudfronttypes.OriginAccessControlSigningBehaviorsAlways,
-				SigningProtocol:                 cloudfronttypes.OriginAccessControlSigningProtocolsSigv4,
-			}},
-			keyGroups: []cloudfronttypes.KeyGroupSummary{{KeyGroup: &cloudfronttypes.KeyGroup{
-				Id: awssdk.String("kg-123"),
-				KeyGroupConfig: &cloudfronttypes.KeyGroupConfig{
-					Name:  awssdk.String("prod-keys"),
-					Items: []string{"pk-123"},
-				},
-			}}},
-			publicKeys: []cloudfronttypes.PublicKeySummary{{
-				Id:   awssdk.String("pk-123"),
-				Name: awssdk.String("prod-public-key"),
-			}},
-			responsePolicies: []cloudfronttypes.ResponseHeadersPolicySummary{{ResponseHeadersPolicy: &cloudfronttypes.ResponseHeadersPolicy{
-				Id: awssdk.String("rhp-123"),
-				ResponseHeadersPolicyConfig: &cloudfronttypes.ResponseHeadersPolicyConfig{
-					Name: awssdk.String("security-headers"),
-				},
-			}, Type: cloudfronttypes.ResponseHeadersPolicyTypeCustom}},
+				gaListeners: map[string][]globalacceleratortypes.Listener{acceleratorARN: {{
+					ListenerArn: awssdk.String(gaListenerARN),
+					PortRanges:  []globalacceleratortypes.PortRange{{FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443)}},
+					Protocol:    globalacceleratortypes.ProtocolTcp,
+				}}},
+				gaEndpointGroups: map[string][]globalacceleratortypes.EndpointGroup{gaListenerARN: {{
+					EndpointGroupArn:    awssdk.String(gaEndpointGroupARN),
+					EndpointGroupRegion: awssdk.String("us-east-1"),
+					EndpointDescriptions: []globalacceleratortypes.EndpointDescription{{
+						EndpointId: awssdk.String(elbListenerARN),
+					}},
+				}}},
+				latticeServices: []vpclatticetypes.ServiceSummary{{
+					Arn:    awssdk.String(latticeServiceARN),
+					Id:     awssdk.String("svc-123"),
+					Name:   awssdk.String("orders"),
+					Status: vpclatticetypes.ServiceStatusActive,
+					DnsEntry: &vpclatticetypes.DnsEntry{
+						DomainName:   awssdk.String("orders.123.vpc-lattice-svcs.us-east-1.on.aws"),
+						HostedZoneId: awssdk.String("ZLATTICE"),
+					},
+				}},
+				latticeListeners: map[string][]vpclatticetypes.ListenerSummary{"svc-123": {{
+					Arn:      awssdk.String(latticeListenerARN),
+					Id:       awssdk.String("listener-123"),
+					Name:     awssdk.String("https"),
+					Port:     awssdk.Int32(443),
+					Protocol: vpclatticetypes.ListenerProtocolHttps,
+				}}},
+				latticeTargets: []vpclatticetypes.TargetGroupSummary{{
+					Arn:           awssdk.String(latticeTargetARN),
+					Id:            awssdk.String("tg-123"),
+					Name:          awssdk.String("orders"),
+					Port:          awssdk.Int32(8080),
+					Protocol:      vpclatticetypes.TargetGroupProtocolHttp,
+					ServiceArns:   []string{latticeServiceARN},
+					Status:        vpclatticetypes.TargetGroupStatusActive,
+					Type:          vpclatticetypes.TargetGroupTypeIp,
+					VpcIdentifier: awssdk.String("vpc-123"),
+				}},
+				elbv2Listeners: []elbv2types.Listener{{
+					ListenerArn:     awssdk.String(elbListenerARN),
+					LoadBalancerArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-lb/50dc6c495c0c9188"),
+					Port:            awssdk.Int32(443),
+					Protocol:        elbv2types.ProtocolEnumHttps,
+					DefaultActions:  []elbv2types.Action{{Type: elbv2types.ActionTypeEnumForward, TargetGroupArn: awssdk.String(elbTargetARN)}},
+				}},
+				elbv2TargetGroups: []elbv2types.TargetGroup{{
+					TargetGroupArn:  awssdk.String(elbTargetARN),
+					TargetGroupName: awssdk.String("orders"),
+					Port:            awssdk.Int32(8080),
+					Protocol:        elbv2types.ProtocolEnumHttp,
+					TargetType:      elbv2types.TargetTypeEnumIp,
+					VpcId:           awssdk.String("vpc-123"),
+				}},
+				originAccessCtrls: []cloudfronttypes.OriginAccessControlSummary{{
+					Id:                            awssdk.String("oac-123"),
+					Name:                          awssdk.String("prod-oac"),
+					OriginAccessControlOriginType: cloudfronttypes.OriginAccessControlOriginTypesS3,
+					SigningBehavior:               cloudfronttypes.OriginAccessControlSigningBehaviorsAlways,
+					SigningProtocol:               cloudfronttypes.OriginAccessControlSigningProtocolsSigv4,
+				}},
+				keyGroups: []cloudfronttypes.KeyGroupSummary{{KeyGroup: &cloudfronttypes.KeyGroup{
+					Id: awssdk.String("kg-123"),
+					KeyGroupConfig: &cloudfronttypes.KeyGroupConfig{
+						Name:  awssdk.String("prod-keys"),
+						Items: []string{"pk-123"},
+					},
+				}}},
+				publicKeys: []cloudfronttypes.PublicKeySummary{{
+					Id:   awssdk.String("pk-123"),
+					Name: awssdk.String("prod-public-key"),
+				}},
+				responsePolicies: []cloudfronttypes.ResponseHeadersPolicySummary{{ResponseHeadersPolicy: &cloudfronttypes.ResponseHeadersPolicy{
+					Id: awssdk.String("rhp-123"),
+					ResponseHeadersPolicyConfig: &cloudfronttypes.ResponseHeadersPolicyConfig{
+						Name: awssdk.String("security-headers"),
+					},
+				}, Type: cloudfronttypes.ResponseHeadersPolicyTypeCustom}},
+			},
+			fakeAWSNetworkAPI: fakeAWSNetworkAPI{
+				apiV2APIs: []apigatewayv2types.Api{{ApiId: awssdk.String(apiV2ID), Name: awssdk.String("events"), ProtocolType: apigatewayv2types.ProtocolTypeHttp}},
+				apiV2Stages: map[string][]apigatewayv2types.Stage{apiV2ID: {{
+					StageName:  awssdk.String("$default"),
+					AutoDeploy: awssdk.Bool(true),
+				}}},
+				apiV2Routes: map[string][]apigatewayv2types.Route{apiV2ID: {{
+					RouteId:           awssdk.String("route-123"),
+					RouteKey:          awssdk.String("GET /events"),
+					AuthorizationType: apigatewayv2types.AuthorizationTypeJwt,
+					Target:            awssdk.String("integrations/integ-123"),
+				}}},
+				apiV2Integrations: map[string][]apigatewayv2types.Integration{apiV2ID: {{
+					IntegrationId:   awssdk.String("integ-123"),
+					IntegrationType: apigatewayv2types.IntegrationTypeHttpProxy,
+					IntegrationUri:  awssdk.String("https://events.internal"),
+				}}},
+			},
 		},
 	})
 	for _, tt := range []struct {
@@ -1365,13 +1371,15 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 			Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole"), RoleId: awssdk.String("AROADMIN"), RoleName: awssdk.String("AdminRole"), AssumeRolePolicyDocument: awssdk.String(trustPolicy), CreateDate: timePtr("2026-01-01T00:00:00Z"),
 		}},
 		fakeAWSNetwork: fakeAWSNetwork{
-			securityGroups: []ec2types.SecurityGroup{{
-				GroupId: awssdk.String("sg-1"), GroupName: awssdk.String("prod-web"), SecurityGroupArn: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1"), VpcId: awssdk.String("vpc-1"),
-				IpPermissions: []ec2types.IpPermission{{
-					IpProtocol: awssdk.String("tcp"), FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443), IpRanges: []ec2types.IpRange{{CidrIp: awssdk.String("0.0.0.0/0")}},
+			fakeAWSNetworkExposure: fakeAWSNetworkExposure{
+				securityGroups: []ec2types.SecurityGroup{{
+					GroupId: awssdk.String("sg-1"), GroupName: awssdk.String("prod-web"), SecurityGroupArn: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1"), VpcId: awssdk.String("vpc-1"),
+					IpPermissions: []ec2types.IpPermission{{
+						IpProtocol: awssdk.String("tcp"), FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443), IpRanges: []ec2types.IpRange{{CidrIp: awssdk.String("0.0.0.0/0")}},
+					}},
 				}},
-			}},
-			addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1"), InstanceId: awssdk.String("i-1")}},
+				addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1"), InstanceId: awssdk.String("i-1")}},
+			},
 		},
 	})
 	for _, tt := range []struct {
@@ -1923,17 +1931,19 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
 	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{ec2: fakeAWS{
 		fakeAWSNetwork: fakeAWSNetwork{
-			networkInterfaces: []ec2types.NetworkInterface{{
-				NetworkInterfaceId: awssdk.String("eni-1"),
-				Description:        awssdk.String("prod-web-eni"),
-				Association: &ec2types.NetworkInterfaceAssociation{
-					PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
-					PublicIp:      awssdk.String("203.0.113.10"),
-				},
-				Attachment: &ec2types.NetworkInterfaceAttachment{
-					InstanceId: awssdk.String("i-1234567890abcdef0"),
-				},
-			}},
+			fakeAWSNetworkExposure: fakeAWSNetworkExposure{
+				networkInterfaces: []ec2types.NetworkInterface{{
+					NetworkInterfaceId: awssdk.String("eni-1"),
+					Description:        awssdk.String("prod-web-eni"),
+					Association: &ec2types.NetworkInterfaceAssociation{
+						PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
+						PublicIp:      awssdk.String("203.0.113.10"),
+					},
+					Attachment: &ec2types.NetworkInterfaceAttachment{
+						InstanceId: awssdk.String("i-1234567890abcdef0"),
+					},
+				}},
+			},
 		},
 	}}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
 	if err != nil {
@@ -1957,30 +1967,32 @@ func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testin
 func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
 		fakeAWSNetwork: fakeAWSNetwork{
-			hostedZones: []route53types.HostedZone{{
-				Id:     awssdk.String("/hostedzone/Z123"),
-				Name:   awssdk.String("writer.com."),
-				Config: &route53types.HostedZoneConfig{PrivateZone: false},
-			}},
-			recordSets: []route53types.ResourceRecordSet{{
-				Name: awssdk.String("app.writer.com."),
-				Type: route53types.RRTypeCname,
-				ResourceRecords: []route53types.ResourceRecord{{
-					Value: awssdk.String("d111111abcdef8.cloudfront.net."),
+			fakeAWSNetworkExposure: fakeAWSNetworkExposure{
+				hostedZones: []route53types.HostedZone{{
+					Id:     awssdk.String("/hostedzone/Z123"),
+					Name:   awssdk.String("writer.com."),
+					Config: &route53types.HostedZoneConfig{PrivateZone: false},
 				}},
-			}},
-			distributions: []cloudfronttypes.DistributionSummary{{
-				ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
-				Id:         awssdk.String("EDFDVBD632BHDS5"),
-				DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
-				Aliases:    &cloudfronttypes.Aliases{Items: []string{"app.writer.com"}},
-				Enabled:    awssdk.Bool(true),
-			}, {
-				ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/DISABLED"),
-				Id:         awssdk.String("DISABLED"),
-				DomainName: awssdk.String("disabled.cloudfront.net"),
-				Enabled:    awssdk.Bool(false),
-			}},
+				recordSets: []route53types.ResourceRecordSet{{
+					Name: awssdk.String("app.writer.com."),
+					Type: route53types.RRTypeCname,
+					ResourceRecords: []route53types.ResourceRecord{{
+						Value: awssdk.String("d111111abcdef8.cloudfront.net."),
+					}},
+				}},
+				distributions: []cloudfronttypes.DistributionSummary{{
+					ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
+					Id:         awssdk.String("EDFDVBD632BHDS5"),
+					DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
+					Aliases:    &cloudfronttypes.Aliases{Items: []string{"app.writer.com"}},
+					Enabled:    awssdk.Bool(true),
+				}, {
+					ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/DISABLED"),
+					Id:         awssdk.String("DISABLED"),
+					DomainName: awssdk.String("disabled.cloudfront.net"),
+					Enabled:    awssdk.Bool(false),
+				}},
+			},
 		},
 	})
 
@@ -2021,35 +2033,37 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 func TestReadAWSPublicEndpointCollectsDefaultAPIGatewayHosts(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
 		fakeAWSNetwork: fakeAWSNetwork{
-			restAPIs: []apigatewaytypes.RestApi{{
-				Id:   awssdk.String("rest123"),
-				Name: awssdk.String("orders"),
-				EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
-					Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypeRegional},
-				},
-			}, {
-				Id:                        awssdk.String("restdisabled"),
-				Name:                      awssdk.String("disabled"),
-				DisableExecuteApiEndpoint: true,
-			}, {
-				Id:   awssdk.String("restprivate"),
-				Name: awssdk.String("private"),
-				EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
-					Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypePrivate},
-				},
-			}},
-			apiV2APIs: []apigatewayv2types.Api{{
-				ApiId:        awssdk.String("v2abc"),
-				ApiEndpoint:  awssdk.String("https://v2abc.execute-api.us-east-1.amazonaws.com"),
-				Name:         awssdk.String("events"),
-				ProtocolType: apigatewayv2types.ProtocolTypeHttp,
-			}, {
-				ApiId:                     awssdk.String("v2disabled"),
-				ApiEndpoint:               awssdk.String("https://v2disabled.execute-api.us-east-1.amazonaws.com"),
-				Name:                      awssdk.String("disabled"),
-				ProtocolType:              apigatewayv2types.ProtocolTypeHttp,
-				DisableExecuteApiEndpoint: awssdk.Bool(true),
-			}},
+			fakeAWSNetworkAPI: fakeAWSNetworkAPI{
+				restAPIs: []apigatewaytypes.RestApi{{
+					Id:   awssdk.String("rest123"),
+					Name: awssdk.String("orders"),
+					EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
+						Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypeRegional},
+					},
+				}, {
+					Id:                        awssdk.String("restdisabled"),
+					Name:                      awssdk.String("disabled"),
+					DisableExecuteApiEndpoint: true,
+				}, {
+					Id:   awssdk.String("restprivate"),
+					Name: awssdk.String("private"),
+					EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
+						Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypePrivate},
+					},
+				}},
+				apiV2APIs: []apigatewayv2types.Api{{
+					ApiId:        awssdk.String("v2abc"),
+					ApiEndpoint:  awssdk.String("https://v2abc.execute-api.us-east-1.amazonaws.com"),
+					Name:         awssdk.String("events"),
+					ProtocolType: apigatewayv2types.ProtocolTypeHttp,
+				}, {
+					ApiId:                     awssdk.String("v2disabled"),
+					ApiEndpoint:               awssdk.String("https://v2disabled.execute-api.us-east-1.amazonaws.com"),
+					Name:                      awssdk.String("disabled"),
+					ProtocolType:              apigatewayv2types.ProtocolTypeHttp,
+					DisableExecuteApiEndpoint: awssdk.Bool(true),
+				}},
+			},
 		},
 	})
 	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyPublicEndpoint})
@@ -2234,25 +2248,37 @@ type fakeAWS struct {
 }
 
 type fakeAWSNetwork struct {
+	fakeAWSNetworkExposure
+	fakeAWSNetworkEdge
+	fakeAWSNetworkAPI
+}
+
+type fakeAWSNetworkExposure struct {
 	securityGroups    []ec2types.SecurityGroup
 	addresses         []ec2types.Address
 	networkInterfaces []ec2types.NetworkInterface
 	hostedZones       []route53types.HostedZone
 	recordSets        []route53types.ResourceRecordSet
 	distributions     []cloudfronttypes.DistributionSummary
+	loadBalancers     []elbv2types.LoadBalancer
+}
+
+type fakeAWSNetworkEdge struct {
 	originAccessCtrls []cloudfronttypes.OriginAccessControlSummary
 	keyGroups         []cloudfronttypes.KeyGroupSummary
 	publicKeys        []cloudfronttypes.PublicKeySummary
 	responsePolicies  []cloudfronttypes.ResponseHeadersPolicySummary
-	loadBalancers     []elbv2types.LoadBalancer
 	elbv2Listeners    []elbv2types.Listener
 	elbv2TargetGroups []elbv2types.TargetGroup
 	accelerators      []globalacceleratortypes.Accelerator
-	gaListeners      map[string][]globalacceleratortypes.Listener
-	gaEndpointGroups map[string][]globalacceleratortypes.EndpointGroup
+	gaListeners       map[string][]globalacceleratortypes.Listener
+	gaEndpointGroups  map[string][]globalacceleratortypes.EndpointGroup
 	latticeServices   []vpclatticetypes.ServiceSummary
 	latticeListeners  map[string][]vpclatticetypes.ListenerSummary
 	latticeTargets    []vpclatticetypes.TargetGroupSummary
+}
+
+type fakeAWSNetworkAPI struct {
 	apiDomains        []apigatewaytypes.DomainName
 	restAPIs          []apigatewaytypes.RestApi
 	restStages        map[string][]apigatewaytypes.Stage

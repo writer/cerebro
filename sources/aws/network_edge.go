@@ -34,8 +34,8 @@ type awsGlobalAcceleratorListener struct {
 }
 
 type awsGlobalAcceleratorEndpointGroup struct {
-	Accelerator  globalacceleratortypes.Accelerator
-	Listener     globalacceleratortypes.Listener
+	Accelerator   globalacceleratortypes.Accelerator
+	Listener      globalacceleratortypes.Listener
 	EndpointGroup globalacceleratortypes.EndpointGroup
 }
 
@@ -69,7 +69,7 @@ type awsAPIGatewayIntegration struct {
 	Resource    apigatewaytypes.Resource
 	MethodName  string
 	Integration apigateway.GetIntegrationOutput
-	V2           apigatewayv2types.Integration
+	V2          apigatewayv2types.Integration
 }
 
 type indexedPageCursor struct {
@@ -191,8 +191,8 @@ func listVPCLatticeListeners(ctx context.Context, clients awsClients, settings s
 		serviceID := firstNonEmpty(awssdk.ToString(service.Id), awssdk.ToString(service.Arn))
 		out, err := clients.vpcLattice.ListListeners(ctx, &vpclattice.ListListenersInput{
 			ServiceIdentifier: awssdk.String(serviceID),
-			MaxResults:       awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
-			NextToken:        stringPtr(state.Token),
+			MaxResults:        awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			NextToken:         stringPtr(state.Token),
 		})
 		if err != nil {
 			return nil, "", fmt.Errorf("list vpclattice listeners %q: %w", serviceID, err)
@@ -704,7 +704,9 @@ func listAllGlobalAccelerators(ctx context.Context, clients awsClients, settings
 		}
 		cursor = next
 	}
-	sort.Slice(records, func(i, j int) bool { return awssdk.ToString(records[i].AcceleratorArn) < awssdk.ToString(records[j].AcceleratorArn) })
+	sort.Slice(records, func(i, j int) bool {
+		return awssdk.ToString(records[i].AcceleratorArn) < awssdk.ToString(records[j].AcceleratorArn)
+	})
 	return records, nil
 }
 
@@ -879,22 +881,22 @@ func vpcLatticeHostedZoneID(entry *vpclatticetypes.DnsEntry) string {
 
 func restIntegrationOutput(value apigatewaytypes.Integration) apigateway.GetIntegrationOutput {
 	return apigateway.GetIntegrationOutput{
-		CacheKeyParameters:    value.CacheKeyParameters,
-		CacheNamespace:        value.CacheNamespace,
-		ConnectionId:          value.ConnectionId,
-		ConnectionType:        value.ConnectionType,
-		ContentHandling:       value.ContentHandling,
-		Credentials:           value.Credentials,
-		HttpMethod:            value.HttpMethod,
-		IntegrationResponses:  value.IntegrationResponses,
-		IntegrationTarget:     value.IntegrationTarget,
-		PassthroughBehavior:   value.PassthroughBehavior,
-		RequestParameters:     value.RequestParameters,
-		RequestTemplates:      value.RequestTemplates,
-		TimeoutInMillis:       value.TimeoutInMillis,
-		TlsConfig:             value.TlsConfig,
-		Type:                  value.Type,
-		Uri:                   value.Uri,
+		CacheKeyParameters:   value.CacheKeyParameters,
+		CacheNamespace:       value.CacheNamespace,
+		ConnectionId:         value.ConnectionId,
+		ConnectionType:       value.ConnectionType,
+		ContentHandling:      value.ContentHandling,
+		Credentials:          value.Credentials,
+		HttpMethod:           value.HttpMethod,
+		IntegrationResponses: value.IntegrationResponses,
+		IntegrationTarget:    value.IntegrationTarget,
+		PassthroughBehavior:  value.PassthroughBehavior,
+		RequestParameters:    value.RequestParameters,
+		RequestTemplates:     value.RequestTemplates,
+		TimeoutInMillis:      value.TimeoutInMillis,
+		TlsConfig:            value.TlsConfig,
+		Type:                 value.Type,
+		Uri:                  value.Uri,
 	}
 }
 

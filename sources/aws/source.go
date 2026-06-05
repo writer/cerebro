@@ -781,7 +781,9 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			URN: func(settings settings, listener awsGlobalAcceleratorListener) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_globalaccelerator_listener:%s", settings.accountID, awssdk.ToString(listener.Listener.ListenerArn)), nil
 			},
-			CursorFallback: func(listener awsGlobalAcceleratorListener) string { return awssdk.ToString(listener.Listener.ListenerArn) },
+			CursorFallback: func(listener awsGlobalAcceleratorListener) string {
+				return awssdk.ToString(listener.Listener.ListenerArn)
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsGlobalAcceleratorEndpointGroup]{
 			Name:  familyGAEndpointGroup,
@@ -791,7 +793,9 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			URN: func(settings settings, group awsGlobalAcceleratorEndpointGroup) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_globalaccelerator_endpoint_group:%s", settings.accountID, awssdk.ToString(group.EndpointGroup.EndpointGroupArn)), nil
 			},
-			CursorFallback: func(group awsGlobalAcceleratorEndpointGroup) string { return awssdk.ToString(group.EndpointGroup.EndpointGroupArn) },
+			CursorFallback: func(group awsGlobalAcceleratorEndpointGroup) string {
+				return awssdk.ToString(group.EndpointGroup.EndpointGroupArn)
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[vpclatticetypes.ServiceSummary]{
 			Name:  familyVPCLatticeService,
