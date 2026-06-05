@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,15 +33,29 @@ const (
 	familyActivityLog         = "activity_log"
 	familyAppRoleAssignment   = "app_role_assignment"
 	familyApplication         = "application"
+	familyAssetMetadata       = "asset_metadata"
+	familyAKSCluster          = "aks_cluster"
+	familyAppService          = "app_service"
+	familyContainerRegistry   = "container_registry"
+	familyCosmosAccount       = "cosmos_account"
 	familyCredential          = "credential"
 	familyDirectoryAudit      = "directory_audit"
 	familyDirectoryRoleAssign = "directory_role_assignment"
+	familyEffectivePermission = "effective_permission"
+	familyFunctionApp         = "function_app"
 	familyGroup               = "group"
 	familyGroupMember         = "group_membership"
 	familyIAMRoleAssign       = "iam_role_assignment"
+	familyKeyVault            = "key_vault"
+	familyKeyVaultKey         = "key_vault_key"
+	familyKeyVaultSecret      = "key_vault_secret"
 	familyResourceExposure    = "resource_exposure"
 	familyServicePrincipal    = "service_principal"
+	familySQLDatabase         = "sql_database"
+	familySQLServer           = "sql_server"
+	familyStorageAccount      = "storage_account"
 	familyUser                = "user"
+	familyVirtualMachine      = "virtual_machine"
 )
 
 // Source reads Azure Entra ID inventory, Azure RBAC, and audit/activity logs.
@@ -212,6 +227,64 @@ type armRoleDefinitionRecord struct {
 type armRoleDefinition struct {
 	RoleName string `json:"roleName"`
 	Type     string `json:"type"`
+}
+
+type armResourceRecord struct {
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Type     string            `json:"type"`
+	Location string            `json:"location"`
+	Tags     map[string]string `json:"tags"`
+	raw      json.RawMessage
+}
+
+type armTypedResourceRecord struct {
+	ID         string              `json:"id"`
+	Name       string              `json:"name"`
+	Type       string              `json:"type"`
+	Kind       string              `json:"kind"`
+	Location   string              `json:"location"`
+	Tags       map[string]string   `json:"tags"`
+	Identity   armResourceIdentity `json:"identity"`
+	SKU        armResourceSKU      `json:"sku"`
+	HTTPSOnly  *bool               `json:"httpsOnly"`
+	Properties map[string]any      `json:"properties"`
+	raw        json.RawMessage
+}
+
+type armResourceIdentity struct {
+	Type                   string                             `json:"type"`
+	PrincipalID            string                             `json:"principalId"`
+	TenantID               string                             `json:"tenantId"`
+	UserAssignedIdentities map[string]armUserAssignedIdentity `json:"userAssignedIdentities"`
+}
+
+type armUserAssignedIdentity struct {
+	PrincipalID string `json:"principalId"`
+	ClientID    string `json:"clientId"`
+}
+
+type armResourceSKU struct {
+	Name string `json:"name"`
+	Tier string `json:"tier"`
+}
+
+type azureVMRecord struct {
+	Resource    armTypedResourceRecord
+	SubnetIDs   []string
+	NSGIDs      []string
+	PublicIPIDs []string
+	PublicHosts []string
+}
+
+type azureSQLDatabaseRecord struct {
+	Database armTypedResourceRecord
+	Server   armTypedResourceRecord
+}
+
+type azureKeyVaultChildRecord struct {
+	Resource armTypedResourceRecord
+	Vault    armTypedResourceRecord
 }
 
 type nsgRecord struct {
@@ -410,6 +483,51 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:azure_application:%s", tenantID(settings), firstNonEmpty(app.AppID, app.ID)), nil
 			},
 		}),
+		azureFamily(s, azureFamilyOptions[armResourceRecord]{
+			Name:  familyAssetMetadata,
+			Label: "azure asset metadata",
+			List:  listAssetMetadata,
+			Event: assetMetadataEvent,
+			URN: func(settings settings, asset armResourceRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:azure_asset_metadata:%s", tenantID(settings), firstNonEmpty(asset.ID, asset.Name)), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familyAKSCluster,
+			Label: "azure aks clusters",
+			List:  listAKSClusters,
+			Event: aksClusterEvent,
+			URN: func(settings settings, cluster armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyAKSCluster, cluster), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familyAppService,
+			Label: "azure app services",
+			List:  listAppServices,
+			Event: appServiceEvent,
+			URN: func(settings settings, app armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyAppService, app), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familyContainerRegistry,
+			Label: "azure container registries",
+			List:  listContainerRegistries,
+			Event: containerRegistryEvent,
+			URN: func(settings settings, registry armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyContainerRegistry, registry), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familyCosmosAccount,
+			Label: "azure cosmos db accounts",
+			List:  listCosmosAccounts,
+			Event: cosmosAccountEvent,
+			URN: func(settings settings, account armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyCosmosAccount, account), nil
+			},
+		}),
 		azureFamily(s, azureFamilyOptions[credentialRecord]{
 			Name:  familyCredential,
 			Label: "azure application and service principal credentials",
@@ -440,6 +558,25 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:azure_directory_role_assignment:%s", tenantID(settings), firstNonEmpty(assignment.ID, assignment.PrincipalID+":"+assignment.RoleDefinitionID)), nil
 			},
 		}),
+		azureFamily(s, azureFamilyOptions[armRoleAssignmentRecord]{
+			Name:  familyEffectivePermission,
+			Label: "azure effective permissions",
+			List:  listIAMRoleAssignments,
+			Check: listIAMRoleAssignmentsBase,
+			Event: effectivePermissionEvent,
+			URN: func(settings settings, assignment armRoleAssignmentRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:azure_effective_permission:%s", tenantID(settings), firstNonEmpty(assignment.ID, assignment.Name)), nil
+			},
+			Discover: func(ctx context.Context, source *Source, cfg settings) ([]sourcecdk.URN, error) {
+				records, _, err := listIAMRoleAssignmentsBase(ctx, source, cfg, "", cfg.perPage)
+				if err != nil {
+					return nil, fmt.Errorf("lookup azure effective permissions for %s: %w", tenantID(cfg), err)
+				}
+				return azureURNsFor(cfg, records, func(cfg settings, assignment armRoleAssignmentRecord) (string, error) {
+					return fmt.Sprintf("urn:cerebro:%s:azure_effective_permission:%s", tenantID(cfg), firstNonEmpty(assignment.ID, assignment.Name)), nil
+				})
+			},
+		}),
 		azureFamily(s, azureFamilyOptions[groupRecord]{
 			Name:  familyGroup,
 			Label: "azure groups",
@@ -456,6 +593,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: groupMembershipEvent,
 			URN: func(settings settings, member graphPrincipalRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:azure_group_membership:%s:%s", tenantID(settings), settings.groupID, firstNonEmpty(member.ID, member.UserPrincipalName, member.Mail)), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familyFunctionApp,
+			Label: "azure function apps",
+			List:  listFunctionApps,
+			Event: functionAppEvent,
+			URN: func(settings settings, app armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyFunctionApp, app), nil
 			},
 		}),
 		azureFamily(s, azureFamilyOptions[armRoleAssignmentRecord]{
@@ -477,6 +623,33 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				})
 			},
 		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familyKeyVault,
+			Label: "azure key vaults",
+			List:  listKeyVaults,
+			Event: keyVaultEvent,
+			URN: func(settings settings, vault armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyKeyVault, vault), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[azureKeyVaultChildRecord]{
+			Name:  familyKeyVaultKey,
+			Label: "azure key vault keys",
+			List:  listKeyVaultKeys,
+			Event: keyVaultKeyEvent,
+			URN: func(settings settings, key azureKeyVaultChildRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyKeyVaultKey, key.Resource), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[azureKeyVaultChildRecord]{
+			Name:  familyKeyVaultSecret,
+			Label: "azure key vault secrets",
+			List:  listKeyVaultSecrets,
+			Event: keyVaultSecretEvent,
+			URN: func(settings settings, secret azureKeyVaultChildRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyKeyVaultSecret, secret.Resource), nil
+			},
+		}),
 		azureFamily(s, azureFamilyOptions[azureResourceExposure]{
 			Name:  familyResourceExposure,
 			Label: "azure resource exposures",
@@ -495,6 +668,33 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:azure_service_principal:%s", tenantID(settings), firstNonEmpty(principal.ID, principal.AppID)), nil
 			},
 		}),
+		azureFamily(s, azureFamilyOptions[azureSQLDatabaseRecord]{
+			Name:  familySQLDatabase,
+			Label: "azure sql databases",
+			List:  listSQLDatabases,
+			Event: sqlDatabaseEvent,
+			URN: func(settings settings, database azureSQLDatabaseRecord) (string, error) {
+				return azureTypedResourceURN(settings, familySQLDatabase, database.Database), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familySQLServer,
+			Label: "azure sql servers",
+			List:  listSQLServers,
+			Event: sqlServerEvent,
+			URN: func(settings settings, server armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familySQLServer, server), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familyStorageAccount,
+			Label: "azure storage accounts",
+			List:  listStorageAccounts,
+			Event: storageAccountEvent,
+			URN: func(settings settings, account armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyStorageAccount, account), nil
+			},
+		}),
 		azureFamily(s, azureFamilyOptions[userRecord]{
 			Name:  familyUser,
 			Label: "azure users",
@@ -502,6 +702,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: userEvent,
 			URN: func(settings settings, user userRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:azure_user:%s", tenantID(settings), firstNonEmpty(user.ID, user.UserPrincipalName, user.Mail)), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[azureVMRecord]{
+			Name:  familyVirtualMachine,
+			Label: "azure virtual machines",
+			List:  listVirtualMachines,
+			Event: virtualMachineEvent,
+			URN: func(settings settings, vm azureVMRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyVirtualMachine, vm.Resource), nil
 			},
 		}),
 	)
@@ -571,7 +780,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("azure tenant_id is required")
 	}
 	switch settings.family {
-	case familyActivityLog, familyIAMRoleAssign, familyResourceExposure:
+	case familyActivityLog, familyAKSCluster, familyAppService, familyAssetMetadata, familyContainerRegistry, familyCosmosAccount, familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, familyResourceExposure, familySQLDatabase, familySQLServer, familyStorageAccount, familyVirtualMachine:
 		if settings.subscriptionID == "" {
 			return settings, fmt.Errorf("azure subscription_id is required when family=%q", settings.family)
 		}
@@ -597,7 +806,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("azure graph_token or token is required when family=%q", settings.family)
 		}
 	default:
-		return settings, fmt.Errorf("azure family must be one of activity_log, app_role_assignment, application, credential, directory_audit, directory_role_assignment, group, group_membership, iam_role_assignment, resource_exposure, service_principal, or user")
+		return settings, fmt.Errorf("azure family must be one of activity_log, aks_cluster, app_role_assignment, app_service, application, asset_metadata, container_registry, cosmos_account, credential, directory_audit, directory_role_assignment, effective_permission, function_app, group, group_membership, iam_role_assignment, key_vault, key_vault_key, key_vault_secret, resource_exposure, service_principal, sql_database, sql_server, storage_account, user, or virtual_machine")
 	}
 	return settings, nil
 }
@@ -772,6 +981,265 @@ func listIAMRoleAssignments(ctx context.Context, source *Source, settings settin
 		}
 	}
 	return records, next, nil
+}
+
+func listAssetMetadata(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]armResourceRecord, string, error) {
+	query := url.Values{"api-version": {"2021-04-01"}}
+	var response armPage
+	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/resources"
+	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeAzureRecords(response.Value, "azure resource metadata", func(record *armResourceRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.Next, err
+}
+
+func listARMTypedResources(ctx context.Context, source *Source, settings settings, pageToken string, providerPath string, apiVersion string, label string) ([]armTypedResourceRecord, string, error) {
+	query := url.Values{"api-version": {apiVersion}}
+	var response armPage
+	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/providers/" + providerPath
+	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeAzureRecords(response.Value, label, func(record *armTypedResourceRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.Next, err
+}
+
+func listVirtualMachines(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]azureVMRecord, string, error) {
+	resources, next, err := listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Compute/virtualMachines", "2024-07-01", "azure virtual machine")
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]azureVMRecord, 0, len(resources))
+	nics := map[string]armTypedResourceRecord{}
+	publicIPs := map[string]armTypedResourceRecord{}
+	for _, resource := range resources {
+		record := azureVMRecord{Resource: resource}
+		for _, nicID := range azureNetworkInterfaceIDs(resource) {
+			nic, ok := nics[nicID]
+			if !ok {
+				nic, ok = getARMTypedResourceByID(ctx, source, settings, nicID, "2023-09-01")
+				if ok {
+					nics[nicID] = nic
+				}
+			}
+			if !ok {
+				continue
+			}
+			record.SubnetIDs = append(record.SubnetIDs, azureNICSubnetIDs(nic)...)
+			record.NSGIDs = append(record.NSGIDs, azureNICNSGIDs(nic)...)
+			publicIPIDs := azureNICPublicIPIDs(nic)
+			record.PublicIPIDs = append(record.PublicIPIDs, publicIPIDs...)
+			for _, publicIPID := range publicIPIDs {
+				publicIP, found := publicIPs[publicIPID]
+				if !found {
+					publicIP, found = getARMTypedResourceByID(ctx, source, settings, publicIPID, "2023-09-01")
+					if found {
+						publicIPs[publicIPID] = publicIP
+					}
+				}
+				if found {
+					record.PublicHosts = append(record.PublicHosts, azurePublicIPHosts(publicIP)...)
+				}
+			}
+		}
+		record.SubnetIDs = uniqueStrings(record.SubnetIDs)
+		record.NSGIDs = uniqueStrings(record.NSGIDs)
+		record.PublicIPIDs = uniqueStrings(record.PublicIPIDs)
+		record.PublicHosts = uniqueStrings(record.PublicHosts)
+		records = append(records, record)
+	}
+	return records, next, nil
+}
+
+func listAKSClusters(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.ContainerService/managedClusters", "2024-05-01", "azure aks cluster")
+}
+
+func listWebSites(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Web/sites", "2023-12-01", "azure web site")
+}
+
+func listAppServices(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	sites, next, err := listWebSites(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	filtered := make([]armTypedResourceRecord, 0, len(sites))
+	for _, site := range sites {
+		if !azureSiteIsFunctionApp(site) {
+			filtered = append(filtered, site)
+		}
+	}
+	return filtered, next, nil
+}
+
+func listFunctionApps(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	sites, next, err := listWebSites(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	filtered := make([]armTypedResourceRecord, 0, len(sites))
+	for _, site := range sites {
+		if azureSiteIsFunctionApp(site) {
+			filtered = append(filtered, site)
+		}
+	}
+	return filtered, next, nil
+}
+
+func listStorageAccounts(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Storage/storageAccounts", "2023-01-01", "azure storage account")
+}
+
+func listSQLServers(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Sql/servers", "2022-05-01-preview", "azure sql server")
+}
+
+func listSQLDatabases(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]azureSQLDatabaseRecord, string, error) {
+	if strings.HasPrefix(pageToken, "db:") {
+		serverID, nextToken, ok := parseNestedPageToken(strings.TrimPrefix(pageToken, "db:"))
+		if !ok {
+			return nil, "", fmt.Errorf("invalid azure sql database cursor")
+		}
+		server, found := getARMTypedResourceByID(ctx, source, settings, serverID, "2022-05-01-preview")
+		if !found {
+			return nil, "", fmt.Errorf("lookup azure sql server %s", serverID)
+		}
+		return listSQLDatabasesForServer(ctx, source, settings, server, nextToken)
+	}
+	records := make([]azureSQLDatabaseRecord, 0)
+	for serverToken := pageToken; ; {
+		servers, nextServers, err := listSQLServers(ctx, source, settings, serverToken, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, server := range servers {
+			childToken := ""
+			for {
+				databases, nextDatabases, err := listSQLDatabasesForServer(ctx, source, settings, server, childToken)
+				if err != nil {
+					return nil, "", err
+				}
+				records = append(records, databases...)
+				if nextDatabases == "" {
+					break
+				}
+				childToken = nextDatabases
+			}
+		}
+		if nextServers == "" {
+			break
+		}
+		serverToken = nextServers
+	}
+	return records, "", nil
+}
+
+func listSQLDatabasesForServer(ctx context.Context, source *Source, settings settings, server armTypedResourceRecord, pageToken string) ([]azureSQLDatabaseRecord, string, error) {
+	query := url.Values{"api-version": {"2022-05-01-preview"}}
+	var response armPage
+	path := strings.TrimRight(server.ID, "/") + "/databases"
+	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+		return nil, "", err
+	}
+	databases, err := decodeAzureRecords(response.Value, "azure sql database", func(record *armTypedResourceRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]azureSQLDatabaseRecord, 0, len(databases))
+	for _, database := range databases {
+		database = inheritAzureResourceContext(database, server)
+		records = append(records, azureSQLDatabaseRecord{Database: database, Server: server})
+	}
+	return records, response.Next, nil
+}
+
+func listKeyVaults(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.KeyVault/vaults", "2023-07-01", "azure key vault")
+}
+
+func listKeyVaultKeys(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]azureKeyVaultChildRecord, string, error) {
+	return listKeyVaultChildren(ctx, source, settings, pageToken, limit, "keys", "azure key vault key")
+}
+
+func listKeyVaultSecrets(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]azureKeyVaultChildRecord, string, error) {
+	return listKeyVaultChildren(ctx, source, settings, pageToken, limit, "secrets", "azure key vault secret")
+}
+
+func listKeyVaultChildren(ctx context.Context, source *Source, settings settings, pageToken string, limit int, childPath string, label string) ([]azureKeyVaultChildRecord, string, error) {
+	if strings.HasPrefix(pageToken, childPath+":") {
+		vaultID, nextToken, ok := parseNestedPageToken(strings.TrimPrefix(pageToken, childPath+":"))
+		if !ok {
+			return nil, "", fmt.Errorf("invalid azure key vault %s cursor", childPath)
+		}
+		vault, found := getARMTypedResourceByID(ctx, source, settings, vaultID, "2023-07-01")
+		if !found {
+			return nil, "", fmt.Errorf("lookup azure key vault %s", vaultID)
+		}
+		return listKeyVaultChildrenForVault(ctx, source, settings, vault, nextToken, childPath, label)
+	}
+	records := make([]azureKeyVaultChildRecord, 0)
+	for vaultToken := pageToken; ; {
+		vaults, nextVaults, err := listKeyVaults(ctx, source, settings, vaultToken, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, vault := range vaults {
+			childToken := ""
+			for {
+				children, nextChildren, err := listKeyVaultChildrenForVault(ctx, source, settings, vault, childToken, childPath, label)
+				if err != nil {
+					return nil, "", err
+				}
+				records = append(records, children...)
+				if nextChildren == "" {
+					break
+				}
+				childToken = nextChildren
+			}
+		}
+		if nextVaults == "" {
+			break
+		}
+		vaultToken = nextVaults
+	}
+	return records, "", nil
+}
+
+func listKeyVaultChildrenForVault(ctx context.Context, source *Source, settings settings, vault armTypedResourceRecord, pageToken string, childPath string, label string) ([]azureKeyVaultChildRecord, string, error) {
+	query := url.Values{"api-version": {"2023-07-01"}}
+	var response armPage
+	path := strings.TrimRight(vault.ID, "/") + "/" + childPath
+	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+		return nil, "", err
+	}
+	children, err := decodeAzureRecords(response.Value, label, func(record *armTypedResourceRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]azureKeyVaultChildRecord, 0, len(children))
+	for _, child := range children {
+		child = inheritAzureResourceContext(child, vault)
+		records = append(records, azureKeyVaultChildRecord{Resource: child, Vault: vault})
+	}
+	return records, response.Next, nil
+}
+
+func listCosmosAccounts(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.DocumentDB/databaseAccounts", "2024-05-15", "azure cosmos db account")
+}
+
+func listContainerRegistries(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.ContainerRegistry/registries", "2023-07-01", "azure container registry")
 }
 
 type azurePrincipalLookup struct {
@@ -1037,6 +1505,290 @@ func iamRoleAssignmentEvent(settings settings, record armRoleAssignmentRecord) (
 	return sourceEvent(settings, "azure-iam-role-assignment-"+firstNonEmpty(record.Name, record.ID), "azure.iam_role_assignment", "azure/iam_role_assignment/v1", payload, attributes, time.Now().UTC())
 }
 
+func effectivePermissionEvent(settings settings, record armRoleAssignmentRecord) (*primitives.Event, error) {
+	roleName := firstNonEmpty(record.RoleName, record.Properties.RoleDefinitionID)
+	principal := record.Principal
+	subjectEmail := firstNonEmpty(emailLike(principal.Mail), emailLike(principal.UserPrincipalName), emailLike(record.Properties.PrincipalID))
+	admin := isAdminRole(roleName)
+	scope := firstNonEmpty(record.Properties.Scope, "/subscriptions/"+settings.subscriptionID)
+	attributes := map[string]string{
+		"actions":            roleName,
+		"domain":             tenantID(settings),
+		"effect":             "allow",
+		"family":             familyEffectivePermission,
+		"is_admin":           boolString(admin),
+		"permission":         roleName,
+		"privilege_level":    privilegeLevel(admin),
+		"resource_id":        scope,
+		"resource_name":      azureResourceNameFromID(scope),
+		"resource_type":      azureResourceTypeFromID(scope),
+		"role_assignment_id": firstNonEmpty(record.ID, record.Name),
+		"role_id":            firstNonEmpty(record.Properties.RoleDefinitionID, roleName),
+		"role_name":          roleName,
+		"role_type":          "azure_rbac_role",
+		"scope":              scope,
+		"subject_email":      subjectEmail,
+		"subject_id":         record.Properties.PrincipalID,
+		"subject_login":      subjectEmail,
+		"subject_name":       firstNonEmpty(principal.DisplayName, principal.UserPrincipalName),
+		"subject_type":       azurePrincipalType(record.Properties.PrincipalType, principal),
+		"subscription_id":    settings.subscriptionID,
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"subscription_id": settings.subscriptionID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "azure-effective-permission-"+firstNonEmpty(record.Name, record.ID), "azure.effective_permission", "azure/effective_permission/v1", payload, attributes, time.Now().UTC())
+}
+
+func assetMetadataEvent(settings settings, record armResourceRecord) (*primitives.Event, error) {
+	tags := record.Tags
+	resourceID := firstNonEmpty(record.ID, record.Name)
+	attributes := map[string]string{
+		"asset_criticality":   firstNonEmpty(tagLookup(tags, "asset_criticality", "business_criticality", "criticality", "tier"), criticalityFromTags(tags)),
+		"contains_pci":        tagLookup(tags, "contains_pci", "pci"),
+		"contains_phi":        tagLookup(tags, "contains_phi", "phi"),
+		"contains_pii":        tagLookup(tags, "contains_pii", "pii"),
+		"contains_secrets":    tagLookup(tags, "contains_secrets", "secrets"),
+		"crown_jewel":         boolString(crownJewelFromTags(tags)),
+		"data_classification": tagLookup(tags, "data_classification", "DataClassification", "data-classification", "classification", "sensitivity", "data_sensitivity"),
+		"domain":              tenantID(settings),
+		"environment":         tagLookup(tags, "environment", "env", "stage"),
+		"internet_exposed":    tagLookup(tags, "internet_exposed", "internet-exposed", "externally_exposed", "external_exposure"),
+		"owner":               tagLookup(tags, "owner", "application_owner", "business_owner", "service_owner"),
+		"public":              tagLookup(tags, "public", "public_access"),
+		"region":              record.Location,
+		"resource_id":         resourceID,
+		"resource_name":       firstNonEmpty(record.Name, resourceID),
+		"resource_provider":   "azure",
+		"resource_type":       firstNonEmpty(record.Type, "resource"),
+		"source_provider":     "azure",
+		"subscription_id":     settings.subscriptionID,
+		"team":                tagLookup(tags, "team", "squad", "group"),
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"subscription_id": settings.subscriptionID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "azure-asset-metadata-"+firstNonEmpty(resourceID, record.Type), "asset.data_sensitivity", "asset/data_sensitivity/v1", payload, attributes, time.Now().UTC())
+}
+
+func virtualMachineEvent(settings settings, record azureVMRecord) (*primitives.Event, error) {
+	resource := record.Resource
+	attributes := azureResourceAttributes(settings, resource, familyVirtualMachine)
+	addAzureIdentityAttributes(attributes, resource.Identity)
+	setAttribute(attributes, "computer_name", propertyString(resource, "osProfile", "computerName"))
+	setAttribute(attributes, "admin_username", propertyString(resource, "osProfile", "adminUsername"))
+	setAttribute(attributes, "vm_size", propertyString(resource, "hardwareProfile", "vmSize"))
+	setAttribute(attributes, "os_type", propertyString(resource, "storageProfile", "osDisk", "osType"))
+	setAttribute(attributes, "encryption_at_host", propertyBoolString(resource, "securityProfile", "encryptionAtHost"))
+	setAttribute(attributes, "boot_diagnostics_enabled", propertyBoolString(resource, "diagnosticsProfile", "bootDiagnostics", "enabled"))
+	setAttribute(attributes, "network_interface_ids", strings.Join(azureNetworkInterfaceIDs(resource), ","))
+	setAttribute(attributes, "subnet_ids", strings.Join(record.SubnetIDs, ","))
+	setAttribute(attributes, "nsg_ids", strings.Join(record.NSGIDs, ","))
+	setAttribute(attributes, "public_ip_ids", strings.Join(record.PublicIPIDs, ","))
+	setAttribute(attributes, "public_host", strings.Join(record.PublicHosts, ","))
+	setAttribute(attributes, "public_network_access", boolString(len(record.PublicIPIDs) > 0 || len(record.PublicHosts) > 0))
+	setAttribute(attributes, "internet_exposed", boolString(len(record.PublicIPIDs) > 0 || len(record.PublicHosts) > 0))
+	payload, err := payloadWithRaw(resource.raw, map[string]any{"tenant_id": settings.tenantID, "subscription_id": settings.subscriptionID, "subnet_ids": record.SubnetIDs, "nsg_ids": record.NSGIDs, "public_ip_ids": record.PublicIPIDs, "public_hosts": record.PublicHosts})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyVirtualMachine, resource), "azure.virtual_machine", "azure/virtual_machine/v1", payload, attributes, time.Now().UTC())
+}
+
+func aksClusterEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyAKSCluster)
+	addAzureIdentityAttributes(attributes, record.Identity)
+	setAttribute(attributes, "kubernetes_version", propertyString(record, "kubernetesVersion"))
+	setAttribute(attributes, "dns_prefix", propertyString(record, "dnsPrefix"))
+	setAttribute(attributes, "public_host", firstNonEmpty(propertyString(record, "fqdn"), propertyString(record, "privateFQDN")))
+	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
+	setAttribute(attributes, "private_cluster_enabled", propertyBoolString(record, "apiServerAccessProfile", "enablePrivateCluster"))
+	setAttribute(attributes, "network_plugin", propertyString(record, "networkProfile", "networkPlugin"))
+	setAttribute(attributes, "network_policy", propertyString(record, "networkProfile", "networkPolicy"))
+	setAttribute(attributes, "subnet_ids", strings.Join(aksSubnetIDs(record), ","))
+	setAttribute(attributes, "public_ip_ids", strings.Join(aksOutboundPublicIPIDs(record), ","))
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyAKSCluster, record), "azure.aks_cluster", "azure/aks_cluster/v1", payload, attributes, time.Now().UTC())
+}
+
+func appServiceEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	return webSiteEvent(settings, record, familyAppService, "azure.app_service", "azure/app_service/v1")
+}
+
+func functionAppEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	return webSiteEvent(settings, record, familyFunctionApp, "azure.function_app", "azure/function_app/v1")
+}
+
+func webSiteEvent(settings settings, record armTypedResourceRecord, family string, kind string, schemaRef string) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, family)
+	addAzureIdentityAttributes(attributes, record.Identity)
+	setAttribute(attributes, "kind", record.Kind)
+	setAttribute(attributes, "enabled", propertyBoolString(record, "enabled"))
+	setAttribute(attributes, "https_only", propertyBoolString(record, "httpsOnly"))
+	setAttribute(attributes, "min_tls_version", firstNonEmpty(propertyString(record, "siteConfig", "minTlsVersion"), propertyString(record, "siteConfig", "minimumTlsVersion")))
+	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
+	setAttribute(attributes, "public_host", propertyString(record, "defaultHostName"))
+	setAttribute(attributes, "host_names", strings.Join(propertyStringSlice(record, "hostNames"), ","))
+	setAttribute(attributes, "subnet_ids", propertyString(record, "virtualNetworkSubnetId"))
+	setAttribute(attributes, "server_farm_id", propertyString(record, "serverFarmId"))
+	setAttribute(attributes, "runtime", firstNonEmpty(propertyString(record, "siteConfig", "linuxFxVersion"), propertyString(record, "siteConfig", "windowsFxVersion"), propertyString(record, "siteConfig", "netFrameworkVersion")))
+	setAttribute(attributes, "outbound_ip_addresses", propertyString(record, "outboundIpAddresses"))
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(family, record), kind, schemaRef, payload, attributes, time.Now().UTC())
+}
+
+func storageAccountEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyStorageAccount)
+	addAzureIdentityAttributes(attributes, record.Identity)
+	setAttribute(attributes, "sku", firstNonEmpty(record.SKU.Name, record.SKU.Tier))
+	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
+	setAttribute(attributes, "allow_blob_public_access", propertyBoolString(record, "allowBlobPublicAccess"))
+	setAttribute(attributes, "allow_shared_key_access", propertyBoolString(record, "allowSharedKeyAccess"))
+	setAttribute(attributes, "https_only", propertyBoolString(record, "supportsHttpsTrafficOnly"))
+	setAttribute(attributes, "min_tls_version", propertyString(record, "minimumTlsVersion"))
+	setAttribute(attributes, "encryption_key_source", propertyString(record, "encryption", "keySource"))
+	setAttribute(attributes, "blob_encryption_enabled", propertyBoolString(record, "encryption", "services", "blob", "enabled"))
+	setAttribute(attributes, "file_encryption_enabled", propertyBoolString(record, "encryption", "services", "file", "enabled"))
+	setAttribute(attributes, "public_host", firstNonEmpty(propertyString(record, "primaryEndpoints", "blob"), propertyString(record, "primaryEndpoints", "web")))
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyStorageAccount, record), "azure.storage_account", "azure/storage_account/v1", payload, attributes, time.Now().UTC())
+}
+
+func sqlServerEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familySQLServer)
+	addAzureIdentityAttributes(attributes, record.Identity)
+	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
+	setAttribute(attributes, "min_tls_version", propertyString(record, "minimalTlsVersion"))
+	setAttribute(attributes, "public_host", propertyString(record, "fullyQualifiedDomainName"))
+	setAttribute(attributes, "state", propertyString(record, "state"))
+	setAttribute(attributes, "primary_user_assigned_identity_id", propertyString(record, "primaryUserAssignedIdentityId"))
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familySQLServer, record), "azure.sql_server", "azure/sql_server/v1", payload, attributes, time.Now().UTC())
+}
+
+func sqlDatabaseEvent(settings settings, record azureSQLDatabaseRecord) (*primitives.Event, error) {
+	database := record.Database
+	attributes := azureResourceAttributes(settings, database, familySQLDatabase)
+	setAttribute(attributes, "server_id", record.Server.ID)
+	setAttribute(attributes, "server_name", record.Server.Name)
+	setAttribute(attributes, "public_host", propertyString(record.Server, "fullyQualifiedDomainName"))
+	setAttribute(attributes, "status", propertyString(database, "status"))
+	setAttribute(attributes, "collation", propertyString(database, "collation"))
+	setAttribute(attributes, "max_size_bytes", propertyString(database, "maxSizeBytes"))
+	setAttribute(attributes, "zone_redundant", propertyBoolString(database, "zoneRedundant"))
+	setAttribute(attributes, "read_scale", propertyString(database, "readScale"))
+	setAttribute(attributes, "backup_storage_redundancy", firstNonEmpty(propertyString(database, "currentBackupStorageRedundancy"), propertyString(database, "requestedBackupStorageRedundancy")))
+	setAttribute(attributes, "earliest_restore_date", propertyString(database, "earliestRestoreDate"))
+	payload, err := payloadWithRaw(database.raw, map[string]any{"tenant_id": settings.tenantID, "subscription_id": settings.subscriptionID, "server_id": record.Server.ID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familySQLDatabase, database), "azure.sql_database", "azure/sql_database/v1", payload, attributes, time.Now().UTC())
+}
+
+func keyVaultEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyKeyVault)
+	setAttribute(attributes, "tenant_id", firstNonEmpty(propertyString(record, "tenantId"), settings.tenantID))
+	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
+	setAttribute(attributes, "soft_delete_enabled", propertyBoolString(record, "enableSoftDelete"))
+	setAttribute(attributes, "purge_protection_enabled", propertyBoolString(record, "enablePurgeProtection"))
+	setAttribute(attributes, "soft_delete_retention_days", propertyString(record, "softDeleteRetentionInDays"))
+	setAttribute(attributes, "rbac_authorization_enabled", propertyBoolString(record, "enableRbacAuthorization"))
+	setAttribute(attributes, "enabled_for_disk_encryption", propertyBoolString(record, "enabledForDiskEncryption"))
+	setAttribute(attributes, "network_default_action", propertyString(record, "networkAcls", "defaultAction"))
+	setAttribute(attributes, "public_host", propertyString(record, "vaultUri"))
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyKeyVault, record), "azure.key_vault", "azure/key_vault/v1", payload, attributes, time.Now().UTC())
+}
+
+func keyVaultKeyEvent(settings settings, record azureKeyVaultChildRecord) (*primitives.Event, error) {
+	return keyVaultChildEvent(settings, record, familyKeyVaultKey, "azure.key_vault_key", "azure/key_vault_key/v1")
+}
+
+func keyVaultSecretEvent(settings settings, record azureKeyVaultChildRecord) (*primitives.Event, error) {
+	return keyVaultChildEvent(settings, record, familyKeyVaultSecret, "azure.key_vault_secret", "azure/key_vault_secret/v1")
+}
+
+func keyVaultChildEvent(settings settings, record azureKeyVaultChildRecord, family string, kind string, schemaRef string) (*primitives.Event, error) {
+	resource := record.Resource
+	attributes := azureResourceAttributes(settings, resource, family)
+	setAttribute(attributes, "vault_id", record.Vault.ID)
+	setAttribute(attributes, "vault_name", record.Vault.Name)
+	setAttribute(attributes, "enabled", propertyBoolString(resource, "attributes", "enabled"))
+	setAttribute(attributes, "expires_at", unixTimeString(propertyString(resource, "attributes", "exp")))
+	setAttribute(attributes, "not_before", unixTimeString(propertyString(resource, "attributes", "nbf")))
+	setAttribute(attributes, "created_at", unixTimeString(propertyString(resource, "attributes", "created")))
+	setAttribute(attributes, "updated_at", unixTimeString(propertyString(resource, "attributes", "updated")))
+	setAttribute(attributes, "recovery_level", propertyString(resource, "attributes", "recoveryLevel"))
+	setAttribute(attributes, "content_type", propertyString(resource, "contentType"))
+	setAttribute(attributes, "key_type", propertyString(resource, "kty"))
+	setAttribute(attributes, "key_ops", strings.Join(propertyStringSlice(resource, "keyOps"), ","))
+	setAttribute(attributes, "soft_delete_enabled", propertyBoolString(record.Vault, "enableSoftDelete"))
+	setAttribute(attributes, "purge_protection_enabled", propertyBoolString(record.Vault, "enablePurgeProtection"))
+	payload, err := payloadWithRaw(resource.raw, map[string]any{"tenant_id": settings.tenantID, "subscription_id": settings.subscriptionID, "vault_id": record.Vault.ID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(family, resource), kind, schemaRef, payload, attributes, time.Now().UTC())
+}
+
+func cosmosAccountEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyCosmosAccount)
+	addAzureIdentityAttributes(attributes, record.Identity)
+	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
+	setAttribute(attributes, "public_host", propertyString(record, "documentEndpoint"))
+	setAttribute(attributes, "min_tls_version", propertyString(record, "minimalTlsVersion"))
+	setAttribute(attributes, "local_auth_disabled", propertyBoolString(record, "disableLocalAuth"))
+	setAttribute(attributes, "multiple_write_locations_enabled", propertyBoolString(record, "enableMultipleWriteLocations"))
+	setAttribute(attributes, "free_tier_enabled", propertyBoolString(record, "enableFreeTier"))
+	setAttribute(attributes, "default_consistency_level", propertyString(record, "consistencyPolicy", "defaultConsistencyLevel"))
+	setAttribute(attributes, "locations", strings.Join(cosmosLocationNames(record), ","))
+	setAttribute(attributes, "private_endpoint_connection_count", strconv.Itoa(len(propertyArray(record, "privateEndpointConnections"))))
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyCosmosAccount, record), "azure.cosmos_account", "azure/cosmos_account/v1", payload, attributes, time.Now().UTC())
+}
+
+func containerRegistryEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyContainerRegistry)
+	addAzureIdentityAttributes(attributes, record.Identity)
+	setAttribute(attributes, "sku", firstNonEmpty(record.SKU.Name, record.SKU.Tier))
+	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
+	setAttribute(attributes, "public_host", propertyString(record, "loginServer"))
+	setAttribute(attributes, "admin_user_enabled", propertyBoolString(record, "adminUserEnabled"))
+	setAttribute(attributes, "network_default_action", propertyString(record, "networkRuleSet", "defaultAction"))
+	setAttribute(attributes, "quarantine_policy_status", propertyString(record, "policies", "quarantinePolicy", "status"))
+	setAttribute(attributes, "trust_policy_status", propertyString(record, "policies", "trustPolicy", "status"))
+	setAttribute(attributes, "retention_policy_status", propertyString(record, "policies", "retentionPolicy", "status"))
+	setAttribute(attributes, "retention_policy_days", propertyString(record, "policies", "retentionPolicy", "days"))
+	setAttribute(attributes, "encryption_status", propertyString(record, "encryption", "status"))
+	setAttribute(attributes, "encryption_key_vault_key_id", propertyString(record, "encryption", "keyVaultProperties", "keyIdentifier"))
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyContainerRegistry, record), "azure.container_registry", "azure/container_registry/v1", payload, attributes, time.Now().UTC())
+}
+
 func resourceExposureEvent(settings settings, record azureResourceExposure) (*primitives.Event, error) {
 	rule := record.Rule
 	nsg := record.NetworkSecurityGroup
@@ -1135,6 +1887,361 @@ func activityLogEvent(settings settings, record activityLogRecord) (*primitives.
 		}
 	}
 	return sourceEvent(settings, "azure-activity-log-"+firstNonEmpty(record.ID, record.OperationName.Value), "azure.activity_log", "azure/activity_log/v1", payload, attributes, occurredAt)
+}
+
+func azureTypedResourceURN(settings settings, family string, record armTypedResourceRecord) string {
+	return fmt.Sprintf("urn:cerebro:%s:azure_%s:%s", tenantID(settings), family, firstNonEmpty(record.ID, record.Name))
+}
+
+func azureResourceEventID(family string, record armTypedResourceRecord) string {
+	return "azure-" + strings.ReplaceAll(family, "_", "-") + "-" + firstNonEmpty(record.ID, record.Name, record.Type)
+}
+
+func azureResourcePayload(settings settings) map[string]any {
+	return map[string]any{"tenant_id": settings.tenantID, "subscription_id": settings.subscriptionID}
+}
+
+func azureResourceAttributes(settings settings, record armTypedResourceRecord, family string) map[string]string {
+	tags := record.Tags
+	resourceID := firstNonEmpty(record.ID, record.Name)
+	provider := firstNonEmpty(azureProviderFromType(record.Type), azureProviderFromID(record.ID), "azure")
+	attributes := map[string]string{
+		"cloud_provider":    "azure",
+		"domain":            tenantID(settings),
+		"env":               tagLookup(tags, "env", "environment", "stage"),
+		"environment":       tagLookup(tags, "environment", "env", "stage"),
+		"family":            family,
+		"location":          record.Location,
+		"owner":             tagLookup(tags, "owner", "application_owner", "business_owner", "service_owner"),
+		"provider":          provider,
+		"region":            record.Location,
+		"resource_group":    azureResourceGroupFromID(resourceID),
+		"resource_id":       resourceID,
+		"resource_name":     firstNonEmpty(record.Name, resourceID),
+		"resource_provider": provider,
+		"resource_type":     firstNonEmpty(record.Type, family),
+		"source_provider":   "azure",
+		"subscription_id":   settings.subscriptionID,
+		"team":              tagLookup(tags, "team", "squad", "group"),
+		"tenant_id":         settings.tenantID,
+	}
+	if record.SKU.Name != "" || record.SKU.Tier != "" {
+		attributes["sku"] = firstNonEmpty(record.SKU.Name, record.SKU.Tier)
+	}
+	trimEmptyAttributes(attributes)
+	return attributes
+}
+
+func addAzureIdentityAttributes(attributes map[string]string, identity armResourceIdentity) {
+	setAttribute(attributes, "identity_type", identity.Type)
+	setAttribute(attributes, "identity_principal_id", identity.PrincipalID)
+	setAttribute(attributes, "identity_tenant_id", identity.TenantID)
+	identityIDs := make([]string, 0, len(identity.UserAssignedIdentities))
+	principalIDs := make([]string, 0, len(identity.UserAssignedIdentities))
+	for identityID, assigned := range identity.UserAssignedIdentities {
+		if strings.TrimSpace(identityID) != "" {
+			identityIDs = append(identityIDs, identityID)
+		}
+		if strings.TrimSpace(assigned.PrincipalID) != "" {
+			principalIDs = append(principalIDs, assigned.PrincipalID)
+		}
+	}
+	setAttribute(attributes, "user_assigned_identity_ids", strings.Join(uniqueStrings(identityIDs), ","))
+	setAttribute(attributes, "user_assigned_principal_ids", strings.Join(uniqueStrings(principalIDs), ","))
+}
+
+func setAttribute(attributes map[string]string, key string, value string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		delete(attributes, key)
+		return
+	}
+	attributes[key] = value
+}
+
+func getARMTypedResourceByID(ctx context.Context, source *Source, settings settings, resourceID string, apiVersion string) (armTypedResourceRecord, bool) {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return armTypedResourceRecord{}, false
+	}
+	path := resourceID
+	if strings.HasPrefix(path, armBaseURL(settings)) {
+		path = strings.TrimPrefix(path, armBaseURL(settings))
+	}
+	query := url.Values{"api-version": {apiVersion}}
+	var record armTypedResourceRecord
+	if err := getARMJSON(ctx, source, settings, http.MethodGet, path, query, nil, &record); err != nil {
+		return armTypedResourceRecord{}, false
+	}
+	if record.ID == "" {
+		record.ID = resourceID
+	}
+	return record, true
+}
+
+func inheritAzureResourceContext(child armTypedResourceRecord, parent armTypedResourceRecord) armTypedResourceRecord {
+	if child.Location == "" {
+		child.Location = parent.Location
+	}
+	if len(child.Tags) == 0 {
+		child.Tags = parent.Tags
+	}
+	return child
+}
+
+func azureSiteIsFunctionApp(record armTypedResourceRecord) bool {
+	return strings.Contains(strings.ToLower(record.Kind), "functionapp")
+}
+
+func azureNetworkInterfaceIDs(record armTypedResourceRecord) []string {
+	interfaces := propertyArray(record, "networkProfile", "networkInterfaces")
+	values := make([]string, 0, len(interfaces))
+	for _, item := range interfaces {
+		if iface := mapFromAny(item); iface != nil {
+			values = append(values, stringFromAny(iface["id"]))
+		}
+	}
+	return uniqueStrings(values)
+}
+
+func azureNICSubnetIDs(record armTypedResourceRecord) []string {
+	configs := propertyArray(record, "ipConfigurations")
+	values := make([]string, 0, len(configs))
+	for _, item := range configs {
+		config := mapFromAny(item)
+		if config == nil {
+			continue
+		}
+		properties := mapFromAny(config["properties"])
+		subnet := mapFromAny(properties["subnet"])
+		values = append(values, stringFromAny(subnet["id"]))
+	}
+	return uniqueStrings(values)
+}
+
+func azureNICNSGIDs(record armTypedResourceRecord) []string {
+	values := []string{propertyString(record, "networkSecurityGroup", "id")}
+	configs := propertyArray(record, "ipConfigurations")
+	for _, item := range configs {
+		config := mapFromAny(item)
+		if config == nil {
+			continue
+		}
+		properties := mapFromAny(config["properties"])
+		nsg := mapFromAny(properties["networkSecurityGroup"])
+		values = append(values, stringFromAny(nsg["id"]))
+	}
+	return uniqueStrings(values)
+}
+
+func azureNICPublicIPIDs(record armTypedResourceRecord) []string {
+	configs := propertyArray(record, "ipConfigurations")
+	values := make([]string, 0, len(configs))
+	for _, item := range configs {
+		config := mapFromAny(item)
+		if config == nil {
+			continue
+		}
+		properties := mapFromAny(config["properties"])
+		publicIP := mapFromAny(properties["publicIPAddress"])
+		values = append(values, stringFromAny(publicIP["id"]))
+	}
+	return uniqueStrings(values)
+}
+
+func azurePublicIPHosts(record armTypedResourceRecord) []string {
+	if fqdn := propertyString(record, "dnsSettings", "fqdn"); fqdn != "" {
+		return []string{fqdn}
+	}
+	return uniqueStrings([]string{propertyString(record, "ipAddress")})
+}
+
+func aksSubnetIDs(record armTypedResourceRecord) []string {
+	pools := propertyArray(record, "agentPoolProfiles")
+	values := make([]string, 0, len(pools))
+	for _, item := range pools {
+		pool := mapFromAny(item)
+		if pool != nil {
+			values = append(values, stringFromAny(pool["vnetSubnetID"]))
+		}
+	}
+	return uniqueStrings(values)
+}
+
+func aksOutboundPublicIPIDs(record armTypedResourceRecord) []string {
+	profile := mapFromAny(nestedValue(record.Properties, "networkProfile", "loadBalancerProfile"))
+	values := make([]string, 0)
+	for _, key := range []string{"effectiveOutboundIPs", "outboundIPs"} {
+		for _, item := range arrayFromAny(profile[key]) {
+			ip := mapFromAny(item)
+			if ip != nil {
+				values = append(values, stringFromAny(ip["id"]))
+			}
+		}
+	}
+	return uniqueStrings(values)
+}
+
+func cosmosLocationNames(record armTypedResourceRecord) []string {
+	locations := propertyArray(record, "locations")
+	values := make([]string, 0, len(locations))
+	for _, item := range locations {
+		location := mapFromAny(item)
+		if location != nil {
+			values = append(values, firstNonEmpty(stringFromAny(location["locationName"]), stringFromAny(location["documentEndpoint"])))
+		}
+	}
+	return uniqueStrings(values)
+}
+
+func propertyString(record armTypedResourceRecord, keys ...string) string {
+	return stringFromAny(nestedValue(record.Properties, keys...))
+}
+
+func propertyBoolString(record armTypedResourceRecord, keys ...string) string {
+	value := nestedValue(record.Properties, keys...)
+	switch typed := value.(type) {
+	case bool:
+		return boolString(typed)
+	case string:
+		if strings.TrimSpace(typed) == "" {
+			return ""
+		}
+		if strings.EqualFold(typed, "true") || strings.EqualFold(typed, "false") {
+			return strings.ToLower(typed)
+		}
+		return typed
+	default:
+		return ""
+	}
+}
+
+func propertyStringSlice(record armTypedResourceRecord, keys ...string) []string {
+	items := propertyArray(record, keys...)
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		values = append(values, stringFromAny(item))
+	}
+	return uniqueStrings(values)
+}
+
+func propertyArray(record armTypedResourceRecord, keys ...string) []any {
+	return arrayFromAny(nestedValue(record.Properties, keys...))
+}
+
+func nestedValue(values map[string]any, keys ...string) any {
+	if len(keys) == 0 {
+		return values
+	}
+	var current any = values
+	for _, key := range keys {
+		currentMap := mapFromAny(current)
+		if currentMap == nil {
+			return nil
+		}
+		current = currentMap[key]
+	}
+	return current
+}
+
+func mapFromAny(value any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return typed
+	}
+	return nil
+}
+
+func arrayFromAny(value any) []any {
+	if value == nil {
+		return nil
+	}
+	if typed, ok := value.([]any); ok {
+		return typed
+	}
+	return nil
+}
+
+func stringFromAny(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case bool:
+		return boolString(typed)
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(typed)
+	case json.Number:
+		return typed.String()
+	default:
+		return ""
+	}
+}
+
+func unixTimeString(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	seconds, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return value
+	}
+	return time.Unix(seconds, 0).UTC().Format(time.RFC3339)
+}
+
+func parseNestedPageToken(value string) (string, string, bool) {
+	parentID, next, ok := strings.Cut(value, "|")
+	return parentID, next, ok && strings.TrimSpace(parentID) != "" && strings.TrimSpace(next) != ""
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	sort.Strings(unique)
+	return unique
+}
+
+func azureProviderFromType(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
+}
+
+func azureProviderFromID(value string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
+	for i, part := range parts {
+		if strings.EqualFold(part, "providers") && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+func azureResourceGroupFromID(value string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
+	for i, part := range parts {
+		if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
 }
 
 func sourceEvent(settings settings, id string, kind string, schemaRef string, payload []byte, attributes map[string]string, occurredAt time.Time) (*primitives.Event, error) {
@@ -1473,6 +2580,13 @@ func isAdminRole(value string) bool {
 		strings.Contains(role, "admin")
 }
 
+func privilegeLevel(admin bool) string {
+	if admin {
+		return "admin"
+	}
+	return "standard"
+}
+
 func nsgRulePublicIngress(rule nsgRule) bool {
 	return strings.EqualFold(rule.Properties.Access, "Allow") &&
 		strings.EqualFold(rule.Properties.Direction, "Inbound") &&
@@ -1536,6 +2650,75 @@ func emailLike(value string) string {
 		return strings.ToLower(trimmed)
 	}
 	return ""
+}
+
+func tagLookup(tags map[string]string, keys ...string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	normalized := map[string]string{}
+	for key, value := range tags {
+		normalized[normalizeTagKey(key)] = value
+	}
+	for _, key := range keys {
+		if value := strings.TrimSpace(normalized[normalizeTagKey(key)]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizeTagKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "-", "_")
+	value = strings.ReplaceAll(value, " ", "_")
+	return value
+}
+
+func criticalityFromTags(tags map[string]string) string {
+	for _, value := range tags {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		switch normalized {
+		case "critical", "high", "tier0", "tier_0", "tier-0", "crown_jewel", "crown-jewel":
+			return "critical"
+		}
+	}
+	return ""
+}
+
+func crownJewelFromTags(tags map[string]string) bool {
+	for _, key := range []string{"crown_jewel", "crown-jewel", "tier0", "tier_0", "business_critical"} {
+		if value := strings.ToLower(tagLookup(tags, key)); value == "true" || value == "yes" || value == "1" || value == "critical" {
+			return true
+		}
+	}
+	return strings.EqualFold(criticalityFromTags(tags), "critical")
+}
+
+func azureResourceNameFromID(value string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+func azureResourceTypeFromID(value string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
+	for i, part := range parts {
+		if strings.EqualFold(part, "providers") && i+2 < len(parts) {
+			return parts[i+1] + "/" + parts[i+2]
+		}
+	}
+	if len(parts) >= 2 && strings.EqualFold(parts[0], "subscriptions") {
+		if len(parts) == 2 {
+			return "subscription"
+		}
+		if len(parts) >= 4 && strings.EqualFold(parts[2], "resourceGroups") {
+			return "resource_group"
+		}
+	}
+	return "azure_resource"
 }
 
 func firstNonEmpty(values ...string) string {

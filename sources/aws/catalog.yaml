@@ -6,6 +6,7 @@ emitted_kinds:
   - asset.data_sensitivity
   - aws.cloudtrail
   - aws.ec2_instance
+  - aws.ecr_repository
   - aws.ecs_service
   - aws.ecs_task
   - aws.ecs_task_definition
@@ -20,14 +21,21 @@ emitted_kinds:
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.kms_key
   - aws.public_endpoint
+  - aws.rds_instance
   - aws.resource_exposure
+  - aws.s3_bucket
+  - aws.secret
+  - aws.sns_topic
+  - aws.sqs_queue
   - aws.lambda_function
 runtime_families:
   - access_key
   - asset_metadata
   - cloudtrail
   - ec2_instance
+  - ecr_repository
   - ecs_service
   - ecs_task
   - ecs_task_definition
@@ -42,6 +50,12 @@ runtime_families:
   - iam_role_assignment
   - iam_role_trust
   - iam_user
+  - kms_key
   - public_endpoint
+  - rds_instance
   - resource_exposure
+  - s3_bucket
+  - secret
+  - sns_topic
+  - sqs_queue
   - lambda_function

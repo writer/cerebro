@@ -25,13 +25,14 @@ type cloudPublicExposurePrivilegedPrincipalRule struct {
 }
 
 func newCloudPublicExposurePrivilegedPrincipalRule() Rule {
+	capabilities := builtinCloudCapabilities
 	return &cloudPublicExposurePrivilegedPrincipalRule{
 		definition: RuleDefinition{
 			ID:          cloudPublicExposurePrivilegedPrincipalRuleID,
 			Name:        "Cloud Public Exposure With Privileged Principal",
 			Description: "Detect cloud accounts where public reachability and admin-equivalent permissions intersect.",
 			SourceID:    "cloud",
-			EventKinds:  []string{"aws.effective_permission", "aws.iam_role_assignment", "aws.iam_role_trust", "aws.public_endpoint", "aws.resource_exposure"},
+			EventKinds:  capabilities.EventKinds(cloudCapabilityEffectivePermission, cloudCapabilityPrivilegePath, cloudCapabilityResourceExposure),
 			OutputKind:  cloudPublicExposurePrivilegedPrincipalKind,
 			Severity:    "CRITICAL",
 			Status:      findingStatusOpen,
@@ -66,7 +67,18 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) Spec() *cerebrov1.RuleSpec 
 }
 
 func (r *cloudPublicExposurePrivilegedPrincipalRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
-	if runtime == nil || !strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), "aws") {
+	if runtime == nil {
+		return false
+	}
+	sourceID := strings.TrimSpace(runtime.GetSourceId())
+	supportedSource := false
+	for _, candidate := range builtinCloudCapabilities.SourceIDs() {
+		if strings.EqualFold(sourceID, candidate) {
+			supportedSource = true
+			break
+		}
+	}
+	if !supportedSource {
 		return false
 	}
 	return runtimeMayEmitEventKind(runtime, r.definition.EventKinds)

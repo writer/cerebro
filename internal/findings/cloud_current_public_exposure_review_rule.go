@@ -12,11 +12,52 @@ func newCloudPublicResourceExposureGraphRule() Rule {
 		[]string{"cloud", "exposure", "public", "attack.t1190", "graph-rule"},
 		[]string{"exposed_resource_urn"},
 	)
-	definition.EventKinds = []string{"aws.public_endpoint", "aws.resource_exposure", "azure.resource_exposure", "gcp.resource_exposure"}
+	definition.EventKinds = builtinCloudCapabilities.EventKinds(cloudCapabilityResourceExposure)
 	return newCoordinationGraphRule(definition, map[string][]string{
-		"aws":   {"public_endpoint", "resource_exposure"},
-		"azure": {"public_endpoint", "resource_exposure"},
-		"gcp":   {"public_endpoint", "resource_exposure"},
+		"aws": {
+			"asset_metadata",
+			"ec2_instance",
+			"ecs_service",
+			"ecs_task",
+			"ecs_task_definition",
+			"eks_cluster",
+			"eks_nodegroup",
+			"eks_fargate_profile",
+			"eks_pod_identity_association",
+			"lambda_function",
+			"public_endpoint",
+			"resource_exposure",
+		},
+		"azure": {
+			"aks_cluster",
+			"app_service",
+			"asset_metadata",
+			"container_registry",
+			"cosmos_account",
+			"function_app",
+			"key_vault",
+			"key_vault_key",
+			"key_vault_secret",
+			"resource_exposure",
+			"sql_database",
+			"sql_server",
+			"storage_account",
+			"virtual_machine",
+		},
+		"gcp": {
+			"artifact_registry_image",
+			"artifact_registry_repository",
+			"asset_metadata",
+			"cloud_function",
+			"cloud_run_service",
+			"cloud_sql_instance",
+			"compute_instance",
+			"gcs_bucket",
+			"gke_cluster",
+			"kms_key",
+			"resource_exposure",
+			"secret_manager_secret",
+		},
 	}, `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(resource:Entity {tenant_id: $tenant_id})
 WHERE public.entity_type ENDS WITH '.public_principal'
   AND resource.entity_type <> 'cloud.account'

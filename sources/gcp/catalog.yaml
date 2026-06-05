@@ -2,11 +2,44 @@ id: gcp
 name: GCP
 description: GCP IAM, Cloud Identity, service account, and audit log source.
 emitted_kinds:
+  - asset.data_sensitivity
+  - gcp.artifact_registry_image
+  - gcp.artifact_registry_repository
   - gcp.audit
+  - gcp.cloud_function
+  - gcp.cloud_run_service
+  - gcp.cloud_sql_instance
+  - gcp.compute_instance
+  - gcp.effective_permission
+  - gcp.gcs_bucket
+  - gcp.gke_cluster
   - gcp.group
   - gcp.group_membership
   - gcp.iam_role_assignment
+  - gcp.kms_key
   - gcp.resource_exposure
+  - gcp.secret_manager_secret
   - gcp.service_account
   - gcp.service_account_impersonation
   - gcp.service_account_key
+runtime_families:
+  - asset_metadata
+  - artifact_registry_image
+  - artifact_registry_repository
+  - audit
+  - cloud_function
+  - cloud_run_service
+  - cloud_sql_instance
+  - compute_instance
+  - effective_permission
+  - gcs_bucket
+  - gke_cluster
+  - group
+  - group_membership
+  - iam_role_assignment
+  - kms_key
+  - resource_exposure
+  - secret_manager_secret
+  - service_account
+  - service_account_impersonation
+  - service_account_key

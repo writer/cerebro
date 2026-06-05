@@ -101,6 +101,17 @@ func TestCloudPublicExposurePrivilegedPrincipalGraphRuleSupportsJoinProducerRunt
 			t.Fatalf("SupportsRuntime(aws/%s) = false, want true", family)
 		}
 	}
+	for sourceID, families := range map[string][]string{
+		"azure": {"asset_metadata", "effective_permission", "iam_role_assignment", "resource_exposure", "virtual_machine"},
+		"gcp":   {"asset_metadata", "cloud_run_service", "compute_instance", "effective_permission", "iam_role_assignment", "resource_exposure"},
+	} {
+		for _, family := range families {
+			runtime := &cerebrov1.SourceRuntime{SourceId: sourceID, TenantId: "writer", Config: map[string]string{"family": family}}
+			if !rule.SupportsRuntime(runtime) {
+				t.Fatalf("SupportsRuntime(%s/%s) = false, want true", sourceID, family)
+			}
+		}
+	}
 	for _, runtime := range []*cerebrov1.SourceRuntime{
 		{SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "cloudtrail"}},
 		{SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_user"}},

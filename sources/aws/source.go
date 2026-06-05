@@ -30,6 +30,7 @@ import (
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
@@ -38,12 +39,18 @@ import (
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -72,6 +79,7 @@ const (
 	familyAssetMetadata       = "asset_metadata"
 	familyCloudTrail          = "cloudtrail"
 	familyEC2Instance         = "ec2_instance"
+	familyECRRepository       = "ecr_repository"
 	familyECSService          = "ecs_service"
 	familyECSTask             = "ecs_task"
 	familyECSTaskDefinition   = "ecs_task_definition"
@@ -86,8 +94,14 @@ const (
 	familyIAMRoleAssign       = "iam_role_assignment"
 	familyIAMRole             = "iam_role"
 	familyIAMUser             = "iam_user"
+	familyKMSKey              = "kms_key"
 	familyPublicEndpoint      = "public_endpoint"
+	familyRDSInstance         = "rds_instance"
 	familyResourceExposure    = "resource_exposure"
+	familyS3Bucket            = "s3_bucket"
+	familySecret              = "secret"
+	familySNSTopic            = "sns_topic"
+	familySQSQueue            = "sqs_queue"
 	familyLambdaFunction      = "lambda_function"
 )
 
@@ -127,6 +141,7 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
+	cfg          awssdk.Config
 	iam          awsIAMAPI
 	cloudTrail   awsCloudTrailAPI
 	ec2          awsEC2API
@@ -135,10 +150,18 @@ type awsClients struct {
 	elbv2        awsELBV2API
 	ecs          awsECSAPI
 	eks          awsEKSAPI
+	ecr          awsECRAPI
 	apiGateway   awsAPIGatewayAPI
 	apiGatewayV2 awsAPIGatewayV2API
 	lambda       awsLambdaAPI
 	tagging      awsResourceGroupsTaggingAPI
+	s3           awsS3API
+	s3ByRegion   func(string) awsS3API
+	rds          awsRDSAPI
+	kms          awsKMSAPI
+	secrets      awsSecretsManagerAPI
+	sqs          awsSQSAPI
+	sns          awsSNSAPI
 }
 
 type awsIAMAPI interface {
@@ -193,6 +216,11 @@ type awsEKSAPI interface {
 	DescribePodIdentityAssociation(context.Context, *eks.DescribePodIdentityAssociationInput, ...func(*eks.Options)) (*eks.DescribePodIdentityAssociationOutput, error)
 }
 
+type awsECRAPI interface {
+	DescribeRepositories(context.Context, *ecr.DescribeRepositoriesInput, ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error)
+	ListTagsForResource(context.Context, *ecr.ListTagsForResourceInput, ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error)
+}
+
 type awsRoute53API interface {
 	ListHostedZones(context.Context, *route53.ListHostedZonesInput, ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error)
 	ListResourceRecordSets(context.Context, *route53.ListResourceRecordSetsInput, ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error)
@@ -222,6 +250,43 @@ type awsLambdaAPI interface {
 
 type awsResourceGroupsTaggingAPI interface {
 	GetResources(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
+}
+
+type awsS3API interface {
+	ListBuckets(context.Context, *s3.ListBucketsInput, ...func(*s3.Options)) (*s3.ListBucketsOutput, error)
+	GetBucketLocation(context.Context, *s3.GetBucketLocationInput, ...func(*s3.Options)) (*s3.GetBucketLocationOutput, error)
+	GetBucketTagging(context.Context, *s3.GetBucketTaggingInput, ...func(*s3.Options)) (*s3.GetBucketTaggingOutput, error)
+	GetBucketEncryption(context.Context, *s3.GetBucketEncryptionInput, ...func(*s3.Options)) (*s3.GetBucketEncryptionOutput, error)
+	GetBucketVersioning(context.Context, *s3.GetBucketVersioningInput, ...func(*s3.Options)) (*s3.GetBucketVersioningOutput, error)
+	GetBucketLogging(context.Context, *s3.GetBucketLoggingInput, ...func(*s3.Options)) (*s3.GetBucketLoggingOutput, error)
+	GetPublicAccessBlock(context.Context, *s3.GetPublicAccessBlockInput, ...func(*s3.Options)) (*s3.GetPublicAccessBlockOutput, error)
+}
+
+type awsRDSAPI interface {
+	DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error)
+}
+
+type awsKMSAPI interface {
+	ListKeys(context.Context, *kms.ListKeysInput, ...func(*kms.Options)) (*kms.ListKeysOutput, error)
+	DescribeKey(context.Context, *kms.DescribeKeyInput, ...func(*kms.Options)) (*kms.DescribeKeyOutput, error)
+	ListResourceTags(context.Context, *kms.ListResourceTagsInput, ...func(*kms.Options)) (*kms.ListResourceTagsOutput, error)
+	GetKeyRotationStatus(context.Context, *kms.GetKeyRotationStatusInput, ...func(*kms.Options)) (*kms.GetKeyRotationStatusOutput, error)
+}
+
+type awsSecretsManagerAPI interface {
+	ListSecrets(context.Context, *secretsmanager.ListSecretsInput, ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error)
+}
+
+type awsSQSAPI interface {
+	ListQueues(context.Context, *sqs.ListQueuesInput, ...func(*sqs.Options)) (*sqs.ListQueuesOutput, error)
+	GetQueueAttributes(context.Context, *sqs.GetQueueAttributesInput, ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error)
+	ListQueueTags(context.Context, *sqs.ListQueueTagsInput, ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error)
+}
+
+type awsSNSAPI interface {
+	ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error)
+	GetTopicAttributes(context.Context, *sns.GetTopicAttributesInput, ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error)
+	ListTagsForResource(context.Context, *sns.ListTagsForResourceInput, ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -461,6 +526,84 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_asset_metadata:%s", settings.accountID, firstNonEmpty(asset.ResourceARN, asset.ResourceID)), nil
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsS3Bucket]{
+			Name:  familyS3Bucket,
+			Label: "aws s3 buckets",
+			List:  listS3Buckets,
+			Event: s3BucketEvent,
+			URN: func(settings settings, bucket awsS3Bucket) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_s3_bucket:%s", settings.accountID, firstNonEmpty(bucket.ARN, bucket.Name)), nil
+			},
+			CursorFallback: func(bucket awsS3Bucket) string { return firstNonEmpty(bucket.ARN, bucket.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRDSInstance]{
+			Name:  familyRDSInstance,
+			Label: "aws rds instances",
+			List:  listRDSInstances,
+			Event: rdsInstanceEvent,
+			URN: func(settings settings, record awsRDSInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_rds_instance:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))), nil
+			},
+			CursorFallback: func(record awsRDSInstance) string {
+				return firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsKMSKey]{
+			Name:  familyKMSKey,
+			Label: "aws kms keys",
+			List:  listKMSKeys,
+			Event: kmsKeyEvent,
+			URN: func(settings settings, key awsKMSKey) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_kms_key:%s", settings.accountID, firstNonEmpty(awssdk.ToString(key.Metadata.Arn), awssdk.ToString(key.Metadata.KeyId))), nil
+			},
+			CursorFallback: func(key awsKMSKey) string {
+				return firstNonEmpty(awssdk.ToString(key.Metadata.Arn), awssdk.ToString(key.Metadata.KeyId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[secretsmanagertypesSecret]{
+			Name:  familySecret,
+			Label: "aws secrets manager secrets",
+			List:  listSecrets,
+			Event: secretEvent,
+			URN: func(settings settings, secret secretsmanagertypesSecret) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_secret:%s", settings.accountID, firstNonEmpty(awssdk.ToString(secret.ARN), awssdk.ToString(secret.Name))), nil
+			},
+			CursorFallback: func(secret secretsmanagertypesSecret) string {
+				return firstNonEmpty(awssdk.ToString(secret.ARN), awssdk.ToString(secret.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSQSQueue]{
+			Name:  familySQSQueue,
+			Label: "aws sqs queues",
+			List:  listSQSQueues,
+			Event: sqsQueueEvent,
+			URN: func(settings settings, queue awsSQSQueue) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sqs_queue:%s", settings.accountID, firstNonEmpty(queue.ARN, queue.URL, queue.Name)), nil
+			},
+			CursorFallback: func(queue awsSQSQueue) string { return firstNonEmpty(queue.ARN, queue.URL, queue.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSNSTopic]{
+			Name:  familySNSTopic,
+			Label: "aws sns topics",
+			List:  listSNSTopics,
+			Event: snsTopicEvent,
+			URN: func(settings settings, topic awsSNSTopic) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sns_topic:%s", settings.accountID, firstNonEmpty(topic.ARN, topic.Name)), nil
+			},
+			CursorFallback: func(topic awsSNSTopic) string { return firstNonEmpty(topic.ARN, topic.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsECRRepository]{
+			Name:  familyECRRepository,
+			Label: "aws ecr repositories",
+			List:  listECRRepositories,
+			Event: ecrRepositoryEvent,
+			URN: func(settings settings, repository awsECRRepository) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ecr_repository:%s", settings.accountID, firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))), nil
+			},
+			CursorFallback: func(repository awsECRRepository) string {
+				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
 			Name:  familyCloudTrail,
@@ -725,6 +868,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
+		cfg:          cfg,
 		iam:          iam.NewFromConfig(cfg),
 		cloudTrail:   cloudtrail.NewFromConfig(cfg),
 		ec2:          ec2.NewFromConfig(cfg),
@@ -733,10 +877,22 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		elbv2:        elbv2.NewFromConfig(cfg),
 		ecs:          ecs.NewFromConfig(cfg),
 		eks:          eks.NewFromConfig(cfg),
+		ecr:          ecr.NewFromConfig(cfg),
 		apiGateway:   apigateway.NewFromConfig(cfg),
 		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
 		lambda:       lambda.NewFromConfig(cfg),
 		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
+		s3:           s3.NewFromConfig(cfg),
+		s3ByRegion: func(region string) awsS3API {
+			regionalCfg := cfg
+			regionalCfg.Region = region
+			return s3.NewFromConfig(regionalCfg)
+		},
+		rds:     rds.NewFromConfig(cfg),
+		kms:     kms.NewFromConfig(cfg),
+		secrets: secretsmanager.NewFromConfig(cfg),
+		sqs:     sqs.NewFromConfig(cfg),
+		sns:     sns.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -793,7 +949,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyLambdaFunction, familyPublicEndpoint, familyResourceExposure:
+	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -808,7 +964,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, lambda_function, public_endpoint, or resource_exposure")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }
