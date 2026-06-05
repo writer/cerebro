@@ -191,7 +191,8 @@ func newSecurityTestSource(t *testing.T, fake *fakeAWSSecurityServices) *Source 
 			macie2:         fakeMacie2Security{fake: fake},
 			networkFW:      fake,
 			securityHub:    fakeSecurityHubSecurity{fake: fake},
-			wafv2:          fake,
+			wafv2:       fake,
+			wafv2Global: fake,
 		}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()

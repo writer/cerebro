@@ -54,6 +54,7 @@ type awsSecurityClients struct {
 	networkFW      awsNetworkFirewallAPI
 	securityHub    awsSecurityHubAPI
 	wafv2          awsWAFV2API
+	wafv2Global    awsWAFV2API
 }
 
 type awsAccessAnalyzerAPI interface {
@@ -123,6 +124,8 @@ type awsNetworkFirewall struct {
 }
 
 func newAWSSecurityClients(cfg awssdk.Config) awsSecurityClients {
+	globalCfg := cfg.Copy()
+	globalCfg.Region = "us-east-1"
 	return awsSecurityClients{
 		accessAnalyzer: accessanalyzer.NewFromConfig(cfg),
 		configService:  configservice.NewFromConfig(cfg),
@@ -132,6 +135,7 @@ func newAWSSecurityClients(cfg awssdk.Config) awsSecurityClients {
 		networkFW:      networkfirewall.NewFromConfig(cfg),
 		securityHub:    securityhub.NewFromConfig(cfg),
 		wafv2:          wafv2.NewFromConfig(cfg),
+		wafv2Global:    wafv2.NewFromConfig(globalCfg),
 	}
 }
 
@@ -373,7 +377,8 @@ func listMacie2Findings(ctx context.Context, clients awsClients, _ settings, cur
 
 func listWAFV2WebACLs(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsWAFV2WebACL, string, error) {
 	scope := wafv2Scope(settings)
-	out, err := clients.wafv2.ListWebACLs(ctx, &wafv2.ListWebACLsInput{
+	wafClient := wafv2ClientForScope(clients, scope)
+	out, err := wafClient.ListWebACLs(ctx, &wafv2.ListWebACLsInput{
 		Scope:      scope,
 		Limit:      awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 		NextMarker: stringPtr(cursor),
@@ -384,7 +389,7 @@ func listWAFV2WebACLs(ctx context.Context, clients awsClients, settings settings
 	records := make([]awsWAFV2WebACL, 0, len(out.WebACLs))
 	for _, summary := range out.WebACLs {
 		record := awsWAFV2WebACL{Scope: scope, Summary: summary}
-		detail, err := clients.wafv2.GetWebACL(ctx, &wafv2.GetWebACLInput{
+		detail, err := wafClient.GetWebACL(ctx, &wafv2.GetWebACLInput{
 			ARN:   summary.ARN,
 			Id:    summary.Id,
 			Name:  summary.Name,
@@ -537,9 +542,11 @@ func securityHubFindingEvent(settings settings, finding securityhubtypes.AwsSecu
 	attributes["product_arn"] = awssdk.ToString(finding.ProductArn)
 	attributes["product_name"] = awssdk.ToString(finding.ProductName)
 	attributes["schema_version"] = awssdk.ToString(finding.SchemaVersion)
-	attributes["severity_label"] = string(finding.Severity.Label)
-	attributes["severity_normalized"] = int32AttrString(finding.Severity.Normalized)
-	attributes["severity_original"] = awssdk.ToString(finding.Severity.Original)
+	if finding.Severity != nil {
+		attributes["severity_label"] = string(finding.Severity.Label)
+		attributes["severity_normalized"] = int32AttrString(finding.Severity.Normalized)
+		attributes["severity_original"] = awssdk.ToString(finding.Severity.Original)
+	}
 	attributes["source_url"] = awssdk.ToString(finding.SourceUrl)
 	attributes["title"] = awssdk.ToString(finding.Title)
 	attributes["types"] = strings.Join(cleanStrings(finding.Types), ",")
@@ -932,6 +939,13 @@ func wafv2Scope(settings settings) wafv2types.Scope {
 	default:
 		return wafv2types.ScopeRegional
 	}
+}
+
+func wafv2ClientForScope(clients awsClients, scope wafv2types.Scope) awsWAFV2API {
+	if scope == wafv2types.ScopeCloudfront {
+		return clients.wafv2Global
+	}
+	return clients.wafv2
 }
 
 func firstInspector2Resource(resources []inspector2types.Resource) *inspector2types.Resource {
