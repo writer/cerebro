@@ -77,7 +77,7 @@ config:
   # if the pilot demands tighter values.
   cerebro:deviceAuthEnabled: true
   cerebro:deviceAuthCurrentKID: secheck-pilot-1
-  cerebro:deviceAuthSigningKeysSecretName: cerebro-sec-dev/CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON
+  cerebro:deviceAuthSigningKeysSecretName: CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON
   cerebro:deviceAuthIssuer: cerebro-sec-dev
   cerebro:deviceAuthAudience: cerebro-device
   cerebro:deviceAuthRefreshTTL: 168h
