@@ -16,6 +16,8 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/athena"
+	athenatypes "github.com/aws/aws-sdk-go-v2/service/athena/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -30,10 +32,14 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/glue"
+	gluetypes "github.com/aws/aws-sdk-go-v2/service/glue/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
+	lakeformationtypes "github.com/aws/aws-sdk-go-v2/service/lakeformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -329,6 +335,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
+		{family: familyAthenaWorkGroup, kind: "aws.athena_workgroup"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
@@ -339,8 +347,13 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
 		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyGlueCrawler, kind: "aws.glue_crawler"},
+		{family: familyGlueDatabase, kind: "aws.glue_database"},
+		{family: familyGlueJob, kind: "aws.glue_job"},
+		{family: familyGlueTable, kind: "aws.glue_table"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyKMSKey, kind: "aws.kms_key"},
+		{family: familyLakeFormationResource, kind: "aws.lakeformation_resource"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
@@ -749,6 +762,141 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSAnalyticsInventoryEvents(t *testing.T) {
+	glueDatabaseARNValue := "arn:aws:glue:us-east-1:123456789012:database/analytics"
+	glueTableARNValue := "arn:aws:glue:us-east-1:123456789012:table/analytics/events"
+	glueCrawlerARNValue := "arn:aws:glue:us-east-1:123456789012:crawler/analytics-crawler"
+	glueJobARNValue := "arn:aws:glue:us-east-1:123456789012:job/analytics-etl"
+	athenaWorkGroupARNValue := "arn:aws:athena:us-east-1:123456789012:workgroup/analytics"
+	athenaCatalogARNValue := "arn:aws:athena:us-east-1:123456789012:datacatalog/AwsDataCatalog"
+	lakeFormationResourceARN := "arn:aws:s3:::prod-data"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSData: fakeAWSData{
+			glueDatabases: []gluetypes.Database{{
+				Name:        awssdk.String("analytics"),
+				CatalogId:   awssdk.String("123456789012"),
+				Description: awssdk.String("analytics warehouse"),
+				LocationUri: awssdk.String("s3://prod-data/warehouse"),
+				CreateTime:  timePtr("2026-04-23T00:00:00Z"),
+			}},
+			glueTables: map[string][]gluetypes.Table{"analytics": {{
+				Name:         awssdk.String("events"),
+				DatabaseName: awssdk.String("analytics"),
+				CatalogId:    awssdk.String("123456789012"),
+				TableType:    awssdk.String("EXTERNAL_TABLE"),
+				Owner:        awssdk.String("data@writer.com"),
+				CreateTime:   timePtr("2026-04-23T00:00:00Z"),
+				UpdateTime:   timePtr("2026-04-24T00:00:00Z"),
+				StorageDescriptor: &gluetypes.StorageDescriptor{
+					Columns:      []gluetypes.Column{{Name: awssdk.String("event_id"), Type: awssdk.String("string")}},
+					Compressed:   true,
+					InputFormat:  awssdk.String("org.apache.hadoop.mapred.TextInputFormat"),
+					Location:     awssdk.String("s3://prod-data/events"),
+					OutputFormat: awssdk.String("org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"),
+					SerdeInfo:    &gluetypes.SerDeInfo{SerializationLibrary: awssdk.String("org.openx.data.jsonserde.JsonSerDe")},
+				},
+				IsRegisteredWithLakeFormation: true,
+			}}},
+			glueCrawlers: []gluetypes.Crawler{{
+				Name:         awssdk.String("analytics-crawler"),
+				DatabaseName: awssdk.String("analytics"),
+				Role:         awssdk.String("arn:aws:iam::123456789012:role/GlueCrawlerRole"),
+				State:        gluetypes.CrawlerState("READY"),
+				CreationTime: timePtr("2026-04-23T00:00:00Z"),
+				LastUpdated:  timePtr("2026-04-24T00:00:00Z"),
+				Targets:      &gluetypes.CrawlerTargets{S3Targets: []gluetypes.S3Target{{Path: awssdk.String("s3://prod-data/events")}}},
+				LastCrawl:    &gluetypes.LastCrawlInfo{Status: gluetypes.LastCrawlStatus("SUCCEEDED"), StartTime: timePtr("2026-04-24T00:00:00Z")},
+			}},
+			glueJobs: []gluetypes.Job{{
+				Name:              awssdk.String("analytics-etl"),
+				Role:              awssdk.String("arn:aws:iam::123456789012:role/GlueJobRole"),
+				GlueVersion:       awssdk.String("5.0"),
+				WorkerType:        gluetypes.WorkerType("G.1X"),
+				NumberOfWorkers:   awssdk.Int32(2),
+				ExecutionClass:    gluetypes.ExecutionClass("STANDARD"),
+				JobMode:           gluetypes.JobMode("SCRIPT"),
+				CreatedOn:         timePtr("2026-04-23T00:00:00Z"),
+				LastModifiedOn:    timePtr("2026-04-24T00:00:00Z"),
+				Command:           &gluetypes.JobCommand{Name: awssdk.String("glueetl"), ScriptLocation: awssdk.String("s3://prod-scripts/analytics.py")},
+				ExecutionProperty: &gluetypes.ExecutionProperty{MaxConcurrentRuns: 2},
+			}},
+			glueTags: map[string]map[string]string{
+				glueDatabaseARNValue: {"Owner": "data@writer.com"},
+				glueTableARNValue:    {"DataClassification": "restricted"},
+				glueCrawlerARNValue:  {"Team": "analytics"},
+				glueJobARNValue:      {"Team": "analytics"},
+			},
+			athenaWorkGroups: []athenatypes.WorkGroup{{
+				Name:         awssdk.String("analytics"),
+				Description:  awssdk.String("analytics queries"),
+				State:        athenatypes.WorkGroupState("ENABLED"),
+				CreationTime: timePtr("2026-04-23T00:00:00Z"),
+				Configuration: &athenatypes.WorkGroupConfiguration{
+					EnforceWorkGroupConfiguration:   awssdk.Bool(true),
+					PublishCloudWatchMetricsEnabled: awssdk.Bool(true),
+					ResultConfiguration: &athenatypes.ResultConfiguration{
+						OutputLocation: awssdk.String("s3://prod-athena-results/"),
+						EncryptionConfiguration: &athenatypes.EncryptionConfiguration{
+							EncryptionOption: athenatypes.EncryptionOption("SSE_KMS"),
+							KmsKey:           awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+						},
+					},
+				},
+			}},
+			athenaDataCatalogs: []athenatypes.DataCatalog{{
+				Name:        awssdk.String("AwsDataCatalog"),
+				Type:        athenatypes.DataCatalogType("GLUE"),
+				Description: awssdk.String("default glue catalog"),
+				Parameters:  map[string]string{"catalog-id": "123456789012"},
+				Status:      athenatypes.DataCatalogStatus("CREATE_COMPLETE"),
+			}},
+			athenaTags: map[string][]athenatypes.Tag{
+				athenaWorkGroupARNValue: {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}},
+				athenaCatalogARNValue:   {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}},
+			},
+			lakeFormationResources: []lakeformationtypes.ResourceInfo{{
+				ResourceArn:                  awssdk.String(lakeFormationResourceARN),
+				RoleArn:                      awssdk.String("arn:aws:iam::123456789012:role/LakeFormationAccessRole"),
+				ExpectedResourceOwnerAccount: awssdk.String("123456789012"),
+				HybridAccessEnabled:          awssdk.Bool(true),
+				LastModified:                 timePtr("2026-04-24T00:00:00Z"),
+				VerificationStatus:           lakeformationtypes.VerificationStatus("VERIFIED"),
+				WithPrivilegedAccess:         awssdk.Bool(true),
+			}},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyGlueDatabase, kind: "aws.glue_database", attr: "location_uri", want: "s3://prod-data/warehouse"},
+		{family: familyGlueTable, kind: "aws.glue_table", attr: "is_registered_with_lakeformation", want: "true"},
+		{family: familyGlueCrawler, kind: "aws.glue_crawler", attr: "role_name", want: "GlueCrawlerRole"},
+		{family: familyGlueJob, kind: "aws.glue_job", attr: "command_name", want: "glueetl"},
+		{family: familyAthenaWorkGroup, kind: "aws.athena_workgroup", attr: "encryption", want: "SSE_KMS"},
+		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog", attr: "glue_catalog_id", want: "123456789012"},
+		{family: familyLakeFormationResource, kind: "aws.lakeformation_resource", attr: "verification_status", want: "VERIFIED"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -1870,7 +2018,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, glue: fake, athena: fake, lakeFormation: fake, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +2034,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, glue: fake, athena: fake, lakeFormation: fake, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1971,27 +2119,36 @@ type fakeAWSNetwork struct {
 }
 
 type fakeAWSData struct {
-	s3Buckets            []s3types.Bucket
-	s3BucketRegions      map[string]s3types.BucketLocationConstraint
-	s3Tags               map[string][]s3types.Tag
-	s3Encryption         map[string]*s3types.ServerSideEncryptionConfiguration
-	s3Versioning         map[string]s3types.BucketVersioningStatus
-	s3Logging            map[string]bool
-	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
-	s3OptionalError      error
-	rdsInstances         []rdstypes.DBInstance
-	kmsKeys              []kmstypes.KeyMetadata
-	kmsTags              map[string][]kmstypes.Tag
-	kmsRotation          map[string]bool
-	secrets              []secretsmanagertypes.SecretListEntry
-	sqsQueueURLs         []string
-	sqsAttributes        map[string]map[string]string
-	sqsTags              map[string]map[string]string
-	snsTopics            []snstypes.Topic
-	snsAttributes        map[string]map[string]string
-	snsTags              map[string][]snstypes.Tag
-	ecrRepositories      []ecrtypes.Repository
-	ecrTags              map[string][]ecrtypes.Tag
+	s3Buckets              []s3types.Bucket
+	s3BucketRegions        map[string]s3types.BucketLocationConstraint
+	s3Tags                 map[string][]s3types.Tag
+	s3Encryption           map[string]*s3types.ServerSideEncryptionConfiguration
+	s3Versioning           map[string]s3types.BucketVersioningStatus
+	s3Logging              map[string]bool
+	s3PublicAccessBlocks   map[string]*s3types.PublicAccessBlockConfiguration
+	s3OptionalError        error
+	rdsInstances           []rdstypes.DBInstance
+	kmsKeys                []kmstypes.KeyMetadata
+	kmsTags                map[string][]kmstypes.Tag
+	kmsRotation            map[string]bool
+	secrets                []secretsmanagertypes.SecretListEntry
+	sqsQueueURLs           []string
+	sqsAttributes          map[string]map[string]string
+	sqsTags                map[string]map[string]string
+	snsTopics              []snstypes.Topic
+	snsAttributes          map[string]map[string]string
+	snsTags                map[string][]snstypes.Tag
+	ecrRepositories        []ecrtypes.Repository
+	ecrTags                map[string][]ecrtypes.Tag
+	glueDatabases          []gluetypes.Database
+	glueTables             map[string][]gluetypes.Table
+	glueCrawlers           []gluetypes.Crawler
+	glueJobs               []gluetypes.Job
+	glueTags               map[string]map[string]string
+	athenaWorkGroups       []athenatypes.WorkGroup
+	athenaDataCatalogs     []athenatypes.DataCatalog
+	athenaTags             map[string][]athenatypes.Tag
+	lakeFormationResources []lakeformationtypes.ResourceInfo
 }
 
 type fakeAWSCompute struct {
@@ -2361,6 +2518,72 @@ func (f fakeECR) DescribeRepositories(context.Context, *ecr.DescribeRepositories
 
 func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForResourceInput, _ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
 	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+func (f fakeAWS) GetDatabases(context.Context, *glue.GetDatabasesInput, ...func(*glue.Options)) (*glue.GetDatabasesOutput, error) {
+	return &glue.GetDatabasesOutput{DatabaseList: f.glueDatabases}, nil
+}
+
+func (f fakeAWS) GetTables(_ context.Context, input *glue.GetTablesInput, _ ...func(*glue.Options)) (*glue.GetTablesOutput, error) {
+	return &glue.GetTablesOutput{TableList: f.glueTables[awssdk.ToString(input.DatabaseName)]}, nil
+}
+
+func (f fakeAWS) GetCrawlers(context.Context, *glue.GetCrawlersInput, ...func(*glue.Options)) (*glue.GetCrawlersOutput, error) {
+	return &glue.GetCrawlersOutput{Crawlers: f.glueCrawlers}, nil
+}
+
+func (f fakeAWS) GetJobs(context.Context, *glue.GetJobsInput, ...func(*glue.Options)) (*glue.GetJobsOutput, error) {
+	return &glue.GetJobsOutput{Jobs: f.glueJobs}, nil
+}
+
+func (f fakeAWS) GetTags(_ context.Context, input *glue.GetTagsInput, _ ...func(*glue.Options)) (*glue.GetTagsOutput, error) {
+	return &glue.GetTagsOutput{Tags: f.glueTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+func (f fakeAWS) ListWorkGroups(context.Context, *athena.ListWorkGroupsInput, ...func(*athena.Options)) (*athena.ListWorkGroupsOutput, error) {
+	summaries := make([]athenatypes.WorkGroupSummary, 0, len(f.athenaWorkGroups))
+	for _, workgroup := range f.athenaWorkGroups {
+		summaries = append(summaries, athenatypes.WorkGroupSummary{Name: workgroup.Name, State: workgroup.State, Description: workgroup.Description, CreationTime: workgroup.CreationTime})
+	}
+	return &athena.ListWorkGroupsOutput{WorkGroups: summaries}, nil
+}
+
+func (f fakeAWS) GetWorkGroup(_ context.Context, input *athena.GetWorkGroupInput, _ ...func(*athena.Options)) (*athena.GetWorkGroupOutput, error) {
+	name := awssdk.ToString(input.WorkGroup)
+	for _, workgroup := range f.athenaWorkGroups {
+		if awssdk.ToString(workgroup.Name) == name {
+			copy := workgroup
+			return &athena.GetWorkGroupOutput{WorkGroup: &copy}, nil
+		}
+	}
+	return &athena.GetWorkGroupOutput{}, nil
+}
+
+func (f fakeAWS) ListDataCatalogs(context.Context, *athena.ListDataCatalogsInput, ...func(*athena.Options)) (*athena.ListDataCatalogsOutput, error) {
+	summaries := make([]athenatypes.DataCatalogSummary, 0, len(f.athenaDataCatalogs))
+	for _, catalog := range f.athenaDataCatalogs {
+		summaries = append(summaries, athenatypes.DataCatalogSummary{CatalogName: catalog.Name, Type: catalog.Type, ConnectionType: catalog.ConnectionType, Status: catalog.Status, Error: catalog.Error})
+	}
+	return &athena.ListDataCatalogsOutput{DataCatalogsSummary: summaries}, nil
+}
+
+func (f fakeAWS) GetDataCatalog(_ context.Context, input *athena.GetDataCatalogInput, _ ...func(*athena.Options)) (*athena.GetDataCatalogOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, catalog := range f.athenaDataCatalogs {
+		if awssdk.ToString(catalog.Name) == name {
+			copy := catalog
+			return &athena.GetDataCatalogOutput{DataCatalog: &copy}, nil
+		}
+	}
+	return &athena.GetDataCatalogOutput{}, nil
+}
+
+func (f fakeAWS) ListTagsForResource(_ context.Context, input *athena.ListTagsForResourceInput, _ ...func(*athena.Options)) (*athena.ListTagsForResourceOutput, error) {
+	return &athena.ListTagsForResourceOutput{Tags: f.athenaTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+func (f fakeAWS) ListResources(context.Context, *lakeformation.ListResourcesInput, ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error) {
+	return &lakeformation.ListResourcesOutput{ResourceInfoList: f.lakeFormationResources}, nil
 }
 
 type fakeEKS struct {

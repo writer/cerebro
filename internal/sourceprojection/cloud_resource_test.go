@@ -99,3 +99,38 @@ func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, systemIdentityURN)
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, userIdentityURN)
 }
+
+func TestProjectAWSAnalyticsCloudResourceLinksAccountAndRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-glue-job-analytics",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.glue_job",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"family":            "glue_job",
+			"region":            "us-east-1",
+			"relationship":      "runs_as",
+			"resource_id":       "arn:aws:glue:us-east-1:123456789012:job/analytics-etl",
+			"resource_name":     "analytics-etl",
+			"resource_provider": "aws",
+			"resource_type":     "glue_job",
+			"role_arn":          "arn:aws:iam::123456789012:role/GlueJobRole",
+			"role_name":         "GlueJobRole",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_glue_job:arn:aws:glue:us-east-1:123456789012:job/analytics-etl"
+	roleURN := "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/GlueJobRole"
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.glue.job" {
+		t.Fatalf("glue job entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
+}

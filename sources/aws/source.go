@@ -24,6 +24,7 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -37,9 +38,12 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/glue"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
+	lakeformationtypes "github.com/aws/aws-sdk-go-v2/service/lakeformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -67,42 +71,49 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily             = familyCloudTrail
-	defaultRegion             = "us-east-1"
-	defaultPageSize           = 10
-	maxPageSize               = 200
-	cloudTrailCursorVersion   = 1
-	cloudTrailCursorMaxAge    = 55 * time.Minute
-	publicEndpointCursorV2    = 2
-	awsAssumeRoleSessionName  = "cerebro-source-runtime"
-	familyAccessKey           = "access_key"
-	familyAssetMetadata       = "asset_metadata"
-	familyCloudTrail          = "cloudtrail"
-	familyEC2Instance         = "ec2_instance"
-	familyECRRepository       = "ecr_repository"
-	familyECSService          = "ecs_service"
-	familyECSTask             = "ecs_task"
-	familyECSTaskDefinition   = "ecs_task_definition"
-	familyEKSCluster          = "eks_cluster"
-	familyEKSNodegroup        = "eks_nodegroup"
-	familyEKSFargateProfile   = "eks_fargate_profile"
-	familyEKSPodIdentity      = "eks_pod_identity_association"
-	familyEffectivePermission = "effective_permission"
-	familyIAMGroup            = "iam_group"
-	familyIAMMembership       = "iam_group_membership"
-	familyIAMRoleTrust        = "iam_role_trust"
-	familyIAMRoleAssign       = "iam_role_assignment"
-	familyIAMRole             = "iam_role"
-	familyIAMUser             = "iam_user"
-	familyKMSKey              = "kms_key"
-	familyPublicEndpoint      = "public_endpoint"
-	familyRDSInstance         = "rds_instance"
-	familyResourceExposure    = "resource_exposure"
-	familyS3Bucket            = "s3_bucket"
-	familySecret              = "secret"
-	familySNSTopic            = "sns_topic"
-	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
+	defaultFamily               = familyCloudTrail
+	defaultRegion               = "us-east-1"
+	defaultPageSize             = 10
+	maxPageSize                 = 200
+	cloudTrailCursorVersion     = 1
+	cloudTrailCursorMaxAge      = 55 * time.Minute
+	publicEndpointCursorV2      = 2
+	awsAssumeRoleSessionName    = "cerebro-source-runtime"
+	familyAccessKey             = "access_key"
+	familyAssetMetadata         = "asset_metadata"
+	familyCloudTrail            = "cloudtrail"
+	familyEC2Instance           = "ec2_instance"
+	familyECRRepository         = "ecr_repository"
+	familyECSService            = "ecs_service"
+	familyECSTask               = "ecs_task"
+	familyECSTaskDefinition     = "ecs_task_definition"
+	familyEKSCluster            = "eks_cluster"
+	familyEKSNodegroup          = "eks_nodegroup"
+	familyEKSFargateProfile     = "eks_fargate_profile"
+	familyEKSPodIdentity        = "eks_pod_identity_association"
+	familyEffectivePermission   = "effective_permission"
+	familyGlueDatabase          = "glue_database"
+	familyGlueTable             = "glue_table"
+	familyGlueCrawler           = "glue_crawler"
+	familyGlueJob               = "glue_job"
+	familyAthenaWorkGroup       = "athena_workgroup"
+	familyAthenaDataCatalog     = "athena_data_catalog"
+	familyLakeFormationResource = "lakeformation_resource"
+	familyIAMGroup              = "iam_group"
+	familyIAMMembership         = "iam_group_membership"
+	familyIAMRoleTrust          = "iam_role_trust"
+	familyIAMRoleAssign         = "iam_role_assignment"
+	familyIAMRole               = "iam_role"
+	familyIAMUser               = "iam_user"
+	familyKMSKey                = "kms_key"
+	familyPublicEndpoint        = "public_endpoint"
+	familyRDSInstance           = "rds_instance"
+	familyResourceExposure      = "resource_exposure"
+	familyS3Bucket              = "s3_bucket"
+	familySecret                = "secret"
+	familySNSTopic              = "sns_topic"
+	familySQSQueue              = "sqs_queue"
+	familyLambdaFunction        = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -141,27 +152,30 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg          awssdk.Config
-	iam          awsIAMAPI
-	cloudTrail   awsCloudTrailAPI
-	ec2          awsEC2API
-	route53      awsRoute53API
-	cloudFront   awsCloudFrontAPI
-	elbv2        awsELBV2API
-	ecs          awsECSAPI
-	eks          awsEKSAPI
-	ecr          awsECRAPI
-	apiGateway   awsAPIGatewayAPI
-	apiGatewayV2 awsAPIGatewayV2API
-	lambda       awsLambdaAPI
-	tagging      awsResourceGroupsTaggingAPI
-	s3           awsS3API
-	s3ByRegion   func(string) awsS3API
-	rds          awsRDSAPI
-	kms          awsKMSAPI
-	secrets      awsSecretsManagerAPI
-	sqs          awsSQSAPI
-	sns          awsSNSAPI
+	cfg           awssdk.Config
+	iam           awsIAMAPI
+	cloudTrail    awsCloudTrailAPI
+	ec2           awsEC2API
+	route53       awsRoute53API
+	cloudFront    awsCloudFrontAPI
+	elbv2         awsELBV2API
+	ecs           awsECSAPI
+	eks           awsEKSAPI
+	ecr           awsECRAPI
+	apiGateway    awsAPIGatewayAPI
+	apiGatewayV2  awsAPIGatewayV2API
+	glue          awsGlueAPI
+	athena        awsAthenaAPI
+	lakeFormation awsLakeFormationAPI
+	lambda        awsLambdaAPI
+	tagging       awsResourceGroupsTaggingAPI
+	s3            awsS3API
+	s3ByRegion    func(string) awsS3API
+	rds           awsRDSAPI
+	kms           awsKMSAPI
+	secrets       awsSecretsManagerAPI
+	sqs           awsSQSAPI
+	sns           awsSNSAPI
 }
 
 type awsIAMAPI interface {
@@ -242,6 +256,26 @@ type awsAPIGatewayAPI interface {
 type awsAPIGatewayV2API interface {
 	GetApis(context.Context, *apigatewayv2.GetApisInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error)
 	GetDomainNames(context.Context, *apigatewayv2.GetDomainNamesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error)
+}
+
+type awsGlueAPI interface {
+	GetDatabases(context.Context, *glue.GetDatabasesInput, ...func(*glue.Options)) (*glue.GetDatabasesOutput, error)
+	GetTables(context.Context, *glue.GetTablesInput, ...func(*glue.Options)) (*glue.GetTablesOutput, error)
+	GetCrawlers(context.Context, *glue.GetCrawlersInput, ...func(*glue.Options)) (*glue.GetCrawlersOutput, error)
+	GetJobs(context.Context, *glue.GetJobsInput, ...func(*glue.Options)) (*glue.GetJobsOutput, error)
+	GetTags(context.Context, *glue.GetTagsInput, ...func(*glue.Options)) (*glue.GetTagsOutput, error)
+}
+
+type awsAthenaAPI interface {
+	ListWorkGroups(context.Context, *athena.ListWorkGroupsInput, ...func(*athena.Options)) (*athena.ListWorkGroupsOutput, error)
+	GetWorkGroup(context.Context, *athena.GetWorkGroupInput, ...func(*athena.Options)) (*athena.GetWorkGroupOutput, error)
+	ListDataCatalogs(context.Context, *athena.ListDataCatalogsInput, ...func(*athena.Options)) (*athena.ListDataCatalogsOutput, error)
+	GetDataCatalog(context.Context, *athena.GetDataCatalogInput, ...func(*athena.Options)) (*athena.GetDataCatalogOutput, error)
+	ListTagsForResource(context.Context, *athena.ListTagsForResourceInput, ...func(*athena.Options)) (*athena.ListTagsForResourceOutput, error)
+}
+
+type awsLakeFormationAPI interface {
+	ListResources(context.Context, *lakeformation.ListResourcesInput, ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error)
 }
 
 type awsLambdaAPI interface {
@@ -716,6 +750,76 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(association.AssociationArn), awssdk.ToString(association.AssociationId))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueDatabase]{
+			Name:  familyGlueDatabase,
+			Label: "aws glue databases",
+			List:  listGlueDatabases,
+			Event: glueDatabaseEvent,
+			URN: func(settings settings, database awsGlueDatabase) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_database:%s", settings.accountID, firstNonEmpty(glueDatabaseARN(settings, database.Name), database.Name)), nil
+			},
+			CursorFallback: func(database awsGlueDatabase) string { return database.Name },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueTable]{
+			Name:  familyGlueTable,
+			Label: "aws glue tables",
+			List:  listGlueTables,
+			Event: glueTableEvent,
+			URN: func(settings settings, table awsGlueTable) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_table:%s", settings.accountID, firstNonEmpty(glueTableARN(settings, table.DatabaseName, awssdk.ToString(table.Table.Name)), table.DatabaseName+"/"+awssdk.ToString(table.Table.Name))), nil
+			},
+			CursorFallback: func(table awsGlueTable) string { return table.DatabaseName + "/" + awssdk.ToString(table.Table.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueCrawler]{
+			Name:  familyGlueCrawler,
+			Label: "aws glue crawlers",
+			List:  listGlueCrawlers,
+			Event: glueCrawlerEvent,
+			URN: func(settings settings, crawler awsGlueCrawler) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_crawler:%s", settings.accountID, firstNonEmpty(glueCrawlerARN(settings, crawler.Crawler.Name), awssdk.ToString(crawler.Crawler.Name))), nil
+			},
+			CursorFallback: func(crawler awsGlueCrawler) string { return awssdk.ToString(crawler.Crawler.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueJob]{
+			Name:  familyGlueJob,
+			Label: "aws glue jobs",
+			List:  listGlueJobs,
+			Event: glueJobEvent,
+			URN: func(settings settings, job awsGlueJob) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_job:%s", settings.accountID, firstNonEmpty(glueJobARN(settings, job.Job.Name), awssdk.ToString(job.Job.Name))), nil
+			},
+			CursorFallback: func(job awsGlueJob) string { return awssdk.ToString(job.Job.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAthenaWorkGroup]{
+			Name:  familyAthenaWorkGroup,
+			Label: "aws athena workgroups",
+			List:  listAthenaWorkGroups,
+			Event: athenaWorkGroupEvent,
+			URN: func(settings settings, workgroup awsAthenaWorkGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_athena_workgroup:%s", settings.accountID, firstNonEmpty(athenaWorkGroupARN(settings, workgroup.WorkGroup.Name), awssdk.ToString(workgroup.WorkGroup.Name))), nil
+			},
+			CursorFallback: func(workgroup awsAthenaWorkGroup) string { return awssdk.ToString(workgroup.WorkGroup.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAthenaDataCatalog]{
+			Name:  familyAthenaDataCatalog,
+			Label: "aws athena data catalogs",
+			List:  listAthenaDataCatalogs,
+			Event: athenaDataCatalogEvent,
+			URN: func(settings settings, catalog awsAthenaDataCatalog) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_athena_data_catalog:%s", settings.accountID, firstNonEmpty(athenaDataCatalogARN(settings, catalog.Catalog.Name), awssdk.ToString(catalog.Catalog.Name))), nil
+			},
+			CursorFallback: func(catalog awsAthenaDataCatalog) string { return awssdk.ToString(catalog.Catalog.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[lakeformationtypes.ResourceInfo]{
+			Name:  familyLakeFormationResource,
+			Label: "aws lake formation resources",
+			List:  listLakeFormationResources,
+			Event: lakeFormationResourceEvent,
+			URN: func(settings settings, resource lakeformationtypes.ResourceInfo) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_lakeformation_resource:%s", settings.accountID, firstNonEmpty(awssdk.ToString(resource.ResourceArn), awssdk.ToString(resource.RoleArn))), nil
+			},
+			CursorFallback: func(resource lakeformationtypes.ResourceInfo) string { return awssdk.ToString(resource.ResourceArn) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
 			Name:  familyEffectivePermission,
 			Label: "aws effective permissions",
@@ -868,21 +972,24 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:          cfg,
-		iam:          iam.NewFromConfig(cfg),
-		cloudTrail:   cloudtrail.NewFromConfig(cfg),
-		ec2:          ec2.NewFromConfig(cfg),
-		route53:      route53.NewFromConfig(cfg),
-		cloudFront:   cloudfront.NewFromConfig(cfg),
-		elbv2:        elbv2.NewFromConfig(cfg),
-		ecs:          ecs.NewFromConfig(cfg),
-		eks:          eks.NewFromConfig(cfg),
-		ecr:          ecr.NewFromConfig(cfg),
-		apiGateway:   apigateway.NewFromConfig(cfg),
-		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
-		lambda:       lambda.NewFromConfig(cfg),
-		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:           s3.NewFromConfig(cfg),
+		cfg:           cfg,
+		iam:           iam.NewFromConfig(cfg),
+		cloudTrail:    cloudtrail.NewFromConfig(cfg),
+		ec2:           ec2.NewFromConfig(cfg),
+		route53:       route53.NewFromConfig(cfg),
+		cloudFront:    cloudfront.NewFromConfig(cfg),
+		elbv2:         elbv2.NewFromConfig(cfg),
+		ecs:           ecs.NewFromConfig(cfg),
+		eks:           eks.NewFromConfig(cfg),
+		ecr:           ecr.NewFromConfig(cfg),
+		apiGateway:    apigateway.NewFromConfig(cfg),
+		apiGatewayV2:  apigatewayv2.NewFromConfig(cfg),
+		glue:          glue.NewFromConfig(cfg),
+		athena:        athena.NewFromConfig(cfg),
+		lakeFormation: lakeformation.NewFromConfig(cfg),
+		lambda:        lambda.NewFromConfig(cfg),
+		tagging:       resourcegroupstaggingapi.NewFromConfig(cfg),
+		s3:            s3.NewFromConfig(cfg),
 		s3ByRegion: func(region string) awsS3API {
 			regionalCfg := cfg
 			regionalCfg.Region = region
@@ -949,7 +1056,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkGroup, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLakeFormationResource, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1071,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, athena_data_catalog, athena_workgroup, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, glue_crawler, glue_database, glue_job, glue_table, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lakeformation_resource, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }

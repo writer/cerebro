@@ -10,11 +10,17 @@ emitted_kinds:
   - aws.ecs_service
   - aws.ecs_task
   - aws.ecs_task_definition
+  - aws.athena_workgroup
+  - aws.athena_data_catalog
   - aws.eks_cluster
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
   - aws.effective_permission
+  - aws.glue_database
+  - aws.glue_table
+  - aws.glue_crawler
+  - aws.glue_job
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
@@ -22,6 +28,7 @@ emitted_kinds:
   - aws.iam_role_trust
   - aws.iam_user
   - aws.kms_key
+  - aws.lakeformation_resource
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
@@ -39,11 +46,17 @@ runtime_families:
   - ecs_service
   - ecs_task
   - ecs_task_definition
+  - athena_workgroup
+  - athena_data_catalog
   - eks_cluster
   - eks_nodegroup
   - eks_fargate_profile
   - eks_pod_identity_association
   - effective_permission
+  - glue_database
+  - glue_table
+  - glue_crawler
+  - glue_job
   - iam_group
   - iam_group_membership
   - iam_role
@@ -51,6 +64,7 @@ runtime_families:
   - iam_role_trust
   - iam_user
   - kms_key
+  - lakeformation_resource
   - public_endpoint
   - rds_instance
   - resource_exposure
