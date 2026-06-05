@@ -46,6 +46,8 @@ github.com/aws/aws-sdk-go-v2/service/configservice v1.64.0 h1:2f7JaE5VlsvVEinZD5
 github.com/aws/aws-sdk-go-v2/service/configservice v1.64.0/go.mod h1:aMaXuPqUoImO2rXKCxmQIJvTAYZ1V3cXqJu7N1jqby8=
 github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5 h1:5fcF+s5hXULXEYPAnuVCmL9woUXTh1lhK9p2FxSF9ds=
 github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5/go.mod h1:B47PnG4zNN3pII2NkE9aNxALa9ODZPN+L4lEysYALQ0=
+github.com/aws/aws-sdk-go-v2/service/docdb v1.49.3 h1:AuhtE9Qg0W2nHTC6ss9yF0OaePRCD5Skb8UERID/YXs=
+github.com/aws/aws-sdk-go-v2/service/docdb v1.49.3/go.mod h1:/wgqw9AYlGD+S2vs/l1svwqmySjfypevC1sOwhKXslI=
 github.com/aws/aws-sdk-go-v2/service/dynamodb v1.57.9 h1:vXtVRSuB2PeBurKtu2cBhBrp443WBViDwOd1Bu3KSVQ=
 github.com/aws/aws-sdk-go-v2/service/dynamodb v1.57.9/go.mod h1:oA69sd8xL8Bd2yDI18eaeMQ55UKqfR88cXgHxjbNKQk=
 github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.21 h1:1D3C4VwwdttYJHU+n0qZxjp+4+m6XDt7xkad/5TjCoQ=
@@ -104,6 +106,8 @@ github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2 h1:MeFQKmFAYIoXH9+oXgaOPeM7p
 github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2/go.mod h1:Clrn/3iAEhtDG9HJn1HYp+arjui7NU6jrcx0BEd+bk0=
 github.com/aws/aws-sdk-go-v2/service/macie2 v1.52.1 h1:GQsSNYBPqBCO0h+wEPJxp4ZZglSoZFXQkNRNXSafb2Q=
 github.com/aws/aws-sdk-go-v2/service/macie2 v1.52.1/go.mod h1:DSrJnmxHPekFxmsbxEERBmi8uYbFicu8lnBnunuyLws=
+github.com/aws/aws-sdk-go-v2/service/neptune v1.45.2 h1:eD4OEf6PFxLcLiwQmsGizmGem18wgonz+4BuSr+IjpA=
+github.com/aws/aws-sdk-go-v2/service/neptune v1.45.2/go.mod h1:ow/TWHqyjCaxSRJ/F+uM+Wm3luiuqZG3/80uhyGeuWc=
 github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.61.6 h1:GoK6vtGG4vaVEk3OYEWd++OyKq3STiNN0N6gKd4ptdE=
 github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.61.6/go.mod h1:rl8s59OPHzSBn9s4ns3GOPiSxx+zaFnDTTxkLtiRJuw=
 github.com/aws/aws-sdk-go-v2/service/opensearch v1.70.6 h1:WnwXHKQtIIlEM+GTeUcZ1xoXeR6uLNO82mhZdTiQcR8=
@@ -116,6 +120,8 @@ github.com/aws/aws-sdk-go-v2/service/pipes v1.24.5 h1:zVrbhpCtXv5tdrMcD40KlrMIEB
 github.com/aws/aws-sdk-go-v2/service/pipes v1.24.5/go.mod h1:AwfcKMXt62aZovyv4ZsKQnZMcQLfUE1ftVlMasCCeR8=
 github.com/aws/aws-sdk-go-v2/service/rds v1.119.0 h1:LX5FxHNsK+1bop39sDfPeK1PKzMpCZH7504upjmlEvc=
 github.com/aws/aws-sdk-go-v2/service/rds v1.119.0/go.mod h1:e65cVtBgKsndwx7fCvgWgss9xRbfhWN6DthRKDeu6dI=
+github.com/aws/aws-sdk-go-v2/service/redshift v1.63.2 h1:un+KXR9WhPksPcsppgOxvTfZAeoOgHPoKejnkkfp6kI=
+github.com/aws/aws-sdk-go-v2/service/redshift v1.63.2/go.mod h1:AyfjQy9wJhvaSOvzgmugQ2G5bzo7BAKLTf7d+9+yXB8=
 github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2 h1:9/ffU7I/IZpWSy3Ht1cuMCfn9wwk2Ya6CujY4eT623s=
 github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2/go.mod h1:8mFAXvJPUSFI+Gklwx5lGEapkVjPeBTqzGeEURZ02fA=
 github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2 h1:5PG11zFh4s6n+FjyhCOs00K/yo4sLtemdYGjT2hccc8=

@@ -27,6 +27,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.75.1
 	github.com/aws/aws-sdk-go-v2/service/configservice v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5
+	github.com/aws/aws-sdk-go-v2/service/docdb v1.49.3
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.57.9
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.21
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2
@@ -51,12 +52,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/lakeformation v1.48.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2
 	github.com/aws/aws-sdk-go-v2/service/macie2 v1.52.1
+	github.com/aws/aws-sdk-go-v2/service/neptune v1.45.2
 	github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.61.6
 	github.com/aws/aws-sdk-go-v2/service/opensearch v1.70.6
 	github.com/aws/aws-sdk-go-v2/service/opensearchserverless v1.32.0
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.51.9
 	github.com/aws/aws-sdk-go-v2/service/pipes v1.24.5
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.0
+	github.com/aws/aws-sdk-go-v2/service/redshift v1.63.2
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2
 	github.com/aws/aws-sdk-go-v2/service/route53resolver v1.45.3
