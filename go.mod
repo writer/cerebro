@@ -14,6 +14,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.22
 	github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5
+	github.com/aws/aws-sdk-go-v2/service/athena v1.58.3
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3
@@ -22,8 +23,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
 	github.com/aws/aws-sdk-go-v2/service/eks v1.84.5
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.3
+	github.com/aws/aws-sdk-go-v2/service/firehose v1.43.1
+	github.com/aws/aws-sdk-go-v2/service/glue v1.143.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.3
+	github.com/aws/aws-sdk-go-v2/service/kafka v1.52.5
+	github.com/aws/aws-sdk-go-v2/service/kinesis v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.53.2
+	github.com/aws/aws-sdk-go-v2/service/lakeformation v1.48.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.0
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2

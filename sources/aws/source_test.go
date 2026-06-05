@@ -16,6 +16,8 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/athena"
+	athenatypes "github.com/aws/aws-sdk-go-v2/service/athena/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -30,10 +32,20 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/firehose"
+	firehosetypes "github.com/aws/aws-sdk-go-v2/service/firehose/types"
+	"github.com/aws/aws-sdk-go-v2/service/glue"
+	gluetypes "github.com/aws/aws-sdk-go-v2/service/glue/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/kafka"
+	kafkatypes "github.com/aws/aws-sdk-go-v2/service/kafka/types"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+	kinesistypes "github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
+	lakeformationtypes "github.com/aws/aws-sdk-go-v2/service/lakeformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -329,6 +341,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
+		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
@@ -339,9 +353,19 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
 		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream"},
+		{family: familyGlueCrawler, kind: "aws.glue_crawler"},
+		{family: familyGlueDatabase, kind: "aws.glue_database"},
+		{family: familyGlueJob, kind: "aws.glue_job"},
+		{family: familyGlueTable, kind: "aws.glue_table"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
+		{family: familyKinesisStream, kind: "aws.kinesis_stream"},
 		{family: familyKMSKey, kind: "aws.kms_key"},
+		{family: familyLakeFormationLFTag, kind: "aws.lakeformation_lf_tag"},
+		{family: familyLakeFormationPerm, kind: "aws.lakeformation_permission"},
+		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
+		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
 		{family: familySecret, kind: "aws.secret"},
@@ -749,6 +773,184 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
+	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
+	kinesisARN := "arn:aws:kinesis:us-east-1:123456789012:stream/orders"
+	firehoseARN := "arn:aws:firehose:us-east-1:123456789012:deliverystream/orders-delivery"
+	mskARN := "arn:aws:kafka:us-east-1:123456789012:cluster/orders/uuid"
+	glueDatabaseARN := "arn:aws:glue:us-east-1:123456789012:database/analytics"
+	glueTableARN := "arn:aws:glue:us-east-1:123456789012:table/analytics/orders"
+	glueCrawlerARN := "arn:aws:glue:us-east-1:123456789012:crawler/orders-crawler"
+	glueJobARN := "arn:aws:glue:us-east-1:123456789012:job/orders-etl"
+	athenaWorkgroupARN := "arn:aws:athena:us-east-1:123456789012:workgroup/primary"
+	athenaCatalogARN := "arn:aws:athena:us-east-1:123456789012:datacatalog/AwsDataCatalog"
+	source := newTestSource(t, fakeAWS{fakeAWSAnalytics: fakeAWSAnalytics{
+		kinesisStreams: []kinesistypes.StreamDescriptionSummary{{
+			StreamARN:               awssdk.String(kinesisARN),
+			StreamName:              awssdk.String("orders"),
+			StreamStatus:            kinesistypes.StreamStatusActive,
+			EncryptionType:          kinesistypes.EncryptionTypeKms,
+			KeyId:                   awssdk.String(kmsARN),
+			RetentionPeriodHours:    awssdk.Int32(48),
+			OpenShardCount:          awssdk.Int32(2),
+			StreamCreationTimestamp: timePtr("2026-04-23T00:00:00Z"),
+		}},
+		kinesisTags: map[string][]kinesistypes.Tag{kinesisARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("analytics@writer.com")}}},
+		firehoseStreams: []firehosetypes.DeliveryStreamDescription{{
+			DeliveryStreamARN:    awssdk.String(firehoseARN),
+			DeliveryStreamName:   awssdk.String("orders-delivery"),
+			DeliveryStreamStatus: firehosetypes.DeliveryStreamStatusActive,
+			DeliveryStreamType:   firehosetypes.DeliveryStreamTypeKinesisStreamAsSource,
+			CreateTimestamp:      timePtr("2026-04-23T00:00:00Z"),
+			DeliveryStreamEncryptionConfiguration: &firehosetypes.DeliveryStreamEncryptionConfiguration{
+				KeyARN:  awssdk.String(kmsARN),
+				KeyType: firehosetypes.KeyTypeCustomerManagedCmk,
+				Status:  firehosetypes.DeliveryStreamEncryptionStatusEnabled,
+			},
+			Destinations: []firehosetypes.DestinationDescription{{ExtendedS3DestinationDescription: &firehosetypes.ExtendedS3DestinationDescription{BucketARN: awssdk.String("arn:aws:s3:::orders-lake")}}},
+			Source: &firehosetypes.SourceDescription{KinesisStreamSourceDescription: &firehosetypes.KinesisStreamSourceDescription{
+				KinesisStreamARN: awssdk.String(kinesisARN),
+				RoleARN:          awssdk.String("arn:aws:iam::123456789012:role/firehose"),
+			}},
+		}},
+		firehoseTags: map[string][]firehosetypes.Tag{"orders-delivery": {{Key: awssdk.String("Team"), Value: awssdk.String("data")}}},
+		mskClusters: []kafkatypes.Cluster{{
+			ClusterArn:   awssdk.String(mskARN),
+			ClusterName:  awssdk.String("orders"),
+			ClusterType:  kafkatypes.ClusterTypeProvisioned,
+			CreationTime: timePtr("2026-04-23T00:00:00Z"),
+			State:        kafkatypes.ClusterStateActive,
+			Provisioned: &kafkatypes.Provisioned{
+				NumberOfBrokerNodes: awssdk.Int32(3),
+				EncryptionInfo:      &kafkatypes.EncryptionInfo{},
+				CurrentBrokerSoftwareInfo: &kafkatypes.BrokerSoftwareInfo{KafkaVersion: awssdk.String("3.6.0")},
+			},
+		}},
+		mskTags: map[string]map[string]string{mskARN: {"Owner": "streaming@writer.com"}},
+		glueDatabases: []gluetypes.Database{{
+			CatalogId:   awssdk.String("123456789012"),
+			Name:        awssdk.String("analytics"),
+			Description: awssdk.String("analytics catalog"),
+			LocationUri: awssdk.String("s3://orders-lake/"),
+			CreateTime:  timePtr("2026-04-23T00:00:00Z"),
+		}},
+		glueTables: map[string][]gluetypes.Table{"analytics": {{
+			CatalogId:                     awssdk.String("123456789012"),
+			DatabaseName:                  awssdk.String("analytics"),
+			Name:                          awssdk.String("orders"),
+			Owner:                         awssdk.String("analytics@writer.com"),
+			TableType:                     awssdk.String("EXTERNAL_TABLE"),
+			CreateTime:                    timePtr("2026-04-23T00:00:00Z"),
+			UpdateTime:                    timePtr("2026-04-23T00:00:00Z"),
+			IsRegisteredWithLakeFormation: true,
+			StorageDescriptor: &gluetypes.StorageDescriptor{
+				Columns:  []gluetypes.Column{{Name: awssdk.String("order_id"), Type: awssdk.String("string")}},
+				Location: awssdk.String("s3://orders-lake/orders/"),
+			},
+		}}},
+		glueCrawlers: []gluetypes.Crawler{{
+			Name:                         awssdk.String("orders-crawler"),
+			DatabaseName:                 awssdk.String("analytics"),
+			Role:                         awssdk.String("arn:aws:iam::123456789012:role/glue-crawler"),
+			State:                        gluetypes.CrawlerStateReady,
+			CreationTime:                 timePtr("2026-04-23T00:00:00Z"),
+			CrawlerSecurityConfiguration: awssdk.String("crawler-security"),
+			LakeFormationConfiguration:   &gluetypes.LakeFormationConfiguration{UseLakeFormationCredentials: awssdk.Bool(true), AccountId: awssdk.String("123456789012")},
+		}},
+		glueJobs: []gluetypes.Job{{
+			Name:                  awssdk.String("orders-etl"),
+			Role:                  awssdk.String("arn:aws:iam::123456789012:role/glue-job"),
+			GlueVersion:           awssdk.String("5.0"),
+			SecurityConfiguration: awssdk.String("job-security"),
+			WorkerType:            gluetypes.WorkerTypeG1x,
+			CreatedOn:             timePtr("2026-04-23T00:00:00Z"),
+			Command:               &gluetypes.JobCommand{Name: awssdk.String("glueetl"), Runtime: awssdk.String("python3")},
+		}},
+		glueTags: map[string]map[string]string{
+			glueDatabaseARN: {"Owner": "catalog@writer.com"},
+			glueTableARN:    {"Owner": "table-owner@writer.com"},
+			glueCrawlerARN:  {"Team": "data"},
+			glueJobARN:      {"Team": "data-eng"},
+		},
+		athenaWorkgroups: []athenatypes.WorkGroup{{
+			Name:         awssdk.String("primary"),
+			State:        athenatypes.WorkGroupStateEnabled,
+			CreationTime: timePtr("2026-04-23T00:00:00Z"),
+			Configuration: &athenatypes.WorkGroupConfiguration{
+				EnforceWorkGroupConfiguration: awssdk.Bool(true),
+				ResultConfiguration: &athenatypes.ResultConfiguration{EncryptionConfiguration: &athenatypes.EncryptionConfiguration{
+					EncryptionOption: athenatypes.EncryptionOptionSseKms,
+					KmsKey:           awssdk.String(kmsARN),
+				}},
+			},
+		}},
+		athenaDataCatalogs: []athenatypes.DataCatalog{{
+			Name:        awssdk.String("AwsDataCatalog"),
+			Type:        athenatypes.DataCatalogTypeGlue,
+			Description: awssdk.String("default catalog"),
+		}},
+		athenaTags: map[string][]athenatypes.Tag{
+			athenaWorkgroupARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("queries@writer.com")}},
+			athenaCatalogARN:   {{Key: awssdk.String("Team"), Value: awssdk.String("data")}},
+		},
+		lakeFormationResources: []lakeformationtypes.ResourceInfo{{
+			ResourceArn:                  awssdk.String("arn:aws:s3:::orders-lake"),
+			RoleArn:                      awssdk.String("arn:aws:iam::123456789012:role/lakeformation"),
+			ExpectedResourceOwnerAccount: awssdk.String("123456789012"),
+			HybridAccessEnabled:          awssdk.Bool(true),
+			WithPrivilegedAccess:         awssdk.Bool(true),
+			VerificationStatus:           lakeformationtypes.VerificationStatusVerified,
+			LastModified:                 timePtr("2026-04-23T00:00:00Z"),
+		}},
+		lakeFormationLFTags: []lakeformationtypes.LFTagPair{{
+			CatalogId: awssdk.String("123456789012"),
+			TagKey:    awssdk.String("sensitivity"),
+			TagValues: []string{"restricted"},
+		}},
+		lakeFormationPermissions: []lakeformationtypes.PrincipalResourcePermissions{{
+			Principal:   &lakeformationtypes.DataLakePrincipal{DataLakePrincipalIdentifier: awssdk.String("arn:aws:iam::123456789012:role/analyst")},
+			Permissions: []lakeformationtypes.Permission{lakeformationtypes.PermissionSelect},
+			Resource:    &lakeformationtypes.Resource{Database: &lakeformationtypes.DatabaseResource{Name: awssdk.String("analytics")}},
+			LastUpdated: timePtr("2026-04-23T00:00:00Z"),
+		}},
+	}})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyKinesisStream, kind: "aws.kinesis_stream", attr: "encryption", want: "true"},
+		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream", attr: "destination_types", want: "s3"},
+		{family: familyMSKCluster, kind: "aws.msk_cluster", attr: "broker_count", want: "3"},
+		{family: familyGlueDatabase, kind: "aws.glue_database", attr: "owner", want: "catalog@writer.com"},
+		{family: familyGlueTable, kind: "aws.glue_table", attr: "registered_with_lakeformation", want: "true"},
+		{family: familyGlueCrawler, kind: "aws.glue_crawler", attr: "lakeformation_credentials", want: "true"},
+		{family: familyGlueJob, kind: "aws.glue_job", attr: "security_configuration", want: "job-security"},
+		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup", attr: "encryption", want: "true"},
+		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog", attr: "catalog_type", want: "GLUE"},
+		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource", attr: "hybrid_access_enabled", want: "true"},
+		{family: familyLakeFormationLFTag, kind: "aws.lakeformation_lf_tag", attr: "tag_values", want: "restricted"},
+		{family: familyLakeFormationPerm, kind: "aws.lakeformation_permission", attr: "permissions", want: "SELECT"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -1870,7 +2072,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}, kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +2088,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}, kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1954,6 +2156,7 @@ type fakeAWS struct {
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 	fakeAWSData
+	fakeAWSAnalytics
 }
 
 type fakeAWSNetwork struct {
@@ -1992,6 +2195,26 @@ type fakeAWSData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
+}
+
+type fakeAWSAnalytics struct {
+	kinesisStreams           []kinesistypes.StreamDescriptionSummary
+	kinesisTags              map[string][]kinesistypes.Tag
+	firehoseStreams          []firehosetypes.DeliveryStreamDescription
+	firehoseTags             map[string][]firehosetypes.Tag
+	mskClusters              []kafkatypes.Cluster
+	mskTags                  map[string]map[string]string
+	glueDatabases            []gluetypes.Database
+	glueTables               map[string][]gluetypes.Table
+	glueCrawlers             []gluetypes.Crawler
+	glueJobs                 []gluetypes.Job
+	glueTags                 map[string]map[string]string
+	athenaWorkgroups         []athenatypes.WorkGroup
+	athenaDataCatalogs       []athenatypes.DataCatalog
+	athenaTags               map[string][]athenatypes.Tag
+	lakeFormationResources   []lakeformationtypes.ResourceInfo
+	lakeFormationLFTags      []lakeformationtypes.LFTagPair
+	lakeFormationPermissions []lakeformationtypes.PrincipalResourcePermissions
 }
 
 type fakeAWSCompute struct {
@@ -2361,6 +2584,334 @@ func (f fakeECR) DescribeRepositories(context.Context, *ecr.DescribeRepositories
 
 func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForResourceInput, _ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
 	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeKinesis struct {
+	fake *fakeAWS
+}
+
+type recordingKinesis struct {
+	fake *recordingAWS
+}
+
+func (f recordingKinesis) ListStreams(ctx context.Context, input *kinesis.ListStreamsInput, options ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error) {
+	f.fake.record("kinesis:ListStreams")
+	return fakeKinesis{fake: &f.fake.fakeAWS}.ListStreams(ctx, input, options...)
+}
+
+func (f recordingKinesis) DescribeStreamSummary(ctx context.Context, input *kinesis.DescribeStreamSummaryInput, options ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error) {
+	f.fake.record("kinesis:DescribeStreamSummary")
+	return fakeKinesis{fake: &f.fake.fakeAWS}.DescribeStreamSummary(ctx, input, options...)
+}
+
+func (f recordingKinesis) ListTagsForStream(ctx context.Context, input *kinesis.ListTagsForStreamInput, options ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error) {
+	f.fake.record("kinesis:ListTagsForStream")
+	return fakeKinesis{fake: &f.fake.fakeAWS}.ListTagsForStream(ctx, input, options...)
+}
+
+func (f fakeKinesis) ListStreams(_ context.Context, input *kinesis.ListStreamsInput, _ ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error) {
+	names := make([]string, 0, len(f.fake.kinesisStreams))
+	for _, stream := range f.fake.kinesisStreams {
+		if name := awssdk.ToString(stream.StreamName); name != "" {
+			names = append(names, name)
+		}
+	}
+	values, truncated, marker := paginateStringValues(names, awssdk.ToString(input.ExclusiveStartStreamName), int(awssdk.ToInt32(input.Limit)))
+	return &kinesis.ListStreamsOutput{StreamNames: values, HasMoreStreams: awssdk.Bool(truncated), NextToken: stringPtr(marker)}, nil
+}
+
+func (f fakeKinesis) DescribeStreamSummary(_ context.Context, input *kinesis.DescribeStreamSummaryInput, _ ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error) {
+	name := awssdk.ToString(input.StreamName)
+	for _, stream := range f.fake.kinesisStreams {
+		if awssdk.ToString(stream.StreamName) == name || awssdk.ToString(stream.StreamARN) == awssdk.ToString(input.StreamARN) {
+			copy := stream
+			return &kinesis.DescribeStreamSummaryOutput{StreamDescriptionSummary: &copy}, nil
+		}
+	}
+	return &kinesis.DescribeStreamSummaryOutput{}, nil
+}
+
+func (f fakeKinesis) ListTagsForStream(_ context.Context, input *kinesis.ListTagsForStreamInput, _ ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error) {
+	key := firstNonEmpty(awssdk.ToString(input.StreamARN), awssdk.ToString(input.StreamName))
+	return &kinesis.ListTagsForStreamOutput{Tags: f.fake.kinesisTags[key], HasMoreTags: awssdk.Bool(false)}, nil
+}
+
+type fakeFirehose struct {
+	fake *fakeAWS
+}
+
+type recordingFirehose struct {
+	fake *recordingAWS
+}
+
+func (f recordingFirehose) ListDeliveryStreams(ctx context.Context, input *firehose.ListDeliveryStreamsInput, options ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error) {
+	f.fake.record("firehose:ListDeliveryStreams")
+	return fakeFirehose{fake: &f.fake.fakeAWS}.ListDeliveryStreams(ctx, input, options...)
+}
+
+func (f recordingFirehose) DescribeDeliveryStream(ctx context.Context, input *firehose.DescribeDeliveryStreamInput, options ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error) {
+	f.fake.record("firehose:DescribeDeliveryStream")
+	return fakeFirehose{fake: &f.fake.fakeAWS}.DescribeDeliveryStream(ctx, input, options...)
+}
+
+func (f recordingFirehose) ListTagsForDeliveryStream(ctx context.Context, input *firehose.ListTagsForDeliveryStreamInput, options ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error) {
+	f.fake.record("firehose:ListTagsForDeliveryStream")
+	return fakeFirehose{fake: &f.fake.fakeAWS}.ListTagsForDeliveryStream(ctx, input, options...)
+}
+
+func (f fakeFirehose) ListDeliveryStreams(_ context.Context, input *firehose.ListDeliveryStreamsInput, _ ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error) {
+	names := make([]string, 0, len(f.fake.firehoseStreams))
+	for _, stream := range f.fake.firehoseStreams {
+		if name := awssdk.ToString(stream.DeliveryStreamName); name != "" {
+			names = append(names, name)
+		}
+	}
+	values, truncated, _ := paginateStringValues(names, awssdk.ToString(input.ExclusiveStartDeliveryStreamName), int(awssdk.ToInt32(input.Limit)))
+	return &firehose.ListDeliveryStreamsOutput{DeliveryStreamNames: values, HasMoreDeliveryStreams: awssdk.Bool(truncated)}, nil
+}
+
+func (f fakeFirehose) DescribeDeliveryStream(_ context.Context, input *firehose.DescribeDeliveryStreamInput, _ ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error) {
+	name := awssdk.ToString(input.DeliveryStreamName)
+	for _, stream := range f.fake.firehoseStreams {
+		if awssdk.ToString(stream.DeliveryStreamName) == name {
+			copy := stream
+			return &firehose.DescribeDeliveryStreamOutput{DeliveryStreamDescription: &copy}, nil
+		}
+	}
+	return &firehose.DescribeDeliveryStreamOutput{}, nil
+}
+
+func (f fakeFirehose) ListTagsForDeliveryStream(_ context.Context, input *firehose.ListTagsForDeliveryStreamInput, _ ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error) {
+	return &firehose.ListTagsForDeliveryStreamOutput{Tags: f.fake.firehoseTags[awssdk.ToString(input.DeliveryStreamName)], HasMoreTags: awssdk.Bool(false)}, nil
+}
+
+type fakeKafka struct {
+	fake *fakeAWS
+}
+
+type recordingKafka struct {
+	fake *recordingAWS
+}
+
+func (f recordingKafka) ListClustersV2(ctx context.Context, input *kafka.ListClustersV2Input, options ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error) {
+	f.fake.record("kafka:ListClustersV2")
+	return fakeKafka{fake: &f.fake.fakeAWS}.ListClustersV2(ctx, input, options...)
+}
+
+func (f recordingKafka) ListTagsForResource(ctx context.Context, input *kafka.ListTagsForResourceInput, options ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error) {
+	f.fake.record("kafka:ListTagsForResource")
+	return fakeKafka{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeKafka) ListClustersV2(context.Context, *kafka.ListClustersV2Input, ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error) {
+	return &kafka.ListClustersV2Output{ClusterInfoList: f.fake.mskClusters}, nil
+}
+
+func (f fakeKafka) ListTagsForResource(_ context.Context, input *kafka.ListTagsForResourceInput, _ ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error) {
+	return &kafka.ListTagsForResourceOutput{Tags: f.fake.mskTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeGlue struct {
+	fake *fakeAWS
+}
+
+type recordingGlue struct {
+	fake *recordingAWS
+}
+
+func (f recordingGlue) GetDatabases(ctx context.Context, input *glue.GetDatabasesInput, options ...func(*glue.Options)) (*glue.GetDatabasesOutput, error) {
+	f.fake.record("glue:GetDatabases")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetDatabases(ctx, input, options...)
+}
+
+func (f recordingGlue) GetTables(ctx context.Context, input *glue.GetTablesInput, options ...func(*glue.Options)) (*glue.GetTablesOutput, error) {
+	f.fake.record("glue:GetTables")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetTables(ctx, input, options...)
+}
+
+func (f recordingGlue) ListCrawlers(ctx context.Context, input *glue.ListCrawlersInput, options ...func(*glue.Options)) (*glue.ListCrawlersOutput, error) {
+	f.fake.record("glue:ListCrawlers")
+	return fakeGlue{fake: &f.fake.fakeAWS}.ListCrawlers(ctx, input, options...)
+}
+
+func (f recordingGlue) GetCrawler(ctx context.Context, input *glue.GetCrawlerInput, options ...func(*glue.Options)) (*glue.GetCrawlerOutput, error) {
+	f.fake.record("glue:GetCrawler")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetCrawler(ctx, input, options...)
+}
+
+func (f recordingGlue) ListJobs(ctx context.Context, input *glue.ListJobsInput, options ...func(*glue.Options)) (*glue.ListJobsOutput, error) {
+	f.fake.record("glue:ListJobs")
+	return fakeGlue{fake: &f.fake.fakeAWS}.ListJobs(ctx, input, options...)
+}
+
+func (f recordingGlue) GetJob(ctx context.Context, input *glue.GetJobInput, options ...func(*glue.Options)) (*glue.GetJobOutput, error) {
+	f.fake.record("glue:GetJob")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetJob(ctx, input, options...)
+}
+
+func (f recordingGlue) GetTags(ctx context.Context, input *glue.GetTagsInput, options ...func(*glue.Options)) (*glue.GetTagsOutput, error) {
+	f.fake.record("glue:GetTags")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetTags(ctx, input, options...)
+}
+
+func (f fakeGlue) GetDatabases(context.Context, *glue.GetDatabasesInput, ...func(*glue.Options)) (*glue.GetDatabasesOutput, error) {
+	return &glue.GetDatabasesOutput{DatabaseList: f.fake.glueDatabases}, nil
+}
+
+func (f fakeGlue) GetTables(_ context.Context, input *glue.GetTablesInput, _ ...func(*glue.Options)) (*glue.GetTablesOutput, error) {
+	return &glue.GetTablesOutput{TableList: f.fake.glueTables[awssdk.ToString(input.DatabaseName)]}, nil
+}
+
+func (f fakeGlue) ListCrawlers(context.Context, *glue.ListCrawlersInput, ...func(*glue.Options)) (*glue.ListCrawlersOutput, error) {
+	names := make([]string, 0, len(f.fake.glueCrawlers))
+	for _, crawler := range f.fake.glueCrawlers {
+		names = append(names, awssdk.ToString(crawler.Name))
+	}
+	return &glue.ListCrawlersOutput{CrawlerNames: names}, nil
+}
+
+func (f fakeGlue) GetCrawler(_ context.Context, input *glue.GetCrawlerInput, _ ...func(*glue.Options)) (*glue.GetCrawlerOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, crawler := range f.fake.glueCrawlers {
+		if awssdk.ToString(crawler.Name) == name {
+			copy := crawler
+			return &glue.GetCrawlerOutput{Crawler: &copy}, nil
+		}
+	}
+	return &glue.GetCrawlerOutput{}, nil
+}
+
+func (f fakeGlue) ListJobs(context.Context, *glue.ListJobsInput, ...func(*glue.Options)) (*glue.ListJobsOutput, error) {
+	names := make([]string, 0, len(f.fake.glueJobs))
+	for _, job := range f.fake.glueJobs {
+		names = append(names, awssdk.ToString(job.Name))
+	}
+	return &glue.ListJobsOutput{JobNames: names}, nil
+}
+
+func (f fakeGlue) GetJob(_ context.Context, input *glue.GetJobInput, _ ...func(*glue.Options)) (*glue.GetJobOutput, error) {
+	name := awssdk.ToString(input.JobName)
+	for _, job := range f.fake.glueJobs {
+		if awssdk.ToString(job.Name) == name {
+			copy := job
+			return &glue.GetJobOutput{Job: &copy}, nil
+		}
+	}
+	return &glue.GetJobOutput{}, nil
+}
+
+func (f fakeGlue) GetTags(_ context.Context, input *glue.GetTagsInput, _ ...func(*glue.Options)) (*glue.GetTagsOutput, error) {
+	return &glue.GetTagsOutput{Tags: f.fake.glueTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeAthena struct {
+	fake *fakeAWS
+}
+
+type recordingAthena struct {
+	fake *recordingAWS
+}
+
+func (f recordingAthena) ListWorkGroups(ctx context.Context, input *athena.ListWorkGroupsInput, options ...func(*athena.Options)) (*athena.ListWorkGroupsOutput, error) {
+	f.fake.record("athena:ListWorkGroups")
+	return fakeAthena{fake: &f.fake.fakeAWS}.ListWorkGroups(ctx, input, options...)
+}
+
+func (f recordingAthena) GetWorkGroup(ctx context.Context, input *athena.GetWorkGroupInput, options ...func(*athena.Options)) (*athena.GetWorkGroupOutput, error) {
+	f.fake.record("athena:GetWorkGroup")
+	return fakeAthena{fake: &f.fake.fakeAWS}.GetWorkGroup(ctx, input, options...)
+}
+
+func (f recordingAthena) ListDataCatalogs(ctx context.Context, input *athena.ListDataCatalogsInput, options ...func(*athena.Options)) (*athena.ListDataCatalogsOutput, error) {
+	f.fake.record("athena:ListDataCatalogs")
+	return fakeAthena{fake: &f.fake.fakeAWS}.ListDataCatalogs(ctx, input, options...)
+}
+
+func (f recordingAthena) GetDataCatalog(ctx context.Context, input *athena.GetDataCatalogInput, options ...func(*athena.Options)) (*athena.GetDataCatalogOutput, error) {
+	f.fake.record("athena:GetDataCatalog")
+	return fakeAthena{fake: &f.fake.fakeAWS}.GetDataCatalog(ctx, input, options...)
+}
+
+func (f recordingAthena) ListTagsForResource(ctx context.Context, input *athena.ListTagsForResourceInput, options ...func(*athena.Options)) (*athena.ListTagsForResourceOutput, error) {
+	f.fake.record("athena:ListTagsForResource")
+	return fakeAthena{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeAthena) ListWorkGroups(context.Context, *athena.ListWorkGroupsInput, ...func(*athena.Options)) (*athena.ListWorkGroupsOutput, error) {
+	summaries := make([]athenatypes.WorkGroupSummary, 0, len(f.fake.athenaWorkgroups))
+	for _, workgroup := range f.fake.athenaWorkgroups {
+		summaries = append(summaries, athenatypes.WorkGroupSummary{Name: workgroup.Name})
+	}
+	return &athena.ListWorkGroupsOutput{WorkGroups: summaries}, nil
+}
+
+func (f fakeAthena) GetWorkGroup(_ context.Context, input *athena.GetWorkGroupInput, _ ...func(*athena.Options)) (*athena.GetWorkGroupOutput, error) {
+	name := awssdk.ToString(input.WorkGroup)
+	for _, workgroup := range f.fake.athenaWorkgroups {
+		if awssdk.ToString(workgroup.Name) == name {
+			copy := workgroup
+			return &athena.GetWorkGroupOutput{WorkGroup: &copy}, nil
+		}
+	}
+	return &athena.GetWorkGroupOutput{}, nil
+}
+
+func (f fakeAthena) ListDataCatalogs(context.Context, *athena.ListDataCatalogsInput, ...func(*athena.Options)) (*athena.ListDataCatalogsOutput, error) {
+	summaries := make([]athenatypes.DataCatalogSummary, 0, len(f.fake.athenaDataCatalogs))
+	for _, catalog := range f.fake.athenaDataCatalogs {
+		summaries = append(summaries, athenatypes.DataCatalogSummary{CatalogName: catalog.Name, Type: catalog.Type})
+	}
+	return &athena.ListDataCatalogsOutput{DataCatalogsSummary: summaries}, nil
+}
+
+func (f fakeAthena) GetDataCatalog(_ context.Context, input *athena.GetDataCatalogInput, _ ...func(*athena.Options)) (*athena.GetDataCatalogOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, catalog := range f.fake.athenaDataCatalogs {
+		if awssdk.ToString(catalog.Name) == name {
+			copy := catalog
+			return &athena.GetDataCatalogOutput{DataCatalog: &copy}, nil
+		}
+	}
+	return &athena.GetDataCatalogOutput{}, nil
+}
+
+func (f fakeAthena) ListTagsForResource(_ context.Context, input *athena.ListTagsForResourceInput, _ ...func(*athena.Options)) (*athena.ListTagsForResourceOutput, error) {
+	return &athena.ListTagsForResourceOutput{Tags: f.fake.athenaTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+type fakeLakeFormation struct {
+	fake *fakeAWS
+}
+
+type recordingLakeFormation struct {
+	fake *recordingAWS
+}
+
+func (f recordingLakeFormation) ListResources(ctx context.Context, input *lakeformation.ListResourcesInput, options ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error) {
+	f.fake.record("lakeformation:ListResources")
+	return fakeLakeFormation{fake: &f.fake.fakeAWS}.ListResources(ctx, input, options...)
+}
+
+func (f recordingLakeFormation) ListLFTags(ctx context.Context, input *lakeformation.ListLFTagsInput, options ...func(*lakeformation.Options)) (*lakeformation.ListLFTagsOutput, error) {
+	f.fake.record("lakeformation:ListLFTags")
+	return fakeLakeFormation{fake: &f.fake.fakeAWS}.ListLFTags(ctx, input, options...)
+}
+
+func (f recordingLakeFormation) ListPermissions(ctx context.Context, input *lakeformation.ListPermissionsInput, options ...func(*lakeformation.Options)) (*lakeformation.ListPermissionsOutput, error) {
+	f.fake.record("lakeformation:ListPermissions")
+	return fakeLakeFormation{fake: &f.fake.fakeAWS}.ListPermissions(ctx, input, options...)
+}
+
+func (f fakeLakeFormation) ListResources(context.Context, *lakeformation.ListResourcesInput, ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error) {
+	return &lakeformation.ListResourcesOutput{ResourceInfoList: f.fake.lakeFormationResources}, nil
+}
+
+func (f fakeLakeFormation) ListLFTags(context.Context, *lakeformation.ListLFTagsInput, ...func(*lakeformation.Options)) (*lakeformation.ListLFTagsOutput, error) {
+	return &lakeformation.ListLFTagsOutput{LFTags: f.fake.lakeFormationLFTags}, nil
+}
+
+func (f fakeLakeFormation) ListPermissions(context.Context, *lakeformation.ListPermissionsInput, ...func(*lakeformation.Options)) (*lakeformation.ListPermissionsOutput, error) {
+	return &lakeformation.ListPermissionsOutput{PrincipalResourcePermissions: f.fake.lakeFormationPermissions}, nil
 }
 
 type fakeEKS struct {
