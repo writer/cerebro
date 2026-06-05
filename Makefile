@@ -1,4 +1,6 @@
-.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.DEFAULT_GOAL := help
+
+.PHONY: help build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -54,83 +56,94 @@ DROID_POST_MERGE_OUT ?= tmp/droid-post-merge-health.md
 DROID_POST_MERGE_JSON_OUT ?= tmp/droid-post-merge-health.json
 DROID_SAST_POST_COMMENT ?= false
 
-build:
+help: ## Show this help message.
+	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target>\n"} /^##@/ {printf "\n%s\n", substr($$0, 5); next} /^[A-Za-z0-9_.-]+:.*##/ {printf "  %-34s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# ==== Build ====
+##@ Build
+build: ## Build the Cerebro CLI binary.
 	go build -o bin/cerebro ./cmd/cerebro
 
-serve: build
+serve: build ## Build and run the local HTTP server.
 	./bin/cerebro serve
 
-test:
+test: ## Run all Go tests.
 	go test ./...
 
-sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check
+sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
 
-sdk-python-test:
+sdk-python-test: ## Run Python SDK unit tests.
 	cd sdk/python && python3 -m pip install 'protobuf>=5.29.5,<6' && python3 -m unittest discover -s tests
 
-sdk-typescript-test:
+sdk-typescript-test: ## Run TypeScript SDK tests.
 	cd sdk/typescript && npm test
 
-sdk-typescript-check:
+sdk-typescript-check: ## Install TypeScript SDK dependencies and run type checks.
 	cd sdk/typescript && npm ci && npm run typecheck
 
-sdk-dependency-audit:
+sdk-dependency-audit: ## Audit SDK dependencies for known vulnerabilities.
 	python3 -m unittest scripts.test_sdk_dependency_audit
 	python3 -m pip install --user pip-audit
 	python3 scripts/sdk_dependency_audit.py
 
-workflow-e2e-test:
+# ==== Focused Tests ====
+##@ Focused Tests
+workflow-e2e-test: ## Run workflow event end-to-end tests.
 	go test $(WORKFLOW_E2E_PACKAGES) -run '$(WORKFLOW_E2E_TESTS)$$' -count=1 -v
 
-workflow-replay-test:
+workflow-replay-test: ## Run workflow replay focused tests.
 	go test ./internal/workflowprojection ./internal/appendlog/jetstream ./internal/bootstrap -run '$(WORKFLOW_REPLAY_TESTS)$$' -count=1 -v
 
-finding-rule-test:
+finding-rule-test: ## Run finding rule focused tests.
 	go test ./internal/findings -run '$(FINDING_RULE_TESTS)' -count=1 -v
 
-github-findings-e2e:
+github-findings-e2e: ## Run GitHub findings end-to-end test against configured repo.
 	CEREBRO_RUN_GITHUB_FINDINGS_E2E=1 CEREBRO_GITHUB_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_FINDINGS_REPO="$(GITHUB_FINDINGS_REPO)" go test ./cmd/cerebro -run '^TestGitHubDependabotFindingsEndToEndWithGHCLI$$' -count=1 -v
 
-github-findings-graph-preview:
+github-findings-graph-preview: ## Generate a GitHub findings graph preview fixture.
 	@mkdir -p "$(dir $(GITHUB_FINDINGS_GRAPH_PREVIEW))"
 	CEREBRO_RUN_GITHUB_FINDINGS_E2E=1 CEREBRO_GITHUB_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_FINDINGS_REPO="$(GITHUB_FINDINGS_REPO)" CEREBRO_GITHUB_FINDINGS_GRAPH_PREVIEW_OUT="$(GITHUB_FINDINGS_GRAPH_PREVIEW)" go test ./cmd/cerebro -run '^TestGitHubDependabotFindingsEndToEndWithGHCLI$$' -count=1 -v
 	@test -s "$(GITHUB_FINDINGS_GRAPH_PREVIEW)"
 	python3 -m json.tool "$(GITHUB_FINDINGS_GRAPH_PREVIEW)"
 
-github-audit-findings-graph-preview:
+github-audit-findings-graph-preview: ## Generate a GitHub audit findings graph preview fixture.
 	@mkdir -p "$(dir $(GITHUB_AUDIT_FINDINGS_GRAPH_PREVIEW))"
 	CEREBRO_RUN_GITHUB_AUDIT_FINDINGS_E2E=1 CEREBRO_GITHUB_AUDIT_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_AUDIT_FINDINGS_GRAPH_PREVIEW_OUT="$(GITHUB_AUDIT_FINDINGS_GRAPH_PREVIEW)" go test ./cmd/cerebro -run '^TestGitHubAuditFindingsGraphPreviewWithGHCLI$$' -count=1 -v
 	@test -s "$(GITHUB_AUDIT_FINDINGS_GRAPH_PREVIEW)"
 	python3 -m json.tool "$(GITHUB_AUDIT_FINDINGS_GRAPH_PREVIEW)"
 
-workflow-replay:
+# ==== Runtime Utilities ====
+##@ Runtime Utilities
+workflow-replay: ## Replay workflow events through the platform endpoint.
 	curl -sS -X POST "$(CEREBRO_BASE_URL)/platform/workflow/replay" \
 		-H 'Content-Type: application/json' \
 		-d '{"kind_prefix":"$(WORKFLOW_REPLAY_KIND_PREFIX)","tenant_id":"$(WORKFLOW_REPLAY_TENANT)","attribute_equals":{"workflow_kind":"$(WORKFLOW_REPLAY_KIND)"},"limit":$(WORKFLOW_REPLAY_LIMIT)}' \
 		| python3 -m json.tool
 
-workflow-neighborhood:
+workflow-neighborhood: ## Fetch graph neighborhood for ROOT_URN.
 	@if [ -z "$(ROOT_URN)" ]; then echo "ROOT_URN is required, e.g. make workflow-neighborhood ROOT_URN=urn:cerebro:writer:decision:decision-1" >&2; exit 2; fi
 	curl -sS --get "$(CEREBRO_BASE_URL)/platform/graph/neighborhood" \
 		--data-urlencode "root_urn=$(ROOT_URN)" \
 		--data-urlencode "limit=$(WORKFLOW_NEIGHBORHOOD_LIMIT)" \
 		| python3 -m json.tool
 
-graph-rebuild-dryrun: build
+graph-rebuild-dryrun: build ## Preview a graph rebuild for RUNTIME_ID.
 	@if [ -z "$(RUNTIME_ID)" ]; then echo "RUNTIME_ID is required, e.g. make graph-rebuild-dryrun RUNTIME_ID=writer-okta-audit" >&2; exit 2; fi
 	./bin/cerebro graph rebuild "$(RUNTIME_ID)" dry_run=true mode="$(GRAPH_REBUILD_MODE)" page_limit="$(GRAPH_REBUILD_PAGE_LIMIT)" event_limit="$(GRAPH_REBUILD_EVENT_LIMIT)" preview_limit="$(GRAPH_REBUILD_PREVIEW_LIMIT)"
 
-candidate-smoke:
+candidate-smoke: ## Run source candidate smoke checks for RUNTIME_ID.
 	@if [ -z "$(RUNTIME_ID)" ]; then echo "RUNTIME_ID is required, e.g. make candidate-smoke RUNTIME_ID=writer-okta-audit RULE_ID=rule-id CEREBRO_BASE_URL=https://..." >&2; exit 2; fi
 	CEREBRO_CANDIDATE_SMOKE_RUNTIME_ID="$(RUNTIME_ID)" CEREBRO_CANDIDATE_SMOKE_RULE_ID="$(RULE_ID)" CEREBRO_CANDIDATE_SMOKE_EVENT_LIMIT="$(CANDIDATE_SMOKE_EVENT_LIMIT)" python3 scripts/candidate_smoke.py
 
-mcp-contract-check:
+# ==== MCP ====
+##@ MCP
+mcp-contract-check: ## Validate MCP contract fixtures.
 	python3 scripts/mcp_contract_check.py
 
-mcp-smoke:
+mcp-smoke: ## Run MCP smoke checks.
 	python3 scripts/mcp_smoke.py
 
-mcp-sdk-compat: build
+mcp-sdk-compat: build ## Check MCP SDK compatibility against local server.
 	@set -e; \
 	mkdir -p "$(MCP_SDK_ROOT)"; \
 	if [ ! -f "$(MCP_SDK_ROOT)/package.json" ]; then printf '%s\n' '{"type":"module","private":true}' > "$(MCP_SDK_ROOT)/package.json"; fi; \
@@ -143,48 +156,50 @@ mcp-sdk-compat: build
 	CEREBRO_BASE_URL="http://127.0.0.1:$$port" CEREBRO_MCP_BEARER_TOKEN="$(MCP_SDK_TEST_TOKEN)" python3 scripts/mcp_smoke.py --skip-unauthenticated-check; \
 	CEREBRO_MCP_URL="http://127.0.0.1:$$port/api/v1/mcp" CEREBRO_MCP_BEARER_TOKEN="$(MCP_SDK_TEST_TOKEN)" CEREBRO_MCP_SDK_ROOT="$(CURDIR)/$(MCP_SDK_ROOT)" node scripts/mcp_sdk_compat.mjs
 
-lint: lint-bootstrap
+# ==== Lint and Contracts ====
+##@ Lint and Contracts
+lint: lint-bootstrap ## Run golangci-lint over application packages.
 	$(GOLANGCI_LINT) run --timeout 5m $(APP_PACKAGES)
 
-lint-bootstrap:
+lint-bootstrap: ## Install golangci-lint if missing.
 	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
 
-proto-lint:
+proto-lint: ## Lint protobuf definitions.
 	$(BUF) lint
 
-proto-generate:
+proto-generate: ## Generate protobuf-derived code.
 	$(BUF) generate
 
-proto-generate-check: proto-generate
+proto-generate-check: proto-generate ## Verify protobuf generated files are current.
 	git diff --exit-code -- gen sdk/python/cerebro/v1
 
-proto-breaking:
+proto-breaking: ## Check protobuf compatibility against PROTO_BREAKING_BASE.
 	$(BUF) breaking --against '.git#branch=$(PROTO_BREAKING_BASE)'
 
-openapi-check:
+openapi-check: ## Verify OpenAPI routes match implementation.
 	go run ./scripts/openapi_route_parity.go
 
-openapi-lint:
+openapi-lint: ## Lint the OpenAPI spec with Spectral.
 	$(SPECTRAL) lint api/openapi.yaml
 
-openapi-sync:
+openapi-sync: ## Update OpenAPI route parity metadata.
 	go run ./scripts/openapi_route_parity.go --write
 
-catalog-check:
+catalog-check: ## Verify the source catalog is current.
 	go run ./tools/catalogcheck
 
-detection-catalog-generate:
+detection-catalog-generate: ## Regenerate public detection catalog.
 	go run ./tools/detectioncatalog --write
 
-detection-catalog-check:
+detection-catalog-check: ## Verify public detection catalog is current.
 	go run ./tools/detectioncatalog --check
 
-docs-autogen: openapi-sync proto-generate detection-catalog-generate
+docs-autogen: openapi-sync proto-generate detection-catalog-generate ## Regenerate checked-in generated docs and catalogs.
 
-docs-drift-check:
+docs-drift-check: ## Check documentation drift rules.
 	python3 scripts/docs_drift_check.py
 
-readme-check:
+readme-check: ## Check README formatting and changed-line whitespace.
 	@base_ref="$(README_CHECK_BASE)"; \
 	if git rev-parse --verify "$$base_ref" >/dev/null 2>&1; then \
 		base="$$(git merge-base HEAD "$$base_ref")"; \
@@ -194,23 +209,25 @@ readme-check:
 	git diff --check "$$base"..HEAD -- README.md
 	python3 scripts/readme_check.py
 
-oss-audit:
+oss-audit: ## Run repository OSS hygiene audit.
 	python3 scripts/oss_audit.py
 
-govulncheck:
+govulncheck: ## Run govulncheck gate for reachable vulnerabilities.
 	python3 scripts/govulncheck_gate.py
 
-docker-smoke:
+# ==== Release and Environment ====
+##@ Release and Environment
+docker-smoke: ## Build and smoke-test the runtime Docker image.
 	@command -v docker >/dev/null || { echo "docker is required for docker-smoke" >&2; exit 2; }
 	mkdir -p .dist
 	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -o .dist/cerebro ./cmd/cerebro
 	docker build -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .
 	@test -n "$$(docker run --rm "$(DOCKER_SMOKE_IMAGE)" version)"
 
-release-smoke:
+release-smoke: ## Validate GoReleaser configuration.
 	$(GORELEASER) check
 
-doctor:
+doctor: ## Check local development toolchain availability.
 	@command -v git >/dev/null || { echo "missing required tool: git" >&2; exit 2; }
 	@command -v go >/dev/null || { echo "missing required tool: go" >&2; exit 2; }
 	@command -v python3 >/dev/null || { echo "missing required tool: python3" >&2; exit 2; }
@@ -222,49 +239,53 @@ doctor:
 	@npm --version
 	@echo "developer toolchain looks ready"
 
-droid-review-preflight:
+# ==== Droid Review ====
+##@ Droid Review
+droid-review-preflight: ## Build Droid review preflight context.
 	go test ./tools/droidreview/...
 	go run ./tools/droidreview --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --json-out "$(DROID_PREFLIGHT_JSON_OUT)"
 
-droid-review-sast:
+droid-review-sast: ## Build Droid security scanner context.
 	python3 scripts/droid_sast_context.py --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --markdown-out "$(DROID_SAST_OUT)" --json-out "$(DROID_SAST_JSON_OUT)" $(if $(filter true,$(DROID_SAST_POST_COMMENT)),--post-comment,)
 
-droid-ci-context:
+droid-ci-context: ## Build Droid CI context from the current head.
 	python3 scripts/droid_ci_context.py --head "$(DROID_REVIEW_HEAD)" --markdown-out "$(DROID_CI_OUT)" --json-out "$(DROID_CI_JSON_OUT)"
 
-droid-review-context:
+droid-review-context: ## Combine Droid review context inputs.
 	python3 scripts/droid_review_context.py --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --preflight-json "$(DROID_PREFLIGHT_JSON_OUT)" --sast-json "$(DROID_SAST_JSON_OUT)" --ci-json "$(DROID_CI_JSON_OUT)" --feedback-json "$(DROID_FEEDBACK_JSON_OUT)" --markdown-out "$(DROID_CONTEXT_OUT)" --json-out "$(DROID_CONTEXT_JSON_OUT)"
 
-droid-post-merge-health:
+droid-post-merge-health: ## Build Droid post-merge health summary.
 	python3 scripts/droid_post_merge_health.py --markdown-out "$(DROID_POST_MERGE_OUT)" --json-out "$(DROID_POST_MERGE_JSON_OUT)"
 
-droid-feedback:
+droid-feedback: ## Fetch and normalize Droid feedback for DROID_PR.
 	@if [ -z "$(DROID_PR)" ]; then echo "DROID_PR is required, e.g. make droid-feedback DROID_PR=719" >&2; exit 2; fi
 	python3 scripts/droid_feedback_harness.py "$(DROID_PR)" $(if $(DROID_FEEDBACK_OUT),--markdown-out "$(DROID_FEEDBACK_OUT)") --json-out "$(DROID_FEEDBACK_JSON_OUT)"
 
-clean:
+# ==== Project Hygiene ====
+##@ Project Hygiene
+clean: ## Remove build artifacts.
 	rm -rf bin/
 
-hooks:
+hooks: ## Install repository git hooks.
 	./scripts/install_hooks.sh
 
-pre-commit:
+pre-commit: ## Run local pre-commit checks.
 	./scripts/pre_commit_checks.sh
 
-check: build test sdk-test lint proto-lint proto-generate-check docs-drift-check check-structural check-structural-test check-arch
+check: build test sdk-test lint proto-lint proto-generate-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
 
-check-structural: check-structural-build
+check-structural: check-structural-build ## Run custom structural lints.
 	@$(LINTER_BIN) $(APP_PACKAGES)
 
-check-structural-build:
+check-structural-build: ## Build the custom structural linter.
 	@cd $(LINTER_MODULE) && GOFLAGS= go build -o $(LINTER_BIN) ./cerebrolint
 
-check-structural-test:
+check-structural-test: ## Test the custom structural linter.
 	@cd $(LINTER_MODULE) && GOFLAGS= go test ./...
 
-check-arch:
+check-arch: ## Run architectural guardrail tests.
 	go test ./tools/archtests/...
 
-check-hook-integrity: check-arch
+check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch
+verify: build test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
