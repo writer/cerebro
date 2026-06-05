@@ -48,6 +48,8 @@ import (
 	gluetypes "github.com/aws/aws-sdk-go-v2/service/glue/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/identitystore"
+	identitystoretypes "github.com/aws/aws-sdk-go-v2/service/identitystore/types"
 	"github.com/aws/aws-sdk-go-v2/service/kafka"
 	kafkatypes "github.com/aws/aws-sdk-go-v2/service/kafka/types"
 	"github.com/aws/aws-sdk-go-v2/service/kinesis"
@@ -58,6 +60,8 @@ import (
 	lakeformationtypes "github.com/aws/aws-sdk-go-v2/service/lakeformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	pipestypes "github.com/aws/aws-sdk-go-v2/service/pipes/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -79,6 +83,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
+	ssoadmintypes "github.com/aws/aws-sdk-go-v2/service/ssoadmin/types"
 	"github.com/aws/aws-sdk-go-v2/service/vpclattice"
 	vpclatticetypes "github.com/aws/aws-sdk-go-v2/service/vpclattice/types"
 
@@ -411,9 +417,18 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyIAMGroup, kind: "aws.iam_group"},
 		{family: familyIAMMembership, config: map[string]string{"group_name": "Security"}, kind: "aws.iam_group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
+		{family: familyIdentityStoreGroup, kind: "aws.identitystore_group"},
+		{family: familyIdentityStoreMember, kind: "aws.identitystore_group_membership"},
+		{family: familyIdentityStoreUser, kind: "aws.identitystore_user"},
+		{family: familyOrganizationsAcct, kind: "aws.organizations_account"},
+		{family: familyOrganizationsOU, kind: "aws.organizations_organizational_unit"},
+		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
+		{family: familySSOAssignment, kind: "aws.sso_account_assignment"},
+		{family: familySSOInstance, kind: "aws.sso_instance"},
+		{family: familySSOPermissionSet, kind: "aws.sso_permission_set"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"account_id": "123456789012", "family": tt.family}
@@ -1160,7 +1175,70 @@ func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 				t.Fatalf("Read(%s) error = %v", tt.family, err)
 			}
 			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSGovernanceInventoryEvents(t *testing.T) {
+	instanceARN := "arn:aws:sso:::instance/ssoins-1234567890abcdef"
+	permissionSetARN := "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-admin"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSGovernance: fakeAWSGovernance{
+			organizationAccounts: []organizationstypes.Account{{
+				Arn: awssdk.String("arn:aws:organizations::123456789012:account/o-example/210987654321"), Email: awssdk.String("prod@example.com"), Id: awssdk.String("210987654321"), Name: awssdk.String("Prod"), State: organizationstypes.AccountStateActive, Status: organizationstypes.AccountStatusActive,
+			}},
+			organizationRoots: []organizationstypes.Root{{Id: awssdk.String("r-root"), Name: awssdk.String("Root")}},
+			organizationOUs: map[string][]organizationstypes.OrganizationalUnit{"r-root": {{
+				Arn: awssdk.String("arn:aws:organizations::123456789012:ou/o-example/ou-root-sec"), Id: awssdk.String("ou-root-sec"), Name: awssdk.String("Security"),
+			}}},
+			organizationPolicies: []organizationstypes.PolicySummary{{
+				Arn: awssdk.String("arn:aws:organizations::123456789012:policy/o-example/service_control_policy/p-denyroot"), Id: awssdk.String("p-denyroot"), Name: awssdk.String("DenyRoot"), Type: organizationstypes.PolicyTypeServiceControlPolicy,
+			}},
+			organizationPolicyTargets: map[string][]organizationstypes.PolicyTargetSummary{"p-denyroot": {{TargetId: awssdk.String("210987654321"), Type: organizationstypes.TargetTypeAccount}}},
+			ssoInstances:              []ssoadmintypes.InstanceMetadata{{InstanceArn: awssdk.String(instanceARN), IdentityStoreId: awssdk.String("d-1234567890"), Name: awssdk.String("writer-sso"), OwnerAccountId: awssdk.String("123456789012"), Status: ssoadmintypes.InstanceStatusActive}},
+			ssoPermissionSets:         []ssoadmintypes.PermissionSet{{PermissionSetArn: awssdk.String(permissionSetARN), Name: awssdk.String("AdministratorAccess"), SessionDuration: awssdk.String("PT8H")}},
+			ssoAssignments: map[string][]ssoadmintypes.AccountAssignment{
+				"210987654321|" + permissionSetARN: {{AccountId: awssdk.String("210987654321"), PermissionSetArn: awssdk.String(permissionSetARN), PrincipalId: awssdk.String("user-1"), PrincipalType: ssoadmintypes.PrincipalTypeUser}},
+			},
+			identityUsers:  []identitystoretypes.User{{IdentityStoreId: awssdk.String("d-1234567890"), UserId: awssdk.String("user-1"), UserName: awssdk.String("alice"), DisplayName: awssdk.String("Alice Admin"), Emails: []identitystoretypes.Email{{Value: awssdk.String("alice@example.com"), Primary: true}}, UserStatus: identitystoretypes.UserStatusEnabled}},
+			identityGroups: []identitystoretypes.Group{{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("group-1"), DisplayName: awssdk.String("Security Admins")}},
+			identityMemberships: map[string][]identitystoretypes.GroupMembership{
+				"group-1": {{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("group-1"), MembershipId: awssdk.String("membership-1"), MemberId: &identitystoretypes.MemberIdMemberUserId{Value: "user-1"}}},
+			},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyOrganizationsAcct, kind: "aws.organizations_account", attr: "organization_id", want: "o-example"},
+		{family: familyOrganizationsOU, kind: "aws.organizations_organizational_unit", attr: "parent_id", want: "r-root"},
+		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy", attr: "target_account_ids", want: "210987654321"},
+		{family: familySSOInstance, kind: "aws.sso_instance", attr: "identity_store_id", want: "d-1234567890"},
+		{family: familySSOPermissionSet, kind: "aws.sso_permission_set", attr: "permission_set_name", want: "AdministratorAccess"},
+		{family: familySSOAssignment, kind: "aws.sso_account_assignment", attr: "principal_id", want: "user-1"},
+		{family: familyIdentityStoreUser, kind: "aws.identitystore_user", attr: "email", want: "alice@example.com"},
+		{family: familyIdentityStoreGroup, kind: "aws.identitystore_group", attr: "group_name", want: "Security Admins"},
+		{family: familyIdentityStoreMember, kind: "aws.identitystore_group_membership", attr: "member_user_id", want: "user-1"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
 				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("kind = %q, want %q", got, tt.kind)
@@ -1931,6 +2009,21 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.publicKeys = []cloudfronttypes.PublicKeySummary{{Id: awssdk.String("pk-123"), Name: awssdk.String("prod-public-key")}}
 		fake.responsePolicies = []cloudfronttypes.ResponseHeadersPolicySummary{{ResponseHeadersPolicy: &cloudfronttypes.ResponseHeadersPolicy{Id: awssdk.String("rhp-123"), ResponseHeadersPolicyConfig: &cloudfronttypes.ResponseHeadersPolicyConfig{Name: awssdk.String("security-headers")}}}}
 	}
+	governanceData := func(fake *recordingAWS) {
+		instanceARN := "arn:aws:sso:::instance/ssoins-1234567890abcdef"
+		permissionSetARN := "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-admin"
+		fake.organizationAccounts = []organizationstypes.Account{{Arn: awssdk.String("arn:aws:organizations::123456789012:account/o-example/210987654321"), Id: awssdk.String("210987654321"), Name: awssdk.String("Prod")}}
+		fake.organizationRoots = []organizationstypes.Root{{Id: awssdk.String("r-root")}}
+		fake.organizationOUs = map[string][]organizationstypes.OrganizationalUnit{"r-root": {{Id: awssdk.String("ou-root-sec"), Name: awssdk.String("Security")}}}
+		fake.organizationPolicies = []organizationstypes.PolicySummary{{Id: awssdk.String("p-denyroot"), Name: awssdk.String("DenyRoot"), Type: organizationstypes.PolicyTypeServiceControlPolicy}}
+		fake.organizationPolicyTargets = map[string][]organizationstypes.PolicyTargetSummary{"p-denyroot": {{TargetId: awssdk.String("210987654321"), Type: organizationstypes.TargetTypeAccount}}}
+		fake.ssoInstances = []ssoadmintypes.InstanceMetadata{{InstanceArn: awssdk.String(instanceARN), IdentityStoreId: awssdk.String("d-1234567890")}}
+		fake.ssoPermissionSets = []ssoadmintypes.PermissionSet{{PermissionSetArn: awssdk.String(permissionSetARN), Name: awssdk.String("AdministratorAccess")}}
+		fake.ssoAssignments = map[string][]ssoadmintypes.AccountAssignment{"210987654321|" + permissionSetARN: {{AccountId: awssdk.String("210987654321"), PermissionSetArn: awssdk.String(permissionSetARN), PrincipalId: awssdk.String("user-1"), PrincipalType: ssoadmintypes.PrincipalTypeUser}}}
+		fake.identityUsers = []identitystoretypes.User{{IdentityStoreId: awssdk.String("d-1234567890"), UserId: awssdk.String("user-1"), UserName: awssdk.String("alice"), Emails: []identitystoretypes.Email{{Value: awssdk.String("alice@example.com"), Primary: true}}}}
+		fake.identityGroups = []identitystoretypes.Group{{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("group-1"), DisplayName: awssdk.String("Security Admins")}}
+		fake.identityMemberships = map[string][]identitystoretypes.GroupMembership{"group-1": {{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("group-1"), MemberId: &identitystoretypes.MemberIdMemberUserId{Value: "user-1"}}}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -1985,6 +2078,51 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECRRepository,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
+		},
+		{
+			family:  familyOrganizationsAcct,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListAccounts"},
+		},
+		{
+			family:  familyOrganizationsOU,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListOrganizationalUnitsForParent", "organizations:ListRoots"},
+		},
+		{
+			family:  familyOrganizationsPolicy,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListPolicies", "organizations:ListTargetsForPolicy"},
+		},
+		{
+			family:  familySSOInstance,
+			seed:    governanceData,
+			wantAPI: []string{"sso:ListInstances"},
+		},
+		{
+			family:  familySSOPermissionSet,
+			seed:    governanceData,
+			wantAPI: []string{"sso:DescribePermissionSet", "sso:ListInstances", "sso:ListPermissionSets"},
+		},
+		{
+			family:  familySSOAssignment,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListAccounts", "sso:DescribePermissionSet", "sso:ListAccountAssignments", "sso:ListInstances", "sso:ListPermissionSets"},
+		},
+		{
+			family:  familyIdentityStoreUser,
+			seed:    governanceData,
+			wantAPI: []string{"identitystore:ListUsers", "sso:ListInstances"},
+		},
+		{
+			family:  familyIdentityStoreGroup,
+			seed:    governanceData,
+			wantAPI: []string{"identitystore:ListGroups", "sso:ListInstances"},
+		},
+		{
+			family:  familyIdentityStoreMember,
+			seed:    governanceData,
+			wantAPI: []string{"identitystore:ListGroupMemberships", "identitystore:ListGroups", "sso:ListInstances"},
 		},
 		{
 			family:  familyECSService,
@@ -2432,6 +2570,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 			awsAnalyticsClients: awsAnalyticsClients{
 				kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake},
 			},
+			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: fakeIdentityStore{fake: &fake}},
 		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
@@ -2485,6 +2624,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 			awsAnalyticsClients: awsAnalyticsClients{
 				kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake},
 			},
+			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: recordingIdentityStore{fake: fake}},
 		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
@@ -2555,6 +2695,7 @@ type fakeAWS struct {
 	fakeAWSData
 	fakeAWSRuntime
 	fakeAWSAnalytics
+	fakeAWSGovernance
 }
 
 type fakeAWSNetwork struct {
@@ -2691,6 +2832,20 @@ type fakeAWSAnalytics struct {
 	lakeFormationPermissions []lakeformationtypes.PrincipalResourcePermissions
 }
 
+type fakeAWSGovernance struct {
+	organizationAccounts      []organizationstypes.Account
+	organizationRoots         []organizationstypes.Root
+	organizationOUs           map[string][]organizationstypes.OrganizationalUnit
+	organizationPolicies      []organizationstypes.PolicySummary
+	organizationPolicyTargets map[string][]organizationstypes.PolicyTargetSummary
+	ssoInstances              []ssoadmintypes.InstanceMetadata
+	ssoPermissionSets         []ssoadmintypes.PermissionSet
+	ssoAssignments            map[string][]ssoadmintypes.AccountAssignment
+	identityUsers             []identitystoretypes.User
+	identityGroups            []identitystoretypes.Group
+	identityMemberships       map[string][]identitystoretypes.GroupMembership
+}
+
 type fakeAWSCompute struct {
 	instances             []ec2types.Instance
 	instanceProfiles      map[string]iamtypes.InstanceProfile
@@ -2803,6 +2958,51 @@ func (f *recordingAWS) GetRolePolicy(ctx context.Context, input *iam.GetRolePoli
 func (f *recordingAWS) GetInstanceProfile(ctx context.Context, input *iam.GetInstanceProfileInput, options ...func(*iam.Options)) (*iam.GetInstanceProfileOutput, error) {
 	f.record("iam:GetInstanceProfile")
 	return f.fakeAWS.GetInstanceProfile(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAccounts(ctx context.Context, input *organizations.ListAccountsInput, options ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+	f.record("organizations:ListAccounts")
+	return f.fakeAWS.ListAccounts(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListRoots(ctx context.Context, input *organizations.ListRootsInput, options ...func(*organizations.Options)) (*organizations.ListRootsOutput, error) {
+	f.record("organizations:ListRoots")
+	return f.fakeAWS.ListRoots(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListOrganizationalUnitsForParent(ctx context.Context, input *organizations.ListOrganizationalUnitsForParentInput, options ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error) {
+	f.record("organizations:ListOrganizationalUnitsForParent")
+	return f.fakeAWS.ListOrganizationalUnitsForParent(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListPolicies(ctx context.Context, input *organizations.ListPoliciesInput, options ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error) {
+	f.record("organizations:ListPolicies")
+	return f.fakeAWS.ListPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTargetsForPolicy(ctx context.Context, input *organizations.ListTargetsForPolicyInput, options ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error) {
+	f.record("organizations:ListTargetsForPolicy")
+	return f.fakeAWS.ListTargetsForPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListInstances(ctx context.Context, input *ssoadmin.ListInstancesInput, options ...func(*ssoadmin.Options)) (*ssoadmin.ListInstancesOutput, error) {
+	f.record("sso:ListInstances")
+	return f.fakeAWS.ListInstances(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListPermissionSets(ctx context.Context, input *ssoadmin.ListPermissionSetsInput, options ...func(*ssoadmin.Options)) (*ssoadmin.ListPermissionSetsOutput, error) {
+	f.record("sso:ListPermissionSets")
+	return f.fakeAWS.ListPermissionSets(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribePermissionSet(ctx context.Context, input *ssoadmin.DescribePermissionSetInput, options ...func(*ssoadmin.Options)) (*ssoadmin.DescribePermissionSetOutput, error) {
+	f.record("sso:DescribePermissionSet")
+	return f.fakeAWS.DescribePermissionSet(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAccountAssignments(ctx context.Context, input *ssoadmin.ListAccountAssignmentsInput, options ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountAssignmentsOutput, error) {
+	f.record("sso:ListAccountAssignments")
+	return f.fakeAWS.ListAccountAssignments(ctx, input, options...)
 }
 
 func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, options ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
@@ -3902,6 +4102,98 @@ func (f fakeAWS) GetInstanceProfile(_ context.Context, input *iam.GetInstancePro
 		return &iam.GetInstanceProfileOutput{InstanceProfile: &profile}, nil
 	}
 	return &iam.GetInstanceProfileOutput{InstanceProfile: &iamtypes.InstanceProfile{InstanceProfileName: awssdk.String(name)}}, nil
+}
+
+func (f fakeAWS) ListAccounts(context.Context, *organizations.ListAccountsInput, ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+	return &organizations.ListAccountsOutput{Accounts: f.organizationAccounts}, nil
+}
+
+func (f fakeAWS) ListRoots(context.Context, *organizations.ListRootsInput, ...func(*organizations.Options)) (*organizations.ListRootsOutput, error) {
+	return &organizations.ListRootsOutput{Roots: f.organizationRoots}, nil
+}
+
+func (f fakeAWS) ListOrganizationalUnitsForParent(_ context.Context, input *organizations.ListOrganizationalUnitsForParentInput, _ ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error) {
+	return &organizations.ListOrganizationalUnitsForParentOutput{OrganizationalUnits: f.organizationOUs[awssdk.ToString(input.ParentId)]}, nil
+}
+
+func (f fakeAWS) ListPolicies(_ context.Context, input *organizations.ListPoliciesInput, _ ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error) {
+	policies := make([]organizationstypes.PolicySummary, 0, len(f.organizationPolicies))
+	for _, policy := range f.organizationPolicies {
+		if input != nil && input.Filter != "" && policy.Type != input.Filter {
+			continue
+		}
+		policies = append(policies, policy)
+	}
+	return &organizations.ListPoliciesOutput{Policies: policies}, nil
+}
+
+func (f fakeAWS) ListTargetsForPolicy(_ context.Context, input *organizations.ListTargetsForPolicyInput, _ ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error) {
+	return &organizations.ListTargetsForPolicyOutput{Targets: f.organizationPolicyTargets[awssdk.ToString(input.PolicyId)]}, nil
+}
+
+func (f fakeAWS) ListInstances(context.Context, *ssoadmin.ListInstancesInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListInstancesOutput, error) {
+	return &ssoadmin.ListInstancesOutput{Instances: f.ssoInstances}, nil
+}
+
+func (f fakeAWS) ListPermissionSets(context.Context, *ssoadmin.ListPermissionSetsInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListPermissionSetsOutput, error) {
+	arns := make([]string, 0, len(f.ssoPermissionSets))
+	for _, permissionSet := range f.ssoPermissionSets {
+		if arn := awssdk.ToString(permissionSet.PermissionSetArn); arn != "" {
+			arns = append(arns, arn)
+		}
+	}
+	return &ssoadmin.ListPermissionSetsOutput{PermissionSets: arns}, nil
+}
+
+func (f fakeAWS) DescribePermissionSet(_ context.Context, input *ssoadmin.DescribePermissionSetInput, _ ...func(*ssoadmin.Options)) (*ssoadmin.DescribePermissionSetOutput, error) {
+	arn := awssdk.ToString(input.PermissionSetArn)
+	for _, permissionSet := range f.ssoPermissionSets {
+		if awssdk.ToString(permissionSet.PermissionSetArn) == arn {
+			copy := permissionSet
+			return &ssoadmin.DescribePermissionSetOutput{PermissionSet: &copy}, nil
+		}
+	}
+	return &ssoadmin.DescribePermissionSetOutput{}, nil
+}
+
+func (f fakeAWS) ListAccountAssignments(_ context.Context, input *ssoadmin.ListAccountAssignmentsInput, _ ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountAssignmentsOutput, error) {
+	key := awssdk.ToString(input.AccountId) + "|" + awssdk.ToString(input.PermissionSetArn)
+	return &ssoadmin.ListAccountAssignmentsOutput{AccountAssignments: f.ssoAssignments[key]}, nil
+}
+
+type fakeIdentityStore struct {
+	fake *fakeAWS
+}
+
+type recordingIdentityStore struct {
+	fake *recordingAWS
+}
+
+func (f recordingIdentityStore) ListUsers(ctx context.Context, input *identitystore.ListUsersInput, options ...func(*identitystore.Options)) (*identitystore.ListUsersOutput, error) {
+	f.fake.record("identitystore:ListUsers")
+	return fakeIdentityStore{fake: &f.fake.fakeAWS}.ListUsers(ctx, input, options...)
+}
+
+func (f recordingIdentityStore) ListGroups(ctx context.Context, input *identitystore.ListGroupsInput, options ...func(*identitystore.Options)) (*identitystore.ListGroupsOutput, error) {
+	f.fake.record("identitystore:ListGroups")
+	return fakeIdentityStore{fake: &f.fake.fakeAWS}.ListGroups(ctx, input, options...)
+}
+
+func (f recordingIdentityStore) ListGroupMemberships(ctx context.Context, input *identitystore.ListGroupMembershipsInput, options ...func(*identitystore.Options)) (*identitystore.ListGroupMembershipsOutput, error) {
+	f.fake.record("identitystore:ListGroupMemberships")
+	return fakeIdentityStore{fake: &f.fake.fakeAWS}.ListGroupMemberships(ctx, input, options...)
+}
+
+func (f fakeIdentityStore) ListUsers(context.Context, *identitystore.ListUsersInput, ...func(*identitystore.Options)) (*identitystore.ListUsersOutput, error) {
+	return &identitystore.ListUsersOutput{Users: f.fake.identityUsers}, nil
+}
+
+func (f fakeIdentityStore) ListGroups(context.Context, *identitystore.ListGroupsInput, ...func(*identitystore.Options)) (*identitystore.ListGroupsOutput, error) {
+	return &identitystore.ListGroupsOutput{Groups: f.fake.identityGroups}, nil
+}
+
+func (f fakeIdentityStore) ListGroupMemberships(_ context.Context, input *identitystore.ListGroupMembershipsInput, _ ...func(*identitystore.Options)) (*identitystore.ListGroupMembershipsOutput, error) {
+	return &identitystore.ListGroupMembershipsOutput{GroupMemberships: f.fake.identityMemberships[awssdk.ToString(input.GroupId)]}, nil
 }
 
 func (f fakeAWS) inlinePolicyDocument(policyName string) string {
