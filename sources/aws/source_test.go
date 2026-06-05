@@ -16,12 +16,20 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/apprunner"
+	apprunnertypes "github.com/aws/aws-sdk-go-v2/service/apprunner/types"
+	"github.com/aws/aws-sdk-go-v2/service/athena"
+	athenatypes "github.com/aws/aws-sdk-go-v2/service/athena/types"
 	"github.com/aws/aws-sdk-go-v2/service/backup"
 	backuptypes "github.com/aws/aws-sdk-go-v2/service/backup/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	datasynctypes "github.com/aws/aws-sdk-go-v2/service/datasync/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -34,12 +42,30 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	eventbridgetypes "github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+	"github.com/aws/aws-sdk-go-v2/service/firehose"
+	firehosetypes "github.com/aws/aws-sdk-go-v2/service/firehose/types"
+	"github.com/aws/aws-sdk-go-v2/service/glue"
+	gluetypes "github.com/aws/aws-sdk-go-v2/service/glue/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/identitystore"
+	identitystoretypes "github.com/aws/aws-sdk-go-v2/service/identitystore/types"
+	"github.com/aws/aws-sdk-go-v2/service/kafka"
+	kafkatypes "github.com/aws/aws-sdk-go-v2/service/kafka/types"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+	kinesistypes "github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
+	lakeformationtypes "github.com/aws/aws-sdk-go-v2/service/lakeformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/aws-sdk-go-v2/service/pipes"
+	pipestypes "github.com/aws/aws-sdk-go-v2/service/pipes/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
@@ -50,11 +76,19 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3control"
 	s3controltypes "github.com/aws/aws-sdk-go-v2/service/s3control/types"
+	"github.com/aws/aws-sdk-go-v2/service/scheduler"
+	schedulertypes "github.com/aws/aws-sdk-go-v2/service/scheduler/types"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	secretsmanagertypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+	"github.com/aws/aws-sdk-go-v2/service/sfn"
+	sfntypes "github.com/aws/aws-sdk-go-v2/service/sfn/types"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
+	ssoadmintypes "github.com/aws/aws-sdk-go-v2/service/ssoadmin/types"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -343,6 +377,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyDataSyncTask, kind: "aws.datasync_task"},
 		{family: familyEBSSnapshot, kind: "aws.ebs_snapshot"},
 		{family: familyEBSVolume, kind: "aws.ebs_volume"},
+		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
+		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
@@ -353,9 +389,19 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
 		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream"},
+		{family: familyGlueCrawler, kind: "aws.glue_crawler"},
+		{family: familyGlueDatabase, kind: "aws.glue_database"},
+		{family: familyGlueJob, kind: "aws.glue_job"},
+		{family: familyGlueTable, kind: "aws.glue_table"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
+		{family: familyKinesisStream, kind: "aws.kinesis_stream"},
 		{family: familyKMSKey, kind: "aws.kms_key"},
+		{family: familyLakeFormationLFTag, kind: "aws.lakeformation_lf_tag"},
+		{family: familyLakeFormationPerm, kind: "aws.lakeformation_permission"},
+		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
+		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
 		{family: familyS3AccessPoint, kind: "aws.s3_access_point"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
@@ -368,9 +414,18 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyIAMGroup, kind: "aws.iam_group"},
 		{family: familyIAMMembership, config: map[string]string{"group_name": "Security"}, kind: "aws.iam_group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
+		{family: familyIdentityStoreGroup, kind: "aws.identitystore_group"},
+		{family: familyIdentityStoreMember, kind: "aws.identitystore_group_membership"},
+		{family: familyIdentityStoreUser, kind: "aws.identitystore_user"},
+		{family: familyOrganizationsAcct, kind: "aws.organizations_account"},
+		{family: familyOrganizationsOU, kind: "aws.organizations_organizational_unit"},
+		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
+		{family: familySSOAssignment, kind: "aws.sso_account_assignment"},
+		{family: familySSOInstance, kind: "aws.sso_instance"},
+		{family: familySSOPermissionSet, kind: "aws.sso_permission_set"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"account_id": "123456789012", "family": tt.family}
@@ -989,7 +1044,248 @@ func TestReadAWSBackupInventoryEvents(t *testing.T) {
 				t.Fatalf("Read(%s) error = %v", tt.family, err)
 			}
 			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
+	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
+	kinesisARN := "arn:aws:kinesis:us-east-1:123456789012:stream/orders"
+	firehoseARN := "arn:aws:firehose:us-east-1:123456789012:deliverystream/orders-delivery"
+	mskARN := "arn:aws:kafka:us-east-1:123456789012:cluster/orders/uuid"
+	glueDatabaseARN := "arn:aws:glue:us-east-1:123456789012:database/analytics"
+	glueTableARN := "arn:aws:glue:us-east-1:123456789012:table/analytics/orders"
+	glueCrawlerARN := "arn:aws:glue:us-east-1:123456789012:crawler/orders-crawler"
+	glueJobARN := "arn:aws:glue:us-east-1:123456789012:job/orders-etl"
+	athenaWorkgroupARN := "arn:aws:athena:us-east-1:123456789012:workgroup/primary"
+	athenaCatalogARN := "arn:aws:athena:us-east-1:123456789012:datacatalog/AwsDataCatalog"
+	source := newTestSource(t, fakeAWS{fakeAWSAnalytics: fakeAWSAnalytics{
+		kinesisStreams: []kinesistypes.StreamDescriptionSummary{{
+			StreamARN:               awssdk.String(kinesisARN),
+			StreamName:              awssdk.String("orders"),
+			StreamStatus:            kinesistypes.StreamStatusActive,
+			EncryptionType:          kinesistypes.EncryptionTypeKms,
+			KeyId:                   awssdk.String(kmsARN),
+			RetentionPeriodHours:    awssdk.Int32(48),
+			OpenShardCount:          awssdk.Int32(2),
+			StreamCreationTimestamp: timePtr("2026-04-23T00:00:00Z"),
+		}},
+		kinesisTags: map[string][]kinesistypes.Tag{kinesisARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("analytics@writer.com")}}},
+		firehoseStreams: []firehosetypes.DeliveryStreamDescription{{
+			DeliveryStreamARN:    awssdk.String(firehoseARN),
+			DeliveryStreamName:   awssdk.String("orders-delivery"),
+			DeliveryStreamStatus: firehosetypes.DeliveryStreamStatusActive,
+			DeliveryStreamType:   firehosetypes.DeliveryStreamTypeKinesisStreamAsSource,
+			CreateTimestamp:      timePtr("2026-04-23T00:00:00Z"),
+			DeliveryStreamEncryptionConfiguration: &firehosetypes.DeliveryStreamEncryptionConfiguration{
+				KeyARN:  awssdk.String(kmsARN),
+				KeyType: firehosetypes.KeyTypeCustomerManagedCmk,
+				Status:  firehosetypes.DeliveryStreamEncryptionStatusEnabled,
+			},
+			Destinations: []firehosetypes.DestinationDescription{{ExtendedS3DestinationDescription: &firehosetypes.ExtendedS3DestinationDescription{BucketARN: awssdk.String("arn:aws:s3:::orders-lake")}}},
+			Source: &firehosetypes.SourceDescription{KinesisStreamSourceDescription: &firehosetypes.KinesisStreamSourceDescription{
+				KinesisStreamARN: awssdk.String(kinesisARN),
+				RoleARN:          awssdk.String("arn:aws:iam::123456789012:role/firehose"),
+			}},
+		}},
+		firehoseTags: map[string][]firehosetypes.Tag{"orders-delivery": {{Key: awssdk.String("Team"), Value: awssdk.String("data")}}},
+		mskClusters: []kafkatypes.Cluster{{
+			ClusterArn:   awssdk.String(mskARN),
+			ClusterName:  awssdk.String("orders"),
+			ClusterType:  kafkatypes.ClusterTypeProvisioned,
+			CreationTime: timePtr("2026-04-23T00:00:00Z"),
+			State:        kafkatypes.ClusterStateActive,
+			Provisioned: &kafkatypes.Provisioned{
+				NumberOfBrokerNodes:       awssdk.Int32(3),
+				EncryptionInfo:            &kafkatypes.EncryptionInfo{},
+				CurrentBrokerSoftwareInfo: &kafkatypes.BrokerSoftwareInfo{KafkaVersion: awssdk.String("3.6.0")},
+			},
+		}},
+		mskTags: map[string]map[string]string{mskARN: {"Owner": "streaming@writer.com"}},
+		glueDatabases: []gluetypes.Database{{
+			CatalogId:   awssdk.String("123456789012"),
+			Name:        awssdk.String("analytics"),
+			Description: awssdk.String("analytics catalog"),
+			LocationUri: awssdk.String("s3://orders-lake/"),
+			CreateTime:  timePtr("2026-04-23T00:00:00Z"),
+		}},
+		glueTables: map[string][]gluetypes.Table{"analytics": {{
+			CatalogId:                     awssdk.String("123456789012"),
+			DatabaseName:                  awssdk.String("analytics"),
+			Name:                          awssdk.String("orders"),
+			Owner:                         awssdk.String("analytics@writer.com"),
+			TableType:                     awssdk.String("EXTERNAL_TABLE"),
+			CreateTime:                    timePtr("2026-04-23T00:00:00Z"),
+			UpdateTime:                    timePtr("2026-04-23T00:00:00Z"),
+			IsRegisteredWithLakeFormation: true,
+			StorageDescriptor: &gluetypes.StorageDescriptor{
+				Columns:  []gluetypes.Column{{Name: awssdk.String("order_id"), Type: awssdk.String("string")}},
+				Location: awssdk.String("s3://orders-lake/orders/"),
+			},
+		}}},
+		glueCrawlers: []gluetypes.Crawler{{
+			Name:                         awssdk.String("orders-crawler"),
+			DatabaseName:                 awssdk.String("analytics"),
+			Role:                         awssdk.String("arn:aws:iam::123456789012:role/glue-crawler"),
+			State:                        gluetypes.CrawlerStateReady,
+			CreationTime:                 timePtr("2026-04-23T00:00:00Z"),
+			CrawlerSecurityConfiguration: awssdk.String("crawler-security"),
+			LakeFormationConfiguration:   &gluetypes.LakeFormationConfiguration{UseLakeFormationCredentials: awssdk.Bool(true), AccountId: awssdk.String("123456789012")},
+		}},
+		glueJobs: []gluetypes.Job{{
+			Name:                  awssdk.String("orders-etl"),
+			Role:                  awssdk.String("arn:aws:iam::123456789012:role/glue-job"),
+			GlueVersion:           awssdk.String("5.0"),
+			SecurityConfiguration: awssdk.String("job-security"),
+			WorkerType:            gluetypes.WorkerTypeG1x,
+			CreatedOn:             timePtr("2026-04-23T00:00:00Z"),
+			Command:               &gluetypes.JobCommand{Name: awssdk.String("glueetl"), Runtime: awssdk.String("python3")},
+		}},
+		glueTags: map[string]map[string]string{
+			glueDatabaseARN: {"Owner": "catalog@writer.com"},
+			glueTableARN:    {"Owner": "table-owner@writer.com"},
+			glueCrawlerARN:  {"Team": "data"},
+			glueJobARN:      {"Team": "data-eng"},
+		},
+		athenaWorkgroups: []athenatypes.WorkGroup{{
+			Name:         awssdk.String("primary"),
+			State:        athenatypes.WorkGroupStateEnabled,
+			CreationTime: timePtr("2026-04-23T00:00:00Z"),
+			Configuration: &athenatypes.WorkGroupConfiguration{
+				EnforceWorkGroupConfiguration: awssdk.Bool(true),
+				ResultConfiguration: &athenatypes.ResultConfiguration{EncryptionConfiguration: &athenatypes.EncryptionConfiguration{
+					EncryptionOption: athenatypes.EncryptionOptionSseKms,
+					KmsKey:           awssdk.String(kmsARN),
+				}},
+			},
+		}},
+		athenaDataCatalogs: []athenatypes.DataCatalog{{
+			Name:        awssdk.String("AwsDataCatalog"),
+			Type:        athenatypes.DataCatalogTypeGlue,
+			Description: awssdk.String("default catalog"),
+		}},
+		athenaTags: map[string][]athenatypes.Tag{
+			athenaWorkgroupARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("queries@writer.com")}},
+			athenaCatalogARN:   {{Key: awssdk.String("Team"), Value: awssdk.String("data")}},
+		},
+		lakeFormationResources: []lakeformationtypes.ResourceInfo{{
+			ResourceArn:                  awssdk.String("arn:aws:s3:::orders-lake"),
+			RoleArn:                      awssdk.String("arn:aws:iam::123456789012:role/lakeformation"),
+			ExpectedResourceOwnerAccount: awssdk.String("123456789012"),
+			HybridAccessEnabled:          awssdk.Bool(true),
+			WithPrivilegedAccess:         awssdk.Bool(true),
+			VerificationStatus:           lakeformationtypes.VerificationStatusVerified,
+			LastModified:                 timePtr("2026-04-23T00:00:00Z"),
+		}},
+		lakeFormationLFTags: []lakeformationtypes.LFTagPair{{
+			CatalogId: awssdk.String("123456789012"),
+			TagKey:    awssdk.String("sensitivity"),
+			TagValues: []string{"restricted"},
+		}},
+		lakeFormationPermissions: []lakeformationtypes.PrincipalResourcePermissions{{
+			Principal:   &lakeformationtypes.DataLakePrincipal{DataLakePrincipalIdentifier: awssdk.String("arn:aws:iam::123456789012:role/analyst")},
+			Permissions: []lakeformationtypes.Permission{lakeformationtypes.PermissionSelect},
+			Resource:    &lakeformationtypes.Resource{Database: &lakeformationtypes.DatabaseResource{Name: awssdk.String("analytics")}},
+			LastUpdated: timePtr("2026-04-23T00:00:00Z"),
+		}},
+	}})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyKinesisStream, kind: "aws.kinesis_stream", attr: "encryption", want: "true"},
+		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream", attr: "destination_types", want: "s3"},
+		{family: familyMSKCluster, kind: "aws.msk_cluster", attr: "broker_count", want: "3"},
+		{family: familyGlueDatabase, kind: "aws.glue_database", attr: "owner", want: "catalog@writer.com"},
+		{family: familyGlueTable, kind: "aws.glue_table", attr: "registered_with_lakeformation", want: "true"},
+		{family: familyGlueCrawler, kind: "aws.glue_crawler", attr: "lakeformation_credentials", want: "true"},
+		{family: familyGlueJob, kind: "aws.glue_job", attr: "security_configuration", want: "job-security"},
+		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup", attr: "encryption", want: "true"},
+		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog", attr: "catalog_type", want: "GLUE"},
+		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource", attr: "hybrid_access_enabled", want: "true"},
+		{family: familyLakeFormationLFTag, kind: "aws.lakeformation_lf_tag", attr: "tag_values", want: "restricted"},
+		{family: familyLakeFormationPerm, kind: "aws.lakeformation_permission", attr: "permissions", want: "SELECT"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSGovernanceInventoryEvents(t *testing.T) {
+	instanceARN := "arn:aws:sso:::instance/ssoins-1234567890abcdef"
+	permissionSetARN := "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-admin"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSGovernance: fakeAWSGovernance{
+			organizationAccounts: []organizationstypes.Account{{
+				Arn: awssdk.String("arn:aws:organizations::123456789012:account/o-example/210987654321"), Email: awssdk.String("prod@example.com"), Id: awssdk.String("210987654321"), Name: awssdk.String("Prod"), State: organizationstypes.AccountStateActive, Status: organizationstypes.AccountStatusActive,
+			}},
+			organizationRoots: []organizationstypes.Root{{Id: awssdk.String("r-root"), Name: awssdk.String("Root")}},
+			organizationOUs: map[string][]organizationstypes.OrganizationalUnit{"r-root": {{
+				Arn: awssdk.String("arn:aws:organizations::123456789012:ou/o-example/ou-root-sec"), Id: awssdk.String("ou-root-sec"), Name: awssdk.String("Security"),
+			}}},
+			organizationPolicies: []organizationstypes.PolicySummary{{
+				Arn: awssdk.String("arn:aws:organizations::123456789012:policy/o-example/service_control_policy/p-denyroot"), Id: awssdk.String("p-denyroot"), Name: awssdk.String("DenyRoot"), Type: organizationstypes.PolicyTypeServiceControlPolicy,
+			}},
+			organizationPolicyTargets: map[string][]organizationstypes.PolicyTargetSummary{"p-denyroot": {{TargetId: awssdk.String("210987654321"), Type: organizationstypes.TargetTypeAccount}}},
+			ssoInstances:              []ssoadmintypes.InstanceMetadata{{InstanceArn: awssdk.String(instanceARN), IdentityStoreId: awssdk.String("d-1234567890"), Name: awssdk.String("writer-sso"), OwnerAccountId: awssdk.String("123456789012"), Status: ssoadmintypes.InstanceStatusActive}},
+			ssoPermissionSets:         []ssoadmintypes.PermissionSet{{PermissionSetArn: awssdk.String(permissionSetARN), Name: awssdk.String("AdministratorAccess"), SessionDuration: awssdk.String("PT8H")}},
+			ssoAssignments: map[string][]ssoadmintypes.AccountAssignment{
+				"210987654321|" + permissionSetARN: {{AccountId: awssdk.String("210987654321"), PermissionSetArn: awssdk.String(permissionSetARN), PrincipalId: awssdk.String("user-1"), PrincipalType: ssoadmintypes.PrincipalTypeUser}},
+			},
+			identityUsers:  []identitystoretypes.User{{IdentityStoreId: awssdk.String("d-1234567890"), UserId: awssdk.String("user-1"), UserName: awssdk.String("alice"), DisplayName: awssdk.String("Alice Admin"), Emails: []identitystoretypes.Email{{Value: awssdk.String("alice@example.com"), Primary: true}}, UserStatus: identitystoretypes.UserStatusEnabled}},
+			identityGroups: []identitystoretypes.Group{{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("group-1"), DisplayName: awssdk.String("Security Admins")}},
+			identityMemberships: map[string][]identitystoretypes.GroupMembership{
+				"group-1": {{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("group-1"), MembershipId: awssdk.String("membership-1"), MemberId: &identitystoretypes.MemberIdMemberUserId{Value: "user-1"}}},
+			},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyOrganizationsAcct, kind: "aws.organizations_account", attr: "organization_id", want: "o-example"},
+		{family: familyOrganizationsOU, kind: "aws.organizations_organizational_unit", attr: "parent_id", want: "r-root"},
+		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy", attr: "target_account_ids", want: "210987654321"},
+		{family: familySSOInstance, kind: "aws.sso_instance", attr: "identity_store_id", want: "d-1234567890"},
+		{family: familySSOPermissionSet, kind: "aws.sso_permission_set", attr: "permission_set_name", want: "AdministratorAccess"},
+		{family: familySSOAssignment, kind: "aws.sso_account_assignment", attr: "principal_id", want: "user-1"},
+		{family: familyIdentityStoreUser, kind: "aws.identitystore_user", attr: "email", want: "alice@example.com"},
+		{family: familyIdentityStoreGroup, kind: "aws.identitystore_group", attr: "group_name", want: "Security Admins"},
+		{family: familyIdentityStoreMember, kind: "aws.identitystore_group_membership", attr: "member_user_id", want: "user-1"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
 				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("kind = %q, want %q", got, tt.kind)
@@ -1046,14 +1342,18 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 		topics = append(topics, snstypes.Topic{TopicArn: awssdk.String(arn)})
 		attributes[arn] = map[string]string{"TopicArn": arn}
 	}
-	records, _, err := listSNSTopics(context.Background(), awsClients{sns: fakeSNS{fake: &fakeAWS{
-		fakeAWSData: fakeAWSData{
-			fakeAWSCoreData: fakeAWSCoreData{
-				snsTopics:     topics,
-				snsAttributes: attributes,
-			},
+	records, _, err := listSNSTopics(context.Background(), awsClients{
+		awsRuntimeClients: awsRuntimeClients{
+			sns: fakeSNS{fake: &fakeAWS{
+				fakeAWSData: fakeAWSData{
+					fakeAWSCoreData: fakeAWSCoreData{
+						snsTopics:     topics,
+						snsAttributes: attributes,
+					},
+				},
+			}},
 		},
-	}}}, settings{}, "", 10)
+	}, settings{}, "", 10)
 	if err != nil {
 		t.Fatalf("listSNSTopics: %v", err)
 	}
@@ -1121,13 +1421,15 @@ func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 		},
 	}}
 	records, _, err := listS3Buckets(context.Background(), awsClients{
-		cfg: awssdk.Config{Region: "us-east-1"},
-		s3:  base,
-		s3ByRegion: func(region string) awsS3API {
-			if region != "eu-west-1" {
-				t.Fatalf("regional client requested for %q, want eu-west-1", region)
-			}
-			return regional
+		awsPlatformClients: awsPlatformClients{
+			cfg: awssdk.Config{Region: "us-east-1"},
+			s3:  base,
+			s3ByRegion: func(region string) awsS3API {
+				if region != "eu-west-1" {
+					t.Fatalf("regional client requested for %q, want eu-west-1", region)
+				}
+				return regional
+			},
 		},
 	}, settings{region: "us-east-1"}, "", 0)
 	if err != nil {
@@ -1760,6 +2062,21 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.backupProtectedResources = []backuptypes.ProtectedResource{{ResourceArn: awssdk.String(resourceARN), ResourceName: awssdk.String("orders-db"), ResourceType: awssdk.String("RDS")}}
 		fake.backupRecoveryPoints = map[string][]backuptypes.RecoveryPointByBackupVault{"prod-vault": {{RecoveryPointArn: awssdk.String("arn:aws:backup:us-east-1:123456789012:recovery-point:rp-123"), BackupVaultArn: awssdk.String(vaultARN), BackupVaultName: awssdk.String("prod-vault"), ResourceArn: awssdk.String(resourceARN), ResourceType: awssdk.String("RDS")}}}
 	}
+	governanceData := func(fake *recordingAWS) {
+		instanceARN := "arn:aws:sso:::instance/ssoins-1234567890abcdef"
+		permissionSetARN := "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-admin"
+		fake.organizationAccounts = []organizationstypes.Account{{Arn: awssdk.String("arn:aws:organizations::123456789012:account/o-example/210987654321"), Id: awssdk.String("210987654321"), Name: awssdk.String("Prod")}}
+		fake.organizationRoots = []organizationstypes.Root{{Id: awssdk.String("r-root")}}
+		fake.organizationOUs = map[string][]organizationstypes.OrganizationalUnit{"r-root": {{Id: awssdk.String("ou-root-sec"), Name: awssdk.String("Security")}}}
+		fake.organizationPolicies = []organizationstypes.PolicySummary{{Id: awssdk.String("p-denyroot"), Name: awssdk.String("DenyRoot"), Type: organizationstypes.PolicyTypeServiceControlPolicy}}
+		fake.organizationPolicyTargets = map[string][]organizationstypes.PolicyTargetSummary{"p-denyroot": {{TargetId: awssdk.String("210987654321"), Type: organizationstypes.TargetTypeAccount}}}
+		fake.ssoInstances = []ssoadmintypes.InstanceMetadata{{InstanceArn: awssdk.String(instanceARN), IdentityStoreId: awssdk.String("d-1234567890")}}
+		fake.ssoPermissionSets = []ssoadmintypes.PermissionSet{{PermissionSetArn: awssdk.String(permissionSetARN), Name: awssdk.String("AdministratorAccess")}}
+		fake.ssoAssignments = map[string][]ssoadmintypes.AccountAssignment{"210987654321|" + permissionSetARN: {{AccountId: awssdk.String("210987654321"), PermissionSetArn: awssdk.String(permissionSetARN), PrincipalId: awssdk.String("user-1"), PrincipalType: ssoadmintypes.PrincipalTypeUser}}}
+		fake.identityUsers = []identitystoretypes.User{{IdentityStoreId: awssdk.String("d-1234567890"), UserId: awssdk.String("user-1"), UserName: awssdk.String("alice"), Emails: []identitystoretypes.Email{{Value: awssdk.String("alice@example.com"), Primary: true}}}}
+		fake.identityGroups = []identitystoretypes.Group{{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("group-1"), DisplayName: awssdk.String("Security Admins")}}
+		fake.identityMemberships = map[string][]identitystoretypes.GroupMembership{"group-1": {{IdentityStoreId: awssdk.String("d-1234567890"), GroupId: awssdk.String("group-1"), MemberId: &identitystoretypes.MemberIdMemberUserId{Value: "user-1"}}}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -1866,6 +2183,51 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"datasync:DescribeLocationS3", "datasync:ListLocations", "datasync:ListTagsForResource"},
 		},
 		{
+			family:  familyOrganizationsAcct,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListAccounts"},
+		},
+		{
+			family:  familyOrganizationsOU,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListOrganizationalUnitsForParent", "organizations:ListRoots"},
+		},
+		{
+			family:  familyOrganizationsPolicy,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListPolicies", "organizations:ListTargetsForPolicy"},
+		},
+		{
+			family:  familySSOInstance,
+			seed:    governanceData,
+			wantAPI: []string{"sso:ListInstances"},
+		},
+		{
+			family:  familySSOPermissionSet,
+			seed:    governanceData,
+			wantAPI: []string{"sso:DescribePermissionSet", "sso:ListInstances", "sso:ListPermissionSets"},
+		},
+		{
+			family:  familySSOAssignment,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListAccounts", "sso:DescribePermissionSet", "sso:ListAccountAssignments", "sso:ListInstances", "sso:ListPermissionSets"},
+		},
+		{
+			family:  familyIdentityStoreUser,
+			seed:    governanceData,
+			wantAPI: []string{"identitystore:ListUsers", "sso:ListInstances"},
+		},
+		{
+			family:  familyIdentityStoreGroup,
+			seed:    governanceData,
+			wantAPI: []string{"identitystore:ListGroups", "sso:ListInstances"},
+		},
+		{
+			family:  familyIdentityStoreMember,
+			seed:    governanceData,
+			wantAPI: []string{"identitystore:ListGroupMemberships", "identitystore:ListGroups", "sso:ListInstances"},
+		},
+		{
 			family:  familyECSService,
 			seed:    computeData,
 			wantAPI: []string{"ecs:DescribeServices", "ecs:ListClusters", "ecs:ListServices"},
@@ -1963,21 +2325,25 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 }
 
 func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
-	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{ec2: fakeAWS{
-		fakeAWSNetwork: fakeAWSNetwork{
-			networkInterfaces: []ec2types.NetworkInterface{{
-				NetworkInterfaceId: awssdk.String("eni-1"),
-				Description:        awssdk.String("prod-web-eni"),
-				Association: &ec2types.NetworkInterfaceAssociation{
-					PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
-					PublicIp:      awssdk.String("203.0.113.10"),
+	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{
+		awsPlatformClients: awsPlatformClients{
+			ec2: fakeAWS{
+				fakeAWSNetwork: fakeAWSNetwork{
+					networkInterfaces: []ec2types.NetworkInterface{{
+						NetworkInterfaceId: awssdk.String("eni-1"),
+						Description:        awssdk.String("prod-web-eni"),
+						Association: &ec2types.NetworkInterfaceAssociation{
+							PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
+							PublicIp:      awssdk.String("203.0.113.10"),
+						},
+						Attachment: &ec2types.NetworkInterfaceAttachment{
+							InstanceId: awssdk.String("i-1234567890abcdef0"),
+						},
+					}},
 				},
-				Attachment: &ec2types.NetworkInterfaceAttachment{
-					InstanceId: awssdk.String("i-1234567890abcdef0"),
-				},
-			}},
+			},
 		},
-	}}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
+	}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
 	if err != nil {
 		t.Fatalf("listNetworkInterfacePublicEndpoints() error = %v", err)
 	}
@@ -2189,7 +2555,44 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, s3control: fakeS3Control{fake: &fake}, rds: fake, kms: fake, datasync: fakeDataSync{fake: &fake}, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}, backup: fake}, nil
+		return awsClients{
+			awsPlatformClients: awsPlatformClients{
+				iam:          fake,
+				cloudTrail:   fake,
+				ec2:          fake,
+				route53:      fake,
+				cloudFront:   fake,
+				elbv2:        fake,
+				ecs:          fake,
+				eks:          fakeEKS{compute: fake.compute},
+				ecr:          fakeECR{fake: &fake},
+				apiGateway:   fake,
+				apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs},
+				lambda:       fake,
+				tagging:      fake,
+				s3:           fake,
+			},
+			awsRuntimeClients: awsRuntimeClients{
+				rds:            fake,
+				kms:            fake,
+				secrets:        fake,
+				sqs:            fake,
+				sns:            fakeSNS{fake: &fake},
+				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
+				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
+				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
+				pipes:          fakePipes{runtime: fake.fakeAWSRuntime},
+				scheduler:      fakeScheduler{runtime: fake.fakeAWSRuntime},
+				cloudWatch:     fakeCloudWatch{runtime: fake.fakeAWSRuntime},
+				cloudWatchLogs: fakeCloudWatchLogs{runtime: fake.fakeAWSRuntime},
+				ssm:            fakeSSM{runtime: fake.fakeAWSRuntime},
+			},
+			awsAnalyticsClients: awsAnalyticsClients{
+				kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake},
+			},
+			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: fakeIdentityStore{fake: &fake}},
+			awsStorageClients:    awsStorageClients{s3control: fakeS3Control{fake: &fake}, datasync: fakeDataSync{fake: &fake}, backup: fake},
+		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -2205,7 +2608,44 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, s3control: recordingS3Control{fake: fake}, rds: fake, kms: fake, datasync: recordingDataSync{fake: fake}, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}, backup: fake}, nil
+		return awsClients{
+			awsPlatformClients: awsPlatformClients{
+				iam:          fake,
+				cloudTrail:   fake,
+				ec2:          fake,
+				route53:      fake,
+				cloudFront:   fake,
+				elbv2:        fake,
+				ecs:          fake,
+				eks:          recordingEKS{fake: fake},
+				ecr:          recordingECR{fake: fake},
+				apiGateway:   fake,
+				apiGatewayV2: recordingAPIGatewayV2{fake: fake},
+				lambda:       fake,
+				tagging:      fake,
+				s3:           fake,
+			},
+			awsRuntimeClients: awsRuntimeClients{
+				rds:            fake,
+				kms:            fake,
+				secrets:        fake,
+				sqs:            fake,
+				sns:            recordingSNS{fake: fake},
+				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
+				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
+				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
+				pipes:          fakePipes{runtime: fake.fakeAWSRuntime},
+				scheduler:      fakeScheduler{runtime: fake.fakeAWSRuntime},
+				cloudWatch:     fakeCloudWatch{runtime: fake.fakeAWSRuntime},
+				cloudWatchLogs: fakeCloudWatchLogs{runtime: fake.fakeAWSRuntime},
+				ssm:            fakeSSM{runtime: fake.fakeAWSRuntime},
+			},
+			awsAnalyticsClients: awsAnalyticsClients{
+				kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake},
+			},
+			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: recordingIdentityStore{fake: fake}},
+			awsStorageClients:    awsStorageClients{s3control: recordingS3Control{fake: fake}, datasync: recordingDataSync{fake: fake}, backup: fake},
+		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -2273,6 +2713,9 @@ type fakeAWS struct {
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 	fakeAWSData
+	fakeAWSRuntime
+	fakeAWSAnalytics
+	fakeAWSGovernance
 }
 
 type fakeAWSNetwork struct {
@@ -2345,6 +2788,86 @@ type fakeAWSStorageAccessData struct {
 	datasyncLocations              []datasynctypes.LocationListEntry
 	datasyncLocationS3             map[string]*datasync.DescribeLocationS3Output
 	datasyncTags                   map[string][]datasynctypes.TagListEntry
+}
+
+type fakeAWSRuntime struct {
+	fakeAWSRuntimeApplication
+	fakeAWSRuntimeEventing
+	fakeAWSRuntimeObservability
+	fakeAWSRuntimeSystems
+}
+
+type fakeAWSRuntimeApplication struct {
+	appRunnerSummaries     []apprunnertypes.ServiceSummary
+	appRunnerServices      map[string]apprunnertypes.Service
+	appRunnerTags          map[string][]apprunnertypes.Tag
+	sfnStateMachines       []sfntypes.StateMachineListItem
+	sfnStateMachineDetails map[string]sfn.DescribeStateMachineOutput
+	sfnActivities          []sfntypes.ActivityListItem
+	sfnTags                map[string][]sfntypes.Tag
+}
+
+type fakeAWSRuntimeEventing struct {
+	eventBuses         []eventbridgetypes.EventBus
+	eventRules         map[string][]eventbridgetypes.Rule
+	eventArchives      []eventbridgetypes.Archive
+	eventTags          map[string][]eventbridgetypes.Tag
+	pipes              []pipestypes.Pipe
+	pipeDetails        map[string]pipes.DescribePipeOutput
+	pipeTags           map[string]map[string]string
+	schedulerSchedules []schedulertypes.ScheduleSummary
+	schedulerGroups    []schedulertypes.ScheduleGroupSummary
+	schedulerTags      map[string][]schedulertypes.Tag
+}
+
+type fakeAWSRuntimeObservability struct {
+	cloudWatchMetricAlarms    []cloudwatchtypes.MetricAlarm
+	cloudWatchCompositeAlarms []cloudwatchtypes.CompositeAlarm
+	cloudWatchTags            map[string][]cloudwatchtypes.Tag
+	logGroups                 []cloudwatchlogstypes.LogGroup
+	logGroupTags              map[string]map[string]string
+}
+
+type fakeAWSRuntimeSystems struct {
+	ssmInstances    []ssmtypes.InstanceInformation
+	ssmDocuments    []ssmtypes.DocumentIdentifier
+	ssmAssociations []ssmtypes.Association
+	ssmParameters   []ssmtypes.ParameterMetadata
+	ssmTags         map[string][]ssmtypes.Tag
+}
+
+type fakeAWSAnalytics struct {
+	kinesisStreams           []kinesistypes.StreamDescriptionSummary
+	kinesisTags              map[string][]kinesistypes.Tag
+	firehoseStreams          []firehosetypes.DeliveryStreamDescription
+	firehoseTags             map[string][]firehosetypes.Tag
+	mskClusters              []kafkatypes.Cluster
+	mskTags                  map[string]map[string]string
+	glueDatabases            []gluetypes.Database
+	glueTables               map[string][]gluetypes.Table
+	glueCrawlers             []gluetypes.Crawler
+	glueJobs                 []gluetypes.Job
+	glueTags                 map[string]map[string]string
+	athenaWorkgroups         []athenatypes.WorkGroup
+	athenaDataCatalogs       []athenatypes.DataCatalog
+	athenaTags               map[string][]athenatypes.Tag
+	lakeFormationResources   []lakeformationtypes.ResourceInfo
+	lakeFormationLFTags      []lakeformationtypes.LFTagPair
+	lakeFormationPermissions []lakeformationtypes.PrincipalResourcePermissions
+}
+
+type fakeAWSGovernance struct {
+	organizationAccounts      []organizationstypes.Account
+	organizationRoots         []organizationstypes.Root
+	organizationOUs           map[string][]organizationstypes.OrganizationalUnit
+	organizationPolicies      []organizationstypes.PolicySummary
+	organizationPolicyTargets map[string][]organizationstypes.PolicyTargetSummary
+	ssoInstances              []ssoadmintypes.InstanceMetadata
+	ssoPermissionSets         []ssoadmintypes.PermissionSet
+	ssoAssignments            map[string][]ssoadmintypes.AccountAssignment
+	identityUsers             []identitystoretypes.User
+	identityGroups            []identitystoretypes.Group
+	identityMemberships       map[string][]identitystoretypes.GroupMembership
 }
 
 type fakeAWSCompute struct {
@@ -2459,6 +2982,51 @@ func (f *recordingAWS) GetRolePolicy(ctx context.Context, input *iam.GetRolePoli
 func (f *recordingAWS) GetInstanceProfile(ctx context.Context, input *iam.GetInstanceProfileInput, options ...func(*iam.Options)) (*iam.GetInstanceProfileOutput, error) {
 	f.record("iam:GetInstanceProfile")
 	return f.fakeAWS.GetInstanceProfile(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAccounts(ctx context.Context, input *organizations.ListAccountsInput, options ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+	f.record("organizations:ListAccounts")
+	return f.fakeAWS.ListAccounts(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListRoots(ctx context.Context, input *organizations.ListRootsInput, options ...func(*organizations.Options)) (*organizations.ListRootsOutput, error) {
+	f.record("organizations:ListRoots")
+	return f.fakeAWS.ListRoots(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListOrganizationalUnitsForParent(ctx context.Context, input *organizations.ListOrganizationalUnitsForParentInput, options ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error) {
+	f.record("organizations:ListOrganizationalUnitsForParent")
+	return f.fakeAWS.ListOrganizationalUnitsForParent(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListPolicies(ctx context.Context, input *organizations.ListPoliciesInput, options ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error) {
+	f.record("organizations:ListPolicies")
+	return f.fakeAWS.ListPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTargetsForPolicy(ctx context.Context, input *organizations.ListTargetsForPolicyInput, options ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error) {
+	f.record("organizations:ListTargetsForPolicy")
+	return f.fakeAWS.ListTargetsForPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListInstances(ctx context.Context, input *ssoadmin.ListInstancesInput, options ...func(*ssoadmin.Options)) (*ssoadmin.ListInstancesOutput, error) {
+	f.record("sso:ListInstances")
+	return f.fakeAWS.ListInstances(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListPermissionSets(ctx context.Context, input *ssoadmin.ListPermissionSetsInput, options ...func(*ssoadmin.Options)) (*ssoadmin.ListPermissionSetsOutput, error) {
+	f.record("sso:ListPermissionSets")
+	return f.fakeAWS.ListPermissionSets(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribePermissionSet(ctx context.Context, input *ssoadmin.DescribePermissionSetInput, options ...func(*ssoadmin.Options)) (*ssoadmin.DescribePermissionSetOutput, error) {
+	f.record("sso:DescribePermissionSet")
+	return f.fakeAWS.DescribePermissionSet(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAccountAssignments(ctx context.Context, input *ssoadmin.ListAccountAssignmentsInput, options ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountAssignmentsOutput, error) {
+	f.record("sso:ListAccountAssignments")
+	return f.fakeAWS.ListAccountAssignments(ctx, input, options...)
 }
 
 func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, options ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
@@ -3001,6 +3569,473 @@ func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForRe
 	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
 }
 
+type fakeAppRunner struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeAppRunner) ListServices(context.Context, *apprunner.ListServicesInput, ...func(*apprunner.Options)) (*apprunner.ListServicesOutput, error) {
+	return &apprunner.ListServicesOutput{ServiceSummaryList: f.runtime.appRunnerSummaries}, nil
+}
+
+func (f fakeAppRunner) DescribeService(_ context.Context, input *apprunner.DescribeServiceInput, _ ...func(*apprunner.Options)) (*apprunner.DescribeServiceOutput, error) {
+	service := f.runtime.appRunnerServices[awssdk.ToString(input.ServiceArn)]
+	return &apprunner.DescribeServiceOutput{Service: &service}, nil
+}
+
+func (f fakeAppRunner) ListTagsForResource(_ context.Context, input *apprunner.ListTagsForResourceInput, _ ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error) {
+	return &apprunner.ListTagsForResourceOutput{Tags: f.runtime.appRunnerTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeStepFunctions struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeStepFunctions) ListStateMachines(context.Context, *sfn.ListStateMachinesInput, ...func(*sfn.Options)) (*sfn.ListStateMachinesOutput, error) {
+	return &sfn.ListStateMachinesOutput{StateMachines: f.runtime.sfnStateMachines}, nil
+}
+
+func (f fakeStepFunctions) DescribeStateMachine(_ context.Context, input *sfn.DescribeStateMachineInput, _ ...func(*sfn.Options)) (*sfn.DescribeStateMachineOutput, error) {
+	detail := f.runtime.sfnStateMachineDetails[awssdk.ToString(input.StateMachineArn)]
+	return &detail, nil
+}
+
+func (f fakeStepFunctions) ListActivities(context.Context, *sfn.ListActivitiesInput, ...func(*sfn.Options)) (*sfn.ListActivitiesOutput, error) {
+	return &sfn.ListActivitiesOutput{Activities: f.runtime.sfnActivities}, nil
+}
+
+func (f fakeStepFunctions) ListTagsForResource(_ context.Context, input *sfn.ListTagsForResourceInput, _ ...func(*sfn.Options)) (*sfn.ListTagsForResourceOutput, error) {
+	return &sfn.ListTagsForResourceOutput{Tags: f.runtime.sfnTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeEventBridge struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeEventBridge) ListEventBuses(context.Context, *eventbridge.ListEventBusesInput, ...func(*eventbridge.Options)) (*eventbridge.ListEventBusesOutput, error) {
+	return &eventbridge.ListEventBusesOutput{EventBuses: f.runtime.eventBuses}, nil
+}
+
+func (f fakeEventBridge) ListRules(_ context.Context, input *eventbridge.ListRulesInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListRulesOutput, error) {
+	return &eventbridge.ListRulesOutput{Rules: f.runtime.eventRules[awssdk.ToString(input.EventBusName)]}, nil
+}
+
+func (f fakeEventBridge) ListArchives(context.Context, *eventbridge.ListArchivesInput, ...func(*eventbridge.Options)) (*eventbridge.ListArchivesOutput, error) {
+	return &eventbridge.ListArchivesOutput{Archives: f.runtime.eventArchives}, nil
+}
+
+func (f fakeEventBridge) ListTagsForResource(_ context.Context, input *eventbridge.ListTagsForResourceInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListTagsForResourceOutput, error) {
+	return &eventbridge.ListTagsForResourceOutput{Tags: f.runtime.eventTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+type fakePipes struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakePipes) ListPipes(context.Context, *pipes.ListPipesInput, ...func(*pipes.Options)) (*pipes.ListPipesOutput, error) {
+	return &pipes.ListPipesOutput{Pipes: f.runtime.pipes}, nil
+}
+
+func (f fakePipes) DescribePipe(_ context.Context, input *pipes.DescribePipeInput, _ ...func(*pipes.Options)) (*pipes.DescribePipeOutput, error) {
+	detail := f.runtime.pipeDetails[awssdk.ToString(input.Name)]
+	return &detail, nil
+}
+
+func (f fakePipes) ListTagsForResource(_ context.Context, input *pipes.ListTagsForResourceInput, _ ...func(*pipes.Options)) (*pipes.ListTagsForResourceOutput, error) {
+	return &pipes.ListTagsForResourceOutput{Tags: f.runtime.pipeTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeScheduler struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeScheduler) ListSchedules(context.Context, *scheduler.ListSchedulesInput, ...func(*scheduler.Options)) (*scheduler.ListSchedulesOutput, error) {
+	return &scheduler.ListSchedulesOutput{Schedules: f.runtime.schedulerSchedules}, nil
+}
+
+func (f fakeScheduler) ListScheduleGroups(context.Context, *scheduler.ListScheduleGroupsInput, ...func(*scheduler.Options)) (*scheduler.ListScheduleGroupsOutput, error) {
+	return &scheduler.ListScheduleGroupsOutput{ScheduleGroups: f.runtime.schedulerGroups}, nil
+}
+
+func (f fakeScheduler) ListTagsForResource(_ context.Context, input *scheduler.ListTagsForResourceInput, _ ...func(*scheduler.Options)) (*scheduler.ListTagsForResourceOutput, error) {
+	return &scheduler.ListTagsForResourceOutput{Tags: f.runtime.schedulerTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeCloudWatch struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeCloudWatch) DescribeAlarms(context.Context, *cloudwatch.DescribeAlarmsInput, ...func(*cloudwatch.Options)) (*cloudwatch.DescribeAlarmsOutput, error) {
+	return &cloudwatch.DescribeAlarmsOutput{MetricAlarms: f.runtime.cloudWatchMetricAlarms, CompositeAlarms: f.runtime.cloudWatchCompositeAlarms}, nil
+}
+
+func (f fakeCloudWatch) ListTagsForResource(_ context.Context, input *cloudwatch.ListTagsForResourceInput, _ ...func(*cloudwatch.Options)) (*cloudwatch.ListTagsForResourceOutput, error) {
+	return &cloudwatch.ListTagsForResourceOutput{Tags: f.runtime.cloudWatchTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+type fakeCloudWatchLogs struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeCloudWatchLogs) DescribeLogGroups(context.Context, *cloudwatchlogs.DescribeLogGroupsInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.DescribeLogGroupsOutput, error) {
+	return &cloudwatchlogs.DescribeLogGroupsOutput{LogGroups: f.runtime.logGroups}, nil
+}
+
+func (f fakeCloudWatchLogs) ListTagsForResource(_ context.Context, input *cloudwatchlogs.ListTagsForResourceInput, _ ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.ListTagsForResourceOutput, error) {
+	return &cloudwatchlogs.ListTagsForResourceOutput{Tags: f.runtime.logGroupTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeSSM struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeSSM) DescribeInstanceInformation(context.Context, *ssm.DescribeInstanceInformationInput, ...func(*ssm.Options)) (*ssm.DescribeInstanceInformationOutput, error) {
+	return &ssm.DescribeInstanceInformationOutput{InstanceInformationList: f.runtime.ssmInstances}, nil
+}
+
+func (f fakeSSM) ListDocuments(context.Context, *ssm.ListDocumentsInput, ...func(*ssm.Options)) (*ssm.ListDocumentsOutput, error) {
+	return &ssm.ListDocumentsOutput{DocumentIdentifiers: f.runtime.ssmDocuments}, nil
+}
+
+func (f fakeSSM) ListAssociations(context.Context, *ssm.ListAssociationsInput, ...func(*ssm.Options)) (*ssm.ListAssociationsOutput, error) {
+	return &ssm.ListAssociationsOutput{Associations: f.runtime.ssmAssociations}, nil
+}
+
+func (f fakeSSM) DescribeParameters(context.Context, *ssm.DescribeParametersInput, ...func(*ssm.Options)) (*ssm.DescribeParametersOutput, error) {
+	return &ssm.DescribeParametersOutput{Parameters: f.runtime.ssmParameters}, nil
+}
+
+func (f fakeSSM) ListTagsForResource(_ context.Context, input *ssm.ListTagsForResourceInput, _ ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error) {
+	return &ssm.ListTagsForResourceOutput{TagList: f.runtime.ssmTags[string(input.ResourceType)+"/"+awssdk.ToString(input.ResourceId)]}, nil
+}
+
+type fakeKinesis struct {
+	fake *fakeAWS
+}
+
+type recordingKinesis struct {
+	fake *recordingAWS
+}
+
+func (f recordingKinesis) ListStreams(ctx context.Context, input *kinesis.ListStreamsInput, options ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error) {
+	f.fake.record("kinesis:ListStreams")
+	return fakeKinesis{fake: &f.fake.fakeAWS}.ListStreams(ctx, input, options...)
+}
+
+func (f recordingKinesis) DescribeStreamSummary(ctx context.Context, input *kinesis.DescribeStreamSummaryInput, options ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error) {
+	f.fake.record("kinesis:DescribeStreamSummary")
+	return fakeKinesis{fake: &f.fake.fakeAWS}.DescribeStreamSummary(ctx, input, options...)
+}
+
+func (f recordingKinesis) ListTagsForStream(ctx context.Context, input *kinesis.ListTagsForStreamInput, options ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error) {
+	f.fake.record("kinesis:ListTagsForStream")
+	return fakeKinesis{fake: &f.fake.fakeAWS}.ListTagsForStream(ctx, input, options...)
+}
+
+func (f fakeKinesis) ListStreams(_ context.Context, input *kinesis.ListStreamsInput, _ ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error) {
+	names := make([]string, 0, len(f.fake.kinesisStreams))
+	for _, stream := range f.fake.kinesisStreams {
+		if name := awssdk.ToString(stream.StreamName); name != "" {
+			names = append(names, name)
+		}
+	}
+	values, truncated, marker := paginateStringValues(names, awssdk.ToString(input.ExclusiveStartStreamName), int(awssdk.ToInt32(input.Limit)))
+	return &kinesis.ListStreamsOutput{StreamNames: values, HasMoreStreams: awssdk.Bool(truncated), NextToken: stringPtr(marker)}, nil
+}
+
+func (f fakeKinesis) DescribeStreamSummary(_ context.Context, input *kinesis.DescribeStreamSummaryInput, _ ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error) {
+	name := awssdk.ToString(input.StreamName)
+	for _, stream := range f.fake.kinesisStreams {
+		if awssdk.ToString(stream.StreamName) == name || awssdk.ToString(stream.StreamARN) == awssdk.ToString(input.StreamARN) {
+			copy := stream
+			return &kinesis.DescribeStreamSummaryOutput{StreamDescriptionSummary: &copy}, nil
+		}
+	}
+	return &kinesis.DescribeStreamSummaryOutput{}, nil
+}
+
+func (f fakeKinesis) ListTagsForStream(_ context.Context, input *kinesis.ListTagsForStreamInput, _ ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error) {
+	key := firstNonEmpty(awssdk.ToString(input.StreamARN), awssdk.ToString(input.StreamName))
+	return &kinesis.ListTagsForStreamOutput{Tags: f.fake.kinesisTags[key], HasMoreTags: awssdk.Bool(false)}, nil
+}
+
+type fakeFirehose struct {
+	fake *fakeAWS
+}
+
+type recordingFirehose struct {
+	fake *recordingAWS
+}
+
+func (f recordingFirehose) ListDeliveryStreams(ctx context.Context, input *firehose.ListDeliveryStreamsInput, options ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error) {
+	f.fake.record("firehose:ListDeliveryStreams")
+	return fakeFirehose{fake: &f.fake.fakeAWS}.ListDeliveryStreams(ctx, input, options...)
+}
+
+func (f recordingFirehose) DescribeDeliveryStream(ctx context.Context, input *firehose.DescribeDeliveryStreamInput, options ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error) {
+	f.fake.record("firehose:DescribeDeliveryStream")
+	return fakeFirehose{fake: &f.fake.fakeAWS}.DescribeDeliveryStream(ctx, input, options...)
+}
+
+func (f recordingFirehose) ListTagsForDeliveryStream(ctx context.Context, input *firehose.ListTagsForDeliveryStreamInput, options ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error) {
+	f.fake.record("firehose:ListTagsForDeliveryStream")
+	return fakeFirehose{fake: &f.fake.fakeAWS}.ListTagsForDeliveryStream(ctx, input, options...)
+}
+
+func (f fakeFirehose) ListDeliveryStreams(_ context.Context, input *firehose.ListDeliveryStreamsInput, _ ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error) {
+	names := make([]string, 0, len(f.fake.firehoseStreams))
+	for _, stream := range f.fake.firehoseStreams {
+		if name := awssdk.ToString(stream.DeliveryStreamName); name != "" {
+			names = append(names, name)
+		}
+	}
+	values, truncated, _ := paginateStringValues(names, awssdk.ToString(input.ExclusiveStartDeliveryStreamName), int(awssdk.ToInt32(input.Limit)))
+	return &firehose.ListDeliveryStreamsOutput{DeliveryStreamNames: values, HasMoreDeliveryStreams: awssdk.Bool(truncated)}, nil
+}
+
+func (f fakeFirehose) DescribeDeliveryStream(_ context.Context, input *firehose.DescribeDeliveryStreamInput, _ ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error) {
+	name := awssdk.ToString(input.DeliveryStreamName)
+	for _, stream := range f.fake.firehoseStreams {
+		if awssdk.ToString(stream.DeliveryStreamName) == name {
+			copy := stream
+			return &firehose.DescribeDeliveryStreamOutput{DeliveryStreamDescription: &copy}, nil
+		}
+	}
+	return &firehose.DescribeDeliveryStreamOutput{}, nil
+}
+
+func (f fakeFirehose) ListTagsForDeliveryStream(_ context.Context, input *firehose.ListTagsForDeliveryStreamInput, _ ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error) {
+	return &firehose.ListTagsForDeliveryStreamOutput{Tags: f.fake.firehoseTags[awssdk.ToString(input.DeliveryStreamName)], HasMoreTags: awssdk.Bool(false)}, nil
+}
+
+type fakeKafka struct {
+	fake *fakeAWS
+}
+
+type recordingKafka struct {
+	fake *recordingAWS
+}
+
+func (f recordingKafka) ListClustersV2(ctx context.Context, input *kafka.ListClustersV2Input, options ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error) {
+	f.fake.record("kafka:ListClustersV2")
+	return fakeKafka{fake: &f.fake.fakeAWS}.ListClustersV2(ctx, input, options...)
+}
+
+func (f recordingKafka) ListTagsForResource(ctx context.Context, input *kafka.ListTagsForResourceInput, options ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error) {
+	f.fake.record("kafka:ListTagsForResource")
+	return fakeKafka{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeKafka) ListClustersV2(context.Context, *kafka.ListClustersV2Input, ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error) {
+	return &kafka.ListClustersV2Output{ClusterInfoList: f.fake.mskClusters}, nil
+}
+
+func (f fakeKafka) ListTagsForResource(_ context.Context, input *kafka.ListTagsForResourceInput, _ ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error) {
+	return &kafka.ListTagsForResourceOutput{Tags: f.fake.mskTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeGlue struct {
+	fake *fakeAWS
+}
+
+type recordingGlue struct {
+	fake *recordingAWS
+}
+
+func (f recordingGlue) GetDatabases(ctx context.Context, input *glue.GetDatabasesInput, options ...func(*glue.Options)) (*glue.GetDatabasesOutput, error) {
+	f.fake.record("glue:GetDatabases")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetDatabases(ctx, input, options...)
+}
+
+func (f recordingGlue) GetTables(ctx context.Context, input *glue.GetTablesInput, options ...func(*glue.Options)) (*glue.GetTablesOutput, error) {
+	f.fake.record("glue:GetTables")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetTables(ctx, input, options...)
+}
+
+func (f recordingGlue) ListCrawlers(ctx context.Context, input *glue.ListCrawlersInput, options ...func(*glue.Options)) (*glue.ListCrawlersOutput, error) {
+	f.fake.record("glue:ListCrawlers")
+	return fakeGlue{fake: &f.fake.fakeAWS}.ListCrawlers(ctx, input, options...)
+}
+
+func (f recordingGlue) GetCrawler(ctx context.Context, input *glue.GetCrawlerInput, options ...func(*glue.Options)) (*glue.GetCrawlerOutput, error) {
+	f.fake.record("glue:GetCrawler")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetCrawler(ctx, input, options...)
+}
+
+func (f recordingGlue) ListJobs(ctx context.Context, input *glue.ListJobsInput, options ...func(*glue.Options)) (*glue.ListJobsOutput, error) {
+	f.fake.record("glue:ListJobs")
+	return fakeGlue{fake: &f.fake.fakeAWS}.ListJobs(ctx, input, options...)
+}
+
+func (f recordingGlue) GetJob(ctx context.Context, input *glue.GetJobInput, options ...func(*glue.Options)) (*glue.GetJobOutput, error) {
+	f.fake.record("glue:GetJob")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetJob(ctx, input, options...)
+}
+
+func (f recordingGlue) GetTags(ctx context.Context, input *glue.GetTagsInput, options ...func(*glue.Options)) (*glue.GetTagsOutput, error) {
+	f.fake.record("glue:GetTags")
+	return fakeGlue{fake: &f.fake.fakeAWS}.GetTags(ctx, input, options...)
+}
+
+func (f fakeGlue) GetDatabases(context.Context, *glue.GetDatabasesInput, ...func(*glue.Options)) (*glue.GetDatabasesOutput, error) {
+	return &glue.GetDatabasesOutput{DatabaseList: f.fake.glueDatabases}, nil
+}
+
+func (f fakeGlue) GetTables(_ context.Context, input *glue.GetTablesInput, _ ...func(*glue.Options)) (*glue.GetTablesOutput, error) {
+	return &glue.GetTablesOutput{TableList: f.fake.glueTables[awssdk.ToString(input.DatabaseName)]}, nil
+}
+
+func (f fakeGlue) ListCrawlers(context.Context, *glue.ListCrawlersInput, ...func(*glue.Options)) (*glue.ListCrawlersOutput, error) {
+	names := make([]string, 0, len(f.fake.glueCrawlers))
+	for _, crawler := range f.fake.glueCrawlers {
+		names = append(names, awssdk.ToString(crawler.Name))
+	}
+	return &glue.ListCrawlersOutput{CrawlerNames: names}, nil
+}
+
+func (f fakeGlue) GetCrawler(_ context.Context, input *glue.GetCrawlerInput, _ ...func(*glue.Options)) (*glue.GetCrawlerOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, crawler := range f.fake.glueCrawlers {
+		if awssdk.ToString(crawler.Name) == name {
+			copy := crawler
+			return &glue.GetCrawlerOutput{Crawler: &copy}, nil
+		}
+	}
+	return &glue.GetCrawlerOutput{}, nil
+}
+
+func (f fakeGlue) ListJobs(context.Context, *glue.ListJobsInput, ...func(*glue.Options)) (*glue.ListJobsOutput, error) {
+	names := make([]string, 0, len(f.fake.glueJobs))
+	for _, job := range f.fake.glueJobs {
+		names = append(names, awssdk.ToString(job.Name))
+	}
+	return &glue.ListJobsOutput{JobNames: names}, nil
+}
+
+func (f fakeGlue) GetJob(_ context.Context, input *glue.GetJobInput, _ ...func(*glue.Options)) (*glue.GetJobOutput, error) {
+	name := awssdk.ToString(input.JobName)
+	for _, job := range f.fake.glueJobs {
+		if awssdk.ToString(job.Name) == name {
+			copy := job
+			return &glue.GetJobOutput{Job: &copy}, nil
+		}
+	}
+	return &glue.GetJobOutput{}, nil
+}
+
+func (f fakeGlue) GetTags(_ context.Context, input *glue.GetTagsInput, _ ...func(*glue.Options)) (*glue.GetTagsOutput, error) {
+	return &glue.GetTagsOutput{Tags: f.fake.glueTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeAthena struct {
+	fake *fakeAWS
+}
+
+type recordingAthena struct {
+	fake *recordingAWS
+}
+
+func (f recordingAthena) ListWorkGroups(ctx context.Context, input *athena.ListWorkGroupsInput, options ...func(*athena.Options)) (*athena.ListWorkGroupsOutput, error) {
+	f.fake.record("athena:ListWorkGroups")
+	return fakeAthena{fake: &f.fake.fakeAWS}.ListWorkGroups(ctx, input, options...)
+}
+
+func (f recordingAthena) GetWorkGroup(ctx context.Context, input *athena.GetWorkGroupInput, options ...func(*athena.Options)) (*athena.GetWorkGroupOutput, error) {
+	f.fake.record("athena:GetWorkGroup")
+	return fakeAthena{fake: &f.fake.fakeAWS}.GetWorkGroup(ctx, input, options...)
+}
+
+func (f recordingAthena) ListDataCatalogs(ctx context.Context, input *athena.ListDataCatalogsInput, options ...func(*athena.Options)) (*athena.ListDataCatalogsOutput, error) {
+	f.fake.record("athena:ListDataCatalogs")
+	return fakeAthena{fake: &f.fake.fakeAWS}.ListDataCatalogs(ctx, input, options...)
+}
+
+func (f recordingAthena) GetDataCatalog(ctx context.Context, input *athena.GetDataCatalogInput, options ...func(*athena.Options)) (*athena.GetDataCatalogOutput, error) {
+	f.fake.record("athena:GetDataCatalog")
+	return fakeAthena{fake: &f.fake.fakeAWS}.GetDataCatalog(ctx, input, options...)
+}
+
+func (f recordingAthena) ListTagsForResource(ctx context.Context, input *athena.ListTagsForResourceInput, options ...func(*athena.Options)) (*athena.ListTagsForResourceOutput, error) {
+	f.fake.record("athena:ListTagsForResource")
+	return fakeAthena{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeAthena) ListWorkGroups(context.Context, *athena.ListWorkGroupsInput, ...func(*athena.Options)) (*athena.ListWorkGroupsOutput, error) {
+	summaries := make([]athenatypes.WorkGroupSummary, 0, len(f.fake.athenaWorkgroups))
+	for _, workgroup := range f.fake.athenaWorkgroups {
+		summaries = append(summaries, athenatypes.WorkGroupSummary{Name: workgroup.Name})
+	}
+	return &athena.ListWorkGroupsOutput{WorkGroups: summaries}, nil
+}
+
+func (f fakeAthena) GetWorkGroup(_ context.Context, input *athena.GetWorkGroupInput, _ ...func(*athena.Options)) (*athena.GetWorkGroupOutput, error) {
+	name := awssdk.ToString(input.WorkGroup)
+	for _, workgroup := range f.fake.athenaWorkgroups {
+		if awssdk.ToString(workgroup.Name) == name {
+			copy := workgroup
+			return &athena.GetWorkGroupOutput{WorkGroup: &copy}, nil
+		}
+	}
+	return &athena.GetWorkGroupOutput{}, nil
+}
+
+func (f fakeAthena) ListDataCatalogs(context.Context, *athena.ListDataCatalogsInput, ...func(*athena.Options)) (*athena.ListDataCatalogsOutput, error) {
+	summaries := make([]athenatypes.DataCatalogSummary, 0, len(f.fake.athenaDataCatalogs))
+	for _, catalog := range f.fake.athenaDataCatalogs {
+		summaries = append(summaries, athenatypes.DataCatalogSummary{CatalogName: catalog.Name, Type: catalog.Type})
+	}
+	return &athena.ListDataCatalogsOutput{DataCatalogsSummary: summaries}, nil
+}
+
+func (f fakeAthena) GetDataCatalog(_ context.Context, input *athena.GetDataCatalogInput, _ ...func(*athena.Options)) (*athena.GetDataCatalogOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, catalog := range f.fake.athenaDataCatalogs {
+		if awssdk.ToString(catalog.Name) == name {
+			copy := catalog
+			return &athena.GetDataCatalogOutput{DataCatalog: &copy}, nil
+		}
+	}
+	return &athena.GetDataCatalogOutput{}, nil
+}
+
+func (f fakeAthena) ListTagsForResource(_ context.Context, input *athena.ListTagsForResourceInput, _ ...func(*athena.Options)) (*athena.ListTagsForResourceOutput, error) {
+	return &athena.ListTagsForResourceOutput{Tags: f.fake.athenaTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+type fakeLakeFormation struct {
+	fake *fakeAWS
+}
+
+type recordingLakeFormation struct {
+	fake *recordingAWS
+}
+
+func (f recordingLakeFormation) ListResources(ctx context.Context, input *lakeformation.ListResourcesInput, options ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error) {
+	f.fake.record("lakeformation:ListResources")
+	return fakeLakeFormation{fake: &f.fake.fakeAWS}.ListResources(ctx, input, options...)
+}
+
+func (f recordingLakeFormation) ListLFTags(ctx context.Context, input *lakeformation.ListLFTagsInput, options ...func(*lakeformation.Options)) (*lakeformation.ListLFTagsOutput, error) {
+	f.fake.record("lakeformation:ListLFTags")
+	return fakeLakeFormation{fake: &f.fake.fakeAWS}.ListLFTags(ctx, input, options...)
+}
+
+func (f recordingLakeFormation) ListPermissions(ctx context.Context, input *lakeformation.ListPermissionsInput, options ...func(*lakeformation.Options)) (*lakeformation.ListPermissionsOutput, error) {
+	f.fake.record("lakeformation:ListPermissions")
+	return fakeLakeFormation{fake: &f.fake.fakeAWS}.ListPermissions(ctx, input, options...)
+}
+
+func (f fakeLakeFormation) ListResources(context.Context, *lakeformation.ListResourcesInput, ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error) {
+	return &lakeformation.ListResourcesOutput{ResourceInfoList: f.fake.lakeFormationResources}, nil
+}
+
+func (f fakeLakeFormation) ListLFTags(context.Context, *lakeformation.ListLFTagsInput, ...func(*lakeformation.Options)) (*lakeformation.ListLFTagsOutput, error) {
+	return &lakeformation.ListLFTagsOutput{LFTags: f.fake.lakeFormationLFTags}, nil
+}
+
+func (f fakeLakeFormation) ListPermissions(context.Context, *lakeformation.ListPermissionsInput, ...func(*lakeformation.Options)) (*lakeformation.ListPermissionsOutput, error) {
+	return &lakeformation.ListPermissionsOutput{PrincipalResourcePermissions: f.fake.lakeFormationPermissions}, nil
+}
+
 type fakeEKS struct {
 	compute fakeAWSCompute
 }
@@ -3214,6 +4249,98 @@ func (f fakeAWS) GetInstanceProfile(_ context.Context, input *iam.GetInstancePro
 		return &iam.GetInstanceProfileOutput{InstanceProfile: &profile}, nil
 	}
 	return &iam.GetInstanceProfileOutput{InstanceProfile: &iamtypes.InstanceProfile{InstanceProfileName: awssdk.String(name)}}, nil
+}
+
+func (f fakeAWS) ListAccounts(context.Context, *organizations.ListAccountsInput, ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+	return &organizations.ListAccountsOutput{Accounts: f.organizationAccounts}, nil
+}
+
+func (f fakeAWS) ListRoots(context.Context, *organizations.ListRootsInput, ...func(*organizations.Options)) (*organizations.ListRootsOutput, error) {
+	return &organizations.ListRootsOutput{Roots: f.organizationRoots}, nil
+}
+
+func (f fakeAWS) ListOrganizationalUnitsForParent(_ context.Context, input *organizations.ListOrganizationalUnitsForParentInput, _ ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error) {
+	return &organizations.ListOrganizationalUnitsForParentOutput{OrganizationalUnits: f.organizationOUs[awssdk.ToString(input.ParentId)]}, nil
+}
+
+func (f fakeAWS) ListPolicies(_ context.Context, input *organizations.ListPoliciesInput, _ ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error) {
+	policies := make([]organizationstypes.PolicySummary, 0, len(f.organizationPolicies))
+	for _, policy := range f.organizationPolicies {
+		if input != nil && input.Filter != "" && policy.Type != input.Filter {
+			continue
+		}
+		policies = append(policies, policy)
+	}
+	return &organizations.ListPoliciesOutput{Policies: policies}, nil
+}
+
+func (f fakeAWS) ListTargetsForPolicy(_ context.Context, input *organizations.ListTargetsForPolicyInput, _ ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error) {
+	return &organizations.ListTargetsForPolicyOutput{Targets: f.organizationPolicyTargets[awssdk.ToString(input.PolicyId)]}, nil
+}
+
+func (f fakeAWS) ListInstances(context.Context, *ssoadmin.ListInstancesInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListInstancesOutput, error) {
+	return &ssoadmin.ListInstancesOutput{Instances: f.ssoInstances}, nil
+}
+
+func (f fakeAWS) ListPermissionSets(context.Context, *ssoadmin.ListPermissionSetsInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListPermissionSetsOutput, error) {
+	arns := make([]string, 0, len(f.ssoPermissionSets))
+	for _, permissionSet := range f.ssoPermissionSets {
+		if arn := awssdk.ToString(permissionSet.PermissionSetArn); arn != "" {
+			arns = append(arns, arn)
+		}
+	}
+	return &ssoadmin.ListPermissionSetsOutput{PermissionSets: arns}, nil
+}
+
+func (f fakeAWS) DescribePermissionSet(_ context.Context, input *ssoadmin.DescribePermissionSetInput, _ ...func(*ssoadmin.Options)) (*ssoadmin.DescribePermissionSetOutput, error) {
+	arn := awssdk.ToString(input.PermissionSetArn)
+	for _, permissionSet := range f.ssoPermissionSets {
+		if awssdk.ToString(permissionSet.PermissionSetArn) == arn {
+			copy := permissionSet
+			return &ssoadmin.DescribePermissionSetOutput{PermissionSet: &copy}, nil
+		}
+	}
+	return &ssoadmin.DescribePermissionSetOutput{}, nil
+}
+
+func (f fakeAWS) ListAccountAssignments(_ context.Context, input *ssoadmin.ListAccountAssignmentsInput, _ ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountAssignmentsOutput, error) {
+	key := awssdk.ToString(input.AccountId) + "|" + awssdk.ToString(input.PermissionSetArn)
+	return &ssoadmin.ListAccountAssignmentsOutput{AccountAssignments: f.ssoAssignments[key]}, nil
+}
+
+type fakeIdentityStore struct {
+	fake *fakeAWS
+}
+
+type recordingIdentityStore struct {
+	fake *recordingAWS
+}
+
+func (f recordingIdentityStore) ListUsers(ctx context.Context, input *identitystore.ListUsersInput, options ...func(*identitystore.Options)) (*identitystore.ListUsersOutput, error) {
+	f.fake.record("identitystore:ListUsers")
+	return fakeIdentityStore{fake: &f.fake.fakeAWS}.ListUsers(ctx, input, options...)
+}
+
+func (f recordingIdentityStore) ListGroups(ctx context.Context, input *identitystore.ListGroupsInput, options ...func(*identitystore.Options)) (*identitystore.ListGroupsOutput, error) {
+	f.fake.record("identitystore:ListGroups")
+	return fakeIdentityStore{fake: &f.fake.fakeAWS}.ListGroups(ctx, input, options...)
+}
+
+func (f recordingIdentityStore) ListGroupMemberships(ctx context.Context, input *identitystore.ListGroupMembershipsInput, options ...func(*identitystore.Options)) (*identitystore.ListGroupMembershipsOutput, error) {
+	f.fake.record("identitystore:ListGroupMemberships")
+	return fakeIdentityStore{fake: &f.fake.fakeAWS}.ListGroupMemberships(ctx, input, options...)
+}
+
+func (f fakeIdentityStore) ListUsers(context.Context, *identitystore.ListUsersInput, ...func(*identitystore.Options)) (*identitystore.ListUsersOutput, error) {
+	return &identitystore.ListUsersOutput{Users: f.fake.identityUsers}, nil
+}
+
+func (f fakeIdentityStore) ListGroups(context.Context, *identitystore.ListGroupsInput, ...func(*identitystore.Options)) (*identitystore.ListGroupsOutput, error) {
+	return &identitystore.ListGroupsOutput{Groups: f.fake.identityGroups}, nil
+}
+
+func (f fakeIdentityStore) ListGroupMemberships(_ context.Context, input *identitystore.ListGroupMembershipsInput, _ ...func(*identitystore.Options)) (*identitystore.ListGroupMembershipsOutput, error) {
+	return &identitystore.ListGroupMembershipsOutput{GroupMemberships: f.fake.identityMemberships[awssdk.ToString(input.GroupId)]}, nil
 }
 
 func (f fakeAWS) inlinePolicyDocument(policyName string) string {

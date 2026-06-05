@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
@@ -136,8 +137,8 @@ func listBackupRecoveryPoints(ctx context.Context, clients awsClients, _ setting
 			}
 		}
 		if !found {
-			state = backupRecoveryPointCursor{}
-			vaultIndex = 0
+			vaultIndex = sort.SearchStrings(vaults, state.VaultName)
+			state.NextToken = ""
 		}
 	}
 	remaining := limit
@@ -305,7 +306,9 @@ func listAllBackupVaultNames(ctx context.Context, clients awsClients) ([]string,
 		}
 		next = out.NextToken
 	}
-	return cleanStrings(names), nil
+	names = cleanStrings(names)
+	sort.Strings(names)
+	return names, nil
 }
 
 func backupVaultARN(settings settings, name string) string {
@@ -407,8 +410,18 @@ func backupRecoveryPointPlanID(record awsBackupRecoveryPoint) string {
 func backupSourceResourceType(resourceType string) string {
 	normalized := normalizeAWSResourceType(resourceType)
 	switch normalized {
+	case "aurora":
+		return "rds_instance"
+	case "dynamodb":
+		return "dynamodb_table"
+	case "ebs":
+		return "ebs_volume"
+	case "ec2":
+		return "ec2_instance"
 	case "rds":
 		return "rds_instance"
+	case "s3":
+		return "s3_bucket"
 	default:
 		return normalized
 	}

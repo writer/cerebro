@@ -182,7 +182,7 @@ func listEBSSnapshots(ctx context.Context, clients awsClients, settings settings
 
 func listDataSyncTasks(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsDataSyncTask, string, error) {
 	out, err := clients.datasync.ListTasks(ctx, &datasync.ListTasksInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -211,7 +211,7 @@ func listDataSyncTasks(ctx context.Context, clients awsClients, settings setting
 
 func listDataSyncLocations(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsDataSyncLocation, string, error) {
 	out, err := clients.datasync.ListLocations(ctx, &datasync.ListLocationsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -569,7 +569,7 @@ func dataSyncLocationType(uri string) string {
 		return "fsx_windows"
 	case "fsxz":
 		return "fsx_openzfs"
-	case "fsxontap":
+	case "fsxn", "fsxontap":
 		return "fsx_ontap"
 	default:
 		return strings.ReplaceAll(prefix, "-", "_")
