@@ -34,12 +34,18 @@ import (
 	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	datasynctypes "github.com/aws/aws-sdk-go-v2/service/datasync/types"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
+	dynamodbstreamstypes "github.com/aws/aws-sdk-go-v2/service/dynamodbstreams/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/aws/aws-sdk-go-v2/service/efs"
+	efstypes "github.com/aws/aws-sdk-go-v2/service/efs/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -1037,6 +1043,159 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSDynamoDBInventoryEvents(t *testing.T) {
+	tableARN := "arn:aws:dynamodb:us-east-1:123456789012:table/orders"
+	streamARN := "arn:aws:dynamodb:us-east-1:123456789012:table/orders/stream/2026-04-23T00:00:00.000"
+	backupARN := "arn:aws:dynamodb:us-east-1:123456789012:table/orders/backup/01776902400000-example"
+	source := newTestSource(t, fakeAWS{fakeAWSData: fakeAWSData{
+		fakeAWSStorageAccessData: fakeAWSStorageAccessData{
+			dynamoDBTables: []dynamodbtypes.TableDescription{{
+				TableName:                 awssdk.String("orders"),
+				TableArn:                  awssdk.String(tableARN),
+				TableId:                   awssdk.String("table-123"),
+				TableStatus:               dynamodbtypes.TableStatusActive,
+				CreationDateTime:          timePtr("2026-04-23T00:00:00Z"),
+				BillingModeSummary:        &dynamodbtypes.BillingModeSummary{BillingMode: dynamodbtypes.BillingModePayPerRequest},
+				DeletionProtectionEnabled: awssdk.Bool(true),
+				TableSizeBytes:            awssdk.Int64(2048),
+				ItemCount:                 awssdk.Int64(42),
+				LatestStreamArn:           awssdk.String(streamARN),
+				LatestStreamLabel:         awssdk.String("2026-04-23T00:00:00.000"),
+				StreamSpecification:       &dynamodbtypes.StreamSpecification{StreamEnabled: awssdk.Bool(true), StreamViewType: dynamodbtypes.StreamViewTypeNewAndOldImages},
+				SSEDescription:            &dynamodbtypes.SSEDescription{Status: dynamodbtypes.SSEStatusEnabled, SSEType: dynamodbtypes.SSETypeKms, KMSMasterKeyArn: awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123")},
+			}},
+			dynamoDBTags: map[string][]dynamodbtypes.Tag{tableARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
+			dynamoDBContinuousBackups: map[string]dynamodbtypes.ContinuousBackupsDescription{"orders": {
+				ContinuousBackupsStatus: dynamodbtypes.ContinuousBackupsStatusEnabled,
+				PointInTimeRecoveryDescription: &dynamodbtypes.PointInTimeRecoveryDescription{
+					PointInTimeRecoveryStatus: dynamodbtypes.PointInTimeRecoveryStatusEnabled,
+					RecoveryPeriodInDays:      awssdk.Int32(35),
+				},
+			}},
+			dynamoDBTimeToLive: map[string]dynamodbtypes.TimeToLiveDescription{"orders": {
+				TimeToLiveStatus: dynamodbtypes.TimeToLiveStatusEnabled,
+				AttributeName:    awssdk.String("expires_at"),
+			}},
+			dynamoDBBackups: []dynamodbtypes.BackupSummary{{
+				BackupArn:              awssdk.String(backupARN),
+				BackupName:             awssdk.String("orders-daily"),
+				BackupStatus:           dynamodbtypes.BackupStatusAvailable,
+				BackupType:             dynamodbtypes.BackupTypeUser,
+				BackupSizeBytes:        awssdk.Int64(1024),
+				BackupCreationDateTime: timePtr("2026-04-23T00:00:00Z"),
+				TableArn:               awssdk.String(tableARN),
+				TableName:              awssdk.String("orders"),
+			}},
+			dynamoDBStreams: []dynamodbstreamstypes.StreamDescription{{
+				StreamArn:               awssdk.String(streamARN),
+				StreamLabel:             awssdk.String("2026-04-23T00:00:00.000"),
+				TableName:               awssdk.String("orders"),
+				StreamStatus:            dynamodbstreamstypes.StreamStatusEnabled,
+				StreamViewType:          dynamodbstreamstypes.StreamViewTypeNewAndOldImages,
+				CreationRequestDateTime: timePtr("2026-04-23T00:00:00Z"),
+				Shards:                  []dynamodbstreamstypes.Shard{{ShardId: awssdk.String("shard-1")}},
+			}},
+		},
+	}})
+
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyDynamoDBTable, kind: "aws.dynamodb_table", attr: "point_in_time_recovery", want: "ENABLED"},
+		{family: familyDynamoDBBackup, kind: "aws.dynamodb_backup", attr: "table_name", want: "orders"},
+		{family: familyDynamoDBStream, kind: "aws.dynamodb_stream", attr: "view_type", want: "NEW_AND_OLD_IMAGES"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSEFSInventoryEvents(t *testing.T) {
+	fsARN := "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-123"
+	apARN := "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-123"
+	source := newTestSource(t, fakeAWS{fakeAWSData: fakeAWSData{
+		fakeAWSStorageAccessData: fakeAWSStorageAccessData{
+			efsFileSystems: []efstypes.FileSystemDescription{{
+				FileSystemArn:        awssdk.String(fsARN),
+				FileSystemId:         awssdk.String("fs-123"),
+				Name:                 awssdk.String("orders-fs"),
+				CreationTime:         timePtr("2026-04-23T00:00:00Z"),
+				LifeCycleState:       efstypes.LifeCycleStateAvailable,
+				OwnerId:              awssdk.String("123456789012"),
+				PerformanceMode:      efstypes.PerformanceModeGeneralPurpose,
+				ThroughputMode:       efstypes.ThroughputModeBursting,
+				Encrypted:            awssdk.Bool(true),
+				KmsKeyId:             awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+				NumberOfMountTargets: 1,
+				SizeInBytes:          &efstypes.FileSystemSize{Value: 4096},
+				Tags:                 []efstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
+			}},
+			efsMountTargets: map[string][]efstypes.MountTargetDescription{"fs-123": {{
+				MountTargetId:      awssdk.String("fsmt-123"),
+				FileSystemId:       awssdk.String("fs-123"),
+				LifeCycleState:     efstypes.LifeCycleStateAvailable,
+				SubnetId:           awssdk.String("subnet-123"),
+				VpcId:              awssdk.String("vpc-123"),
+				NetworkInterfaceId: awssdk.String("eni-123"),
+			}}},
+			efsMountTargetSecurityGroups: map[string][]string{"fsmt-123": {"sg-123", "sg-456"}},
+			efsAccessPoints: []efstypes.AccessPointDescription{{
+				AccessPointArn: awssdk.String(apARN),
+				AccessPointId:  awssdk.String("fsap-123"),
+				Name:           awssdk.String("orders-ap"),
+				FileSystemId:   awssdk.String("fs-123"),
+				LifeCycleState: efstypes.LifeCycleStateAvailable,
+				OwnerId:        awssdk.String("123456789012"),
+				PosixUser:      &efstypes.PosixUser{Uid: awssdk.Int64(1000), Gid: awssdk.Int64(1000), SecondaryGids: []int64{2000}},
+				RootDirectory:  &efstypes.RootDirectory{Path: awssdk.String("/orders")},
+				Tags:           []efstypes.Tag{{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+			}},
+		},
+	}})
+
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyEFSFileSystem, kind: "aws.efs_file_system", attr: "security_group_ids", want: "sg-123,sg-456"},
+		{family: familyEFSAccessPoint, kind: "aws.efs_access_point", attr: "root_directory_path", want: "/orders"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -3088,7 +3247,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake},
 			},
 			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: fakeIdentityStore{fake: &fake}},
-			awsStorageClients:    awsStorageClients{s3control: fakeS3Control{fake: &fake}, datasync: fakeDataSync{fake: &fake}, backup: fake},
+			awsStorageClients:    awsStorageClients{s3control: fakeS3Control{fake: &fake}, datasync: fakeDataSync{fake: &fake}, backup: fake, dynamodb: fake, dynamodbStreams: fake, efs: fake},
 		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
@@ -3144,7 +3303,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake},
 			},
 			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: recordingIdentityStore{fake: fake}},
-			awsStorageClients:    awsStorageClients{s3control: recordingS3Control{fake: fake}, datasync: recordingDataSync{fake: fake}, backup: fake},
+			awsStorageClients:    awsStorageClients{s3control: recordingS3Control{fake: fake}, datasync: recordingDataSync{fake: fake}, backup: fake, dynamodb: fake, dynamodbStreams: fake, efs: fake},
 		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
@@ -3313,6 +3472,16 @@ type fakeAWSStorageAccessData struct {
 	ebsVolumes                     []ec2types.Volume
 	ebsSnapshots                   []ec2types.Snapshot
 	ebsSnapshotPublic              map[string]bool
+	dynamoDBTables                 []dynamodbtypes.TableDescription
+	dynamoDBTags                   map[string][]dynamodbtypes.Tag
+	dynamoDBContinuousBackups      map[string]dynamodbtypes.ContinuousBackupsDescription
+	dynamoDBTimeToLive             map[string]dynamodbtypes.TimeToLiveDescription
+	dynamoDBBackups                []dynamodbtypes.BackupSummary
+	dynamoDBStreams                []dynamodbstreamstypes.StreamDescription
+	efsFileSystems                 []efstypes.FileSystemDescription
+	efsMountTargets                map[string][]efstypes.MountTargetDescription
+	efsMountTargetSecurityGroups   map[string][]string
+	efsAccessPoints                []efstypes.AccessPointDescription
 	datasyncTasks                  []datasynctypes.TaskListEntry
 	datasyncTaskDetails            map[string]*datasync.DescribeTaskOutput
 	datasyncLocations              []datasynctypes.LocationListEntry
@@ -3566,6 +3735,46 @@ func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.Looku
 	return f.fakeAWS.LookupEvents(ctx, input, options...)
 }
 
+func (f *recordingAWS) ListTables(ctx context.Context, input *dynamodb.ListTablesInput, options ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error) {
+	f.record("dynamodb:ListTables")
+	return f.fakeAWS.ListTables(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeTable(ctx context.Context, input *dynamodb.DescribeTableInput, options ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error) {
+	f.record("dynamodb:DescribeTable")
+	return f.fakeAWS.DescribeTable(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTagsOfResource(ctx context.Context, input *dynamodb.ListTagsOfResourceInput, options ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error) {
+	f.record("dynamodb:ListTagsOfResource")
+	return f.fakeAWS.ListTagsOfResource(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeContinuousBackups(ctx context.Context, input *dynamodb.DescribeContinuousBackupsInput, options ...func(*dynamodb.Options)) (*dynamodb.DescribeContinuousBackupsOutput, error) {
+	f.record("dynamodb:DescribeContinuousBackups")
+	return f.fakeAWS.DescribeContinuousBackups(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeTimeToLive(ctx context.Context, input *dynamodb.DescribeTimeToLiveInput, options ...func(*dynamodb.Options)) (*dynamodb.DescribeTimeToLiveOutput, error) {
+	f.record("dynamodb:DescribeTimeToLive")
+	return f.fakeAWS.DescribeTimeToLive(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListBackups(ctx context.Context, input *dynamodb.ListBackupsInput, options ...func(*dynamodb.Options)) (*dynamodb.ListBackupsOutput, error) {
+	f.record("dynamodb:ListBackups")
+	return f.fakeAWS.ListBackups(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListStreams(ctx context.Context, input *dynamodbstreams.ListStreamsInput, options ...func(*dynamodbstreams.Options)) (*dynamodbstreams.ListStreamsOutput, error) {
+	f.record("dynamodbstreams:ListStreams")
+	return f.fakeAWS.ListStreams(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeStream(ctx context.Context, input *dynamodbstreams.DescribeStreamInput, options ...func(*dynamodbstreams.Options)) (*dynamodbstreams.DescribeStreamOutput, error) {
+	f.record("dynamodbstreams:DescribeStream")
+	return f.fakeAWS.DescribeStream(ctx, input, options...)
+}
+
 func (f *recordingAWS) DescribeComputeEnvironments(ctx context.Context, input *batch.DescribeComputeEnvironmentsInput, options ...func(*batch.Options)) (*batch.DescribeComputeEnvironmentsOutput, error) {
 	f.record("batch:DescribeComputeEnvironments")
 	return f.fakeAWS.DescribeComputeEnvironments(ctx, input, options...)
@@ -3649,6 +3858,26 @@ func (f *recordingAWS) ListTaskDefinitions(ctx context.Context, input *ecs.ListT
 func (f *recordingAWS) DescribeTaskDefinition(ctx context.Context, input *ecs.DescribeTaskDefinitionInput, options ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error) {
 	f.record("ecs:DescribeTaskDefinition")
 	return f.fakeAWS.DescribeTaskDefinition(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeFileSystems(ctx context.Context, input *efs.DescribeFileSystemsInput, options ...func(*efs.Options)) (*efs.DescribeFileSystemsOutput, error) {
+	f.record("efs:DescribeFileSystems")
+	return f.fakeAWS.DescribeFileSystems(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeMountTargets(ctx context.Context, input *efs.DescribeMountTargetsInput, options ...func(*efs.Options)) (*efs.DescribeMountTargetsOutput, error) {
+	f.record("efs:DescribeMountTargets")
+	return f.fakeAWS.DescribeMountTargets(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeMountTargetSecurityGroups(ctx context.Context, input *efs.DescribeMountTargetSecurityGroupsInput, options ...func(*efs.Options)) (*efs.DescribeMountTargetSecurityGroupsOutput, error) {
+	f.record("efs:DescribeMountTargetSecurityGroups")
+	return f.fakeAWS.DescribeMountTargetSecurityGroups(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeAccessPoints(ctx context.Context, input *efs.DescribeAccessPointsInput, options ...func(*efs.Options)) (*efs.DescribeAccessPointsOutput, error) {
+	f.record("efs:DescribeAccessPoints")
+	return f.fakeAWS.DescribeAccessPoints(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListHostedZones(ctx context.Context, input *route53.ListHostedZonesInput, options ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error) {
@@ -5413,6 +5642,70 @@ func (f fakeAWS) GetResources(ctx context.Context, input *resourcegroupstagginga
 	return &resourcegroupstaggingapi.GetResourcesOutput{ResourceTagMappingList: records, PaginationToken: stringPtr(next)}, nil
 }
 
+func (f fakeAWS) ListTables(context.Context, *dynamodb.ListTablesInput, ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error) {
+	names := make([]string, 0, len(f.dynamoDBTables))
+	for _, table := range f.dynamoDBTables {
+		if name := awssdk.ToString(table.TableName); name != "" {
+			names = append(names, name)
+		}
+	}
+	return &dynamodb.ListTablesOutput{TableNames: names}, nil
+}
+
+func (f fakeAWS) DescribeTable(_ context.Context, input *dynamodb.DescribeTableInput, _ ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error) {
+	name := awssdk.ToString(input.TableName)
+	for _, table := range f.dynamoDBTables {
+		if awssdk.ToString(table.TableName) == name || awssdk.ToString(table.TableArn) == name {
+			copy := table
+			return &dynamodb.DescribeTableOutput{Table: &copy}, nil
+		}
+	}
+	return &dynamodb.DescribeTableOutput{}, nil
+}
+
+func (f fakeAWS) ListTagsOfResource(_ context.Context, input *dynamodb.ListTagsOfResourceInput, _ ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error) {
+	return &dynamodb.ListTagsOfResourceOutput{Tags: f.dynamoDBTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+func (f fakeAWS) DescribeContinuousBackups(_ context.Context, input *dynamodb.DescribeContinuousBackupsInput, _ ...func(*dynamodb.Options)) (*dynamodb.DescribeContinuousBackupsOutput, error) {
+	if f.dynamoDBContinuousBackups == nil {
+		return &dynamodb.DescribeContinuousBackupsOutput{}, nil
+	}
+	description := f.dynamoDBContinuousBackups[awssdk.ToString(input.TableName)]
+	return &dynamodb.DescribeContinuousBackupsOutput{ContinuousBackupsDescription: &description}, nil
+}
+
+func (f fakeAWS) DescribeTimeToLive(_ context.Context, input *dynamodb.DescribeTimeToLiveInput, _ ...func(*dynamodb.Options)) (*dynamodb.DescribeTimeToLiveOutput, error) {
+	if f.dynamoDBTimeToLive == nil {
+		return &dynamodb.DescribeTimeToLiveOutput{}, nil
+	}
+	description := f.dynamoDBTimeToLive[awssdk.ToString(input.TableName)]
+	return &dynamodb.DescribeTimeToLiveOutput{TimeToLiveDescription: &description}, nil
+}
+
+func (f fakeAWS) ListBackups(context.Context, *dynamodb.ListBackupsInput, ...func(*dynamodb.Options)) (*dynamodb.ListBackupsOutput, error) {
+	return &dynamodb.ListBackupsOutput{BackupSummaries: f.dynamoDBBackups}, nil
+}
+
+func (f fakeAWS) ListStreams(context.Context, *dynamodbstreams.ListStreamsInput, ...func(*dynamodbstreams.Options)) (*dynamodbstreams.ListStreamsOutput, error) {
+	streams := make([]dynamodbstreamstypes.Stream, 0, len(f.dynamoDBStreams))
+	for _, stream := range f.dynamoDBStreams {
+		streams = append(streams, dynamodbstreamstypes.Stream{StreamArn: stream.StreamArn, StreamLabel: stream.StreamLabel, TableName: stream.TableName})
+	}
+	return &dynamodbstreams.ListStreamsOutput{Streams: streams}, nil
+}
+
+func (f fakeAWS) DescribeStream(_ context.Context, input *dynamodbstreams.DescribeStreamInput, _ ...func(*dynamodbstreams.Options)) (*dynamodbstreams.DescribeStreamOutput, error) {
+	arn := awssdk.ToString(input.StreamArn)
+	for _, stream := range f.dynamoDBStreams {
+		if awssdk.ToString(stream.StreamArn) == arn {
+			copy := stream
+			return &dynamodbstreams.DescribeStreamOutput{StreamDescription: &copy}, nil
+		}
+	}
+	return &dynamodbstreams.DescribeStreamOutput{}, nil
+}
+
 func (f fakeAWS) ListBuckets(context.Context, *s3.ListBucketsInput, ...func(*s3.Options)) (*s3.ListBucketsOutput, error) {
 	return &s3.ListBucketsOutput{Buckets: f.s3Buckets}, nil
 }
@@ -5504,6 +5797,22 @@ func (f fakeAWS) GetQueueAttributes(_ context.Context, input *sqs.GetQueueAttrib
 
 func (f fakeAWS) ListQueueTags(_ context.Context, input *sqs.ListQueueTagsInput, _ ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
 	return &sqs.ListQueueTagsOutput{Tags: f.sqsTags[awssdk.ToString(input.QueueUrl)]}, nil
+}
+
+func (f fakeAWS) DescribeFileSystems(context.Context, *efs.DescribeFileSystemsInput, ...func(*efs.Options)) (*efs.DescribeFileSystemsOutput, error) {
+	return &efs.DescribeFileSystemsOutput{FileSystems: f.efsFileSystems}, nil
+}
+
+func (f fakeAWS) DescribeMountTargets(_ context.Context, input *efs.DescribeMountTargetsInput, _ ...func(*efs.Options)) (*efs.DescribeMountTargetsOutput, error) {
+	return &efs.DescribeMountTargetsOutput{MountTargets: f.efsMountTargets[awssdk.ToString(input.FileSystemId)]}, nil
+}
+
+func (f fakeAWS) DescribeMountTargetSecurityGroups(_ context.Context, input *efs.DescribeMountTargetSecurityGroupsInput, _ ...func(*efs.Options)) (*efs.DescribeMountTargetSecurityGroupsOutput, error) {
+	return &efs.DescribeMountTargetSecurityGroupsOutput{SecurityGroups: f.efsMountTargetSecurityGroups[awssdk.ToString(input.MountTargetId)]}, nil
+}
+
+func (f fakeAWS) DescribeAccessPoints(context.Context, *efs.DescribeAccessPointsInput, ...func(*efs.Options)) (*efs.DescribeAccessPointsOutput, error) {
+	return &efs.DescribeAccessPointsOutput{AccessPoints: f.efsAccessPoints}, nil
 }
 
 func (f fakeAWS) ListBackupVaults(context.Context, *backup.ListBackupVaultsInput, ...func(*backup.Options)) (*backup.ListBackupVaultsOutput, error) {

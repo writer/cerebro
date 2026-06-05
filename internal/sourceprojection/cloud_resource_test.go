@@ -141,6 +141,57 @@ func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, userIdentityURN)
 }
 
+func TestProjectAWSNetworkEdgeCloudResources(t *testing.T) {
+	for _, tt := range []struct {
+		kind         string
+		resourceID   string
+		resourceType string
+		entityType   string
+	}{
+		{kind: "aws.apigateway_stage", resourceID: "v2:api-123:prod", resourceType: "apigateway_stage", entityType: "aws.apigateway.stage"},
+		{kind: "aws.apigateway_route", resourceID: "v2:api-123:route-1", resourceType: "apigateway_route", entityType: "aws.apigateway.route"},
+		{kind: "aws.apigateway_integration", resourceID: "v2:api-123:int-1", resourceType: "apigateway_integration", entityType: "aws.apigateway.integration"},
+		{kind: "aws.elbv2_listener", resourceID: "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/orders/abc/def", resourceType: "elbv2_listener", entityType: "aws.elbv2.listener"},
+		{kind: "aws.elbv2_target_group", resourceID: "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/tg", resourceType: "elbv2_target_group", entityType: "aws.elbv2.target.group"},
+		{kind: "aws.cloudfront_origin_access_control", resourceID: "oac-123", resourceType: "cloudfront_origin_access_control", entityType: "aws.cloudfront.origin.access.control"},
+		{kind: "aws.cloudfront_key_group", resourceID: "kg-123", resourceType: "cloudfront_key_group", entityType: "aws.cloudfront.key.group"},
+		{kind: "aws.cloudfront_public_key", resourceID: "pk-123", resourceType: "cloudfront_public_key", entityType: "aws.cloudfront.public.key"},
+		{kind: "aws.cloudfront_response_headers_policy", resourceID: "rhp-123", resourceType: "cloudfront_response_headers_policy", entityType: "aws.cloudfront.response.headers.policy"},
+	} {
+		t.Run(tt.kind, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			event := &cerebrov1.EventEnvelope{
+				Id:       tt.kind + "-1",
+				TenantId: "writer",
+				SourceId: "aws",
+				Kind:     tt.kind,
+				Attributes: map[string]string{
+					"domain":            "123456789012",
+					"internet_exposed":  "true",
+					"public":            "true",
+					"region":            "us-east-1",
+					"resource_id":       tt.resourceID,
+					"resource_name":     "orders",
+					"resource_provider": "aws",
+					"resource_type":     tt.resourceType,
+				},
+			}
+
+			if _, err := service.Project(context.Background(), event); err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+
+			resourceURN := "urn:cerebro:writer:aws_" + tt.resourceType + ":" + tt.resourceID
+			if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != tt.entityType {
+				t.Fatalf("resource entity = %#v, want type %s", entity, tt.entityType)
+			}
+			assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+			assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+		})
+	}
+}
+
 func TestProjectAWSBatchResourcesUseCloudResourceProjection(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
