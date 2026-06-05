@@ -4,6 +4,8 @@
 
 Cerebro is Writer's original operations platform repository. The current `main` branch is centered on a Go bootstrap service with Connect and JSON HTTP APIs, built-in source integrations, source runtime sync, finding and report workflows, append-log replay, MCP access, device-authenticated telemetry, and optional graph projection/query tooling.
 
+In practical terms, Cerebro ingests source and runtime signals, turns them into claims, findings, reports, workflow events, and graph context, then exposes that substrate through the CLI, JSON HTTP, Connect RPC, SDK helpers, and MCP.
+
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
@@ -17,7 +19,7 @@ Cerebro is Writer's original operations platform repository. The current `main` 
 - **Report runs** — report definitions can be listed and executed with durable run retrieval when a state store is configured.
 - **Workflow event replay** — knowledge decisions, actions, and outcomes can be written and replayed through append-log-backed projections.
 - **Graph operations** — Neo4j/Aura-backed graph counts, relation counts, neighborhoods, path summaries, impact queries, graph health, source/runtime ingest, ingest run status, repair/cleanup helpers, and isolated dry-run rebuilds.
-- **MCP and agent surfaces** — an authenticated MCP endpoint, optional OAuth 2.1 authorization-server flow for MCP clients, and an optional graph agent LLM adapter.
+- **MCP and graph-agent surfaces** — an authenticated MCP endpoint, optional OAuth 2.1 authorization-server flow for MCP clients, and an optional graph agent LLM adapter.
 - **Device telemetry surface** — optional first-party device enrollment, token, telemetry ingest, and device vulnerability finding routes.
 - **Policy catalog** — JSON policy definitions under `policies/` for cloud, identity, GitHub, Kubernetes, SaaS, runtime, vulnerability, compliance, and business-operation checks.
 
@@ -72,39 +74,40 @@ External dependency drivers are opt-in. With no external drivers configured, the
 - Optional: Postgres for durable source runtime, claim, finding, evidence, evaluation, and report state.
 - Optional: Neo4j or AuraDB for graph projection/query operations.
 
-### Build and verify
+### First run
 
 ```bash
 git clone https://github.com/writer/cerebro.git
 cd cerebro
 
+make doctor
 make build
-make test
-make verify
-```
-
-### Run locally
-
-```bash
 make serve
-# or
-./bin/cerebro serve
 ```
 
 By default, Cerebro listens on `:8080`.
+
+In another shell:
 
 ```bash
 curl -sS http://127.0.0.1:8080/health
 curl -sS http://127.0.0.1:8080/sources
 ```
 
-For a durable local stack that matches the bootstrap runtime dependencies, use Docker Compose:
+Run focused tests while iterating, then use CI-parity validation before broad PRs:
+
+```bash
+make test
+make verify
+```
+
+### Durable local stack
 
 ```bash
 docker compose up --build
 ```
 
-The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using the `CEREBRO_*` environment variables documented below.
+The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using service-local `CEREBRO_*` environment variables. For a standalone environment template, start from `.env.example`.
 
 ---
 
@@ -114,17 +117,23 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using 
 | --- | --- | --- |
 | Run the lightweight server | `make serve` | Starts the API without external stores; useful for health, source catalog, and OpenAPI checks. |
 | Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, and Neo4j. |
+| Try a local end-to-end path | `docs/GETTING_STARTED.md` | Creates an SDK source runtime, writes a synthetic claim, and reads it back. |
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
+| Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |
+| Use SDK helpers | `sdk/python/README.md`, `sdk/typescript/README.md`, and `sources/sdk` | Maintained helpers target current bootstrap routes; the historical Agent SDK gateway is retired. |
 | Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
 | Persist and sync a runtime | `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
 | Work on graph behavior | `graph counts`, `graph health`, `graph ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
+| Integrate MCP clients | `docs/MCP_DROID_SETUP.md` and `/api/v1/mcp` | Covers stateless Streamable HTTP, OAuth discovery, and compatibility checks. |
+| Integrate endpoint telemetry | `docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md` | Covers device-authenticated telemetry, trusted endpoint claims, and trust-gate evidence. |
 | Author policies or finding rules | `policies/`, `internal/findings`, and catalog checks | Run the relevant catalog and finding-rule tests before opening a PR. |
+| Contribute code or docs | `docs/DEVELOPMENT.md`, `docs/NON_GOALS.md`, and the Makefile | Prefer focused `make` targets while iterating; use `make verify` for broad PR preflight. |
 
 ---
 
 ## Configuration
 
-The bootstrap binary currently reads core, auth, store, graph-agent, MCP OAuth, device-auth, and source-config environment variables through `internal/config`.
+The bootstrap binary currently reads core, auth, store, graph-agent, MCP OAuth, device-auth, and source-config environment variables through `internal/config`. Start from `.env.example` for a local template, and use `docs/CONFIG_ENV_VARS.md` as the expanded configuration reference.
 
 Core runtime and store variables:
 
@@ -286,6 +295,22 @@ When auth is enabled, only health/OpenAPI and OAuth/device metadata-style routes
 
 ---
 
+## SDK helpers
+
+Maintained SDK helpers live directly under `sdk/python` and `sdk/typescript`. They target the current bootstrap API surface for source runtime setup, claim writes, graph neighborhoods, and integration examples such as Jira posture onboarding.
+
+These helpers are separate from the retired historical Agent SDK gateway. Future SDK methods should start from the current HTTP/OpenAPI or Connect contracts, then add generated or hand-maintained helpers after the runtime route exists.
+
+Useful checks:
+
+```bash
+make sdk-test
+cd sdk/python && python3 -m unittest discover -s tests
+cd sdk/typescript && npm test
+```
+
+---
+
 ## Policies
 
 Policy definitions live under `policies/` as JSON files. The catalog includes cloud posture, identity governance, GitHub, Kubernetes, M365, Okta, runtime, vulnerability, compliance, and business-operation checks.
@@ -307,6 +332,8 @@ make verify         # CI-parity local verification
 make doctor         # check required local developer tools
 make release-smoke  # validate GoReleaser config
 make docker-smoke   # build the runtime Dockerfile locally
+make readme-check   # README drift checks
+make docs-drift-check  # generated docs drift checks
 make oss-audit      # public repository hygiene scan
 make clean          # remove bin/
 ```
@@ -316,19 +343,19 @@ Focused validation and utility targets include `make openapi-check`, `make opena
 Public-facing docs, config, or example changes should run:
 
 ```bash
-python3 scripts/oss_audit.py
+make oss-audit
 ```
 
 Choose validators by change type:
 
 | Change type | Minimum local validation |
 | --- | --- |
-| README-only | `git diff --check README.md` and `make oss-audit` |
+| README-only | `make readme-check` and `make oss-audit` |
 | Go runtime/API change | `make test` plus focused package tests |
 | OpenAPI route or handler change | `make openapi-check openapi-lint` |
 | Proto change | `make proto-lint` and generated contract checks when applicable |
 | Source catalog or policy change | `make catalog-check detection-catalog-check` |
-| Public docs/config/examples | `make oss-audit` |
+| Public docs/config/examples | `make docs-drift-check` when generated docs are touched, plus `make oss-audit` |
 | Broad PR preflight | `make verify` |
 
 ---
@@ -354,11 +381,13 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 
 | Document | Notes |
 | --- | --- |
+| [Getting started](docs/GETTING_STARTED.md) | local durable stack plus SDK source runtime and claim-write walkthrough |
 | [API contracts](docs/API_CONTRACTS_AUTOGEN.md) | current bootstrap HTTP and Connect contract reference |
 | [API reference](docs/API_REFERENCE.md) | OpenAPI-oriented route reference |
 | [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
 | [Configuration](docs/CONFIGURATION.md) | configuration and deployment notes |
 | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) | native Droid MCP setup, OAuth flow, transport compatibility, and troubleshooting |
+| [DevEx codegen catalog](docs/DEVEX_CODEGEN_AUTOGEN.md) | generated surface map for OpenAPI, proto, and detection catalog checks |
 | [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |
 | [Graph report contracts](docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md) | generated graph/report contract reference |
 | [Endpoint security platform integration](docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md) | trusted-endpoint, secheck, Security/Kairos, identity, telemetry, and trust-gate integration contract |
@@ -380,7 +409,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | Append log | NATS JetStream |
 | State store | Postgres |
 | Graph store | Neo4j/Aura |
-| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, SDK, SentinelOne, Security Tooling Map, VulnView |
+| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, SDK, SentinelOne, Security Tooling Map, Trusted Endpoint, VulnView |
 | Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, OSS audit, custom structural linters, arch tests |
 
 ---

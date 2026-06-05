@@ -6,7 +6,11 @@ from __future__ import annotations
 import pathlib
 import subprocess
 import tempfile
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 and earlier.
+    tomllib = None
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -18,8 +22,38 @@ def run(command: list[str], cwd: pathlib.Path | None = None) -> int:
 
 
 def python_requirements_from_pyproject(pyproject: pathlib.Path) -> list[str]:
-    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    text = pyproject.read_text(encoding="utf-8")
+    if tomllib is None:
+        return fallback_project_dependencies(text)
+    data = tomllib.loads(text)
     return list(data.get("project", {}).get("dependencies", []) or [])
+
+
+def fallback_project_dependencies(text: str) -> list[str]:
+    """Parse the simple [project].dependencies array used by sdk/python."""
+    in_project = False
+    in_dependencies = False
+    dependencies: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_project = line == "[project]"
+            in_dependencies = False
+            continue
+        if not in_project:
+            continue
+        if line.startswith("dependencies") and line.endswith("["):
+            in_dependencies = True
+            continue
+        if in_dependencies:
+            if line == "]":
+                return dependencies
+            value = line.rstrip(",").strip().strip('"').strip("'")
+            if value:
+                dependencies.append(value)
+    return dependencies
 
 
 def audit_python_sdk() -> int:

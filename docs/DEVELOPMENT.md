@@ -13,7 +13,8 @@ This document describes the current bootstrap service on `main`. Historical ware
 ```bash
 git clone https://github.com/writer/cerebro.git
 cd cerebro
-go mod download
+make doctor
+make build
 ```
 
 Run the lightweight server without durable stores:
@@ -28,7 +29,7 @@ Run the durable local stack with NATS JetStream, Postgres, Neo4j, and Cerebro:
 docker compose up --build
 ```
 
-The compose stack uses the same `CEREBRO_*` variables documented in `README.md`.
+The compose stack uses service-local `CEREBRO_*` variables. For a standalone local template, start from `.env.example`.
 
 ## Common Commands
 
@@ -39,6 +40,9 @@ make lint           # golangci-lint over app packages
 make proto-lint     # buf lint
 make check          # build, tests, lint, proto lint, structural checks, arch tests
 make verify         # CI-parity validation
+make readme-check   # README drift checks
+make docs-drift-check  # generated docs drift checks
+make oss-audit      # public repository hygiene scan
 make clean          # remove bin/
 ```
 
@@ -71,5 +75,11 @@ make check
 For public config, docs, or packaging changes, also run:
 
 ```bash
-python3 scripts/oss_audit.py
+make oss-audit
+```
+
+For generated docs changes, also run:
+
+```bash
+make docs-drift-check
 ```

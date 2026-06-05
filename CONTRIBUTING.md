@@ -6,10 +6,11 @@ Thanks for contributing.
 
 1. Install Go 1.26+.
 2. Clone the repository.
-3. Download modules:
+3. Check and build the local toolchain:
 
 ```bash
-go mod download
+make doctor
+make build
 ```
 
 Run the lightweight server:
@@ -36,6 +37,14 @@ For CI-parity validation:
 
 ```bash
 make verify
+```
+
+For public docs, config, or example changes:
+
+```bash
+make readme-check
+make docs-drift-check
+make oss-audit
 ```
 
 ## Architecture Boundaries

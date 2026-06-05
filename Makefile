@@ -75,6 +75,7 @@ sdk-typescript-check:
 	cd sdk/typescript && npm ci && npm run typecheck
 
 sdk-dependency-audit:
+	python3 -m unittest scripts.test_sdk_dependency_audit
 	python3 -m pip install --user pip-audit
 	python3 scripts/sdk_dependency_audit.py
 

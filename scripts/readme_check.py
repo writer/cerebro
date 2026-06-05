@@ -104,6 +104,13 @@ def main() -> int:
             "This public repository is authoritative for runtime behavior",
             "Environment-specific deployment details",
             "cerebro-runtime-contract.json",
+            ".env.example",
+            "docs/CONFIG_ENV_VARS.md",
+            "docs/GETTING_STARTED.md",
+            "sdk/python/README.md",
+            "sdk/typescript/README.md",
+            "docs/MCP_DROID_SETUP.md",
+            "docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md",
         ],
     )
 
