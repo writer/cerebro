@@ -3554,6 +3554,93 @@ func TestProjectAWSRuntimeEventResources(t *testing.T) {
 	}
 }
 
+func TestProjectAWSOrganizationsHierarchyAndPolicies(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aws-organizations-root-r-root",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.organizations_root",
+			Attributes: map[string]string{
+				"domain":       "111111111111",
+				"policy_types": "SERVICE_CONTROL_POLICY:ENABLED",
+				"resource_id":  "r-root",
+				"root_arn":     "arn:aws:organizations::111111111111:root/o-exampleorgid/r-root",
+				"root_id":      "r-root",
+				"root_name":    "Root",
+			},
+		},
+		{
+			Id:       "aws-organizations-ou-security",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.organizations_organizational_unit",
+			Attributes: map[string]string{
+				"domain":      "111111111111",
+				"ou_arn":      "arn:aws:organizations::111111111111:ou/o-exampleorgid/ou-r-root-security",
+				"ou_id":       "ou-r-root-security",
+				"ou_name":     "Security",
+				"parent_id":   "r-root",
+				"parent_type": "ROOT",
+				"resource_id": "ou-r-root-security",
+			},
+		},
+		{
+			Id:       "aws-organizations-account-security",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.organizations_account",
+			Attributes: map[string]string{
+				"account_arn":   "arn:aws:organizations::111111111111:account/o-exampleorgid/222222222222",
+				"account_email": "security@example.com",
+				"account_id":    "222222222222",
+				"account_name":  "Security",
+				"domain":        "111111111111",
+				"parent_id":     "ou-r-root-security",
+				"parent_type":   "ORGANIZATIONAL_UNIT",
+				"resource_id":   "222222222222",
+				"state":         "ACTIVE",
+			},
+		},
+		{
+			Id:       "aws-organizations-policy-deny-leave",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.organizations_policy",
+			Attributes: map[string]string{
+				"domain":       "111111111111",
+				"policy_id":    "p-service-control",
+				"policy_name":  "DenyLeaveOrganization",
+				"policy_type":  "SERVICE_CONTROL_POLICY",
+				"resource_id":  "p-service-control",
+				"target_ids":   "ou-r-root-security,222222222222",
+				"target_names": "Security,Security",
+				"target_types": "ORGANIZATIONAL_UNIT,ACCOUNT",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	rootURN := "urn:cerebro:writer:aws_organizations_root:r-root"
+	ouURN := "urn:cerebro:writer:aws_organizations_organizational_unit:ou-r-root-security"
+	accountURN := "urn:cerebro:writer:aws_organizations_account:222222222222"
+	policyURN := "urn:cerebro:writer:aws_organizations_policy:p-service-control"
+	if entity := state.entities[rootURN]; entity == nil || entity.EntityType != "aws.organizations.root" {
+		t.Fatalf("root entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, ouURN, relationBelongsTo, rootURN)
+	assertProjectedLink(t, state, accountURN, relationBelongsTo, ouURN)
+	assertProjectedLink(t, state, accountURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:222222222222")
+	assertProjectedLink(t, state, policyURN, relationAttachedTo, ouURN)
+	assertProjectedLink(t, state, policyURN, relationAttachedTo, accountURN)
+}
+
 func TestProjectAWSRestrictedEKSClusterDoesNotCreatePublicReachability(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

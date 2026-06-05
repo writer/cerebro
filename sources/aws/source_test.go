@@ -460,6 +460,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyOrganizationsAcct, kind: "aws.organizations_account"},
 		{family: familyOrganizationsOU, kind: "aws.organizations_organizational_unit"},
 		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy"},
+		{family: familyOrganizationsRoot, kind: "aws.organizations_root"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
@@ -1670,13 +1671,31 @@ func TestReadAWSGovernanceInventoryEvents(t *testing.T) {
 			organizationAccounts: []organizationstypes.Account{{
 				Arn: awssdk.String("arn:aws:organizations::123456789012:account/o-example/210987654321"), Email: awssdk.String("prod@example.com"), Id: awssdk.String("210987654321"), Name: awssdk.String("Prod"), State: organizationstypes.AccountStateActive, Status: organizationstypes.AccountStatusActive,
 			}},
-			organizationRoots: []organizationstypes.Root{{Id: awssdk.String("r-root"), Name: awssdk.String("Root")}},
+			organizationRoots: []organizationstypes.Root{{
+				Id:   awssdk.String("r-root"),
+				Name: awssdk.String("Root"),
+				PolicyTypes: []organizationstypes.PolicyTypeSummary{{
+					Type:   organizationstypes.PolicyTypeServiceControlPolicy,
+					Status: organizationstypes.PolicyTypeStatusEnabled,
+				}},
+			}},
 			organizationOUs: map[string][]organizationstypes.OrganizationalUnit{"r-root": {{
 				Arn: awssdk.String("arn:aws:organizations::123456789012:ou/o-example/ou-root-sec"), Id: awssdk.String("ou-root-sec"), Name: awssdk.String("Security"),
 			}}},
+			organizationParents: map[string]organizationstypes.Parent{
+				"210987654321": {Id: awssdk.String("ou-root-sec"), Type: organizationstypes.ParentTypeOrganizationalUnit},
+			},
 			organizationPolicies: []organizationstypes.PolicySummary{{
 				Arn: awssdk.String("arn:aws:organizations::123456789012:policy/o-example/service_control_policy/p-denyroot"), Id: awssdk.String("p-denyroot"), Name: awssdk.String("DenyRoot"), Type: organizationstypes.PolicyTypeServiceControlPolicy,
 			}},
+			organizationPolicyDetails: map[string]organizationstypes.Policy{
+				"p-denyroot": {
+					Content: awssdk.String(`{"Version":"2012-10-17","Statement":[]}`),
+					PolicySummary: &organizationstypes.PolicySummary{
+						Arn: awssdk.String("arn:aws:organizations::123456789012:policy/o-example/service_control_policy/p-denyroot"), Id: awssdk.String("p-denyroot"), Name: awssdk.String("DenyRoot"), Type: organizationstypes.PolicyTypeServiceControlPolicy,
+					},
+				},
+			},
 			organizationPolicyTargets: map[string][]organizationstypes.PolicyTargetSummary{"p-denyroot": {{TargetId: awssdk.String("210987654321"), Type: organizationstypes.TargetTypeAccount}}},
 			ssoInstances:              []ssoadmintypes.InstanceMetadata{{InstanceArn: awssdk.String(instanceARN), IdentityStoreId: awssdk.String("d-1234567890"), Name: awssdk.String("writer-sso"), OwnerAccountId: awssdk.String("123456789012"), Status: ssoadmintypes.InstanceStatusActive}},
 			ssoPermissionSets:         []ssoadmintypes.PermissionSet{{PermissionSetArn: awssdk.String(permissionSetARN), Name: awssdk.String("AdministratorAccess"), SessionDuration: awssdk.String("PT8H")}},
@@ -1699,6 +1718,7 @@ func TestReadAWSGovernanceInventoryEvents(t *testing.T) {
 		{family: familyOrganizationsAcct, kind: "aws.organizations_account", attr: "organization_id", want: "o-example"},
 		{family: familyOrganizationsOU, kind: "aws.organizations_organizational_unit", attr: "parent_id", want: "r-root"},
 		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy", attr: "target_account_ids", want: "210987654321"},
+		{family: familyOrganizationsRoot, kind: "aws.organizations_root", attr: "policy_types", want: "SERVICE_CONTROL_POLICY:ENABLED"},
 		{family: familySSOInstance, kind: "aws.sso_instance", attr: "identity_store_id", want: "d-1234567890"},
 		{family: familySSOPermissionSet, kind: "aws.sso_permission_set", attr: "permission_set_name", want: "AdministratorAccess"},
 		{family: familySSOAssignment, kind: "aws.sso_account_assignment", attr: "principal_id", want: "user-1"},
@@ -2546,7 +2566,9 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.organizationAccounts = []organizationstypes.Account{{Arn: awssdk.String("arn:aws:organizations::123456789012:account/o-example/210987654321"), Id: awssdk.String("210987654321"), Name: awssdk.String("Prod")}}
 		fake.organizationRoots = []organizationstypes.Root{{Id: awssdk.String("r-root")}}
 		fake.organizationOUs = map[string][]organizationstypes.OrganizationalUnit{"r-root": {{Id: awssdk.String("ou-root-sec"), Name: awssdk.String("Security")}}}
+		fake.organizationParents = map[string]organizationstypes.Parent{"210987654321": {Id: awssdk.String("ou-root-sec"), Type: organizationstypes.ParentTypeOrganizationalUnit}}
 		fake.organizationPolicies = []organizationstypes.PolicySummary{{Id: awssdk.String("p-denyroot"), Name: awssdk.String("DenyRoot"), Type: organizationstypes.PolicyTypeServiceControlPolicy}}
+		fake.organizationPolicyDetails = map[string]organizationstypes.Policy{"p-denyroot": {PolicySummary: &organizationstypes.PolicySummary{Id: awssdk.String("p-denyroot"), Name: awssdk.String("DenyRoot"), Type: organizationstypes.PolicyTypeServiceControlPolicy}}}
 		fake.organizationPolicyTargets = map[string][]organizationstypes.PolicyTargetSummary{"p-denyroot": {{TargetId: awssdk.String("210987654321"), Type: organizationstypes.TargetTypeAccount}}}
 		fake.ssoInstances = []ssoadmintypes.InstanceMetadata{{InstanceArn: awssdk.String(instanceARN), IdentityStoreId: awssdk.String("d-1234567890")}}
 		fake.ssoPermissionSets = []ssoadmintypes.PermissionSet{{PermissionSetArn: awssdk.String(permissionSetARN), Name: awssdk.String("AdministratorAccess")}}
@@ -2673,7 +2695,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyOrganizationsAcct,
 			seed:    governanceData,
-			wantAPI: []string{"organizations:ListAccounts"},
+			wantAPI: []string{"organizations:ListAccounts", "organizations:ListParents"},
 		},
 		{
 			family:  familyOrganizationsOU,
@@ -2683,7 +2705,12 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyOrganizationsPolicy,
 			seed:    governanceData,
-			wantAPI: []string{"organizations:ListPolicies", "organizations:ListTargetsForPolicy"},
+			wantAPI: []string{"organizations:DescribePolicy", "organizations:ListPolicies", "organizations:ListTargetsForPolicy"},
+		},
+		{
+			family:  familyOrganizationsRoot,
+			seed:    governanceData,
+			wantAPI: []string{"organizations:ListRoots"},
 		},
 		{
 			family:  familySSOInstance,
@@ -3476,7 +3503,9 @@ type fakeAWSGovernance struct {
 	organizationAccounts      []organizationstypes.Account
 	organizationRoots         []organizationstypes.Root
 	organizationOUs           map[string][]organizationstypes.OrganizationalUnit
+	organizationParents       map[string]organizationstypes.Parent
 	organizationPolicies      []organizationstypes.PolicySummary
+	organizationPolicyDetails map[string]organizationstypes.Policy
 	organizationPolicyTargets map[string][]organizationstypes.PolicyTargetSummary
 	ssoInstances              []ssoadmintypes.InstanceMetadata
 	ssoPermissionSets         []ssoadmintypes.PermissionSet
@@ -3617,9 +3646,19 @@ func (f *recordingAWS) ListOrganizationalUnitsForParent(ctx context.Context, inp
 	return f.fakeAWS.ListOrganizationalUnitsForParent(ctx, input, options...)
 }
 
+func (f *recordingAWS) ListParents(ctx context.Context, input *organizations.ListParentsInput, options ...func(*organizations.Options)) (*organizations.ListParentsOutput, error) {
+	f.record("organizations:ListParents")
+	return f.fakeAWS.ListParents(ctx, input, options...)
+}
+
 func (f *recordingAWS) ListPolicies(ctx context.Context, input *organizations.ListPoliciesInput, options ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error) {
 	f.record("organizations:ListPolicies")
 	return f.fakeAWS.ListPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribePolicy(ctx context.Context, input *organizations.DescribePolicyInput, options ...func(*organizations.Options)) (*organizations.DescribePolicyOutput, error) {
+	f.record("organizations:DescribePolicy")
+	return f.fakeAWS.DescribePolicy(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListTargetsForPolicy(ctx context.Context, input *organizations.ListTargetsForPolicyInput, options ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error) {
@@ -5117,6 +5156,13 @@ func (f fakeAWS) ListOrganizationalUnitsForParent(_ context.Context, input *orga
 	return &organizations.ListOrganizationalUnitsForParentOutput{OrganizationalUnits: f.organizationOUs[awssdk.ToString(input.ParentId)]}, nil
 }
 
+func (f fakeAWS) ListParents(_ context.Context, input *organizations.ListParentsInput, _ ...func(*organizations.Options)) (*organizations.ListParentsOutput, error) {
+	if parent, ok := f.organizationParents[awssdk.ToString(input.ChildId)]; ok {
+		return &organizations.ListParentsOutput{Parents: []organizationstypes.Parent{parent}}, nil
+	}
+	return &organizations.ListParentsOutput{}, nil
+}
+
 func (f fakeAWS) ListPolicies(_ context.Context, input *organizations.ListPoliciesInput, _ ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error) {
 	policies := make([]organizationstypes.PolicySummary, 0, len(f.organizationPolicies))
 	for _, policy := range f.organizationPolicies {
@@ -5126,6 +5172,13 @@ func (f fakeAWS) ListPolicies(_ context.Context, input *organizations.ListPolici
 		policies = append(policies, policy)
 	}
 	return &organizations.ListPoliciesOutput{Policies: policies}, nil
+}
+
+func (f fakeAWS) DescribePolicy(_ context.Context, input *organizations.DescribePolicyInput, _ ...func(*organizations.Options)) (*organizations.DescribePolicyOutput, error) {
+	if policy, ok := f.organizationPolicyDetails[awssdk.ToString(input.PolicyId)]; ok {
+		return &organizations.DescribePolicyOutput{Policy: &policy}, nil
+	}
+	return &organizations.DescribePolicyOutput{}, nil
 }
 
 func (f fakeAWS) ListTargetsForPolicy(_ context.Context, input *organizations.ListTargetsForPolicyInput, _ ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error) {
