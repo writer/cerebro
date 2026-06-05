@@ -46,21 +46,21 @@ type awsSSOInstance struct {
 }
 
 type awsSSOPermissionSet struct {
-	InstanceARN     string
-	IdentityStoreID string
-	PermissionSet   ssoadmintypes.PermissionSet
+	InstanceARN      string
+	IdentityStoreID  string
+	PermissionSet    ssoadmintypes.PermissionSet
 	PermissionSetARN string
 }
 
 type awsSSOAccountAssignment struct {
-	InstanceARN      string
-	IdentityStoreID  string
-	AccountID        string
-	PermissionSetARN string
+	InstanceARN       string
+	IdentityStoreID   string
+	AccountID         string
+	PermissionSetARN  string
 	PermissionSetName string
-	PrincipalID      string
-	PrincipalType    string
-	Assignment       ssoadmintypes.AccountAssignment
+	PrincipalID       string
+	PrincipalType     string
+	Assignment        ssoadmintypes.AccountAssignment
 }
 
 type awsIdentityStoreUser struct {
@@ -521,17 +521,17 @@ func identityStoreGroupEvent(settings settings, record awsIdentityStoreGroup) (*
 
 func identityStoreGroupMembershipEvent(settings settings, record awsIdentityStoreGroupMembership) (*primitives.Event, error) {
 	attributes := map[string]string{
-		"domain":              settings.accountID,
-		"family":              familyIdentityStoreMember,
-		"group_id":            record.GroupID,
-		"identity_store_id":   record.IdentityStoreID,
-		"member_id":           record.MemberID,
-		"member_type":         "user",
-		"member_user_id":      record.MemberID,
-		"membership_id":       awssdk.ToString(record.Membership.MembershipId),
-		"principal_type":      "user",
-		"relationship":        "member_of",
-		"user_id":             record.MemberID,
+		"domain":            settings.accountID,
+		"family":            familyIdentityStoreMember,
+		"group_id":          record.GroupID,
+		"identity_store_id": record.IdentityStoreID,
+		"member_id":         record.MemberID,
+		"member_type":       "user",
+		"member_user_id":    record.MemberID,
+		"membership_id":     awssdk.ToString(record.Membership.MembershipId),
+		"principal_type":    "user",
+		"relationship":      "member_of",
+		"user_id":           record.MemberID,
 	}
 	addTimeAttribute(attributes, "created_at", record.Membership.CreatedAt)
 	addTimeAttribute(attributes, "updated_at", record.Membership.UpdatedAt)
