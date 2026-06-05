@@ -107,9 +107,9 @@ func awsVPCLatticeListenerProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 			continue
 		}
 		addAWSNetworkServiceEntity(entityMap, tenantID, event.GetSourceId(), targetGroupURN, "aws.vpc_lattice.target_group", targetGroupID, map[string]string{
-			"domain":           strings.TrimSpace(attributes["domain"]),
-			"region":           strings.TrimSpace(attributes["region"]),
-			"target_group_arn": targetGroupID,
+			"domain":          strings.TrimSpace(attributes["domain"]),
+			"region":          strings.TrimSpace(attributes["region"]),
+			"target_group_id": targetGroupID,
 		})
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), listenerURN, targetGroupURN, relationDependsOn, map[string]string{"event_id": event.GetId(), "match_type": "vpc_lattice_listener_target_group"}))
 	}

@@ -965,6 +965,8 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		})
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
+	globalAcceleratorCfg := cfg.Copy()
+	globalAcceleratorCfg.Region = "us-west-2"
 	return awsClients{
 		cfg:               cfg,
 		iam:               iam.NewFromConfig(cfg),
@@ -976,7 +978,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		ecs:               ecs.NewFromConfig(cfg),
 		eks:               eks.NewFromConfig(cfg),
 		ecr:               ecr.NewFromConfig(cfg),
-		globalAccelerator: globalaccelerator.NewFromConfig(cfg),
+		globalAccelerator: globalaccelerator.NewFromConfig(globalAcceleratorCfg),
 		apiGateway:        apigateway.NewFromConfig(cfg),
 		apiGatewayV2:      apigatewayv2.NewFromConfig(cfg),
 		lambda:            lambda.NewFromConfig(cfg),
