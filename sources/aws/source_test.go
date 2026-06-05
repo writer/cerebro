@@ -2806,6 +2806,15 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.compute.eksPodIdentityIDs = map[string][]string{eksClusterName: []string{"a-123"}}
 		fake.compute.eksPodIdentities = map[string]ekstypes.PodIdentityAssociation{awsTestEKSChildKey(eksClusterName, "a-123"): {AssociationArn: awssdk.String("arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"), AssociationId: awssdk.String("a-123"), ClusterName: awssdk.String(eksClusterName), Namespace: awssdk.String("payments"), RoleArn: awssdk.String("arn:aws:iam::123456789012:role/EKSPaymentsPodRole"), ServiceAccount: awssdk.String("api")}}
 	}
+	networkSubstrateData := func(fake *recordingAWS) {
+		fake.vpcs = []ec2types.Vpc{{VpcId: awssdk.String("vpc-123")}}
+		fake.subnets = []ec2types.Subnet{{SubnetId: awssdk.String("subnet-123"), VpcId: awssdk.String("vpc-123")}}
+		fake.securityGroups = []ec2types.SecurityGroup{{GroupId: awssdk.String("sg-123"), VpcId: awssdk.String("vpc-123")}}
+		fake.routeTables = []ec2types.RouteTable{{RouteTableId: awssdk.String("rtb-123"), VpcId: awssdk.String("vpc-123")}}
+		fake.internetGateways = []ec2types.InternetGateway{{InternetGatewayId: awssdk.String("igw-123")}}
+		fake.natGateways = []ec2types.NatGateway{{NatGatewayId: awssdk.String("nat-123"), VpcId: awssdk.String("vpc-123"), SubnetId: awssdk.String("subnet-123")}}
+		fake.vpcEndpoints = []ec2types.VpcEndpoint{{VpcEndpointId: awssdk.String("vpce-123"), VpcId: awssdk.String("vpc-123")}}
+	}
 	cloudAssetData := func(fake *recordingAWS) {
 		kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
 		sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
@@ -2975,6 +2984,41 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyEC2Instance,
 			seed:    computeData,
 			wantAPI: []string{"ec2:DescribeInstances", "iam:GetInstanceProfile"},
+		},
+		{
+			family:  familyVPC,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeVpcs"},
+		},
+		{
+			family:  familySubnet,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeSubnets"},
+		},
+		{
+			family:  familySecurityGroup,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeSecurityGroups"},
+		},
+		{
+			family:  familyRouteTable,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeRouteTables"},
+		},
+		{
+			family:  familyInternetGateway,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeInternetGateways"},
+		},
+		{
+			family:  familyNATGateway,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeNatGateways"},
+		},
+		{
+			family:  familyVPCEndpoint,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeVpcEndpoints"},
 		},
 		{
 			family:  familyS3Bucket,
@@ -3800,6 +3844,12 @@ type fakeAWSNetworkExposure struct {
 	securityGroups    []ec2types.SecurityGroup
 	addresses         []ec2types.Address
 	networkInterfaces []ec2types.NetworkInterface
+	vpcs              []ec2types.Vpc
+	subnets           []ec2types.Subnet
+	routeTables       []ec2types.RouteTable
+	internetGateways  []ec2types.InternetGateway
+	natGateways       []ec2types.NatGateway
+	vpcEndpoints      []ec2types.VpcEndpoint
 	hostedZones       []route53types.HostedZone
 	recordSets        []route53types.ResourceRecordSet
 	distributions     []cloudfronttypes.DistributionSummary
@@ -4247,6 +4297,36 @@ func (f *recordingAWS) DescribeJobQueues(ctx context.Context, input *batch.Descr
 func (f *recordingAWS) DescribeSecurityGroups(ctx context.Context, input *ec2.DescribeSecurityGroupsInput, options ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
 	f.record("ec2:DescribeSecurityGroups")
 	return f.fakeAWS.DescribeSecurityGroups(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeVpcs(ctx context.Context, input *ec2.DescribeVpcsInput, options ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
+	f.record("ec2:DescribeVpcs")
+	return f.fakeAWS.DescribeVpcs(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeSubnets(ctx context.Context, input *ec2.DescribeSubnetsInput, options ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+	f.record("ec2:DescribeSubnets")
+	return f.fakeAWS.DescribeSubnets(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeRouteTables(ctx context.Context, input *ec2.DescribeRouteTablesInput, options ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+	f.record("ec2:DescribeRouteTables")
+	return f.fakeAWS.DescribeRouteTables(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeInternetGateways(ctx context.Context, input *ec2.DescribeInternetGatewaysInput, options ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+	f.record("ec2:DescribeInternetGateways")
+	return f.fakeAWS.DescribeInternetGateways(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeNatGateways(ctx context.Context, input *ec2.DescribeNatGatewaysInput, options ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
+	f.record("ec2:DescribeNatGateways")
+	return f.fakeAWS.DescribeNatGateways(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeVpcEndpoints(ctx context.Context, input *ec2.DescribeVpcEndpointsInput, options ...func(*ec2.Options)) (*ec2.DescribeVpcEndpointsOutput, error) {
+	f.record("ec2:DescribeVpcEndpoints")
+	return f.fakeAWS.DescribeVpcEndpoints(ctx, input, options...)
 }
 
 func (f *recordingAWS) DescribeInstances(ctx context.Context, input *ec2.DescribeInstancesInput, options ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
@@ -6277,6 +6357,30 @@ func (f fakeAWS) DescribeJobQueues(_ context.Context, input *batch.DescribeJobQu
 
 func (f fakeAWS) DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
 	return &ec2.DescribeSecurityGroupsOutput{SecurityGroups: f.securityGroups}, nil
+}
+
+func (f fakeAWS) DescribeVpcs(context.Context, *ec2.DescribeVpcsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
+	return &ec2.DescribeVpcsOutput{Vpcs: f.vpcs}, nil
+}
+
+func (f fakeAWS) DescribeSubnets(context.Context, *ec2.DescribeSubnetsInput, ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+	return &ec2.DescribeSubnetsOutput{Subnets: f.subnets}, nil
+}
+
+func (f fakeAWS) DescribeRouteTables(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+	return &ec2.DescribeRouteTablesOutput{RouteTables: f.routeTables}, nil
+}
+
+func (f fakeAWS) DescribeInternetGateways(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+	return &ec2.DescribeInternetGatewaysOutput{InternetGateways: f.internetGateways}, nil
+}
+
+func (f fakeAWS) DescribeNatGateways(context.Context, *ec2.DescribeNatGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
+	return &ec2.DescribeNatGatewaysOutput{NatGateways: f.natGateways}, nil
+}
+
+func (f fakeAWS) DescribeVpcEndpoints(context.Context, *ec2.DescribeVpcEndpointsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcEndpointsOutput, error) {
+	return &ec2.DescribeVpcEndpointsOutput{VpcEndpoints: f.vpcEndpoints}, nil
 }
 
 func (f fakeAWS) DescribeInstances(_ context.Context, input *ec2.DescribeInstancesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {

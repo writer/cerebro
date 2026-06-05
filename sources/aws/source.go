@@ -136,6 +136,13 @@ const (
 	familyEBSSnapshot                        = "ebs_snapshot"
 	familyEBSVolume                          = "ebs_volume"
 	familyEC2Instance                        = "ec2_instance"
+	familyVPC                                = "vpc"
+	familySubnet                             = "subnet"
+	familySecurityGroup                      = "security_group"
+	familyRouteTable                         = "route_table"
+	familyInternetGateway                    = "internet_gateway"
+	familyNATGateway                         = "nat_gateway"
+	familyVPCEndpoint                        = "vpc_endpoint"
 	familyECRRepository                      = "ecr_repository"
 	familyECSService                         = "ecs_service"
 	familyECSTask                            = "ecs_task"
@@ -430,6 +437,12 @@ type awsEC2API interface {
 	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
 	DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 	DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+	DescribeVpcs(context.Context, *ec2.DescribeVpcsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error)
+	DescribeSubnets(context.Context, *ec2.DescribeSubnetsInput, ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error)
+	DescribeRouteTables(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)
+	DescribeInternetGateways(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error)
+	DescribeNatGateways(context.Context, *ec2.DescribeNatGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error)
+	DescribeVpcEndpoints(context.Context, *ec2.DescribeVpcEndpointsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcEndpointsOutput, error)
 	DescribeVolumes(context.Context, *ec2.DescribeVolumesInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error)
 	DescribeSnapshots(context.Context, *ec2.DescribeSnapshotsInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotsOutput, error)
 	DescribeSnapshotAttribute(context.Context, *ec2.DescribeSnapshotAttributeInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotAttributeOutput, error)
@@ -1903,6 +1916,76 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(instance awsEC2Instance) string { return awssdk.ToString(instance.Instance.InstanceId) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.Vpc]{
+			Name:  familyVPC,
+			Label: "aws vpcs",
+			List:  listVPCs,
+			Event: vpcEvent,
+			URN: func(settings settings, vpc ec2types.Vpc) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpc:%s", settings.accountID, awssdk.ToString(vpc.VpcId)), nil
+			},
+			CursorFallback: func(vpc ec2types.Vpc) string { return awssdk.ToString(vpc.VpcId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.Subnet]{
+			Name:  familySubnet,
+			Label: "aws subnets",
+			List:  listSubnets,
+			Event: subnetEvent,
+			URN: func(settings settings, subnet ec2types.Subnet) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_subnet:%s", settings.accountID, awssdk.ToString(subnet.SubnetId)), nil
+			},
+			CursorFallback: func(subnet ec2types.Subnet) string { return awssdk.ToString(subnet.SubnetId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.SecurityGroup]{
+			Name:  familySecurityGroup,
+			Label: "aws security groups",
+			List:  listSecurityGroups,
+			Event: securityGroupEvent,
+			URN: func(settings settings, group ec2types.SecurityGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_security_group:%s", settings.accountID, awssdk.ToString(group.GroupId)), nil
+			},
+			CursorFallback: func(group ec2types.SecurityGroup) string { return awssdk.ToString(group.GroupId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.RouteTable]{
+			Name:  familyRouteTable,
+			Label: "aws route tables",
+			List:  listRouteTables,
+			Event: routeTableEvent,
+			URN: func(settings settings, table ec2types.RouteTable) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_route_table:%s", settings.accountID, awssdk.ToString(table.RouteTableId)), nil
+			},
+			CursorFallback: func(table ec2types.RouteTable) string { return awssdk.ToString(table.RouteTableId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.InternetGateway]{
+			Name:  familyInternetGateway,
+			Label: "aws internet gateways",
+			List:  listInternetGateways,
+			Event: internetGatewayEvent,
+			URN: func(settings settings, gateway ec2types.InternetGateway) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_internet_gateway:%s", settings.accountID, awssdk.ToString(gateway.InternetGatewayId)), nil
+			},
+			CursorFallback: func(gateway ec2types.InternetGateway) string { return awssdk.ToString(gateway.InternetGatewayId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.NatGateway]{
+			Name:  familyNATGateway,
+			Label: "aws nat gateways",
+			List:  listNATGateways,
+			Event: natGatewayEvent,
+			URN: func(settings settings, gateway ec2types.NatGateway) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_nat_gateway:%s", settings.accountID, awssdk.ToString(gateway.NatGatewayId)), nil
+			},
+			CursorFallback: func(gateway ec2types.NatGateway) string { return awssdk.ToString(gateway.NatGatewayId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.VpcEndpoint]{
+			Name:  familyVPCEndpoint,
+			Label: "aws vpc endpoints",
+			List:  listVPCEndpoints,
+			Event: vpcEndpointEvent,
+			URN: func(settings settings, endpoint ec2types.VpcEndpoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpc_endpoint:%s", settings.accountID, awssdk.ToString(endpoint.VpcEndpointId)), nil
+			},
+			CursorFallback: func(endpoint ec2types.VpcEndpoint) string { return awssdk.ToString(endpoint.VpcEndpointId) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[lambdatypes.FunctionConfiguration]{
 			Name:  familyLambdaFunction,
 			Label: "aws lambda functions",
@@ -2477,7 +2560,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreLegacyGroup, familyIdentityStoreLegacyMember, familyIdentityStoreLegacyUser, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyInternetGateway, familyNATGateway, familyVPCEndpoint, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreLegacyGroup, familyIdentityStoreLegacyMember, familyIdentityStoreLegacyUser, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
