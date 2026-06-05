@@ -16,11 +16,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5
 	github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/athena v1.58.3
+	github.com/aws/aws-sdk-go-v2/service/backup v1.57.5
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.58.2
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.75.1
+	github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
@@ -43,6 +45,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2
+	github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4
 	github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/sfn v1.42.2

@@ -26,12 +26,14 @@ import (
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/apprunner"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
+	"github.com/aws/aws-sdk-go-v2/service/backup"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -63,6 +65,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3control"
 	"github.com/aws/aws-sdk-go-v2/service/scheduler"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
@@ -101,9 +104,17 @@ const (
 	familyAssetMetadata            = "asset_metadata"
 	familyAthenaDataCatalog        = "athena_data_catalog"
 	familyAthenaWorkgroup          = "athena_workgroup"
+	familyBackupPlan               = "backup_plan"
+	familyBackupProtected          = "backup_protected_resource"
+	familyBackupRecoveryPoint      = "backup_recovery_point"
+	familyBackupVault              = "backup_vault"
 	familyCloudTrail               = "cloudtrail"
 	familyCloudWatchAlarm          = "cloudwatch_alarm"
 	familyCloudWatchLogGroup       = "cloudwatch_log_group"
+	familyDataSyncLocation         = "datasync_location"
+	familyDataSyncTask             = "datasync_task"
+	familyEBSSnapshot              = "ebs_snapshot"
+	familyEBSVolume                = "ebs_volume"
 	familyEC2Instance              = "ec2_instance"
 	familyECRRepository            = "ecr_repository"
 	familyECSService               = "ecs_service"
@@ -160,7 +171,9 @@ const (
 	familyPublicEndpoint           = "public_endpoint"
 	familyRDSInstance              = "rds_instance"
 	familyResourceExposure         = "resource_exposure"
+	familyS3AccessPoint            = "s3_access_point"
 	familyS3Bucket                 = "s3_bucket"
+	familyS3MultiRegionAccessPoint = "s3_multi_region_access_point"
 	familySchedulerSchedule        = "scheduler_schedule"
 	familySchedulerGroup           = "scheduler_schedule_group"
 	familySecret                   = "secret"
@@ -218,6 +231,7 @@ type awsClients struct {
 	awsRuntimeClients
 	awsAnalyticsClients
 	awsGovernanceClients
+	awsStorageClients
 }
 
 type awsPlatformClients struct {
@@ -239,6 +253,12 @@ type awsPlatformClients struct {
 	tagging      awsResourceGroupsTaggingAPI
 	s3           awsS3API
 	s3ByRegion   func(string) awsS3API
+}
+
+type awsStorageClients struct {
+	s3control awsS3ControlAPI
+	datasync  awsDataSyncAPI
+	backup    awsBackupAPI
 }
 
 type awsRuntimeClients struct {
@@ -301,6 +321,9 @@ type awsEC2API interface {
 	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
 	DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 	DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+	DescribeVolumes(context.Context, *ec2.DescribeVolumesInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error)
+	DescribeSnapshots(context.Context, *ec2.DescribeSnapshotsInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotsOutput, error)
+	DescribeSnapshotAttribute(context.Context, *ec2.DescribeSnapshotAttributeInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotAttributeOutput, error)
 }
 
 type awsECSAPI interface {
@@ -394,6 +417,16 @@ type awsS3API interface {
 	GetPublicAccessBlock(context.Context, *s3.GetPublicAccessBlockInput, ...func(*s3.Options)) (*s3.GetPublicAccessBlockOutput, error)
 }
 
+type awsS3ControlAPI interface {
+	ListAccessPoints(context.Context, *s3control.ListAccessPointsInput, ...func(*s3control.Options)) (*s3control.ListAccessPointsOutput, error)
+	GetAccessPoint(context.Context, *s3control.GetAccessPointInput, ...func(*s3control.Options)) (*s3control.GetAccessPointOutput, error)
+	GetAccessPointPolicyStatus(context.Context, *s3control.GetAccessPointPolicyStatusInput, ...func(*s3control.Options)) (*s3control.GetAccessPointPolicyStatusOutput, error)
+	ListMultiRegionAccessPoints(context.Context, *s3control.ListMultiRegionAccessPointsInput, ...func(*s3control.Options)) (*s3control.ListMultiRegionAccessPointsOutput, error)
+	GetMultiRegionAccessPoint(context.Context, *s3control.GetMultiRegionAccessPointInput, ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointOutput, error)
+	GetMultiRegionAccessPointPolicyStatus(context.Context, *s3control.GetMultiRegionAccessPointPolicyStatusInput, ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointPolicyStatusOutput, error)
+	ListTagsForResource(context.Context, *s3control.ListTagsForResourceInput, ...func(*s3control.Options)) (*s3control.ListTagsForResourceOutput, error)
+}
+
 type awsRDSAPI interface {
 	DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error)
 }
@@ -409,6 +442,24 @@ type awsSecretsManagerAPI interface {
 	ListSecrets(context.Context, *secretsmanager.ListSecretsInput, ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error)
 }
 
+type awsDataSyncAPI interface {
+	ListTasks(context.Context, *datasync.ListTasksInput, ...func(*datasync.Options)) (*datasync.ListTasksOutput, error)
+	DescribeTask(context.Context, *datasync.DescribeTaskInput, ...func(*datasync.Options)) (*datasync.DescribeTaskOutput, error)
+	ListLocations(context.Context, *datasync.ListLocationsInput, ...func(*datasync.Options)) (*datasync.ListLocationsOutput, error)
+	DescribeLocationS3(context.Context, *datasync.DescribeLocationS3Input, ...func(*datasync.Options)) (*datasync.DescribeLocationS3Output, error)
+	DescribeLocationEfs(context.Context, *datasync.DescribeLocationEfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationEfsOutput, error)
+	DescribeLocationFsxLustre(context.Context, *datasync.DescribeLocationFsxLustreInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxLustreOutput, error)
+	DescribeLocationFsxOntap(context.Context, *datasync.DescribeLocationFsxOntapInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOntapOutput, error)
+	DescribeLocationFsxOpenZfs(context.Context, *datasync.DescribeLocationFsxOpenZfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOpenZfsOutput, error)
+	DescribeLocationFsxWindows(context.Context, *datasync.DescribeLocationFsxWindowsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxWindowsOutput, error)
+	DescribeLocationNfs(context.Context, *datasync.DescribeLocationNfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationNfsOutput, error)
+	DescribeLocationSmb(context.Context, *datasync.DescribeLocationSmbInput, ...func(*datasync.Options)) (*datasync.DescribeLocationSmbOutput, error)
+	DescribeLocationObjectStorage(context.Context, *datasync.DescribeLocationObjectStorageInput, ...func(*datasync.Options)) (*datasync.DescribeLocationObjectStorageOutput, error)
+	DescribeLocationHdfs(context.Context, *datasync.DescribeLocationHdfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationHdfsOutput, error)
+	DescribeLocationAzureBlob(context.Context, *datasync.DescribeLocationAzureBlobInput, ...func(*datasync.Options)) (*datasync.DescribeLocationAzureBlobOutput, error)
+	ListTagsForResource(context.Context, *datasync.ListTagsForResourceInput, ...func(*datasync.Options)) (*datasync.ListTagsForResourceOutput, error)
+}
+
 type awsSQSAPI interface {
 	ListQueues(context.Context, *sqs.ListQueuesInput, ...func(*sqs.Options)) (*sqs.ListQueuesOutput, error)
 	GetQueueAttributes(context.Context, *sqs.GetQueueAttributesInput, ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error)
@@ -419,6 +470,15 @@ type awsSNSAPI interface {
 	ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error)
 	GetTopicAttributes(context.Context, *sns.GetTopicAttributesInput, ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error)
 	ListTagsForResource(context.Context, *sns.ListTagsForResourceInput, ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error)
+}
+
+type awsBackupAPI interface {
+	ListBackupVaults(context.Context, *backup.ListBackupVaultsInput, ...func(*backup.Options)) (*backup.ListBackupVaultsOutput, error)
+	ListBackupPlans(context.Context, *backup.ListBackupPlansInput, ...func(*backup.Options)) (*backup.ListBackupPlansOutput, error)
+	GetBackupPlan(context.Context, *backup.GetBackupPlanInput, ...func(*backup.Options)) (*backup.GetBackupPlanOutput, error)
+	ListProtectedResources(context.Context, *backup.ListProtectedResourcesInput, ...func(*backup.Options)) (*backup.ListProtectedResourcesOutput, error)
+	ListRecoveryPointsByBackupVault(context.Context, *backup.ListRecoveryPointsByBackupVaultInput, ...func(*backup.Options)) (*backup.ListRecoveryPointsByBackupVaultOutput, error)
+	ListTags(context.Context, *backup.ListTagsInput, ...func(*backup.Options)) (*backup.ListTagsOutput, error)
 }
 
 type awsAppRunnerAPI interface {
@@ -771,6 +831,50 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupVault]{
+			Name:  familyBackupVault,
+			Label: "aws backup vaults",
+			List:  listBackupVaults,
+			Event: backupVaultEvent,
+			URN: func(settings settings, vault awsBackupVault) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_vault:%s", settings.accountID, firstNonEmpty(vault.ARN, backupVaultARN(settings, vault.Name), vault.Name)), nil
+			},
+			CursorFallback: func(vault awsBackupVault) string { return firstNonEmpty(vault.ARN, vault.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupPlan]{
+			Name:  familyBackupPlan,
+			Label: "aws backup plans",
+			List:  listBackupPlans,
+			Event: backupPlanEvent,
+			URN: func(settings settings, plan awsBackupPlan) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_plan:%s", settings.accountID, firstNonEmpty(plan.ARN, plan.ID, plan.Name)), nil
+			},
+			CursorFallback: func(plan awsBackupPlan) string { return firstNonEmpty(plan.ARN, plan.ID, plan.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupProtectedResource]{
+			Name:  familyBackupProtected,
+			Label: "aws backup protected resources",
+			List:  listBackupProtectedResources,
+			Event: backupProtectedResourceEvent,
+			URN: func(settings settings, resource awsBackupProtectedResource) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_protected_resource:%s", settings.accountID, firstNonEmpty(awssdk.ToString(resource.ResourceArn), awssdk.ToString(resource.ResourceName))), nil
+			},
+			CursorFallback: func(resource awsBackupProtectedResource) string {
+				return firstNonEmpty(awssdk.ToString(resource.ResourceArn), awssdk.ToString(resource.ResourceName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupRecoveryPoint]{
+			Name:  familyBackupRecoveryPoint,
+			Label: "aws backup recovery points",
+			List:  listBackupRecoveryPoints,
+			Event: backupRecoveryPointEvent,
+			URN: func(settings settings, point awsBackupRecoveryPoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_recovery_point:%s", settings.accountID, firstNonEmpty(awssdk.ToString(point.RecoveryPointArn), awssdk.ToString(point.ResourceArn))), nil
+			},
+			CursorFallback: func(point awsBackupRecoveryPoint) string {
+				return firstNonEmpty(awssdk.ToString(point.RecoveryPointArn), awssdk.ToString(point.ResourceArn))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsKinesisStream]{
 			Name:  familyKinesisStream,
 			Label: "aws kinesis streams",
@@ -923,6 +1027,54 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(bucket awsS3Bucket) string { return firstNonEmpty(bucket.ARN, bucket.Name) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsS3AccessPoint]{
+			Name:  familyS3AccessPoint,
+			Label: "aws s3 access points",
+			List:  listS3AccessPoints,
+			Event: s3AccessPointEvent,
+			URN: func(settings settings, accessPoint awsS3AccessPoint) (string, error) {
+				name := firstNonEmpty(s3AccessPointDetailName(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.Name))
+				arn := s3AccessPointARN(settings, firstNonEmpty(s3AccessPointDetailARN(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.AccessPointArn)), name)
+				return fmt.Sprintf("urn:cerebro:%s:aws_s3_access_point:%s", settings.accountID, firstNonEmpty(arn, name)), nil
+			},
+			CursorFallback: func(accessPoint awsS3AccessPoint) string {
+				return firstNonEmpty(s3AccessPointDetailARN(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.AccessPointArn), awssdk.ToString(accessPoint.Summary.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsS3MultiRegionAccessPoint]{
+			Name:  familyS3MultiRegionAccessPoint,
+			Label: "aws s3 multi-region access points",
+			List:  listS3MultiRegionAccessPoints,
+			Event: s3MultiRegionAccessPointEvent,
+			URN: func(settings settings, accessPoint awsS3MultiRegionAccessPoint) (string, error) {
+				name := awssdk.ToString(accessPoint.Report.Name)
+				return fmt.Sprintf("urn:cerebro:%s:aws_s3_multi_region_access_point:%s", settings.accountID, firstNonEmpty(s3MultiRegionAccessPointARN(settings, name), name)), nil
+			},
+			CursorFallback: func(accessPoint awsS3MultiRegionAccessPoint) string {
+				return awssdk.ToString(accessPoint.Report.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.Volume]{
+			Name:  familyEBSVolume,
+			Label: "aws ebs volumes",
+			List:  listEBSVolumes,
+			Event: ebsVolumeEvent,
+			URN: func(settings settings, volume ec2types.Volume) (string, error) {
+				volumeID := awssdk.ToString(volume.VolumeId)
+				return fmt.Sprintf("urn:cerebro:%s:aws_ebs_volume:%s", settings.accountID, firstNonEmpty(ebsVolumeARN(settings, volumeID), volumeID)), nil
+			},
+			CursorFallback: func(volume ec2types.Volume) string { return awssdk.ToString(volume.VolumeId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEBSSnapshot]{
+			Name:  familyEBSSnapshot,
+			Label: "aws ebs snapshots",
+			List:  listEBSSnapshots,
+			Event: ebsSnapshotEvent,
+			URN: func(settings settings, snapshot awsEBSSnapshot) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ebs_snapshot:%s", settings.accountID, awssdk.ToString(snapshot.Snapshot.SnapshotId)), nil
+			},
+			CursorFallback: func(snapshot awsEBSSnapshot) string { return awssdk.ToString(snapshot.Snapshot.SnapshotId) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsRDSInstance]{
 			Name:  familyRDSInstance,
 			Label: "aws rds instances",
@@ -989,6 +1141,28 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(repository awsECRRepository) string {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDataSyncTask]{
+			Name:  familyDataSyncTask,
+			Label: "aws datasync tasks",
+			List:  listDataSyncTasks,
+			Event: dataSyncTaskEvent,
+			URN: func(settings settings, task awsDataSyncTask) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_datasync_task:%s", settings.accountID, awssdk.ToString(task.Task.TaskArn)), nil
+			},
+			CursorFallback: func(task awsDataSyncTask) string { return awssdk.ToString(task.Task.TaskArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDataSyncLocation]{
+			Name:  familyDataSyncLocation,
+			Label: "aws datasync locations",
+			List:  listDataSyncLocations,
+			Event: dataSyncLocationEvent,
+			URN: func(settings settings, location awsDataSyncLocation) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_datasync_location:%s", settings.accountID, firstNonEmpty(awssdk.ToString(location.Entry.LocationArn), awssdk.ToString(location.Entry.LocationUri))), nil
+			},
+			CursorFallback: func(location awsDataSyncLocation) string {
+				return firstNonEmpty(awssdk.ToString(location.Entry.LocationArn), awssdk.ToString(location.Entry.LocationUri))
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsAppRunnerService]{
@@ -1721,6 +1895,11 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			sso:           ssoadmin.NewFromConfig(cfg),
 			identityStore: identitystore.NewFromConfig(cfg),
 		},
+		awsStorageClients: awsStorageClients{
+			s3control: s3control.NewFromConfig(cfg),
+			datasync:  datasync.NewFromConfig(cfg),
+			backup:    backup.NewFromConfig(cfg),
+		},
 	}, nil
 }
 
@@ -1778,7 +1957,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
+	case familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
