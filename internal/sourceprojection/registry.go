@@ -60,6 +60,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"asset.data_sensitivity":                 assetDataSensitivityProjections,
 	"aws.access_key":                         awsAccessKeyProjections,
 	"aws.asset_metadata":                     awsCloudResourceProjections,
+	"aws.batch_compute_environment":          awsCloudResourceProjections,
+	"aws.batch_job_queue":                    awsCloudResourceProjections,
 	"aws.cloudtrail":                         awsCloudTrailProjections,
 	"aws.ec2_instance":                       awsEC2InstanceProjections,
 	"aws.ecr_repository":                     awsCloudResourceProjections,

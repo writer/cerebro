@@ -4,6 +4,8 @@ description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
+  - aws.batch_compute_environment
+  - aws.batch_job_queue
   - aws.cloudtrail
   - aws.ec2_instance
   - aws.ecr_repository
@@ -33,6 +35,8 @@ emitted_kinds:
 runtime_families:
   - access_key
   - asset_metadata
+  - batch_compute_environment
+  - batch_job_queue
   - cloudtrail
   - ec2_instance
   - ecr_repository

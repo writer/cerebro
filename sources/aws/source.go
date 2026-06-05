@@ -24,6 +24,7 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -77,6 +78,8 @@ const (
 	awsAssumeRoleSessionName  = "cerebro-source-runtime"
 	familyAccessKey           = "access_key"
 	familyAssetMetadata       = "asset_metadata"
+	familyBatchComputeEnv     = "batch_compute_environment"
+	familyBatchJobQueue       = "batch_job_queue"
 	familyCloudTrail          = "cloudtrail"
 	familyEC2Instance         = "ec2_instance"
 	familyECRRepository       = "ecr_repository"
@@ -144,6 +147,7 @@ type awsClients struct {
 	cfg          awssdk.Config
 	iam          awsIAMAPI
 	cloudTrail   awsCloudTrailAPI
+	batch        awsBatchAPI
 	ec2          awsEC2API
 	route53      awsRoute53API
 	cloudFront   awsCloudFrontAPI
@@ -527,6 +531,30 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBatchComputeEnvironment]{
+			Name:  familyBatchComputeEnv,
+			Label: "aws batch compute environments",
+			List:  listBatchComputeEnvironments,
+			Event: batchComputeEnvironmentEvent,
+			URN: func(settings settings, environment awsBatchComputeEnvironment) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_batch_compute_environment:%s", settings.accountID, firstNonEmpty(awssdk.ToString(environment.ComputeEnvironmentArn), awssdk.ToString(environment.ComputeEnvironmentName))), nil
+			},
+			CursorFallback: func(environment awsBatchComputeEnvironment) string {
+				return firstNonEmpty(awssdk.ToString(environment.ComputeEnvironmentArn), awssdk.ToString(environment.ComputeEnvironmentName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBatchJobQueue]{
+			Name:  familyBatchJobQueue,
+			Label: "aws batch job queues",
+			List:  listBatchJobQueues,
+			Event: batchJobQueueEvent,
+			URN: func(settings settings, queue awsBatchJobQueue) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_batch_job_queue:%s", settings.accountID, firstNonEmpty(awssdk.ToString(queue.JobQueueArn), awssdk.ToString(queue.JobQueueName))), nil
+			},
+			CursorFallback: func(queue awsBatchJobQueue) string {
+				return firstNonEmpty(awssdk.ToString(queue.JobQueueArn), awssdk.ToString(queue.JobQueueName))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsS3Bucket]{
 			Name:  familyS3Bucket,
 			Label: "aws s3 buckets",
@@ -871,6 +899,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg:          cfg,
 		iam:          iam.NewFromConfig(cfg),
 		cloudTrail:   cloudtrail.NewFromConfig(cfg),
+		batch:        batch.NewFromConfig(cfg),
 		ec2:          ec2.NewFromConfig(cfg),
 		route53:      route53.NewFromConfig(cfg),
 		cloudFront:   cloudfront.NewFromConfig(cfg),
@@ -949,7 +978,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyBatchComputeEnv, familyBatchJobQueue, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +993,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, batch_compute_environment, batch_job_queue, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }
