@@ -20,6 +20,8 @@ emitted_kinds:
   - aws.dynamodb_table
   - aws.datasync_location
   - aws.datasync_task
+  - aws.docdb_cluster
+  - aws.docdb_instance
   - aws.ebs_snapshot
   - aws.ebs_volume
   - aws.athena_data_catalog
@@ -37,6 +39,9 @@ emitted_kinds:
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
+  - aws.elasticache_cluster
+  - aws.elasticache_replication_group
+  - aws.elasticache_subnet_group
   - aws.globalaccelerator_accelerator
   - aws.globalaccelerator_listener
   - aws.globalaccelerator_endpoint_group
@@ -77,20 +82,27 @@ emitted_kinds:
   - aws.inspector2_finding
   - aws.macie2_finding
   - aws.network_firewall
+  - aws.fsx_file_system
   - aws.kinesis_stream
   - aws.kms_key
   - aws.lakeformation_lf_tag
   - aws.lakeformation_permission
   - aws.lakeformation_resource
   - aws.msk_cluster
+  - aws.neptune_cluster
+  - aws.neptune_instance
   - aws.identitystore_group
   - aws.identitystore_group_membership
   - aws.identitystore_user
   - aws.organizations_account
   - aws.organizations_organizational_unit
   - aws.organizations_policy
+  - aws.opensearch_domain
+  - aws.opensearch_serverless_collection
+  - aws.opensearch_serverless_security_policy
   - aws.public_endpoint
   - aws.rds_instance
+  - aws.redshift_cluster
   - aws.resource_exposure
   - aws.route53_resolver_endpoint
   - aws.route53_resolver_rule
@@ -123,6 +135,8 @@ runtime_families:
   - dynamodb_table
   - datasync_location
   - datasync_task
+  - docdb_cluster
+  - docdb_instance
   - ebs_snapshot
   - ebs_volume
   - athena_data_catalog
@@ -140,6 +154,9 @@ runtime_families:
   - eks_nodegroup
   - eks_fargate_profile
   - eks_pod_identity_association
+  - elasticache_cluster
+  - elasticache_replication_group
+  - elasticache_subnet_group
   - globalaccelerator_accelerator
   - globalaccelerator_listener
   - globalaccelerator_endpoint_group
@@ -178,6 +195,7 @@ runtime_families:
   - identity_store_group_membership
   - identity_store_user
   - inspector2_finding
+  - fsx_file_system
   - kms_key
   - macie2_finding
   - network_firewall
@@ -186,15 +204,21 @@ runtime_families:
   - lakeformation_permission
   - lakeformation_resource
   - msk_cluster
+  - neptune_cluster
+  - neptune_instance
   - identitystore_group
   - identitystore_group_membership
   - identitystore_user
   - organizations_account
   - organizations_organizational_unit
   - organizations_policy
+  - opensearch_domain
+  - opensearch_serverless_collection
+  - opensearch_serverless_security_policy
   - organizations_root
   - public_endpoint
   - rds_instance
+  - redshift_cluster
   - resource_exposure
   - route53_resolver_endpoint
   - route53_resolver_rule

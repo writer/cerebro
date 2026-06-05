@@ -23,10 +23,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3
-	github.com/aws/aws-sdk-go-v2/service/configservice v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.58.2
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.75.1
+	github.com/aws/aws-sdk-go-v2/service/configservice v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5
+	github.com/aws/aws-sdk-go-v2/service/docdb v1.49.3
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.57.9
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.21
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2
@@ -34,26 +35,31 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
 	github.com/aws/aws-sdk-go-v2/service/efs v1.42.0
 	github.com/aws/aws-sdk-go-v2/service/eks v1.84.5
+	github.com/aws/aws-sdk-go-v2/service/elasticache v1.54.2
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.3
-	github.com/aws/aws-sdk-go-v2/service/guardduty v1.79.2
-	github.com/aws/aws-sdk-go-v2/service/iam v1.54.3
-	github.com/aws/aws-sdk-go-v2/service/inspector2 v1.49.1
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.46.5
 	github.com/aws/aws-sdk-go-v2/service/firehose v1.43.1
+	github.com/aws/aws-sdk-go-v2/service/fsx v1.66.5
 	github.com/aws/aws-sdk-go-v2/service/globalaccelerator v1.36.5
 	github.com/aws/aws-sdk-go-v2/service/glue v1.143.0
+	github.com/aws/aws-sdk-go-v2/service/guardduty v1.79.2
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.3
 	github.com/aws/aws-sdk-go-v2/service/identitystore v1.37.5
+	github.com/aws/aws-sdk-go-v2/service/inspector2 v1.49.1
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.52.5
 	github.com/aws/aws-sdk-go-v2/service/kinesis v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.53.2
 	github.com/aws/aws-sdk-go-v2/service/lakeformation v1.48.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2
 	github.com/aws/aws-sdk-go-v2/service/macie2 v1.52.1
+	github.com/aws/aws-sdk-go-v2/service/neptune v1.45.2
 	github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.61.6
+	github.com/aws/aws-sdk-go-v2/service/opensearch v1.70.6
+	github.com/aws/aws-sdk-go-v2/service/opensearchserverless v1.32.0
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.51.9
 	github.com/aws/aws-sdk-go-v2/service/pipes v1.24.5
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.0
+	github.com/aws/aws-sdk-go-v2/service/redshift v1.63.2
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2
 	github.com/aws/aws-sdk-go-v2/service/route53resolver v1.45.3
@@ -68,8 +74,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.69.2
 	github.com/aws/aws-sdk-go-v2/service/ssoadmin v1.39.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.2
-	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.72.3
 	github.com/aws/aws-sdk-go-v2/service/vpclattice v1.22.1
+	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.72.3
 	github.com/aws/smithy-go v1.27.1
 	github.com/google/go-github/v66 v66.0.0
 	github.com/jackc/pgx/v5 v5.10.0
