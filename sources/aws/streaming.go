@@ -395,6 +395,9 @@ func mskSecurityGroupIDs(cluster kafkatypes.Cluster) []string {
 }
 
 func mskClusterEncrypted(cluster kafkatypes.Cluster) bool {
+	if cluster.Serverless != nil {
+		return true
+	}
 	return mskKMSKeyID(cluster) != "" || mskInClusterEncryption(cluster) || mskClientBrokerEncryption(cluster) != ""
 }
 
@@ -406,6 +409,9 @@ func mskKMSKeyID(cluster kafkatypes.Cluster) string {
 }
 
 func mskClientBrokerEncryption(cluster kafkatypes.Cluster) string {
+	if cluster.Serverless != nil {
+		return "TLS"
+	}
 	if cluster.Provisioned == nil || cluster.Provisioned.EncryptionInfo == nil || cluster.Provisioned.EncryptionInfo.EncryptionInTransit == nil {
 		return ""
 	}
@@ -413,6 +419,9 @@ func mskClientBrokerEncryption(cluster kafkatypes.Cluster) string {
 }
 
 func mskInClusterEncryption(cluster kafkatypes.Cluster) bool {
+	if cluster.Serverless != nil {
+		return true
+	}
 	if cluster.Provisioned == nil || cluster.Provisioned.EncryptionInfo == nil || cluster.Provisioned.EncryptionInfo.EncryptionInTransit == nil {
 		return false
 	}
