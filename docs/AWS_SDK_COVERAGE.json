@@ -1,0 +1,275 @@
+{
+  "description": "AWS SDK service modules used by Cerebro and how the AWS source covers their inventory surface.",
+  "generic_asset_metadata_backstop": "The aws asset_metadata family calls Resource Groups Tagging API GetResources without ResourceTypeFilters, so taggable resources from SDK services are projected as typed cloud resources even when no service-specific family exists.",
+  "services": [
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "public_endpoint"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/apigateway",
+      "service": "apigateway",
+      "version": "v1.40.5"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "public_endpoint"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/apigatewayv2",
+      "service": "apigatewayv2",
+      "version": "v1.35.5"
+    },
+    {
+      "coverage_status": "non_inventory",
+      "explicit_families": [],
+      "generic_asset_metadata": false,
+      "module": "github.com/aws/aws-sdk-go-v2/service/bedrockruntime",
+      "note": "runtime invocation client; not an AWS asset inventory API",
+      "service": "bedrockruntime",
+      "version": "v1.53.4"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/cloudcontrol",
+      "service": "cloudcontrol",
+      "version": "v1.30.5"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "public_endpoint"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/cloudfront",
+      "service": "cloudfront",
+      "version": "v1.65.1"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "cloudtrail"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/cloudtrail",
+      "service": "cloudtrail",
+      "version": "v1.56.3"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "ec2_instance",
+        "public_endpoint",
+        "resource_exposure"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/ec2",
+      "service": "ec2",
+      "version": "v1.305.2"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "ecr_repository"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/ecr",
+      "service": "ecr",
+      "version": "v1.58.2"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "ecs_service",
+        "ecs_task",
+        "ecs_task_definition"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/ecs",
+      "service": "ecs",
+      "version": "v1.82.3"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "eks_cluster",
+        "eks_nodegroup",
+        "eks_fargate_profile",
+        "eks_pod_identity_association"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/eks",
+      "service": "eks",
+      "version": "v1.84.5"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "public_endpoint"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2",
+      "service": "elasticloadbalancingv2",
+      "version": "v1.55.3"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "access_key",
+        "effective_permission",
+        "iam_group",
+        "iam_group_membership",
+        "iam_role",
+        "iam_role_assignment",
+        "iam_role_trust",
+        "iam_user"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/iam",
+      "service": "iam",
+      "version": "v1.54.3"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "kms_key"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/kms",
+      "service": "kms",
+      "version": "v1.53.2"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "lambda_function"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/lambda",
+      "service": "lambda",
+      "version": "v1.92.2"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "rds_instance"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/rds",
+      "service": "rds",
+      "version": "v1.119.0"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi",
+      "service": "resourcegroupstaggingapi",
+      "version": "v1.33.2"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "public_endpoint"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/route53",
+      "service": "route53",
+      "version": "v1.63.2"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "s3_bucket"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/s3",
+      "service": "s3",
+      "version": "v1.103.2"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "secret"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/secretsmanager",
+      "service": "secretsmanager",
+      "version": "v1.42.1"
+    },
+    {
+      "coverage_status": "non_inventory",
+      "explicit_families": [],
+      "generic_asset_metadata": false,
+      "module": "github.com/aws/aws-sdk-go-v2/service/signin",
+      "note": "AWS auth helper; not an AWS asset inventory API",
+      "service": "signin",
+      "version": "v1.1.4"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "sns_topic"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/sns",
+      "service": "sns",
+      "version": "v1.39.21"
+    },
+    {
+      "coverage_status": "explicit",
+      "explicit_families": [
+        "asset_metadata",
+        "sqs_queue"
+      ],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/sqs",
+      "service": "sqs",
+      "version": "v1.43.1"
+    },
+    {
+      "coverage_status": "non_inventory",
+      "explicit_families": [],
+      "generic_asset_metadata": false,
+      "module": "github.com/aws/aws-sdk-go-v2/service/sso",
+      "note": "AWS auth helper; not an AWS asset inventory API",
+      "service": "sso",
+      "version": "v1.31.2"
+    },
+    {
+      "coverage_status": "non_inventory",
+      "explicit_families": [],
+      "generic_asset_metadata": false,
+      "module": "github.com/aws/aws-sdk-go-v2/service/ssooidc",
+      "note": "AWS auth helper; not an AWS asset inventory API",
+      "service": "ssooidc",
+      "version": "v1.36.5"
+    },
+    {
+      "coverage_status": "non_inventory",
+      "explicit_families": [],
+      "generic_asset_metadata": false,
+      "module": "github.com/aws/aws-sdk-go-v2/service/sts",
+      "note": "AWS identity/session API used to validate and assume source credentials",
+      "service": "sts",
+      "version": "v1.43.2"
+    }
+  ],
+  "uncovered_services": []
+}

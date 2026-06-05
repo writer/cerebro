@@ -17,6 +17,7 @@ func newCloudPublicResourceExposureGraphRule() Rule {
 		"aws": {
 			"asset_metadata",
 			"ec2_instance",
+			"ecr_repository",
 			"ecs_service",
 			"ecs_task",
 			"ecs_task_definition",
@@ -24,9 +25,15 @@ func newCloudPublicResourceExposureGraphRule() Rule {
 			"eks_nodegroup",
 			"eks_fargate_profile",
 			"eks_pod_identity_association",
+			"kms_key",
 			"lambda_function",
 			"public_endpoint",
+			"rds_instance",
 			"resource_exposure",
+			"s3_bucket",
+			"secret",
+			"sns_topic",
+			"sqs_queue",
 		},
 		"azure": {
 			"aks_cluster",
@@ -83,7 +90,7 @@ RETURN resource.urn AS primary_urn,
        resource.entity_type AS primary_type,
        resource.urn AS fingerprint_key,
        CASE
-         WHEN resource.entity_type IN ['aws.security.group', 'aws.application.load.balancer', 'aws.apigatewayv2.api', 'aws.cloudfront.distribution'] THEN 'HIGH'
+         WHEN resource.entity_type IN ['aws.security.group', 'aws.network.interface', 'aws.application.load.balancer', 'aws.apigateway.rest.api', 'aws.apigatewayv2.api', 'aws.cloudfront.distribution', 'aws.elastic.ip'] THEN 'HIGH'
          ELSE 'MEDIUM'
        END AS severity,
        'Cloud resource ' + coalesce(resource.label, resource.urn) + ' is publicly exposed' AS summary,

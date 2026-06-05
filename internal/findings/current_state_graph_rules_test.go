@@ -57,6 +57,29 @@ func TestCurrentStateGraphRulesEmitStableFindings(t *testing.T) {
 			}},
 		},
 		{
+			name:    "cloud public sensitive resource",
+			rule:    newCloudPublicSensitiveResourceGraphRule(),
+			runtime: &cerebrov1.SourceRuntime{Id: "aws-assets", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "asset_metadata"}},
+			row: ports.CypherRow{Values: map[string]any{
+				"primary_urn":     "urn:cerebro:writer:aws_s3_bucket:arn:aws:s3:::prod-data",
+				"primary_label":   "prod-data",
+				"primary_type":    "aws.s3.bucket",
+				"fingerprint_key": "urn:cerebro:writer:aws_s3_bucket:arn:aws:s3:::prod-data|urn:cerebro:writer:data_classification:restricted",
+				"severity":        "CRITICAL",
+				"summary":         "Publicly reachable sensitive cloud resource prod-data",
+				"action":          "Remove public reachability or document a time-bound approved exception with the resource owner",
+				"resource_urns": []any{
+					"urn:cerebro:writer:aws_s3_bucket:arn:aws:s3:::prod-data",
+					"urn:cerebro:writer:aws_public_principal:public_internet",
+					"urn:cerebro:writer:data_classification:restricted",
+				},
+				"evidence": []any{
+					map[string]any{"urn": "urn:cerebro:writer:aws_public_principal:public_internet", "label": "public internet", "entity_type": "aws.public_principal", "relation": "can_reach", "attributes_json": `{"at":"2026-04-23T00:00:00Z"}`},
+					map[string]any{"urn": "urn:cerebro:writer:data_classification:restricted", "label": "restricted", "entity_type": "data.classification", "relation": "has_classification", "attributes_json": `{}`},
+				},
+			}},
+		},
+		{
 			name:    "github credential",
 			rule:    newGitHubProgrammaticCredentialReviewRule(),
 			runtime: runtime,
@@ -187,6 +210,11 @@ func TestCurrentStateGraphRuleQueriesUseEnrichedCurrentState(t *testing.T) {
 			name: "cloud exposed privileged compute links reachability to runtime role privilege",
 			rule: newCloudExposedPrivilegedComputeRoleRule(),
 			want: []string{`entity_type: 'aws.ecs.task_definition'`, `relation: 'runs_as'`, `relation: 'depends_on'`, `relation: 'can_reach'`, `relation: 'member_of'`, `relation: 'attached_to'`, `access.relation IN ['can_admin', 'can_assume', 'can_impersonate', 'can_perform']`, `duration('P30D')`},
+		},
+		{
+			name: "cloud public sensitive resource uses any cloud entity with current reachability and sensitivity",
+			rule: newCloudPublicSensitiveResourceGraphRule(),
+			want: []string{`relation: 'can_reach'`, `resource.entity_type STARTS WITH 'aws.'`, `relation: 'has_classification'`, `relation: 'tagged_as'`, `"crown_jewel":"true"`, `duration('P30D')`},
 		},
 		{
 			name: "github credentials exclude inactive resources",

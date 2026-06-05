@@ -65,6 +65,7 @@ var catalogFS embed.FS
 
 var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
+var awsResourceTypeFilterPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+(:[A-Za-z0-9_.+*\\/-]+)?$`)
 
 const (
 	defaultFamily             = familyCloudTrail
@@ -135,6 +136,7 @@ type settings struct {
 	startTime                  string
 	endTime                    string
 	since                      string
+	resourceTypeFilters        []string
 	perPage                    int
 }
 
@@ -948,6 +950,13 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 		settings.perPage = perPage
 	}
+	if rawFilters := configValue(cfg, "resource_type_filters"); rawFilters != "" {
+		filters, err := parseAWSResourceTypeFilters(rawFilters)
+		if err != nil {
+			return settings, err
+		}
+		settings.resourceTypeFilters = filters
+	}
 	switch settings.family {
 	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
@@ -1086,15 +1095,16 @@ func listIAMRoleTrusts(ctx context.Context, clients awsClients, settings setting
 }
 
 func listAssetMetadata(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAssetMetadata, string, error) {
-	out, err := clients.tagging.GetResources(ctx, &resourcegroupstaggingapi.GetResourcesInput{
-		PaginationToken:  stringPtr(cursor),
-		ResourcesPerPage: int32Ptr(assetMetadataPageSize(limit)),
-	})
+	input := &resourcegroupstaggingapi.GetResourcesInput{
+		PaginationToken:     stringPtr(cursor),
+		ResourcesPerPage:    int32Ptr(assetMetadataPageSize(limit)),
+		ResourceTypeFilters: settings.resourceTypeFilters,
+	}
+	out, err := clients.tagging.GetResources(ctx, input)
 	var expired *resourcegroupstaggingapitypes.PaginationTokenExpiredException
 	if err != nil && strings.TrimSpace(cursor) != "" && errors.As(err, &expired) {
-		out, err = clients.tagging.GetResources(ctx, &resourcegroupstaggingapi.GetResourcesInput{
-			ResourcesPerPage: int32Ptr(assetMetadataPageSize(limit)),
-		})
+		input.PaginationToken = nil
+		out, err = clients.tagging.GetResources(ctx, input)
 	}
 	if err != nil {
 		return nil, "", err
@@ -1114,6 +1124,35 @@ func listAssetMetadata(ctx context.Context, clients awsClients, settings setting
 		})
 	}
 	return records, awssdk.ToString(out.PaginationToken), nil
+}
+
+func parseAWSResourceTypeFilters(raw string) ([]string, error) {
+	values := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+	})
+	filters := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		filter := strings.TrimSpace(value)
+		if filter == "" {
+			continue
+		}
+		if len(filter) > 256 {
+			return nil, fmt.Errorf("aws resource_type_filters contains value longer than 256 characters")
+		}
+		if !awsResourceTypeFilterPattern.MatchString(filter) {
+			return nil, fmt.Errorf("aws resource_type_filters value %q must be service[:resourceType] with AWS ARN-safe characters", filter)
+		}
+		if _, ok := seen[filter]; ok {
+			continue
+		}
+		seen[filter] = struct{}{}
+		filters = append(filters, filter)
+	}
+	if len(filters) > 100 {
+		return nil, fmt.Errorf("aws resource_type_filters supports at most 100 values per Resource Groups Tagging API request")
+	}
+	return filters, nil
 }
 
 func listResourceExposures(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsResourceExposure, string, error) {
@@ -3301,36 +3340,116 @@ func awsAssetMetadataIdentity(settings settings, arn string) (string, string, st
 }
 
 func awsResourceTypeAndID(service string, arn string, resource string) (string, string) {
+	resource = strings.TrimPrefix(strings.TrimSpace(resource), "/")
 	switch service {
+	case "apigateway":
+		return awsAPIGatewayResourceTypeAndID(arn, resource)
+	case "dynamodb":
+		return awsSimpleTypedResource("dynamodb", resource, arn, map[string]string{"table": "dynamodb_table"})
 	case "ec2":
 		return awsEC2ResourceTypeAndID(arn, resource)
-	case "elasticloadbalancing":
+	case "ecr":
+		return awsSimpleTypedResource("ecr", resource, arn, map[string]string{"repository": "ecr_repository"})
+	case "ecs":
+		return awsSimpleTypedResource("ecs", resource, arn, map[string]string{"cluster": "ecs_cluster", "service": "ecs_service", "task": "ecs_task", "task-definition": "ecs_task_definition"})
+	case "eks":
+		return awsSimpleTypedResource("eks", resource, arn, map[string]string{"cluster": "eks_cluster", "nodegroup": "eks_nodegroup", "fargateprofile": "eks_fargate_profile", "podidentityassociation": "eks_pod_identity_association"})
+	case "elasticloadbalancing", "elasticloadbalancingv2":
 		return awsELBResourceTypeAndID(arn, resource)
+	case "events":
+		return awsSimpleTypedResource("eventbridge", resource, arn, map[string]string{"rule": "eventbridge_rule", "event-bus": "eventbridge_event_bus"})
 	case "cloudfront":
 		if id, ok := strings.CutPrefix(resource, "distribution/"); ok {
 			return "cloudfront_distribution", firstNonEmpty(arn, id)
 		}
+		return awsSimpleTypedResource("cloudfront", resource, arn, map[string]string{"distribution": "cloudfront_distribution"})
+	case "iam":
+		return awsSimpleTypedResource("iam", resource, arn, map[string]string{"role": "iam_role", "user": "iam_user", "group": "iam_group", "policy": "iam_policy", "instance-profile": "iam_instance_profile", "oidc-provider": "iam_oidc_provider", "saml-provider": "iam_saml_provider"})
+	case "kms":
+		return awsSimpleTypedResource("kms", resource, arn, map[string]string{"key": "kms_key", "alias": "kms_alias"})
 	case "s3":
-		return "bucket", firstNonEmpty(arn, strings.TrimPrefix(resource, ":::"))
+		return "s3_bucket", firstNonEmpty(arn, strings.TrimPrefix(resource, ":::"))
 	case "rds":
-		if before, after, ok := strings.Cut(resource, ":"); ok {
-			return normalizeAWSResourceType(before), firstNonEmpty(arn, after)
-		}
+		return awsSimpleTypedResource("rds", resource, arn, map[string]string{"db": "rds_instance", "cluster": "rds_cluster", "snapshot": "rds_snapshot", "cluster-snapshot": "rds_cluster_snapshot", "subgrp": "rds_subnet_group"})
 	case "lambda":
-		if before, after, ok := strings.Cut(resource, ":"); ok {
-			return normalizeAWSResourceType(before), firstNonEmpty(arn, after)
-		}
+		return awsSimpleTypedResource("lambda", resource, arn, map[string]string{"function": "lambda_function", "layer": "lambda_layer", "event-source-mapping": "lambda_event_source_mapping"})
+	case "logs":
+		return awsSimpleTypedResource("logs", resource, arn, map[string]string{"log-group": "cloudwatch_log_group"})
+	case "secretsmanager":
+		return awsSimpleTypedResource("secretsmanager", resource, arn, map[string]string{"secret": "secret"})
+	case "sns":
+		return "sns_topic", firstNonEmpty(arn, resource)
+	case "sqs":
+		return "sqs_queue", firstNonEmpty(arn, resource)
+	case "states":
+		return awsSimpleTypedResource("states", resource, arn, map[string]string{"stateMachine": "stepfunctions_state_machine", "activity": "stepfunctions_activity"})
 	}
 	resourceType := "resource"
 	resourceID := resource
 	if before, after, ok := strings.Cut(resource, "/"); ok {
-		resourceType = normalizeAWSResourceType(before)
+		resourceType = normalizeAWSServiceResourceType(service, before)
 		resourceID = after
 	} else if before, after, ok := strings.Cut(resource, ":"); ok {
-		resourceType = normalizeAWSResourceType(before)
+		resourceType = normalizeAWSServiceResourceType(service, before)
+		resourceID = after
+	} else if service != "" {
+		resourceType = normalizeAWSServiceResourceType(service, "resource")
+	}
+	return resourceType, firstNonEmpty(arn, resourceID)
+}
+
+func awsAPIGatewayResourceTypeAndID(arn string, resource string) (string, string) {
+	switch {
+	case strings.HasPrefix(resource, "domainnames/"):
+		return "apigateway_domain", firstNonEmpty(arn, strings.TrimPrefix(resource, "domainnames/"))
+	case strings.HasPrefix(resource, "restapis/"):
+		return "apigateway_rest_api", firstNonEmpty(arn, strings.TrimPrefix(resource, "restapis/"))
+	case strings.HasPrefix(resource, "apis/"):
+		return "apigatewayv2_api", firstNonEmpty(arn, strings.TrimPrefix(resource, "apis/"))
+	default:
+		return awsSimpleTypedResource("apigateway", resource, arn, map[string]string{"domainnames": "apigateway_domain", "restapis": "apigateway_rest_api", "apis": "apigatewayv2_api"})
+	}
+}
+
+func awsSimpleTypedResource(service string, resource string, arn string, typeMap map[string]string) (string, string) {
+	resourceType := ""
+	resourceID := strings.TrimSpace(resource)
+	if before, after, ok := strings.Cut(resource, "/"); ok {
+		resourceType = typeMap[before]
+		if resourceType == "" {
+			resourceType = normalizeAWSServiceResourceType(service, before)
+		}
+		resourceID = after
+	} else if before, after, ok := strings.Cut(resource, ":"); ok {
+		resourceType = typeMap[before]
+		if resourceType == "" {
+			resourceType = normalizeAWSServiceResourceType(service, before)
+		}
 		resourceID = after
 	}
-	return resourceType, firstNonEmpty(resourceID, arn)
+	if resourceType == "" {
+		if mapped := typeMap[resource]; mapped != "" {
+			resourceType = mapped
+		} else {
+			resourceType = normalizeAWSServiceResourceType(service, "resource")
+		}
+	}
+	return resourceType, firstNonEmpty(arn, resourceID)
+}
+
+func normalizeAWSServiceResourceType(service string, resourceType string) string {
+	service = normalizeAWSResourceType(service)
+	resourceType = normalizeAWSResourceType(resourceType)
+	if service == "" {
+		return firstNonEmpty(resourceType, "resource")
+	}
+	if resourceType == "" || resourceType == "resource" {
+		return service + "_resource"
+	}
+	if strings.HasPrefix(resourceType, service+"_") {
+		return resourceType
+	}
+	return service + "_" + resourceType
 }
 
 func awsEC2ResourceTypeAndID(arn string, resource string) (string, string) {

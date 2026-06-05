@@ -56,6 +56,43 @@ func TestProjectGCPCloudResourceMetadataLinksAccountExposureOwnerClassificationA
 	}
 }
 
+func TestProjectAWSGenericAssetMetadataCreatesTypedCloudResource(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:dynamodb:us-east-1:123456789012:table/orders"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-tagged-dynamodb-table",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "asset.data_sensitivity",
+		Attributes: map[string]string{
+			"account_id":          "123456789012",
+			"data_classification": "restricted",
+			"internet_exposed":    "true",
+			"owner":               "data-owner@writer.com",
+			"public":              "true",
+			"resource_arn":        resourceARN,
+			"resource_name":       "orders",
+			"resource_provider":   "aws",
+			"resource_type":       "dynamodb_table",
+			"source_provider":     "aws",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_dynamodb_table:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.dynamodb.table" {
+		t.Fatalf("dynamodb table entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationOwnedBy, "urn:cerebro:writer:owner:data-owner@writer.com")
+	assertProjectedLink(t, state, resourceURN, relationHasClassification, "urn:cerebro:writer:data_classification:restricted")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+}
+
 func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

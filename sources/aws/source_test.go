@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -805,6 +806,60 @@ func TestReadAWSAssetMetadataPreview(t *testing.T) {
 	}
 }
 
+func TestAWSAssetMetadataIdentityNormalizesSDKResourceTypes(t *testing.T) {
+	for _, tt := range []struct {
+		arn              string
+		wantResourceType string
+		wantResourceID   string
+	}{
+		{
+			arn:              "arn:aws:s3:::prod-data",
+			wantResourceType: "s3_bucket",
+			wantResourceID:   "arn:aws:s3:::prod-data",
+		},
+		{
+			arn:              "arn:aws:lambda:us-east-1:123456789012:function:orders",
+			wantResourceType: "lambda_function",
+			wantResourceID:   "arn:aws:lambda:us-east-1:123456789012:function:orders",
+		},
+		{
+			arn:              "arn:aws:rds:us-east-1:123456789012:db:orders",
+			wantResourceType: "rds_instance",
+			wantResourceID:   "arn:aws:rds:us-east-1:123456789012:db:orders",
+		},
+		{
+			arn:              "arn:aws:apigateway:us-east-1::/restapis/rest123",
+			wantResourceType: "apigateway_rest_api",
+			wantResourceID:   "arn:aws:apigateway:us-east-1::/restapis/rest123",
+		},
+		{
+			arn:              "arn:aws:dynamodb:us-east-1:123456789012:table/orders",
+			wantResourceType: "dynamodb_table",
+			wantResourceID:   "arn:aws:dynamodb:us-east-1:123456789012:table/orders",
+		},
+		{
+			arn:              "arn:aws:sqs:us-east-1:123456789012:orders",
+			wantResourceType: "sqs_queue",
+			wantResourceID:   "arn:aws:sqs:us-east-1:123456789012:orders",
+		},
+		{
+			arn:              "arn:aws:backup:us-east-1:123456789012:backup-vault:prod",
+			wantResourceType: "backup_vault",
+			wantResourceID:   "arn:aws:backup:us-east-1:123456789012:backup-vault:prod",
+		},
+	} {
+		t.Run(tt.wantResourceType, func(t *testing.T) {
+			resourceType, resourceID, _, _ := awsAssetMetadataIdentity(settings{region: "us-east-1"}, tt.arn)
+			if resourceType != tt.wantResourceType {
+				t.Fatalf("resourceType = %q, want %q", resourceType, tt.wantResourceType)
+			}
+			if resourceID != tt.wantResourceID {
+				t.Fatalf("resourceID = %q, want %q", resourceID, tt.wantResourceID)
+			}
+		})
+	}
+}
+
 func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 	topics := make([]snstypes.Topic, 0, 12)
 	attributes := make(map[string]map[string]string, 12)
@@ -992,6 +1047,33 @@ func TestReadAWSAssetMetadataRestartsExpiredPaginationToken(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["resource_id"]; got != "arn:aws:s3:::prod-data" {
 		t.Fatalf("resource_id = %q, want arn:aws:s3:::prod-data", got)
+	}
+}
+
+func TestReadAWSAssetMetadataPassesResourceTypeFilters(t *testing.T) {
+	var gotFilters []string
+	source := newTestSource(t, fakeAWS{getResources: func(_ context.Context, input *resourcegroupstaggingapi.GetResourcesInput, _ ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
+		gotFilters = append([]string(nil), input.ResourceTypeFilters...)
+		return &resourcegroupstaggingapi.GetResourcesOutput{ResourceTagMappingList: []resourcegroupstaggingapitypes.ResourceTagMapping{{
+			ResourceARN: awssdk.String("arn:aws:dynamodb:us-east-1:123456789012:table/orders"),
+		}}}, nil
+	}})
+	_, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id":            "123456789012",
+		"family":                familyAssetMetadata,
+		"resource_type_filters": "dynamodb:table,s3:bucket dynamodb:table",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(asset_metadata) error = %v", err)
+	}
+	if strings.Join(gotFilters, ",") != "dynamodb:table,s3:bucket" {
+		t.Fatalf("ResourceTypeFilters = %v, want deduplicated filters", gotFilters)
+	}
+}
+
+func TestParseAWSResourceTypeFiltersRejectsInvalidValues(t *testing.T) {
+	if _, err := parseAWSResourceTypeFilters("dynamodb:table, bad/filter!"); err == nil {
+		t.Fatal("parseAWSResourceTypeFilters accepted invalid value")
 	}
 }
 

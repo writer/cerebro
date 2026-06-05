@@ -59,6 +59,7 @@ func isCoordinationGraphRuleID(ruleID string) bool {
 		sentinelOneUnmitigatedThreatRuleID,
 		cloudCurrentPublicExposureReviewRuleID,
 		cloudExposedPrivilegedComputeRoleRuleID,
+		cloudPublicSensitiveResourceRuleID,
 		"graph-resource-multiple-open-findings":
 		return true
 	default:

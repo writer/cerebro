@@ -92,6 +92,7 @@ func newCloudSignalRules() []Rule {
 		newCloudPublicResourceExposureGraphRule(),
 		newCloudPublicExposurePrivilegedPrincipalRule(),
 		newCloudExposedPrivilegedComputeRoleRule(),
+		newCloudPublicSensitiveResourceGraphRule(),
 	}
 }
 
