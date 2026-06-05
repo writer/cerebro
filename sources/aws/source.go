@@ -36,11 +36,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/aws/aws-sdk-go-v2/service/efs"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -120,6 +123,9 @@ const (
 	familyCloudWatchLogGroup        = "cloudwatch_log_group"
 	familyDataSyncLocation          = "datasync_location"
 	familyDataSyncTask              = "datasync_task"
+	familyDynamoDBBackup            = "dynamodb_backup"
+	familyDynamoDBStream            = "dynamodb_stream"
+	familyDynamoDBTable             = "dynamodb_table"
 	familyEBSSnapshot               = "ebs_snapshot"
 	familyEBSVolume                 = "ebs_volume"
 	familyEC2Instance               = "ec2_instance"
@@ -127,6 +133,8 @@ const (
 	familyECSService                = "ecs_service"
 	familyECSTask                   = "ecs_task"
 	familyECSTaskDefinition         = "ecs_task_definition"
+	familyEFSAccessPoint            = "efs_access_point"
+	familyEFSFileSystem             = "efs_file_system"
 	familyEKSCluster                = "eks_cluster"
 	familyEKSNodegroup              = "eks_nodegroup"
 	familyEKSFargateProfile         = "eks_fargate_profile"
@@ -226,17 +234,21 @@ type settings struct {
 	legacyTenantlessAssumeRole bool
 	includeGlobal              bool
 	groupName                  string
-	groupID                    string
 	principalType              string
 	principalName              string
 	userName                   string
 	identityStoreID            string
-	identityCenterInstanceARN  string
-	permissionSetARN           string
-	targetAccountID            string
+	identityCenter             identityCenterSettings
 	cloudTrail                 cloudTrailSettings
 	wafv2Scope                 string
 	perPage                    int
+}
+
+type identityCenterSettings struct {
+	groupID          string
+	instanceARN      string
+	permissionSetARN string
+	targetAccountID  string
 }
 
 type cloudTrailSettings struct {
@@ -288,9 +300,12 @@ type awsPlatformClients struct {
 }
 
 type awsStorageClients struct {
-	s3control awsS3ControlAPI
-	datasync  awsDataSyncAPI
-	backup    awsBackupAPI
+	s3control       awsS3ControlAPI
+	datasync        awsDataSyncAPI
+	backup          awsBackupAPI
+	dynamodb        awsDynamoDBAPI
+	dynamodbStreams awsDynamoDBStreamsAPI
+	efs             awsEFSAPI
 }
 
 type awsRuntimeClients struct {
@@ -349,6 +364,20 @@ type awsCloudTrailAPI interface {
 	LookupEvents(context.Context, *cloudtrail.LookupEventsInput, ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error)
 }
 
+type awsDynamoDBAPI interface {
+	ListTables(context.Context, *dynamodb.ListTablesInput, ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error)
+	DescribeTable(context.Context, *dynamodb.DescribeTableInput, ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error)
+	ListTagsOfResource(context.Context, *dynamodb.ListTagsOfResourceInput, ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error)
+	DescribeContinuousBackups(context.Context, *dynamodb.DescribeContinuousBackupsInput, ...func(*dynamodb.Options)) (*dynamodb.DescribeContinuousBackupsOutput, error)
+	DescribeTimeToLive(context.Context, *dynamodb.DescribeTimeToLiveInput, ...func(*dynamodb.Options)) (*dynamodb.DescribeTimeToLiveOutput, error)
+	ListBackups(context.Context, *dynamodb.ListBackupsInput, ...func(*dynamodb.Options)) (*dynamodb.ListBackupsOutput, error)
+}
+
+type awsDynamoDBStreamsAPI interface {
+	ListStreams(context.Context, *dynamodbstreams.ListStreamsInput, ...func(*dynamodbstreams.Options)) (*dynamodbstreams.ListStreamsOutput, error)
+	DescribeStream(context.Context, *dynamodbstreams.DescribeStreamInput, ...func(*dynamodbstreams.Options)) (*dynamodbstreams.DescribeStreamOutput, error)
+}
+
 type awsEC2API interface {
 	DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
 	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
@@ -367,6 +396,13 @@ type awsECSAPI interface {
 	DescribeTasks(context.Context, *ecs.DescribeTasksInput, ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error)
 	ListTaskDefinitions(context.Context, *ecs.ListTaskDefinitionsInput, ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error)
 	DescribeTaskDefinition(context.Context, *ecs.DescribeTaskDefinitionInput, ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error)
+}
+
+type awsEFSAPI interface {
+	DescribeFileSystems(context.Context, *efs.DescribeFileSystemsInput, ...func(*efs.Options)) (*efs.DescribeFileSystemsOutput, error)
+	DescribeMountTargets(context.Context, *efs.DescribeMountTargetsInput, ...func(*efs.Options)) (*efs.DescribeMountTargetsOutput, error)
+	DescribeMountTargetSecurityGroups(context.Context, *efs.DescribeMountTargetSecurityGroupsInput, ...func(*efs.Options)) (*efs.DescribeMountTargetSecurityGroupsOutput, error)
+	DescribeAccessPoints(context.Context, *efs.DescribeAccessPointsInput, ...func(*efs.Options)) (*efs.DescribeAccessPointsOutput, error)
 }
 
 type awsEKSAPI interface {
@@ -883,6 +919,40 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDynamoDBTable]{
+			Name:  familyDynamoDBTable,
+			Label: "aws dynamodb tables",
+			List:  listDynamoDBTables,
+			Event: dynamoDBTableEvent,
+			URN: func(settings settings, table awsDynamoDBTable) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_dynamodb_table:%s", settings.accountID, firstNonEmpty(awssdk.ToString(table.Table.TableArn), awssdk.ToString(table.Table.TableName))), nil
+			},
+			CursorFallback: func(table awsDynamoDBTable) string {
+				return firstNonEmpty(awssdk.ToString(table.Table.TableArn), awssdk.ToString(table.Table.TableName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDynamoDBBackup]{
+			Name:  familyDynamoDBBackup,
+			Label: "aws dynamodb backups",
+			List:  listDynamoDBBackups,
+			Event: dynamoDBBackupEvent,
+			URN: func(settings settings, backup awsDynamoDBBackup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_dynamodb_backup:%s", settings.accountID, firstNonEmpty(awssdk.ToString(backup.BackupArn), awssdk.ToString(backup.BackupName))), nil
+			},
+			CursorFallback: func(backup awsDynamoDBBackup) string { return awssdk.ToString(backup.BackupArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDynamoDBStream]{
+			Name:  familyDynamoDBStream,
+			Label: "aws dynamodb streams",
+			List:  listDynamoDBStreams,
+			Event: dynamoDBStreamEvent,
+			URN: func(settings settings, stream awsDynamoDBStream) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_dynamodb_stream:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stream.Stream.StreamArn), awssdk.ToString(stream.Stream.StreamLabel))), nil
+			},
+			CursorFallback: func(stream awsDynamoDBStream) string {
+				return firstNonEmpty(awssdk.ToString(stream.Stream.StreamArn), awssdk.ToString(stream.Stream.StreamLabel))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsBatchComputeEnvironment]{
 			Name:  familyBatchComputeEnv,
 			Label: "aws batch compute environments",
@@ -1219,6 +1289,30 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEFSFileSystem]{
+			Name:  familyEFSFileSystem,
+			Label: "aws efs file systems",
+			List:  listEFSFileSystems,
+			Event: efsFileSystemEvent,
+			URN: func(settings settings, fileSystem awsEFSFileSystem) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_efs_file_system:%s", settings.accountID, firstNonEmpty(awssdk.ToString(fileSystem.FileSystem.FileSystemArn), awssdk.ToString(fileSystem.FileSystem.FileSystemId))), nil
+			},
+			CursorFallback: func(fileSystem awsEFSFileSystem) string {
+				return firstNonEmpty(awssdk.ToString(fileSystem.FileSystem.FileSystemArn), awssdk.ToString(fileSystem.FileSystem.FileSystemId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEFSAccessPoint]{
+			Name:  familyEFSAccessPoint,
+			Label: "aws efs access points",
+			List:  listEFSAccessPoints,
+			Event: efsAccessPointEvent,
+			URN: func(settings settings, accessPoint awsEFSAccessPoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_efs_access_point:%s", settings.accountID, firstNonEmpty(awssdk.ToString(accessPoint.AccessPoint.AccessPointArn), awssdk.ToString(accessPoint.AccessPoint.AccessPointId))), nil
+			},
+			CursorFallback: func(accessPoint awsEFSAccessPoint) string {
+				return firstNonEmpty(awssdk.ToString(accessPoint.AccessPoint.AccessPointArn), awssdk.ToString(accessPoint.AccessPoint.AccessPointId))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsDataSyncTask]{
 			Name:  familyDataSyncTask,
 			Label: "aws datasync tasks",
@@ -1545,7 +1639,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			List:  listLegacyIdentityStoreGroupMemberships,
 			Event: legacyIdentityStoreGroupMembershipEvent,
 			URN: func(settings settings, membership legacyIdentityStoreGroupMembership) (string, error) {
-				groupID := firstNonEmpty(awssdk.ToString(membership.Membership.GroupId), awssdk.ToString(membership.Group.GroupId), settings.groupID)
+				groupID := firstNonEmpty(awssdk.ToString(membership.Membership.GroupId), awssdk.ToString(membership.Group.GroupId), settings.identityCenter.groupID)
 				memberID := legacyIdentityStoreMembershipUserID(membership.Membership.MemberId)
 				return fmt.Sprintf("urn:cerebro:%s:aws_identity_store_group_membership:%s:%s", settings.accountID, groupID, memberID), nil
 			},
@@ -2066,9 +2160,12 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			identityStore: identitystore.NewFromConfig(cfg),
 		},
 		awsStorageClients: awsStorageClients{
-			s3control: s3control.NewFromConfig(cfg),
-			datasync:  datasync.NewFromConfig(cfg),
-			backup:    backup.NewFromConfig(cfg),
+			s3control:       s3control.NewFromConfig(cfg),
+			datasync:        datasync.NewFromConfig(cfg),
+			backup:          backup.NewFromConfig(cfg),
+			dynamodb:        dynamodb.NewFromConfig(cfg),
+			dynamodbStreams: dynamodbstreams.NewFromConfig(cfg),
+			efs:             efs.NewFromConfig(cfg),
 		},
 		awsSecurityClients: newAWSSecurityClients(cfg),
 	}, nil
@@ -2090,14 +2187,16 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		legacyTenantlessAssumeRole: configBool(cfg, sourceconfig.LegacyTenantlessAssumeRoleKey, false),
 		includeGlobal:              configBool(cfg, "include_global", true),
 		groupName:                  configValue(cfg, "group_name"),
-		groupID:                    configValue(cfg, "group_id"),
 		principalType:              configValue(cfg, "principal_type"),
 		principalName:              configValue(cfg, "principal_name"),
 		userName:                   configValue(cfg, "user_name"),
 		identityStoreID:            configValue(cfg, "identity_store_id"),
-		identityCenterInstanceARN:  configValue(cfg, "identity_center_instance_arn"),
-		permissionSetARN:           configValue(cfg, "permission_set_arn"),
-		targetAccountID:            configValue(cfg, "target_account_id"),
+		identityCenter: identityCenterSettings{
+			groupID:          configValue(cfg, "group_id"),
+			instanceARN:      configValue(cfg, "identity_center_instance_arn"),
+			permissionSetARN: configValue(cfg, "permission_set_arn"),
+			targetAccountID:  configValue(cfg, "target_account_id"),
+		},
 		cloudTrail: cloudTrailSettings{
 			lookupKey:   configValue(cfg, "lookup_key"),
 			lookupValue: configValue(cfg, "lookup_value"),
@@ -2135,7 +2234,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreLegacyGroup, familyIdentityStoreLegacyMember, familyIdentityStoreLegacyUser, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreLegacyGroup, familyIdentityStoreLegacyMember, familyIdentityStoreLegacyUser, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
