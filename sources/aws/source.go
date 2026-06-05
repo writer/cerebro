@@ -642,6 +642,7 @@ type awsKinesisAPI interface {
 	ListStreams(context.Context, *kinesis.ListStreamsInput, ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error)
 	DescribeStreamSummary(context.Context, *kinesis.DescribeStreamSummaryInput, ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error)
 	ListTagsForStream(context.Context, *kinesis.ListTagsForStreamInput, ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error)
+	GetResourcePolicy(context.Context, *kinesis.GetResourcePolicyInput, ...func(*kinesis.Options)) (*kinesis.GetResourcePolicyOutput, error)
 }
 
 type awsFirehoseAPI interface {
@@ -652,6 +653,7 @@ type awsFirehoseAPI interface {
 
 type awsKafkaAPI interface {
 	ListClustersV2(context.Context, *kafka.ListClustersV2Input, ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error)
+	DescribeClusterV2(context.Context, *kafka.DescribeClusterV2Input, ...func(*kafka.Options)) (*kafka.DescribeClusterV2Output, error)
 	ListTagsForResource(context.Context, *kafka.ListTagsForResourceInput, ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error)
 }
 

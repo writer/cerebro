@@ -56,6 +56,86 @@ func TestProjectGCPCloudResourceMetadataLinksAccountExposureOwnerClassificationA
 	}
 }
 
+func TestProjectAWSAppRunnerServiceLinksAccountExposureOwnerAndRuntimeRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	serviceARN := "arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e"
+	roleARN := "arn:aws:iam::123456789012:role/AppRunnerInstanceRole"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-app-runner-service-api",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.apprunner_service",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"internet_exposed":  "true",
+			"owner":             "platform@writer.com",
+			"public":            "true",
+			"public_endpoint":   "https://api.us-east-1.awsapprunner.com",
+			"region":            "us-east-1",
+			"resource_id":       serviceARN,
+			"resource_name":     "api",
+			"resource_provider": "aws",
+			"resource_type":     "apprunner_service",
+			"role_arn":          roleARN,
+			"role_name":         "AppRunnerInstanceRole",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_apprunner_service:" + serviceARN
+	roleURN := "urn:cerebro:writer:aws_role:" + roleARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.apprunner.service" {
+		t.Fatalf("app runner entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationOwnedBy, "urn:cerebro:writer:owner:platform@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
+}
+
+func TestProjectAWSStreamingCloudResourceMetadata(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:kinesis:us-east-1:123456789012:stream/orders"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-kinesis-orders",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.kinesis_stream",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"encryption":        "KMS",
+			"internet_exposed":  "true",
+			"kms_key_id":        "arn:aws:kms:us-east-1:123456789012:key/key-123",
+			"owner":             "streaming@writer.com",
+			"public":            "true",
+			"region":            "us-east-1",
+			"resource_id":       resourceARN,
+			"resource_name":     "orders",
+			"resource_provider": "aws",
+			"resource_type":     "kinesis_stream",
+			"retention_hours":   "168",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_kinesis_stream:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.kinesis.stream" {
+		t.Fatalf("kinesis stream entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationOwnedBy, "urn:cerebro:writer:owner:streaming@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:owner:streaming@writer.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:streaming@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+}
+
 func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
