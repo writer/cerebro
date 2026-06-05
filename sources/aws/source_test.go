@@ -829,12 +829,16 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 		topics = append(topics, snstypes.Topic{TopicArn: awssdk.String(arn)})
 		attributes[arn] = map[string]string{"TopicArn": arn}
 	}
-	records, _, err := listSNSTopics(context.Background(), awsClients{sns: fakeSNS{fake: &fakeAWS{
-		fakeAWSData: fakeAWSData{
-			snsTopics:     topics,
-			snsAttributes: attributes,
+	records, _, err := listSNSTopics(context.Background(), awsClients{
+		awsRuntimeClients: awsRuntimeClients{
+			sns: fakeSNS{fake: &fakeAWS{
+				fakeAWSData: fakeAWSData{
+					snsTopics:     topics,
+					snsAttributes: attributes,
+				},
+			}},
 		},
-	}}}, settings{}, "", 10)
+	}, settings{}, "", 10)
 	if err != nil {
 		t.Fatalf("listSNSTopics: %v", err)
 	}
@@ -898,13 +902,15 @@ func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 		s3Logging:    map[string]bool{"legacy-eu": true},
 	}}
 	records, _, err := listS3Buckets(context.Background(), awsClients{
-		cfg: awssdk.Config{Region: "us-east-1"},
-		s3:  base,
-		s3ByRegion: func(region string) awsS3API {
-			if region != "eu-west-1" {
-				t.Fatalf("regional client requested for %q, want eu-west-1", region)
-			}
-			return regional
+		awsPlatformClients: awsPlatformClients{
+			cfg: awssdk.Config{Region: "us-east-1"},
+			s3:  base,
+			s3ByRegion: func(region string) awsS3API {
+				if region != "eu-west-1" {
+					t.Fatalf("regional client requested for %q, want eu-west-1", region)
+				}
+				return regional
+			},
 		},
 	}, settings{region: "us-east-1"}, "", 0)
 	if err != nil {
@@ -1660,21 +1666,25 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 }
 
 func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
-	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{ec2: fakeAWS{
-		fakeAWSNetwork: fakeAWSNetwork{
-			networkInterfaces: []ec2types.NetworkInterface{{
-				NetworkInterfaceId: awssdk.String("eni-1"),
-				Description:        awssdk.String("prod-web-eni"),
-				Association: &ec2types.NetworkInterfaceAssociation{
-					PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
-					PublicIp:      awssdk.String("203.0.113.10"),
+	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{
+		awsPlatformClients: awsPlatformClients{
+			ec2: fakeAWS{
+				fakeAWSNetwork: fakeAWSNetwork{
+					networkInterfaces: []ec2types.NetworkInterface{{
+						NetworkInterfaceId: awssdk.String("eni-1"),
+						Description:        awssdk.String("prod-web-eni"),
+						Association: &ec2types.NetworkInterfaceAssociation{
+							PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
+							PublicIp:      awssdk.String("203.0.113.10"),
+						},
+						Attachment: &ec2types.NetworkInterfaceAttachment{
+							InstanceId: awssdk.String("i-1234567890abcdef0"),
+						},
+					}},
 				},
-				Attachment: &ec2types.NetworkInterfaceAttachment{
-					InstanceId: awssdk.String("i-1234567890abcdef0"),
-				},
-			}},
+			},
 		},
-	}}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
+	}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
 	if err != nil {
 		t.Fatalf("listNetworkInterfacePublicEndpoints() error = %v", err)
 	}
@@ -1886,7 +1896,39 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}, awsRuntimeClients: awsRuntimeClients{appRunner: fakeAppRunner{runtime: fake.fakeAWSRuntime}, stepFunctions: fakeStepFunctions{runtime: fake.fakeAWSRuntime}, eventBridge: fakeEventBridge{runtime: fake.fakeAWSRuntime}, pipes: fakePipes{runtime: fake.fakeAWSRuntime}, scheduler: fakeScheduler{runtime: fake.fakeAWSRuntime}, cloudWatch: fakeCloudWatch{runtime: fake.fakeAWSRuntime}, cloudWatchLogs: fakeCloudWatchLogs{runtime: fake.fakeAWSRuntime}, ssm: fakeSSM{runtime: fake.fakeAWSRuntime}}}, nil
+		return awsClients{
+			awsPlatformClients: awsPlatformClients{
+				iam:          fake,
+				cloudTrail:   fake,
+				ec2:          fake,
+				route53:      fake,
+				cloudFront:   fake,
+				elbv2:        fake,
+				ecs:          fake,
+				eks:          fakeEKS{compute: fake.compute},
+				ecr:          fakeECR{fake: &fake},
+				apiGateway:   fake,
+				apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs},
+				lambda:       fake,
+				tagging:      fake,
+				s3:           fake,
+			},
+			awsRuntimeClients: awsRuntimeClients{
+				rds:            fake,
+				kms:            fake,
+				secrets:        fake,
+				sqs:            fake,
+				sns:            fakeSNS{fake: &fake},
+				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
+				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
+				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
+				pipes:          fakePipes{runtime: fake.fakeAWSRuntime},
+				scheduler:      fakeScheduler{runtime: fake.fakeAWSRuntime},
+				cloudWatch:     fakeCloudWatch{runtime: fake.fakeAWSRuntime},
+				cloudWatchLogs: fakeCloudWatchLogs{runtime: fake.fakeAWSRuntime},
+				ssm:            fakeSSM{runtime: fake.fakeAWSRuntime},
+			},
+		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1902,7 +1944,39 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}, awsRuntimeClients: awsRuntimeClients{appRunner: fakeAppRunner{runtime: fake.fakeAWSRuntime}, stepFunctions: fakeStepFunctions{runtime: fake.fakeAWSRuntime}, eventBridge: fakeEventBridge{runtime: fake.fakeAWSRuntime}, pipes: fakePipes{runtime: fake.fakeAWSRuntime}, scheduler: fakeScheduler{runtime: fake.fakeAWSRuntime}, cloudWatch: fakeCloudWatch{runtime: fake.fakeAWSRuntime}, cloudWatchLogs: fakeCloudWatchLogs{runtime: fake.fakeAWSRuntime}, ssm: fakeSSM{runtime: fake.fakeAWSRuntime}}}, nil
+		return awsClients{
+			awsPlatformClients: awsPlatformClients{
+				iam:          fake,
+				cloudTrail:   fake,
+				ec2:          fake,
+				route53:      fake,
+				cloudFront:   fake,
+				elbv2:        fake,
+				ecs:          fake,
+				eks:          recordingEKS{fake: fake},
+				ecr:          recordingECR{fake: fake},
+				apiGateway:   fake,
+				apiGatewayV2: recordingAPIGatewayV2{fake: fake},
+				lambda:       fake,
+				tagging:      fake,
+				s3:           fake,
+			},
+			awsRuntimeClients: awsRuntimeClients{
+				rds:            fake,
+				kms:            fake,
+				secrets:        fake,
+				sqs:            fake,
+				sns:            recordingSNS{fake: fake},
+				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
+				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
+				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
+				pipes:          fakePipes{runtime: fake.fakeAWSRuntime},
+				scheduler:      fakeScheduler{runtime: fake.fakeAWSRuntime},
+				cloudWatch:     fakeCloudWatch{runtime: fake.fakeAWSRuntime},
+				cloudWatchLogs: fakeCloudWatchLogs{runtime: fake.fakeAWSRuntime},
+				ssm:            fakeSSM{runtime: fake.fakeAWSRuntime},
+			},
+		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -2012,32 +2086,44 @@ type fakeAWSData struct {
 }
 
 type fakeAWSRuntime struct {
-	appRunnerSummaries        []apprunnertypes.ServiceSummary
-	appRunnerServices         map[string]apprunnertypes.Service
-	appRunnerTags             map[string][]apprunnertypes.Tag
-	sfnStateMachines          []sfntypes.StateMachineListItem
-	sfnStateMachineDetails    map[string]sfn.DescribeStateMachineOutput
-	sfnActivities             []sfntypes.ActivityListItem
-	sfnTags                   map[string][]sfntypes.Tag
-	eventBuses                []eventbridgetypes.EventBus
-	eventRules                map[string][]eventbridgetypes.Rule
-	eventArchives             []eventbridgetypes.Archive
-	eventTags                 map[string][]eventbridgetypes.Tag
-	pipes                     []pipestypes.Pipe
-	pipeDetails               map[string]pipes.DescribePipeOutput
-	pipeTags                  map[string]map[string]string
-	schedulerSchedules        []schedulertypes.ScheduleSummary
-	schedulerGroups           []schedulertypes.ScheduleGroupSummary
-	schedulerTags             map[string][]schedulertypes.Tag
+	fakeAWSRuntimeApplication
+	fakeAWSRuntimeEventing
+	fakeAWSRuntimeObservability
+	fakeAWSRuntimeSystems
+}
+
+type fakeAWSRuntimeApplication struct {
+	appRunnerSummaries     []apprunnertypes.ServiceSummary
+	appRunnerServices      map[string]apprunnertypes.Service
+	appRunnerTags          map[string][]apprunnertypes.Tag
+	sfnStateMachines       []sfntypes.StateMachineListItem
+	sfnStateMachineDetails map[string]sfn.DescribeStateMachineOutput
+	sfnActivities          []sfntypes.ActivityListItem
+	sfnTags                map[string][]sfntypes.Tag
+}
+
+type fakeAWSRuntimeEventing struct {
+	eventBuses         []eventbridgetypes.EventBus
+	eventRules         map[string][]eventbridgetypes.Rule
+	eventArchives      []eventbridgetypes.Archive
+	eventTags          map[string][]eventbridgetypes.Tag
+	pipes              []pipestypes.Pipe
+	pipeDetails        map[string]pipes.DescribePipeOutput
+	pipeTags           map[string]map[string]string
+	schedulerSchedules []schedulertypes.ScheduleSummary
+	schedulerGroups    []schedulertypes.ScheduleGroupSummary
+	schedulerTags      map[string][]schedulertypes.Tag
+}
+
+type fakeAWSRuntimeObservability struct {
 	cloudWatchMetricAlarms    []cloudwatchtypes.MetricAlarm
 	cloudWatchCompositeAlarms []cloudwatchtypes.CompositeAlarm
 	cloudWatchTags            map[string][]cloudwatchtypes.Tag
 	logGroups                 []cloudwatchlogstypes.LogGroup
 	logGroupTags              map[string]map[string]string
-	fakeAWSSSM
 }
 
-type fakeAWSSSM struct {
+type fakeAWSRuntimeSystems struct {
 	ssmInstances    []ssmtypes.InstanceInformation
 	ssmDocuments    []ssmtypes.DocumentIdentifier
 	ssmAssociations []ssmtypes.Association

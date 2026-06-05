@@ -163,7 +163,7 @@ type settings struct {
 
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
-type awsClients struct {
+type awsPlatformClients struct {
 	cfg          awssdk.Config
 	iam          awsIAMAPI
 	cloudTrail   awsCloudTrailAPI
@@ -180,15 +180,14 @@ type awsClients struct {
 	tagging      awsResourceGroupsTaggingAPI
 	s3           awsS3API
 	s3ByRegion   func(string) awsS3API
-	rds          awsRDSAPI
-	kms          awsKMSAPI
-	secrets      awsSecretsManagerAPI
-	sqs          awsSQSAPI
-	sns          awsSNSAPI
-	awsRuntimeClients
 }
 
 type awsRuntimeClients struct {
+	rds            awsRDSAPI
+	kms            awsKMSAPI
+	secrets        awsSecretsManagerAPI
+	sqs            awsSQSAPI
+	sns            awsSNSAPI
 	appRunner      awsAppRunnerAPI
 	stepFunctions  awsStepFunctionsAPI
 	eventBridge    awsEventBridgeAPI
@@ -197,6 +196,11 @@ type awsRuntimeClients struct {
 	cloudWatch     awsCloudWatchAPI
 	cloudWatchLogs awsCloudWatchLogsAPI
 	ssm            awsSSMAPI
+}
+
+type awsClients struct {
+	awsPlatformClients
+	awsRuntimeClients
 }
 
 type awsIAMAPI interface {
@@ -1105,32 +1109,43 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:          cfg,
-		iam:          iam.NewFromConfig(cfg),
-		cloudTrail:   cloudtrail.NewFromConfig(cfg),
-		ec2:          ec2.NewFromConfig(cfg),
-		route53:      route53.NewFromConfig(cfg),
-		cloudFront:   cloudfront.NewFromConfig(cfg),
-		elbv2:        elbv2.NewFromConfig(cfg),
-		ecs:          ecs.NewFromConfig(cfg),
-		eks:          eks.NewFromConfig(cfg),
-		ecr:          ecr.NewFromConfig(cfg),
-		apiGateway:   apigateway.NewFromConfig(cfg),
-		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
-		lambda:       lambda.NewFromConfig(cfg),
-		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:           s3.NewFromConfig(cfg),
-		s3ByRegion: func(region string) awsS3API {
-			regionalCfg := cfg
-			regionalCfg.Region = region
-			return s3.NewFromConfig(regionalCfg)
+		awsPlatformClients: awsPlatformClients{
+			cfg:          cfg,
+			iam:          iam.NewFromConfig(cfg),
+			cloudTrail:   cloudtrail.NewFromConfig(cfg),
+			ec2:          ec2.NewFromConfig(cfg),
+			route53:      route53.NewFromConfig(cfg),
+			cloudFront:   cloudfront.NewFromConfig(cfg),
+			elbv2:        elbv2.NewFromConfig(cfg),
+			ecs:          ecs.NewFromConfig(cfg),
+			eks:          eks.NewFromConfig(cfg),
+			ecr:          ecr.NewFromConfig(cfg),
+			apiGateway:   apigateway.NewFromConfig(cfg),
+			apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
+			lambda:       lambda.NewFromConfig(cfg),
+			tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
+			s3:           s3.NewFromConfig(cfg),
+			s3ByRegion: func(region string) awsS3API {
+				regionalCfg := cfg
+				regionalCfg.Region = region
+				return s3.NewFromConfig(regionalCfg)
+			},
 		},
-		rds:               rds.NewFromConfig(cfg),
-		kms:               kms.NewFromConfig(cfg),
-		secrets:           secretsmanager.NewFromConfig(cfg),
-		sqs:               sqs.NewFromConfig(cfg),
-		sns:               sns.NewFromConfig(cfg),
-		awsRuntimeClients: awsRuntimeClients{appRunner: apprunner.NewFromConfig(cfg), stepFunctions: sfn.NewFromConfig(cfg), eventBridge: eventbridge.NewFromConfig(cfg), pipes: pipes.NewFromConfig(cfg), scheduler: scheduler.NewFromConfig(cfg), cloudWatch: cloudwatch.NewFromConfig(cfg), cloudWatchLogs: cloudwatchlogs.NewFromConfig(cfg), ssm: ssm.NewFromConfig(cfg)},
+		awsRuntimeClients: awsRuntimeClients{
+			rds:            rds.NewFromConfig(cfg),
+			kms:            kms.NewFromConfig(cfg),
+			secrets:        secretsmanager.NewFromConfig(cfg),
+			sqs:            sqs.NewFromConfig(cfg),
+			sns:            sns.NewFromConfig(cfg),
+			appRunner:      apprunner.NewFromConfig(cfg),
+			stepFunctions:  sfn.NewFromConfig(cfg),
+			eventBridge:    eventbridge.NewFromConfig(cfg),
+			pipes:          pipes.NewFromConfig(cfg),
+			scheduler:      scheduler.NewFromConfig(cfg),
+			cloudWatch:     cloudwatch.NewFromConfig(cfg),
+			cloudWatchLogs: cloudwatchlogs.NewFromConfig(cfg),
+			ssm:            ssm.NewFromConfig(cfg),
+		},
 	}, nil
 }
 
