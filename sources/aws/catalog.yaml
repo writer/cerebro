@@ -15,6 +15,9 @@ emitted_kinds:
   - aws.backup_recovery_point
   - aws.cloudtrail
   - aws.config_recorder
+  - aws.dynamodb_backup
+  - aws.dynamodb_stream
+  - aws.dynamodb_table
   - aws.datasync_location
   - aws.datasync_task
   - aws.docdb_cluster
@@ -30,6 +33,8 @@ emitted_kinds:
   - aws.ecs_service
   - aws.ecs_task
   - aws.ecs_task_definition
+  - aws.efs_access_point
+  - aws.efs_file_system
   - aws.eks_cluster
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
@@ -120,6 +125,9 @@ runtime_families:
   - backup_recovery_point
   - cloudtrail
   - config_recorder
+  - dynamodb_backup
+  - dynamodb_stream
+  - dynamodb_table
   - datasync_location
   - datasync_task
   - docdb_cluster
@@ -135,6 +143,8 @@ runtime_families:
   - ecs_service
   - ecs_task
   - ecs_task_definition
+  - efs_access_point
+  - efs_file_system
   - eks_cluster
   - eks_nodegroup
   - eks_fargate_profile
@@ -195,6 +205,7 @@ runtime_families:
   - opensearch_domain
   - opensearch_serverless_collection
   - opensearch_serverless_security_policy
+  - organizations_root
   - public_endpoint
   - rds_instance
   - redshift_cluster
