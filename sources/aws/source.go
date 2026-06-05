@@ -25,6 +25,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/apprunner"
+	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -41,9 +42,14 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/firehose"
+	"github.com/aws/aws-sdk-go-v2/service/glue"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/kafka"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
@@ -86,6 +92,8 @@ const (
 	familyAccessKey                = "access_key"
 	familyAppRunnerService         = "apprunner_service"
 	familyAssetMetadata            = "asset_metadata"
+	familyAthenaDataCatalog        = "athena_data_catalog"
+	familyAthenaWorkgroup          = "athena_workgroup"
 	familyCloudTrail               = "cloudtrail"
 	familyCloudWatchAlarm          = "cloudwatch_alarm"
 	familyCloudWatchLogGroup       = "cloudwatch_log_group"
@@ -103,20 +111,31 @@ const (
 	familyEventBridgeBus           = "eventbridge_event_bus"
 	familyEventBridgePipe          = "eventbridge_pipe"
 	familyEventBridgeRule          = "eventbridge_rule"
+	familyFirehoseDelivery         = "firehose_delivery_stream"
+	familyGlueCrawler              = "glue_crawler"
+	familyGlueDatabase             = "glue_database"
+	familyGlueJob                  = "glue_job"
+	familyGlueTable                = "glue_table"
 	familyIAMGroup                 = "iam_group"
 	familyIAMMembership            = "iam_group_membership"
 	familyIAMRoleTrust             = "iam_role_trust"
 	familyIAMRoleAssign            = "iam_role_assignment"
 	familyIAMRole                  = "iam_role"
 	familyIAMUser                  = "iam_user"
+	familyKinesisStream            = "kinesis_stream"
 	familyKMSKey                   = "kms_key"
+	familyLakeFormationLFTag       = "lakeformation_lf_tag"
+	familyLakeFormationPerm        = "lakeformation_permission"
+	familyLakeFormationRes         = "lakeformation_resource"
+	familyLambdaFunction           = "lambda_function"
+	familyMSKCluster               = "msk_cluster"
 	familyPublicEndpoint           = "public_endpoint"
 	familyRDSInstance              = "rds_instance"
 	familyResourceExposure         = "resource_exposure"
 	familyS3Bucket                 = "s3_bucket"
-	familySecret                   = "secret"
 	familySchedulerSchedule        = "scheduler_schedule"
 	familySchedulerGroup           = "scheduler_schedule_group"
+	familySecret                   = "secret"
 	familySNSTopic                 = "sns_topic"
 	familySQSQueue                 = "sqs_queue"
 	familySSMAssociation           = "ssm_association"
@@ -125,7 +144,6 @@ const (
 	familySSMParameter             = "ssm_parameter"
 	familyStepFunctionActivity     = "stepfunctions_activity"
 	familyStepFunctionStateMachine = "stepfunctions_state_machine"
-	familyLambdaFunction           = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -163,6 +181,12 @@ type settings struct {
 
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
+type awsClients struct {
+	awsPlatformClients
+	awsRuntimeClients
+	awsAnalyticsClients
+}
+
 type awsPlatformClients struct {
 	cfg          awssdk.Config
 	iam          awsIAMAPI
@@ -198,9 +222,13 @@ type awsRuntimeClients struct {
 	ssm            awsSSMAPI
 }
 
-type awsClients struct {
-	awsPlatformClients
-	awsRuntimeClients
+type awsAnalyticsClients struct {
+	kinesis  awsKinesisAPI
+	firehose awsFirehoseAPI
+	kafka    awsKafkaAPI
+	glue     awsGlueAPI
+	athena   awsAthenaAPI
+	lake     awsLakeFormationAPI
 }
 
 type awsIAMAPI interface {
@@ -376,6 +404,47 @@ type awsSSMAPI interface {
 	ListAssociations(context.Context, *ssm.ListAssociationsInput, ...func(*ssm.Options)) (*ssm.ListAssociationsOutput, error)
 	DescribeParameters(context.Context, *ssm.DescribeParametersInput, ...func(*ssm.Options)) (*ssm.DescribeParametersOutput, error)
 	ListTagsForResource(context.Context, *ssm.ListTagsForResourceInput, ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error)
+}
+
+type awsKinesisAPI interface {
+	ListStreams(context.Context, *kinesis.ListStreamsInput, ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error)
+	DescribeStreamSummary(context.Context, *kinesis.DescribeStreamSummaryInput, ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error)
+	ListTagsForStream(context.Context, *kinesis.ListTagsForStreamInput, ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error)
+}
+
+type awsFirehoseAPI interface {
+	ListDeliveryStreams(context.Context, *firehose.ListDeliveryStreamsInput, ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error)
+	DescribeDeliveryStream(context.Context, *firehose.DescribeDeliveryStreamInput, ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error)
+	ListTagsForDeliveryStream(context.Context, *firehose.ListTagsForDeliveryStreamInput, ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error)
+}
+
+type awsKafkaAPI interface {
+	ListClustersV2(context.Context, *kafka.ListClustersV2Input, ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error)
+	ListTagsForResource(context.Context, *kafka.ListTagsForResourceInput, ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error)
+}
+
+type awsGlueAPI interface {
+	GetDatabases(context.Context, *glue.GetDatabasesInput, ...func(*glue.Options)) (*glue.GetDatabasesOutput, error)
+	GetTables(context.Context, *glue.GetTablesInput, ...func(*glue.Options)) (*glue.GetTablesOutput, error)
+	ListCrawlers(context.Context, *glue.ListCrawlersInput, ...func(*glue.Options)) (*glue.ListCrawlersOutput, error)
+	GetCrawler(context.Context, *glue.GetCrawlerInput, ...func(*glue.Options)) (*glue.GetCrawlerOutput, error)
+	ListJobs(context.Context, *glue.ListJobsInput, ...func(*glue.Options)) (*glue.ListJobsOutput, error)
+	GetJob(context.Context, *glue.GetJobInput, ...func(*glue.Options)) (*glue.GetJobOutput, error)
+	GetTags(context.Context, *glue.GetTagsInput, ...func(*glue.Options)) (*glue.GetTagsOutput, error)
+}
+
+type awsAthenaAPI interface {
+	ListWorkGroups(context.Context, *athena.ListWorkGroupsInput, ...func(*athena.Options)) (*athena.ListWorkGroupsOutput, error)
+	GetWorkGroup(context.Context, *athena.GetWorkGroupInput, ...func(*athena.Options)) (*athena.GetWorkGroupOutput, error)
+	ListDataCatalogs(context.Context, *athena.ListDataCatalogsInput, ...func(*athena.Options)) (*athena.ListDataCatalogsOutput, error)
+	GetDataCatalog(context.Context, *athena.GetDataCatalogInput, ...func(*athena.Options)) (*athena.GetDataCatalogOutput, error)
+	ListTagsForResource(context.Context, *athena.ListTagsForResourceInput, ...func(*athena.Options)) (*athena.ListTagsForResourceOutput, error)
+}
+
+type awsLakeFormationAPI interface {
+	ListResources(context.Context, *lakeformation.ListResourcesInput, ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error)
+	ListLFTags(context.Context, *lakeformation.ListLFTagsInput, ...func(*lakeformation.Options)) (*lakeformation.ListLFTagsOutput, error)
+	ListPermissions(context.Context, *lakeformation.ListPermissionsInput, ...func(*lakeformation.Options)) (*lakeformation.ListPermissionsOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -615,6 +684,148 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_asset_metadata:%s", settings.accountID, firstNonEmpty(asset.ResourceARN, asset.ResourceID)), nil
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsKinesisStream]{
+			Name:  familyKinesisStream,
+			Label: "aws kinesis streams",
+			List:  listKinesisStreams,
+			Event: kinesisStreamEvent,
+			URN: func(settings settings, stream awsKinesisStream) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_kinesis_stream:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stream.Summary.StreamARN), awssdk.ToString(stream.Summary.StreamName))), nil
+			},
+			CursorFallback: func(stream awsKinesisStream) string {
+				return firstNonEmpty(awssdk.ToString(stream.Summary.StreamARN), awssdk.ToString(stream.Summary.StreamName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsFirehoseDeliveryStream]{
+			Name:  familyFirehoseDelivery,
+			Label: "aws firehose delivery streams",
+			List:  listFirehoseDeliveryStreams,
+			Event: firehoseDeliveryStreamEvent,
+			URN: func(settings settings, stream awsFirehoseDeliveryStream) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_firehose_delivery_stream:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stream.Description.DeliveryStreamARN), awssdk.ToString(stream.Description.DeliveryStreamName))), nil
+			},
+			CursorFallback: func(stream awsFirehoseDeliveryStream) string {
+				return firstNonEmpty(awssdk.ToString(stream.Description.DeliveryStreamARN), awssdk.ToString(stream.Description.DeliveryStreamName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsMSKCluster]{
+			Name:  familyMSKCluster,
+			Label: "aws msk clusters",
+			List:  listMSKClusters,
+			Event: mskClusterEvent,
+			URN: func(settings settings, cluster awsMSKCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_msk_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(cluster.Cluster.ClusterArn), awssdk.ToString(cluster.Cluster.ClusterName))), nil
+			},
+			CursorFallback: func(cluster awsMSKCluster) string {
+				return firstNonEmpty(awssdk.ToString(cluster.Cluster.ClusterArn), awssdk.ToString(cluster.Cluster.ClusterName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueDatabase]{
+			Name:  familyGlueDatabase,
+			Label: "aws glue databases",
+			List:  listGlueDatabases,
+			Event: glueDatabaseEvent,
+			URN: func(settings settings, database awsGlueDatabase) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_database:%s", settings.accountID, firstNonEmpty(glueDatabaseARN(settings, awssdk.ToString(database.Database.CatalogId), awssdk.ToString(database.Database.Name)), awssdk.ToString(database.Database.Name))), nil
+			},
+			CursorFallback: func(database awsGlueDatabase) string {
+				return awssdk.ToString(database.Database.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueTable]{
+			Name:  familyGlueTable,
+			Label: "aws glue tables",
+			List:  listGlueTables,
+			Event: glueTableEvent,
+			URN: func(settings settings, table awsGlueTable) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_table:%s", settings.accountID, glueTableResourceID(settings, table)), nil
+			},
+			CursorFallback: func(table awsGlueTable) string {
+				return firstNonEmpty(firstNonEmpty(table.DatabaseName, awssdk.ToString(table.Table.DatabaseName))+"/"+awssdk.ToString(table.Table.Name), awssdk.ToString(table.Table.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueCrawler]{
+			Name:  familyGlueCrawler,
+			Label: "aws glue crawlers",
+			List:  listGlueCrawlers,
+			Event: glueCrawlerEvent,
+			URN: func(settings settings, crawler awsGlueCrawler) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_crawler:%s", settings.accountID, firstNonEmpty(glueCrawlerARN(settings, awssdk.ToString(crawler.Crawler.Name)), awssdk.ToString(crawler.Crawler.Name))), nil
+			},
+			CursorFallback: func(crawler awsGlueCrawler) string {
+				return awssdk.ToString(crawler.Crawler.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueJob]{
+			Name:  familyGlueJob,
+			Label: "aws glue jobs",
+			List:  listGlueJobs,
+			Event: glueJobEvent,
+			URN: func(settings settings, job awsGlueJob) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_job:%s", settings.accountID, firstNonEmpty(glueJobARN(settings, awssdk.ToString(job.Job.Name)), awssdk.ToString(job.Job.Name))), nil
+			},
+			CursorFallback: func(job awsGlueJob) string {
+				return awssdk.ToString(job.Job.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAthenaWorkgroup]{
+			Name:  familyAthenaWorkgroup,
+			Label: "aws athena workgroups",
+			List:  listAthenaWorkgroups,
+			Event: athenaWorkgroupEvent,
+			URN: func(settings settings, workgroup awsAthenaWorkgroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_athena_workgroup:%s", settings.accountID, firstNonEmpty(athenaWorkgroupARN(settings, awssdk.ToString(workgroup.WorkGroup.Name)), awssdk.ToString(workgroup.WorkGroup.Name))), nil
+			},
+			CursorFallback: func(workgroup awsAthenaWorkgroup) string {
+				return awssdk.ToString(workgroup.WorkGroup.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAthenaDataCatalog]{
+			Name:  familyAthenaDataCatalog,
+			Label: "aws athena data catalogs",
+			List:  listAthenaDataCatalogs,
+			Event: athenaDataCatalogEvent,
+			URN: func(settings settings, catalog awsAthenaDataCatalog) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_athena_data_catalog:%s", settings.accountID, firstNonEmpty(athenaDataCatalogARN(settings, awssdk.ToString(catalog.Catalog.Name)), awssdk.ToString(catalog.Catalog.Name))), nil
+			},
+			CursorFallback: func(catalog awsAthenaDataCatalog) string {
+				return awssdk.ToString(catalog.Catalog.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsLakeFormationResource]{
+			Name:  familyLakeFormationRes,
+			Label: "aws lake formation resources",
+			List:  listLakeFormationResources,
+			Event: lakeFormationResourceEvent,
+			URN: func(settings settings, resource awsLakeFormationResource) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_lakeformation_resource:%s", settings.accountID, firstNonEmpty(awssdk.ToString(resource.Resource.ResourceArn), awssdk.ToString(resource.Resource.RoleArn))), nil
+			},
+			CursorFallback: func(resource awsLakeFormationResource) string {
+				return firstNonEmpty(awssdk.ToString(resource.Resource.ResourceArn), awssdk.ToString(resource.Resource.RoleArn))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsLakeFormationLFTag]{
+			Name:  familyLakeFormationLFTag,
+			Label: "aws lake formation lf-tags",
+			List:  listLakeFormationLFTags,
+			Event: lakeFormationLFTagEvent,
+			URN: func(settings settings, tag awsLakeFormationLFTag) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_lakeformation_lf_tag:%s", settings.accountID, lakeFormationLFTagResourceID(tag)), nil
+			},
+			CursorFallback: func(tag awsLakeFormationLFTag) string { return lakeFormationLFTagResourceID(tag) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsLakeFormationPermission]{
+			Name:  familyLakeFormationPerm,
+			Label: "aws lake formation permissions",
+			List:  listLakeFormationPermissions,
+			Event: lakeFormationPermissionEvent,
+			URN: func(settings settings, permission awsLakeFormationPermission) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_lakeformation_permission:%s", settings.accountID, lakeFormationPermissionResourceID(permission)), nil
+			},
+			CursorFallback: func(permission awsLakeFormationPermission) string {
+				return lakeFormationPermissionResourceID(permission)
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsS3Bucket]{
 			Name:  familyS3Bucket,
@@ -1146,6 +1357,14 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			cloudWatchLogs: cloudwatchlogs.NewFromConfig(cfg),
 			ssm:            ssm.NewFromConfig(cfg),
 		},
+		awsAnalyticsClients: awsAnalyticsClients{
+			kinesis:  kinesis.NewFromConfig(cfg),
+			firehose: firehose.NewFromConfig(cfg),
+			kafka:    kafka.NewFromConfig(cfg),
+			glue:     glue.NewFromConfig(cfg),
+			athena:   athena.NewFromConfig(cfg),
+			lake:     lakeformation.NewFromConfig(cfg),
+		},
 	}, nil
 }
 
@@ -1202,7 +1421,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAppRunnerService, familyAssetMetadata, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familyStepFunctionActivity, familyStepFunctionStateMachine:
+	case familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familyStepFunctionActivity, familyStepFunctionStateMachine:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -1217,7 +1436,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, apprunner_service, asset_metadata, cloudtrail, cloudwatch_alarm, cloudwatch_log_group, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, eventbridge_archive, eventbridge_event_bus, eventbridge_pipe, eventbridge_rule, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, scheduler_schedule, scheduler_schedule_group, secret, sns_topic, sqs_queue, ssm_association, ssm_document, ssm_managed_instance, ssm_parameter, stepfunctions_activity, or stepfunctions_state_machine")
+		return settings, fmt.Errorf("unsupported aws family %q", settings.family)
 	}
 	return settings, nil
 }
