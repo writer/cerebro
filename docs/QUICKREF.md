@@ -15,6 +15,8 @@ Durable local stack:
 docker compose up --build
 ```
 
+End-to-end local walkthrough: [`docs/GETTING_STARTED.md`](GETTING_STARTED.md).
+
 Health and source catalog:
 
 ```bash
@@ -75,6 +77,9 @@ Graph operations require Neo4j:
 make test
 make check
 make verify
+make readme-check
+make docs-drift-check
+make oss-audit
 ```
 
 Focused targets:

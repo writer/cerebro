@@ -117,9 +117,10 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using 
 | --- | --- | --- |
 | Run the lightweight server | `make serve` | Starts the API without external stores; useful for health, source catalog, and OpenAPI checks. |
 | Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, and Neo4j. |
+| Try a local end-to-end path | `docs/GETTING_STARTED.md` | Creates an SDK source runtime, writes a synthetic claim, and reads it back. |
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
 | Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |
-| Use SDK helpers | `sdk/python`, `sdk/typescript`, and `sources/sdk` | Maintained helpers target current bootstrap routes; the historical Agent SDK gateway is retired. |
+| Use SDK helpers | `sdk/python/README.md`, `sdk/typescript/README.md`, and `sources/sdk` | Maintained helpers target current bootstrap routes; the historical Agent SDK gateway is retired. |
 | Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
 | Persist and sync a runtime | `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
 | Work on graph behavior | `graph counts`, `graph health`, `graph ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
@@ -380,6 +381,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 
 | Document | Notes |
 | --- | --- |
+| [Getting started](docs/GETTING_STARTED.md) | local durable stack plus SDK source runtime and claim-write walkthrough |
 | [API contracts](docs/API_CONTRACTS_AUTOGEN.md) | current bootstrap HTTP and Connect contract reference |
 | [API reference](docs/API_REFERENCE.md) | OpenAPI-oriented route reference |
 | [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
