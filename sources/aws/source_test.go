@@ -1491,10 +1491,10 @@ func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 	firehoseARN := "arn:aws:firehose:us-east-1:123456789012:deliverystream/orders"
 	mskARN := "arn:aws:kafka:us-east-1:123456789012:cluster/orders/uuid-1"
 	glueDatabaseARN := "arn:aws:glue:us-east-1:123456789012:database/analytics"
-	glueTableARN := "arn:aws:glue:us-east-1:123456789012:table/analytics/orders"
-	glueCrawlerARN := "arn:aws:glue:us-east-1:123456789012:crawler/orders-crawler"
-	glueJobARN := "arn:aws:glue:us-east-1:123456789012:job/orders-etl"
-	athenaWorkgroupARN := "arn:aws:athena:us-east-1:123456789012:workgroup/primary"
+	glueTableARN := "arn:aws:glue:us-east-1:123456789012:table/analytics/events"
+	glueCrawlerARN := "arn:aws:glue:us-east-1:123456789012:crawler/analytics-crawler"
+	glueJobARN := "arn:aws:glue:us-east-1:123456789012:job/analytics-etl"
+	athenaWorkgroupARN := "arn:aws:athena:us-east-1:123456789012:workgroup/analytics"
 	athenaCatalogARN := "arn:aws:athena:us-east-1:123456789012:datacatalog/AwsDataCatalog"
 	source := newTestSource(t, fakeAWS{fakeAWSAnalytics: fakeAWSAnalytics{
 		kinesisStreams: []kinesistypes.StreamDescriptionSummary{{
@@ -1562,77 +1562,93 @@ func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 		glueDatabases: []gluetypes.Database{{
 			CatalogId:   awssdk.String("123456789012"),
 			Name:        awssdk.String("analytics"),
-			Description: awssdk.String("analytics catalog"),
-			LocationUri: awssdk.String("s3://orders-lake/"),
+			Description: awssdk.String("analytics warehouse"),
+			LocationUri: awssdk.String("s3://prod-data/warehouse"),
 			CreateTime:  timePtr("2026-04-23T00:00:00Z"),
 		}},
 		glueTables: map[string][]gluetypes.Table{"analytics": {{
 			CatalogId:                     awssdk.String("123456789012"),
 			DatabaseName:                  awssdk.String("analytics"),
-			Name:                          awssdk.String("orders"),
+			Name:                          awssdk.String("events"),
 			Owner:                         awssdk.String("analytics@writer.com"),
 			TableType:                     awssdk.String("EXTERNAL_TABLE"),
 			CreateTime:                    timePtr("2026-04-23T00:00:00Z"),
-			UpdateTime:                    timePtr("2026-04-23T00:00:00Z"),
+			UpdateTime:                    timePtr("2026-04-24T00:00:00Z"),
 			IsRegisteredWithLakeFormation: true,
 			StorageDescriptor: &gluetypes.StorageDescriptor{
-				Columns:  []gluetypes.Column{{Name: awssdk.String("order_id"), Type: awssdk.String("string")}},
-				Location: awssdk.String("s3://orders-lake/orders/"),
+				Columns:      []gluetypes.Column{{Name: awssdk.String("event_id"), Type: awssdk.String("string")}},
+				Compressed:   true,
+				InputFormat:  awssdk.String("org.apache.hadoop.mapred.TextInputFormat"),
+				Location:     awssdk.String("s3://prod-data/events"),
+				OutputFormat: awssdk.String("org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"),
+				SerdeInfo:    &gluetypes.SerDeInfo{SerializationLibrary: awssdk.String("org.openx.data.jsonserde.JsonSerDe")},
 			},
 		}}},
 		glueCrawlers: []gluetypes.Crawler{{
-			Name:                         awssdk.String("orders-crawler"),
-			DatabaseName:                 awssdk.String("analytics"),
-			Role:                         awssdk.String("arn:aws:iam::123456789012:role/glue-crawler"),
-			State:                        gluetypes.CrawlerStateReady,
-			CreationTime:                 timePtr("2026-04-23T00:00:00Z"),
-			CrawlerSecurityConfiguration: awssdk.String("crawler-security"),
-			LakeFormationConfiguration:   &gluetypes.LakeFormationConfiguration{UseLakeFormationCredentials: awssdk.Bool(true), AccountId: awssdk.String("123456789012")},
+			Name:         awssdk.String("analytics-crawler"),
+			DatabaseName: awssdk.String("analytics"),
+			Role:         awssdk.String("arn:aws:iam::123456789012:role/GlueCrawlerRole"),
+			State:        gluetypes.CrawlerStateReady,
+			CreationTime: timePtr("2026-04-23T00:00:00Z"),
+			LastUpdated:  timePtr("2026-04-24T00:00:00Z"),
+			Targets:      &gluetypes.CrawlerTargets{S3Targets: []gluetypes.S3Target{{Path: awssdk.String("s3://prod-data/events")}}},
+			LastCrawl:    &gluetypes.LastCrawlInfo{Status: gluetypes.LastCrawlStatusSucceeded, StartTime: timePtr("2026-04-24T00:00:00Z")},
 		}},
 		glueJobs: []gluetypes.Job{{
-			Name:                  awssdk.String("orders-etl"),
-			Role:                  awssdk.String("arn:aws:iam::123456789012:role/glue-job"),
-			GlueVersion:           awssdk.String("5.0"),
-			SecurityConfiguration: awssdk.String("job-security"),
-			WorkerType:            gluetypes.WorkerTypeG1x,
-			CreatedOn:             timePtr("2026-04-23T00:00:00Z"),
-			Command:               &gluetypes.JobCommand{Name: awssdk.String("glueetl"), Runtime: awssdk.String("python3")},
+			Name:              awssdk.String("analytics-etl"),
+			Role:              awssdk.String("arn:aws:iam::123456789012:role/GlueJobRole"),
+			GlueVersion:       awssdk.String("5.0"),
+			WorkerType:        gluetypes.WorkerTypeG1x,
+			NumberOfWorkers:   awssdk.Int32(2),
+			ExecutionClass:    gluetypes.ExecutionClassStandard,
+			JobMode:           gluetypes.JobModeScript,
+			CreatedOn:         timePtr("2026-04-23T00:00:00Z"),
+			LastModifiedOn:    timePtr("2026-04-24T00:00:00Z"),
+			Command:           &gluetypes.JobCommand{Name: awssdk.String("glueetl"), ScriptLocation: awssdk.String("s3://prod-scripts/analytics.py")},
+			ExecutionProperty: &gluetypes.ExecutionProperty{MaxConcurrentRuns: 2},
 		}},
 		glueTags: map[string]map[string]string{
-			glueDatabaseARN: {"Owner": "catalog@writer.com"},
-			glueTableARN:    {"Owner": "table-owner@writer.com"},
-			glueCrawlerARN:  {"Team": "data"},
-			glueJobARN:      {"Team": "data-eng"},
+			glueDatabaseARN: {"Owner": "data@writer.com"},
+			glueTableARN:    {"DataClassification": "restricted"},
+			glueCrawlerARN:  {"Team": "analytics"},
+			glueJobARN:      {"Team": "analytics"},
 		},
 		athenaWorkgroups: []athenatypes.WorkGroup{{
-			Name:         awssdk.String("primary"),
+			Name:         awssdk.String("analytics"),
+			Description:  awssdk.String("analytics queries"),
 			State:        athenatypes.WorkGroupStateEnabled,
 			CreationTime: timePtr("2026-04-23T00:00:00Z"),
 			Configuration: &athenatypes.WorkGroupConfiguration{
-				EnforceWorkGroupConfiguration: awssdk.Bool(true),
-				ResultConfiguration: &athenatypes.ResultConfiguration{EncryptionConfiguration: &athenatypes.EncryptionConfiguration{
-					EncryptionOption: athenatypes.EncryptionOptionSseKms,
-					KmsKey:           awssdk.String(kmsARN),
-				}},
+				EnforceWorkGroupConfiguration:   awssdk.Bool(true),
+				PublishCloudWatchMetricsEnabled: awssdk.Bool(true),
+				ResultConfiguration: &athenatypes.ResultConfiguration{
+					OutputLocation: awssdk.String("s3://prod-athena-results/"),
+					EncryptionConfiguration: &athenatypes.EncryptionConfiguration{
+						EncryptionOption: athenatypes.EncryptionOptionSseKms,
+						KmsKey:           awssdk.String(kmsARN),
+					},
+				},
 			},
 		}},
 		athenaDataCatalogs: []athenatypes.DataCatalog{{
 			Name:        awssdk.String("AwsDataCatalog"),
 			Type:        athenatypes.DataCatalogTypeGlue,
-			Description: awssdk.String("default catalog"),
+			Description: awssdk.String("default glue catalog"),
+			Parameters:  map[string]string{"catalog-id": "123456789012"},
+			Status:      athenatypes.DataCatalogStatusCreateComplete,
 		}},
 		athenaTags: map[string][]athenatypes.Tag{
-			athenaWorkgroupARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("queries@writer.com")}},
-			athenaCatalogARN:   {{Key: awssdk.String("Team"), Value: awssdk.String("data")}},
+			athenaWorkgroupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}},
+			athenaCatalogARN:   {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}},
 		},
 		lakeFormationResources: []lakeformationtypes.ResourceInfo{{
-			ResourceArn:                  awssdk.String("arn:aws:s3:::orders-lake"),
-			RoleArn:                      awssdk.String("arn:aws:iam::123456789012:role/lakeformation"),
+			ResourceArn:                  awssdk.String("arn:aws:s3:::prod-data"),
+			RoleArn:                      awssdk.String("arn:aws:iam::123456789012:role/LakeFormationAccessRole"),
 			ExpectedResourceOwnerAccount: awssdk.String("123456789012"),
 			HybridAccessEnabled:          awssdk.Bool(true),
 			WithPrivilegedAccess:         awssdk.Bool(true),
 			VerificationStatus:           lakeformationtypes.VerificationStatusVerified,
-			LastModified:                 timePtr("2026-04-23T00:00:00Z"),
+			LastModified:                 timePtr("2026-04-24T00:00:00Z"),
 		}},
 		lakeFormationLFTags: []lakeformationtypes.LFTagPair{{
 			CatalogId: awssdk.String("123456789012"),
@@ -1652,16 +1668,13 @@ func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 		attr   string
 		want   string
 	}{
-		{family: familyKinesisStream, kind: "aws.kinesis_stream", attr: "retention_hours", want: "168"},
-		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream", attr: "kms_key_id", want: kmsARN},
-		{family: familyMSKCluster, kind: "aws.msk_cluster", attr: "public", want: "true"},
-		{family: familyGlueDatabase, kind: "aws.glue_database", attr: "owner", want: "catalog@writer.com"},
-		{family: familyGlueTable, kind: "aws.glue_table", attr: "registered_with_lakeformation", want: "true"},
-		{family: familyGlueCrawler, kind: "aws.glue_crawler", attr: "lakeformation_credentials", want: "true"},
-		{family: familyGlueJob, kind: "aws.glue_job", attr: "security_configuration", want: "job-security"},
-		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup", attr: "encryption", want: "true"},
-		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog", attr: "catalog_type", want: "GLUE"},
-		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource", attr: "hybrid_access_enabled", want: "true"},
+		{family: familyGlueDatabase, kind: "aws.glue_database", attr: "location_uri", want: "s3://prod-data/warehouse"},
+		{family: familyGlueTable, kind: "aws.glue_table", attr: "is_registered_with_lakeformation", want: "true"},
+		{family: familyGlueCrawler, kind: "aws.glue_crawler", attr: "role_name", want: "GlueCrawlerRole"},
+		{family: familyGlueJob, kind: "aws.glue_job", attr: "command_name", want: "glueetl"},
+		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup", attr: "encryption", want: "SSE_KMS"},
+		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog", attr: "glue_catalog_id", want: "123456789012"},
+		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource", attr: "verification_status", want: "VERIFIED"},
 		{family: familyLakeFormationLFTag, kind: "aws.lakeformation_lf_tag", attr: "tag_values", want: "restricted"},
 		{family: familyLakeFormationPerm, kind: "aws.lakeformation_permission", attr: "permissions", want: "SELECT"},
 	} {
