@@ -246,10 +246,3 @@ func dynamoDBTableClass(table dynamodbtypes.TableDescription) string {
 	}
 	return string(table.TableClassSummary.TableClass)
 }
-
-func int64AttrString(value *int64) string {
-	if value == nil {
-		return ""
-	}
-	return strconv.FormatInt(*value, 10)
-}

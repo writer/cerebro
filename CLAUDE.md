@@ -33,7 +33,7 @@ If you touch these areas, expect generated artifacts and compatibility checks:
 - SDK helper docs/packages
 - DevEx codegen catalog
 
-Check the corresponding `Makefile` `*-check` / `*-compat` targets before finishing.
+Run `make contracts-check` before finishing broad contract changes, or the corresponding focused `Makefile` `*-check` / `*-compat` target for narrow changes.
 
 ## Runtime notes
 

@@ -1,0 +1,168 @@
+sourceId: azure
+secretKeys:
+  - AZURE_ARM_TOKEN
+  - AZURE_GRAPH_TOKEN
+  - AZURE_SUBSCRIPTION_ID
+  - AZURE_TENANT_ID
+runtimes:
+  - localId: activity-log
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: activity_log
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: aks-cluster
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: aks_cluster
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: app-service
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: app_service
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: application
+    config:
+      family: application
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: asset-metadata
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: asset_metadata
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: container-registry
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: container_registry
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: cosmos-account
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: cosmos_account
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: credential
+    config:
+      family: credential
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: directory-audit
+    config:
+      family: directory_audit
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: directory-role-assignment
+    config:
+      family: directory_role_assignment
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: effective-permission
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: effective_permission
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: function-app
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: function_app
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: group
+    config:
+      family: group
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: iam-role-assignment
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: iam_role_assignment
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: key-vault
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: key_vault
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: key-vault-key
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: key_vault_key
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: key-vault-secret
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: key_vault_secret
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: resource-exposure
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: resource_exposure
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: service-principal
+    config:
+      family: service_principal
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: sql-database
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: sql_database
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: sql-server
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: sql_server
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: storage-account
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: storage_account
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: user
+    config:
+      family: user
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: virtual-machine
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: virtual_machine
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
