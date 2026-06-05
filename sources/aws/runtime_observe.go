@@ -48,7 +48,7 @@ type awsSSMParameter struct {
 
 func listAppRunnerServices(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsAppRunnerService, string, error) {
 	out, err := clients.appRunner.ListServices(ctx, &apprunner.ListServicesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 20))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -127,7 +127,7 @@ func listCloudWatchLogGroups(ctx context.Context, clients awsClients, _ settings
 
 func listSSMManagedInstances(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSSMManagedInstance, string, error) {
 	out, err := clients.ssm.DescribeInstanceInformation(ctx, &ssm.DescribeInstanceInformationInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 50))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
