@@ -151,6 +151,7 @@ type settings struct {
 
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
+// cerebro:lint:allow maxfields AWS client container keeps one typed handle per service.
 type awsClients struct {
 	cfg                  awssdk.Config
 	iam                  awsIAMAPI
