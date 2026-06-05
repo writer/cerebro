@@ -781,6 +781,9 @@ func listAllGlobalAcceleratorListeners(ctx context.Context, clients awsClients, 
 		}
 		cursor = next
 	}
+	sort.Slice(records, func(i, j int) bool {
+		return awssdk.ToString(records[i].Listener.ListenerArn) < awssdk.ToString(records[j].Listener.ListenerArn)
+	})
 	return records, nil
 }
 
