@@ -1617,11 +1617,18 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 		Kind:       "okta.user",
 		OccurredAt: timestamppb.New(historicalProfileEdit),
 		Attributes: map[string]string{
-			"domain":  "writer.okta.com",
-			"email":   "alice@writer.com",
-			"login":   "alice@writer.com",
-			"status":  "DEPROVISIONED",
-			"user_id": "00u1",
+			"department":      "Design",
+			"domain":          "writer.okta.com",
+			"email":           "alice@writer.com",
+			"employee_number": "E-1001",
+			"job_title":       "Product Designer",
+			"login":           "alice@writer.com",
+			"manager":         "manager@example.com",
+			"manager_id":      "00u-manager",
+			"organization":    "Writer",
+			"status":          "DEPROVISIONED",
+			"user_id":         "00u1",
+			"user_type":       "employee",
 		},
 	})
 	after := time.Now().UTC()
@@ -1648,6 +1655,20 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 	// Allow a small clock-skew margin around the projection call.
 	if stamped.Before(before.Add(-time.Second)) || stamped.After(after.Add(time.Second)) {
 		t.Fatalf("represents_identity attributes[at] = %v not within projection window [%v, %v]; expected observation-time stamp", stamped, before, after)
+	}
+	entity := graph.entities[userURN]
+	for key, want := range map[string]string{
+		"department":      "Design",
+		"employee_number": "E-1001",
+		"job_title":       "Product Designer",
+		"manager":         "manager@example.com",
+		"manager_id":      "00u-manager",
+		"organization":    "Writer",
+		"user_type":       "employee",
+	} {
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("user entity attributes[%q] = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -2454,10 +2475,11 @@ func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T
 	service := New(state, nil)
 
 	event := &cerebrov1.EventEnvelope{
-		Id:       "aws-cloudtrail-email",
-		TenantId: "writer",
-		SourceId: "aws",
-		Kind:     "aws.cloudtrail",
+		Id:         "aws-cloudtrail-email",
+		TenantId:   "writer",
+		SourceId:   "aws",
+		Kind:       "aws.cloudtrail",
+		OccurredAt: timestamppb.New(time.Date(2026, time.June, 5, 17, 0, 0, 0, time.UTC)),
 		Attributes: map[string]string{
 			"actor_alternate_id": "AWSReservedSSO_admin/alice",
 			"actor_email":        "alice@writer.com",
@@ -2487,6 +2509,14 @@ func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T
 	}
 	if _, ok := state.links[actorURN+"|"+relationHasIdentifier+"|"+alternateIdentifierURN]; !ok {
 		t.Fatalf("aws actor alternate identifier link missing for %q", alternateIdentifierURN)
+	}
+	resourceURN := "urn:cerebro:writer:aws_account:123456789012"
+	actedOn := state.links[actorURN+"|"+relationActedOn+"|"+resourceURN]
+	if actedOn == nil {
+		t.Fatalf("aws acted_on link missing for %q", resourceURN)
+	}
+	if got, want := actedOn.Attributes["at"], "2026-06-05T17:00:00Z"; got != want {
+		t.Fatalf("aws acted_on attributes[at] = %q, want %q", got, want)
 	}
 }
 
