@@ -21,10 +21,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
 	github.com/aws/aws-sdk-go-v2/service/eks v1.84.5
+	github.com/aws/aws-sdk-go-v2/service/elasticache v1.54.2
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.3
+	github.com/aws/aws-sdk-go-v2/service/fsx v1.66.5
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.3
 	github.com/aws/aws-sdk-go-v2/service/kms v1.53.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2
+	github.com/aws/aws-sdk-go-v2/service/opensearch v1.70.6
+	github.com/aws/aws-sdk-go-v2/service/opensearchserverless v1.32.0
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.0
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2

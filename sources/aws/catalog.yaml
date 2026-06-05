@@ -14,7 +14,11 @@ emitted_kinds:
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
+  - aws.elasticache_cluster
+  - aws.elasticache_replication_group
+  - aws.elasticache_subnet_group
   - aws.effective_permission
+  - aws.fsx_file_system
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
@@ -22,6 +26,9 @@ emitted_kinds:
   - aws.iam_role_trust
   - aws.iam_user
   - aws.kms_key
+  - aws.opensearch_domain
+  - aws.opensearch_serverless_collection
+  - aws.opensearch_serverless_security_policy
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
@@ -43,7 +50,11 @@ runtime_families:
   - eks_nodegroup
   - eks_fargate_profile
   - eks_pod_identity_association
+  - elasticache_cluster
+  - elasticache_replication_group
+  - elasticache_subnet_group
   - effective_permission
+  - fsx_file_system
   - iam_group
   - iam_group_membership
   - iam_role
@@ -51,6 +62,9 @@ runtime_families:
   - iam_role_trust
   - iam_user
   - kms_key
+  - opensearch_domain
+  - opensearch_serverless_collection
+  - opensearch_serverless_security_policy
   - public_endpoint
   - rds_instance
   - resource_exposure
