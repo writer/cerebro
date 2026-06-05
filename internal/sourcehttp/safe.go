@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const MaxBodyBytes = 8 << 20
@@ -155,6 +157,12 @@ func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	base := rt.Base
 	if base == nil {
 		base = http.DefaultTransport
+	}
+	if req != nil {
+		if traceparent := telemetry.TraceParent(req.Context()); traceparent != "" && req.Header.Get("Traceparent") == "" {
+			req = req.Clone(req.Context())
+			req.Header.Set("Traceparent", traceparent)
+		}
 	}
 	if req != nil && req.URL != nil {
 		addrs, err := SafeResolvedHostAddrs(req.Context(), rt.SourceID, req.URL.Hostname(), rt.AllowLoopback, rt.LookupIPAddrs)

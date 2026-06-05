@@ -225,6 +225,39 @@ paths:
         - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - name: claim_id
+          in: query
+          schema:
+            type: string
+        - name: subject_urn
+          in: query
+          schema:
+            type: string
+        - name: predicate
+          in: query
+          schema:
+            type: string
+        - name: object_urn
+          in: query
+          schema:
+            type: string
+        - name: object_value
+          in: query
+          schema:
+            type: string
+        - name: claim_type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: source_event_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
           description: Claim list.
@@ -1637,6 +1670,218 @@ paths:
           description: Invalid client metadata.
         '429':
           description: Per-client-IP dynamic registration rate limit exceeded.
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Export Prometheus-compatible metrics
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Metrics in Prometheus text exposition format.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /platform/jobs:
+    get:
+      operationId: listPlatformJobs
+      summary: List platform jobs
+      tags:
+        - Platform
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Platform jobs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResponse'
+    post:
+      operationId: createPlatformJob
+      summary: Create a platform job
+      tags:
+        - Platform
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlatformJobRequest'
+      responses:
+        '202':
+          description: Job accepted and queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResponse'
+        '200':
+          description: Existing idempotent job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResponse'
+  /platform/jobs/{jobID}:
+    get:
+      operationId: getPlatformJob
+      summary: Get one platform job
+      tags:
+        - Platform
+      parameters:
+        - $ref: '#/components/parameters/jobID'
+      responses:
+        '200':
+          description: Platform job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResponse'
+  /platform/jobs/{jobID}/cancel:
+    post:
+      operationId: cancelPlatformJob
+      summary: Request platform job cancellation
+      tags:
+        - Platform
+      parameters:
+        - $ref: '#/components/parameters/jobID'
+      responses:
+        '200':
+          description: Cancelled or cancellation-requested job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResponse'
+  /platform/jobs/{jobID}/events:
+    get:
+      operationId: listPlatformJobEvents
+      summary: List platform job events
+      tags:
+        - Platform
+      parameters:
+        - $ref: '#/components/parameters/jobID'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Job event timeline.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobEventListResponse'
+  /platform/runtime-response/actions:
+    post:
+      operationId: executeRuntimeResponseAction
+      summary: Execute a runtime response action
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeResponseExecuteRequest'
+      responses:
+        '202':
+          description: Runtime response action accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeBlocklistEntryResponse'
+        '422':
+          description: Action is not supported by the configured executor surface.
+  /platform/runtime-response/blocklist:
+    get:
+      operationId: listRuntimeBlocklist
+      summary: List runtime response blocklist entries
+      tags:
+        - Platform
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [ip, domain]
+        - name: include_revoked
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Runtime blocklist entries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeBlocklistListResponse'
+  /platform/runtime-response/blocklist/{entryID}/revoke:
+    post:
+      operationId: revokeRuntimeBlocklistEntry
+      summary: Revoke a runtime response blocklist entry
+      tags:
+        - Platform
+      parameters:
+        - $ref: '#/components/parameters/entryID'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Revoked runtime blocklist entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeBlocklistEntryResponse'
+  /platform/runtime-response/capabilities:
+    get:
+      operationId: listRuntimeResponseCapabilities
+      summary: List runtime response capability coverage
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Runtime response capabilities and executor modes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeResponseCapabilitiesResponse'
 
 components:
   securitySchemes:
@@ -1670,6 +1915,18 @@ components:
         type: string
     runID:
       name: runID
+      in: path
+      required: true
+      schema:
+        type: string
+    jobID:
+      name: jobID
+      in: path
+      required: true
+      schema:
+        type: string
+    entryID:
+      name: entryID
       in: path
       required: true
       schema:
@@ -1708,6 +1965,243 @@ components:
         type: integer
         minimum: 1
   schemas:
+    CreatePlatformJobRequest:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - source_runtime_sync
+            - graph_ingest_runtime
+            - finding_rules_evaluate
+            - findings_evaluate
+            - report_run
+        tenant_id:
+          type: string
+        subject_type:
+          type: string
+        subject_id:
+          type: string
+        idempotency_key:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+    PlatformJobResponse:
+      type: object
+      required:
+        - job
+      properties:
+        job:
+          $ref: '#/components/schemas/PlatformJob'
+    PlatformJobListResponse:
+      type: object
+      required:
+        - jobs
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformJob'
+    PlatformJobEventListResponse:
+      type: object
+      required:
+        - events
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformJobEvent'
+    PlatformJob:
+      type: object
+      required:
+        - id
+        - kind
+        - status
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        tenant_id:
+          type: string
+        subject_type:
+          type: string
+        subject_id:
+          type: string
+        idempotency_key:
+          type: string
+        progress_percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        message:
+          type: string
+        error:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        result:
+          type: object
+          additionalProperties: true
+        result_refs:
+          type: object
+          additionalProperties:
+            type: string
+        cancel_requested:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PlatformJobEvent:
+      type: object
+      required:
+        - job_id
+        - sequence
+        - type
+      properties:
+        job_id:
+          type: string
+        sequence:
+          type: integer
+        type:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    RuntimeResponseExecuteRequest:
+      type: object
+      required:
+        - tenant_id
+        - action
+        - target
+      properties:
+        tenant_id:
+          type: string
+        action:
+          type: string
+          enum: [block_ip, block_domain, scale_down, kill_process, isolate_container, isolate_host, quarantine_file, revoke_credentials]
+        target:
+          type: string
+        reason:
+          type: string
+        source:
+          type: string
+        source_job_id:
+          type: string
+        trusted_scope:
+          type: boolean
+          readOnly: true
+          description: Server-derived authorization marker for mutating runtime response actions.
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+    RuntimeResponseCapabilitiesResponse:
+      type: object
+      required:
+        - capabilities
+      properties:
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeResponseCapability'
+    RuntimeResponseCapability:
+      type: object
+      required:
+        - action
+        - mode
+        - supported
+        - requires_trusted_scope
+      properties:
+        action:
+          type: string
+        mode:
+          type: string
+        supported:
+          type: boolean
+        requires_trusted_scope:
+          type: boolean
+    RuntimeBlocklistEntryResponse:
+      type: object
+      required:
+        - entry
+      properties:
+        entry:
+          $ref: '#/components/schemas/RuntimeBlocklistEntry'
+    RuntimeBlocklistListResponse:
+      type: object
+      required:
+        - entries
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeBlocklistEntry'
+    RuntimeBlocklistEntry:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - type
+        - value
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        type:
+          type: string
+          enum: [ip, domain]
+        value:
+          type: string
+        reason:
+          type: string
+        source:
+          type: string
+        source_job_id:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
     DeviceEnrollRequest:
       type: object
       required: [bootstrap_token, hardware_uuid]

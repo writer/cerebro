@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -77,6 +78,38 @@ func Start(ctx context.Context, name string, attributes Attributes) (context.Con
 	return next, span
 }
 
+// WithTraceParent seeds telemetry context from a W3C traceparent header.
+func WithTraceParent(ctx context.Context, header string) context.Context {
+	traceID, spanID, ok := ParseTraceParent(header)
+	if !ok {
+		return ctx
+	}
+	return context.WithValue(ctx, spanContextKey{}, spanContext{TraceID: traceID, SpanID: spanID})
+}
+
+// TraceParent returns a W3C traceparent header for the current telemetry span.
+func TraceParent(ctx context.Context) string {
+	current, _ := ctx.Value(spanContextKey{}).(spanContext)
+	if current.TraceID == "" || current.SpanID == "" {
+		return ""
+	}
+	return "00-" + current.TraceID + "-" + current.SpanID + "-01"
+}
+
+func ParseTraceParent(header string) (string, string, bool) {
+	parts := strings.Split(strings.TrimSpace(header), "-")
+	if len(parts) != 4 || parts[0] != "00" {
+		return "", "", false
+	}
+	traceID := strings.ToLower(parts[1])
+	spanID := strings.ToLower(parts[2])
+	flags := strings.ToLower(parts[3])
+	if len(traceID) != 32 || len(spanID) != 16 || len(flags) != 2 || allZero(traceID) || allZero(spanID) || !isLowerHex(traceID) || !isLowerHex(spanID) || !isLowerHex(flags) {
+		return "", "", false
+	}
+	return traceID, spanID, true
+}
+
 func Event(ctx context.Context, name string, attributes Attributes) {
 	current, _ := ctx.Value(spanContextKey{}).(spanContext)
 	emit("event", &Span{name: name, traceID: current.TraceID, spanID: current.SpanID}, attributes)
@@ -145,4 +178,22 @@ func randomHex(bytes int) string {
 		return hex.EncodeToString([]byte(time.Now().UTC().Format(time.RFC3339Nano)))
 	}
 	return hex.EncodeToString(buf)
+}
+
+func isLowerHex(value string) bool {
+	for _, ch := range value {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func allZero(value string) bool {
+	for _, ch := range value {
+		if ch != '0' {
+			return false
+		}
+	}
+	return value != ""
 }

@@ -6,7 +6,7 @@ The immediate goal is modest and structural:
 
 - keep `remediation` and `runtime response` as application-facing concepts
 - unify their execution model underneath
-- persist action executions and timelines in the shared execution store instead of process-local state
+- persist action executions and timelines through shared platform jobs instead of process-local state
 
 ## Why This Exists
 
@@ -27,7 +27,7 @@ Keeping that duplicated would make issue `#154` worse, not better. "Actual execu
 
 ## Core Model
 
-`internal/actionengine` is the shared substrate.
+The shared substrate should be implemented as a small action layer on top of platform jobs.
 
 It defines:
 
@@ -42,7 +42,7 @@ This is intentionally smaller than a general workflow engine. It is the minimum 
 
 ## Persistence Boundary
 
-The action engine persists through `internal/executionstore` using namespace `action_engine`.
+Action execution should persist through the platform job tables using action-specific job kinds and event types.
 
 That gives Cerebro one shared durability seam for:
 
@@ -50,11 +50,11 @@ That gives Cerebro one shared durability seam for:
 - image scans
 - function scans
 - connector validation
-- action executions
+- action executions and runtime response operations
 
 This is the correct boundary for now because it prevents new subsystems from drifting back into ad hoc in-memory orchestration.
 
-Longer term, the execution-store backend may move beyond SQLite. The contract should stay stable even if the storage implementation changes.
+The contract should stay stable even if execution later moves from in-process workers to a separate worker fleet.
 
 ## Application Adapters
 
@@ -62,21 +62,21 @@ The current integration keeps external behavior stable while removing duplicated
 
 ### Remediation
 
-`internal/remediation/executor.go` now:
+The remediation adapter should:
 
 - converts a remediation rule into an action-engine playbook
 - converts trigger data into a generic signal
-- executes through the shared action engine
+- execute through the shared action/job layer
 - maps shared execution state/results back onto remediation-native execution records
 
 ### Runtime Response
 
-`internal/runtime/response.go` now:
+The runtime response adapter should:
 
 - converts a response policy into an action-engine playbook
 - converts findings into a generic signal
 - persists the full finding context through `TriggerData`
-- executes approvals and action steps through the shared action engine
+- execute approvals and action steps through the shared action/job layer
 
 Preserving the original finding payload is important. Approval-based executions must resume with the same context that triggered them, not a partially reconstructed placeholder.
 
@@ -108,5 +108,5 @@ The point is not to copy those systems wholesale. The point is to keep Cerebro's
 
 1. Land issue `#154` on top of this substrate so runtime and remediation stop carrying separate executor growth.
 2. Expose shared action executions/events through a typed platform or security read surface.
-3. Move more execution families onto the shared execution store without inventing new persistence silos.
-4. Decide whether the execution-store backend remains SQLite or becomes a multi-worker store.
+3. Move more execution families onto platform jobs without inventing new persistence silos.
+4. Add a worker-safe runtime response capability surface with distributed blocklist state and capability coverage reporting.

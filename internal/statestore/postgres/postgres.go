@@ -30,6 +30,8 @@ type Store struct {
 	mcpOAuthTablesReady       bool
 	startupLeaseTableReady    bool
 	askTrajectoryReady        bool
+	jobTablesReady            bool
+	runtimeBlocklistReady     bool
 }
 
 // Open opens a Postgres-backed current-state store.

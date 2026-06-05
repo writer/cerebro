@@ -165,7 +165,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### Runtime response will not mutate from unauthenticated identifiers.
 
-- `scale_down`, `block_ip`, and `block_domain` require a trusted actuation scope on the request. Cerebro will not accept a runtime target identifier from an unauthenticated source, treat a finding payload as a containment authorization, or fail open when actuation scope is missing.
+- Runtime response mutations require a server-derived trusted actuation scope. Cerebro will not accept a runtime target identifier from an unauthenticated source, treat a finding payload as a containment authorization, or fail open when actuation scope is missing.
 - Why: containment is the highest-stakes runtime side effect Cerebro performs. The trusted actuation scope is what keeps a malformed finding from triggering a real outage.
 - Enforced in: [`docs/RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md) "Direct Action Semantics" and "Cerebro will not mutate containment state from unauthenticated runtime target identifiers".
 - What would change this: a stronger authorization model that subsumes trusted actuation scope; loosening current behavior is not on the table.

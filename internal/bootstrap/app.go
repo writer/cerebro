@@ -33,6 +33,7 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/mcpoauth"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -179,12 +180,12 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	mux := http.NewServeMux()
 	app.mux = mux
 	app.registerRoutes(mux, cfg, deps, sources)
-	app.handler = authMiddleware(cfg.Auth, AuthDependencies{
+	app.handler = observability.Middleware(authMiddleware(cfg.Auth, AuthDependencies{
 		DeviceVerifier: app.deviceVerifier,
 		DPoPVerifier:   app.dpopVerifier,
 		RiskScorer:     app.riskScorer,
 		Observations:   app.observationStore,
-	}, mux)
+	}, mux))
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.handler,
@@ -233,25 +234,38 @@ func (a *App) handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(apicontract.OpenAPIYAML)
 }
 
+func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	observability.Default.Handler().ServeHTTP(w, r)
+}
+
 func authorizeSourceRuntimeIDTenant(ctx context.Context, store ports.SourceRuntimeStore, runtimeID string, allowMissing bool) error {
 	if !hasAuthContext(ctx) {
 		return nil
 	}
+	_, err := sourceRuntimeTenantID(ctx, store, runtimeID, allowMissing)
+	return err
+}
+
+func sourceRuntimeTenantID(ctx context.Context, store ports.SourceRuntimeStore, runtimeID string, allowMissing bool) (string, error) {
 	id := strings.TrimSpace(runtimeID)
 	if id == "" {
-		return nil
+		return "", nil
 	}
 	if store == nil {
-		return sourceruntime.ErrRuntimeUnavailable
+		return "", sourceruntime.ErrRuntimeUnavailable
 	}
 	runtime, err := store.GetSourceRuntime(ctx, id)
 	if err != nil {
 		if allowMissing && errors.Is(err, ports.ErrSourceRuntimeNotFound) {
-			return nil
+			return "", nil
 		}
-		return err
+		return "", err
 	}
-	return authorizeTenantScopeRequired(ctx, runtime.GetTenantId())
+	tenantID := strings.TrimSpace(runtime.GetTenantId())
+	if err := authorizeTenantScopeRequired(ctx, tenantID); err != nil {
+		return "", err
+	}
+	return tenantID, nil
 }
 
 func authorizePutSourceRuntimeTenant(ctx context.Context, store ports.SourceRuntimeStore, runtime *cerebrov1.SourceRuntime) error {
@@ -3353,6 +3367,22 @@ func reportStore(store ports.StateStore) ports.ReportStore {
 		return nil
 	}
 	return reportStore
+}
+
+func jobStore(store ports.StateStore) ports.JobStore {
+	jobs, ok := store.(ports.JobStore)
+	if !ok || isNilInterface(jobs) {
+		return nil
+	}
+	return jobs
+}
+
+func runtimeBlocklistStore(store ports.StateStore) ports.RuntimeBlocklistStore {
+	blocklist, ok := store.(ports.RuntimeBlocklistStore)
+	if !ok || isNilInterface(blocklist) {
+		return nil
+	}
+	return blocklist
 }
 
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {

@@ -94,6 +94,22 @@ export interface IntegrationOptions {
   integration: string;
 }
 
+export interface CreateJobRequest {
+  kind: string;
+  tenant_id?: string;
+  subject_type?: string;
+  subject_id?: string;
+  idempotency_key?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ListJobsOptions {
+  tenant_id?: string;
+  kind?: string;
+  status?: string;
+  limit?: number;
+}
+
 export class APIError extends Error {
   statusCode: number;
   code?: string;
@@ -158,6 +174,39 @@ export class Client {
       query.set("limit", String(limit));
     }
     return this.requestJson<GraphNeighborhood>("GET", `/platform/graph/neighborhood?${query.toString()}`);
+  }
+
+  async createJob(request: CreateJobRequest, idempotencyKey = ""): Promise<Record<string, unknown>> {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) {
+      headers["Idempotency-Key"] = idempotencyKey;
+    }
+    return this.requestJson<Record<string, unknown>>("POST", "/platform/jobs", request, headers);
+  }
+
+  async listJobs(options: ListJobsOptions = {}): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(options)) {
+      if (value === undefined || value === null || value === "") {
+        continue;
+      }
+      query.set(key, String(value));
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.requestJson<Record<string, unknown>>("GET", `/platform/jobs${suffix}`);
+  }
+
+  async getJob(jobId: string): Promise<Record<string, unknown>> {
+    return this.requestJson<Record<string, unknown>>("GET", `/platform/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  async listJobEvents(jobId: string, limit = 0): Promise<Record<string, unknown>> {
+    const suffix = limit > 0 ? `?limit=${encodeURIComponent(String(limit))}` : "";
+    return this.requestJson<Record<string, unknown>>("GET", `/platform/jobs/${encodeURIComponent(jobId)}/events${suffix}`);
+  }
+
+  async cancelJob(jobId: string): Promise<Record<string, unknown>> {
+    return this.requestJson<Record<string, unknown>>("POST", `/platform/jobs/${encodeURIComponent(jobId)}/cancel`);
   }
 
   integration(options: IntegrationOptions): IntegrationClient {

@@ -32,5 +32,15 @@ Set `CEREBRO_API_AUTH_ENABLED=true` and pass `Authorization: Bearer <key>` or `X
 - `GET /platform/graph/ingest-health`
 - `GET /platform/graph/ingest-runs`
 - `GET /platform/graph/ingest-runs/{runID}`
+- `GET /metrics` - Prometheus-compatible process/API metrics; authenticated when API auth is enabled.
+- `POST /platform/jobs`
+- `GET /platform/jobs`
+- `GET /platform/jobs/{jobID}`
+- `GET /platform/jobs/{jobID}/events`
+- `POST /platform/jobs/{jobID}/cancel`
+- `GET /platform/runtime-response/capabilities`
+- `POST /platform/runtime-response/actions`
+- `GET /platform/runtime-response/blocklist`
+- `POST /platform/runtime-response/blocklist/{entryID}/revoke`
 
 Legacy `/graph/*` aliases have been removed; use `/platform/graph/*` routes instead.
