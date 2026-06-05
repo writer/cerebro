@@ -1589,8 +1589,8 @@ func TestReadAWSBackupInventoryEvents(t *testing.T) {
 func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
 	kinesisARN := "arn:aws:kinesis:us-east-1:123456789012:stream/orders"
-	firehoseARN := "arn:aws:firehose:us-east-1:123456789012:deliverystream/orders-delivery"
-	mskARN := "arn:aws:kafka:us-east-1:123456789012:cluster/orders/uuid"
+	firehoseARN := "arn:aws:firehose:us-east-1:123456789012:deliverystream/orders"
+	mskARN := "arn:aws:kafka:us-east-1:123456789012:cluster/orders/uuid-1"
 	glueDatabaseARN := "arn:aws:glue:us-east-1:123456789012:database/analytics"
 	glueTableARN := "arn:aws:glue:us-east-1:123456789012:table/analytics/orders"
 	glueCrawlerARN := "arn:aws:glue:us-east-1:123456789012:crawler/orders-crawler"
@@ -1604,14 +1604,15 @@ func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 			StreamStatus:            kinesistypes.StreamStatusActive,
 			EncryptionType:          kinesistypes.EncryptionTypeKms,
 			KeyId:                   awssdk.String(kmsARN),
-			RetentionPeriodHours:    awssdk.Int32(48),
+			RetentionPeriodHours:    awssdk.Int32(168),
 			OpenShardCount:          awssdk.Int32(2),
 			StreamCreationTimestamp: timePtr("2026-04-23T00:00:00Z"),
 		}},
-		kinesisTags: map[string][]kinesistypes.Tag{kinesisARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("analytics@writer.com")}}},
+		kinesisTags:     map[string][]kinesistypes.Tag{kinesisARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+		kinesisPolicies: map[string]string{kinesisARN: `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"kinesis:DescribeStream"}]}`},
 		firehoseStreams: []firehosetypes.DeliveryStreamDescription{{
 			DeliveryStreamARN:    awssdk.String(firehoseARN),
-			DeliveryStreamName:   awssdk.String("orders-delivery"),
+			DeliveryStreamName:   awssdk.String("orders"),
 			DeliveryStreamStatus: firehosetypes.DeliveryStreamStatusActive,
 			DeliveryStreamType:   firehosetypes.DeliveryStreamTypeKinesisStreamAsSource,
 			CreateTimestamp:      timePtr("2026-04-23T00:00:00Z"),
@@ -1620,13 +1621,17 @@ func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 				KeyType: firehosetypes.KeyTypeCustomerManagedCmk,
 				Status:  firehosetypes.DeliveryStreamEncryptionStatusEnabled,
 			},
-			Destinations: []firehosetypes.DestinationDescription{{ExtendedS3DestinationDescription: &firehosetypes.ExtendedS3DestinationDescription{BucketARN: awssdk.String("arn:aws:s3:::orders-lake")}}},
+			Destinations: []firehosetypes.DestinationDescription{{
+				DestinationId: awssdk.String("destinationId-000000000001"),
+				ExtendedS3DestinationDescription: &firehosetypes.ExtendedS3DestinationDescription{
+					BucketARN: awssdk.String("arn:aws:s3:::prod-data"),
+				},
+			}},
 			Source: &firehosetypes.SourceDescription{KinesisStreamSourceDescription: &firehosetypes.KinesisStreamSourceDescription{
 				KinesisStreamARN: awssdk.String(kinesisARN),
-				RoleARN:          awssdk.String("arn:aws:iam::123456789012:role/firehose"),
 			}},
 		}},
-		firehoseTags: map[string][]firehosetypes.Tag{"orders-delivery": {{Key: awssdk.String("Team"), Value: awssdk.String("data")}}},
+		firehoseTags: map[string][]firehosetypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}}},
 		mskClusters: []kafkatypes.Cluster{{
 			ClusterArn:   awssdk.String(mskARN),
 			ClusterName:  awssdk.String("orders"),
@@ -1634,10 +1639,25 @@ func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 			CreationTime: timePtr("2026-04-23T00:00:00Z"),
 			State:        kafkatypes.ClusterStateActive,
 			Provisioned: &kafkatypes.Provisioned{
-				NumberOfBrokerNodes:       awssdk.Int32(3),
-				EncryptionInfo:            &kafkatypes.EncryptionInfo{},
+				BrokerNodeGroupInfo: &kafkatypes.BrokerNodeGroupInfo{
+					ClientSubnets:  []string{"subnet-1", "subnet-2"},
+					InstanceType:   awssdk.String("kafka.m5.large"),
+					SecurityGroups: []string{"sg-msk"},
+					ConnectivityInfo: &kafkatypes.ConnectivityInfo{
+						PublicAccess: &kafkatypes.PublicAccess{Type: awssdk.String("SERVICE_PROVIDED_EIPS")},
+					},
+				},
 				CurrentBrokerSoftwareInfo: &kafkatypes.BrokerSoftwareInfo{KafkaVersion: awssdk.String("3.6.0")},
+				EncryptionInfo: &kafkatypes.EncryptionInfo{
+					EncryptionAtRest: &kafkatypes.EncryptionAtRest{DataVolumeKMSKeyId: awssdk.String(kmsARN)},
+					EncryptionInTransit: &kafkatypes.EncryptionInTransit{
+						ClientBroker: kafkatypes.ClientBrokerTls,
+						InCluster:    awssdk.Bool(true),
+					},
+				},
+				NumberOfBrokerNodes: awssdk.Int32(3),
 			},
+			Tags: map[string]string{"Team": "streaming"},
 		}},
 		mskTags: map[string]map[string]string{mskARN: {"Owner": "streaming@writer.com"}},
 		glueDatabases: []gluetypes.Database{{
@@ -1733,9 +1753,9 @@ func TestReadAWSAnalyticsAndStreamingInventoryEvents(t *testing.T) {
 		attr   string
 		want   string
 	}{
-		{family: familyKinesisStream, kind: "aws.kinesis_stream", attr: "encryption", want: "true"},
-		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream", attr: "destination_types", want: "s3"},
-		{family: familyMSKCluster, kind: "aws.msk_cluster", attr: "broker_count", want: "3"},
+		{family: familyKinesisStream, kind: "aws.kinesis_stream", attr: "retention_hours", want: "168"},
+		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream", attr: "kms_key_id", want: kmsARN},
+		{family: familyMSKCluster, kind: "aws.msk_cluster", attr: "public", want: "true"},
 		{family: familyGlueDatabase, kind: "aws.glue_database", attr: "owner", want: "catalog@writer.com"},
 		{family: familyGlueTable, kind: "aws.glue_table", attr: "registered_with_lakeformation", want: "true"},
 		{family: familyGlueCrawler, kind: "aws.glue_crawler", attr: "lakeformation_credentials", want: "true"},
@@ -3245,6 +3265,90 @@ func TestReadAWSRoleAssignmentAndCloudTrailPreview(t *testing.T) {
 	}
 }
 
+func TestSSMDocumentEventSuppressesAccountIDOwner(t *testing.T) {
+	baseSettings := settings{accountID: "123456789012", region: "us-east-1"}
+	for _, tt := range []struct {
+		name string
+		doc  ssmtypes.DocumentIdentifier
+		want string
+	}{
+		{
+			name: "suppresses matching account id owner",
+			doc: ssmtypes.DocumentIdentifier{
+				Name:  awssdk.String("Cerebro-ConfigureAgent"),
+				Owner: awssdk.String("123456789012"),
+			},
+			want: "",
+		},
+		{
+			name: "suppresses other aws account id owner",
+			doc: ssmtypes.DocumentIdentifier{
+				Name:  awssdk.String("Cerebro-ConfigureAgent"),
+				Owner: awssdk.String("210987654321"),
+			},
+			want: "",
+		},
+		{
+			name: "keeps non-account owner",
+			doc: ssmtypes.DocumentIdentifier{
+				Name:  awssdk.String("Cerebro-ConfigureAgent"),
+				Owner: awssdk.String("Amazon"),
+			},
+			want: "Amazon",
+		},
+		{
+			name: "preserves owner from tags",
+			doc: ssmtypes.DocumentIdentifier{
+				Name:  awssdk.String("Cerebro-ConfigureAgent"),
+				Owner: awssdk.String("123456789012"),
+				Tags:  []ssmtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+			},
+			want: "platform@writer.com",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event, err := ssmDocumentEvent(baseSettings, awsSSMDocument{Document: tt.doc, Tags: ssmTagMap(tt.doc.Tags)})
+			if err != nil {
+				t.Fatalf("ssmDocumentEvent() error = %v", err)
+			}
+			if got := event.Attributes["owner"]; got != tt.want {
+				t.Fatalf("owner = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSSMParameterARNNormalizesLeadingSlash(t *testing.T) {
+	cfg := settings{accountID: "123456789012", region: "us-east-1"}
+	for _, tt := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "keeps existing leading slash",
+			in:   "/prod/api/db-password",
+			want: "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api/db-password",
+		},
+		{
+			name: "adds missing leading slash",
+			in:   "prod/api/db-password",
+			want: "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api/db-password",
+		},
+		{
+			name: "trims whitespace before normalization",
+			in:   "  prod/api/db-password  ",
+			want: "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api/db-password",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ssmParameterARN(cfg, tt.in); got != tt.want {
+				t.Fatalf("ssmParameterARN(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func newTestSource(t *testing.T, fake fakeAWS) *Source {
 	t.Helper()
 	spec, err := loadSpec()
@@ -3593,6 +3697,7 @@ type fakeAWSRuntimeSystems struct {
 type fakeAWSAnalytics struct {
 	kinesisStreams           []kinesistypes.StreamDescriptionSummary
 	kinesisTags              map[string][]kinesistypes.Tag
+	kinesisPolicies          map[string]string
 	firehoseStreams          []firehosetypes.DeliveryStreamDescription
 	firehoseTags             map[string][]firehosetypes.Tag
 	mskClusters              []kafkatypes.Cluster
@@ -4800,6 +4905,11 @@ func (f recordingKinesis) ListTagsForStream(ctx context.Context, input *kinesis.
 	return fakeKinesis{fake: &f.fake.fakeAWS}.ListTagsForStream(ctx, input, options...)
 }
 
+func (f recordingKinesis) GetResourcePolicy(ctx context.Context, input *kinesis.GetResourcePolicyInput, options ...func(*kinesis.Options)) (*kinesis.GetResourcePolicyOutput, error) {
+	f.fake.record("kinesis:GetResourcePolicy")
+	return fakeKinesis{fake: &f.fake.fakeAWS}.GetResourcePolicy(ctx, input, options...)
+}
+
 func (f fakeKinesis) ListStreams(_ context.Context, input *kinesis.ListStreamsInput, _ ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error) {
 	names := make([]string, 0, len(f.fake.kinesisStreams))
 	for _, stream := range f.fake.kinesisStreams {
@@ -4825,6 +4935,10 @@ func (f fakeKinesis) DescribeStreamSummary(_ context.Context, input *kinesis.Des
 func (f fakeKinesis) ListTagsForStream(_ context.Context, input *kinesis.ListTagsForStreamInput, _ ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error) {
 	key := firstNonEmpty(awssdk.ToString(input.StreamARN), awssdk.ToString(input.StreamName))
 	return &kinesis.ListTagsForStreamOutput{Tags: f.fake.kinesisTags[key], HasMoreTags: awssdk.Bool(false)}, nil
+}
+
+func (f fakeKinesis) GetResourcePolicy(_ context.Context, input *kinesis.GetResourcePolicyInput, _ ...func(*kinesis.Options)) (*kinesis.GetResourcePolicyOutput, error) {
+	return &kinesis.GetResourcePolicyOutput{Policy: awssdk.String(f.fake.kinesisPolicies[awssdk.ToString(input.ResourceARN)])}, nil
 }
 
 type fakeFirehose struct {
@@ -4889,6 +5003,11 @@ func (f recordingKafka) ListClustersV2(ctx context.Context, input *kafka.ListClu
 	return fakeKafka{fake: &f.fake.fakeAWS}.ListClustersV2(ctx, input, options...)
 }
 
+func (f recordingKafka) DescribeClusterV2(ctx context.Context, input *kafka.DescribeClusterV2Input, options ...func(*kafka.Options)) (*kafka.DescribeClusterV2Output, error) {
+	f.fake.record("kafka:DescribeClusterV2")
+	return fakeKafka{fake: &f.fake.fakeAWS}.DescribeClusterV2(ctx, input, options...)
+}
+
 func (f recordingKafka) ListTagsForResource(ctx context.Context, input *kafka.ListTagsForResourceInput, options ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error) {
 	f.fake.record("kafka:ListTagsForResource")
 	return fakeKafka{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
@@ -4896,6 +5015,17 @@ func (f recordingKafka) ListTagsForResource(ctx context.Context, input *kafka.Li
 
 func (f fakeKafka) ListClustersV2(context.Context, *kafka.ListClustersV2Input, ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error) {
 	return &kafka.ListClustersV2Output{ClusterInfoList: f.fake.mskClusters}, nil
+}
+
+func (f fakeKafka) DescribeClusterV2(_ context.Context, input *kafka.DescribeClusterV2Input, _ ...func(*kafka.Options)) (*kafka.DescribeClusterV2Output, error) {
+	arn := awssdk.ToString(input.ClusterArn)
+	for _, cluster := range f.fake.mskClusters {
+		if awssdk.ToString(cluster.ClusterArn) == arn {
+			copy := cluster
+			return &kafka.DescribeClusterV2Output{ClusterInfo: &copy}, nil
+		}
+	}
+	return &kafka.DescribeClusterV2Output{}, nil
 }
 
 func (f fakeKafka) ListTagsForResource(_ context.Context, input *kafka.ListTagsForResourceInput, _ ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error) {
