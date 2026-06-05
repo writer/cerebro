@@ -45,6 +45,8 @@ import (
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/firehose"
+	"github.com/aws/aws-sdk-go-v2/service/globalaccelerator"
+	globalacceleratortypes "github.com/aws/aws-sdk-go-v2/service/globalaccelerator/types"
 	"github.com/aws/aws-sdk-go-v2/service/glue"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
@@ -72,6 +74,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/vpclattice"
+	vpclatticetypes "github.com/aws/aws-sdk-go-v2/service/vpclattice/types"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -120,6 +124,21 @@ const (
 	familyEKSNodegroup             = "eks_nodegroup"
 	familyEKSFargateProfile        = "eks_fargate_profile"
 	familyEKSPodIdentity           = "eks_pod_identity_association"
+	familyGlobalAccelerator        = "globalaccelerator_accelerator"
+	familyGAListener               = "globalaccelerator_listener"
+	familyGAEndpointGroup          = "globalaccelerator_endpoint_group"
+	familyVPCLatticeService        = "vpclattice_service"
+	familyVPCLatticeListener       = "vpclattice_listener"
+	familyVPCLatticeTG             = "vpclattice_target_group"
+	familyELBV2Listener            = "elbv2_listener"
+	familyELBV2TargetGroup         = "elbv2_target_group"
+	familyAPIGatewayStage          = "apigateway_stage"
+	familyAPIGatewayRoute          = "apigateway_route"
+	familyAPIGatewayInteg          = "apigateway_integration"
+	familyCloudFrontOAC            = "cloudfront_origin_access_control"
+	familyCloudFrontKeyGroup       = "cloudfront_key_group"
+	familyCloudFrontPublicKey      = "cloudfront_public_key"
+	familyCloudFrontRHP            = "cloudfront_response_headers_policy"
 	familyEffectivePermission      = "effective_permission"
 	familyEventBridgeArchive       = "eventbridge_archive"
 	familyEventBridgeBus           = "eventbridge_event_bus"
@@ -223,6 +242,8 @@ type awsPlatformClients struct {
 	route53      awsRoute53API
 	cloudFront   awsCloudFrontAPI
 	elbv2        awsELBV2API
+	globalAccel  awsGlobalAcceleratorAPI
+	vpcLattice   awsVPCLatticeAPI
 	ecs          awsECSAPI
 	eks          awsEKSAPI
 	ecr          awsECRAPI
@@ -338,20 +359,44 @@ type awsRoute53API interface {
 
 type awsCloudFrontAPI interface {
 	ListDistributions(context.Context, *cloudfront.ListDistributionsInput, ...func(*cloudfront.Options)) (*cloudfront.ListDistributionsOutput, error)
+	ListOriginAccessControls(context.Context, *cloudfront.ListOriginAccessControlsInput, ...func(*cloudfront.Options)) (*cloudfront.ListOriginAccessControlsOutput, error)
+	ListKeyGroups(context.Context, *cloudfront.ListKeyGroupsInput, ...func(*cloudfront.Options)) (*cloudfront.ListKeyGroupsOutput, error)
+	ListPublicKeys(context.Context, *cloudfront.ListPublicKeysInput, ...func(*cloudfront.Options)) (*cloudfront.ListPublicKeysOutput, error)
+	ListResponseHeadersPolicies(context.Context, *cloudfront.ListResponseHeadersPoliciesInput, ...func(*cloudfront.Options)) (*cloudfront.ListResponseHeadersPoliciesOutput, error)
 }
 
 type awsELBV2API interface {
 	DescribeLoadBalancers(context.Context, *elbv2.DescribeLoadBalancersInput, ...func(*elbv2.Options)) (*elbv2.DescribeLoadBalancersOutput, error)
+	DescribeListeners(context.Context, *elbv2.DescribeListenersInput, ...func(*elbv2.Options)) (*elbv2.DescribeListenersOutput, error)
+	DescribeTargetGroups(context.Context, *elbv2.DescribeTargetGroupsInput, ...func(*elbv2.Options)) (*elbv2.DescribeTargetGroupsOutput, error)
+}
+
+type awsGlobalAcceleratorAPI interface {
+	ListAccelerators(context.Context, *globalaccelerator.ListAcceleratorsInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListAcceleratorsOutput, error)
+	ListListeners(context.Context, *globalaccelerator.ListListenersInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListListenersOutput, error)
+	ListEndpointGroups(context.Context, *globalaccelerator.ListEndpointGroupsInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListEndpointGroupsOutput, error)
+}
+
+type awsVPCLatticeAPI interface {
+	ListServices(context.Context, *vpclattice.ListServicesInput, ...func(*vpclattice.Options)) (*vpclattice.ListServicesOutput, error)
+	ListListeners(context.Context, *vpclattice.ListListenersInput, ...func(*vpclattice.Options)) (*vpclattice.ListListenersOutput, error)
+	ListTargetGroups(context.Context, *vpclattice.ListTargetGroupsInput, ...func(*vpclattice.Options)) (*vpclattice.ListTargetGroupsOutput, error)
 }
 
 type awsAPIGatewayAPI interface {
 	GetDomainNames(context.Context, *apigateway.GetDomainNamesInput, ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error)
 	GetRestApis(context.Context, *apigateway.GetRestApisInput, ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error)
+	GetStages(context.Context, *apigateway.GetStagesInput, ...func(*apigateway.Options)) (*apigateway.GetStagesOutput, error)
+	GetResources(context.Context, *apigateway.GetResourcesInput, ...func(*apigateway.Options)) (*apigateway.GetResourcesOutput, error)
+	GetIntegration(context.Context, *apigateway.GetIntegrationInput, ...func(*apigateway.Options)) (*apigateway.GetIntegrationOutput, error)
 }
 
 type awsAPIGatewayV2API interface {
 	GetApis(context.Context, *apigatewayv2.GetApisInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error)
 	GetDomainNames(context.Context, *apigatewayv2.GetDomainNamesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error)
+	GetStages(context.Context, *apigatewayv2.GetStagesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetStagesOutput, error)
+	GetRoutes(context.Context, *apigatewayv2.GetRoutesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetRoutesOutput, error)
+	GetIntegrations(context.Context, *apigatewayv2.GetIntegrationsInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetIntegrationsOutput, error)
 }
 
 type awsLambdaAPI interface {
@@ -1479,6 +1524,173 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(association.AssociationArn), awssdk.ToString(association.AssociationId))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[globalacceleratortypes.Accelerator]{
+			Name:  familyGlobalAccelerator,
+			Label: "aws global accelerator accelerators",
+			List:  listGlobalAccelerators,
+			Event: globalAcceleratorEvent,
+			URN: func(settings settings, accelerator globalacceleratortypes.Accelerator) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_globalaccelerator_accelerator:%s", settings.accountID, firstNonEmpty(awssdk.ToString(accelerator.AcceleratorArn), awssdk.ToString(accelerator.Name))), nil
+			},
+			CursorFallback: func(accelerator globalacceleratortypes.Accelerator) string {
+				return firstNonEmpty(awssdk.ToString(accelerator.AcceleratorArn), awssdk.ToString(accelerator.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlobalAcceleratorListener]{
+			Name:  familyGAListener,
+			Label: "aws global accelerator listeners",
+			List:  listGlobalAcceleratorListeners,
+			Event: globalAcceleratorListenerEvent,
+			URN: func(settings settings, listener awsGlobalAcceleratorListener) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_globalaccelerator_listener:%s", settings.accountID, awssdk.ToString(listener.Listener.ListenerArn)), nil
+			},
+			CursorFallback: func(listener awsGlobalAcceleratorListener) string {
+				return awssdk.ToString(listener.Listener.ListenerArn)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlobalAcceleratorEndpointGroup]{
+			Name:  familyGAEndpointGroup,
+			Label: "aws global accelerator endpoint groups",
+			List:  listGlobalAcceleratorEndpointGroups,
+			Event: globalAcceleratorEndpointGroupEvent,
+			URN: func(settings settings, group awsGlobalAcceleratorEndpointGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_globalaccelerator_endpoint_group:%s", settings.accountID, awssdk.ToString(group.EndpointGroup.EndpointGroupArn)), nil
+			},
+			CursorFallback: func(group awsGlobalAcceleratorEndpointGroup) string {
+				return awssdk.ToString(group.EndpointGroup.EndpointGroupArn)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[vpclatticetypes.ServiceSummary]{
+			Name:  familyVPCLatticeService,
+			Label: "aws vpc lattice services",
+			List:  listVPCLatticeServices,
+			Event: vpcLatticeServiceEvent,
+			URN: func(settings settings, service vpclatticetypes.ServiceSummary) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpclattice_service:%s", settings.accountID, firstNonEmpty(awssdk.ToString(service.Arn), awssdk.ToString(service.Id), awssdk.ToString(service.Name))), nil
+			},
+			CursorFallback: func(service vpclatticetypes.ServiceSummary) string {
+				return firstNonEmpty(awssdk.ToString(service.Arn), awssdk.ToString(service.Id), awssdk.ToString(service.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsVPCLatticeListener]{
+			Name:  familyVPCLatticeListener,
+			Label: "aws vpc lattice listeners",
+			List:  listVPCLatticeListeners,
+			Event: vpcLatticeListenerEvent,
+			URN: func(settings settings, listener awsVPCLatticeListener) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpclattice_listener:%s", settings.accountID, firstNonEmpty(awssdk.ToString(listener.Listener.Arn), awssdk.ToString(listener.Listener.Id))), nil
+			},
+			CursorFallback: func(listener awsVPCLatticeListener) string {
+				return firstNonEmpty(awssdk.ToString(listener.Listener.Arn), awssdk.ToString(listener.Listener.Id))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[vpclatticetypes.TargetGroupSummary]{
+			Name:  familyVPCLatticeTG,
+			Label: "aws vpc lattice target groups",
+			List:  listVPCLatticeTargetGroups,
+			Event: vpcLatticeTargetGroupEvent,
+			URN: func(settings settings, target vpclatticetypes.TargetGroupSummary) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpclattice_target_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(target.Arn), awssdk.ToString(target.Id), awssdk.ToString(target.Name))), nil
+			},
+			CursorFallback: func(target vpclatticetypes.TargetGroupSummary) string {
+				return firstNonEmpty(awssdk.ToString(target.Arn), awssdk.ToString(target.Id), awssdk.ToString(target.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[elbv2types.Listener]{
+			Name:  familyELBV2Listener,
+			Label: "aws elbv2 listeners",
+			List:  listELBV2Listeners,
+			Event: elbv2ListenerEvent,
+			URN: func(settings settings, listener elbv2types.Listener) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elbv2_listener:%s", settings.accountID, awssdk.ToString(listener.ListenerArn)), nil
+			},
+			CursorFallback: func(listener elbv2types.Listener) string { return awssdk.ToString(listener.ListenerArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[elbv2types.TargetGroup]{
+			Name:  familyELBV2TargetGroup,
+			Label: "aws elbv2 target groups",
+			List:  listELBV2TargetGroups,
+			Event: elbv2TargetGroupEvent,
+			URN: func(settings settings, target elbv2types.TargetGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elbv2_target_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(target.TargetGroupArn), awssdk.ToString(target.TargetGroupName))), nil
+			},
+			CursorFallback: func(target elbv2types.TargetGroup) string {
+				return firstNonEmpty(awssdk.ToString(target.TargetGroupArn), awssdk.ToString(target.TargetGroupName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAPIGatewayStage]{
+			Name:  familyAPIGatewayStage,
+			Label: "aws api gateway stages",
+			List:  listAPIGatewayStages,
+			Event: apiGatewayStageEvent,
+			URN: func(settings settings, stage awsAPIGatewayStage) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_stage:%s/%s", settings.accountID, stage.apiID(), stage.stageName()), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAPIGatewayRoute]{
+			Name:  familyAPIGatewayRoute,
+			Label: "aws api gateway routes",
+			List:  listAPIGatewayRoutes,
+			Event: apiGatewayRouteEvent,
+			URN: func(settings settings, route awsAPIGatewayRoute) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_route:%s/%s", settings.accountID, route.apiID(), route.routeID()), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAPIGatewayIntegration]{
+			Name:  familyAPIGatewayInteg,
+			Label: "aws api gateway integrations",
+			List:  listAPIGatewayIntegrations,
+			Event: apiGatewayIntegrationEvent,
+			URN: func(settings settings, integration awsAPIGatewayIntegration) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_integration:%s/%s", settings.accountID, integration.apiID(), integration.integrationID()), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[cloudfronttypes.OriginAccessControlSummary]{
+			Name:  familyCloudFrontOAC,
+			Label: "aws cloudfront origin access controls",
+			List:  listCloudFrontOACs,
+			Event: cloudFrontOACEvent,
+			URN: func(settings settings, oac cloudfronttypes.OriginAccessControlSummary) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudfront_origin_access_control:%s", settings.accountID, awssdk.ToString(oac.Id)), nil
+			},
+			CursorFallback: func(oac cloudfronttypes.OriginAccessControlSummary) string { return awssdk.ToString(oac.Id) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[cloudfronttypes.KeyGroupSummary]{
+			Name:  familyCloudFrontKeyGroup,
+			Label: "aws cloudfront key groups",
+			List:  listCloudFrontKeyGroups,
+			Event: cloudFrontKeyGroupEvent,
+			URN: func(settings settings, summary cloudfronttypes.KeyGroupSummary) (string, error) {
+				id := ""
+				if summary.KeyGroup != nil {
+					id = awssdk.ToString(summary.KeyGroup.Id)
+				}
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudfront_key_group:%s", settings.accountID, id), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[cloudfronttypes.PublicKeySummary]{
+			Name:  familyCloudFrontPublicKey,
+			Label: "aws cloudfront public keys",
+			List:  listCloudFrontPublicKeys,
+			Event: cloudFrontPublicKeyEvent,
+			URN: func(settings settings, key cloudfronttypes.PublicKeySummary) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudfront_public_key:%s", settings.accountID, awssdk.ToString(key.Id)), nil
+			},
+			CursorFallback: func(key cloudfronttypes.PublicKeySummary) string { return awssdk.ToString(key.Id) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[cloudfronttypes.ResponseHeadersPolicySummary]{
+			Name:  familyCloudFrontRHP,
+			Label: "aws cloudfront response headers policies",
+			List:  listCloudFrontResponseHeadersPolicies,
+			Event: cloudFrontResponseHeadersPolicyEvent,
+			URN: func(settings settings, summary cloudfronttypes.ResponseHeadersPolicySummary) (string, error) {
+				id := ""
+				if summary.ResponseHeadersPolicy != nil {
+					id = awssdk.ToString(summary.ResponseHeadersPolicy.Id)
+				}
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudfront_response_headers_policy:%s", settings.accountID, id), nil
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
 			Name:  familyEffectivePermission,
 			Label: "aws effective permissions",
@@ -1639,6 +1851,8 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			route53:      route53.NewFromConfig(cfg),
 			cloudFront:   cloudfront.NewFromConfig(cfg),
 			elbv2:        elbv2.NewFromConfig(cfg),
+			globalAccel:  globalaccelerator.NewFromConfig(cfg),
+			vpcLattice:   vpclattice.NewFromConfig(cfg),
 			ecs:          ecs.NewFromConfig(cfg),
 			eks:          eks.NewFromConfig(cfg),
 			ecr:          ecr.NewFromConfig(cfg),
@@ -1743,7 +1957,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine:
+	case familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
