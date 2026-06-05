@@ -47,10 +47,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/efs"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticache"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/firehose"
+	"github.com/aws/aws-sdk-go-v2/service/fsx"
 	"github.com/aws/aws-sdk-go-v2/service/globalaccelerator"
 	globalacceleratortypes "github.com/aws/aws-sdk-go-v2/service/globalaccelerator/types"
 	"github.com/aws/aws-sdk-go-v2/service/glue"
@@ -64,6 +66,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/neptune"
+	"github.com/aws/aws-sdk-go-v2/service/opensearch"
+	"github.com/aws/aws-sdk-go-v2/service/opensearchserverless"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -100,119 +104,126 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily                  = familyCloudTrail
-	defaultRegion                  = "us-east-1"
-	defaultPageSize                = 10
-	maxPageSize                    = 200
-	cloudTrailCursorVersion        = 1
-	cloudTrailCursorMaxAge         = 55 * time.Minute
-	publicEndpointCursorV2         = 2
-	awsAssumeRoleSessionName       = "cerebro-source-runtime"
-	familyAccessKey                = "access_key"
-	familyACMCertificate           = "acm_certificate"
-	familyAppRunnerService         = "apprunner_service"
-	familyAssetMetadata            = "asset_metadata"
-	familyAthenaDataCatalog        = "athena_data_catalog"
-	familyAthenaWorkgroup          = "athena_workgroup"
-	familyBatchComputeEnv          = "batch_compute_environment"
-	familyBatchJobQueue            = "batch_job_queue"
-	familyBackupPlan               = "backup_plan"
-	familyBackupProtected          = "backup_protected_resource"
-	familyBackupRecoveryPoint      = "backup_recovery_point"
-	familyBackupVault              = "backup_vault"
-	familyCloudTrail               = "cloudtrail"
-	familyCloudWatchAlarm          = "cloudwatch_alarm"
-	familyCloudWatchLogGroup       = "cloudwatch_log_group"
-	familyDataSyncLocation         = "datasync_location"
-	familyDataSyncTask             = "datasync_task"
-	familyDocDBCluster             = "docdb_cluster"
-	familyDocDBInstance            = "docdb_instance"
-	familyDynamoDBBackup           = "dynamodb_backup"
-	familyDynamoDBStream           = "dynamodb_stream"
-	familyDynamoDBTable            = "dynamodb_table"
-	familyEBSSnapshot              = "ebs_snapshot"
-	familyEBSVolume                = "ebs_volume"
-	familyEC2Instance              = "ec2_instance"
-	familyECRRepository            = "ecr_repository"
-	familyECSService               = "ecs_service"
-	familyECSTask                  = "ecs_task"
-	familyECSTaskDefinition        = "ecs_task_definition"
-	familyEFSAccessPoint           = "efs_access_point"
-	familyEFSFileSystem            = "efs_file_system"
-	familyEKSCluster               = "eks_cluster"
-	familyEKSNodegroup             = "eks_nodegroup"
-	familyEKSFargateProfile        = "eks_fargate_profile"
-	familyEKSPodIdentity           = "eks_pod_identity_association"
-	familyGlobalAccelerator        = "globalaccelerator_accelerator"
-	familyGAListener               = "globalaccelerator_listener"
-	familyGAEndpointGroup          = "globalaccelerator_endpoint_group"
-	familyVPCLatticeService        = "vpclattice_service"
-	familyVPCLatticeListener       = "vpclattice_listener"
-	familyVPCLatticeTG             = "vpclattice_target_group"
-	familyELBV2Listener            = "elbv2_listener"
-	familyELBV2TargetGroup         = "elbv2_target_group"
-	familyAPIGatewayStage          = "apigateway_stage"
-	familyAPIGatewayRoute          = "apigateway_route"
-	familyAPIGatewayInteg          = "apigateway_integration"
-	familyCloudFrontOAC            = "cloudfront_origin_access_control"
-	familyCloudFrontKeyGroup       = "cloudfront_key_group"
-	familyCloudFrontPublicKey      = "cloudfront_public_key"
-	familyCloudFrontRHP            = "cloudfront_response_headers_policy"
-	familyEffectivePermission      = "effective_permission"
-	familyEventBridgeArchive       = "eventbridge_archive"
-	familyEventBridgeBus           = "eventbridge_event_bus"
-	familyEventBridgePipe          = "eventbridge_pipe"
-	familyEventBridgeRule          = "eventbridge_rule"
-	familyFirehoseDelivery         = "firehose_delivery_stream"
-	familyGlueCrawler              = "glue_crawler"
-	familyGlueDatabase             = "glue_database"
-	familyGlueJob                  = "glue_job"
-	familyGlueTable                = "glue_table"
-	familyIAMGroup                 = "iam_group"
-	familyIAMMembership            = "iam_group_membership"
-	familyIAMRoleTrust             = "iam_role_trust"
-	familyIAMRoleAssign            = "iam_role_assignment"
-	familyIAMRole                  = "iam_role"
-	familyIAMUser                  = "iam_user"
-	familyIdentityStoreGroup       = "identitystore_group"
-	familyIdentityStoreMember      = "identitystore_group_membership"
-	familyIdentityStoreUser        = "identitystore_user"
-	familyKinesisStream            = "kinesis_stream"
-	familyKMSKey                   = "kms_key"
-	familyLakeFormationLFTag       = "lakeformation_lf_tag"
-	familyLakeFormationPerm        = "lakeformation_permission"
-	familyLakeFormationRes         = "lakeformation_resource"
-	familyLambdaFunction           = "lambda_function"
-	familyMSKCluster               = "msk_cluster"
-	familyNeptuneCluster           = "neptune_cluster"
-	familyNeptuneInstance          = "neptune_instance"
-	familyOrganizationsAcct        = "organizations_account"
-	familyOrganizationsOU          = "organizations_organizational_unit"
-	familyOrganizationsPolicy      = "organizations_policy"
-	familyOrganizationsRoot        = "organizations_root"
-	familyPublicEndpoint           = "public_endpoint"
-	familyRDSInstance              = "rds_instance"
-	familyRedshiftCluster          = "redshift_cluster"
-	familyResourceExposure         = "resource_exposure"
-	familyRoute53ResolverEndpoint  = "route53_resolver_endpoint"
-	familyRoute53ResolverRule      = "route53_resolver_rule"
-	familyS3AccessPoint            = "s3_access_point"
-	familyS3Bucket                 = "s3_bucket"
-	familyS3MultiRegionAccessPoint = "s3_multi_region_access_point"
-	familySchedulerSchedule        = "scheduler_schedule"
-	familySchedulerGroup           = "scheduler_schedule_group"
-	familySecret                   = "secret"
-	familySNSTopic                 = "sns_topic"
-	familySQSQueue                 = "sqs_queue"
-	familySSOAssignment            = "sso_account_assignment"
-	familySSOInstance              = "sso_instance"
-	familySSOPermissionSet         = "sso_permission_set"
-	familySSMAssociation           = "ssm_association"
-	familySSMDocument              = "ssm_document"
-	familySSMManagedInstance       = "ssm_managed_instance"
-	familySSMParameter             = "ssm_parameter"
-	familyStepFunctionActivity     = "stepfunctions_activity"
-	familyStepFunctionStateMachine = "stepfunctions_state_machine"
+	defaultFamily                            = familyCloudTrail
+	defaultRegion                            = "us-east-1"
+	defaultPageSize                          = 10
+	maxPageSize                              = 200
+	cloudTrailCursorVersion                  = 1
+	cloudTrailCursorMaxAge                   = 55 * time.Minute
+	publicEndpointCursorV2                   = 2
+	awsAssumeRoleSessionName                 = "cerebro-source-runtime"
+	familyAccessKey                          = "access_key"
+	familyACMCertificate                     = "acm_certificate"
+	familyAppRunnerService                   = "apprunner_service"
+	familyAssetMetadata                      = "asset_metadata"
+	familyAthenaDataCatalog                  = "athena_data_catalog"
+	familyAthenaWorkgroup                    = "athena_workgroup"
+	familyBatchComputeEnv                    = "batch_compute_environment"
+	familyBatchJobQueue                      = "batch_job_queue"
+	familyBackupPlan                         = "backup_plan"
+	familyBackupProtected                    = "backup_protected_resource"
+	familyBackupRecoveryPoint                = "backup_recovery_point"
+	familyBackupVault                        = "backup_vault"
+	familyCloudTrail                         = "cloudtrail"
+	familyCloudWatchAlarm                    = "cloudwatch_alarm"
+	familyCloudWatchLogGroup                 = "cloudwatch_log_group"
+	familyDataSyncLocation                   = "datasync_location"
+	familyDataSyncTask                       = "datasync_task"
+	familyDynamoDBBackup                     = "dynamodb_backup"
+	familyDynamoDBStream                     = "dynamodb_stream"
+	familyDynamoDBTable                      = "dynamodb_table"
+	familyEBSSnapshot                        = "ebs_snapshot"
+	familyEBSVolume                          = "ebs_volume"
+	familyEC2Instance                        = "ec2_instance"
+	familyECRRepository                      = "ecr_repository"
+	familyECSService                         = "ecs_service"
+	familyECSTask                            = "ecs_task"
+	familyECSTaskDefinition                  = "ecs_task_definition"
+	familyEFSAccessPoint                     = "efs_access_point"
+	familyEFSFileSystem                      = "efs_file_system"
+	familyEKSCluster                         = "eks_cluster"
+	familyEKSNodegroup                       = "eks_nodegroup"
+	familyEKSFargateProfile                  = "eks_fargate_profile"
+	familyEKSPodIdentity                     = "eks_pod_identity_association"
+	familyElastiCacheCluster                 = "elasticache_cluster"
+	familyElastiCacheReplicationGroup        = "elasticache_replication_group"
+	familyElastiCacheSubnetGroup             = "elasticache_subnet_group"
+	familyGlobalAccelerator                  = "globalaccelerator_accelerator"
+	familyGAListener                         = "globalaccelerator_listener"
+	familyGAEndpointGroup                    = "globalaccelerator_endpoint_group"
+	familyVPCLatticeService                  = "vpclattice_service"
+	familyVPCLatticeListener                 = "vpclattice_listener"
+	familyVPCLatticeTG                       = "vpclattice_target_group"
+	familyELBV2Listener                      = "elbv2_listener"
+	familyELBV2TargetGroup                   = "elbv2_target_group"
+	familyAPIGatewayStage                    = "apigateway_stage"
+	familyAPIGatewayRoute                    = "apigateway_route"
+	familyAPIGatewayInteg                    = "apigateway_integration"
+	familyCloudFrontOAC                      = "cloudfront_origin_access_control"
+	familyCloudFrontKeyGroup                 = "cloudfront_key_group"
+	familyCloudFrontPublicKey                = "cloudfront_public_key"
+	familyCloudFrontRHP                      = "cloudfront_response_headers_policy"
+	familyEffectivePermission                = "effective_permission"
+	familyEventBridgeArchive                 = "eventbridge_archive"
+	familyEventBridgeBus                     = "eventbridge_event_bus"
+	familyEventBridgePipe                    = "eventbridge_pipe"
+	familyEventBridgeRule                    = "eventbridge_rule"
+	familyFirehoseDelivery                   = "firehose_delivery_stream"
+	familyGlueCrawler                        = "glue_crawler"
+	familyGlueDatabase                       = "glue_database"
+	familyGlueJob                            = "glue_job"
+	familyGlueTable                          = "glue_table"
+	familyIAMGroup                           = "iam_group"
+	familyIAMMembership                      = "iam_group_membership"
+	familyIAMRoleTrust                       = "iam_role_trust"
+	familyIAMRoleAssign                      = "iam_role_assignment"
+	familyIAMRole                            = "iam_role"
+	familyIAMUser                            = "iam_user"
+	familyIdentityStoreGroup                 = "identitystore_group"
+	familyIdentityStoreMember                = "identitystore_group_membership"
+	familyIdentityStoreUser                  = "identitystore_user"
+	familyKinesisStream                      = "kinesis_stream"
+	familyKMSKey                             = "kms_key"
+	familyFSxFileSystem                      = "fsx_file_system"
+	familyLakeFormationLFTag                 = "lakeformation_lf_tag"
+	familyLakeFormationPerm                  = "lakeformation_permission"
+	familyLakeFormationRes                   = "lakeformation_resource"
+	familyLambdaFunction                     = "lambda_function"
+	familyMSKCluster                         = "msk_cluster"
+	familyOrganizationsAcct                  = "organizations_account"
+	familyOrganizationsOU                    = "organizations_organizational_unit"
+	familyOrganizationsPolicy                = "organizations_policy"
+	familyOpenSearchDomain                   = "opensearch_domain"
+	familyOpenSearchServerlessCollection     = "opensearch_serverless_collection"
+	familyOpenSearchServerlessSecurityPolicy = "opensearch_serverless_security_policy"
+	familyPublicEndpoint                     = "public_endpoint"
+	familyRDSInstance                        = "rds_instance"
+	familyResourceExposure                   = "resource_exposure"
+	familyRoute53ResolverEndpoint            = "route53_resolver_endpoint"
+	familyRoute53ResolverRule                = "route53_resolver_rule"
+	familyS3AccessPoint                      = "s3_access_point"
+	familyS3Bucket                           = "s3_bucket"
+	familyS3MultiRegionAccessPoint           = "s3_multi_region_access_point"
+	familySchedulerSchedule                  = "scheduler_schedule"
+	familySchedulerGroup                     = "scheduler_schedule_group"
+	familySecret                             = "secret"
+	familySNSTopic                           = "sns_topic"
+	familySQSQueue                           = "sqs_queue"
+	familySSOAssignment                      = "sso_account_assignment"
+	familySSOInstance                        = "sso_instance"
+	familySSOPermissionSet                   = "sso_permission_set"
+	familySSMAssociation                     = "ssm_association"
+	familySSMDocument                        = "ssm_document"
+	familySSMManagedInstance                 = "ssm_managed_instance"
+	familySSMParameter                       = "ssm_parameter"
+	familyStepFunctionActivity               = "stepfunctions_activity"
+	familyStepFunctionStateMachine           = "stepfunctions_state_machine"
+	familyOrganizationsRoot                  = "organizations_root"
+	familyDocDBCluster                       = "docdb_cluster"
+	familyDocDBInstance                      = "docdb_instance"
+	familyNeptuneCluster                     = "neptune_cluster"
+	familyNeptuneInstance                    = "neptune_instance"
+	familyRedshiftCluster                    = "redshift_cluster"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -263,6 +274,7 @@ type awsClients struct {
 	awsGovernanceClients
 	awsStorageClients
 	awsSecurityClients
+	awsDataClients
 }
 
 type awsACMAPI interface {
@@ -301,6 +313,13 @@ type awsStorageClients struct {
 	dynamodb        awsDynamoDBAPI
 	dynamodbStreams awsDynamoDBStreamsAPI
 	efs             awsEFSAPI
+}
+
+type awsDataClients struct {
+	elasticache          awsElastiCacheAPI
+	fsx                  awsFSxAPI
+	openSearch           awsOpenSearchAPI
+	openSearchServerless awsOpenSearchServerlessAPI
 }
 
 type awsRuntimeClients struct {
@@ -514,6 +533,32 @@ type awsS3ControlAPI interface {
 	GetMultiRegionAccessPoint(context.Context, *s3control.GetMultiRegionAccessPointInput, ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointOutput, error)
 	GetMultiRegionAccessPointPolicyStatus(context.Context, *s3control.GetMultiRegionAccessPointPolicyStatusInput, ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointPolicyStatusOutput, error)
 	ListTagsForResource(context.Context, *s3control.ListTagsForResourceInput, ...func(*s3control.Options)) (*s3control.ListTagsForResourceOutput, error)
+}
+
+type awsElastiCacheAPI interface {
+	DescribeReplicationGroups(context.Context, *elasticache.DescribeReplicationGroupsInput, ...func(*elasticache.Options)) (*elasticache.DescribeReplicationGroupsOutput, error)
+	DescribeCacheClusters(context.Context, *elasticache.DescribeCacheClustersInput, ...func(*elasticache.Options)) (*elasticache.DescribeCacheClustersOutput, error)
+	DescribeCacheSubnetGroups(context.Context, *elasticache.DescribeCacheSubnetGroupsInput, ...func(*elasticache.Options)) (*elasticache.DescribeCacheSubnetGroupsOutput, error)
+	ListTagsForResource(context.Context, *elasticache.ListTagsForResourceInput, ...func(*elasticache.Options)) (*elasticache.ListTagsForResourceOutput, error)
+}
+
+type awsFSxAPI interface {
+	DescribeFileSystems(context.Context, *fsx.DescribeFileSystemsInput, ...func(*fsx.Options)) (*fsx.DescribeFileSystemsOutput, error)
+	ListTagsForResource(context.Context, *fsx.ListTagsForResourceInput, ...func(*fsx.Options)) (*fsx.ListTagsForResourceOutput, error)
+}
+
+type awsOpenSearchAPI interface {
+	ListDomainNames(context.Context, *opensearch.ListDomainNamesInput, ...func(*opensearch.Options)) (*opensearch.ListDomainNamesOutput, error)
+	DescribeDomains(context.Context, *opensearch.DescribeDomainsInput, ...func(*opensearch.Options)) (*opensearch.DescribeDomainsOutput, error)
+	ListTags(context.Context, *opensearch.ListTagsInput, ...func(*opensearch.Options)) (*opensearch.ListTagsOutput, error)
+}
+
+type awsOpenSearchServerlessAPI interface {
+	ListCollections(context.Context, *opensearchserverless.ListCollectionsInput, ...func(*opensearchserverless.Options)) (*opensearchserverless.ListCollectionsOutput, error)
+	BatchGetCollection(context.Context, *opensearchserverless.BatchGetCollectionInput, ...func(*opensearchserverless.Options)) (*opensearchserverless.BatchGetCollectionOutput, error)
+	ListTagsForResource(context.Context, *opensearchserverless.ListTagsForResourceInput, ...func(*opensearchserverless.Options)) (*opensearchserverless.ListTagsForResourceOutput, error)
+	ListSecurityPolicies(context.Context, *opensearchserverless.ListSecurityPoliciesInput, ...func(*opensearchserverless.Options)) (*opensearchserverless.ListSecurityPoliciesOutput, error)
+	GetSecurityPolicy(context.Context, *opensearchserverless.GetSecurityPolicyInput, ...func(*opensearchserverless.Options)) (*opensearchserverless.GetSecurityPolicyOutput, error)
 }
 
 type awsRDSAPI interface {
@@ -1367,6 +1412,90 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOpenSearchDomain]{
+			Name:  familyOpenSearchDomain,
+			Label: "aws opensearch domains",
+			List:  listOpenSearchDomains,
+			Event: openSearchDomainEvent,
+			URN: func(settings settings, domain awsOpenSearchDomain) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_opensearch_domain:%s", settings.accountID, firstNonEmpty(awssdk.ToString(domain.Domain.ARN), awssdk.ToString(domain.Domain.DomainName))), nil
+			},
+			CursorFallback: func(domain awsOpenSearchDomain) string {
+				return firstNonEmpty(awssdk.ToString(domain.Domain.ARN), awssdk.ToString(domain.Domain.DomainName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOpenSearchServerlessCollection]{
+			Name:  familyOpenSearchServerlessCollection,
+			Label: "aws opensearch serverless collections",
+			List:  listOpenSearchServerlessCollections,
+			Event: openSearchServerlessCollectionEvent,
+			URN: func(settings settings, collection awsOpenSearchServerlessCollection) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_opensearch_serverless_collection:%s", settings.accountID, firstNonEmpty(awssdk.ToString(collection.Collection.Arn), awssdk.ToString(collection.Collection.Id), awssdk.ToString(collection.Collection.Name))), nil
+			},
+			CursorFallback: func(collection awsOpenSearchServerlessCollection) string {
+				return firstNonEmpty(awssdk.ToString(collection.Collection.Arn), awssdk.ToString(collection.Collection.Id), awssdk.ToString(collection.Collection.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOpenSearchServerlessSecurityPolicy]{
+			Name:  familyOpenSearchServerlessSecurityPolicy,
+			Label: "aws opensearch serverless security policies",
+			List:  listOpenSearchServerlessSecurityPolicies,
+			Event: openSearchServerlessSecurityPolicyEvent,
+			URN: func(settings settings, policy awsOpenSearchServerlessSecurityPolicy) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_opensearch_serverless_security_policy:%s:%s", settings.accountID, policyTypeString(policy.Policy.Type), awssdk.ToString(policy.Policy.Name)), nil
+			},
+			CursorFallback: func(policy awsOpenSearchServerlessSecurityPolicy) string {
+				return firstNonEmpty(awssdk.ToString(policy.Policy.PolicyVersion), awssdk.ToString(policy.Policy.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsElastiCacheReplicationGroup]{
+			Name:  familyElastiCacheReplicationGroup,
+			Label: "aws elasticache replication groups",
+			List:  listElastiCacheReplicationGroups,
+			Event: elasticacheReplicationGroupEvent,
+			URN: func(settings settings, group awsElastiCacheReplicationGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elasticache_replication_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(group.Group.ARN), awssdk.ToString(group.Group.ReplicationGroupId))), nil
+			},
+			CursorFallback: func(group awsElastiCacheReplicationGroup) string {
+				return firstNonEmpty(awssdk.ToString(group.Group.ARN), awssdk.ToString(group.Group.ReplicationGroupId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsElastiCacheCluster]{
+			Name:  familyElastiCacheCluster,
+			Label: "aws elasticache clusters",
+			List:  listElastiCacheClusters,
+			Event: elasticacheClusterEvent,
+			URN: func(settings settings, cluster awsElastiCacheCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elasticache_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(cluster.Cluster.ARN), awssdk.ToString(cluster.Cluster.CacheClusterId))), nil
+			},
+			CursorFallback: func(cluster awsElastiCacheCluster) string {
+				return firstNonEmpty(awssdk.ToString(cluster.Cluster.ARN), awssdk.ToString(cluster.Cluster.CacheClusterId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsElastiCacheSubnetGroup]{
+			Name:  familyElastiCacheSubnetGroup,
+			Label: "aws elasticache subnet groups",
+			List:  listElastiCacheSubnetGroups,
+			Event: elasticacheSubnetGroupEvent,
+			URN: func(settings settings, group awsElastiCacheSubnetGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elasticache_subnet_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(group.Group.ARN), awssdk.ToString(group.Group.CacheSubnetGroupName))), nil
+			},
+			CursorFallback: func(group awsElastiCacheSubnetGroup) string {
+				return firstNonEmpty(awssdk.ToString(group.Group.ARN), awssdk.ToString(group.Group.CacheSubnetGroupName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsFSxFileSystem]{
+			Name:  familyFSxFileSystem,
+			Label: "aws fsx file systems",
+			List:  listFSxFileSystems,
+			Event: fsxFileSystemEvent,
+			URN: func(settings settings, fs awsFSxFileSystem) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_fsx_file_system:%s", settings.accountID, firstNonEmpty(awssdk.ToString(fs.FileSystem.ResourceARN), awssdk.ToString(fs.FileSystem.FileSystemId))), nil
+			},
+			CursorFallback: func(fs awsFSxFileSystem) string {
+				return firstNonEmpty(awssdk.ToString(fs.FileSystem.ResourceARN), awssdk.ToString(fs.FileSystem.FileSystemId))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsEFSFileSystem]{
 			Name:  familyEFSFileSystem,
 			Label: "aws efs file systems",
@@ -2194,6 +2323,12 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			efs:             efs.NewFromConfig(cfg),
 		},
 		awsSecurityClients: newAWSSecurityClients(cfg),
+		awsDataClients: awsDataClients{
+			elasticache:          elasticache.NewFromConfig(cfg),
+			fsx:                  fsx.NewFromConfig(cfg),
+			openSearch:           opensearch.NewFromConfig(cfg),
+			openSearchServerless: opensearchserverless.NewFromConfig(cfg),
+		},
 	}, nil
 }
 
@@ -2254,7 +2389,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyDocDBCluster, familyDocDBInstance, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyNeptuneCluster, familyNeptuneInstance, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyRedshiftCluster, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyFSxFileSystem, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName

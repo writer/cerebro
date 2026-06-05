@@ -35,9 +35,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
 	github.com/aws/aws-sdk-go-v2/service/efs v1.42.0
 	github.com/aws/aws-sdk-go-v2/service/eks v1.84.5
+	github.com/aws/aws-sdk-go-v2/service/elasticache v1.54.2
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.3
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.46.5
 	github.com/aws/aws-sdk-go-v2/service/firehose v1.43.1
+	github.com/aws/aws-sdk-go-v2/service/fsx v1.66.5
 	github.com/aws/aws-sdk-go-v2/service/globalaccelerator v1.36.5
 	github.com/aws/aws-sdk-go-v2/service/glue v1.143.0
 	github.com/aws/aws-sdk-go-v2/service/guardduty v1.79.2
@@ -52,6 +54,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/macie2 v1.52.1
 	github.com/aws/aws-sdk-go-v2/service/neptune v1.45.2
 	github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.61.6
+	github.com/aws/aws-sdk-go-v2/service/opensearch v1.70.6
+	github.com/aws/aws-sdk-go-v2/service/opensearchserverless v1.32.0
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.51.9
 	github.com/aws/aws-sdk-go-v2/service/pipes v1.24.5
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.0
