@@ -87,8 +87,8 @@ type awsLakeFormationPermission struct {
 }
 
 type glueTablePageCursor struct {
-	DatabaseIndex int    `json:"database_index,omitempty"`
-	TableToken    string `json:"table_token,omitempty"`
+	DatabaseName string `json:"database_name,omitempty"`
+	TableToken   string `json:"table_token,omitempty"`
 }
 
 func listKinesisStreams(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsKinesisStream, string, error) {
@@ -280,17 +280,33 @@ func listGlueTables(ctx context.Context, clients awsClients, settings settings, 
 	if err != nil {
 		return nil, "", err
 	}
-	if state.DatabaseIndex < 0 || state.DatabaseIndex >= len(databases) {
-		state.DatabaseIndex = 0
-		state.TableToken = ""
+	databaseIndex := 0
+	if state.DatabaseName != "" {
+		found := false
+		for index, databaseName := range databases {
+			if databaseName == state.DatabaseName {
+				databaseIndex = index
+				found = true
+				break
+			}
+			if databaseName > state.DatabaseName {
+				databaseIndex = index
+				state.TableToken = ""
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, "", nil
+		}
 	}
 	remaining := limit
 	if remaining <= 0 {
 		remaining = defaultPageSize
 	}
 	records := make([]awsGlueTable, 0, remaining)
-	for state.DatabaseIndex < len(databases) && len(records) < remaining {
-		databaseName := databases[state.DatabaseIndex]
+	for databaseIndex < len(databases) && len(records) < remaining {
+		databaseName := databases[databaseIndex]
 		out, err := clients.glue.GetTables(ctx, &glue.GetTablesInput{
 			CatalogId:    awssdk.String(settings.accountID),
 			DatabaseName: awssdk.String(databaseName),
@@ -317,13 +333,15 @@ func listGlueTables(ctx context.Context, clients awsClients, settings settings, 
 			records = append(records, record)
 		}
 		if awssdk.ToString(out.NextToken) != "" {
+			state.DatabaseName = databaseName
 			state.TableToken = awssdk.ToString(out.NextToken)
 			return records, encodeGlueTableCursor(state), nil
 		}
-		state.DatabaseIndex++
+		databaseIndex++
 		state.TableToken = ""
 	}
-	if state.DatabaseIndex < len(databases) {
+	if databaseIndex < len(databases) {
+		state.DatabaseName = databases[databaseIndex]
 		return records, encodeGlueTableCursor(state), nil
 	}
 	return records, "", nil
@@ -653,6 +671,7 @@ func glueDatabaseEvent(settings settings, record awsGlueDatabase) (*primitives.E
 		attributes["target_catalog_id"] = awssdk.ToString(database.TargetDatabase.CatalogId)
 		attributes["target_database_name"] = awssdk.ToString(database.TargetDatabase.DatabaseName)
 	}
+	addTimeAttribute(attributes, "created_at", database.CreateTime)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "database": database, "tags": record.Tags})
 	if err != nil {
 		return nil, err
@@ -669,20 +688,38 @@ func glueTableEvent(settings settings, record awsGlueTable) (*primitives.Event, 
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueTable, firstNonEmpty(arn, glueTableResourceID(settings, record)), name, "glue_table", record.Tags)
 	attributes["arn"] = arn
 	attributes["catalog_id"] = catalogID
+	attributes["created_by"] = awssdk.ToString(table.CreatedBy)
 	attributes["database_name"] = databaseName
+	attributes["description"] = awssdk.ToString(table.Description)
+	attributes["is_materialized_view"] = boolString(awssdk.ToBool(table.IsMaterializedView))
+	attributes["is_registered_with_lakeformation"] = boolString(table.IsRegisteredWithLakeFormation)
 	attributes["table_name"] = name
 	attributes["table_type"] = awssdk.ToString(table.TableType)
 	attributes["owner"] = firstNonEmpty(tagLookup(record.Tags, "owner", "application_owner", "business_owner", "service_owner"), awssdk.ToString(table.Owner))
-	attributes["created_by"] = awssdk.ToString(table.CreatedBy)
 	attributes["registered_with_lakeformation"] = boolString(table.IsRegisteredWithLakeFormation)
+	attributes["partition_key_count"] = strconv.Itoa(len(table.PartitionKeys))
 	attributes["retention_days"] = strconv.FormatInt(int64(table.Retention), 10)
+	attributes["version_id"] = awssdk.ToString(table.VersionId)
 	if table.StorageDescriptor != nil {
 		attributes["location"] = awssdk.ToString(table.StorageDescriptor.Location)
+		attributes["location_uri"] = awssdk.ToString(table.StorageDescriptor.Location)
 		attributes["input_format"] = awssdk.ToString(table.StorageDescriptor.InputFormat)
 		attributes["output_format"] = awssdk.ToString(table.StorageDescriptor.OutputFormat)
 		attributes["compressed"] = boolString(table.StorageDescriptor.Compressed)
 		attributes["column_count"] = strconv.Itoa(len(table.StorageDescriptor.Columns))
+		if table.StorageDescriptor.SerdeInfo != nil {
+			attributes["serde_library"] = awssdk.ToString(table.StorageDescriptor.SerdeInfo.SerializationLibrary)
+		}
 	}
+	if table.TargetTable != nil {
+		attributes["target_catalog_id"] = awssdk.ToString(table.TargetTable.CatalogId)
+		attributes["target_database_name"] = awssdk.ToString(table.TargetTable.DatabaseName)
+		attributes["target_table_name"] = awssdk.ToString(table.TargetTable.Name)
+	}
+	addTimeAttribute(attributes, "created_at", table.CreateTime)
+	addTimeAttribute(attributes, "updated_at", table.UpdateTime)
+	addTimeAttribute(attributes, "last_accessed_at", table.LastAccessTime)
+	addTimeAttribute(attributes, "last_analyzed_at", table.LastAnalyzedTime)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "database_name": databaseName, "table": table, "tags": record.Tags})
 	if err != nil {
 		return nil, err
@@ -694,41 +731,79 @@ func glueCrawlerEvent(settings settings, record awsGlueCrawler) (*primitives.Eve
 	crawler := record.Crawler
 	name := awssdk.ToString(crawler.Name)
 	arn := glueCrawlerARN(settings, name)
+	roleARN := awssdk.ToString(crawler.Role)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueCrawler, firstNonEmpty(arn, name), name, "glue_crawler", record.Tags)
 	attributes["arn"] = arn
 	attributes["crawler_name"] = name
 	attributes["database_name"] = awssdk.ToString(crawler.DatabaseName)
+	attributes["description"] = awssdk.ToString(crawler.Description)
+	attributes["lineage"] = glueCrawlerLineage(crawler)
+	attributes["recrawl_behavior"] = glueCrawlerRecrawlBehavior(crawler)
+	attributes["relationship"] = "runs_as"
 	attributes["state"] = string(crawler.State)
-	attributes["role_arn"] = awssdk.ToString(crawler.Role)
+	attributes["role_arn"] = roleARN
+	attributes["role_name"] = roleNameFromARN(roleARN)
+	attributes["schedule"] = glueCrawlerSchedule(crawler)
 	attributes["security_configuration"] = awssdk.ToString(crawler.CrawlerSecurityConfiguration)
+	attributes["table_prefix"] = awssdk.ToString(crawler.TablePrefix)
+	attributes["target_count"] = strconv.Itoa(glueCrawlerTargetCount(crawler.Targets))
+	attributes["version"] = strconv.FormatInt(crawler.Version, 10)
 	if crawler.LakeFormationConfiguration != nil {
 		attributes["lakeformation_credentials"] = boolString(awssdk.ToBool(crawler.LakeFormationConfiguration.UseLakeFormationCredentials))
 		attributes["lakeformation_account_id"] = awssdk.ToString(crawler.LakeFormationConfiguration.AccountId)
 	}
+	if crawler.LastCrawl != nil {
+		attributes["last_crawl_status"] = string(crawler.LastCrawl.Status)
+		attributes["last_crawl_error"] = awssdk.ToString(crawler.LastCrawl.ErrorMessage)
+		addTimeAttribute(attributes, "last_crawl_started_at", crawler.LastCrawl.StartTime)
+	}
+	addTimeAttribute(attributes, "created_at", crawler.CreationTime)
+	addTimeAttribute(attributes, "updated_at", crawler.LastUpdated)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "crawler": crawler, "tags": record.Tags})
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-glue-crawler-"+firstNonEmpty(arn, name), "aws.glue_crawler", "aws/glue_crawler/v1", payload, attributes, firstTime(crawler.CreationTime))
+	return sourceEvent(settings, "aws-glue-crawler-"+firstNonEmpty(arn, name), "aws.glue_crawler", "aws/glue_crawler/v1", payload, attributes, firstTime(crawler.LastUpdated, crawler.CreationTime))
 }
 
 func glueJobEvent(settings settings, record awsGlueJob) (*primitives.Event, error) {
 	job := record.Job
 	name := awssdk.ToString(job.Name)
 	arn := glueJobARN(settings, name)
+	roleARN := awssdk.ToString(job.Role)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueJob, firstNonEmpty(arn, name), name, "glue_job", record.Tags)
 	attributes["arn"] = arn
-	attributes["job_name"] = name
-	attributes["description"] = awssdk.ToString(job.Description)
-	attributes["glue_version"] = awssdk.ToString(job.GlueVersion)
-	attributes["role_arn"] = awssdk.ToString(job.Role)
-	attributes["security_configuration"] = awssdk.ToString(job.SecurityConfiguration)
-	attributes["execution_class"] = string(job.ExecutionClass)
-	attributes["worker_type"] = string(job.WorkerType)
-	if job.Command != nil {
-		attributes["command_name"] = awssdk.ToString(job.Command.Name)
-		attributes["runtime"] = awssdk.ToString(job.Command.Runtime)
+	if job.MaxCapacity != nil {
+		attributes["allocated_capacity"] = strconv.FormatFloat(awssdk.ToFloat64(job.MaxCapacity), 'f', -1, 64)
 	}
+	attributes["command_name"] = glueJobCommandName(job)
+	attributes["description"] = awssdk.ToString(job.Description)
+	attributes["execution_class"] = string(job.ExecutionClass)
+	attributes["glue_version"] = awssdk.ToString(job.GlueVersion)
+	attributes["job_mode"] = string(job.JobMode)
+	attributes["job_name"] = name
+	attributes["max_retries"] = strconv.FormatInt(int64(job.MaxRetries), 10)
+	attributes["profile_name"] = awssdk.ToString(job.ProfileName)
+	attributes["relationship"] = "runs_as"
+	attributes["role_arn"] = roleARN
+	attributes["role_name"] = roleNameFromARN(roleARN)
+	attributes["script_location"] = glueJobScriptLocation(job)
+	attributes["security_configuration"] = awssdk.ToString(job.SecurityConfiguration)
+	attributes["worker_type"] = string(job.WorkerType)
+	if job.ExecutionProperty != nil {
+		attributes["max_concurrent_runs"] = strconv.FormatInt(int64(job.ExecutionProperty.MaxConcurrentRuns), 10)
+	}
+	if job.MaxCapacity != nil {
+		attributes["max_capacity"] = strconv.FormatFloat(awssdk.ToFloat64(job.MaxCapacity), 'f', -1, 64)
+	}
+	if job.NumberOfWorkers != nil {
+		attributes["number_of_workers"] = int32AttrString(job.NumberOfWorkers)
+	}
+	if job.Timeout != nil {
+		attributes["timeout_minutes"] = int32AttrString(job.Timeout)
+	}
+	addTimeAttribute(attributes, "created_at", job.CreatedOn)
+	addTimeAttribute(attributes, "updated_at", job.LastModifiedOn)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "job": job, "tags": record.Tags})
 	if err != nil {
 		return nil, err
@@ -742,26 +817,34 @@ func athenaWorkgroupEvent(settings settings, record awsAthenaWorkgroup) (*primit
 	arn := athenaWorkgroupARN(settings, name)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyAthenaWorkgroup, firstNonEmpty(arn, name), name, "athena_workgroup", record.Tags)
 	attributes["arn"] = arn
+	attributes["description"] = awssdk.ToString(workgroup.Description)
 	attributes["workgroup_name"] = name
 	attributes["state"] = string(workgroup.State)
 	attributes["identity_center_application_arn"] = awssdk.ToString(workgroup.IdentityCenterApplicationArn)
 	if workgroup.Configuration != nil {
 		config := workgroup.Configuration
-		attributes["cloudwatch_metrics_enabled"] = boolString(awssdk.ToBool(config.PublishCloudWatchMetricsEnabled))
+		attributes["bytes_scanned_cutoff_per_query"] = int64AttrString(config.BytesScannedCutoffPerQuery)
 		attributes["enforce_workgroup_configuration"] = boolString(awssdk.ToBool(config.EnforceWorkGroupConfiguration))
+		attributes["minimum_encryption_enabled"] = boolString(awssdk.ToBool(config.EnableMinimumEncryptionConfiguration))
+		attributes["publish_cloudwatch_metrics_enabled"] = boolString(awssdk.ToBool(config.PublishCloudWatchMetricsEnabled))
+		attributes["cloudwatch_metrics_enabled"] = attributes["publish_cloudwatch_metrics_enabled"]
 		attributes["requester_pays_enabled"] = boolString(awssdk.ToBool(config.RequesterPaysEnabled))
-		attributes["execution_role_arn"] = awssdk.ToString(config.ExecutionRole)
+		attributes["role_arn"] = awssdk.ToString(config.ExecutionRole)
+		attributes["role_name"] = roleNameFromARN(awssdk.ToString(config.ExecutionRole))
+		attributes["execution_role_arn"] = attributes["role_arn"]
 		if config.ResultConfiguration != nil {
-			attributes["output_location"] = awssdk.ToString(config.ResultConfiguration.OutputLocation)
+			attributes["result_output_location"] = athenaResultOutputLocation(config.ResultConfiguration)
+			attributes["output_location"] = attributes["result_output_location"]
 			attributes["expected_bucket_owner"] = awssdk.ToString(config.ResultConfiguration.ExpectedBucketOwner)
 			if config.ResultConfiguration.EncryptionConfiguration != nil {
 				encryption := config.ResultConfiguration.EncryptionConfiguration
-				attributes["encryption"] = boolString(encryption.EncryptionOption != "")
+				attributes["encryption"] = string(encryption.EncryptionOption)
 				attributes["encryption_type"] = string(encryption.EncryptionOption)
 				attributes["kms_key_id"] = awssdk.ToString(encryption.KmsKey)
 			}
 		}
 	}
+	addTimeAttribute(attributes, "created_at", workgroup.CreationTime)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "workgroup": workgroup, "tags": record.Tags})
 	if err != nil {
 		return nil, err
@@ -779,7 +862,10 @@ func athenaDataCatalogEvent(settings settings, record awsAthenaDataCatalog) (*pr
 	attributes["catalog_type"] = string(catalog.Type)
 	attributes["connection_type"] = string(catalog.ConnectionType)
 	attributes["description"] = awssdk.ToString(catalog.Description)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "data_catalog": catalog, "tags": record.Tags})
+	attributes["error"] = awssdk.ToString(catalog.Error)
+	attributes["glue_catalog_id"] = catalog.Parameters["catalog-id"]
+	attributes["status"] = string(catalog.Status)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "catalog": catalog, "tags": record.Tags})
 	if err != nil {
 		return nil, err
 	}
@@ -789,16 +875,21 @@ func athenaDataCatalogEvent(settings settings, record awsAthenaDataCatalog) (*pr
 func lakeFormationResourceEvent(settings settings, record awsLakeFormationResource) (*primitives.Event, error) {
 	resource := record.Resource
 	arn := awssdk.ToString(resource.ResourceArn)
-	name := awsResourceName(arn)
+	name := firstNonEmpty(awsResourceName(arn), arn)
+	roleARN := awssdk.ToString(resource.RoleArn)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyLakeFormationRes, firstNonEmpty(arn, awssdk.ToString(resource.RoleArn)), name, "lakeformation_resource", nil)
 	attributes["arn"] = arn
 	attributes["resource_arn"] = arn
-	attributes["role_arn"] = awssdk.ToString(resource.RoleArn)
 	attributes["expected_owner_account"] = awssdk.ToString(resource.ExpectedResourceOwnerAccount)
+	attributes["expected_resource_owner_account"] = awssdk.ToString(resource.ExpectedResourceOwnerAccount)
 	attributes["hybrid_access_enabled"] = boolString(awssdk.ToBool(resource.HybridAccessEnabled))
+	attributes["relationship"] = "runs_as"
+	attributes["role_arn"] = roleARN
+	attributes["role_name"] = roleNameFromARN(roleARN)
 	attributes["with_federation"] = boolString(awssdk.ToBool(resource.WithFederation))
 	attributes["with_privileged_access"] = boolString(awssdk.ToBool(resource.WithPrivilegedAccess))
 	attributes["verification_status"] = string(resource.VerificationStatus)
+	addTimeAttribute(attributes, "updated_at", resource.LastModified)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "resource": resource})
 	if err != nil {
 		return nil, err
@@ -890,6 +981,55 @@ func firehoseDestinationTypes(destinations []firehosetypes.DestinationDescriptio
 		}
 	}
 	return cleanStrings(values)
+}
+
+func glueCrawlerTargetCount(targets *gluetypes.CrawlerTargets) int {
+	if targets == nil {
+		return 0
+	}
+	return len(targets.CatalogTargets) + len(targets.DeltaTargets) + len(targets.DynamoDBTargets) + len(targets.HudiTargets) + len(targets.IcebergTargets) + len(targets.JdbcTargets) + len(targets.MongoDBTargets) + len(targets.S3Targets)
+}
+
+func glueCrawlerLineage(crawler gluetypes.Crawler) string {
+	if crawler.LineageConfiguration == nil {
+		return ""
+	}
+	return string(crawler.LineageConfiguration.CrawlerLineageSettings)
+}
+
+func glueCrawlerRecrawlBehavior(crawler gluetypes.Crawler) string {
+	if crawler.RecrawlPolicy == nil {
+		return ""
+	}
+	return string(crawler.RecrawlPolicy.RecrawlBehavior)
+}
+
+func glueCrawlerSchedule(crawler gluetypes.Crawler) string {
+	if crawler.Schedule == nil {
+		return ""
+	}
+	return awssdk.ToString(crawler.Schedule.ScheduleExpression)
+}
+
+func glueJobCommandName(job gluetypes.Job) string {
+	if job.Command == nil {
+		return ""
+	}
+	return awssdk.ToString(job.Command.Name)
+}
+
+func glueJobScriptLocation(job gluetypes.Job) string {
+	if job.Command == nil {
+		return ""
+	}
+	return awssdk.ToString(job.Command.ScriptLocation)
+}
+
+func athenaResultOutputLocation(config *athenatypes.ResultConfiguration) string {
+	if config == nil {
+		return ""
+	}
+	return awssdk.ToString(config.OutputLocation)
 }
 
 func kinesisStreamMode(details *kinesistypes.StreamModeDetails) string {
