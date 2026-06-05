@@ -2371,7 +2371,13 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("okta canonical identity link missing for %q", canonicalIdentityURN)
 	}
-	awsActorURN := "urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"
+	awsActorURN := "urn:cerebro:writer:aws_assumed_role_session:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"
+	if entity := state.entities[awsActorURN]; entity == nil || entity.EntityType != "aws.assumed_role_session" {
+		t.Fatalf("aws assumed-role session entity = %#v, want aws.assumed_role_session", entity)
+	}
+	if _, ok := state.entities["urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"]; ok {
+		t.Fatalf("aws assumed-role CloudTrail actor must not be projected as aws.user")
+	}
 	if _, ok := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("aws canonical identity link missing for %q", canonicalIdentityURN)
 	}
@@ -2467,7 +2473,13 @@ func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	actorURN := "urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice"
+	actorURN := "urn:cerebro:writer:aws_assumed_role_session:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice"
+	if entity := state.entities[actorURN]; entity == nil || entity.EntityType != "aws.assumed_role_session" {
+		t.Fatalf("aws assumed-role session entity = %#v, want aws.assumed_role_session", entity)
+	}
+	if _, ok := state.entities["urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice"]; ok {
+		t.Fatalf("aws assumed-role CloudTrail actor must not be projected as aws.user")
+	}
 	emailIdentityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
 	alternateIdentifierURN := "urn:cerebro:writer:identifier:login:awsreservedsso_admin/alice"
 	if _, ok := state.links[actorURN+"|"+relationRepresentsIdentity+"|"+emailIdentityURN]; !ok {

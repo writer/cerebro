@@ -20,14 +20,22 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/apprunner"
+	"github.com/aws/aws-sdk-go-v2/service/athena"
+	"github.com/aws/aws-sdk-go-v2/service/backup"
+	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -40,21 +48,40 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/firehose"
+	"github.com/aws/aws-sdk-go-v2/service/globalaccelerator"
+	globalacceleratortypes "github.com/aws/aws-sdk-go-v2/service/globalaccelerator/types"
+	"github.com/aws/aws-sdk-go-v2/service/glue"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/identitystore"
+	"github.com/aws/aws-sdk-go-v2/service/kafka"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3control"
+	"github.com/aws/aws-sdk-go-v2/service/scheduler"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/aws-sdk-go-v2/service/sfn"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/vpclattice"
+	vpclatticetypes "github.com/aws/aws-sdk-go-v2/service/vpclattice/types"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -70,47 +97,113 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily             = familyCloudTrail
-	defaultRegion             = "us-east-1"
-	defaultPageSize           = 10
-	maxPageSize               = 200
-	cloudTrailCursorVersion   = 1
-	cloudTrailCursorMaxAge    = 55 * time.Minute
-	publicEndpointCursorV2    = 2
-	awsAssumeRoleSessionName  = "cerebro-source-runtime"
-	familyAccessKey           = "access_key"
-	familyAssetMetadata       = "asset_metadata"
-	familyCloudTrail          = "cloudtrail"
-	familyDynamoDBBackup      = "dynamodb_backup"
-	familyDynamoDBStream      = "dynamodb_stream"
-	familyDynamoDBTable       = "dynamodb_table"
-	familyEC2Instance         = "ec2_instance"
-	familyECRRepository       = "ecr_repository"
-	familyECSService          = "ecs_service"
-	familyECSTask             = "ecs_task"
-	familyECSTaskDefinition   = "ecs_task_definition"
-	familyEFSAccessPoint      = "efs_access_point"
-	familyEFSFileSystem       = "efs_file_system"
-	familyEKSCluster          = "eks_cluster"
-	familyEKSNodegroup        = "eks_nodegroup"
-	familyEKSFargateProfile   = "eks_fargate_profile"
-	familyEKSPodIdentity      = "eks_pod_identity_association"
-	familyEffectivePermission = "effective_permission"
-	familyIAMGroup            = "iam_group"
-	familyIAMMembership       = "iam_group_membership"
-	familyIAMRoleTrust        = "iam_role_trust"
-	familyIAMRoleAssign       = "iam_role_assignment"
-	familyIAMRole             = "iam_role"
-	familyIAMUser             = "iam_user"
-	familyKMSKey              = "kms_key"
-	familyPublicEndpoint      = "public_endpoint"
-	familyRDSInstance         = "rds_instance"
-	familyResourceExposure    = "resource_exposure"
-	familyS3Bucket            = "s3_bucket"
-	familySecret              = "secret"
-	familySNSTopic            = "sns_topic"
-	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
+	defaultFamily                  = familyCloudTrail
+	defaultRegion                  = "us-east-1"
+	defaultPageSize                = 10
+	maxPageSize                    = 200
+	cloudTrailCursorVersion        = 1
+	cloudTrailCursorMaxAge         = 55 * time.Minute
+	publicEndpointCursorV2         = 2
+	awsAssumeRoleSessionName       = "cerebro-source-runtime"
+	familyAccessKey                = "access_key"
+	familyACMCertificate           = "acm_certificate"
+	familyAppRunnerService         = "apprunner_service"
+	familyAssetMetadata            = "asset_metadata"
+	familyAthenaDataCatalog        = "athena_data_catalog"
+	familyAthenaWorkgroup          = "athena_workgroup"
+	familyBatchComputeEnv          = "batch_compute_environment"
+	familyBatchJobQueue            = "batch_job_queue"
+	familyBackupPlan               = "backup_plan"
+	familyBackupProtected          = "backup_protected_resource"
+	familyBackupRecoveryPoint      = "backup_recovery_point"
+	familyBackupVault              = "backup_vault"
+	familyCloudTrail               = "cloudtrail"
+	familyCloudWatchAlarm          = "cloudwatch_alarm"
+	familyCloudWatchLogGroup       = "cloudwatch_log_group"
+	familyDataSyncLocation         = "datasync_location"
+	familyDataSyncTask             = "datasync_task"
+	familyDynamoDBBackup           = "dynamodb_backup"
+	familyDynamoDBStream           = "dynamodb_stream"
+	familyDynamoDBTable            = "dynamodb_table"
+	familyEBSSnapshot              = "ebs_snapshot"
+	familyEBSVolume                = "ebs_volume"
+	familyEC2Instance              = "ec2_instance"
+	familyECRRepository            = "ecr_repository"
+	familyECSService               = "ecs_service"
+	familyECSTask                  = "ecs_task"
+	familyECSTaskDefinition        = "ecs_task_definition"
+	familyEFSAccessPoint           = "efs_access_point"
+	familyEFSFileSystem            = "efs_file_system"
+	familyEKSCluster               = "eks_cluster"
+	familyEKSNodegroup             = "eks_nodegroup"
+	familyEKSFargateProfile        = "eks_fargate_profile"
+	familyEKSPodIdentity           = "eks_pod_identity_association"
+	familyGlobalAccelerator        = "globalaccelerator_accelerator"
+	familyGAListener               = "globalaccelerator_listener"
+	familyGAEndpointGroup          = "globalaccelerator_endpoint_group"
+	familyVPCLatticeService        = "vpclattice_service"
+	familyVPCLatticeListener       = "vpclattice_listener"
+	familyVPCLatticeTG             = "vpclattice_target_group"
+	familyELBV2Listener            = "elbv2_listener"
+	familyELBV2TargetGroup         = "elbv2_target_group"
+	familyAPIGatewayStage          = "apigateway_stage"
+	familyAPIGatewayRoute          = "apigateway_route"
+	familyAPIGatewayInteg          = "apigateway_integration"
+	familyCloudFrontOAC            = "cloudfront_origin_access_control"
+	familyCloudFrontKeyGroup       = "cloudfront_key_group"
+	familyCloudFrontPublicKey      = "cloudfront_public_key"
+	familyCloudFrontRHP            = "cloudfront_response_headers_policy"
+	familyEffectivePermission      = "effective_permission"
+	familyEventBridgeArchive       = "eventbridge_archive"
+	familyEventBridgeBus           = "eventbridge_event_bus"
+	familyEventBridgePipe          = "eventbridge_pipe"
+	familyEventBridgeRule          = "eventbridge_rule"
+	familyFirehoseDelivery         = "firehose_delivery_stream"
+	familyGlueCrawler              = "glue_crawler"
+	familyGlueDatabase             = "glue_database"
+	familyGlueJob                  = "glue_job"
+	familyGlueTable                = "glue_table"
+	familyIAMGroup                 = "iam_group"
+	familyIAMMembership            = "iam_group_membership"
+	familyIAMRoleTrust             = "iam_role_trust"
+	familyIAMRoleAssign            = "iam_role_assignment"
+	familyIAMRole                  = "iam_role"
+	familyIAMUser                  = "iam_user"
+	familyIdentityStoreGroup       = "identitystore_group"
+	familyIdentityStoreMember      = "identitystore_group_membership"
+	familyIdentityStoreUser        = "identitystore_user"
+	familyKinesisStream            = "kinesis_stream"
+	familyKMSKey                   = "kms_key"
+	familyLakeFormationLFTag       = "lakeformation_lf_tag"
+	familyLakeFormationPerm        = "lakeformation_permission"
+	familyLakeFormationRes         = "lakeformation_resource"
+	familyLambdaFunction           = "lambda_function"
+	familyMSKCluster               = "msk_cluster"
+	familyOrganizationsAcct        = "organizations_account"
+	familyOrganizationsOU          = "organizations_organizational_unit"
+	familyOrganizationsPolicy      = "organizations_policy"
+	familyPublicEndpoint           = "public_endpoint"
+	familyRDSInstance              = "rds_instance"
+	familyResourceExposure         = "resource_exposure"
+	familyRoute53ResolverEndpoint  = "route53_resolver_endpoint"
+	familyRoute53ResolverRule      = "route53_resolver_rule"
+	familyS3AccessPoint            = "s3_access_point"
+	familyS3Bucket                 = "s3_bucket"
+	familyS3MultiRegionAccessPoint = "s3_multi_region_access_point"
+	familySchedulerSchedule        = "scheduler_schedule"
+	familySchedulerGroup           = "scheduler_schedule_group"
+	familySecret                   = "secret"
+	familySNSTopic                 = "sns_topic"
+	familySQSQueue                 = "sqs_queue"
+	familySSOAssignment            = "sso_account_assignment"
+	familySSOInstance              = "sso_instance"
+	familySSOPermissionSet         = "sso_permission_set"
+	familySSMAssociation           = "ssm_association"
+	familySSMDocument              = "ssm_document"
+	familySSMManagedInstance       = "ssm_managed_instance"
+	familySSMParameter             = "ssm_parameter"
+	familyStepFunctionActivity     = "stepfunctions_activity"
+	familyStepFunctionStateMachine = "stepfunctions_state_machine"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -138,6 +231,7 @@ type settings struct {
 	principalType              string
 	principalName              string
 	userName                   string
+	identityStoreID            string
 	lookupKey                  string
 	lookupValue                string
 	startTime                  string
@@ -149,17 +243,32 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
+	awsPlatformClients
+	awsRuntimeClients
+	awsAnalyticsClients
+	awsGovernanceClients
+	awsStorageClients
+}
+
+type awsACMAPI interface {
+	ListCertificates(context.Context, *acm.ListCertificatesInput, ...func(*acm.Options)) (*acm.ListCertificatesOutput, error)
+	DescribeCertificate(context.Context, *acm.DescribeCertificateInput, ...func(*acm.Options)) (*acm.DescribeCertificateOutput, error)
+	ListTagsForCertificate(context.Context, *acm.ListTagsForCertificateInput, ...func(*acm.Options)) (*acm.ListTagsForCertificateOutput, error)
+}
+
+type awsPlatformClients struct {
 	cfg             awssdk.Config
+	acm             awsACMAPI
 	iam             awsIAMAPI
 	cloudTrail      awsCloudTrailAPI
-	dynamodb        awsDynamoDBAPI
-	dynamodbStreams awsDynamoDBStreamsAPI
 	ec2             awsEC2API
 	route53         awsRoute53API
+	route53Resolver awsRoute53ResolverAPI
 	cloudFront      awsCloudFrontAPI
 	elbv2           awsELBV2API
+	globalAccel     awsGlobalAcceleratorAPI
+	vpcLattice      awsVPCLatticeAPI
 	ecs             awsECSAPI
-	efs             awsEFSAPI
 	eks             awsEKSAPI
 	ecr             awsECRAPI
 	apiGateway      awsAPIGatewayAPI
@@ -168,11 +277,47 @@ type awsClients struct {
 	tagging         awsResourceGroupsTaggingAPI
 	s3              awsS3API
 	s3ByRegion      func(string) awsS3API
-	rds             awsRDSAPI
-	kms             awsKMSAPI
-	secrets         awsSecretsManagerAPI
-	sqs             awsSQSAPI
-	sns             awsSNSAPI
+}
+
+type awsStorageClients struct {
+	dynamodb        awsDynamoDBAPI
+	dynamodbStreams awsDynamoDBStreamsAPI
+	efs             awsEFSAPI
+	s3control       awsS3ControlAPI
+	datasync        awsDataSyncAPI
+	backup          awsBackupAPI
+}
+
+type awsRuntimeClients struct {
+	batch          awsBatchAPI
+	rds            awsRDSAPI
+	kms            awsKMSAPI
+	secrets        awsSecretsManagerAPI
+	sqs            awsSQSAPI
+	sns            awsSNSAPI
+	appRunner      awsAppRunnerAPI
+	stepFunctions  awsStepFunctionsAPI
+	eventBridge    awsEventBridgeAPI
+	pipes          awsPipesAPI
+	scheduler      awsSchedulerAPI
+	cloudWatch     awsCloudWatchAPI
+	cloudWatchLogs awsCloudWatchLogsAPI
+	ssm            awsSSMAPI
+}
+
+type awsAnalyticsClients struct {
+	kinesis  awsKinesisAPI
+	firehose awsFirehoseAPI
+	kafka    awsKafkaAPI
+	glue     awsGlueAPI
+	athena   awsAthenaAPI
+	lake     awsLakeFormationAPI
+}
+
+type awsGovernanceClients struct {
+	organizations awsOrganizationsAPI
+	sso           awsSSOAdminAPI
+	identityStore awsIdentityStoreAPI
 }
 
 type awsIAMAPI interface {
@@ -218,6 +363,9 @@ type awsEC2API interface {
 	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
 	DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 	DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+	DescribeVolumes(context.Context, *ec2.DescribeVolumesInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error)
+	DescribeSnapshots(context.Context, *ec2.DescribeSnapshotsInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotsOutput, error)
+	DescribeSnapshotAttribute(context.Context, *ec2.DescribeSnapshotAttributeInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotAttributeOutput, error)
 }
 
 type awsECSAPI interface {
@@ -258,22 +406,52 @@ type awsRoute53API interface {
 	ListResourceRecordSets(context.Context, *route53.ListResourceRecordSetsInput, ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error)
 }
 
+type awsRoute53ResolverAPI interface {
+	ListResolverEndpoints(context.Context, *route53resolver.ListResolverEndpointsInput, ...func(*route53resolver.Options)) (*route53resolver.ListResolverEndpointsOutput, error)
+	ListResolverRules(context.Context, *route53resolver.ListResolverRulesInput, ...func(*route53resolver.Options)) (*route53resolver.ListResolverRulesOutput, error)
+	ListTagsForResource(context.Context, *route53resolver.ListTagsForResourceInput, ...func(*route53resolver.Options)) (*route53resolver.ListTagsForResourceOutput, error)
+}
+
 type awsCloudFrontAPI interface {
 	ListDistributions(context.Context, *cloudfront.ListDistributionsInput, ...func(*cloudfront.Options)) (*cloudfront.ListDistributionsOutput, error)
+	ListOriginAccessControls(context.Context, *cloudfront.ListOriginAccessControlsInput, ...func(*cloudfront.Options)) (*cloudfront.ListOriginAccessControlsOutput, error)
+	ListKeyGroups(context.Context, *cloudfront.ListKeyGroupsInput, ...func(*cloudfront.Options)) (*cloudfront.ListKeyGroupsOutput, error)
+	ListPublicKeys(context.Context, *cloudfront.ListPublicKeysInput, ...func(*cloudfront.Options)) (*cloudfront.ListPublicKeysOutput, error)
+	ListResponseHeadersPolicies(context.Context, *cloudfront.ListResponseHeadersPoliciesInput, ...func(*cloudfront.Options)) (*cloudfront.ListResponseHeadersPoliciesOutput, error)
 }
 
 type awsELBV2API interface {
 	DescribeLoadBalancers(context.Context, *elbv2.DescribeLoadBalancersInput, ...func(*elbv2.Options)) (*elbv2.DescribeLoadBalancersOutput, error)
+	DescribeListeners(context.Context, *elbv2.DescribeListenersInput, ...func(*elbv2.Options)) (*elbv2.DescribeListenersOutput, error)
+	DescribeTargetGroups(context.Context, *elbv2.DescribeTargetGroupsInput, ...func(*elbv2.Options)) (*elbv2.DescribeTargetGroupsOutput, error)
+}
+
+type awsGlobalAcceleratorAPI interface {
+	ListAccelerators(context.Context, *globalaccelerator.ListAcceleratorsInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListAcceleratorsOutput, error)
+	ListListeners(context.Context, *globalaccelerator.ListListenersInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListListenersOutput, error)
+	ListEndpointGroups(context.Context, *globalaccelerator.ListEndpointGroupsInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListEndpointGroupsOutput, error)
+}
+
+type awsVPCLatticeAPI interface {
+	ListServices(context.Context, *vpclattice.ListServicesInput, ...func(*vpclattice.Options)) (*vpclattice.ListServicesOutput, error)
+	ListListeners(context.Context, *vpclattice.ListListenersInput, ...func(*vpclattice.Options)) (*vpclattice.ListListenersOutput, error)
+	ListTargetGroups(context.Context, *vpclattice.ListTargetGroupsInput, ...func(*vpclattice.Options)) (*vpclattice.ListTargetGroupsOutput, error)
 }
 
 type awsAPIGatewayAPI interface {
 	GetDomainNames(context.Context, *apigateway.GetDomainNamesInput, ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error)
 	GetRestApis(context.Context, *apigateway.GetRestApisInput, ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error)
+	GetStages(context.Context, *apigateway.GetStagesInput, ...func(*apigateway.Options)) (*apigateway.GetStagesOutput, error)
+	GetResources(context.Context, *apigateway.GetResourcesInput, ...func(*apigateway.Options)) (*apigateway.GetResourcesOutput, error)
+	GetIntegration(context.Context, *apigateway.GetIntegrationInput, ...func(*apigateway.Options)) (*apigateway.GetIntegrationOutput, error)
 }
 
 type awsAPIGatewayV2API interface {
 	GetApis(context.Context, *apigatewayv2.GetApisInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error)
 	GetDomainNames(context.Context, *apigatewayv2.GetDomainNamesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error)
+	GetStages(context.Context, *apigatewayv2.GetStagesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetStagesOutput, error)
+	GetRoutes(context.Context, *apigatewayv2.GetRoutesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetRoutesOutput, error)
+	GetIntegrations(context.Context, *apigatewayv2.GetIntegrationsInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetIntegrationsOutput, error)
 }
 
 type awsLambdaAPI interface {
@@ -294,6 +472,16 @@ type awsS3API interface {
 	GetPublicAccessBlock(context.Context, *s3.GetPublicAccessBlockInput, ...func(*s3.Options)) (*s3.GetPublicAccessBlockOutput, error)
 }
 
+type awsS3ControlAPI interface {
+	ListAccessPoints(context.Context, *s3control.ListAccessPointsInput, ...func(*s3control.Options)) (*s3control.ListAccessPointsOutput, error)
+	GetAccessPoint(context.Context, *s3control.GetAccessPointInput, ...func(*s3control.Options)) (*s3control.GetAccessPointOutput, error)
+	GetAccessPointPolicyStatus(context.Context, *s3control.GetAccessPointPolicyStatusInput, ...func(*s3control.Options)) (*s3control.GetAccessPointPolicyStatusOutput, error)
+	ListMultiRegionAccessPoints(context.Context, *s3control.ListMultiRegionAccessPointsInput, ...func(*s3control.Options)) (*s3control.ListMultiRegionAccessPointsOutput, error)
+	GetMultiRegionAccessPoint(context.Context, *s3control.GetMultiRegionAccessPointInput, ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointOutput, error)
+	GetMultiRegionAccessPointPolicyStatus(context.Context, *s3control.GetMultiRegionAccessPointPolicyStatusInput, ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointPolicyStatusOutput, error)
+	ListTagsForResource(context.Context, *s3control.ListTagsForResourceInput, ...func(*s3control.Options)) (*s3control.ListTagsForResourceOutput, error)
+}
+
 type awsRDSAPI interface {
 	DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error)
 }
@@ -309,6 +497,24 @@ type awsSecretsManagerAPI interface {
 	ListSecrets(context.Context, *secretsmanager.ListSecretsInput, ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error)
 }
 
+type awsDataSyncAPI interface {
+	ListTasks(context.Context, *datasync.ListTasksInput, ...func(*datasync.Options)) (*datasync.ListTasksOutput, error)
+	DescribeTask(context.Context, *datasync.DescribeTaskInput, ...func(*datasync.Options)) (*datasync.DescribeTaskOutput, error)
+	ListLocations(context.Context, *datasync.ListLocationsInput, ...func(*datasync.Options)) (*datasync.ListLocationsOutput, error)
+	DescribeLocationS3(context.Context, *datasync.DescribeLocationS3Input, ...func(*datasync.Options)) (*datasync.DescribeLocationS3Output, error)
+	DescribeLocationEfs(context.Context, *datasync.DescribeLocationEfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationEfsOutput, error)
+	DescribeLocationFsxLustre(context.Context, *datasync.DescribeLocationFsxLustreInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxLustreOutput, error)
+	DescribeLocationFsxOntap(context.Context, *datasync.DescribeLocationFsxOntapInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOntapOutput, error)
+	DescribeLocationFsxOpenZfs(context.Context, *datasync.DescribeLocationFsxOpenZfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOpenZfsOutput, error)
+	DescribeLocationFsxWindows(context.Context, *datasync.DescribeLocationFsxWindowsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxWindowsOutput, error)
+	DescribeLocationNfs(context.Context, *datasync.DescribeLocationNfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationNfsOutput, error)
+	DescribeLocationSmb(context.Context, *datasync.DescribeLocationSmbInput, ...func(*datasync.Options)) (*datasync.DescribeLocationSmbOutput, error)
+	DescribeLocationObjectStorage(context.Context, *datasync.DescribeLocationObjectStorageInput, ...func(*datasync.Options)) (*datasync.DescribeLocationObjectStorageOutput, error)
+	DescribeLocationHdfs(context.Context, *datasync.DescribeLocationHdfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationHdfsOutput, error)
+	DescribeLocationAzureBlob(context.Context, *datasync.DescribeLocationAzureBlobInput, ...func(*datasync.Options)) (*datasync.DescribeLocationAzureBlobOutput, error)
+	ListTagsForResource(context.Context, *datasync.ListTagsForResourceInput, ...func(*datasync.Options)) (*datasync.ListTagsForResourceOutput, error)
+}
+
 type awsSQSAPI interface {
 	ListQueues(context.Context, *sqs.ListQueuesInput, ...func(*sqs.Options)) (*sqs.ListQueuesOutput, error)
 	GetQueueAttributes(context.Context, *sqs.GetQueueAttributesInput, ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error)
@@ -319,6 +525,127 @@ type awsSNSAPI interface {
 	ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error)
 	GetTopicAttributes(context.Context, *sns.GetTopicAttributesInput, ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error)
 	ListTagsForResource(context.Context, *sns.ListTagsForResourceInput, ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error)
+}
+
+type awsBackupAPI interface {
+	ListBackupVaults(context.Context, *backup.ListBackupVaultsInput, ...func(*backup.Options)) (*backup.ListBackupVaultsOutput, error)
+	ListBackupPlans(context.Context, *backup.ListBackupPlansInput, ...func(*backup.Options)) (*backup.ListBackupPlansOutput, error)
+	GetBackupPlan(context.Context, *backup.GetBackupPlanInput, ...func(*backup.Options)) (*backup.GetBackupPlanOutput, error)
+	ListProtectedResources(context.Context, *backup.ListProtectedResourcesInput, ...func(*backup.Options)) (*backup.ListProtectedResourcesOutput, error)
+	ListRecoveryPointsByBackupVault(context.Context, *backup.ListRecoveryPointsByBackupVaultInput, ...func(*backup.Options)) (*backup.ListRecoveryPointsByBackupVaultOutput, error)
+	ListTags(context.Context, *backup.ListTagsInput, ...func(*backup.Options)) (*backup.ListTagsOutput, error)
+}
+
+type awsAppRunnerAPI interface {
+	ListServices(context.Context, *apprunner.ListServicesInput, ...func(*apprunner.Options)) (*apprunner.ListServicesOutput, error)
+	DescribeService(context.Context, *apprunner.DescribeServiceInput, ...func(*apprunner.Options)) (*apprunner.DescribeServiceOutput, error)
+	ListTagsForResource(context.Context, *apprunner.ListTagsForResourceInput, ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error)
+}
+
+type awsStepFunctionsAPI interface {
+	ListStateMachines(context.Context, *sfn.ListStateMachinesInput, ...func(*sfn.Options)) (*sfn.ListStateMachinesOutput, error)
+	DescribeStateMachine(context.Context, *sfn.DescribeStateMachineInput, ...func(*sfn.Options)) (*sfn.DescribeStateMachineOutput, error)
+	ListActivities(context.Context, *sfn.ListActivitiesInput, ...func(*sfn.Options)) (*sfn.ListActivitiesOutput, error)
+	ListTagsForResource(context.Context, *sfn.ListTagsForResourceInput, ...func(*sfn.Options)) (*sfn.ListTagsForResourceOutput, error)
+}
+
+type awsEventBridgeAPI interface {
+	ListEventBuses(context.Context, *eventbridge.ListEventBusesInput, ...func(*eventbridge.Options)) (*eventbridge.ListEventBusesOutput, error)
+	ListRules(context.Context, *eventbridge.ListRulesInput, ...func(*eventbridge.Options)) (*eventbridge.ListRulesOutput, error)
+	ListArchives(context.Context, *eventbridge.ListArchivesInput, ...func(*eventbridge.Options)) (*eventbridge.ListArchivesOutput, error)
+	ListTagsForResource(context.Context, *eventbridge.ListTagsForResourceInput, ...func(*eventbridge.Options)) (*eventbridge.ListTagsForResourceOutput, error)
+}
+
+type awsPipesAPI interface {
+	ListPipes(context.Context, *pipes.ListPipesInput, ...func(*pipes.Options)) (*pipes.ListPipesOutput, error)
+	DescribePipe(context.Context, *pipes.DescribePipeInput, ...func(*pipes.Options)) (*pipes.DescribePipeOutput, error)
+	ListTagsForResource(context.Context, *pipes.ListTagsForResourceInput, ...func(*pipes.Options)) (*pipes.ListTagsForResourceOutput, error)
+}
+
+type awsSchedulerAPI interface {
+	ListSchedules(context.Context, *scheduler.ListSchedulesInput, ...func(*scheduler.Options)) (*scheduler.ListSchedulesOutput, error)
+	ListScheduleGroups(context.Context, *scheduler.ListScheduleGroupsInput, ...func(*scheduler.Options)) (*scheduler.ListScheduleGroupsOutput, error)
+	ListTagsForResource(context.Context, *scheduler.ListTagsForResourceInput, ...func(*scheduler.Options)) (*scheduler.ListTagsForResourceOutput, error)
+}
+
+type awsCloudWatchAPI interface {
+	DescribeAlarms(context.Context, *cloudwatch.DescribeAlarmsInput, ...func(*cloudwatch.Options)) (*cloudwatch.DescribeAlarmsOutput, error)
+	ListTagsForResource(context.Context, *cloudwatch.ListTagsForResourceInput, ...func(*cloudwatch.Options)) (*cloudwatch.ListTagsForResourceOutput, error)
+}
+
+type awsCloudWatchLogsAPI interface {
+	DescribeLogGroups(context.Context, *cloudwatchlogs.DescribeLogGroupsInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.DescribeLogGroupsOutput, error)
+	ListTagsForResource(context.Context, *cloudwatchlogs.ListTagsForResourceInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.ListTagsForResourceOutput, error)
+}
+
+type awsSSMAPI interface {
+	DescribeInstanceInformation(context.Context, *ssm.DescribeInstanceInformationInput, ...func(*ssm.Options)) (*ssm.DescribeInstanceInformationOutput, error)
+	ListDocuments(context.Context, *ssm.ListDocumentsInput, ...func(*ssm.Options)) (*ssm.ListDocumentsOutput, error)
+	ListAssociations(context.Context, *ssm.ListAssociationsInput, ...func(*ssm.Options)) (*ssm.ListAssociationsOutput, error)
+	DescribeParameters(context.Context, *ssm.DescribeParametersInput, ...func(*ssm.Options)) (*ssm.DescribeParametersOutput, error)
+	ListTagsForResource(context.Context, *ssm.ListTagsForResourceInput, ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error)
+}
+
+type awsKinesisAPI interface {
+	ListStreams(context.Context, *kinesis.ListStreamsInput, ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error)
+	DescribeStreamSummary(context.Context, *kinesis.DescribeStreamSummaryInput, ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error)
+	ListTagsForStream(context.Context, *kinesis.ListTagsForStreamInput, ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error)
+}
+
+type awsFirehoseAPI interface {
+	ListDeliveryStreams(context.Context, *firehose.ListDeliveryStreamsInput, ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error)
+	DescribeDeliveryStream(context.Context, *firehose.DescribeDeliveryStreamInput, ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error)
+	ListTagsForDeliveryStream(context.Context, *firehose.ListTagsForDeliveryStreamInput, ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error)
+}
+
+type awsKafkaAPI interface {
+	ListClustersV2(context.Context, *kafka.ListClustersV2Input, ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error)
+	ListTagsForResource(context.Context, *kafka.ListTagsForResourceInput, ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error)
+}
+
+type awsGlueAPI interface {
+	GetDatabases(context.Context, *glue.GetDatabasesInput, ...func(*glue.Options)) (*glue.GetDatabasesOutput, error)
+	GetTables(context.Context, *glue.GetTablesInput, ...func(*glue.Options)) (*glue.GetTablesOutput, error)
+	ListCrawlers(context.Context, *glue.ListCrawlersInput, ...func(*glue.Options)) (*glue.ListCrawlersOutput, error)
+	GetCrawler(context.Context, *glue.GetCrawlerInput, ...func(*glue.Options)) (*glue.GetCrawlerOutput, error)
+	ListJobs(context.Context, *glue.ListJobsInput, ...func(*glue.Options)) (*glue.ListJobsOutput, error)
+	GetJob(context.Context, *glue.GetJobInput, ...func(*glue.Options)) (*glue.GetJobOutput, error)
+	GetTags(context.Context, *glue.GetTagsInput, ...func(*glue.Options)) (*glue.GetTagsOutput, error)
+}
+
+type awsAthenaAPI interface {
+	ListWorkGroups(context.Context, *athena.ListWorkGroupsInput, ...func(*athena.Options)) (*athena.ListWorkGroupsOutput, error)
+	GetWorkGroup(context.Context, *athena.GetWorkGroupInput, ...func(*athena.Options)) (*athena.GetWorkGroupOutput, error)
+	ListDataCatalogs(context.Context, *athena.ListDataCatalogsInput, ...func(*athena.Options)) (*athena.ListDataCatalogsOutput, error)
+	GetDataCatalog(context.Context, *athena.GetDataCatalogInput, ...func(*athena.Options)) (*athena.GetDataCatalogOutput, error)
+	ListTagsForResource(context.Context, *athena.ListTagsForResourceInput, ...func(*athena.Options)) (*athena.ListTagsForResourceOutput, error)
+}
+
+type awsLakeFormationAPI interface {
+	ListResources(context.Context, *lakeformation.ListResourcesInput, ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error)
+	ListLFTags(context.Context, *lakeformation.ListLFTagsInput, ...func(*lakeformation.Options)) (*lakeformation.ListLFTagsOutput, error)
+	ListPermissions(context.Context, *lakeformation.ListPermissionsInput, ...func(*lakeformation.Options)) (*lakeformation.ListPermissionsOutput, error)
+}
+
+type awsOrganizationsAPI interface {
+	ListAccounts(context.Context, *organizations.ListAccountsInput, ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error)
+	ListRoots(context.Context, *organizations.ListRootsInput, ...func(*organizations.Options)) (*organizations.ListRootsOutput, error)
+	ListOrganizationalUnitsForParent(context.Context, *organizations.ListOrganizationalUnitsForParentInput, ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error)
+	ListPolicies(context.Context, *organizations.ListPoliciesInput, ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error)
+	ListTargetsForPolicy(context.Context, *organizations.ListTargetsForPolicyInput, ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error)
+}
+
+type awsSSOAdminAPI interface {
+	ListInstances(context.Context, *ssoadmin.ListInstancesInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListInstancesOutput, error)
+	ListPermissionSets(context.Context, *ssoadmin.ListPermissionSetsInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListPermissionSetsOutput, error)
+	DescribePermissionSet(context.Context, *ssoadmin.DescribePermissionSetInput, ...func(*ssoadmin.Options)) (*ssoadmin.DescribePermissionSetOutput, error)
+	ListAccountAssignments(context.Context, *ssoadmin.ListAccountAssignmentsInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountAssignmentsOutput, error)
+}
+
+type awsIdentityStoreAPI interface {
+	ListUsers(context.Context, *identitystore.ListUsersInput, ...func(*identitystore.Options)) (*identitystore.ListUsersOutput, error)
+	ListGroups(context.Context, *identitystore.ListGroupsInput, ...func(*identitystore.Options)) (*identitystore.ListGroupsOutput, error)
+	ListGroupMemberships(context.Context, *identitystore.ListGroupMembershipsInput, ...func(*identitystore.Options)) (*identitystore.ListGroupMembershipsOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -549,6 +876,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(key iamtypes.AccessKeyMetadata) string { return awssdk.ToString(key.AccessKeyId) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsACMCertificate]{
+			Name:  familyACMCertificate,
+			Label: "aws acm certificates",
+			List:  listACMCertificates,
+			Event: acmCertificateEvent,
+			URN: func(settings settings, certificate awsACMCertificate) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_acm_certificate:%s", settings.accountID, firstNonEmpty(awssdk.ToString(certificate.Certificate.CertificateArn), awssdk.ToString(certificate.Certificate.DomainName))), nil
+			},
+			CursorFallback: func(certificate awsACMCertificate) string {
+				return firstNonEmpty(awssdk.ToString(certificate.Certificate.CertificateArn), awssdk.ToString(certificate.Certificate.DomainName))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsAssetMetadata]{
 			Name:  familyAssetMetadata,
 			Label: "aws asset metadata",
@@ -593,6 +932,216 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(stream.Stream.StreamArn), awssdk.ToString(stream.Stream.StreamLabel))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBatchComputeEnvironment]{
+			Name:  familyBatchComputeEnv,
+			Label: "aws batch compute environments",
+			List:  listBatchComputeEnvironments,
+			Event: batchComputeEnvironmentEvent,
+			URN: func(settings settings, environment awsBatchComputeEnvironment) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_batch_compute_environment:%s", settings.accountID, firstNonEmpty(awssdk.ToString(environment.ComputeEnvironmentArn), awssdk.ToString(environment.ComputeEnvironmentName))), nil
+			},
+			CursorFallback: func(environment awsBatchComputeEnvironment) string {
+				return firstNonEmpty(awssdk.ToString(environment.ComputeEnvironmentArn), awssdk.ToString(environment.ComputeEnvironmentName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBatchJobQueue]{
+			Name:  familyBatchJobQueue,
+			Label: "aws batch job queues",
+			List:  listBatchJobQueues,
+			Event: batchJobQueueEvent,
+			URN: func(settings settings, queue awsBatchJobQueue) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_batch_job_queue:%s", settings.accountID, firstNonEmpty(awssdk.ToString(queue.JobQueueArn), awssdk.ToString(queue.JobQueueName))), nil
+			},
+			CursorFallback: func(queue awsBatchJobQueue) string {
+				return firstNonEmpty(awssdk.ToString(queue.JobQueueArn), awssdk.ToString(queue.JobQueueName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupVault]{
+			Name:  familyBackupVault,
+			Label: "aws backup vaults",
+			List:  listBackupVaults,
+			Event: backupVaultEvent,
+			URN: func(settings settings, vault awsBackupVault) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_vault:%s", settings.accountID, firstNonEmpty(vault.ARN, backupVaultARN(settings, vault.Name), vault.Name)), nil
+			},
+			CursorFallback: func(vault awsBackupVault) string { return firstNonEmpty(vault.ARN, vault.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupPlan]{
+			Name:  familyBackupPlan,
+			Label: "aws backup plans",
+			List:  listBackupPlans,
+			Event: backupPlanEvent,
+			URN: func(settings settings, plan awsBackupPlan) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_plan:%s", settings.accountID, firstNonEmpty(plan.ARN, plan.ID, plan.Name)), nil
+			},
+			CursorFallback: func(plan awsBackupPlan) string { return firstNonEmpty(plan.ARN, plan.ID, plan.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupProtectedResource]{
+			Name:  familyBackupProtected,
+			Label: "aws backup protected resources",
+			List:  listBackupProtectedResources,
+			Event: backupProtectedResourceEvent,
+			URN: func(settings settings, resource awsBackupProtectedResource) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_protected_resource:%s", settings.accountID, firstNonEmpty(awssdk.ToString(resource.ResourceArn), awssdk.ToString(resource.ResourceName))), nil
+			},
+			CursorFallback: func(resource awsBackupProtectedResource) string {
+				return firstNonEmpty(awssdk.ToString(resource.ResourceArn), awssdk.ToString(resource.ResourceName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupRecoveryPoint]{
+			Name:  familyBackupRecoveryPoint,
+			Label: "aws backup recovery points",
+			List:  listBackupRecoveryPoints,
+			Event: backupRecoveryPointEvent,
+			URN: func(settings settings, point awsBackupRecoveryPoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_recovery_point:%s", settings.accountID, firstNonEmpty(awssdk.ToString(point.RecoveryPointArn), awssdk.ToString(point.ResourceArn))), nil
+			},
+			CursorFallback: func(point awsBackupRecoveryPoint) string {
+				return firstNonEmpty(awssdk.ToString(point.RecoveryPointArn), awssdk.ToString(point.ResourceArn))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsKinesisStream]{
+			Name:  familyKinesisStream,
+			Label: "aws kinesis streams",
+			List:  listKinesisStreams,
+			Event: kinesisStreamEvent,
+			URN: func(settings settings, stream awsKinesisStream) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_kinesis_stream:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stream.Summary.StreamARN), awssdk.ToString(stream.Summary.StreamName))), nil
+			},
+			CursorFallback: func(stream awsKinesisStream) string {
+				return firstNonEmpty(awssdk.ToString(stream.Summary.StreamARN), awssdk.ToString(stream.Summary.StreamName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsFirehoseDeliveryStream]{
+			Name:  familyFirehoseDelivery,
+			Label: "aws firehose delivery streams",
+			List:  listFirehoseDeliveryStreams,
+			Event: firehoseDeliveryStreamEvent,
+			URN: func(settings settings, stream awsFirehoseDeliveryStream) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_firehose_delivery_stream:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stream.Description.DeliveryStreamARN), awssdk.ToString(stream.Description.DeliveryStreamName))), nil
+			},
+			CursorFallback: func(stream awsFirehoseDeliveryStream) string {
+				return firstNonEmpty(awssdk.ToString(stream.Description.DeliveryStreamARN), awssdk.ToString(stream.Description.DeliveryStreamName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsMSKCluster]{
+			Name:  familyMSKCluster,
+			Label: "aws msk clusters",
+			List:  listMSKClusters,
+			Event: mskClusterEvent,
+			URN: func(settings settings, cluster awsMSKCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_msk_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(cluster.Cluster.ClusterArn), awssdk.ToString(cluster.Cluster.ClusterName))), nil
+			},
+			CursorFallback: func(cluster awsMSKCluster) string {
+				return firstNonEmpty(awssdk.ToString(cluster.Cluster.ClusterArn), awssdk.ToString(cluster.Cluster.ClusterName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueDatabase]{
+			Name:  familyGlueDatabase,
+			Label: "aws glue databases",
+			List:  listGlueDatabases,
+			Event: glueDatabaseEvent,
+			URN: func(settings settings, database awsGlueDatabase) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_database:%s", settings.accountID, firstNonEmpty(glueDatabaseARN(settings, awssdk.ToString(database.Database.CatalogId), awssdk.ToString(database.Database.Name)), awssdk.ToString(database.Database.Name))), nil
+			},
+			CursorFallback: func(database awsGlueDatabase) string {
+				return awssdk.ToString(database.Database.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueTable]{
+			Name:  familyGlueTable,
+			Label: "aws glue tables",
+			List:  listGlueTables,
+			Event: glueTableEvent,
+			URN: func(settings settings, table awsGlueTable) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_table:%s", settings.accountID, glueTableResourceID(settings, table)), nil
+			},
+			CursorFallback: func(table awsGlueTable) string {
+				return firstNonEmpty(firstNonEmpty(table.DatabaseName, awssdk.ToString(table.Table.DatabaseName))+"/"+awssdk.ToString(table.Table.Name), awssdk.ToString(table.Table.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueCrawler]{
+			Name:  familyGlueCrawler,
+			Label: "aws glue crawlers",
+			List:  listGlueCrawlers,
+			Event: glueCrawlerEvent,
+			URN: func(settings settings, crawler awsGlueCrawler) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_crawler:%s", settings.accountID, firstNonEmpty(glueCrawlerARN(settings, awssdk.ToString(crawler.Crawler.Name)), awssdk.ToString(crawler.Crawler.Name))), nil
+			},
+			CursorFallback: func(crawler awsGlueCrawler) string {
+				return awssdk.ToString(crawler.Crawler.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlueJob]{
+			Name:  familyGlueJob,
+			Label: "aws glue jobs",
+			List:  listGlueJobs,
+			Event: glueJobEvent,
+			URN: func(settings settings, job awsGlueJob) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_glue_job:%s", settings.accountID, firstNonEmpty(glueJobARN(settings, awssdk.ToString(job.Job.Name)), awssdk.ToString(job.Job.Name))), nil
+			},
+			CursorFallback: func(job awsGlueJob) string {
+				return awssdk.ToString(job.Job.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAthenaWorkgroup]{
+			Name:  familyAthenaWorkgroup,
+			Label: "aws athena workgroups",
+			List:  listAthenaWorkgroups,
+			Event: athenaWorkgroupEvent,
+			URN: func(settings settings, workgroup awsAthenaWorkgroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_athena_workgroup:%s", settings.accountID, firstNonEmpty(athenaWorkgroupARN(settings, awssdk.ToString(workgroup.WorkGroup.Name)), awssdk.ToString(workgroup.WorkGroup.Name))), nil
+			},
+			CursorFallback: func(workgroup awsAthenaWorkgroup) string {
+				return awssdk.ToString(workgroup.WorkGroup.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAthenaDataCatalog]{
+			Name:  familyAthenaDataCatalog,
+			Label: "aws athena data catalogs",
+			List:  listAthenaDataCatalogs,
+			Event: athenaDataCatalogEvent,
+			URN: func(settings settings, catalog awsAthenaDataCatalog) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_athena_data_catalog:%s", settings.accountID, firstNonEmpty(athenaDataCatalogARN(settings, awssdk.ToString(catalog.Catalog.Name)), awssdk.ToString(catalog.Catalog.Name))), nil
+			},
+			CursorFallback: func(catalog awsAthenaDataCatalog) string {
+				return awssdk.ToString(catalog.Catalog.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsLakeFormationResource]{
+			Name:  familyLakeFormationRes,
+			Label: "aws lake formation resources",
+			List:  listLakeFormationResources,
+			Event: lakeFormationResourceEvent,
+			URN: func(settings settings, resource awsLakeFormationResource) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_lakeformation_resource:%s", settings.accountID, firstNonEmpty(awssdk.ToString(resource.Resource.ResourceArn), awssdk.ToString(resource.Resource.RoleArn))), nil
+			},
+			CursorFallback: func(resource awsLakeFormationResource) string {
+				return firstNonEmpty(awssdk.ToString(resource.Resource.ResourceArn), awssdk.ToString(resource.Resource.RoleArn))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsLakeFormationLFTag]{
+			Name:  familyLakeFormationLFTag,
+			Label: "aws lake formation lf-tags",
+			List:  listLakeFormationLFTags,
+			Event: lakeFormationLFTagEvent,
+			URN: func(settings settings, tag awsLakeFormationLFTag) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_lakeformation_lf_tag:%s", settings.accountID, lakeFormationLFTagResourceID(tag)), nil
+			},
+			CursorFallback: func(tag awsLakeFormationLFTag) string { return lakeFormationLFTagResourceID(tag) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsLakeFormationPermission]{
+			Name:  familyLakeFormationPerm,
+			Label: "aws lake formation permissions",
+			List:  listLakeFormationPermissions,
+			Event: lakeFormationPermissionEvent,
+			URN: func(settings settings, permission awsLakeFormationPermission) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_lakeformation_permission:%s", settings.accountID, lakeFormationPermissionResourceID(permission)), nil
+			},
+			CursorFallback: func(permission awsLakeFormationPermission) string {
+				return lakeFormationPermissionResourceID(permission)
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsS3Bucket]{
 			Name:  familyS3Bucket,
 			Label: "aws s3 buckets",
@@ -602,6 +1151,54 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_s3_bucket:%s", settings.accountID, firstNonEmpty(bucket.ARN, bucket.Name)), nil
 			},
 			CursorFallback: func(bucket awsS3Bucket) string { return firstNonEmpty(bucket.ARN, bucket.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsS3AccessPoint]{
+			Name:  familyS3AccessPoint,
+			Label: "aws s3 access points",
+			List:  listS3AccessPoints,
+			Event: s3AccessPointEvent,
+			URN: func(settings settings, accessPoint awsS3AccessPoint) (string, error) {
+				name := firstNonEmpty(s3AccessPointDetailName(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.Name))
+				arn := s3AccessPointARN(settings, firstNonEmpty(s3AccessPointDetailARN(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.AccessPointArn)), name)
+				return fmt.Sprintf("urn:cerebro:%s:aws_s3_access_point:%s", settings.accountID, firstNonEmpty(arn, name)), nil
+			},
+			CursorFallback: func(accessPoint awsS3AccessPoint) string {
+				return firstNonEmpty(s3AccessPointDetailARN(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.AccessPointArn), awssdk.ToString(accessPoint.Summary.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsS3MultiRegionAccessPoint]{
+			Name:  familyS3MultiRegionAccessPoint,
+			Label: "aws s3 multi-region access points",
+			List:  listS3MultiRegionAccessPoints,
+			Event: s3MultiRegionAccessPointEvent,
+			URN: func(settings settings, accessPoint awsS3MultiRegionAccessPoint) (string, error) {
+				name := awssdk.ToString(accessPoint.Report.Name)
+				return fmt.Sprintf("urn:cerebro:%s:aws_s3_multi_region_access_point:%s", settings.accountID, firstNonEmpty(s3MultiRegionAccessPointARN(settings, name), name)), nil
+			},
+			CursorFallback: func(accessPoint awsS3MultiRegionAccessPoint) string {
+				return awssdk.ToString(accessPoint.Report.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.Volume]{
+			Name:  familyEBSVolume,
+			Label: "aws ebs volumes",
+			List:  listEBSVolumes,
+			Event: ebsVolumeEvent,
+			URN: func(settings settings, volume ec2types.Volume) (string, error) {
+				volumeID := awssdk.ToString(volume.VolumeId)
+				return fmt.Sprintf("urn:cerebro:%s:aws_ebs_volume:%s", settings.accountID, firstNonEmpty(ebsVolumeARN(settings, volumeID), volumeID)), nil
+			},
+			CursorFallback: func(volume ec2types.Volume) string { return awssdk.ToString(volume.VolumeId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEBSSnapshot]{
+			Name:  familyEBSSnapshot,
+			Label: "aws ebs snapshots",
+			List:  listEBSSnapshots,
+			Event: ebsSnapshotEvent,
+			URN: func(settings settings, snapshot awsEBSSnapshot) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ebs_snapshot:%s", settings.accountID, awssdk.ToString(snapshot.Snapshot.SnapshotId)), nil
+			},
+			CursorFallback: func(snapshot awsEBSSnapshot) string { return awssdk.ToString(snapshot.Snapshot.SnapshotId) },
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsRDSInstance]{
 			Name:  familyRDSInstance,
@@ -693,6 +1290,276 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(accessPoint awsEFSAccessPoint) string {
 				return firstNonEmpty(awssdk.ToString(accessPoint.AccessPoint.AccessPointArn), awssdk.ToString(accessPoint.AccessPoint.AccessPointId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDataSyncTask]{
+			Name:  familyDataSyncTask,
+			Label: "aws datasync tasks",
+			List:  listDataSyncTasks,
+			Event: dataSyncTaskEvent,
+			URN: func(settings settings, task awsDataSyncTask) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_datasync_task:%s", settings.accountID, awssdk.ToString(task.Task.TaskArn)), nil
+			},
+			CursorFallback: func(task awsDataSyncTask) string { return awssdk.ToString(task.Task.TaskArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDataSyncLocation]{
+			Name:  familyDataSyncLocation,
+			Label: "aws datasync locations",
+			List:  listDataSyncLocations,
+			Event: dataSyncLocationEvent,
+			URN: func(settings settings, location awsDataSyncLocation) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_datasync_location:%s", settings.accountID, firstNonEmpty(awssdk.ToString(location.Entry.LocationArn), awssdk.ToString(location.Entry.LocationUri))), nil
+			},
+			CursorFallback: func(location awsDataSyncLocation) string {
+				return firstNonEmpty(awssdk.ToString(location.Entry.LocationArn), awssdk.ToString(location.Entry.LocationUri))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAppRunnerService]{
+			Name:  familyAppRunnerService,
+			Label: "aws app runner services",
+			List:  listAppRunnerServices,
+			Event: appRunnerServiceEvent,
+			URN: func(settings settings, service awsAppRunnerService) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apprunner_service:%s", settings.accountID, firstNonEmpty(service.ARN, service.Name)), nil
+			},
+			CursorFallback: func(service awsAppRunnerService) string { return firstNonEmpty(service.ARN, service.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsStepFunctionStateMachine]{
+			Name:  familyStepFunctionStateMachine,
+			Label: "aws step functions state machines",
+			List:  listStepFunctionStateMachines,
+			Event: stepFunctionStateMachineEvent,
+			URN: func(settings settings, stateMachine awsStepFunctionStateMachine) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_stepfunctions_state_machine:%s", settings.accountID, firstNonEmpty(stateMachine.ARN, stateMachine.Name)), nil
+			},
+			CursorFallback: func(stateMachine awsStepFunctionStateMachine) string {
+				return firstNonEmpty(stateMachine.ARN, stateMachine.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsStepFunctionActivity]{
+			Name:  familyStepFunctionActivity,
+			Label: "aws step functions activities",
+			List:  listStepFunctionActivities,
+			Event: stepFunctionActivityEvent,
+			URN: func(settings settings, activity awsStepFunctionActivity) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_stepfunctions_activity:%s", settings.accountID, firstNonEmpty(activity.ARN, activity.Name)), nil
+			},
+			CursorFallback: func(activity awsStepFunctionActivity) string { return firstNonEmpty(activity.ARN, activity.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEventBridgeBus]{
+			Name:  familyEventBridgeBus,
+			Label: "aws eventbridge event buses",
+			List:  listEventBridgeBuses,
+			Event: eventBridgeBusEvent,
+			URN: func(settings settings, bus awsEventBridgeBus) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eventbridge_event_bus:%s", settings.accountID, firstNonEmpty(bus.ARN, bus.Name)), nil
+			},
+			CursorFallback: func(bus awsEventBridgeBus) string { return firstNonEmpty(bus.ARN, bus.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEventBridgeRule]{
+			Name:  familyEventBridgeRule,
+			Label: "aws eventbridge rules",
+			List:  listEventBridgeRules,
+			Event: eventBridgeRuleEvent,
+			URN: func(settings settings, rule awsEventBridgeRule) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eventbridge_rule:%s", settings.accountID, firstNonEmpty(rule.ARN, rule.Name)), nil
+			},
+			CursorFallback: func(rule awsEventBridgeRule) string { return firstNonEmpty(rule.ARN, rule.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEventBridgeArchive]{
+			Name:  familyEventBridgeArchive,
+			Label: "aws eventbridge archives",
+			List:  listEventBridgeArchives,
+			Event: eventBridgeArchiveEvent,
+			URN: func(settings settings, archive awsEventBridgeArchive) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eventbridge_archive:%s", settings.accountID, firstNonEmpty(archive.ARN, archive.Name)), nil
+			},
+			CursorFallback: func(archive awsEventBridgeArchive) string { return firstNonEmpty(archive.ARN, archive.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEventBridgePipe]{
+			Name:  familyEventBridgePipe,
+			Label: "aws eventbridge pipes",
+			List:  listEventBridgePipes,
+			Event: eventBridgePipeEvent,
+			URN: func(settings settings, pipe awsEventBridgePipe) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eventbridge_pipe:%s", settings.accountID, firstNonEmpty(pipe.ARN, pipe.Name)), nil
+			},
+			CursorFallback: func(pipe awsEventBridgePipe) string { return firstNonEmpty(pipe.ARN, pipe.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSchedulerSchedule]{
+			Name:  familySchedulerSchedule,
+			Label: "aws scheduler schedules",
+			List:  listSchedulerSchedules,
+			Event: schedulerScheduleEvent,
+			URN: func(settings settings, schedule awsSchedulerSchedule) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_scheduler_schedule:%s", settings.accountID, firstNonEmpty(schedule.ARN, schedule.Name)), nil
+			},
+			CursorFallback: func(schedule awsSchedulerSchedule) string { return firstNonEmpty(schedule.ARN, schedule.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSchedulerGroup]{
+			Name:  familySchedulerGroup,
+			Label: "aws scheduler schedule groups",
+			List:  listSchedulerGroups,
+			Event: schedulerGroupEvent,
+			URN: func(settings settings, group awsSchedulerGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_scheduler_schedule_group:%s", settings.accountID, firstNonEmpty(group.ARN, group.Name)), nil
+			},
+			CursorFallback: func(group awsSchedulerGroup) string { return firstNonEmpty(group.ARN, group.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsCloudWatchAlarm]{
+			Name:  familyCloudWatchAlarm,
+			Label: "aws cloudwatch alarms",
+			List:  listCloudWatchAlarms,
+			Event: cloudWatchAlarmEvent,
+			URN: func(settings settings, alarm awsCloudWatchAlarm) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudwatch_alarm:%s", settings.accountID, firstNonEmpty(alarm.ARN, alarm.Name)), nil
+			},
+			CursorFallback: func(alarm awsCloudWatchAlarm) string { return firstNonEmpty(alarm.ARN, alarm.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsCloudWatchLogGroup]{
+			Name:  familyCloudWatchLogGroup,
+			Label: "aws cloudwatch log groups",
+			List:  listCloudWatchLogGroups,
+			Event: cloudWatchLogGroupEvent,
+			URN: func(settings settings, group awsCloudWatchLogGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudwatch_log_group:%s", settings.accountID, firstNonEmpty(group.ARN, group.Name)), nil
+			},
+			CursorFallback: func(group awsCloudWatchLogGroup) string { return firstNonEmpty(group.ARN, group.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMManagedInstance]{
+			Name:  familySSMManagedInstance,
+			Label: "aws ssm managed instances",
+			List:  listSSMManagedInstances,
+			Event: ssmManagedInstanceEvent,
+			URN: func(settings settings, instance awsSSMManagedInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_managed_instance:%s", settings.accountID, firstNonEmpty(instance.ID, instance.Name)), nil
+			},
+			CursorFallback: func(instance awsSSMManagedInstance) string { return firstNonEmpty(instance.ID, instance.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMDocument]{
+			Name:  familySSMDocument,
+			Label: "aws ssm documents",
+			List:  listSSMDocuments,
+			Event: ssmDocumentEvent,
+			URN: func(settings settings, document awsSSMDocument) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_document:%s", settings.accountID, document.Name), nil
+			},
+			CursorFallback: func(document awsSSMDocument) string { return document.Name },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMAssociation]{
+			Name:  familySSMAssociation,
+			Label: "aws ssm associations",
+			List:  listSSMAssociations,
+			Event: ssmAssociationEvent,
+			URN: func(settings settings, association awsSSMAssociation) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_association:%s", settings.accountID, firstNonEmpty(association.ID, association.Name)), nil
+			},
+			CursorFallback: func(association awsSSMAssociation) string { return firstNonEmpty(association.ID, association.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMParameter]{
+			Name:  familySSMParameter,
+			Label: "aws ssm parameters",
+			List:  listSSMParameters,
+			Event: ssmParameterEvent,
+			URN: func(settings settings, parameter awsSSMParameter) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_parameter:%s", settings.accountID, firstNonEmpty(parameter.ARN, parameter.Name)), nil
+			},
+			CursorFallback: func(parameter awsSSMParameter) string { return firstNonEmpty(parameter.ARN, parameter.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOrganizationsAccount]{
+			Name:  familyOrganizationsAcct,
+			Label: "aws organizations accounts",
+			List:  listOrganizationsAccounts,
+			Event: organizationsAccountEvent,
+			URN: func(settings settings, account awsOrganizationsAccount) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_organizations_account:%s", settings.accountID, account.ID), nil
+			},
+			CursorFallback: func(account awsOrganizationsAccount) string { return account.ID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOrganizationsOU]{
+			Name:  familyOrganizationsOU,
+			Label: "aws organizations organizational units",
+			List:  listOrganizationsOUs,
+			Event: organizationsOUEvent,
+			URN: func(settings settings, ou awsOrganizationsOU) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_organizations_organizational_unit:%s", settings.accountID, ou.ID), nil
+			},
+			CursorFallback: func(ou awsOrganizationsOU) string { return ou.ID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOrganizationsPolicy]{
+			Name:  familyOrganizationsPolicy,
+			Label: "aws organizations policies",
+			List:  listOrganizationsPolicies,
+			Event: organizationsPolicyEvent,
+			URN: func(settings settings, policy awsOrganizationsPolicy) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_organizations_policy:%s", settings.accountID, policy.ID), nil
+			},
+			CursorFallback: func(policy awsOrganizationsPolicy) string { return policy.ID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSOInstance]{
+			Name:  familySSOInstance,
+			Label: "aws sso instances",
+			List:  listSSOInstances,
+			Event: ssoInstanceEvent,
+			URN: func(settings settings, instance awsSSOInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sso_instance:%s", settings.accountID, firstNonEmpty(instance.InstanceARN, instance.IdentityStoreID)), nil
+			},
+			CursorFallback: func(instance awsSSOInstance) string {
+				return firstNonEmpty(instance.InstanceARN, instance.IdentityStoreID)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSOPermissionSet]{
+			Name:  familySSOPermissionSet,
+			Label: "aws sso permission sets",
+			List:  listSSOPermissionSets,
+			Event: ssoPermissionSetEvent,
+			URN: func(settings settings, permissionSet awsSSOPermissionSet) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sso_permission_set:%s", settings.accountID, permissionSet.PermissionSetARN), nil
+			},
+			CursorFallback: func(permissionSet awsSSOPermissionSet) string { return permissionSet.PermissionSetARN },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSOAccountAssignment]{
+			Name:  familySSOAssignment,
+			Label: "aws sso account assignments",
+			List:  listSSOAccountAssignments,
+			Event: ssoAccountAssignmentEvent,
+			URN: func(settings settings, assignment awsSSOAccountAssignment) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sso_account_assignment:%s:%s:%s", settings.accountID, assignment.AccountID, assignment.PermissionSetARN, assignment.PrincipalID), nil
+			},
+			CursorFallback: func(assignment awsSSOAccountAssignment) string {
+				return strings.Join([]string{assignment.AccountID, assignment.PermissionSetARN, assignment.PrincipalID}, ":")
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsIdentityStoreUser]{
+			Name:  familyIdentityStoreUser,
+			Label: "aws identity store users",
+			List:  listIdentityStoreUsers,
+			Event: identityStoreUserEvent,
+			URN: func(settings settings, user awsIdentityStoreUser) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_user:%s", settings.accountID, user.UserID), nil
+			},
+			CursorFallback: func(user awsIdentityStoreUser) string { return user.UserID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsIdentityStoreGroup]{
+			Name:  familyIdentityStoreGroup,
+			Label: "aws identity store groups",
+			List:  listIdentityStoreGroups,
+			Event: identityStoreGroupEvent,
+			URN: func(settings settings, group awsIdentityStoreGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_group:%s", settings.accountID, group.GroupID), nil
+			},
+			CursorFallback: func(group awsIdentityStoreGroup) string { return group.GroupID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsIdentityStoreGroupMembership]{
+			Name:  familyIdentityStoreMember,
+			Label: "aws identity store group memberships",
+			List:  listIdentityStoreGroupMemberships,
+			Event: identityStoreGroupMembershipEvent,
+			URN: func(settings settings, membership awsIdentityStoreGroupMembership) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_group_membership:%s:%s", settings.accountID, membership.GroupID, membership.MemberID), nil
+			},
+			CursorFallback: func(membership awsIdentityStoreGroupMembership) string {
+				return strings.Join([]string{membership.GroupID, membership.MemberID}, ":")
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
@@ -806,6 +1673,173 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(association.AssociationArn), awssdk.ToString(association.AssociationId))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[globalacceleratortypes.Accelerator]{
+			Name:  familyGlobalAccelerator,
+			Label: "aws global accelerator accelerators",
+			List:  listGlobalAccelerators,
+			Event: globalAcceleratorEvent,
+			URN: func(settings settings, accelerator globalacceleratortypes.Accelerator) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_globalaccelerator_accelerator:%s", settings.accountID, firstNonEmpty(awssdk.ToString(accelerator.AcceleratorArn), awssdk.ToString(accelerator.Name))), nil
+			},
+			CursorFallback: func(accelerator globalacceleratortypes.Accelerator) string {
+				return firstNonEmpty(awssdk.ToString(accelerator.AcceleratorArn), awssdk.ToString(accelerator.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlobalAcceleratorListener]{
+			Name:  familyGAListener,
+			Label: "aws global accelerator listeners",
+			List:  listGlobalAcceleratorListeners,
+			Event: globalAcceleratorListenerEvent,
+			URN: func(settings settings, listener awsGlobalAcceleratorListener) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_globalaccelerator_listener:%s", settings.accountID, awssdk.ToString(listener.Listener.ListenerArn)), nil
+			},
+			CursorFallback: func(listener awsGlobalAcceleratorListener) string {
+				return awssdk.ToString(listener.Listener.ListenerArn)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlobalAcceleratorEndpointGroup]{
+			Name:  familyGAEndpointGroup,
+			Label: "aws global accelerator endpoint groups",
+			List:  listGlobalAcceleratorEndpointGroups,
+			Event: globalAcceleratorEndpointGroupEvent,
+			URN: func(settings settings, group awsGlobalAcceleratorEndpointGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_globalaccelerator_endpoint_group:%s", settings.accountID, awssdk.ToString(group.EndpointGroup.EndpointGroupArn)), nil
+			},
+			CursorFallback: func(group awsGlobalAcceleratorEndpointGroup) string {
+				return awssdk.ToString(group.EndpointGroup.EndpointGroupArn)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[vpclatticetypes.ServiceSummary]{
+			Name:  familyVPCLatticeService,
+			Label: "aws vpc lattice services",
+			List:  listVPCLatticeServices,
+			Event: vpcLatticeServiceEvent,
+			URN: func(settings settings, service vpclatticetypes.ServiceSummary) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpclattice_service:%s", settings.accountID, firstNonEmpty(awssdk.ToString(service.Arn), awssdk.ToString(service.Id), awssdk.ToString(service.Name))), nil
+			},
+			CursorFallback: func(service vpclatticetypes.ServiceSummary) string {
+				return firstNonEmpty(awssdk.ToString(service.Arn), awssdk.ToString(service.Id), awssdk.ToString(service.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsVPCLatticeListener]{
+			Name:  familyVPCLatticeListener,
+			Label: "aws vpc lattice listeners",
+			List:  listVPCLatticeListeners,
+			Event: vpcLatticeListenerEvent,
+			URN: func(settings settings, listener awsVPCLatticeListener) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpclattice_listener:%s", settings.accountID, firstNonEmpty(awssdk.ToString(listener.Listener.Arn), awssdk.ToString(listener.Listener.Id))), nil
+			},
+			CursorFallback: func(listener awsVPCLatticeListener) string {
+				return firstNonEmpty(awssdk.ToString(listener.Listener.Arn), awssdk.ToString(listener.Listener.Id))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[vpclatticetypes.TargetGroupSummary]{
+			Name:  familyVPCLatticeTG,
+			Label: "aws vpc lattice target groups",
+			List:  listVPCLatticeTargetGroups,
+			Event: vpcLatticeTargetGroupEvent,
+			URN: func(settings settings, target vpclatticetypes.TargetGroupSummary) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpclattice_target_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(target.Arn), awssdk.ToString(target.Id), awssdk.ToString(target.Name))), nil
+			},
+			CursorFallback: func(target vpclatticetypes.TargetGroupSummary) string {
+				return firstNonEmpty(awssdk.ToString(target.Arn), awssdk.ToString(target.Id), awssdk.ToString(target.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[elbv2types.Listener]{
+			Name:  familyELBV2Listener,
+			Label: "aws elbv2 listeners",
+			List:  listELBV2Listeners,
+			Event: elbv2ListenerEvent,
+			URN: func(settings settings, listener elbv2types.Listener) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elbv2_listener:%s", settings.accountID, awssdk.ToString(listener.ListenerArn)), nil
+			},
+			CursorFallback: func(listener elbv2types.Listener) string { return awssdk.ToString(listener.ListenerArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[elbv2types.TargetGroup]{
+			Name:  familyELBV2TargetGroup,
+			Label: "aws elbv2 target groups",
+			List:  listELBV2TargetGroups,
+			Event: elbv2TargetGroupEvent,
+			URN: func(settings settings, target elbv2types.TargetGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_elbv2_target_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(target.TargetGroupArn), awssdk.ToString(target.TargetGroupName))), nil
+			},
+			CursorFallback: func(target elbv2types.TargetGroup) string {
+				return firstNonEmpty(awssdk.ToString(target.TargetGroupArn), awssdk.ToString(target.TargetGroupName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAPIGatewayStage]{
+			Name:  familyAPIGatewayStage,
+			Label: "aws api gateway stages",
+			List:  listAPIGatewayStages,
+			Event: apiGatewayStageEvent,
+			URN: func(settings settings, stage awsAPIGatewayStage) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_stage:%s/%s", settings.accountID, stage.apiID(), stage.stageName()), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAPIGatewayRoute]{
+			Name:  familyAPIGatewayRoute,
+			Label: "aws api gateway routes",
+			List:  listAPIGatewayRoutes,
+			Event: apiGatewayRouteEvent,
+			URN: func(settings settings, route awsAPIGatewayRoute) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_route:%s/%s", settings.accountID, route.apiID(), route.routeID()), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAPIGatewayIntegration]{
+			Name:  familyAPIGatewayInteg,
+			Label: "aws api gateway integrations",
+			List:  listAPIGatewayIntegrations,
+			Event: apiGatewayIntegrationEvent,
+			URN: func(settings settings, integration awsAPIGatewayIntegration) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_integration:%s/%s", settings.accountID, integration.apiID(), integration.integrationID()), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[cloudfronttypes.OriginAccessControlSummary]{
+			Name:  familyCloudFrontOAC,
+			Label: "aws cloudfront origin access controls",
+			List:  listCloudFrontOACs,
+			Event: cloudFrontOACEvent,
+			URN: func(settings settings, oac cloudfronttypes.OriginAccessControlSummary) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudfront_origin_access_control:%s", settings.accountID, awssdk.ToString(oac.Id)), nil
+			},
+			CursorFallback: func(oac cloudfronttypes.OriginAccessControlSummary) string { return awssdk.ToString(oac.Id) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[cloudfronttypes.KeyGroupSummary]{
+			Name:  familyCloudFrontKeyGroup,
+			Label: "aws cloudfront key groups",
+			List:  listCloudFrontKeyGroups,
+			Event: cloudFrontKeyGroupEvent,
+			URN: func(settings settings, summary cloudfronttypes.KeyGroupSummary) (string, error) {
+				id := ""
+				if summary.KeyGroup != nil {
+					id = awssdk.ToString(summary.KeyGroup.Id)
+				}
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudfront_key_group:%s", settings.accountID, id), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[cloudfronttypes.PublicKeySummary]{
+			Name:  familyCloudFrontPublicKey,
+			Label: "aws cloudfront public keys",
+			List:  listCloudFrontPublicKeys,
+			Event: cloudFrontPublicKeyEvent,
+			URN: func(settings settings, key cloudfronttypes.PublicKeySummary) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudfront_public_key:%s", settings.accountID, awssdk.ToString(key.Id)), nil
+			},
+			CursorFallback: func(key cloudfronttypes.PublicKeySummary) string { return awssdk.ToString(key.Id) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[cloudfronttypes.ResponseHeadersPolicySummary]{
+			Name:  familyCloudFrontRHP,
+			Label: "aws cloudfront response headers policies",
+			List:  listCloudFrontResponseHeadersPolicies,
+			Event: cloudFrontResponseHeadersPolicyEvent,
+			URN: func(settings settings, summary cloudfronttypes.ResponseHeadersPolicySummary) (string, error) {
+				id := ""
+				if summary.ResponseHeadersPolicy != nil {
+					id = awssdk.ToString(summary.ResponseHeadersPolicy.Id)
+				}
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudfront_response_headers_policy:%s", settings.accountID, id), nil
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
 			Name:  familyEffectivePermission,
 			Label: "aws effective permissions",
@@ -822,6 +1856,30 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: resourceExposureEvent,
 			URN: func(settings settings, exposure awsResourceExposure) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_resource_exposure:%s", settings.accountID, firstNonEmpty(exposure.ExposureID, exposure.ResourceID)), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRoute53ResolverEndpoint]{
+			Name:  familyRoute53ResolverEndpoint,
+			Label: "aws route53 resolver endpoints",
+			List:  listRoute53ResolverEndpoints,
+			Event: route53ResolverEndpointEvent,
+			URN: func(settings settings, endpoint awsRoute53ResolverEndpoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_route53_resolver_endpoint:%s", settings.accountID, firstNonEmpty(awssdk.ToString(endpoint.Endpoint.Arn), awssdk.ToString(endpoint.Endpoint.Id))), nil
+			},
+			CursorFallback: func(endpoint awsRoute53ResolverEndpoint) string {
+				return firstNonEmpty(awssdk.ToString(endpoint.Endpoint.Arn), awssdk.ToString(endpoint.Endpoint.Id))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRoute53ResolverRule]{
+			Name:  familyRoute53ResolverRule,
+			Label: "aws route53 resolver rules",
+			List:  listRoute53ResolverRules,
+			Event: route53ResolverRuleEvent,
+			URN: func(settings settings, rule awsRoute53ResolverRule) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_route53_resolver_rule:%s", settings.accountID, firstNonEmpty(awssdk.ToString(rule.Rule.Arn), awssdk.ToString(rule.Rule.Id))), nil
+			},
+			CursorFallback: func(rule awsRoute53ResolverRule) string {
+				return firstNonEmpty(awssdk.ToString(rule.Rule.Arn), awssdk.ToString(rule.Rule.Id))
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsPublicEndpoint]{
@@ -958,34 +2016,69 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:             cfg,
-		iam:             iam.NewFromConfig(cfg),
-		cloudTrail:      cloudtrail.NewFromConfig(cfg),
-		dynamodb:        dynamodb.NewFromConfig(cfg),
-		dynamodbStreams: dynamodbstreams.NewFromConfig(cfg),
-		ec2:             ec2.NewFromConfig(cfg),
-		route53:         route53.NewFromConfig(cfg),
-		cloudFront:      cloudfront.NewFromConfig(cfg),
-		elbv2:           elbv2.NewFromConfig(cfg),
-		ecs:             ecs.NewFromConfig(cfg),
-		efs:             efs.NewFromConfig(cfg),
-		eks:             eks.NewFromConfig(cfg),
-		ecr:             ecr.NewFromConfig(cfg),
-		apiGateway:      apigateway.NewFromConfig(cfg),
-		apiGatewayV2:    apigatewayv2.NewFromConfig(cfg),
-		lambda:          lambda.NewFromConfig(cfg),
-		tagging:         resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:              s3.NewFromConfig(cfg),
-		s3ByRegion: func(region string) awsS3API {
-			regionalCfg := cfg
-			regionalCfg.Region = region
-			return s3.NewFromConfig(regionalCfg)
+		awsPlatformClients: awsPlatformClients{
+			cfg:             cfg,
+			acm:             acm.NewFromConfig(cfg),
+			iam:             iam.NewFromConfig(cfg),
+			cloudTrail:      cloudtrail.NewFromConfig(cfg),
+			ec2:             ec2.NewFromConfig(cfg),
+			route53:         route53.NewFromConfig(cfg),
+			route53Resolver: route53resolver.NewFromConfig(cfg),
+			cloudFront:      cloudfront.NewFromConfig(cfg),
+			elbv2:           elbv2.NewFromConfig(cfg),
+			globalAccel:     globalaccelerator.NewFromConfig(cfg),
+			vpcLattice:      vpclattice.NewFromConfig(cfg),
+			ecs:             ecs.NewFromConfig(cfg),
+			eks:             eks.NewFromConfig(cfg),
+			ecr:             ecr.NewFromConfig(cfg),
+			apiGateway:      apigateway.NewFromConfig(cfg),
+			apiGatewayV2:    apigatewayv2.NewFromConfig(cfg),
+			lambda:          lambda.NewFromConfig(cfg),
+			tagging:         resourcegroupstaggingapi.NewFromConfig(cfg),
+			s3:              s3.NewFromConfig(cfg),
+			s3ByRegion: func(region string) awsS3API {
+				regionalCfg := cfg
+				regionalCfg.Region = region
+				return s3.NewFromConfig(regionalCfg)
+			},
 		},
-		rds:     rds.NewFromConfig(cfg),
-		kms:     kms.NewFromConfig(cfg),
-		secrets: secretsmanager.NewFromConfig(cfg),
-		sqs:     sqs.NewFromConfig(cfg),
-		sns:     sns.NewFromConfig(cfg),
+		awsRuntimeClients: awsRuntimeClients{
+			batch:          batch.NewFromConfig(cfg),
+			rds:            rds.NewFromConfig(cfg),
+			kms:            kms.NewFromConfig(cfg),
+			secrets:        secretsmanager.NewFromConfig(cfg),
+			sqs:            sqs.NewFromConfig(cfg),
+			sns:            sns.NewFromConfig(cfg),
+			appRunner:      apprunner.NewFromConfig(cfg),
+			stepFunctions:  sfn.NewFromConfig(cfg),
+			eventBridge:    eventbridge.NewFromConfig(cfg),
+			pipes:          pipes.NewFromConfig(cfg),
+			scheduler:      scheduler.NewFromConfig(cfg),
+			cloudWatch:     cloudwatch.NewFromConfig(cfg),
+			cloudWatchLogs: cloudwatchlogs.NewFromConfig(cfg),
+			ssm:            ssm.NewFromConfig(cfg),
+		},
+		awsAnalyticsClients: awsAnalyticsClients{
+			kinesis:  kinesis.NewFromConfig(cfg),
+			firehose: firehose.NewFromConfig(cfg),
+			kafka:    kafka.NewFromConfig(cfg),
+			glue:     glue.NewFromConfig(cfg),
+			athena:   athena.NewFromConfig(cfg),
+			lake:     lakeformation.NewFromConfig(cfg),
+		},
+		awsGovernanceClients: awsGovernanceClients{
+			organizations: organizations.NewFromConfig(cfg),
+			sso:           ssoadmin.NewFromConfig(cfg),
+			identityStore: identitystore.NewFromConfig(cfg),
+		},
+		awsStorageClients: awsStorageClients{
+			dynamodb:        dynamodb.NewFromConfig(cfg),
+			dynamodbStreams: dynamodbstreams.NewFromConfig(cfg),
+			efs:             efs.NewFromConfig(cfg),
+			s3control:       s3control.NewFromConfig(cfg),
+			datasync:        datasync.NewFromConfig(cfg),
+			backup:          backup.NewFromConfig(cfg),
+		},
 	}, nil
 }
 
@@ -1008,6 +2101,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		principalType:              configValue(cfg, "principal_type"),
 		principalName:              configValue(cfg, "principal_name"),
 		userName:                   configValue(cfg, "user_name"),
+		identityStoreID:            configValue(cfg, "identity_store_id"),
 		lookupKey:                  configValue(cfg, "lookup_key"),
 		lookupValue:                configValue(cfg, "lookup_value"),
 		startTime:                  configValue(cfg, "start_time"),
@@ -1042,7 +2136,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEFSAccessPoint, familyEFSFileSystem, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEFSAccessPoint, familyEFSFileSystem, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -1057,7 +2151,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, dynamodb_backup, dynamodb_stream, dynamodb_table, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, efs_access_point, efs_file_system, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("unsupported aws family %q", settings.family)
 	}
 	return settings, nil
 }
