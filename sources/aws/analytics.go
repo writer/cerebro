@@ -374,7 +374,9 @@ func glueJobEvent(settings settings, record awsGlueJob) (*primitives.Event, erro
 	roleARN := awssdk.ToString(job.Role)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueJob, arn, name, "glue_job", record.Tags)
 	attributes["arn"] = arn
-	attributes["allocated_capacity"] = strconv.FormatInt(int64(job.AllocatedCapacity), 10)
+	if job.MaxCapacity != nil {
+		attributes["allocated_capacity"] = strconv.FormatFloat(awssdk.ToFloat64(job.MaxCapacity), 'f', -1, 64)
+	}
 	attributes["command_name"] = glueJobCommandName(job)
 	attributes["description"] = awssdk.ToString(job.Description)
 	attributes["execution_class"] = string(job.ExecutionClass)

@@ -665,88 +665,90 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
-			s3Buckets: []s3types.Bucket{{
-				Name:         awssdk.String("prod-data"),
-				CreationDate: timePtr("2026-04-23T00:00:00Z"),
-			}},
-			s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
-			s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
-			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
-				Rules: []s3types.ServerSideEncryptionRule{{
-					ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
-						SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
-						KMSMasterKeyID: awssdk.String(kmsARN),
-					},
+			fakeAWSCoreData: fakeAWSCoreData{
+				s3Buckets: []s3types.Bucket{{
+					Name:         awssdk.String("prod-data"),
+					CreationDate: timePtr("2026-04-23T00:00:00Z"),
 				}},
-			}},
-			s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
-			s3Logging:    map[string]bool{"prod-data": true},
-			s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
-				BlockPublicAcls:       awssdk.Bool(true),
-				BlockPublicPolicy:     awssdk.Bool(true),
-				IgnorePublicAcls:      awssdk.Bool(true),
-				RestrictPublicBuckets: awssdk.Bool(true),
-			}},
-			rdsInstances: []rdstypes.DBInstance{{
-				DBInstanceArn:         awssdk.String(rdsARN),
-				DBInstanceIdentifier:  awssdk.String("orders-db"),
-				Engine:                awssdk.String("postgres"),
-				StorageEncrypted:      awssdk.Bool(true),
-				KmsKeyId:              awssdk.String(kmsARN),
-				DeletionProtection:    awssdk.Bool(true),
-				BackupRetentionPeriod: awssdk.Int32(7),
-				PubliclyAccessible:    awssdk.Bool(false),
-				InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
-				TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
-			}},
-			kmsKeys: []kmstypes.KeyMetadata{{
-				Arn:          awssdk.String(kmsARN),
-				KeyId:        awssdk.String("key-123"),
-				CreationDate: timePtr("2026-04-23T00:00:00Z"),
-				Enabled:      true,
-				KeyManager:   kmstypes.KeyManagerTypeCustomer,
-				KeyState:     kmstypes.KeyStateEnabled,
-				KeySpec:      kmstypes.KeySpecSymmetricDefault,
-				KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
-				Origin:       kmstypes.OriginTypeAwsKms,
-			}},
-			kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
-			kmsRotation: map[string]bool{"key-123": true},
-			secrets: []secretsmanagertypes.SecretListEntry{{
-				ARN:             awssdk.String(secretARN),
-				Name:            awssdk.String("prod/api-key"),
-				CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
-				KmsKeyId:        awssdk.String(kmsARN),
-				RotationEnabled: awssdk.Bool(true),
-				Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
-			}},
-			sqsQueueURLs: []string{sqsURL},
-			sqsAttributes: map[string]map[string]string{sqsURL: {
-				"QueueArn":               sqsARN,
-				"KmsMasterKeyId":         kmsARN,
-				"MessageRetentionPeriod": "1209600",
-				"CreatedTimestamp":       "1776902400",
-			}},
-			sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
-			snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
-			snsAttributes: map[string]map[string]string{snsARN: {
-				"TopicArn":       snsARN,
-				"KmsMasterKeyId": kmsARN,
-			}},
-			snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
-			ecrRepositories: []ecrtypes.Repository{{
-				RepositoryArn:  awssdk.String(ecrARN),
-				RepositoryName: awssdk.String("orders"),
-				RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
-				CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
-				EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
-					EncryptionType: ecrtypes.EncryptionTypeKms,
-					KmsKey:         awssdk.String(kmsARN),
-				},
-				ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
-				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
-			}},
-			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
+				s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
+				s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
+					Rules: []s3types.ServerSideEncryptionRule{{
+						ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
+							SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
+							KMSMasterKeyID: awssdk.String(kmsARN),
+						},
+					}},
+				}},
+				s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
+				s3Logging:    map[string]bool{"prod-data": true},
+				s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
+					BlockPublicAcls:       awssdk.Bool(true),
+					BlockPublicPolicy:     awssdk.Bool(true),
+					IgnorePublicAcls:      awssdk.Bool(true),
+					RestrictPublicBuckets: awssdk.Bool(true),
+				}},
+				rdsInstances: []rdstypes.DBInstance{{
+					DBInstanceArn:         awssdk.String(rdsARN),
+					DBInstanceIdentifier:  awssdk.String("orders-db"),
+					Engine:                awssdk.String("postgres"),
+					StorageEncrypted:      awssdk.Bool(true),
+					KmsKeyId:              awssdk.String(kmsARN),
+					DeletionProtection:    awssdk.Bool(true),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					PubliclyAccessible:    awssdk.Bool(false),
+					InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
+					TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				}},
+				kmsKeys: []kmstypes.KeyMetadata{{
+					Arn:          awssdk.String(kmsARN),
+					KeyId:        awssdk.String("key-123"),
+					CreationDate: timePtr("2026-04-23T00:00:00Z"),
+					Enabled:      true,
+					KeyManager:   kmstypes.KeyManagerTypeCustomer,
+					KeyState:     kmstypes.KeyStateEnabled,
+					KeySpec:      kmstypes.KeySpecSymmetricDefault,
+					KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
+					Origin:       kmstypes.OriginTypeAwsKms,
+				}},
+				kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
+				kmsRotation: map[string]bool{"key-123": true},
+				secrets: []secretsmanagertypes.SecretListEntry{{
+					ARN:             awssdk.String(secretARN),
+					Name:            awssdk.String("prod/api-key"),
+					CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
+					KmsKeyId:        awssdk.String(kmsARN),
+					RotationEnabled: awssdk.Bool(true),
+					Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+				}},
+				sqsQueueURLs: []string{sqsURL},
+				sqsAttributes: map[string]map[string]string{sqsURL: {
+					"QueueArn":               sqsARN,
+					"KmsMasterKeyId":         kmsARN,
+					"MessageRetentionPeriod": "1209600",
+					"CreatedTimestamp":       "1776902400",
+				}},
+				sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
+				snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
+				snsAttributes: map[string]map[string]string{snsARN: {
+					"TopicArn":       snsARN,
+					"KmsMasterKeyId": kmsARN,
+				}},
+				snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				ecrRepositories: []ecrtypes.Repository{{
+					RepositoryArn:  awssdk.String(ecrARN),
+					RepositoryName: awssdk.String("orders"),
+					RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
+					CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+					EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
+						EncryptionType: ecrtypes.EncryptionTypeKms,
+						KmsKey:         awssdk.String(kmsARN),
+					},
+					ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
+					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
+				}},
+				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
 		},
 	})
 	for _, tt := range []struct {
@@ -791,97 +793,99 @@ func TestReadAWSAnalyticsInventoryEvents(t *testing.T) {
 	lakeFormationResourceARN := "arn:aws:s3:::prod-data"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
-			glueDatabases: []gluetypes.Database{{
-				Name:        awssdk.String("analytics"),
-				CatalogId:   awssdk.String("123456789012"),
-				Description: awssdk.String("analytics warehouse"),
-				LocationUri: awssdk.String("s3://prod-data/warehouse"),
-				CreateTime:  timePtr("2026-04-23T00:00:00Z"),
-			}},
-			glueTables: map[string][]gluetypes.Table{"analytics": {{
-				Name:         awssdk.String("events"),
-				DatabaseName: awssdk.String("analytics"),
-				CatalogId:    awssdk.String("123456789012"),
-				TableType:    awssdk.String("EXTERNAL_TABLE"),
-				Owner:        awssdk.String("data@writer.com"),
-				CreateTime:   timePtr("2026-04-23T00:00:00Z"),
-				UpdateTime:   timePtr("2026-04-24T00:00:00Z"),
-				StorageDescriptor: &gluetypes.StorageDescriptor{
-					Columns:      []gluetypes.Column{{Name: awssdk.String("event_id"), Type: awssdk.String("string")}},
-					Compressed:   true,
-					InputFormat:  awssdk.String("org.apache.hadoop.mapred.TextInputFormat"),
-					Location:     awssdk.String("s3://prod-data/events"),
-					OutputFormat: awssdk.String("org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"),
-					SerdeInfo:    &gluetypes.SerDeInfo{SerializationLibrary: awssdk.String("org.openx.data.jsonserde.JsonSerDe")},
+			fakeAWSAnalyticsData: fakeAWSAnalyticsData{
+				glueDatabases: []gluetypes.Database{{
+					Name:        awssdk.String("analytics"),
+					CatalogId:   awssdk.String("123456789012"),
+					Description: awssdk.String("analytics warehouse"),
+					LocationUri: awssdk.String("s3://prod-data/warehouse"),
+					CreateTime:  timePtr("2026-04-23T00:00:00Z"),
+				}},
+				glueTables: map[string][]gluetypes.Table{"analytics": {{
+					Name:         awssdk.String("events"),
+					DatabaseName: awssdk.String("analytics"),
+					CatalogId:    awssdk.String("123456789012"),
+					TableType:    awssdk.String("EXTERNAL_TABLE"),
+					Owner:        awssdk.String("data@writer.com"),
+					CreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					UpdateTime:   timePtr("2026-04-24T00:00:00Z"),
+					StorageDescriptor: &gluetypes.StorageDescriptor{
+						Columns:      []gluetypes.Column{{Name: awssdk.String("event_id"), Type: awssdk.String("string")}},
+						Compressed:   true,
+						InputFormat:  awssdk.String("org.apache.hadoop.mapred.TextInputFormat"),
+						Location:     awssdk.String("s3://prod-data/events"),
+						OutputFormat: awssdk.String("org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"),
+						SerdeInfo:    &gluetypes.SerDeInfo{SerializationLibrary: awssdk.String("org.openx.data.jsonserde.JsonSerDe")},
+					},
+					IsRegisteredWithLakeFormation: true,
+				}}},
+				glueCrawlers: []gluetypes.Crawler{{
+					Name:         awssdk.String("analytics-crawler"),
+					DatabaseName: awssdk.String("analytics"),
+					Role:         awssdk.String("arn:aws:iam::123456789012:role/GlueCrawlerRole"),
+					State:        gluetypes.CrawlerState("READY"),
+					CreationTime: timePtr("2026-04-23T00:00:00Z"),
+					LastUpdated:  timePtr("2026-04-24T00:00:00Z"),
+					Targets:      &gluetypes.CrawlerTargets{S3Targets: []gluetypes.S3Target{{Path: awssdk.String("s3://prod-data/events")}}},
+					LastCrawl:    &gluetypes.LastCrawlInfo{Status: gluetypes.LastCrawlStatus("SUCCEEDED"), StartTime: timePtr("2026-04-24T00:00:00Z")},
+				}},
+				glueJobs: []gluetypes.Job{{
+					Name:              awssdk.String("analytics-etl"),
+					Role:              awssdk.String("arn:aws:iam::123456789012:role/GlueJobRole"),
+					GlueVersion:       awssdk.String("5.0"),
+					WorkerType:        gluetypes.WorkerType("G.1X"),
+					NumberOfWorkers:   awssdk.Int32(2),
+					ExecutionClass:    gluetypes.ExecutionClass("STANDARD"),
+					JobMode:           gluetypes.JobMode("SCRIPT"),
+					CreatedOn:         timePtr("2026-04-23T00:00:00Z"),
+					LastModifiedOn:    timePtr("2026-04-24T00:00:00Z"),
+					Command:           &gluetypes.JobCommand{Name: awssdk.String("glueetl"), ScriptLocation: awssdk.String("s3://prod-scripts/analytics.py")},
+					ExecutionProperty: &gluetypes.ExecutionProperty{MaxConcurrentRuns: 2},
+				}},
+				glueTags: map[string]map[string]string{
+					glueDatabaseARNValue: {"Owner": "data@writer.com"},
+					glueTableARNValue:    {"DataClassification": "restricted"},
+					glueCrawlerARNValue:  {"Team": "analytics"},
+					glueJobARNValue:      {"Team": "analytics"},
 				},
-				IsRegisteredWithLakeFormation: true,
-			}}},
-			glueCrawlers: []gluetypes.Crawler{{
-				Name:         awssdk.String("analytics-crawler"),
-				DatabaseName: awssdk.String("analytics"),
-				Role:         awssdk.String("arn:aws:iam::123456789012:role/GlueCrawlerRole"),
-				State:        gluetypes.CrawlerState("READY"),
-				CreationTime: timePtr("2026-04-23T00:00:00Z"),
-				LastUpdated:  timePtr("2026-04-24T00:00:00Z"),
-				Targets:      &gluetypes.CrawlerTargets{S3Targets: []gluetypes.S3Target{{Path: awssdk.String("s3://prod-data/events")}}},
-				LastCrawl:    &gluetypes.LastCrawlInfo{Status: gluetypes.LastCrawlStatus("SUCCEEDED"), StartTime: timePtr("2026-04-24T00:00:00Z")},
-			}},
-			glueJobs: []gluetypes.Job{{
-				Name:              awssdk.String("analytics-etl"),
-				Role:              awssdk.String("arn:aws:iam::123456789012:role/GlueJobRole"),
-				GlueVersion:       awssdk.String("5.0"),
-				WorkerType:        gluetypes.WorkerType("G.1X"),
-				NumberOfWorkers:   awssdk.Int32(2),
-				ExecutionClass:    gluetypes.ExecutionClass("STANDARD"),
-				JobMode:           gluetypes.JobMode("SCRIPT"),
-				CreatedOn:         timePtr("2026-04-23T00:00:00Z"),
-				LastModifiedOn:    timePtr("2026-04-24T00:00:00Z"),
-				Command:           &gluetypes.JobCommand{Name: awssdk.String("glueetl"), ScriptLocation: awssdk.String("s3://prod-scripts/analytics.py")},
-				ExecutionProperty: &gluetypes.ExecutionProperty{MaxConcurrentRuns: 2},
-			}},
-			glueTags: map[string]map[string]string{
-				glueDatabaseARNValue: {"Owner": "data@writer.com"},
-				glueTableARNValue:    {"DataClassification": "restricted"},
-				glueCrawlerARNValue:  {"Team": "analytics"},
-				glueJobARNValue:      {"Team": "analytics"},
-			},
-			athenaWorkGroups: []athenatypes.WorkGroup{{
-				Name:         awssdk.String("analytics"),
-				Description:  awssdk.String("analytics queries"),
-				State:        athenatypes.WorkGroupState("ENABLED"),
-				CreationTime: timePtr("2026-04-23T00:00:00Z"),
-				Configuration: &athenatypes.WorkGroupConfiguration{
-					EnforceWorkGroupConfiguration:   awssdk.Bool(true),
-					PublishCloudWatchMetricsEnabled: awssdk.Bool(true),
-					ResultConfiguration: &athenatypes.ResultConfiguration{
-						OutputLocation: awssdk.String("s3://prod-athena-results/"),
-						EncryptionConfiguration: &athenatypes.EncryptionConfiguration{
-							EncryptionOption: athenatypes.EncryptionOption("SSE_KMS"),
-							KmsKey:           awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+				athenaWorkGroups: []athenatypes.WorkGroup{{
+					Name:         awssdk.String("analytics"),
+					Description:  awssdk.String("analytics queries"),
+					State:        athenatypes.WorkGroupState("ENABLED"),
+					CreationTime: timePtr("2026-04-23T00:00:00Z"),
+					Configuration: &athenatypes.WorkGroupConfiguration{
+						EnforceWorkGroupConfiguration:   awssdk.Bool(true),
+						PublishCloudWatchMetricsEnabled: awssdk.Bool(true),
+						ResultConfiguration: &athenatypes.ResultConfiguration{
+							OutputLocation: awssdk.String("s3://prod-athena-results/"),
+							EncryptionConfiguration: &athenatypes.EncryptionConfiguration{
+								EncryptionOption: athenatypes.EncryptionOption("SSE_KMS"),
+								KmsKey:           awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+							},
 						},
 					},
+				}},
+				athenaDataCatalogs: []athenatypes.DataCatalog{{
+					Name:        awssdk.String("AwsDataCatalog"),
+					Type:        athenatypes.DataCatalogType("GLUE"),
+					Description: awssdk.String("default glue catalog"),
+					Parameters:  map[string]string{"catalog-id": "123456789012"},
+					Status:      athenatypes.DataCatalogStatus("CREATE_COMPLETE"),
+				}},
+				athenaTags: map[string][]athenatypes.Tag{
+					athenaWorkGroupARNValue: {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}},
+					athenaCatalogARNValue:   {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}},
 				},
-			}},
-			athenaDataCatalogs: []athenatypes.DataCatalog{{
-				Name:        awssdk.String("AwsDataCatalog"),
-				Type:        athenatypes.DataCatalogType("GLUE"),
-				Description: awssdk.String("default glue catalog"),
-				Parameters:  map[string]string{"catalog-id": "123456789012"},
-				Status:      athenatypes.DataCatalogStatus("CREATE_COMPLETE"),
-			}},
-			athenaTags: map[string][]athenatypes.Tag{
-				athenaWorkGroupARNValue: {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}},
-				athenaCatalogARNValue:   {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}},
+				lakeFormationResources: []lakeformationtypes.ResourceInfo{{
+					ResourceArn:                  awssdk.String(lakeFormationResourceARN),
+					RoleArn:                      awssdk.String("arn:aws:iam::123456789012:role/LakeFormationAccessRole"),
+					ExpectedResourceOwnerAccount: awssdk.String("123456789012"),
+					HybridAccessEnabled:          awssdk.Bool(true),
+					LastModified:                 timePtr("2026-04-24T00:00:00Z"),
+					VerificationStatus:           lakeformationtypes.VerificationStatus("VERIFIED"),
+					WithPrivilegedAccess:         awssdk.Bool(true),
+				}},
 			},
-			lakeFormationResources: []lakeformationtypes.ResourceInfo{{
-				ResourceArn:                  awssdk.String(lakeFormationResourceARN),
-				RoleArn:                      awssdk.String("arn:aws:iam::123456789012:role/LakeFormationAccessRole"),
-				ExpectedResourceOwnerAccount: awssdk.String("123456789012"),
-				HybridAccessEnabled:          awssdk.Bool(true),
-				LastModified:                 timePtr("2026-04-24T00:00:00Z"),
-				VerificationStatus:           lakeformationtypes.VerificationStatus("VERIFIED"),
-				WithPrivilegedAccess:         awssdk.Bool(true),
-			}},
 		},
 	})
 	for _, tt := range []struct {
@@ -963,8 +967,10 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 	}
 	records, _, err := listSNSTopics(context.Background(), awsClients{sns: fakeSNS{fake: &fakeAWS{
 		fakeAWSData: fakeAWSData{
-			snsTopics:     topics,
-			snsAttributes: attributes,
+			fakeAWSCoreData: fakeAWSCoreData{
+				snsTopics:     topics,
+				snsAttributes: attributes,
+			},
 		},
 	}}}, settings{}, "", 10)
 	if err != nil {
@@ -1016,18 +1022,22 @@ func TestS3BucketPublicTreatsMissingPublicAccessBlockAsExposed(t *testing.T) {
 
 func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 	base := fakeAWS{fakeAWSData: fakeAWSData{
-		s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
-		s3BucketRegions: map[string]s3types.BucketLocationConstraint{
-			"legacy-eu": s3types.BucketLocationConstraint("EU"),
+		fakeAWSCoreData: fakeAWSCoreData{
+			s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
+			s3BucketRegions: map[string]s3types.BucketLocationConstraint{
+				"legacy-eu": s3types.BucketLocationConstraint("EU"),
+			},
 		},
 	}}
 	regional := fakeAWS{fakeAWSData: fakeAWSData{
-		s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
-		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
-			ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
-		}}}},
-		s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
-		s3Logging:    map[string]bool{"legacy-eu": true},
+		fakeAWSCoreData: fakeAWSCoreData{
+			s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
+			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
+				ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
+			}}}},
+			s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
+			s3Logging:    map[string]bool{"legacy-eu": true},
+		},
 	}}
 	records, _, err := listS3Buckets(context.Background(), awsClients{
 		cfg: awssdk.Config{Region: "us-east-1"},
@@ -2119,27 +2129,35 @@ type fakeAWSNetwork struct {
 }
 
 type fakeAWSData struct {
-	s3Buckets              []s3types.Bucket
-	s3BucketRegions        map[string]s3types.BucketLocationConstraint
-	s3Tags                 map[string][]s3types.Tag
-	s3Encryption           map[string]*s3types.ServerSideEncryptionConfiguration
-	s3Versioning           map[string]s3types.BucketVersioningStatus
-	s3Logging              map[string]bool
-	s3PublicAccessBlocks   map[string]*s3types.PublicAccessBlockConfiguration
-	s3OptionalError        error
-	rdsInstances           []rdstypes.DBInstance
-	kmsKeys                []kmstypes.KeyMetadata
-	kmsTags                map[string][]kmstypes.Tag
-	kmsRotation            map[string]bool
-	secrets                []secretsmanagertypes.SecretListEntry
-	sqsQueueURLs           []string
-	sqsAttributes          map[string]map[string]string
-	sqsTags                map[string]map[string]string
-	snsTopics              []snstypes.Topic
-	snsAttributes          map[string]map[string]string
-	snsTags                map[string][]snstypes.Tag
-	ecrRepositories        []ecrtypes.Repository
-	ecrTags                map[string][]ecrtypes.Tag
+	fakeAWSCoreData
+	fakeAWSAnalyticsData
+}
+
+type fakeAWSCoreData struct {
+	s3Buckets            []s3types.Bucket
+	s3BucketRegions      map[string]s3types.BucketLocationConstraint
+	s3Tags               map[string][]s3types.Tag
+	s3Encryption         map[string]*s3types.ServerSideEncryptionConfiguration
+	s3Versioning         map[string]s3types.BucketVersioningStatus
+	s3Logging            map[string]bool
+	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
+	s3OptionalError      error
+	rdsInstances         []rdstypes.DBInstance
+	kmsKeys              []kmstypes.KeyMetadata
+	kmsTags              map[string][]kmstypes.Tag
+	kmsRotation          map[string]bool
+	secrets              []secretsmanagertypes.SecretListEntry
+	sqsQueueURLs         []string
+	sqsAttributes        map[string]map[string]string
+	sqsTags              map[string]map[string]string
+	snsTopics            []snstypes.Topic
+	snsAttributes        map[string]map[string]string
+	snsTags              map[string][]snstypes.Tag
+	ecrRepositories      []ecrtypes.Repository
+	ecrTags              map[string][]ecrtypes.Tag
+}
+
+type fakeAWSAnalyticsData struct {
 	glueDatabases          []gluetypes.Database
 	glueTables             map[string][]gluetypes.Table
 	glueCrawlers           []gluetypes.Crawler
