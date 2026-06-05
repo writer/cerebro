@@ -3,6 +3,14 @@
   "generic_asset_metadata_backstop": "The aws asset_metadata family calls Resource Groups Tagging API GetResources without ResourceTypeFilters, so taggable resources from SDK services are projected as typed cloud resources even when no service-specific family exists.",
   "services": [
     {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/acm",
+      "service": "acm",
+      "version": "v1.39.5"
+    },
+    {
       "coverage_status": "explicit",
       "explicit_families": [
         "public_endpoint"
@@ -21,6 +29,38 @@
       "module": "github.com/aws/aws-sdk-go-v2/service/apigatewayv2",
       "service": "apigatewayv2",
       "version": "v1.35.5"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/apprunner",
+      "service": "apprunner",
+      "version": "v1.40.5"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/athena",
+      "service": "athena",
+      "version": "v1.58.3"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/backup",
+      "service": "backup",
+      "version": "v1.57.5"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/batch",
+      "service": "batch",
+      "version": "v1.65.5"
     },
     {
       "coverage_status": "non_inventory",
@@ -58,6 +98,30 @@
       "module": "github.com/aws/aws-sdk-go-v2/service/cloudtrail",
       "service": "cloudtrail",
       "version": "v1.56.3"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/cloudwatch",
+      "service": "cloudwatch",
+      "version": "v1.58.2"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs",
+      "service": "cloudwatchlogs",
+      "version": "v1.75.1"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/datasync",
+      "service": "datasync",
+      "version": "v1.59.5"
     },
     {
       "coverage_status": "explicit",
@@ -121,6 +185,38 @@
       "version": "v1.55.3"
     },
     {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/eventbridge",
+      "service": "eventbridge",
+      "version": "v1.46.5"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/firehose",
+      "service": "firehose",
+      "version": "v1.43.1"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/globalaccelerator",
+      "service": "globalaccelerator",
+      "version": "v1.36.5"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/glue",
+      "service": "glue",
+      "version": "v1.143.0"
+    },
+    {
       "coverage_status": "explicit",
       "explicit_families": [
         "access_key",
@@ -138,6 +234,30 @@
       "version": "v1.54.3"
     },
     {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/identitystore",
+      "service": "identitystore",
+      "version": "v1.37.5"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/kafka",
+      "service": "kafka",
+      "version": "v1.52.5"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/kinesis",
+      "service": "kinesis",
+      "version": "v1.44.1"
+    },
+    {
       "coverage_status": "explicit",
       "explicit_families": [
         "asset_metadata",
@@ -149,6 +269,14 @@
       "version": "v1.53.2"
     },
     {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/lakeformation",
+      "service": "lakeformation",
+      "version": "v1.48.2"
+    },
+    {
       "coverage_status": "explicit",
       "explicit_families": [
         "asset_metadata",
@@ -158,6 +286,22 @@
       "module": "github.com/aws/aws-sdk-go-v2/service/lambda",
       "service": "lambda",
       "version": "v1.92.2"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/organizations",
+      "service": "organizations",
+      "version": "v1.51.9"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/pipes",
+      "service": "pipes",
+      "version": "v1.24.5"
     },
     {
       "coverage_status": "explicit",
@@ -191,6 +335,14 @@
       "version": "v1.63.2"
     },
     {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/route53resolver",
+      "service": "route53resolver",
+      "version": "v1.45.3"
+    },
+    {
       "coverage_status": "explicit",
       "explicit_families": [
         "asset_metadata",
@@ -202,6 +354,22 @@
       "version": "v1.103.2"
     },
     {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/s3control",
+      "service": "s3control",
+      "version": "v1.71.4"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/scheduler",
+      "service": "scheduler",
+      "version": "v1.18.5"
+    },
+    {
       "coverage_status": "explicit",
       "explicit_families": [
         "asset_metadata",
@@ -211,6 +379,14 @@
       "module": "github.com/aws/aws-sdk-go-v2/service/secretsmanager",
       "service": "secretsmanager",
       "version": "v1.42.1"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/sfn",
+      "service": "sfn",
+      "version": "v1.42.2"
     },
     {
       "coverage_status": "non_inventory",
@@ -244,6 +420,14 @@
       "version": "v1.43.1"
     },
     {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/ssm",
+      "service": "ssm",
+      "version": "v1.69.2"
+    },
+    {
       "coverage_status": "non_inventory",
       "explicit_families": [],
       "generic_asset_metadata": false,
@@ -251,6 +435,14 @@
       "note": "AWS auth helper; not an AWS asset inventory API",
       "service": "sso",
       "version": "v1.31.2"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/ssoadmin",
+      "service": "ssoadmin",
+      "version": "v1.39.5"
     },
     {
       "coverage_status": "non_inventory",
@@ -269,6 +461,14 @@
       "note": "AWS identity/session API used to validate and assume source credentials",
       "service": "sts",
       "version": "v1.43.2"
+    },
+    {
+      "coverage_status": "generic_asset_metadata",
+      "explicit_families": [],
+      "generic_asset_metadata": true,
+      "module": "github.com/aws/aws-sdk-go-v2/service/vpclattice",
+      "service": "vpclattice",
+      "version": "v1.22.1"
     }
   ],
   "uncovered_services": []

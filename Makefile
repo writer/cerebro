@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check aws-sdk-coverage-check aws-sdk-coverage-generate aws-resource-coverage-check aws-resource-coverage-generate detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check aws-sdk-coverage-check aws-sdk-coverage-generate aws-resource-coverage-check aws-resource-coverage-generate detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -226,6 +226,9 @@ oss-audit: ## Run repository OSS hygiene audit.
 
 govulncheck: ## Run govulncheck gate for reachable vulnerabilities.
 	python3 scripts/govulncheck_gate.py
+
+contracts-check: ## Run contract and compatibility checks with a final summary.
+	python3 scripts/contracts_check.py
 
 # ==== Release and Environment ====
 ##@ Release and Environment

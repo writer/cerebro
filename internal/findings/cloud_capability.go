@@ -27,6 +27,7 @@ var builtinCloudCapabilities = newCloudCapabilityRegistry()
 
 func newCloudCapabilityRegistry() cloudCapabilityRegistry {
 	return cloudCapabilityRegistry{events: []cloudEventCapability{
+		{SourceID: "aws", Kind: "aws.acm_certificate", Capability: cloudCapabilityResourceExposure},
 		{SourceID: "aws", Kind: "aws.effective_permission", Capability: cloudCapabilityEffectivePermission},
 		{SourceID: "aws", Kind: "asset.data_sensitivity", Capability: cloudCapabilityResourceExposure},
 		{SourceID: "aws", Kind: "aws.asset_metadata", Capability: cloudCapabilityResourceExposure},
@@ -50,6 +51,8 @@ func newCloudCapabilityRegistry() cloudCapabilityRegistry {
 		{SourceID: "aws", Kind: "aws.secret", Capability: cloudCapabilityResourceExposure},
 		{SourceID: "aws", Kind: "aws.sns_topic", Capability: cloudCapabilityResourceExposure},
 		{SourceID: "aws", Kind: "aws.sqs_queue", Capability: cloudCapabilityResourceExposure},
+		{SourceID: "aws", Kind: "aws.route53_resolver_endpoint", Capability: cloudCapabilityResourceExposure},
+		{SourceID: "aws", Kind: "aws.route53_resolver_rule", Capability: cloudCapabilityResourceExposure},
 		{SourceID: "azure", Kind: "azure.app_role_assignment", Capability: cloudCapabilityPrivilegePath},
 		{SourceID: "azure", Kind: "asset.data_sensitivity", Capability: cloudCapabilityResourceExposure},
 		{SourceID: "azure", Kind: "azure.aks_cluster", Capability: cloudCapabilityResourceExposure},
