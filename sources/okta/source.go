@@ -1362,6 +1362,13 @@ func userAttributes(settings settings, record userRecord) map[string]string {
 	addAttribute(attributes, "type_id", stringMap(record.Type, "id"))
 	addAttribute(attributes, "type_name", stringMap(record.Type, "name"))
 	addAttribute(attributes, "user_type", stringMap(record.Profile, "userType"))
+	addAttribute(attributes, "department", stringMap(record.Profile, "department"))
+	addAttribute(attributes, "job_title", stringMap(record.Profile, "title"))
+	addAttribute(attributes, "title", stringMap(record.Profile, "title"))
+	addAttribute(attributes, "organization", stringMap(record.Profile, "organization"))
+	addAttribute(attributes, "manager", stringMap(record.Profile, "manager"))
+	addAttribute(attributes, "manager_id", stringMap(record.Profile, "managerId"))
+	addAttribute(attributes, "employee_number", stringMap(record.Profile, "employeeNumber"))
 	return attributes
 }
 

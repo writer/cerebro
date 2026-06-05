@@ -179,6 +179,40 @@ func TestPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	}
 }
 
+func TestReadVantaPersonEmitsEmploymentAttributes(t *testing.T) {
+	server := httptest.NewServer(newTestAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+
+	pull, err := source.Read(context.Background(), testConfig(server.URL, familyPerson), nil)
+	if err != nil {
+		t.Fatalf("Read(person) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Read(person).Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "grc.person" {
+		t.Fatalf("event.Kind = %q, want grc.person", event.Kind)
+	}
+	for key, want := range map[string]string{
+		"department":      "Design",
+		"employee_number": "E-1001",
+		"job_title":       "Product Designer",
+		"manager":         "manager@example.com",
+		"manager_id":      "person-manager",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestReadVantaControlTestEmitsControlReferences(t *testing.T) {
 	server := httptest.NewServer(newTestAPIHandler(t))
 	defer server.Close()
@@ -766,6 +800,21 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				"nextSecurityReviewDueDate":        "2026-06-01T00:00:00Z",
 				"lastSecurityReviewCompletionDate": "2025-06-01T00:00:00Z",
 				"category":                         map[string]any{"displayName": "ai"},
+			}})
+		case "/v1/people":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":           "person-1",
+				"userId":       "user-1",
+				"emailAddress": "designer@example.com",
+				"employment": map[string]any{
+					"department":     "Design",
+					"employeeNumber": "E-1001",
+					"jobTitle":       "Product Designer",
+					"manager":        "manager@example.com",
+					"managerId":      "person-manager",
+					"status":         "CURRENT",
+				},
 			}})
 		case "/v1/vulnerabilities":
 			requireBearer(t, r)

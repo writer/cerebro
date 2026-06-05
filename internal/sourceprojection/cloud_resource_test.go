@@ -2,7 +2,6 @@ package sourceprojection
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -103,19 +102,20 @@ func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup
 
 func TestProjectAWSNetworkEdgeCloudResources(t *testing.T) {
 	for _, tt := range []struct {
-		kind       string
-		resourceID string
-		entityType string
+		kind         string
+		resourceID   string
+		resourceType string
+		entityType   string
 	}{
-		{kind: "aws.api_gateway_stage", resourceID: "v2:api-123:prod", entityType: "aws.api.gateway.stage"},
-		{kind: "aws.api_gateway_route", resourceID: "v2:api-123:route-1", entityType: "aws.api.gateway.route"},
-		{kind: "aws.api_gateway_integration", resourceID: "v2:api-123:int-1", entityType: "aws.api.gateway.integration"},
-		{kind: "aws.elb_listener", resourceID: "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/orders/abc/def", entityType: "aws.elb.listener"},
-		{kind: "aws.elb_target_group", resourceID: "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/tg", entityType: "aws.elb.target.group"},
-		{kind: "aws.cloudfront_origin_access_control", resourceID: "oac-123", entityType: "aws.cloudfront.origin.access.control"},
-		{kind: "aws.cloudfront_key_group", resourceID: "kg-123", entityType: "aws.cloudfront.key.group"},
-		{kind: "aws.cloudfront_public_key", resourceID: "pk-123", entityType: "aws.cloudfront.public.key"},
-		{kind: "aws.cloudfront_response_headers_policy", resourceID: "rhp-123", entityType: "aws.cloudfront.response.headers.policy"},
+		{kind: "aws.apigateway_stage", resourceID: "v2:api-123:prod", resourceType: "apigateway_stage", entityType: "aws.apigateway.stage"},
+		{kind: "aws.apigateway_route", resourceID: "v2:api-123:route-1", resourceType: "apigateway_route", entityType: "aws.apigateway.route"},
+		{kind: "aws.apigateway_integration", resourceID: "v2:api-123:int-1", resourceType: "apigateway_integration", entityType: "aws.apigateway.integration"},
+		{kind: "aws.elbv2_listener", resourceID: "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/orders/abc/def", resourceType: "elbv2_listener", entityType: "aws.elbv2.listener"},
+		{kind: "aws.elbv2_target_group", resourceID: "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/tg", resourceType: "elbv2_target_group", entityType: "aws.elbv2.target.group"},
+		{kind: "aws.cloudfront_origin_access_control", resourceID: "oac-123", resourceType: "cloudfront_origin_access_control", entityType: "aws.cloudfront.origin.access.control"},
+		{kind: "aws.cloudfront_key_group", resourceID: "kg-123", resourceType: "cloudfront_key_group", entityType: "aws.cloudfront.key.group"},
+		{kind: "aws.cloudfront_public_key", resourceID: "pk-123", resourceType: "cloudfront_public_key", entityType: "aws.cloudfront.public.key"},
+		{kind: "aws.cloudfront_response_headers_policy", resourceID: "rhp-123", resourceType: "cloudfront_response_headers_policy", entityType: "aws.cloudfront.response.headers.policy"},
 	} {
 		t.Run(tt.kind, func(t *testing.T) {
 			state := &projectionRecorder{}
@@ -133,6 +133,7 @@ func TestProjectAWSNetworkEdgeCloudResources(t *testing.T) {
 					"resource_id":       tt.resourceID,
 					"resource_name":     "orders",
 					"resource_provider": "aws",
+					"resource_type":     tt.resourceType,
 				},
 			}
 
@@ -140,12 +141,161 @@ func TestProjectAWSNetworkEdgeCloudResources(t *testing.T) {
 				t.Fatalf("Project() error = %v", err)
 			}
 
-			resourceURN := "urn:cerebro:writer:" + normalizeCloudProvider("aws") + "_" + normalizeCloudType(strings.TrimPrefix(tt.kind, "aws.")) + ":" + tt.resourceID
+			resourceURN := "urn:cerebro:writer:aws_" + tt.resourceType + ":" + tt.resourceID
 			if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != tt.entityType {
 				t.Fatalf("resource entity = %#v, want type %s", entity, tt.entityType)
 			}
 			assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 			assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+		})
+	}
+}
+
+func TestProjectAWSBatchResourcesUseCloudResourceProjection(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	computeEnvironmentARN := "arn:aws:batch:us-east-1:123456789012:compute-environment/prod-batch"
+	jobQueueARN := "arn:aws:batch:us-east-1:123456789012:job-queue/prod-jobs"
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aws-batch-compute-environment-prod",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.batch_compute_environment",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"owner":             "platform@writer.com",
+				"resource_id":       computeEnvironmentARN,
+				"resource_name":     "prod-batch",
+				"resource_provider": "aws",
+				"resource_type":     "batch_compute_environment",
+				"role_arn":          "arn:aws:iam::123456789012:role/service-role/AWSBatchServiceRole",
+				"role_name":         "service-role/AWSBatchServiceRole",
+			},
+		},
+		{
+			Id:       "aws-batch-job-queue-prod",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.batch_job_queue",
+			Attributes: map[string]string{
+				"compute_environment_arns": computeEnvironmentARN,
+				"domain":                   "123456789012",
+				"resource_id":              jobQueueARN,
+				"resource_name":            "prod-jobs",
+				"resource_provider":        "aws",
+				"resource_type":            "batch_job_queue",
+			},
+		},
+	}
+
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetKind(), err)
+		}
+	}
+
+	computeURN := "urn:cerebro:writer:aws_batch_compute_environment:" + computeEnvironmentARN
+	queueURN := "urn:cerebro:writer:aws_batch_job_queue:" + jobQueueARN
+	roleURN := "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/service-role/AWSBatchServiceRole"
+	if entity := state.entities[computeURN]; entity == nil || entity.EntityType != "aws.batch.compute.environment" {
+		t.Fatalf("batch compute environment entity missing or wrong type: %#v", entity)
+	}
+	if entity := state.entities[queueURN]; entity == nil || entity.EntityType != "aws.batch.job.queue" {
+		t.Fatalf("batch job queue entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, computeURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, computeURN, relationOwnedBy, "urn:cerebro:writer:owner:platform@writer.com")
+	assertProjectedLink(t, state, computeURN, relationRunsAs, roleURN)
+	assertProjectedLink(t, state, queueURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		kind         string
+		resourceID   string
+		resourceType string
+		entityType   string
+		public       bool
+	}{
+		{
+			name:         "s3 access point",
+			kind:         "aws.s3_access_point",
+			resourceID:   "arn:aws:s3:us-east-1:123456789012:accesspoint/prod-data-ap",
+			resourceType: "s3_access_point",
+			entityType:   "aws.s3.access.point",
+		},
+		{
+			name:         "multi-region access point",
+			kind:         "aws.s3_multi_region_access_point",
+			resourceID:   "arn:aws:s3::123456789012:accesspoint/prod-global",
+			resourceType: "s3_multi_region_access_point",
+			entityType:   "aws.s3.multi.region.access.point",
+		},
+		{
+			name:         "ebs volume",
+			kind:         "aws.ebs_volume",
+			resourceID:   "arn:aws:ec2:us-east-1:123456789012:volume/vol-123",
+			resourceType: "ebs_volume",
+			entityType:   "aws.ebs.volume",
+		},
+		{
+			name:         "public ebs snapshot",
+			kind:         "aws.ebs_snapshot",
+			resourceID:   "snap-123",
+			resourceType: "ebs_snapshot",
+			entityType:   "aws.ebs.snapshot",
+			public:       true,
+		},
+		{
+			name:         "datasync task",
+			kind:         "aws.datasync_task",
+			resourceID:   "arn:aws:datasync:us-east-1:123456789012:task/task-123",
+			resourceType: "datasync_task",
+			entityType:   "aws.datasync.task",
+		},
+		{
+			name:         "datasync location",
+			kind:         "aws.datasync_location",
+			resourceID:   "arn:aws:datasync:us-east-1:123456789012:location/loc-src",
+			resourceType: "datasync_location",
+			entityType:   "aws.datasync.location",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			event := &cerebrov1.EventEnvelope{
+				Id:       "aws-storage-resource",
+				TenantId: "writer",
+				SourceId: "aws",
+				Kind:     tt.kind,
+				Attributes: map[string]string{
+					"domain":            "123456789012",
+					"internet_exposed":  boolString(tt.public),
+					"owner":             "storage@writer.com",
+					"public":            boolString(tt.public),
+					"region":            "us-east-1",
+					"resource_id":       tt.resourceID,
+					"resource_name":     "storage-resource",
+					"resource_provider": "aws",
+					"resource_type":     tt.resourceType,
+				},
+			}
+
+			if _, err := service.Project(context.Background(), event); err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+
+			resourceURN := "urn:cerebro:writer:aws_" + tt.resourceType + ":" + tt.resourceID
+			if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != tt.entityType {
+				t.Fatalf("entity = %#v, want type %s", entity, tt.entityType)
+			}
+			assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+			assertProjectedLink(t, state, resourceURN, relationOwnedBy, "urn:cerebro:writer:owner:storage@writer.com")
+			if tt.public {
+				assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+			}
 		})
 	}
 }
