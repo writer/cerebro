@@ -92,8 +92,8 @@ type glueTablePageCursor struct {
 
 func listKinesisStreams(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsKinesisStream, string, error) {
 	out, err := clients.kinesis.ListStreams(ctx, &kinesis.ListStreamsInput{
-		ExclusiveStartStreamName: stringPtr(cursor),
-		Limit:                    awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		NextToken: stringPtr(cursor),
+		Limit:     awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 	})
 	if err != nil {
 		return nil, "", err
@@ -115,11 +115,7 @@ func listKinesisStreams(ctx context.Context, clients awsClients, _ settings, cur
 		record.Tags = tags
 		records = append(records, record)
 	}
-	next := awssdk.ToString(out.NextToken)
-	if next == "" && awssdk.ToBool(out.HasMoreStreams) && len(out.StreamNames) > 0 {
-		next = out.StreamNames[len(out.StreamNames)-1]
-	}
-	return records, next, nil
+	return records, awssdk.ToString(out.NextToken), nil
 }
 
 func listKinesisStreamTags(ctx context.Context, clients awsClients, name string, arn string) (map[string]string, error) {
@@ -437,7 +433,7 @@ func listAthenaWorkgroups(ctx context.Context, clients awsClients, settings sett
 
 func listAthenaDataCatalogs(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAthenaDataCatalog, string, error) {
 	out, err := clients.athena.ListDataCatalogs(ctx, &athena.ListDataCatalogsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 2, 50))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -470,7 +466,7 @@ func listAthenaTags(ctx context.Context, clients awsClients, arn string) (map[st
 	for arn != "" {
 		out, err := clients.athena.ListTagsForResource(ctx, &athena.ListTagsForResourceInput{
 			ResourceARN: awssdk.String(arn),
-			MaxResults:  awssdk.Int32(50),
+			MaxResults:  awssdk.Int32(75),
 			NextToken:   stringPtr(token),
 		})
 		if err != nil {
