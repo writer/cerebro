@@ -4,6 +4,8 @@ description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
+  - aws.athena_data_catalog
+  - aws.athena_workgroup
   - aws.cloudtrail
   - aws.ec2_instance
   - aws.ecr_repository
@@ -15,13 +17,23 @@ emitted_kinds:
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
   - aws.effective_permission
+  - aws.firehose_delivery_stream
+  - aws.glue_crawler
+  - aws.glue_database
+  - aws.glue_job
+  - aws.glue_table
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.kinesis_stream
   - aws.kms_key
+  - aws.lakeformation_lf_tag
+  - aws.lakeformation_permission
+  - aws.lakeformation_resource
+  - aws.msk_cluster
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
@@ -33,6 +45,8 @@ emitted_kinds:
 runtime_families:
   - access_key
   - asset_metadata
+  - athena_data_catalog
+  - athena_workgroup
   - cloudtrail
   - ec2_instance
   - ecr_repository
@@ -44,13 +58,23 @@ runtime_families:
   - eks_fargate_profile
   - eks_pod_identity_association
   - effective_permission
+  - firehose_delivery_stream
+  - glue_crawler
+  - glue_database
+  - glue_job
+  - glue_table
   - iam_group
   - iam_group_membership
   - iam_role
   - iam_role_assignment
   - iam_role_trust
   - iam_user
+  - kinesis_stream
   - kms_key
+  - lakeformation_lf_tag
+  - lakeformation_permission
+  - lakeformation_resource
+  - msk_cluster
   - public_endpoint
   - rds_instance
   - resource_exposure
