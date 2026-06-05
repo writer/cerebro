@@ -45,8 +45,8 @@ type awsGlueJob struct {
 }
 
 type awsGlueTableCursor struct {
-	DatabaseIndex int    `json:"database_index,omitempty"`
-	TableToken    string `json:"table_token,omitempty"`
+	DatabaseName string `json:"database_name,omitempty"`
+	TableToken   string `json:"table_token,omitempty"`
 }
 
 type awsAthenaWorkGroup struct {
@@ -97,17 +97,33 @@ func listGlueTables(ctx context.Context, clients awsClients, settings settings, 
 	if err != nil {
 		return nil, "", err
 	}
-	if state.DatabaseIndex < 0 || state.DatabaseIndex >= len(databases) {
-		state.DatabaseIndex = 0
-		state.TableToken = ""
+	databaseIndex := 0
+	if state.DatabaseName != "" {
+		found := false
+		for index, databaseName := range databases {
+			if databaseName == state.DatabaseName {
+				databaseIndex = index
+				found = true
+				break
+			}
+			if databaseName > state.DatabaseName {
+				databaseIndex = index
+				state.TableToken = ""
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, "", nil
+		}
 	}
 	remaining := limit
 	if remaining <= 0 {
 		remaining = defaultPageSize
 	}
 	records := make([]awsGlueTable, 0, remaining)
-	for state.DatabaseIndex < len(databases) && len(records) < remaining {
-		databaseName := databases[state.DatabaseIndex]
+	for databaseIndex < len(databases) && len(records) < remaining {
+		databaseName := databases[databaseIndex]
 		output, err := clients.glue.GetTables(ctx, &glue.GetTablesInput{
 			CatalogId:    awssdk.String(settings.accountID),
 			DatabaseName: awssdk.String(databaseName),
@@ -131,13 +147,15 @@ func listGlueTables(ctx context.Context, clients awsClients, settings settings, 
 			records = append(records, record)
 		}
 		if awssdk.ToString(output.NextToken) != "" {
+			state.DatabaseName = databaseName
 			state.TableToken = awssdk.ToString(output.NextToken)
 			return records, encodeGlueTableCursor(state), nil
 		}
-		state.DatabaseIndex++
+		databaseIndex++
 		state.TableToken = ""
 	}
-	if state.DatabaseIndex < len(databases) {
+	if databaseIndex < len(databases) {
+		state.DatabaseName = databases[databaseIndex]
 		return records, encodeGlueTableCursor(state), nil
 	}
 	return records, "", nil
@@ -226,7 +244,7 @@ func listAthenaWorkGroups(ctx context.Context, clients awsClients, settings sett
 
 func listAthenaDataCatalogs(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAthenaDataCatalog, string, error) {
 	output, err := clients.athena.ListDataCatalogs(ctx, &athena.ListDataCatalogsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 2, 50))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -531,7 +549,7 @@ func athenaTags(ctx context.Context, clients awsClients, arn string) (map[string
 	for {
 		output, err := clients.athena.ListTagsForResource(ctx, &athena.ListTagsForResourceInput{
 			ResourceARN: awssdk.String(arn),
-			MaxResults:  awssdk.Int32(50),
+			MaxResults:  awssdk.Int32(75),
 			NextToken:   next,
 		})
 		if err != nil {
