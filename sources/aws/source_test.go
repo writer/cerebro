@@ -34,6 +34,8 @@ import (
 	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	datasynctypes "github.com/aws/aws-sdk-go-v2/service/datasync/types"
+	"github.com/aws/aws-sdk-go-v2/service/docdb"
+	docdbtypes "github.com/aws/aws-sdk-go-v2/service/docdb/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
@@ -72,12 +74,16 @@ import (
 	lakeformationtypes "github.com/aws/aws-sdk-go-v2/service/lakeformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/neptune"
+	neptunetypes "github.com/aws/aws-sdk-go-v2/service/neptune/types"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	pipestypes "github.com/aws/aws-sdk-go-v2/service/pipes/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
+	"github.com/aws/aws-sdk-go-v2/service/redshift"
+	redshifttypes "github.com/aws/aws-sdk-go-v2/service/redshift/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -393,6 +399,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location"},
 		{family: familyDataSyncTask, kind: "aws.datasync_task"},
+		{family: familyDocDBCluster, kind: "aws.docdb_cluster"},
+		{family: familyDocDBInstance, kind: "aws.docdb_instance"},
 		{family: familyEBSSnapshot, kind: "aws.ebs_snapshot"},
 		{family: familyEBSVolume, kind: "aws.ebs_volume"},
 		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
@@ -440,7 +448,10 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyMacie2Finding, kind: "aws.macie2_finding"},
 		{family: familyNetworkFirewall, kind: "aws.network_firewall"},
 		{family: familyMSKCluster, kind: "aws.msk_cluster"},
+		{family: familyNeptuneCluster, kind: "aws.neptune_cluster"},
+		{family: familyNeptuneInstance, kind: "aws.neptune_instance"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
+		{family: familyRedshiftCluster, kind: "aws.redshift_cluster"},
 		{family: familyS3AccessPoint, kind: "aws.s3_access_point"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
 		{family: familyS3MultiRegionAccessPoint, kind: "aws.s3_multi_region_access_point"},
@@ -826,6 +837,11 @@ func TestReadAWSBatchRuntimeEvents(t *testing.T) {
 
 func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	rdsARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
+	redshiftARN := "arn:aws:redshift:us-east-1:123456789012:cluster:warehouse-prod"
+	docdbClusterARN := "arn:aws:rds:us-east-1:123456789012:cluster:docdb-prod"
+	docdbInstanceARN := "arn:aws:rds:us-east-1:123456789012:db:docdb-prod-1"
+	neptuneClusterARN := "arn:aws:rds:us-east-1:123456789012:cluster:graph-prod"
+	neptuneInstanceARN := "arn:aws:rds:us-east-1:123456789012:db:graph-prod-1"
 	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
 	secretARN := "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-AbCd"
 	sqsARN := "arn:aws:sqs:us-east-1:123456789012:orders"
@@ -922,6 +938,86 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
 				}},
 				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
+			fakeAWSDataWarehouseData: fakeAWSDataWarehouseData{
+				redshiftClusters: []redshifttypes.Cluster{{
+					ClusterIdentifier:                awssdk.String("warehouse-prod"),
+					ClusterStatus:                    awssdk.String("available"),
+					ClusterCreateTime:                timePtr("2026-04-23T00:00:00Z"),
+					ClusterVersion:                   awssdk.String("1.0"),
+					Encrypted:                        awssdk.Bool(true),
+					EnhancedVpcRouting:               awssdk.Bool(true),
+					KmsKeyId:                         awssdk.String(kmsARN),
+					NodeType:                         awssdk.String("ra3.xlplus"),
+					NumberOfNodes:                    awssdk.Int32(2),
+					PubliclyAccessible:               awssdk.Bool(false),
+					AutomatedSnapshotRetentionPeriod: awssdk.Int32(7),
+					Tags:                             []redshifttypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}},
+					VpcId:                            awssdk.String("vpc-data"),
+					VpcSecurityGroups:                []redshifttypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-redshift")}},
+				}},
+				docdbClusters: []docdbtypes.DBCluster{{
+					DBClusterArn:          awssdk.String(docdbClusterARN),
+					DBClusterIdentifier:   awssdk.String("docdb-prod"),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					ClusterCreateTime:     timePtr("2026-04-23T00:00:00Z"),
+					DBSubnetGroup:         awssdk.String("data-subnets"),
+					DeletionProtection:    awssdk.Bool(true),
+					Engine:                awssdk.String("docdb"),
+					EngineVersion:         awssdk.String("5.0.0"),
+					KmsKeyId:              awssdk.String(kmsARN),
+					Port:                  awssdk.Int32(27017),
+					Status:                awssdk.String("available"),
+					StorageEncrypted:      awssdk.Bool(true),
+					VpcSecurityGroups:     []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
+				}},
+				docdbInstances: []docdbtypes.DBInstance{{
+					DBClusterIdentifier:  awssdk.String("docdb-prod"),
+					DBInstanceArn:        awssdk.String(docdbInstanceARN),
+					DBInstanceClass:      awssdk.String("db.r6g.large"),
+					DBInstanceIdentifier: awssdk.String("docdb-prod-1"),
+					DBInstanceStatus:     awssdk.String("available"),
+					Endpoint:             &docdbtypes.Endpoint{Address: awssdk.String("docdb-prod-1.cluster.local"), Port: awssdk.Int32(27017)},
+					Engine:               awssdk.String("docdb"),
+					EngineVersion:        awssdk.String("5.0.0"),
+					InstanceCreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					VpcSecurityGroups:    []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
+				}},
+				docdbTags: map[string][]docdbtypes.Tag{
+					docdbClusterARN:  {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+					docdbInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				},
+				neptuneClusters: []neptunetypes.DBCluster{{
+					DBClusterArn:          awssdk.String(neptuneClusterARN),
+					DBClusterIdentifier:   awssdk.String("graph-prod"),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					ClusterCreateTime:     timePtr("2026-04-23T00:00:00Z"),
+					DBSubnetGroup:         awssdk.String("data-subnets"),
+					DeletionProtection:    awssdk.Bool(true),
+					Engine:                awssdk.String("neptune"),
+					EngineVersion:         awssdk.String("1.3.2.0"),
+					KmsKeyId:              awssdk.String(kmsARN),
+					Port:                  awssdk.Int32(8182),
+					Status:                awssdk.String("available"),
+					StorageEncrypted:      awssdk.Bool(true),
+					VpcSecurityGroups:     []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
+				}},
+				neptuneInstances: []neptunetypes.DBInstance{{
+					DBClusterIdentifier:  awssdk.String("graph-prod"),
+					DBInstanceArn:        awssdk.String(neptuneInstanceARN),
+					DBInstanceClass:      awssdk.String("db.r6g.large"),
+					DBInstanceIdentifier: awssdk.String("graph-prod-1"),
+					DBInstanceStatus:     awssdk.String("available"),
+					Endpoint:             &neptunetypes.Endpoint{Address: awssdk.String("graph-prod-1.cluster.local"), Port: awssdk.Int32(8182)},
+					Engine:               awssdk.String("neptune"),
+					EngineVersion:        awssdk.String("1.3.2.0"),
+					InstanceCreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					VpcSecurityGroups:    []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
+				}},
+				neptuneTags: map[string][]neptunetypes.Tag{
+					neptuneClusterARN:  {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+					neptuneInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				},
 			},
 			fakeAWSStorageAccessData: fakeAWSStorageAccessData{
 				s3AccessPoints: []s3controltypes.AccessPoint{{
@@ -1039,6 +1135,11 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familyDataSyncTask, kind: "aws.datasync_task", attr: "backups", want: "true"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location", attr: "location_type", want: "s3"},
 		{family: familyRDSInstance, kind: "aws.rds_instance", attr: "deletion_protection", want: "true"},
+		{family: familyRedshiftCluster, kind: "aws.redshift_cluster", attr: "arn", want: redshiftARN},
+		{family: familyDocDBCluster, kind: "aws.docdb_cluster", attr: "deletion_protection", want: "true"},
+		{family: familyDocDBInstance, kind: "aws.docdb_instance", attr: "cluster_name", want: "docdb-prod"},
+		{family: familyNeptuneCluster, kind: "aws.neptune_cluster", attr: "deletion_protection", want: "true"},
+		{family: familyNeptuneInstance, kind: "aws.neptune_instance", attr: "cluster_name", want: "graph-prod"},
 		{family: familyKMSKey, kind: "aws.kms_key", attr: "rotation", want: "true"},
 		{family: familySecret, kind: "aws.secret", attr: "rotation", want: "true"},
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
@@ -3304,7 +3405,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				ssm:            fakeSSM{runtime: fake.fakeAWSRuntime},
 			},
 			awsAnalyticsClients: awsAnalyticsClients{
-				kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake},
+				kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake}, redshift: fake, docdb: fakeDocDB{data: fake.fakeAWSData}, neptune: fakeNeptune{data: fake.fakeAWSData},
 			},
 			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: fakeIdentityStore{fake: &fake}},
 			awsStorageClients:    awsStorageClients{s3control: fakeS3Control{fake: &fake}, datasync: fakeDataSync{fake: &fake}, backup: fake, dynamodb: fake, dynamodbStreams: fake, efs: fake},
@@ -3360,7 +3461,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				ssm:            fakeSSM{runtime: fake.fakeAWSRuntime},
 			},
 			awsAnalyticsClients: awsAnalyticsClients{
-				kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake},
+				kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake}, redshift: fake, docdb: recordingDocDB{fake: fake}, neptune: recordingNeptune{fake: fake},
 			},
 			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: recordingIdentityStore{fake: fake}},
 			awsStorageClients:    awsStorageClients{s3control: recordingS3Control{fake: fake}, datasync: recordingDataSync{fake: fake}, backup: fake, dynamodb: fake, dynamodbStreams: fake, efs: fake},
@@ -3486,6 +3587,7 @@ type fakeAWSData struct {
 	fakeAWSCoreData
 	fakeAWSBackupData
 	fakeAWSStorageAccessData
+	fakeAWSDataWarehouseData
 }
 
 type fakeAWSCoreData struct {
@@ -3520,6 +3622,16 @@ type fakeAWSBackupData struct {
 	backupPlanTags           map[string]map[string]string
 	backupProtectedResources []backuptypes.ProtectedResource
 	backupRecoveryPoints     map[string][]backuptypes.RecoveryPointByBackupVault
+}
+
+type fakeAWSDataWarehouseData struct {
+	redshiftClusters []redshifttypes.Cluster
+	docdbClusters    []docdbtypes.DBCluster
+	docdbInstances   []docdbtypes.DBInstance
+	docdbTags        map[string][]docdbtypes.Tag
+	neptuneClusters  []neptunetypes.DBCluster
+	neptuneInstances []neptunetypes.DBInstance
+	neptuneTags      map[string][]neptunetypes.Tag
 }
 
 type fakeAWSStorageAccessData struct {
@@ -4719,6 +4831,76 @@ func (f fakeSSM) ListTagsForResource(_ context.Context, input *ssm.ListTagsForRe
 	return &ssm.ListTagsForResourceOutput{TagList: f.runtime.ssmTags[string(input.ResourceType)+"/"+awssdk.ToString(input.ResourceId)]}, nil
 }
 
+type fakeDocDB struct {
+	data fakeAWSData
+}
+
+type recordingDocDB struct {
+	fake *recordingAWS
+}
+
+func (f recordingDocDB) DescribeDBClusters(ctx context.Context, input *docdb.DescribeDBClustersInput, options ...func(*docdb.Options)) (*docdb.DescribeDBClustersOutput, error) {
+	f.fake.record("docdb:DescribeDBClusters")
+	return fakeDocDB{data: f.fake.fakeAWSData}.DescribeDBClusters(ctx, input, options...)
+}
+
+func (f recordingDocDB) DescribeDBInstances(ctx context.Context, input *docdb.DescribeDBInstancesInput, options ...func(*docdb.Options)) (*docdb.DescribeDBInstancesOutput, error) {
+	f.fake.record("docdb:DescribeDBInstances")
+	return fakeDocDB{data: f.fake.fakeAWSData}.DescribeDBInstances(ctx, input, options...)
+}
+
+func (f recordingDocDB) ListTagsForResource(ctx context.Context, input *docdb.ListTagsForResourceInput, options ...func(*docdb.Options)) (*docdb.ListTagsForResourceOutput, error) {
+	f.fake.record("docdb:ListTagsForResource")
+	return fakeDocDB{data: f.fake.fakeAWSData}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeDocDB) DescribeDBClusters(context.Context, *docdb.DescribeDBClustersInput, ...func(*docdb.Options)) (*docdb.DescribeDBClustersOutput, error) {
+	return &docdb.DescribeDBClustersOutput{DBClusters: f.data.docdbClusters}, nil
+}
+
+func (f fakeDocDB) DescribeDBInstances(context.Context, *docdb.DescribeDBInstancesInput, ...func(*docdb.Options)) (*docdb.DescribeDBInstancesOutput, error) {
+	return &docdb.DescribeDBInstancesOutput{DBInstances: f.data.docdbInstances}, nil
+}
+
+func (f fakeDocDB) ListTagsForResource(_ context.Context, input *docdb.ListTagsForResourceInput, _ ...func(*docdb.Options)) (*docdb.ListTagsForResourceOutput, error) {
+	return &docdb.ListTagsForResourceOutput{TagList: f.data.docdbTags[awssdk.ToString(input.ResourceName)]}, nil
+}
+
+type fakeNeptune struct {
+	data fakeAWSData
+}
+
+type recordingNeptune struct {
+	fake *recordingAWS
+}
+
+func (f recordingNeptune) DescribeDBClusters(ctx context.Context, input *neptune.DescribeDBClustersInput, options ...func(*neptune.Options)) (*neptune.DescribeDBClustersOutput, error) {
+	f.fake.record("neptune:DescribeDBClusters")
+	return fakeNeptune{data: f.fake.fakeAWSData}.DescribeDBClusters(ctx, input, options...)
+}
+
+func (f recordingNeptune) DescribeDBInstances(ctx context.Context, input *neptune.DescribeDBInstancesInput, options ...func(*neptune.Options)) (*neptune.DescribeDBInstancesOutput, error) {
+	f.fake.record("neptune:DescribeDBInstances")
+	return fakeNeptune{data: f.fake.fakeAWSData}.DescribeDBInstances(ctx, input, options...)
+}
+
+func (f recordingNeptune) ListTagsForResource(ctx context.Context, input *neptune.ListTagsForResourceInput, options ...func(*neptune.Options)) (*neptune.ListTagsForResourceOutput, error) {
+	f.fake.record("neptune:ListTagsForResource")
+	return fakeNeptune{data: f.fake.fakeAWSData}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeNeptune) DescribeDBClusters(context.Context, *neptune.DescribeDBClustersInput, ...func(*neptune.Options)) (*neptune.DescribeDBClustersOutput, error) {
+	return &neptune.DescribeDBClustersOutput{DBClusters: f.data.neptuneClusters}, nil
+}
+
+func (f fakeNeptune) DescribeDBInstances(context.Context, *neptune.DescribeDBInstancesInput, ...func(*neptune.Options)) (*neptune.DescribeDBInstancesOutput, error) {
+	return &neptune.DescribeDBInstancesOutput{DBInstances: f.data.neptuneInstances}, nil
+}
+
+func (f fakeNeptune) ListTagsForResource(_ context.Context, input *neptune.ListTagsForResourceInput, _ ...func(*neptune.Options)) (*neptune.ListTagsForResourceOutput, error) {
+	return &neptune.ListTagsForResourceOutput{TagList: f.data.neptuneTags[awssdk.ToString(input.ResourceName)]}, nil
+}
+
 type fakeKinesis struct {
 	fake *fakeAWS
 }
@@ -5872,6 +6054,10 @@ func (f fakeAWS) GetPublicAccessBlock(_ context.Context, input *s3.GetPublicAcce
 
 func (f fakeAWS) DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error) {
 	return &rds.DescribeDBInstancesOutput{DBInstances: f.rdsInstances}, nil
+}
+
+func (f fakeAWS) DescribeClusters(context.Context, *redshift.DescribeClustersInput, ...func(*redshift.Options)) (*redshift.DescribeClustersOutput, error) {
+	return &redshift.DescribeClustersOutput{Clusters: f.redshiftClusters}, nil
 }
 
 func (f fakeAWS) ListKeys(context.Context, *kms.ListKeysInput, ...func(*kms.Options)) (*kms.ListKeysOutput, error) {

@@ -36,6 +36,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
+	"github.com/aws/aws-sdk-go-v2/service/docdb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -62,9 +63,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/neptune"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
+	"github.com/aws/aws-sdk-go-v2/service/redshift"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -122,6 +125,8 @@ const (
 	familyCloudWatchLogGroup       = "cloudwatch_log_group"
 	familyDataSyncLocation         = "datasync_location"
 	familyDataSyncTask             = "datasync_task"
+	familyDocDBCluster             = "docdb_cluster"
+	familyDocDBInstance            = "docdb_instance"
 	familyDynamoDBBackup           = "dynamodb_backup"
 	familyDynamoDBStream           = "dynamodb_stream"
 	familyDynamoDBTable            = "dynamodb_table"
@@ -179,12 +184,15 @@ const (
 	familyLakeFormationRes         = "lakeformation_resource"
 	familyLambdaFunction           = "lambda_function"
 	familyMSKCluster               = "msk_cluster"
+	familyNeptuneCluster           = "neptune_cluster"
+	familyNeptuneInstance          = "neptune_instance"
 	familyOrganizationsAcct        = "organizations_account"
 	familyOrganizationsOU          = "organizations_organizational_unit"
 	familyOrganizationsPolicy      = "organizations_policy"
 	familyOrganizationsRoot        = "organizations_root"
 	familyPublicEndpoint           = "public_endpoint"
 	familyRDSInstance              = "rds_instance"
+	familyRedshiftCluster          = "redshift_cluster"
 	familyResourceExposure         = "resource_exposure"
 	familyRoute53ResolverEndpoint  = "route53_resolver_endpoint"
 	familyRoute53ResolverRule      = "route53_resolver_rule"
@@ -319,6 +327,9 @@ type awsAnalyticsClients struct {
 	glue     awsGlueAPI
 	athena   awsAthenaAPI
 	lake     awsLakeFormationAPI
+	redshift awsRedshiftAPI
+	docdb    awsDocDBAPI
+	neptune  awsNeptuneAPI
 }
 
 type awsGovernanceClients struct {
@@ -349,6 +360,22 @@ type awsIAMAPI interface {
 
 type awsCloudTrailAPI interface {
 	LookupEvents(context.Context, *cloudtrail.LookupEventsInput, ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error)
+}
+
+type awsRedshiftAPI interface {
+	DescribeClusters(context.Context, *redshift.DescribeClustersInput, ...func(*redshift.Options)) (*redshift.DescribeClustersOutput, error)
+}
+
+type awsDocDBAPI interface {
+	DescribeDBClusters(context.Context, *docdb.DescribeDBClustersInput, ...func(*docdb.Options)) (*docdb.DescribeDBClustersOutput, error)
+	DescribeDBInstances(context.Context, *docdb.DescribeDBInstancesInput, ...func(*docdb.Options)) (*docdb.DescribeDBInstancesOutput, error)
+	ListTagsForResource(context.Context, *docdb.ListTagsForResourceInput, ...func(*docdb.Options)) (*docdb.ListTagsForResourceOutput, error)
+}
+
+type awsNeptuneAPI interface {
+	DescribeDBClusters(context.Context, *neptune.DescribeDBClustersInput, ...func(*neptune.Options)) (*neptune.DescribeDBClustersOutput, error)
+	DescribeDBInstances(context.Context, *neptune.DescribeDBInstancesInput, ...func(*neptune.Options)) (*neptune.DescribeDBInstancesOutput, error)
+	ListTagsForResource(context.Context, *neptune.ListTagsForResourceInput, ...func(*neptune.Options)) (*neptune.ListTagsForResourceOutput, error)
 }
 
 type awsDynamoDBAPI interface {
@@ -909,6 +936,66 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_asset_metadata:%s", settings.accountID, firstNonEmpty(asset.ResourceARN, asset.ResourceID)), nil
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRedshiftCluster]{
+			Name:  familyRedshiftCluster,
+			Label: "aws redshift clusters",
+			List:  listRedshiftClusters,
+			Event: redshiftClusterEvent,
+			URN: func(settings settings, record awsRedshiftCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_redshift_cluster:%s", settings.accountID, firstNonEmpty(redshiftClusterARN(settings, awssdk.ToString(record.Cluster.ClusterIdentifier)), awssdk.ToString(record.Cluster.ClusterIdentifier))), nil
+			},
+			CursorFallback: func(record awsRedshiftCluster) string {
+				return awssdk.ToString(record.Cluster.ClusterIdentifier)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDocDBCluster]{
+			Name:  familyDocDBCluster,
+			Label: "aws documentdb clusters",
+			List:  listDocDBClusters,
+			Event: docDBClusterEvent,
+			URN: func(settings settings, record awsDocDBCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_docdb_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))), nil
+			},
+			CursorFallback: func(record awsDocDBCluster) string {
+				return firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDocDBInstance]{
+			Name:  familyDocDBInstance,
+			Label: "aws documentdb instances",
+			List:  listDocDBInstances,
+			Event: docDBInstanceEvent,
+			URN: func(settings settings, record awsDocDBInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_docdb_instance:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))), nil
+			},
+			CursorFallback: func(record awsDocDBInstance) string {
+				return firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsNeptuneCluster]{
+			Name:  familyNeptuneCluster,
+			Label: "aws neptune clusters",
+			List:  listNeptuneClusters,
+			Event: neptuneClusterEvent,
+			URN: func(settings settings, record awsNeptuneCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_neptune_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))), nil
+			},
+			CursorFallback: func(record awsNeptuneCluster) string {
+				return firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsNeptuneInstance]{
+			Name:  familyNeptuneInstance,
+			Label: "aws neptune instances",
+			List:  listNeptuneInstances,
+			Event: neptuneInstanceEvent,
+			URN: func(settings settings, record awsNeptuneInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_neptune_instance:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))), nil
+			},
+			CursorFallback: func(record awsNeptuneInstance) string {
+				return firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsDynamoDBTable]{
 			Name:  familyDynamoDBTable,
@@ -2089,6 +2176,9 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			glue:     glue.NewFromConfig(cfg),
 			athena:   athena.NewFromConfig(cfg),
 			lake:     lakeformation.NewFromConfig(cfg),
+			redshift: redshift.NewFromConfig(cfg),
+			docdb:    docdb.NewFromConfig(cfg),
+			neptune:  neptune.NewFromConfig(cfg),
 		},
 		awsGovernanceClients: awsGovernanceClients{
 			organizations: organizations.NewFromConfig(cfg),
@@ -2164,7 +2254,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEFSAccessPoint, familyEFSFileSystem, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyOrganizationsRoot, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyDocDBCluster, familyDocDBInstance, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyNeptuneCluster, familyNeptuneInstance, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyRedshiftCluster, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
