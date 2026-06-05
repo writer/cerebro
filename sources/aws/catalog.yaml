@@ -14,6 +14,21 @@ emitted_kinds:
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
+  - aws.globalaccelerator_accelerator
+  - aws.globalaccelerator_listener
+  - aws.globalaccelerator_endpoint_group
+  - aws.vpclattice_service
+  - aws.vpclattice_listener
+  - aws.vpclattice_target_group
+  - aws.elbv2_listener
+  - aws.elbv2_target_group
+  - aws.apigateway_stage
+  - aws.apigateway_route
+  - aws.apigateway_integration
+  - aws.cloudfront_origin_access_control
+  - aws.cloudfront_key_group
+  - aws.cloudfront_public_key
+  - aws.cloudfront_response_headers_policy
   - aws.effective_permission
   - aws.iam_group
   - aws.iam_group_membership
@@ -43,6 +58,21 @@ runtime_families:
   - eks_nodegroup
   - eks_fargate_profile
   - eks_pod_identity_association
+  - globalaccelerator_accelerator
+  - globalaccelerator_listener
+  - globalaccelerator_endpoint_group
+  - vpclattice_service
+  - vpclattice_listener
+  - vpclattice_target_group
+  - elbv2_listener
+  - elbv2_target_group
+  - apigateway_stage
+  - apigateway_route
+  - apigateway_integration
+  - cloudfront_origin_access_control
+  - cloudfront_key_group
+  - cloudfront_public_key
+  - cloudfront_response_headers_policy
   - effective_permission
   - iam_group
   - iam_group_membership
