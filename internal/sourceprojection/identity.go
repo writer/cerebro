@@ -209,6 +209,13 @@ func identityUserProjections(event *cerebrov1.EventEnvelope, profile identityPro
 				"last_login_at":      firstNonEmpty(attributes["last_login_at"], attributes["last_login_time"]),
 				"is_admin":           firstNonEmpty(attributes["is_admin"], attributes["admin"]),
 				"is_delegated_admin": strings.TrimSpace(attributes["is_delegated_admin"]),
+				"department":         strings.TrimSpace(attributes["department"]),
+				"job_title":          firstNonEmpty(attributes["job_title"], attributes["title"]),
+				"organization":       strings.TrimSpace(attributes["organization"]),
+				"manager":            strings.TrimSpace(attributes["manager"]),
+				"manager_id":         strings.TrimSpace(attributes["manager_id"]),
+				"employee_number":    strings.TrimSpace(attributes["employee_number"]),
+				"user_type":          strings.TrimSpace(attributes["user_type"]),
 				"mfa_enrolled":       firstNonEmpty(attributes["mfa_enrolled"], attributes["is_enrolled_in_2sv"]),
 				"mfa_enforced":       firstNonEmpty(attributes["mfa_enforced"], attributes["is_enforced_in_2sv"]),
 				"suspended":          strings.TrimSpace(attributes["suspended"]),
@@ -618,10 +625,12 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 		}
 	}
 	if actorURN != "" && resourceURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, map[string]string{
+		actedAttrs := map[string]string{
 			"event_id":   event.GetId(),
 			"event_type": firstNonEmpty(attributes["event_type"], attributes["event_name"]),
-		}))
+		}
+		addProjectedAttribute(actedAttrs, "at", eventObservedAt(event))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, actedAttrs))
 	}
 	addAzureResourceGroupLinks(entities, links, tenantID, event.GetSourceId(), event, profile, attributes, resourceURN)
 	return identityProjectionResult(entities, links)
