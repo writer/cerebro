@@ -28,6 +28,8 @@ github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1 h1:UXPRXa3HLrJolDM098DfX
 github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1/go.mod h1:Uu2kNhTTM1ZrJcIL3FDLlzaHwOZUugiMmL8K8ibBbvo=
 github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3 h1:iqqLURTPGkD3xbdRAM8ZW9+PhA+2J2t1ZtomGaJCaU8=
 github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3/go.mod h1:6IFZ3ceNZcMB7NZsYpp7HSKJp4nceLFvnY0/XyVPt24=
+github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5 h1:5fcF+s5hXULXEYPAnuVCmL9woUXTh1lhK9p2FxSF9ds=
+github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5/go.mod h1:B47PnG4zNN3pII2NkE9aNxALa9ODZPN+L4lEysYALQ0=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2 h1:xcHUdx4FNgUZmLuI6vqB5QDsVnWx1MVbPSoaXtLxUB8=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2/go.mod h1:SUtka5kgdr5Wx2BdRrH/IGkCKHW63IVQoyBkP0P1gdo=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2 h1:sSfN1WfNyYjV0CQC8moHP4uxgNXSUxDT0X2vXbcJSbc=
@@ -60,6 +62,8 @@ github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2 h1:5PG11zFh4s6n+FjyhCOs00K/
 github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2/go.mod h1:pUzWuR5MLjU1xlMmCT0qUALPqBFFxf/zdHAmusQlVuM=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2 h1:b4ikkRk22T4xYkEgaWc3Voe+3xbt5YbbFhNehOWyUiY=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2/go.mod h1:Gp7eHZ0NZ8ZK5RXpoIUp/C8OeAmJqpCgdwEK1D/QOek=
+github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4 h1:Or+7J1Kr4sNlGT/5Uh3VvtIFrwoABZ3NMWXNL61mfzo=
+github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4/go.mod h1:hpR7KgZJuRoBndHkhYXZmPNjsvuanVWC4G1tMVNXBIc=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1 h1:AH4hyaVe/2+p7zx/GkmjQLXOfVTul6EFMTRy8QVl71Q=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1/go.mod h1:BXtBSoY9TdCQwc46RZtaxNb+kKfcCbHOvk4h8drQUqM=
 github.com/aws/aws-sdk-go-v2/service/signin v1.1.4 h1:YcpVyIPLCbiypN6KSphijN5fC7DDjX114SqA7prnnxg=
