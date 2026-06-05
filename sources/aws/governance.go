@@ -364,6 +364,12 @@ func listIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, 
 			next = output.NextToken
 		}
 	}
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].GroupID != records[j].GroupID {
+			return records[i].GroupID < records[j].GroupID
+		}
+		return records[i].MemberID < records[j].MemberID
+	})
 	return governancePage(records, cursor, limit)
 }
 
