@@ -351,7 +351,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
-			stored, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
+			stored, isNewFinding, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
 			if err != nil {
 				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
@@ -374,6 +374,12 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			if err := s.projectFindingAnchor(ctx, stored); err != nil {
 				evaluationErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
+			}
+			if isNewFinding {
+				if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
+					evaluationErr := fmt.Errorf("project finding %q action recommendations: %w", stored.ID, err)
+					return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
+				}
 			}
 		}
 	}
@@ -479,7 +485,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					}
 					break
 				}
-				stored, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
+				stored, isNewFinding, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
@@ -510,6 +516,14 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
+				}
+				if isNewFinding {
+					if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
+						if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q action recommendations: %w", stored.ID, err)); failErr != nil {
+							return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+						}
+						break
+					}
 				}
 			}
 		}
@@ -1620,44 +1634,45 @@ func (s *Service) updateFindingStatusAndRisk(ctx context.Context, request ports.
 	return s.persistFindingRisk(ctx, finding, request.UpdatedAt)
 }
 
-func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, error) {
-	merged, err := s.mergeExistingFindingEvidence(ctx, finding)
+func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, bool, error) {
+	merged, existing, err := s.mergeExistingFindingEvidence(ctx, finding)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	enriched := enrichFindingRisk(merged, runtime, now)
 	stored, err := s.store.UpsertFinding(ctx, enriched)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if stored != nil {
 		stored.GraphEvidenceRows = append([]*cerebrov1.GraphEvidenceRow(nil), enriched.GraphEvidenceRows...)
 	}
-	return s.persistFindingRisk(ctx, stored, now)
+	stored, err = s.persistFindingRisk(ctx, stored, now)
+	return stored, existing == nil, err
 }
 
-func (s *Service) mergeExistingFindingEvidence(ctx context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
+func (s *Service) mergeExistingFindingEvidence(ctx context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, *ports.FindingRecord, error) {
 	if s == nil || s.store == nil || finding == nil {
-		return finding, nil
+		return finding, nil, nil
 	}
 	if finding.RuleID == vulnViewActionableExternalFindingRuleID {
 		if existing := s.activeVulnViewActionableFinding(ctx, finding); existing != nil {
-			return mergeFindingEvidenceForUpsert(existing, finding), nil
+			return mergeFindingEvidenceForUpsert(existing, finding), existing, nil
 		}
-		return finding, nil
+		return finding, nil, nil
 	}
 	findingID := strings.TrimSpace(finding.ID)
 	if findingID == "" {
-		return finding, nil
+		return finding, nil, nil
 	}
 	existing, err := s.store.GetFinding(ctx, findingID)
 	if err != nil {
 		if errors.Is(err, ports.ErrFindingNotFound) {
-			return finding, nil
+			return finding, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	return mergeFindingEvidenceForUpsert(existing, finding), nil
+	return mergeFindingEvidenceForUpsert(existing, finding), existing, nil
 }
 
 func mergeFindingEvidenceForUpsert(existing *ports.FindingRecord, incoming *ports.FindingRecord) *ports.FindingRecord {

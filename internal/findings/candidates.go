@@ -314,7 +314,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	production.Attributes["promoted_by"] = strings.TrimSpace(request.PromotedBy)
 	production.Attributes["promoted_at"] = now.Format(time.RFC3339Nano)
 	decisionID := candidatePromotionDecisionID(candidate, production, request, now)
-	stored, err := s.upsertFindingWithRisk(ctx, production, &cerebrov1.SourceRuntime{
+	stored, _, err := s.upsertFindingWithRisk(ctx, production, &cerebrov1.SourceRuntime{
 		Id:       strings.TrimSpace(candidate.RuntimeID),
 		TenantId: strings.TrimSpace(candidate.TenantID),
 	}, now)
