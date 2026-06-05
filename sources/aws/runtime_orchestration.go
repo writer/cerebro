@@ -70,6 +70,7 @@ type awsEventBridgeRule struct {
 	BusName string
 	BusARN  string
 	Rule    eventbridgetypes.Rule
+	Targets []eventbridgetypes.Target
 	Tags    map[string]string
 }
 
@@ -289,6 +290,11 @@ func listEventBridgeRules(ctx context.Context, clients awsClients, settings sett
 		for _, rule := range out.Rules {
 			arn := awssdk.ToString(rule.Arn)
 			record := awsEventBridgeRule{ARN: arn, Name: awssdk.ToString(rule.Name), BusName: bus.Name, BusARN: bus.ARN, Rule: rule}
+			targets, err := listAllEventBridgeTargets(ctx, clients, firstNonEmpty(bus.Name, bus.ARN), awssdk.ToString(rule.Name))
+			if err != nil {
+				return nil, "", err
+			}
+			record.Targets = targets
 			if arn != "" {
 				tags, err := clients.eventBridge.ListTagsForResource(ctx, &eventbridge.ListTagsForResourceInput{ResourceARN: awssdk.String(arn)})
 				if err != nil {
@@ -687,7 +693,10 @@ func eventBridgeRuleEvent(settings settings, record awsEventBridgeRule) (*primit
 	attributes["role_name"] = roleNameFromARN(roleARN)
 	attributes["runtime_role_arn"] = roleARN
 	attributes["runtime_role_name"] = roleNameFromARN(roleARN)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "rule": rule, "event_bus_name": record.BusName, "event_bus_arn": record.BusARN, "tags": record.Tags})
+	attributes["target_arns"] = strings.Join(eventBridgeTargetARNs(record.Targets), ",")
+	attributes["target_ids"] = strings.Join(eventBridgeTargetIDs(record.Targets), ",")
+	attributes["target_role_arns"] = strings.Join(eventBridgeTargetRoleARNs(record.Targets), ",")
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "rule": rule, "targets": record.Targets, "event_bus_name": record.BusName, "event_bus_arn": record.BusARN, "tags": record.Tags})
 	if err != nil {
 		return nil, err
 	}
@@ -954,6 +963,58 @@ func listAllEventBridgeBuses(ctx context.Context, clients awsClients) ([]awsEven
 		return []awsEventBridgeBus{{Name: "default"}}, nil
 	}
 	return buses, nil
+}
+
+func listAllEventBridgeTargets(ctx context.Context, clients awsClients, busName string, ruleName string) ([]eventbridgetypes.Target, error) {
+	if ruleName == "" {
+		return nil, nil
+	}
+	var targets []eventbridgetypes.Target
+	var next *string
+	for {
+		output, err := clients.eventBridge.ListTargetsByRule(ctx, &eventbridge.ListTargetsByRuleInput{
+			EventBusName: awssdk.String(busName),
+			Rule:         awssdk.String(ruleName),
+			Limit:        awssdk.Int32(100),
+			NextToken:    next,
+		})
+		if err != nil {
+			if optionalAWSError(err, "ResourceNotFoundException") {
+				return targets, nil
+			}
+			return nil, fmt.Errorf("list eventbridge rule targets %q/%q: %w", busName, ruleName, err)
+		}
+		targets = append(targets, output.Targets...)
+		if awssdk.ToString(output.NextToken) == "" {
+			break
+		}
+		next = output.NextToken
+	}
+	return targets, nil
+}
+
+func eventBridgeTargetARNs(targets []eventbridgetypes.Target) []string {
+	out := make([]string, 0, len(targets))
+	for _, target := range targets {
+		out = append(out, awssdk.ToString(target.Arn))
+	}
+	return cleanStrings(out)
+}
+
+func eventBridgeTargetIDs(targets []eventbridgetypes.Target) []string {
+	out := make([]string, 0, len(targets))
+	for _, target := range targets {
+		out = append(out, awssdk.ToString(target.Id))
+	}
+	return cleanStrings(out)
+}
+
+func eventBridgeTargetRoleARNs(targets []eventbridgetypes.Target) []string {
+	out := make([]string, 0, len(targets))
+	for _, target := range targets {
+		out = append(out, awssdk.ToString(target.RoleArn))
+	}
+	return cleanStrings(out)
 }
 
 func appRunnerCPU(service apprunnertypes.Service) string {
