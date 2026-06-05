@@ -4739,7 +4739,7 @@ func TestUpsertFindingWithRiskRecomputesAfterWorkflowPreservation(t *testing.T) 
 		Summary:     "reemitted finding",
 		Attributes:  map[string]string{},
 	}
-	stored, _, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
+	stored, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("upsertFindingWithRisk() error = %v", err)
 	}
@@ -4772,7 +4772,7 @@ func TestUpsertFindingWithRiskPreservesGraphEvidenceDuringRecompute(t *testing.T
 			newGraphEvidenceRow("identity_path", map[string]string{"label": "path"}),
 		},
 	}
-	stored, _, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
+	stored, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("upsertFindingWithRisk() error = %v", err)
 	}
@@ -4803,14 +4803,14 @@ func TestUpsertFindingWithRiskMergesVulnViewMatchedLocationEvidence(t *testing.T
 		FirstObservedAt: now,
 		LastObservedAt:  now,
 	}
-	if _, _, err := service.upsertFindingWithRisk(context.Background(), first, nil, now); err != nil {
+	if _, err := service.upsertFindingWithRisk(context.Background(), first, nil, now); err != nil {
 		t.Fatalf("upsertFindingWithRisk(first) error = %v", err)
 	}
 	second := cloneFinding(first)
 	second.EventIDs = []string{"event-2"}
 	second.Attributes["matched_at"] = "https://app.writer.com/admin"
 	second.LastObservedAt = now.Add(time.Minute)
-	stored, _, err := service.upsertFindingWithRisk(context.Background(), second, nil, now.Add(time.Minute))
+	stored, err := service.upsertFindingWithRisk(context.Background(), second, nil, now.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("upsertFindingWithRisk(second) error = %v", err)
 	}

@@ -351,7 +351,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
-			stored, isNewFinding, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
+			stored, isNewFinding, err := s.upsertFindingWithRiskAndNewness(ctx, record, runtime, startedAt)
 			if err != nil {
 				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
@@ -485,7 +485,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					}
 					break
 				}
-				stored, isNewFinding, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
+				stored, isNewFinding, err := s.upsertFindingWithRiskAndNewness(ctx, record, runtime, startedAt)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
@@ -1634,7 +1634,12 @@ func (s *Service) updateFindingStatusAndRisk(ctx context.Context, request ports.
 	return s.persistFindingRisk(ctx, finding, request.UpdatedAt)
 }
 
-func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, bool, error) {
+func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, error) {
+	stored, _, err := s.upsertFindingWithRiskAndNewness(ctx, finding, runtime, now)
+	return stored, err
+}
+
+func (s *Service) upsertFindingWithRiskAndNewness(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, bool, error) {
 	merged, existing, err := s.mergeExistingFindingEvidence(ctx, finding)
 	if err != nil {
 		return nil, false, err

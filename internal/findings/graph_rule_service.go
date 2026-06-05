@@ -118,7 +118,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			evaluationErr := fmt.Errorf("reconcile finding identity for graph rule %q: %w", spec.GetId(), err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
-		stored, isNewFinding, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
+		stored, isNewFinding, err := s.upsertFindingWithRiskAndNewness(ctx, record, runtime, startedAt)
 		if err != nil {
 			evaluationErr := fmt.Errorf("persist finding for graph rule %q: %w", spec.GetId(), err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
