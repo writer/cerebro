@@ -159,6 +159,9 @@ func listAllOrganizationsPolicies(ctx context.Context, clients awsClients) ([]aw
 				MaxResults: awssdk.Int32(20),
 			})
 			if err != nil {
+				if optionalAWSError(err, "PolicyTypeNotEnabledException", "AccessDeniedException") {
+					break
+				}
 				return nil, fmt.Errorf("list organizations policies %s: %w", policyType, err)
 			}
 			for _, summary := range out.Policies {
