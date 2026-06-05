@@ -119,6 +119,7 @@ type Source struct {
 	families *sourcecdk.FamilyEngine[settings]
 }
 
+// cerebro:lint:allow maxfields source settings preserve stable legacy configuration keys.
 type settings struct {
 	family                     string
 	accountID                  string
