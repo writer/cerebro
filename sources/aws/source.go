@@ -37,8 +37,11 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/firehose"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/kafka"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
@@ -94,12 +97,15 @@ const (
 	familyIAMRoleAssign       = "iam_role_assignment"
 	familyIAMRole             = "iam_role"
 	familyIAMUser             = "iam_user"
+	familyFirehoseStream      = "firehose_delivery_stream"
+	familyKinesisStream       = "kinesis_stream"
 	familyKMSKey              = "kms_key"
 	familyPublicEndpoint      = "public_endpoint"
 	familyRDSInstance         = "rds_instance"
 	familyResourceExposure    = "resource_exposure"
 	familyS3Bucket            = "s3_bucket"
 	familySecret              = "secret"
+	familyMSKCluster          = "msk_cluster"
 	familySNSTopic            = "sns_topic"
 	familySQSQueue            = "sqs_queue"
 	familyLambdaFunction      = "lambda_function"
@@ -155,6 +161,9 @@ type awsClients struct {
 	apiGatewayV2 awsAPIGatewayV2API
 	lambda       awsLambdaAPI
 	tagging      awsResourceGroupsTaggingAPI
+	kinesis      awsKinesisAPI
+	firehose     awsFirehoseAPI
+	kafka        awsKafkaAPI
 	s3           awsS3API
 	s3ByRegion   func(string) awsS3API
 	rds          awsRDSAPI
@@ -287,6 +296,25 @@ type awsSNSAPI interface {
 	ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error)
 	GetTopicAttributes(context.Context, *sns.GetTopicAttributesInput, ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error)
 	ListTagsForResource(context.Context, *sns.ListTagsForResourceInput, ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error)
+}
+
+type awsKinesisAPI interface {
+	ListStreams(context.Context, *kinesis.ListStreamsInput, ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error)
+	DescribeStreamSummary(context.Context, *kinesis.DescribeStreamSummaryInput, ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error)
+	ListTagsForStream(context.Context, *kinesis.ListTagsForStreamInput, ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error)
+	GetResourcePolicy(context.Context, *kinesis.GetResourcePolicyInput, ...func(*kinesis.Options)) (*kinesis.GetResourcePolicyOutput, error)
+}
+
+type awsFirehoseAPI interface {
+	ListDeliveryStreams(context.Context, *firehose.ListDeliveryStreamsInput, ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error)
+	DescribeDeliveryStream(context.Context, *firehose.DescribeDeliveryStreamInput, ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error)
+	ListTagsForDeliveryStream(context.Context, *firehose.ListTagsForDeliveryStreamInput, ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error)
+}
+
+type awsKafkaAPI interface {
+	ListClustersV2(context.Context, *kafka.ListClustersV2Input, ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error)
+	DescribeClusterV2(context.Context, *kafka.DescribeClusterV2Input, ...func(*kafka.Options)) (*kafka.DescribeClusterV2Output, error)
+	ListTagsForResource(context.Context, *kafka.ListTagsForResourceInput, ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -605,6 +633,42 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsKinesisStream]{
+			Name:  familyKinesisStream,
+			Label: "aws kinesis streams",
+			List:  listKinesisStreams,
+			Event: kinesisStreamEvent,
+			URN: func(settings settings, stream awsKinesisStream) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_kinesis_stream:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stream.Summary.StreamARN), awssdk.ToString(stream.Summary.StreamName))), nil
+			},
+			CursorFallback: func(stream awsKinesisStream) string {
+				return firstNonEmpty(awssdk.ToString(stream.Summary.StreamARN), awssdk.ToString(stream.Summary.StreamName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsFirehoseDeliveryStream]{
+			Name:  familyFirehoseStream,
+			Label: "aws firehose delivery streams",
+			List:  listFirehoseDeliveryStreams,
+			Event: firehoseDeliveryStreamEvent,
+			URN: func(settings settings, stream awsFirehoseDeliveryStream) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_firehose_delivery_stream:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stream.Description.DeliveryStreamARN), awssdk.ToString(stream.Description.DeliveryStreamName))), nil
+			},
+			CursorFallback: func(stream awsFirehoseDeliveryStream) string {
+				return firstNonEmpty(awssdk.ToString(stream.Description.DeliveryStreamARN), awssdk.ToString(stream.Description.DeliveryStreamName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsMSKCluster]{
+			Name:  familyMSKCluster,
+			Label: "aws msk clusters",
+			List:  listMSKClusters,
+			Event: mskClusterEvent,
+			URN: func(settings settings, cluster awsMSKCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_msk_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(cluster.Cluster.ClusterArn), awssdk.ToString(cluster.Cluster.ClusterName))), nil
+			},
+			CursorFallback: func(cluster awsMSKCluster) string {
+				return firstNonEmpty(awssdk.ToString(cluster.Cluster.ClusterArn), awssdk.ToString(cluster.Cluster.ClusterName))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
 			Name:  familyCloudTrail,
 			Label: "aws cloudtrail events",
@@ -882,6 +946,9 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
 		lambda:       lambda.NewFromConfig(cfg),
 		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
+		kinesis:      kinesis.NewFromConfig(cfg),
+		firehose:     firehose.NewFromConfig(cfg),
+		kafka:        kafka.NewFromConfig(cfg),
 		s3:           s3.NewFromConfig(cfg),
 		s3ByRegion: func(region string) awsS3API {
 			regionalCfg := cfg
@@ -949,7 +1016,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyFirehoseStream, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKinesisStream, familyKMSKey, familyLambdaFunction, familyMSKCluster, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1031,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, firehose_delivery_stream, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kinesis_stream, kms_key, lambda_function, msk_cluster, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }

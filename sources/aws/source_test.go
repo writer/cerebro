@@ -30,8 +30,14 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/firehose"
+	firehosetypes "github.com/aws/aws-sdk-go-v2/service/firehose/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/kafka"
+	kafkatypes "github.com/aws/aws-sdk-go-v2/service/kafka/types"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+	kinesistypes "github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
@@ -339,9 +345,12 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
 		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyFirehoseStream, kind: "aws.firehose_delivery_stream"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
+		{family: familyKinesisStream, kind: "aws.kinesis_stream"},
 		{family: familyKMSKey, kind: "aws.kms_key"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
+		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
 		{family: familySecret, kind: "aws.secret"},
@@ -650,6 +659,9 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 	snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+	kinesisARN := "arn:aws:kinesis:us-east-1:123456789012:stream/orders"
+	firehoseARN := "arn:aws:firehose:us-east-1:123456789012:deliverystream/orders"
+	mskARN := "arn:aws:kafka:us-east-1:123456789012:cluster/orders/uuid-1"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
 			s3Buckets: []s3types.Bucket{{
@@ -734,6 +746,68 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
 			}},
 			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			kinesisStreams: []kinesistypes.StreamDescriptionSummary{{
+				EncryptionType:          kinesistypes.EncryptionTypeKms,
+				KeyId:                   awssdk.String(kmsARN),
+				OpenShardCount:          awssdk.Int32(2),
+				RetentionPeriodHours:    awssdk.Int32(168),
+				StreamARN:               awssdk.String(kinesisARN),
+				StreamCreationTimestamp: timePtr("2026-04-23T00:00:00Z"),
+				StreamName:              awssdk.String("orders"),
+				StreamStatus:            kinesistypes.StreamStatusActive,
+			}},
+			kinesisTags:     map[string][]kinesistypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			kinesisPolicies: map[string]string{kinesisARN: `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"kinesis:DescribeStream"}]}`},
+			firehoseStreams: []firehosetypes.DeliveryStreamDescription{{
+				CreateTimestamp:      timePtr("2026-04-23T00:00:00Z"),
+				DeliveryStreamARN:    awssdk.String(firehoseARN),
+				DeliveryStreamName:   awssdk.String("orders"),
+				DeliveryStreamStatus: firehosetypes.DeliveryStreamStatusActive,
+				DeliveryStreamType:   firehosetypes.DeliveryStreamTypeKinesisStreamAsSource,
+				DeliveryStreamEncryptionConfiguration: &firehosetypes.DeliveryStreamEncryptionConfiguration{
+					KeyARN:  awssdk.String(kmsARN),
+					KeyType: firehosetypes.KeyTypeCustomerManagedCmk,
+					Status:  firehosetypes.DeliveryStreamEncryptionStatusEnabled,
+				},
+				Destinations: []firehosetypes.DestinationDescription{{
+					DestinationId: awssdk.String("destinationId-000000000001"),
+					ExtendedS3DestinationDescription: &firehosetypes.ExtendedS3DestinationDescription{
+						BucketARN: awssdk.String("arn:aws:s3:::prod-data"),
+					},
+				}},
+				Source: &firehosetypes.SourceDescription{
+					KinesisStreamSourceDescription: &firehosetypes.KinesisStreamSourceDescription{KinesisStreamARN: awssdk.String(kinesisARN)},
+				},
+			}},
+			firehoseTags: map[string][]firehosetypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}}},
+			mskClusters: []kafkatypes.Cluster{{
+				ClusterArn:   awssdk.String(mskARN),
+				ClusterName:  awssdk.String("orders"),
+				ClusterType:  kafkatypes.ClusterTypeProvisioned,
+				CreationTime: timePtr("2026-04-23T00:00:00Z"),
+				Provisioned: &kafkatypes.Provisioned{
+					BrokerNodeGroupInfo: &kafkatypes.BrokerNodeGroupInfo{
+						ClientSubnets:  []string{"subnet-1", "subnet-2"},
+						InstanceType:   awssdk.String("kafka.m5.large"),
+						SecurityGroups: []string{"sg-msk"},
+						ConnectivityInfo: &kafkatypes.ConnectivityInfo{
+							PublicAccess: &kafkatypes.PublicAccess{Type: awssdk.String("SERVICE_PROVIDED_EIPS")},
+						},
+					},
+					CurrentBrokerSoftwareInfo: &kafkatypes.BrokerSoftwareInfo{KafkaVersion: awssdk.String("3.6.0")},
+					EncryptionInfo: &kafkatypes.EncryptionInfo{
+						EncryptionAtRest: &kafkatypes.EncryptionAtRest{DataVolumeKMSKeyId: awssdk.String(kmsARN)},
+						EncryptionInTransit: &kafkatypes.EncryptionInTransit{
+							ClientBroker: kafkatypes.ClientBrokerTls,
+							InCluster:    awssdk.Bool(true),
+						},
+					},
+					NumberOfBrokerNodes: awssdk.Int32(3),
+				},
+				State: kafkatypes.ClusterStateActive,
+				Tags:  map[string]string{"Team": "streaming"},
+			}},
+			mskTags: map[string]map[string]string{mskARN: {"Owner": "streaming@writer.com"}},
 		},
 	})
 	for _, tt := range []struct {
@@ -749,6 +823,9 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+		{family: familyKinesisStream, kind: "aws.kinesis_stream", attr: "retention_hours", want: "168"},
+		{family: familyFirehoseStream, kind: "aws.firehose_delivery_stream", attr: "kms_key_id", want: kmsARN},
+		{family: familyMSKCluster, kind: "aws.msk_cluster", attr: "public", want: "true"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -1472,6 +1549,9 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 		snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 		ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+		kinesisARN := "arn:aws:kinesis:us-east-1:123456789012:stream/orders"
+		firehoseARN := "arn:aws:firehose:us-east-1:123456789012:deliverystream/orders"
+		mskARN := "arn:aws:kafka:us-east-1:123456789012:cluster/orders/uuid-1"
 		fake.s3Buckets = []s3types.Bucket{{Name: awssdk.String("prod-data")}}
 		fake.s3Tags = map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
 		fake.s3Encryption = map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {}}
@@ -1490,6 +1570,13 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.snsTags = map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.kinesisStreams = []kinesistypes.StreamDescriptionSummary{{StreamARN: awssdk.String(kinesisARN), StreamName: awssdk.String("orders"), RetentionPeriodHours: awssdk.Int32(24)}}
+		fake.kinesisTags = map[string][]kinesistypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.kinesisPolicies = map[string]string{kinesisARN: "{}"}
+		fake.firehoseStreams = []firehosetypes.DeliveryStreamDescription{{DeliveryStreamARN: awssdk.String(firehoseARN), DeliveryStreamName: awssdk.String("orders")}}
+		fake.firehoseTags = map[string][]firehosetypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}}}
+		fake.mskClusters = []kafkatypes.Cluster{{ClusterArn: awssdk.String(mskARN), ClusterName: awssdk.String("orders"), Provisioned: &kafkatypes.Provisioned{NumberOfBrokerNodes: awssdk.Int32(3)}}}
+		fake.mskTags = map[string]map[string]string{mskARN: {"Team": "streaming"}}
 	}
 	for _, tt := range []struct {
 		family  string
@@ -1545,6 +1632,21 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECRRepository,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
+		},
+		{
+			family:  familyKinesisStream,
+			seed:    cloudAssetData,
+			wantAPI: []string{"kinesis:DescribeStreamSummary", "kinesis:GetResourcePolicy", "kinesis:ListStreams", "kinesis:ListTagsForStream"},
+		},
+		{
+			family:  familyFirehoseStream,
+			seed:    cloudAssetData,
+			wantAPI: []string{"firehose:DescribeDeliveryStream", "firehose:ListDeliveryStreams", "firehose:ListTagsForDeliveryStream"},
+		},
+		{
+			family:  familyMSKCluster,
+			seed:    cloudAssetData,
+			wantAPI: []string{"kafka:DescribeClusterV2", "kafka:ListClustersV2", "kafka:ListTagsForResource"},
 		},
 		{
 			family:  familyECSService,
@@ -1870,7 +1972,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, kinesis: fake, firehose: fake, kafka: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +1988,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, kinesis: fake, firehose: fake, kafka: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1992,6 +2094,13 @@ type fakeAWSData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
+	kinesisStreams       []kinesistypes.StreamDescriptionSummary
+	kinesisTags          map[string][]kinesistypes.Tag
+	kinesisPolicies      map[string]string
+	firehoseStreams      []firehosetypes.DeliveryStreamDescription
+	firehoseTags         map[string][]firehosetypes.Tag
+	mskClusters          []kafkatypes.Cluster
+	mskTags              map[string]map[string]string
 }
 
 type fakeAWSCompute struct {
@@ -2286,6 +2395,56 @@ func (f *recordingAWS) GetQueueAttributes(ctx context.Context, input *sqs.GetQue
 func (f *recordingAWS) ListQueueTags(ctx context.Context, input *sqs.ListQueueTagsInput, options ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
 	f.record("sqs:ListQueueTags")
 	return f.fakeAWS.ListQueueTags(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListStreams(ctx context.Context, input *kinesis.ListStreamsInput, options ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error) {
+	f.record("kinesis:ListStreams")
+	return f.fakeAWS.ListStreams(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeStreamSummary(ctx context.Context, input *kinesis.DescribeStreamSummaryInput, options ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error) {
+	f.record("kinesis:DescribeStreamSummary")
+	return f.fakeAWS.DescribeStreamSummary(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTagsForStream(ctx context.Context, input *kinesis.ListTagsForStreamInput, options ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error) {
+	f.record("kinesis:ListTagsForStream")
+	return f.fakeAWS.ListTagsForStream(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetResourcePolicy(ctx context.Context, input *kinesis.GetResourcePolicyInput, options ...func(*kinesis.Options)) (*kinesis.GetResourcePolicyOutput, error) {
+	f.record("kinesis:GetResourcePolicy")
+	return f.fakeAWS.GetResourcePolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListDeliveryStreams(ctx context.Context, input *firehose.ListDeliveryStreamsInput, options ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error) {
+	f.record("firehose:ListDeliveryStreams")
+	return f.fakeAWS.ListDeliveryStreams(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeDeliveryStream(ctx context.Context, input *firehose.DescribeDeliveryStreamInput, options ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error) {
+	f.record("firehose:DescribeDeliveryStream")
+	return f.fakeAWS.DescribeDeliveryStream(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTagsForDeliveryStream(ctx context.Context, input *firehose.ListTagsForDeliveryStreamInput, options ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error) {
+	f.record("firehose:ListTagsForDeliveryStream")
+	return f.fakeAWS.ListTagsForDeliveryStream(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListClustersV2(ctx context.Context, input *kafka.ListClustersV2Input, options ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error) {
+	f.record("kafka:ListClustersV2")
+	return f.fakeAWS.ListClustersV2(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeClusterV2(ctx context.Context, input *kafka.DescribeClusterV2Input, options ...func(*kafka.Options)) (*kafka.DescribeClusterV2Output, error) {
+	f.record("kafka:DescribeClusterV2")
+	return f.fakeAWS.DescribeClusterV2(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTagsForResource(ctx context.Context, input *kafka.ListTagsForResourceInput, options ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error) {
+	f.record("kafka:ListTagsForResource")
+	return f.fakeAWS.ListTagsForResource(ctx, input, options...)
 }
 
 type recordingAPIGatewayV2 struct {
@@ -2854,6 +3013,79 @@ func (f fakeAWS) GetQueueAttributes(_ context.Context, input *sqs.GetQueueAttrib
 
 func (f fakeAWS) ListQueueTags(_ context.Context, input *sqs.ListQueueTagsInput, _ ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
 	return &sqs.ListQueueTagsOutput{Tags: f.sqsTags[awssdk.ToString(input.QueueUrl)]}, nil
+}
+
+func (f fakeAWS) ListStreams(context.Context, *kinesis.ListStreamsInput, ...func(*kinesis.Options)) (*kinesis.ListStreamsOutput, error) {
+	names := make([]string, 0, len(f.kinesisStreams))
+	for _, stream := range f.kinesisStreams {
+		if name := awssdk.ToString(stream.StreamName); name != "" {
+			names = append(names, name)
+		}
+	}
+	return &kinesis.ListStreamsOutput{StreamNames: names, HasMoreStreams: awssdk.Bool(false)}, nil
+}
+
+func (f fakeAWS) DescribeStreamSummary(_ context.Context, input *kinesis.DescribeStreamSummaryInput, _ ...func(*kinesis.Options)) (*kinesis.DescribeStreamSummaryOutput, error) {
+	name := awssdk.ToString(input.StreamName)
+	for _, stream := range f.kinesisStreams {
+		if awssdk.ToString(stream.StreamName) == name || awssdk.ToString(stream.StreamARN) == awssdk.ToString(input.StreamARN) {
+			copy := stream
+			return &kinesis.DescribeStreamSummaryOutput{StreamDescriptionSummary: &copy}, nil
+		}
+	}
+	return &kinesis.DescribeStreamSummaryOutput{}, nil
+}
+
+func (f fakeAWS) ListTagsForStream(_ context.Context, input *kinesis.ListTagsForStreamInput, _ ...func(*kinesis.Options)) (*kinesis.ListTagsForStreamOutput, error) {
+	return &kinesis.ListTagsForStreamOutput{Tags: f.kinesisTags[awssdk.ToString(input.StreamName)], HasMoreTags: awssdk.Bool(false)}, nil
+}
+
+func (f fakeAWS) GetResourcePolicy(_ context.Context, input *kinesis.GetResourcePolicyInput, _ ...func(*kinesis.Options)) (*kinesis.GetResourcePolicyOutput, error) {
+	return &kinesis.GetResourcePolicyOutput{Policy: awssdk.String(f.kinesisPolicies[awssdk.ToString(input.ResourceARN)])}, nil
+}
+
+func (f fakeAWS) ListDeliveryStreams(context.Context, *firehose.ListDeliveryStreamsInput, ...func(*firehose.Options)) (*firehose.ListDeliveryStreamsOutput, error) {
+	names := make([]string, 0, len(f.firehoseStreams))
+	for _, stream := range f.firehoseStreams {
+		if name := awssdk.ToString(stream.DeliveryStreamName); name != "" {
+			names = append(names, name)
+		}
+	}
+	return &firehose.ListDeliveryStreamsOutput{DeliveryStreamNames: names, HasMoreDeliveryStreams: awssdk.Bool(false)}, nil
+}
+
+func (f fakeAWS) DescribeDeliveryStream(_ context.Context, input *firehose.DescribeDeliveryStreamInput, _ ...func(*firehose.Options)) (*firehose.DescribeDeliveryStreamOutput, error) {
+	name := awssdk.ToString(input.DeliveryStreamName)
+	for _, stream := range f.firehoseStreams {
+		if awssdk.ToString(stream.DeliveryStreamName) == name {
+			copy := stream
+			return &firehose.DescribeDeliveryStreamOutput{DeliveryStreamDescription: &copy}, nil
+		}
+	}
+	return &firehose.DescribeDeliveryStreamOutput{}, nil
+}
+
+func (f fakeAWS) ListTagsForDeliveryStream(_ context.Context, input *firehose.ListTagsForDeliveryStreamInput, _ ...func(*firehose.Options)) (*firehose.ListTagsForDeliveryStreamOutput, error) {
+	return &firehose.ListTagsForDeliveryStreamOutput{Tags: f.firehoseTags[awssdk.ToString(input.DeliveryStreamName)], HasMoreTags: awssdk.Bool(false)}, nil
+}
+
+func (f fakeAWS) ListClustersV2(context.Context, *kafka.ListClustersV2Input, ...func(*kafka.Options)) (*kafka.ListClustersV2Output, error) {
+	return &kafka.ListClustersV2Output{ClusterInfoList: f.mskClusters}, nil
+}
+
+func (f fakeAWS) DescribeClusterV2(_ context.Context, input *kafka.DescribeClusterV2Input, _ ...func(*kafka.Options)) (*kafka.DescribeClusterV2Output, error) {
+	arn := awssdk.ToString(input.ClusterArn)
+	for _, cluster := range f.mskClusters {
+		if awssdk.ToString(cluster.ClusterArn) == arn {
+			copy := cluster
+			return &kafka.DescribeClusterV2Output{ClusterInfo: &copy}, nil
+		}
+	}
+	return &kafka.DescribeClusterV2Output{}, nil
+}
+
+func (f fakeAWS) ListTagsForResource(_ context.Context, input *kafka.ListTagsForResourceInput, _ ...func(*kafka.Options)) (*kafka.ListTagsForResourceOutput, error) {
+	return &kafka.ListTagsForResourceOutput{Tags: f.mskTags[awssdk.ToString(input.ResourceArn)]}, nil
 }
 
 type fakeAPIGatewayV2 struct {

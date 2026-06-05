@@ -22,7 +22,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
 	github.com/aws/aws-sdk-go-v2/service/eks v1.84.5
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.3
+	github.com/aws/aws-sdk-go-v2/service/firehose v1.43.1
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.3
+	github.com/aws/aws-sdk-go-v2/service/kafka v1.52.5
+	github.com/aws/aws-sdk-go-v2/service/kinesis v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.53.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.0

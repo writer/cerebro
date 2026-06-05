@@ -15,18 +15,21 @@ emitted_kinds:
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
   - aws.effective_permission
+  - aws.firehose_delivery_stream
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.kinesis_stream
   - aws.kms_key
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
   - aws.s3_bucket
   - aws.secret
+  - aws.msk_cluster
   - aws.sns_topic
   - aws.sqs_queue
   - aws.lambda_function
@@ -44,13 +47,16 @@ runtime_families:
   - eks_fargate_profile
   - eks_pod_identity_association
   - effective_permission
+  - firehose_delivery_stream
   - iam_group
   - iam_group_membership
   - iam_role
   - iam_role_assignment
   - iam_role_trust
   - iam_user
+  - kinesis_stream
   - kms_key
+  - msk_cluster
   - public_endpoint
   - rds_instance
   - resource_exposure
