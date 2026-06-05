@@ -545,10 +545,10 @@ func securityHubFindingEvent(settings settings, finding securityhubtypes.AwsSecu
 	attributes["types"] = strings.Join(cleanStrings(finding.Types), ",")
 	attributes["record_state"] = string(finding.RecordState)
 	attributes["verification_state"] = string(finding.VerificationState)
-	attributes["workflow_state"] = string(finding.WorkflowState)
 	attributes["sample"] = boolString(awssdk.ToBool(finding.Sample))
 	if finding.Workflow != nil {
 		attributes["workflow_status"] = string(finding.Workflow.Status)
+		attributes["workflow_state"] = string(finding.Workflow.Status)
 	}
 	if finding.Compliance != nil {
 		attributes["compliance_status"] = string(finding.Compliance.Status)
