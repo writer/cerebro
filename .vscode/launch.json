@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Cerebro: serve",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/cerebro",
+      "args": ["serve"],
+      "env": {
+        "CEREBRO_HTTP_ADDR": "127.0.0.1:8080"
+      }
+    },
+    {
+      "name": "Cerebro: orchestrator once",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/cerebro",
+      "args": ["orchestrator", "run", "iterations=1"],
+      "env": {
+        "CEREBRO_HTTP_ADDR": "127.0.0.1:8080"
+      }
+    }
+  ]
+}
