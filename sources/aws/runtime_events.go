@@ -591,6 +591,9 @@ func listAllEventBridgeTargets(ctx context.Context, clients awsClients, busName 
 			NextToken:    next,
 		})
 		if err != nil {
+			if optionalAWSError(err, "ResourceNotFoundException") {
+				return targets, nil
+			}
 			return nil, fmt.Errorf("list eventbridge rule targets %q/%q: %w", busName, ruleName, err)
 		}
 		targets = append(targets, output.Targets...)
