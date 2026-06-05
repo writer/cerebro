@@ -5,9 +5,17 @@ emitted_kinds:
   - aws.access_key
   - aws.apprunner_service
   - asset.data_sensitivity
+  - aws.backup_vault
+  - aws.backup_plan
+  - aws.backup_protected_resource
+  - aws.backup_recovery_point
+  - aws.cloudtrail
+  - aws.datasync_location
+  - aws.datasync_task
+  - aws.ebs_snapshot
+  - aws.ebs_volume
   - aws.athena_data_catalog
   - aws.athena_workgroup
-  - aws.cloudtrail
   - aws.cloudwatch_alarm
   - aws.cloudwatch_log_group
   - aws.ec2_instance
@@ -50,7 +58,9 @@ emitted_kinds:
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
+  - aws.s3_access_point
   - aws.s3_bucket
+  - aws.s3_multi_region_access_point
   - aws.scheduler_schedule
   - aws.scheduler_schedule_group
   - aws.secret
@@ -70,9 +80,17 @@ runtime_families:
   - access_key
   - apprunner_service
   - asset_metadata
+  - backup_vault
+  - backup_plan
+  - backup_protected_resource
+  - backup_recovery_point
+  - cloudtrail
+  - datasync_location
+  - datasync_task
+  - ebs_snapshot
+  - ebs_volume
   - athena_data_catalog
   - athena_workgroup
-  - cloudtrail
   - cloudwatch_alarm
   - cloudwatch_log_group
   - ec2_instance
@@ -115,7 +133,9 @@ runtime_families:
   - public_endpoint
   - rds_instance
   - resource_exposure
+  - s3_access_point
   - s3_bucket
+  - s3_multi_region_access_point
   - scheduler_schedule
   - scheduler_schedule_group
   - secret

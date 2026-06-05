@@ -24,6 +24,8 @@ github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5 h1:F9+qleYIBE+8vTDc7ziud/
 github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5/go.mod h1:7lvd8HgCk8mPW3LkZTpuc1r5xux1ZWi7cQ5wmORIdCA=
 github.com/aws/aws-sdk-go-v2/service/athena v1.58.3 h1:vjEUIly6U1SrRUajgNsF/Pv9ZRsf12S0gzMjbPzQZxc=
 github.com/aws/aws-sdk-go-v2/service/athena v1.58.3/go.mod h1:SfNoP5HUXFw60kcWKmm7V0CoF9OZdhmhwfkesm1+A+g=
+github.com/aws/aws-sdk-go-v2/service/backup v1.57.5 h1:ohRgK/UYcre3jF4pxxIrslY9kUuuzpz2zTzs3RNu2Ms=
+github.com/aws/aws-sdk-go-v2/service/backup v1.57.5/go.mod h1:buhCYnahTK+Q2AKqU21CsvhlB1iTb79M+L82ASQk+d0=
 github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4 h1:gNpZEJpHw/ANDvgAk2Z9yaiLmuFWfDnjZmzXZBMfhaw=
 github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4/go.mod h1:fNEfSXojRCcvbtl0KYGJrkHS17eHaHvSgZqNNVOxZQU=
 github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1 h1:UXPRXa3HLrJolDM098DfXgLJrbB086+Zip3M+4Dy1WI=
@@ -34,6 +36,8 @@ github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.58.2 h1:qC858ET7YY9rkTQlaglbd
 github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.58.2/go.mod h1:3NeVwiq2eH6LfG2p6Hm7fbmMbRoiM1eVkGkAfrF02h8=
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.75.1 h1:w9XU3EHC+DoSZBbSPxmypypvvERfdqZqpCMr/TCnv7g=
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.75.1/go.mod h1:7Ed2JPG6UiO7eH0LUXwgcD9WDRdO8DcAqWsm2/ZF0y8=
+github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5 h1:5fcF+s5hXULXEYPAnuVCmL9woUXTh1lhK9p2FxSF9ds=
+github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5/go.mod h1:B47PnG4zNN3pII2NkE9aNxALa9ODZPN+L4lEysYALQ0=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2 h1:xcHUdx4FNgUZmLuI6vqB5QDsVnWx1MVbPSoaXtLxUB8=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2/go.mod h1:SUtka5kgdr5Wx2BdRrH/IGkCKHW63IVQoyBkP0P1gdo=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2 h1:sSfN1WfNyYjV0CQC8moHP4uxgNXSUxDT0X2vXbcJSbc=
@@ -84,6 +88,8 @@ github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2 h1:5PG11zFh4s6n+FjyhCOs00K/
 github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2/go.mod h1:pUzWuR5MLjU1xlMmCT0qUALPqBFFxf/zdHAmusQlVuM=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2 h1:b4ikkRk22T4xYkEgaWc3Voe+3xbt5YbbFhNehOWyUiY=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2/go.mod h1:Gp7eHZ0NZ8ZK5RXpoIUp/C8OeAmJqpCgdwEK1D/QOek=
+github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4 h1:Or+7J1Kr4sNlGT/5Uh3VvtIFrwoABZ3NMWXNL61mfzo=
+github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4/go.mod h1:hpR7KgZJuRoBndHkhYXZmPNjsvuanVWC4G1tMVNXBIc=
 github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5 h1:lKGt/dMVNdPRoMPT2zTiWnOZS2arZxxNzqUvl+J8eao=
 github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5/go.mod h1:YjcAUo+VhdCsp9Q0AV/3EObtEdALb789sdTw+8ELrDc=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1 h1:AH4hyaVe/2+p7zx/GkmjQLXOfVTul6EFMTRy8QVl71Q=

@@ -20,6 +20,8 @@ import (
 	apprunnertypes "github.com/aws/aws-sdk-go-v2/service/apprunner/types"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	athenatypes "github.com/aws/aws-sdk-go-v2/service/athena/types"
+	"github.com/aws/aws-sdk-go-v2/service/backup"
+	backuptypes "github.com/aws/aws-sdk-go-v2/service/backup/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -28,6 +30,8 @@ import (
 	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
+	"github.com/aws/aws-sdk-go-v2/service/datasync"
+	datasynctypes "github.com/aws/aws-sdk-go-v2/service/datasync/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -70,6 +74,8 @@ import (
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3control"
+	s3controltypes "github.com/aws/aws-sdk-go-v2/service/s3control/types"
 	"github.com/aws/aws-sdk-go-v2/service/scheduler"
 	schedulertypes "github.com/aws/aws-sdk-go-v2/service/scheduler/types"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -363,6 +369,14 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyBackupVault, kind: "aws.backup_vault"},
+		{family: familyBackupPlan, kind: "aws.backup_plan"},
+		{family: familyBackupProtected, kind: "aws.backup_protected_resource"},
+		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point"},
+		{family: familyDataSyncLocation, kind: "aws.datasync_location"},
+		{family: familyDataSyncTask, kind: "aws.datasync_task"},
+		{family: familyEBSSnapshot, kind: "aws.ebs_snapshot"},
+		{family: familyEBSVolume, kind: "aws.ebs_volume"},
 		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
 		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
@@ -389,7 +403,9 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
 		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
+		{family: familyS3AccessPoint, kind: "aws.s3_access_point"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
+		{family: familyS3MultiRegionAccessPoint, kind: "aws.s3_multi_region_access_point"},
 		{family: familySecret, kind: "aws.secret"},
 		{family: familySNSTopic, kind: "aws.sns_topic"},
 		{family: familySQSQueue, kind: "aws.sqs_queue"},
@@ -705,90 +721,197 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 	snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+	s3APARN := "arn:aws:s3:us-east-1:123456789012:accesspoint/prod-data-ap"
+	mrapARN := "arn:aws:s3::123456789012:accesspoint/prod-global"
+	datasyncTaskARN := "arn:aws:datasync:us-east-1:123456789012:task/task-123"
+	datasyncSourceARN := "arn:aws:datasync:us-east-1:123456789012:location/loc-src"
+	datasyncDestinationARN := "arn:aws:datasync:us-east-1:123456789012:location/loc-dst"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
-			s3Buckets: []s3types.Bucket{{
-				Name:         awssdk.String("prod-data"),
-				CreationDate: timePtr("2026-04-23T00:00:00Z"),
-			}},
-			s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
-			s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
-			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
-				Rules: []s3types.ServerSideEncryptionRule{{
-					ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
-						SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
-						KMSMasterKeyID: awssdk.String(kmsARN),
+			fakeAWSCoreData: fakeAWSCoreData{
+				s3Buckets: []s3types.Bucket{{
+					Name:         awssdk.String("prod-data"),
+					CreationDate: timePtr("2026-04-23T00:00:00Z"),
+				}},
+				s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
+				s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
+				s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
+					Rules: []s3types.ServerSideEncryptionRule{{
+						ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
+							SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
+							KMSMasterKeyID: awssdk.String(kmsARN),
+						},
+					}},
+				}},
+				s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
+				s3Logging:    map[string]bool{"prod-data": true},
+				s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
+					BlockPublicAcls:       awssdk.Bool(true),
+					BlockPublicPolicy:     awssdk.Bool(true),
+					IgnorePublicAcls:      awssdk.Bool(true),
+					RestrictPublicBuckets: awssdk.Bool(true),
+				}},
+				rdsInstances: []rdstypes.DBInstance{{
+					DBInstanceArn:         awssdk.String(rdsARN),
+					DBInstanceIdentifier:  awssdk.String("orders-db"),
+					Engine:                awssdk.String("postgres"),
+					StorageEncrypted:      awssdk.Bool(true),
+					KmsKeyId:              awssdk.String(kmsARN),
+					DeletionProtection:    awssdk.Bool(true),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					PubliclyAccessible:    awssdk.Bool(false),
+					InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
+					TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				}},
+				kmsKeys: []kmstypes.KeyMetadata{{
+					Arn:          awssdk.String(kmsARN),
+					KeyId:        awssdk.String("key-123"),
+					CreationDate: timePtr("2026-04-23T00:00:00Z"),
+					Enabled:      true,
+					KeyManager:   kmstypes.KeyManagerTypeCustomer,
+					KeyState:     kmstypes.KeyStateEnabled,
+					KeySpec:      kmstypes.KeySpecSymmetricDefault,
+					KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
+					Origin:       kmstypes.OriginTypeAwsKms,
+				}},
+				kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
+				kmsRotation: map[string]bool{"key-123": true},
+				secrets: []secretsmanagertypes.SecretListEntry{{
+					ARN:             awssdk.String(secretARN),
+					Name:            awssdk.String("prod/api-key"),
+					CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
+					KmsKeyId:        awssdk.String(kmsARN),
+					RotationEnabled: awssdk.Bool(true),
+					Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+				}},
+				sqsQueueURLs: []string{sqsURL},
+				sqsAttributes: map[string]map[string]string{sqsURL: {
+					"QueueArn":               sqsARN,
+					"KmsMasterKeyId":         kmsARN,
+					"MessageRetentionPeriod": "1209600",
+					"CreatedTimestamp":       "1776902400",
+				}},
+				sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
+				snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
+				snsAttributes: map[string]map[string]string{snsARN: {
+					"TopicArn":       snsARN,
+					"KmsMasterKeyId": kmsARN,
+				}},
+				snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				ecrRepositories: []ecrtypes.Repository{{
+					RepositoryArn:  awssdk.String(ecrARN),
+					RepositoryName: awssdk.String("orders"),
+					RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
+					CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+					EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
+						EncryptionType: ecrtypes.EncryptionTypeKms,
+						KmsKey:         awssdk.String(kmsARN),
+					},
+					ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
+					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
+				}},
+				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
+			fakeAWSStorageAccessData: fakeAWSStorageAccessData{
+				s3AccessPoints: []s3controltypes.AccessPoint{{
+					AccessPointArn: awssdk.String(s3APARN),
+					Bucket:         awssdk.String("prod-data"),
+					Name:           awssdk.String("prod-data-ap"),
+					NetworkOrigin:  s3controltypes.NetworkOriginVpc,
+					VpcConfiguration: &s3controltypes.VpcConfiguration{
+						VpcId: awssdk.String("vpc-123"),
 					},
 				}},
-			}},
-			s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
-			s3Logging:    map[string]bool{"prod-data": true},
-			s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
-				BlockPublicAcls:       awssdk.Bool(true),
-				BlockPublicPolicy:     awssdk.Bool(true),
-				IgnorePublicAcls:      awssdk.Bool(true),
-				RestrictPublicBuckets: awssdk.Bool(true),
-			}},
-			rdsInstances: []rdstypes.DBInstance{{
-				DBInstanceArn:         awssdk.String(rdsARN),
-				DBInstanceIdentifier:  awssdk.String("orders-db"),
-				Engine:                awssdk.String("postgres"),
-				StorageEncrypted:      awssdk.Bool(true),
-				KmsKeyId:              awssdk.String(kmsARN),
-				DeletionProtection:    awssdk.Bool(true),
-				BackupRetentionPeriod: awssdk.Int32(7),
-				PubliclyAccessible:    awssdk.Bool(false),
-				InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
-				TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
-			}},
-			kmsKeys: []kmstypes.KeyMetadata{{
-				Arn:          awssdk.String(kmsARN),
-				KeyId:        awssdk.String("key-123"),
-				CreationDate: timePtr("2026-04-23T00:00:00Z"),
-				Enabled:      true,
-				KeyManager:   kmstypes.KeyManagerTypeCustomer,
-				KeyState:     kmstypes.KeyStateEnabled,
-				KeySpec:      kmstypes.KeySpecSymmetricDefault,
-				KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
-				Origin:       kmstypes.OriginTypeAwsKms,
-			}},
-			kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
-			kmsRotation: map[string]bool{"key-123": true},
-			secrets: []secretsmanagertypes.SecretListEntry{{
-				ARN:             awssdk.String(secretARN),
-				Name:            awssdk.String("prod/api-key"),
-				CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
-				KmsKeyId:        awssdk.String(kmsARN),
-				RotationEnabled: awssdk.Bool(true),
-				Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
-			}},
-			sqsQueueURLs: []string{sqsURL},
-			sqsAttributes: map[string]map[string]string{sqsURL: {
-				"QueueArn":               sqsARN,
-				"KmsMasterKeyId":         kmsARN,
-				"MessageRetentionPeriod": "1209600",
-				"CreatedTimestamp":       "1776902400",
-			}},
-			sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
-			snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
-			snsAttributes: map[string]map[string]string{snsARN: {
-				"TopicArn":       snsARN,
-				"KmsMasterKeyId": kmsARN,
-			}},
-			snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
-			ecrRepositories: []ecrtypes.Repository{{
-				RepositoryArn:  awssdk.String(ecrARN),
-				RepositoryName: awssdk.String("orders"),
-				RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
-				CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
-				EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
-					EncryptionType: ecrtypes.EncryptionTypeKms,
-					KmsKey:         awssdk.String(kmsARN),
+				s3AccessPointDetails: map[string]*s3control.GetAccessPointOutput{"prod-data-ap": {
+					AccessPointArn: awssdk.String(s3APARN),
+					Bucket:         awssdk.String("prod-data"),
+					CreationDate:   timePtr("2026-04-23T00:00:00Z"),
+					Name:           awssdk.String("prod-data-ap"),
+					NetworkOrigin:  s3controltypes.NetworkOriginVpc,
+					PublicAccessBlockConfiguration: &s3controltypes.PublicAccessBlockConfiguration{
+						BlockPublicAcls:       awssdk.Bool(true),
+						BlockPublicPolicy:     awssdk.Bool(true),
+						IgnorePublicAcls:      awssdk.Bool(true),
+						RestrictPublicBuckets: awssdk.Bool(true),
+					},
+					VpcConfiguration: &s3controltypes.VpcConfiguration{VpcId: awssdk.String("vpc-123")},
+				}},
+				s3ControlTags:       map[string][]s3controltypes.Tag{s3APARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}, mrapARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
+				s3AccessPointPublic: map[string]bool{"prod-data-ap": false},
+				s3MultiRegionAccessPoints: []s3controltypes.MultiRegionAccessPointReport{{
+					Alias:     awssdk.String("prod-global.mrap"),
+					CreatedAt: timePtr("2026-04-23T00:00:00Z"),
+					Name:      awssdk.String("prod-global"),
+					PublicAccessBlock: &s3controltypes.PublicAccessBlockConfiguration{
+						BlockPublicAcls:       awssdk.Bool(true),
+						BlockPublicPolicy:     awssdk.Bool(true),
+						IgnorePublicAcls:      awssdk.Bool(true),
+						RestrictPublicBuckets: awssdk.Bool(true),
+					},
+					Regions: []s3controltypes.RegionReport{
+						{Bucket: awssdk.String("prod-data"), Region: awssdk.String("us-east-1")},
+						{Bucket: awssdk.String("prod-data-replica"), Region: awssdk.String("us-west-2")},
+					},
+					Status: s3controltypes.MultiRegionAccessPointStatusReady,
+				}},
+				s3MultiRegionAccessPointPublic: map[string]bool{"prod-global": false},
+				ebsVolumes: []ec2types.Volume{{
+					AvailabilityZone: awssdk.String("us-east-1a"),
+					CreateTime:       timePtr("2026-04-23T00:00:00Z"),
+					Encrypted:        awssdk.Bool(true),
+					KmsKeyId:         awssdk.String(kmsARN),
+					Size:             awssdk.Int32(100),
+					SnapshotId:       awssdk.String("snap-123"),
+					State:            ec2types.VolumeStateInUse,
+					Tags:             []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("orders-data")}, {Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
+					VolumeId:         awssdk.String("vol-123"),
+					VolumeType:       ec2types.VolumeTypeGp3,
+				}},
+				ebsSnapshots: []ec2types.Snapshot{{
+					Description: awssdk.String("orders backup"),
+					Encrypted:   awssdk.Bool(true),
+					KmsKeyId:    awssdk.String(kmsARN),
+					OwnerId:     awssdk.String("123456789012"),
+					SnapshotId:  awssdk.String("snap-123"),
+					StartTime:   timePtr("2026-04-23T00:00:00Z"),
+					State:       ec2types.SnapshotStateCompleted,
+					Tags:        []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("orders-snapshot")}, {Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
+					VolumeId:    awssdk.String("vol-123"),
+					VolumeSize:  awssdk.Int32(100),
+				}},
+				ebsSnapshotPublic: map[string]bool{"snap-123": false},
+				datasyncTasks: []datasynctypes.TaskListEntry{{
+					Name:     awssdk.String("copy-prod-data"),
+					Status:   datasynctypes.TaskStatusAvailable,
+					TaskArn:  awssdk.String(datasyncTaskARN),
+					TaskMode: datasynctypes.TaskModeEnhanced,
+				}},
+				datasyncTaskDetails: map[string]*datasync.DescribeTaskOutput{datasyncTaskARN: {
+					CreationTime:           timePtr("2026-04-23T00:00:00Z"),
+					DestinationLocationArn: awssdk.String(datasyncDestinationARN),
+					Name:                   awssdk.String("copy-prod-data"),
+					Schedule:               &datasynctypes.TaskSchedule{ScheduleExpression: awssdk.String("rate(12 hours)")},
+					SourceLocationArn:      awssdk.String(datasyncSourceARN),
+					Status:                 datasynctypes.TaskStatusAvailable,
+					TaskArn:                awssdk.String(datasyncTaskARN),
+					TaskMode:               datasynctypes.TaskModeEnhanced,
+				}},
+				datasyncLocations: []datasynctypes.LocationListEntry{{
+					LocationArn: awssdk.String(datasyncSourceARN),
+					LocationUri: awssdk.String("s3://prod-data/export"),
+				}},
+				datasyncLocationS3: map[string]*datasync.DescribeLocationS3Output{datasyncSourceARN: {
+					CreationTime:   timePtr("2026-04-23T00:00:00Z"),
+					LocationArn:    awssdk.String(datasyncSourceARN),
+					LocationUri:    awssdk.String("s3://prod-data/export"),
+					S3Config:       &datasynctypes.S3Config{BucketAccessRoleArn: awssdk.String("arn:aws:iam::123456789012:role/DataSyncS3Access")},
+					S3StorageClass: datasynctypes.S3StorageClassStandard,
+				}},
+				datasyncTags: map[string][]datasynctypes.TagListEntry{
+					datasyncTaskARN:   {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
+					datasyncSourceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
 				},
-				ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
-				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
-			}},
-			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
 		},
 	})
 	for _, tt := range []struct {
@@ -798,6 +921,12 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		want   string
 	}{
 		{family: familyS3Bucket, kind: "aws.s3_bucket", attr: "versioning", want: "Enabled"},
+		{family: familyS3AccessPoint, kind: "aws.s3_access_point", attr: "public", want: "false"},
+		{family: familyS3MultiRegionAccessPoint, kind: "aws.s3_multi_region_access_point", attr: "backups", want: "true"},
+		{family: familyEBSVolume, kind: "aws.ebs_volume", attr: "backups", want: "true"},
+		{family: familyEBSSnapshot, kind: "aws.ebs_snapshot", attr: "encryption", want: "true"},
+		{family: familyDataSyncTask, kind: "aws.datasync_task", attr: "backups", want: "true"},
+		{family: familyDataSyncLocation, kind: "aws.datasync_location", attr: "location_type", want: "s3"},
 		{family: familyRDSInstance, kind: "aws.rds_instance", attr: "deletion_protection", want: "true"},
 		{family: familyKMSKey, kind: "aws.kms_key", attr: "rotation", want: "true"},
 		{family: familySecret, kind: "aws.secret", attr: "rotation", want: "true"},
@@ -812,6 +941,110 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 			}
 			if len(pull.Events) != 1 {
 				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSBackupInventoryEvents(t *testing.T) {
+	vaultARN := "arn:aws:backup:us-east-1:123456789012:backup-vault:prod-vault"
+	planARN := "arn:aws:backup:us-east-1:123456789012:backup-plan:plan-123"
+	recoveryPointARN := "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-123"
+	resourceARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
+	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
+	source := newTestSource(t, fakeAWS{fakeAWSData: fakeAWSData{
+		fakeAWSBackupData: fakeAWSBackupData{
+			backupVaults: []backuptypes.BackupVaultListMember{{
+				BackupVaultArn:         awssdk.String(vaultARN),
+				BackupVaultName:        awssdk.String("prod-vault"),
+				CreationDate:           timePtr("2026-04-23T00:00:00Z"),
+				EncryptionKeyArn:       awssdk.String(kmsARN),
+				EncryptionKeyType:      backuptypes.EncryptionKeyTypeCustomerManagedKmsKey,
+				Locked:                 awssdk.Bool(true),
+				MaxRetentionDays:       awssdk.Int64(365),
+				MinRetentionDays:       awssdk.Int64(35),
+				NumberOfRecoveryPoints: 3,
+				VaultState:             backuptypes.VaultStateAvailable,
+			}},
+			backupVaultTags: map[string]map[string]string{vaultARN: {"Owner": "backup@writer.com"}},
+			backupPlans: []backuptypes.BackupPlansListMember{{
+				BackupPlanArn:  awssdk.String(planARN),
+				BackupPlanId:   awssdk.String("plan-123"),
+				BackupPlanName: awssdk.String("prod-plan"),
+				CreationDate:   timePtr("2026-04-23T00:00:00Z"),
+				VersionId:      awssdk.String("v1"),
+			}},
+			backupPlanDetails: map[string]backup.GetBackupPlanOutput{"plan-123": {
+				BackupPlanArn: awssdk.String(planARN),
+				BackupPlanId:  awssdk.String("plan-123"),
+				BackupPlan: &backuptypes.BackupPlan{
+					BackupPlanName: awssdk.String("prod-plan"),
+					Rules: []backuptypes.BackupRule{{
+						EnableContinuousBackup:  awssdk.Bool(true),
+						Lifecycle:               &backuptypes.Lifecycle{DeleteAfterDays: awssdk.Int64(365), MoveToColdStorageAfterDays: awssdk.Int64(35)},
+						RuleId:                  awssdk.String("rule-1"),
+						RuleName:                awssdk.String("daily"),
+						ScheduleExpression:      awssdk.String("cron(0 5 ? * * *)"),
+						TargetBackupVaultName:   awssdk.String("prod-vault"),
+						StartWindowMinutes:      awssdk.Int64(60),
+						CompletionWindowMinutes: awssdk.Int64(180),
+					}},
+				},
+			}},
+			backupPlanTags: map[string]map[string]string{planARN: {"Team": "platform"}},
+			backupProtectedResources: []backuptypes.ProtectedResource{{
+				LastBackupTime:       timePtr("2026-04-24T00:00:00Z"),
+				LastBackupVaultArn:   awssdk.String(vaultARN),
+				LastRecoveryPointArn: awssdk.String(recoveryPointARN),
+				ResourceArn:          awssdk.String(resourceARN),
+				ResourceName:         awssdk.String("orders-db"),
+				ResourceType:         awssdk.String("RDS"),
+			}},
+			backupRecoveryPoints: map[string][]backuptypes.RecoveryPointByBackupVault{"prod-vault": {{
+				BackupVaultArn:   awssdk.String(vaultARN),
+				BackupVaultName:  awssdk.String("prod-vault"),
+				CreationDate:     timePtr("2026-04-24T00:00:00Z"),
+				EncryptionKeyArn: awssdk.String(kmsARN),
+				CreatedBy: &backuptypes.RecoveryPointCreator{
+					BackupPlanArn: awssdk.String(planARN),
+					BackupPlanId:  awssdk.String("plan-123"),
+					BackupRuleId:  awssdk.String("rule-1"),
+				},
+				IamRoleArn:       awssdk.String("arn:aws:iam::123456789012:role/AWSBackupRole"),
+				IsEncrypted:      true,
+				Lifecycle:        &backuptypes.Lifecycle{DeleteAfterDays: awssdk.Int64(365), MoveToColdStorageAfterDays: awssdk.Int64(35)},
+				RecoveryPointArn: awssdk.String(recoveryPointARN),
+				ResourceArn:      awssdk.String(resourceARN),
+				ResourceName:     awssdk.String("orders-db"),
+				ResourceType:     awssdk.String("RDS"),
+				Status:           backuptypes.RecoveryPointStatusCompleted,
+			}}},
+		},
+	}})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyBackupVault, kind: "aws.backup_vault", attr: "encryption_key_arn", want: kmsARN},
+		{family: familyBackupPlan, kind: "aws.backup_plan", attr: "retention_days", want: "365"},
+		{family: familyBackupProtected, kind: "aws.backup_protected_resource", attr: "last_recovery_point_arn", want: recoveryPointARN},
+		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point", attr: "backup_plan_id", want: "plan-123"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("kind = %q, want %q", got, tt.kind)
@@ -1113,8 +1346,10 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 		awsRuntimeClients: awsRuntimeClients{
 			sns: fakeSNS{fake: &fakeAWS{
 				fakeAWSData: fakeAWSData{
-					snsTopics:     topics,
-					snsAttributes: attributes,
+					fakeAWSCoreData: fakeAWSCoreData{
+						snsTopics:     topics,
+						snsAttributes: attributes,
+					},
 				},
 			}},
 		},
@@ -1168,18 +1403,22 @@ func TestS3BucketPublicTreatsMissingPublicAccessBlockAsExposed(t *testing.T) {
 
 func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 	base := fakeAWS{fakeAWSData: fakeAWSData{
-		s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
-		s3BucketRegions: map[string]s3types.BucketLocationConstraint{
-			"legacy-eu": s3types.BucketLocationConstraint("EU"),
+		fakeAWSCoreData: fakeAWSCoreData{
+			s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
+			s3BucketRegions: map[string]s3types.BucketLocationConstraint{
+				"legacy-eu": s3types.BucketLocationConstraint("EU"),
+			},
 		},
 	}}
 	regional := fakeAWS{fakeAWSData: fakeAWSData{
-		s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
-		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
-			ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
-		}}}},
-		s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
-		s3Logging:    map[string]bool{"legacy-eu": true},
+		fakeAWSCoreData: fakeAWSCoreData{
+			s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
+			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
+				ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
+			}}}},
+			s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
+			s3Logging:    map[string]bool{"legacy-eu": true},
+		},
 	}}
 	records, _, err := listS3Buckets(context.Background(), awsClients{
 		awsPlatformClients: awsPlatformClients{
@@ -1792,6 +2031,36 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.snsTags = map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		s3APARN := "arn:aws:s3:us-east-1:123456789012:accesspoint/prod-data-ap"
+		mrapARN := "arn:aws:s3::123456789012:accesspoint/prod-global"
+		fake.s3AccessPoints = []s3controltypes.AccessPoint{{AccessPointArn: awssdk.String(s3APARN), Bucket: awssdk.String("prod-data"), Name: awssdk.String("prod-data-ap"), NetworkOrigin: s3controltypes.NetworkOriginVpc}}
+		fake.s3AccessPointDetails = map[string]*s3control.GetAccessPointOutput{"prod-data-ap": {AccessPointArn: awssdk.String(s3APARN), Bucket: awssdk.String("prod-data"), Name: awssdk.String("prod-data-ap"), NetworkOrigin: s3controltypes.NetworkOriginVpc}}
+		fake.s3ControlTags = map[string][]s3controltypes.Tag{s3APARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}, mrapARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
+		fake.s3AccessPointPublic = map[string]bool{"prod-data-ap": false}
+		fake.s3MultiRegionAccessPoints = []s3controltypes.MultiRegionAccessPointReport{{Name: awssdk.String("prod-global"), Status: s3controltypes.MultiRegionAccessPointStatusReady}}
+		fake.s3MultiRegionAccessPointPublic = map[string]bool{"prod-global": false}
+		fake.ebsVolumes = []ec2types.Volume{{VolumeId: awssdk.String("vol-123"), State: ec2types.VolumeStateAvailable}}
+		fake.ebsSnapshots = []ec2types.Snapshot{{SnapshotId: awssdk.String("snap-123"), State: ec2types.SnapshotStateCompleted}}
+		fake.ebsSnapshotPublic = map[string]bool{"snap-123": false}
+		taskARN := "arn:aws:datasync:us-east-1:123456789012:task/task-123"
+		locationARN := "arn:aws:datasync:us-east-1:123456789012:location/loc-src"
+		fake.datasyncTasks = []datasynctypes.TaskListEntry{{TaskArn: awssdk.String(taskARN), Name: awssdk.String("copy-prod-data"), Status: datasynctypes.TaskStatusAvailable}}
+		fake.datasyncTaskDetails = map[string]*datasync.DescribeTaskOutput{taskARN: {TaskArn: awssdk.String(taskARN), Name: awssdk.String("copy-prod-data"), Status: datasynctypes.TaskStatusAvailable}}
+		fake.datasyncLocations = []datasynctypes.LocationListEntry{{LocationArn: awssdk.String(locationARN), LocationUri: awssdk.String("s3://prod-data/export")}}
+		fake.datasyncLocationS3 = map[string]*datasync.DescribeLocationS3Output{locationARN: {LocationArn: awssdk.String(locationARN), LocationUri: awssdk.String("s3://prod-data/export")}}
+		fake.datasyncTags = map[string][]datasynctypes.TagListEntry{taskARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}, locationARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}}
+	}
+	backupData := func(fake *recordingAWS) {
+		vaultARN := "arn:aws:backup:us-east-1:123456789012:backup-vault:prod-vault"
+		planARN := "arn:aws:backup:us-east-1:123456789012:backup-plan:plan-123"
+		resourceARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
+		fake.backupVaults = []backuptypes.BackupVaultListMember{{BackupVaultArn: awssdk.String(vaultARN), BackupVaultName: awssdk.String("prod-vault")}}
+		fake.backupVaultTags = map[string]map[string]string{vaultARN: {"Owner": "backup@writer.com"}}
+		fake.backupPlans = []backuptypes.BackupPlansListMember{{BackupPlanArn: awssdk.String(planARN), BackupPlanId: awssdk.String("plan-123"), BackupPlanName: awssdk.String("prod-plan")}}
+		fake.backupPlanDetails = map[string]backup.GetBackupPlanOutput{"plan-123": {BackupPlanArn: awssdk.String(planARN), BackupPlanId: awssdk.String("plan-123"), BackupPlan: &backuptypes.BackupPlan{BackupPlanName: awssdk.String("prod-plan"), Rules: []backuptypes.BackupRule{{TargetBackupVaultName: awssdk.String("prod-vault"), Lifecycle: &backuptypes.Lifecycle{DeleteAfterDays: awssdk.Int64(35)}}}}}}
+		fake.backupPlanTags = map[string]map[string]string{planARN: {"Team": "platform"}}
+		fake.backupProtectedResources = []backuptypes.ProtectedResource{{ResourceArn: awssdk.String(resourceARN), ResourceName: awssdk.String("orders-db"), ResourceType: awssdk.String("RDS")}}
+		fake.backupRecoveryPoints = map[string][]backuptypes.RecoveryPointByBackupVault{"prod-vault": {{RecoveryPointArn: awssdk.String("arn:aws:backup:us-east-1:123456789012:recovery-point:rp-123"), BackupVaultArn: awssdk.String(vaultARN), BackupVaultName: awssdk.String("prod-vault"), ResourceArn: awssdk.String(resourceARN), ResourceType: awssdk.String("RDS")}}}
 	}
 	governanceData := func(fake *recordingAWS) {
 		instanceARN := "arn:aws:sso:::instance/ssoins-1234567890abcdef"
@@ -1824,6 +2093,26 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"tagging:GetResources"},
 		},
 		{
+			family:  familyBackupVault,
+			seed:    backupData,
+			wantAPI: []string{"backup:ListBackupVaults", "backup:ListTags"},
+		},
+		{
+			family:  familyBackupPlan,
+			seed:    backupData,
+			wantAPI: []string{"backup:GetBackupPlan", "backup:ListBackupPlans", "backup:ListTags"},
+		},
+		{
+			family:  familyBackupProtected,
+			seed:    backupData,
+			wantAPI: []string{"backup:ListProtectedResources"},
+		},
+		{
+			family:  familyBackupRecoveryPoint,
+			seed:    backupData,
+			wantAPI: []string{"backup:ListBackupVaults", "backup:ListRecoveryPointsByBackupVault"},
+		},
+		{
 			family:  familyEC2Instance,
 			seed:    computeData,
 			wantAPI: []string{"ec2:DescribeInstances", "iam:GetInstanceProfile"},
@@ -1832,6 +2121,26 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyS3Bucket,
 			seed:    cloudAssetData,
 			wantAPI: []string{"s3:GetBucketEncryption", "s3:GetBucketLocation", "s3:GetBucketLogging", "s3:GetBucketTagging", "s3:GetBucketVersioning", "s3:GetPublicAccessBlock", "s3:ListBuckets"},
+		},
+		{
+			family:  familyS3AccessPoint,
+			seed:    cloudAssetData,
+			wantAPI: []string{"s3control:GetAccessPoint", "s3control:GetAccessPointPolicyStatus", "s3control:ListAccessPoints", "s3control:ListTagsForResource"},
+		},
+		{
+			family:  familyS3MultiRegionAccessPoint,
+			seed:    cloudAssetData,
+			wantAPI: []string{"s3control:GetMultiRegionAccessPoint", "s3control:GetMultiRegionAccessPointPolicyStatus", "s3control:ListMultiRegionAccessPoints", "s3control:ListTagsForResource"},
+		},
+		{
+			family:  familyEBSVolume,
+			seed:    cloudAssetData,
+			wantAPI: []string{"ec2:DescribeVolumes"},
+		},
+		{
+			family:  familyEBSSnapshot,
+			seed:    cloudAssetData,
+			wantAPI: []string{"ec2:DescribeSnapshotAttribute", "ec2:DescribeSnapshots"},
 		},
 		{
 			family:  familyRDSInstance,
@@ -1862,6 +2171,16 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECRRepository,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
+		},
+		{
+			family:  familyDataSyncTask,
+			seed:    cloudAssetData,
+			wantAPI: []string{"datasync:DescribeTask", "datasync:ListTagsForResource", "datasync:ListTasks"},
+		},
+		{
+			family:  familyDataSyncLocation,
+			seed:    cloudAssetData,
+			wantAPI: []string{"datasync:DescribeLocationS3", "datasync:ListLocations", "datasync:ListTagsForResource"},
 		},
 		{
 			family:  familyOrganizationsAcct,
@@ -2272,6 +2591,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				kinesis: fakeKinesis{fake: &fake}, firehose: fakeFirehose{fake: &fake}, kafka: fakeKafka{fake: &fake}, glue: fakeGlue{fake: &fake}, athena: fakeAthena{fake: &fake}, lake: fakeLakeFormation{fake: &fake},
 			},
 			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: fakeIdentityStore{fake: &fake}},
+			awsStorageClients:    awsStorageClients{s3control: fakeS3Control{fake: &fake}, datasync: fakeDataSync{fake: &fake}, backup: fake},
 		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
@@ -2324,6 +2644,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				kinesis: recordingKinesis{fake: fake}, firehose: recordingFirehose{fake: fake}, kafka: recordingKafka{fake: fake}, glue: recordingGlue{fake: fake}, athena: recordingAthena{fake: fake}, lake: recordingLakeFormation{fake: fake},
 			},
 			awsGovernanceClients: awsGovernanceClients{organizations: fake, sso: fake, identityStore: recordingIdentityStore{fake: fake}},
+			awsStorageClients:    awsStorageClients{s3control: recordingS3Control{fake: fake}, datasync: recordingDataSync{fake: fake}, backup: fake},
 		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
@@ -2411,7 +2732,14 @@ type fakeAWSNetwork struct {
 	apiV2APIs         []apigatewayv2types.Api
 }
 
+// cerebro:lint:allow maxfields AWS fixture aggregates service-specific fake responses.
 type fakeAWSData struct {
+	fakeAWSCoreData
+	fakeAWSBackupData
+	fakeAWSStorageAccessData
+}
+
+type fakeAWSCoreData struct {
 	s3Buckets            []s3types.Bucket
 	s3BucketRegions      map[string]s3types.BucketLocationConstraint
 	s3Tags               map[string][]s3types.Tag
@@ -2433,6 +2761,33 @@ type fakeAWSData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
+}
+
+type fakeAWSBackupData struct {
+	backupVaults             []backuptypes.BackupVaultListMember
+	backupVaultTags          map[string]map[string]string
+	backupPlans              []backuptypes.BackupPlansListMember
+	backupPlanDetails        map[string]backup.GetBackupPlanOutput
+	backupPlanTags           map[string]map[string]string
+	backupProtectedResources []backuptypes.ProtectedResource
+	backupRecoveryPoints     map[string][]backuptypes.RecoveryPointByBackupVault
+}
+
+type fakeAWSStorageAccessData struct {
+	s3AccessPoints                 []s3controltypes.AccessPoint
+	s3AccessPointDetails           map[string]*s3control.GetAccessPointOutput
+	s3AccessPointPublic            map[string]bool
+	s3ControlTags                  map[string][]s3controltypes.Tag
+	s3MultiRegionAccessPoints      []s3controltypes.MultiRegionAccessPointReport
+	s3MultiRegionAccessPointPublic map[string]bool
+	ebsVolumes                     []ec2types.Volume
+	ebsSnapshots                   []ec2types.Snapshot
+	ebsSnapshotPublic              map[string]bool
+	datasyncTasks                  []datasynctypes.TaskListEntry
+	datasyncTaskDetails            map[string]*datasync.DescribeTaskOutput
+	datasyncLocations              []datasynctypes.LocationListEntry
+	datasyncLocationS3             map[string]*datasync.DescribeLocationS3Output
+	datasyncTags                   map[string][]datasynctypes.TagListEntry
 }
 
 type fakeAWSRuntime struct {
@@ -2699,6 +3054,21 @@ func (f *recordingAWS) DescribeNetworkInterfaces(ctx context.Context, input *ec2
 	return f.fakeAWS.DescribeNetworkInterfaces(ctx, input, options...)
 }
 
+func (f *recordingAWS) DescribeVolumes(ctx context.Context, input *ec2.DescribeVolumesInput, options ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error) {
+	f.record("ec2:DescribeVolumes")
+	return f.fakeAWS.DescribeVolumes(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeSnapshots(ctx context.Context, input *ec2.DescribeSnapshotsInput, options ...func(*ec2.Options)) (*ec2.DescribeSnapshotsOutput, error) {
+	f.record("ec2:DescribeSnapshots")
+	return f.fakeAWS.DescribeSnapshots(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeSnapshotAttribute(ctx context.Context, input *ec2.DescribeSnapshotAttributeInput, options ...func(*ec2.Options)) (*ec2.DescribeSnapshotAttributeOutput, error) {
+	f.record("ec2:DescribeSnapshotAttribute")
+	return f.fakeAWS.DescribeSnapshotAttribute(ctx, input, options...)
+}
+
 func (f *recordingAWS) ListFunctions(ctx context.Context, input *lambda.ListFunctionsInput, options ...func(*lambda.Options)) (*lambda.ListFunctionsOutput, error) {
 	f.record("lambda:ListFunctions")
 	return f.fakeAWS.ListFunctions(ctx, input, options...)
@@ -2854,6 +3224,36 @@ func (f *recordingAWS) ListQueueTags(ctx context.Context, input *sqs.ListQueueTa
 	return f.fakeAWS.ListQueueTags(ctx, input, options...)
 }
 
+func (f *recordingAWS) ListBackupVaults(ctx context.Context, input *backup.ListBackupVaultsInput, options ...func(*backup.Options)) (*backup.ListBackupVaultsOutput, error) {
+	f.record("backup:ListBackupVaults")
+	return f.fakeAWS.ListBackupVaults(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListBackupPlans(ctx context.Context, input *backup.ListBackupPlansInput, options ...func(*backup.Options)) (*backup.ListBackupPlansOutput, error) {
+	f.record("backup:ListBackupPlans")
+	return f.fakeAWS.ListBackupPlans(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetBackupPlan(ctx context.Context, input *backup.GetBackupPlanInput, options ...func(*backup.Options)) (*backup.GetBackupPlanOutput, error) {
+	f.record("backup:GetBackupPlan")
+	return f.fakeAWS.GetBackupPlan(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListProtectedResources(ctx context.Context, input *backup.ListProtectedResourcesInput, options ...func(*backup.Options)) (*backup.ListProtectedResourcesOutput, error) {
+	f.record("backup:ListProtectedResources")
+	return f.fakeAWS.ListProtectedResources(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListRecoveryPointsByBackupVault(ctx context.Context, input *backup.ListRecoveryPointsByBackupVaultInput, options ...func(*backup.Options)) (*backup.ListRecoveryPointsByBackupVaultOutput, error) {
+	f.record("backup:ListRecoveryPointsByBackupVault")
+	return f.fakeAWS.ListRecoveryPointsByBackupVault(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTags(ctx context.Context, input *backup.ListTagsInput, options ...func(*backup.Options)) (*backup.ListTagsOutput, error) {
+	f.record("backup:ListTags")
+	return f.fakeAWS.ListTags(ctx, input, options...)
+}
+
 type recordingAPIGatewayV2 struct {
 	fake *recordingAWS
 }
@@ -2866,6 +3266,246 @@ func (f recordingAPIGatewayV2) GetApis(ctx context.Context, input *apigatewayv2.
 func (f recordingAPIGatewayV2) GetDomainNames(ctx context.Context, input *apigatewayv2.GetDomainNamesInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
 	f.fake.record("apigatewayv2:GetDomainNames")
 	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetDomainNames(ctx, input, options...)
+}
+
+type fakeS3Control struct {
+	fake *fakeAWS
+}
+
+type recordingS3Control struct {
+	fake *recordingAWS
+}
+
+func (f recordingS3Control) ListAccessPoints(ctx context.Context, input *s3control.ListAccessPointsInput, options ...func(*s3control.Options)) (*s3control.ListAccessPointsOutput, error) {
+	f.fake.record("s3control:ListAccessPoints")
+	return fakeS3Control{fake: &f.fake.fakeAWS}.ListAccessPoints(ctx, input, options...)
+}
+
+func (f recordingS3Control) GetAccessPoint(ctx context.Context, input *s3control.GetAccessPointInput, options ...func(*s3control.Options)) (*s3control.GetAccessPointOutput, error) {
+	f.fake.record("s3control:GetAccessPoint")
+	return fakeS3Control{fake: &f.fake.fakeAWS}.GetAccessPoint(ctx, input, options...)
+}
+
+func (f recordingS3Control) GetAccessPointPolicyStatus(ctx context.Context, input *s3control.GetAccessPointPolicyStatusInput, options ...func(*s3control.Options)) (*s3control.GetAccessPointPolicyStatusOutput, error) {
+	f.fake.record("s3control:GetAccessPointPolicyStatus")
+	return fakeS3Control{fake: &f.fake.fakeAWS}.GetAccessPointPolicyStatus(ctx, input, options...)
+}
+
+func (f recordingS3Control) ListMultiRegionAccessPoints(ctx context.Context, input *s3control.ListMultiRegionAccessPointsInput, options ...func(*s3control.Options)) (*s3control.ListMultiRegionAccessPointsOutput, error) {
+	f.fake.record("s3control:ListMultiRegionAccessPoints")
+	return fakeS3Control{fake: &f.fake.fakeAWS}.ListMultiRegionAccessPoints(ctx, input, options...)
+}
+
+func (f recordingS3Control) GetMultiRegionAccessPoint(ctx context.Context, input *s3control.GetMultiRegionAccessPointInput, options ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointOutput, error) {
+	f.fake.record("s3control:GetMultiRegionAccessPoint")
+	return fakeS3Control{fake: &f.fake.fakeAWS}.GetMultiRegionAccessPoint(ctx, input, options...)
+}
+
+func (f recordingS3Control) GetMultiRegionAccessPointPolicyStatus(ctx context.Context, input *s3control.GetMultiRegionAccessPointPolicyStatusInput, options ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointPolicyStatusOutput, error) {
+	f.fake.record("s3control:GetMultiRegionAccessPointPolicyStatus")
+	return fakeS3Control{fake: &f.fake.fakeAWS}.GetMultiRegionAccessPointPolicyStatus(ctx, input, options...)
+}
+
+func (f recordingS3Control) ListTagsForResource(ctx context.Context, input *s3control.ListTagsForResourceInput, options ...func(*s3control.Options)) (*s3control.ListTagsForResourceOutput, error) {
+	f.fake.record("s3control:ListTagsForResource")
+	return fakeS3Control{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeS3Control) ListAccessPoints(_ context.Context, input *s3control.ListAccessPointsInput, _ ...func(*s3control.Options)) (*s3control.ListAccessPointsOutput, error) {
+	records, next := paginateS3AccessPoints(f.fake.s3AccessPoints, awssdk.ToString(input.NextToken), int(input.MaxResults))
+	return &s3control.ListAccessPointsOutput{AccessPointList: records, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeS3Control) GetAccessPoint(_ context.Context, input *s3control.GetAccessPointInput, _ ...func(*s3control.Options)) (*s3control.GetAccessPointOutput, error) {
+	if f.fake.s3AccessPointDetails != nil {
+		if detail := f.fake.s3AccessPointDetails[awssdk.ToString(input.Name)]; detail != nil {
+			return detail, nil
+		}
+	}
+	return &s3control.GetAccessPointOutput{Name: input.Name}, nil
+}
+
+func (f fakeS3Control) GetAccessPointPolicyStatus(_ context.Context, input *s3control.GetAccessPointPolicyStatusInput, _ ...func(*s3control.Options)) (*s3control.GetAccessPointPolicyStatusOutput, error) {
+	return &s3control.GetAccessPointPolicyStatusOutput{PolicyStatus: &s3controltypes.PolicyStatus{IsPublic: f.fake.s3AccessPointPublic[awssdk.ToString(input.Name)]}}, nil
+}
+
+func (f fakeS3Control) ListMultiRegionAccessPoints(_ context.Context, input *s3control.ListMultiRegionAccessPointsInput, _ ...func(*s3control.Options)) (*s3control.ListMultiRegionAccessPointsOutput, error) {
+	records, next := paginateS3MultiRegionAccessPoints(f.fake.s3MultiRegionAccessPoints, awssdk.ToString(input.NextToken), int(input.MaxResults))
+	return &s3control.ListMultiRegionAccessPointsOutput{AccessPoints: records, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeS3Control) GetMultiRegionAccessPoint(_ context.Context, input *s3control.GetMultiRegionAccessPointInput, _ ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, report := range f.fake.s3MultiRegionAccessPoints {
+		if awssdk.ToString(report.Name) == name {
+			copy := report
+			return &s3control.GetMultiRegionAccessPointOutput{AccessPoint: &copy}, nil
+		}
+	}
+	return &s3control.GetMultiRegionAccessPointOutput{}, nil
+}
+
+func (f fakeS3Control) GetMultiRegionAccessPointPolicyStatus(_ context.Context, input *s3control.GetMultiRegionAccessPointPolicyStatusInput, _ ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointPolicyStatusOutput, error) {
+	return &s3control.GetMultiRegionAccessPointPolicyStatusOutput{Established: &s3controltypes.PolicyStatus{IsPublic: f.fake.s3MultiRegionAccessPointPublic[awssdk.ToString(input.Name)]}}, nil
+}
+
+func (f fakeS3Control) ListTagsForResource(_ context.Context, input *s3control.ListTagsForResourceInput, _ ...func(*s3control.Options)) (*s3control.ListTagsForResourceOutput, error) {
+	return &s3control.ListTagsForResourceOutput{Tags: f.fake.s3ControlTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeDataSync struct {
+	fake *fakeAWS
+}
+
+type recordingDataSync struct {
+	fake *recordingAWS
+}
+
+func (f recordingDataSync) ListTasks(ctx context.Context, input *datasync.ListTasksInput, options ...func(*datasync.Options)) (*datasync.ListTasksOutput, error) {
+	f.fake.record("datasync:ListTasks")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.ListTasks(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeTask(ctx context.Context, input *datasync.DescribeTaskInput, options ...func(*datasync.Options)) (*datasync.DescribeTaskOutput, error) {
+	f.fake.record("datasync:DescribeTask")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeTask(ctx, input, options...)
+}
+
+func (f recordingDataSync) ListLocations(ctx context.Context, input *datasync.ListLocationsInput, options ...func(*datasync.Options)) (*datasync.ListLocationsOutput, error) {
+	f.fake.record("datasync:ListLocations")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.ListLocations(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationS3(ctx context.Context, input *datasync.DescribeLocationS3Input, options ...func(*datasync.Options)) (*datasync.DescribeLocationS3Output, error) {
+	f.fake.record("datasync:DescribeLocationS3")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationS3(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationEfs(ctx context.Context, input *datasync.DescribeLocationEfsInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationEfsOutput, error) {
+	f.fake.record("datasync:DescribeLocationEfs")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationEfs(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationFsxLustre(ctx context.Context, input *datasync.DescribeLocationFsxLustreInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationFsxLustreOutput, error) {
+	f.fake.record("datasync:DescribeLocationFsxLustre")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationFsxLustre(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationFsxOntap(ctx context.Context, input *datasync.DescribeLocationFsxOntapInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOntapOutput, error) {
+	f.fake.record("datasync:DescribeLocationFsxOntap")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationFsxOntap(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationFsxOpenZfs(ctx context.Context, input *datasync.DescribeLocationFsxOpenZfsInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOpenZfsOutput, error) {
+	f.fake.record("datasync:DescribeLocationFsxOpenZfs")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationFsxOpenZfs(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationFsxWindows(ctx context.Context, input *datasync.DescribeLocationFsxWindowsInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationFsxWindowsOutput, error) {
+	f.fake.record("datasync:DescribeLocationFsxWindows")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationFsxWindows(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationNfs(ctx context.Context, input *datasync.DescribeLocationNfsInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationNfsOutput, error) {
+	f.fake.record("datasync:DescribeLocationNfs")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationNfs(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationSmb(ctx context.Context, input *datasync.DescribeLocationSmbInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationSmbOutput, error) {
+	f.fake.record("datasync:DescribeLocationSmb")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationSmb(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationObjectStorage(ctx context.Context, input *datasync.DescribeLocationObjectStorageInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationObjectStorageOutput, error) {
+	f.fake.record("datasync:DescribeLocationObjectStorage")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationObjectStorage(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationHdfs(ctx context.Context, input *datasync.DescribeLocationHdfsInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationHdfsOutput, error) {
+	f.fake.record("datasync:DescribeLocationHdfs")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationHdfs(ctx, input, options...)
+}
+
+func (f recordingDataSync) DescribeLocationAzureBlob(ctx context.Context, input *datasync.DescribeLocationAzureBlobInput, options ...func(*datasync.Options)) (*datasync.DescribeLocationAzureBlobOutput, error) {
+	f.fake.record("datasync:DescribeLocationAzureBlob")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.DescribeLocationAzureBlob(ctx, input, options...)
+}
+
+func (f recordingDataSync) ListTagsForResource(ctx context.Context, input *datasync.ListTagsForResourceInput, options ...func(*datasync.Options)) (*datasync.ListTagsForResourceOutput, error) {
+	f.fake.record("datasync:ListTagsForResource")
+	return fakeDataSync{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeDataSync) ListTasks(_ context.Context, input *datasync.ListTasksInput, _ ...func(*datasync.Options)) (*datasync.ListTasksOutput, error) {
+	records, next := paginateDataSyncTasks(f.fake.datasyncTasks, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &datasync.ListTasksOutput{Tasks: records, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeDataSync) DescribeTask(_ context.Context, input *datasync.DescribeTaskInput, _ ...func(*datasync.Options)) (*datasync.DescribeTaskOutput, error) {
+	if f.fake.datasyncTaskDetails != nil {
+		if task := f.fake.datasyncTaskDetails[awssdk.ToString(input.TaskArn)]; task != nil {
+			return task, nil
+		}
+	}
+	return &datasync.DescribeTaskOutput{TaskArn: input.TaskArn}, nil
+}
+
+func (f fakeDataSync) ListLocations(_ context.Context, input *datasync.ListLocationsInput, _ ...func(*datasync.Options)) (*datasync.ListLocationsOutput, error) {
+	records, next := paginateDataSyncLocations(f.fake.datasyncLocations, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &datasync.ListLocationsOutput{Locations: records, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeDataSync) DescribeLocationS3(_ context.Context, input *datasync.DescribeLocationS3Input, _ ...func(*datasync.Options)) (*datasync.DescribeLocationS3Output, error) {
+	if f.fake.datasyncLocationS3 != nil {
+		if location := f.fake.datasyncLocationS3[awssdk.ToString(input.LocationArn)]; location != nil {
+			return location, nil
+		}
+	}
+	return &datasync.DescribeLocationS3Output{LocationArn: input.LocationArn}, nil
+}
+
+func (f fakeDataSync) ListTagsForResource(_ context.Context, input *datasync.ListTagsForResourceInput, _ ...func(*datasync.Options)) (*datasync.ListTagsForResourceOutput, error) {
+	return &datasync.ListTagsForResourceOutput{Tags: f.fake.datasyncTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+func (f fakeDataSync) DescribeLocationEfs(context.Context, *datasync.DescribeLocationEfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationEfsOutput, error) {
+	return &datasync.DescribeLocationEfsOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationFsxLustre(context.Context, *datasync.DescribeLocationFsxLustreInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxLustreOutput, error) {
+	return &datasync.DescribeLocationFsxLustreOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationFsxOntap(context.Context, *datasync.DescribeLocationFsxOntapInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOntapOutput, error) {
+	return &datasync.DescribeLocationFsxOntapOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationFsxOpenZfs(context.Context, *datasync.DescribeLocationFsxOpenZfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOpenZfsOutput, error) {
+	return &datasync.DescribeLocationFsxOpenZfsOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationFsxWindows(context.Context, *datasync.DescribeLocationFsxWindowsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxWindowsOutput, error) {
+	return &datasync.DescribeLocationFsxWindowsOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationNfs(context.Context, *datasync.DescribeLocationNfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationNfsOutput, error) {
+	return &datasync.DescribeLocationNfsOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationSmb(context.Context, *datasync.DescribeLocationSmbInput, ...func(*datasync.Options)) (*datasync.DescribeLocationSmbOutput, error) {
+	return &datasync.DescribeLocationSmbOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationObjectStorage(context.Context, *datasync.DescribeLocationObjectStorageInput, ...func(*datasync.Options)) (*datasync.DescribeLocationObjectStorageOutput, error) {
+	return &datasync.DescribeLocationObjectStorageOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationHdfs(context.Context, *datasync.DescribeLocationHdfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationHdfsOutput, error) {
+	return &datasync.DescribeLocationHdfsOutput{}, nil
+}
+
+func (f fakeDataSync) DescribeLocationAzureBlob(context.Context, *datasync.DescribeLocationAzureBlobInput, ...func(*datasync.Options)) (*datasync.DescribeLocationAzureBlobOutput, error) {
+	return &datasync.DescribeLocationAzureBlobOutput{}, nil
 }
 
 type fakeSNS struct {
@@ -3762,6 +4402,96 @@ func paginateLambdaFunctions(values []lambdatypes.FunctionConfiguration, marker 
 	return values[start : start+limit], next
 }
 
+func paginateEBSVolumes(values []ec2types.Volume, marker string, limit int) ([]ec2types.Volume, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateEBSSnapshots(values []ec2types.Snapshot, marker string, limit int) ([]ec2types.Snapshot, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateS3AccessPoints(values []s3controltypes.AccessPoint, marker string, limit int) ([]s3controltypes.AccessPoint, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateS3MultiRegionAccessPoints(values []s3controltypes.MultiRegionAccessPointReport, marker string, limit int) ([]s3controltypes.MultiRegionAccessPointReport, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateDataSyncTasks(values []datasynctypes.TaskListEntry, marker string, limit int) ([]datasynctypes.TaskListEntry, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateDataSyncLocations(values []datasynctypes.LocationListEntry, marker string, limit int) ([]datasynctypes.LocationListEntry, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
 func paginateResourceTags(values []resourcegroupstaggingapitypes.ResourceTagMapping, marker string, limit int) ([]resourcegroupstaggingapitypes.ResourceTagMapping, string) {
 	start := 0
 	if marker != "" {
@@ -3799,6 +4529,24 @@ func (f fakeAWS) DescribeAddresses(context.Context, *ec2.DescribeAddressesInput,
 
 func (f fakeAWS) DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
 	return &ec2.DescribeNetworkInterfacesOutput{NetworkInterfaces: f.networkInterfaces}, nil
+}
+
+func (f fakeAWS) DescribeVolumes(_ context.Context, input *ec2.DescribeVolumesInput, _ ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error) {
+	volumes, next := paginateEBSVolumes(f.ebsVolumes, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &ec2.DescribeVolumesOutput{Volumes: volumes, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeAWS) DescribeSnapshots(_ context.Context, input *ec2.DescribeSnapshotsInput, _ ...func(*ec2.Options)) (*ec2.DescribeSnapshotsOutput, error) {
+	snapshots, next := paginateEBSSnapshots(f.ebsSnapshots, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &ec2.DescribeSnapshotsOutput{Snapshots: snapshots, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeAWS) DescribeSnapshotAttribute(_ context.Context, input *ec2.DescribeSnapshotAttributeInput, _ ...func(*ec2.Options)) (*ec2.DescribeSnapshotAttributeOutput, error) {
+	var permissions []ec2types.CreateVolumePermission
+	if f.ebsSnapshotPublic[awssdk.ToString(input.SnapshotId)] {
+		permissions = append(permissions, ec2types.CreateVolumePermission{Group: ec2types.PermissionGroupAll})
+	}
+	return &ec2.DescribeSnapshotAttributeOutput{SnapshotId: input.SnapshotId, CreateVolumePermissions: permissions}, nil
 }
 
 func (f fakeAWS) ListFunctions(_ context.Context, input *lambda.ListFunctionsInput, _ ...func(*lambda.Options)) (*lambda.ListFunctionsOutput, error) {
@@ -3979,6 +4727,38 @@ func (f fakeAWS) GetQueueAttributes(_ context.Context, input *sqs.GetQueueAttrib
 
 func (f fakeAWS) ListQueueTags(_ context.Context, input *sqs.ListQueueTagsInput, _ ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
 	return &sqs.ListQueueTagsOutput{Tags: f.sqsTags[awssdk.ToString(input.QueueUrl)]}, nil
+}
+
+func (f fakeAWS) ListBackupVaults(context.Context, *backup.ListBackupVaultsInput, ...func(*backup.Options)) (*backup.ListBackupVaultsOutput, error) {
+	return &backup.ListBackupVaultsOutput{BackupVaultList: f.backupVaults}, nil
+}
+
+func (f fakeAWS) ListBackupPlans(context.Context, *backup.ListBackupPlansInput, ...func(*backup.Options)) (*backup.ListBackupPlansOutput, error) {
+	return &backup.ListBackupPlansOutput{BackupPlansList: f.backupPlans}, nil
+}
+
+func (f fakeAWS) GetBackupPlan(_ context.Context, input *backup.GetBackupPlanInput, _ ...func(*backup.Options)) (*backup.GetBackupPlanOutput, error) {
+	if f.backupPlanDetails != nil {
+		details := f.backupPlanDetails[awssdk.ToString(input.BackupPlanId)]
+		return &details, nil
+	}
+	return &backup.GetBackupPlanOutput{BackupPlanId: input.BackupPlanId}, nil
+}
+
+func (f fakeAWS) ListProtectedResources(context.Context, *backup.ListProtectedResourcesInput, ...func(*backup.Options)) (*backup.ListProtectedResourcesOutput, error) {
+	return &backup.ListProtectedResourcesOutput{Results: f.backupProtectedResources}, nil
+}
+
+func (f fakeAWS) ListRecoveryPointsByBackupVault(_ context.Context, input *backup.ListRecoveryPointsByBackupVaultInput, _ ...func(*backup.Options)) (*backup.ListRecoveryPointsByBackupVaultOutput, error) {
+	return &backup.ListRecoveryPointsByBackupVaultOutput{RecoveryPoints: f.backupRecoveryPoints[awssdk.ToString(input.BackupVaultName)]}, nil
+}
+
+func (f fakeAWS) ListTags(_ context.Context, input *backup.ListTagsInput, _ ...func(*backup.Options)) (*backup.ListTagsOutput, error) {
+	arn := awssdk.ToString(input.ResourceArn)
+	if tags := f.backupVaultTags[arn]; tags != nil {
+		return &backup.ListTagsOutput{Tags: tags}, nil
+	}
+	return &backup.ListTagsOutput{Tags: f.backupPlanTags[arn]}, nil
 }
 
 type fakeAPIGatewayV2 struct {
