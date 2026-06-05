@@ -17,9 +17,6 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 )
 
-type identitystoretypesUser = identitystoretypes.User
-type identitystoretypesGroup = identitystoretypes.Group
-
 type identityCenterPermissionSet struct {
 	Instance      ssoadmintypes.InstanceMetadata
 	PermissionSet ssoadmintypes.PermissionSet
@@ -37,10 +34,10 @@ type legacyIdentityStoreGroupMembership struct {
 }
 
 func listIdentityCenterInstances(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]ssoadmintypes.InstanceMetadata, string, error) {
-	if settings.identityCenterInstanceARN != "" && settings.identityStoreID != "" {
+	if settings.identityCenter.instanceARN != "" && settings.identityCenter.storeID != "" {
 		return []ssoadmintypes.InstanceMetadata{{
-			InstanceArn:     awssdk.String(settings.identityCenterInstanceARN),
-			IdentityStoreId: stringPtr(settings.identityStoreID),
+			InstanceArn:     awssdk.String(settings.identityCenter.instanceARN),
+			IdentityStoreId: stringPtr(settings.identityCenter.storeID),
 			OwnerAccountId:  awssdk.String(settings.accountID),
 		}}, "", nil
 	}
@@ -48,13 +45,13 @@ func listIdentityCenterInstances(ctx context.Context, clients awsClients, settin
 	if err != nil {
 		return nil, "", err
 	}
-	if settings.identityCenterInstanceARN != "" {
+	if settings.identityCenter.instanceARN != "" {
 		for _, instance := range out.Instances {
-			if awssdk.ToString(instance.InstanceArn) == settings.identityCenterInstanceARN {
+			if awssdk.ToString(instance.InstanceArn) == settings.identityCenter.instanceARN {
 				return []ssoadmintypes.InstanceMetadata{instance}, "", nil
 			}
 		}
-		return nil, "", fmt.Errorf("identity center instance %q not found", settings.identityCenterInstanceARN)
+		return nil, "", fmt.Errorf("identity center instance %q not found", settings.identityCenter.instanceARN)
 	}
 	return out.Instances, awssdk.ToString(out.NextToken), nil
 }
@@ -91,7 +88,7 @@ func listIdentityCenterPermissionSets(ctx context.Context, clients awsClients, s
 			return nil, "", err
 		}
 		records = append(records, permissionSets...)
-		if settings.identityCenterInstanceARN != "" {
+		if settings.identityCenter.instanceARN != "" {
 			return records, next, nil
 		}
 		if next != "" {
@@ -103,8 +100,8 @@ func listIdentityCenterPermissionSets(ctx context.Context, clients awsClients, s
 
 func listIdentityCenterPermissionSetsForInstance(ctx context.Context, clients awsClients, settings settings, instance ssoadmintypes.InstanceMetadata, cursor string, limit int) ([]identityCenterPermissionSet, string, error) {
 	instanceARN := awssdk.ToString(instance.InstanceArn)
-	if settings.permissionSetARN != "" {
-		permissionSet, err := describeIdentityCenterPermissionSet(ctx, clients, instanceARN, settings.permissionSetARN)
+	if settings.identityCenter.permissionSetARN != "" {
+		permissionSet, err := describeIdentityCenterPermissionSet(ctx, clients, instanceARN, settings.identityCenter.permissionSetARN)
 		if err != nil {
 			return nil, "", err
 		}
@@ -198,7 +195,7 @@ func listIdentityCenterAccountAssignments(ctx context.Context, clients awsClient
 					return nil, "", err
 				}
 				records = append(records, assignmentRecords...)
-				if settings.identityCenterInstanceARN != "" && settings.permissionSetARN != "" && settings.targetAccountID != "" {
+				if settings.identityCenter.instanceARN != "" && settings.identityCenter.permissionSetARN != "" && settings.identityCenter.targetAccountID != "" {
 					return records, next, nil
 				}
 				if next != "" {
@@ -227,8 +224,8 @@ func listIdentityCenterAssignmentsForPermissionSet(ctx context.Context, clients 
 	}
 	instanceARN := awssdk.ToString(instance.InstanceArn)
 	permissionSetARN := awssdk.ToString(permissionSet.PermissionSetArn)
-	accounts := []string{settings.targetAccountID}
-	if settings.targetAccountID == "" {
+	accounts := []string{settings.identityCenter.targetAccountID}
+	if settings.identityCenter.targetAccountID == "" {
 		var err error
 		accounts, err = listAllIdentityCenterProvisionedAccounts(ctx, clients, instanceARN, permissionSetARN, limit)
 		if err != nil {
@@ -279,7 +276,7 @@ func listIdentityCenterAssignmentsForPermissionSet(ctx context.Context, clients 
 				Token:              next,
 			}), nil
 		}
-		if settings.targetAccountID != "" {
+		if settings.identityCenter.targetAccountID != "" {
 			return records, "", nil
 		}
 	}
@@ -309,8 +306,8 @@ func listAllIdentityCenterProvisionedAccounts(ctx context.Context, clients awsCl
 }
 
 func identityStoreID(ctx context.Context, clients awsClients, settings settings) (string, error) {
-	if settings.identityStoreID != "" {
-		return settings.identityStoreID, nil
+	if settings.identityCenter.storeID != "" {
+		return settings.identityCenter.storeID, nil
 	}
 	instances, _, err := listIdentityCenterInstances(ctx, clients, settings, "", 1)
 	if err != nil {
@@ -553,7 +550,7 @@ func legacyIdentityStoreGroupMembershipEvent(settings settings, record legacyIde
 		"family":            familyIdentityStoreLegacyMember,
 		"group_id":          groupID,
 		"group_name":        awssdk.ToString(group.DisplayName),
-		"identity_store_id": firstNonEmpty(awssdk.ToString(membership.IdentityStoreId), awssdk.ToString(group.IdentityStoreId), settings.identityStoreID),
+		"identity_store_id": firstNonEmpty(awssdk.ToString(membership.IdentityStoreId), awssdk.ToString(group.IdentityStoreId), settings.identityCenter.storeID),
 		"member_id":         memberUserID,
 		"member_type":       "user",
 		"member_user_id":    memberUserID,

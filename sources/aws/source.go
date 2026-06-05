@@ -230,13 +230,17 @@ type settings struct {
 	principalType              string
 	principalName              string
 	userName                   string
-	identityStoreID            string
-	identityCenterInstanceARN  string
-	permissionSetARN           string
-	targetAccountID            string
+	identityCenter             identityCenterSettings
 	cloudTrail                 cloudTrailSettings
 	wafv2Scope                 string
 	perPage                    int
+}
+
+type identityCenterSettings struct {
+	storeID          string
+	instanceARN      string
+	permissionSetARN string
+	targetAccountID  string
 }
 
 type cloudTrailSettings struct {
@@ -2094,10 +2098,12 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		principalType:              configValue(cfg, "principal_type"),
 		principalName:              configValue(cfg, "principal_name"),
 		userName:                   configValue(cfg, "user_name"),
-		identityStoreID:            configValue(cfg, "identity_store_id"),
-		identityCenterInstanceARN:  configValue(cfg, "identity_center_instance_arn"),
-		permissionSetARN:           configValue(cfg, "permission_set_arn"),
-		targetAccountID:            configValue(cfg, "target_account_id"),
+		identityCenter: identityCenterSettings{
+			storeID:          configValue(cfg, "identity_store_id"),
+			instanceARN:      configValue(cfg, "identity_center_instance_arn"),
+			permissionSetARN: configValue(cfg, "permission_set_arn"),
+			targetAccountID:  configValue(cfg, "target_account_id"),
+		},
 		cloudTrail: cloudTrailSettings{
 			lookupKey:   configValue(cfg, "lookup_key"),
 			lookupValue: configValue(cfg, "lookup_value"),
