@@ -328,12 +328,21 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+		{family: familyAPIGatewayStage, kind: "aws.api_gateway_stage"},
+		{family: familyAPIGatewayRoute, kind: "aws.api_gateway_route"},
+		{family: familyAPIGatewayIntegrate, kind: "aws.api_gateway_integration"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyCloudFrontOAC, kind: "aws.cloudfront_origin_access_control"},
+		{family: familyCloudFrontKeyGroup, kind: "aws.cloudfront_key_group"},
+		{family: familyCloudFrontPublicKey, kind: "aws.cloudfront_public_key"},
+		{family: familyCloudFrontRHP, kind: "aws.cloudfront_response_headers_policy"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
 		{family: familyECSTask, kind: "aws.ecs_task"},
 		{family: familyECSTaskDefinition, kind: "aws.ecs_task_definition"},
+		{family: familyELBListener, kind: "aws.elb_listener"},
+		{family: familyELBTargetGroup, kind: "aws.elb_target_group"},
 		{family: familyEKSCluster, kind: "aws.eks_cluster"},
 		{family: familyEKSNodegroup, kind: "aws.eks_nodegroup"},
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
@@ -749,6 +758,131 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSNetworkEdgeInventoryEvents(t *testing.T) {
+	loadBalancerARN := "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/orders/abc"
+	listenerARN := "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/orders/abc/def"
+	targetGroupARN := "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/tg"
+	v2APIID := "api-123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSNetwork: fakeAWSNetwork{
+			loadBalancers: []elbv2types.LoadBalancer{{
+				LoadBalancerArn:  awssdk.String(loadBalancerARN),
+				LoadBalancerName: awssdk.String("orders"),
+			}},
+			listeners: []elbv2types.Listener{{
+				ListenerArn:     awssdk.String(listenerARN),
+				LoadBalancerArn: awssdk.String(loadBalancerARN),
+				Port:            awssdk.Int32(443),
+				Protocol:        elbv2types.ProtocolEnum("HTTPS"),
+				DefaultActions: []elbv2types.Action{{
+					Type:           elbv2types.ActionTypeEnum("forward"),
+					TargetGroupArn: awssdk.String(targetGroupARN),
+				}},
+			}},
+			targetGroups: []elbv2types.TargetGroup{{
+				LoadBalancerArns:    []string{loadBalancerARN},
+				Port:                awssdk.Int32(8080),
+				Protocol:            elbv2types.ProtocolEnum("HTTP"),
+				TargetGroupArn:      awssdk.String(targetGroupARN),
+				TargetGroupName:     awssdk.String("orders"),
+				TargetType:          elbv2types.TargetTypeEnum("ip"),
+				VpcId:               awssdk.String("vpc-1"),
+				HealthCheckEnabled:  awssdk.Bool(true),
+				HealthCheckPath:     awssdk.String("/healthz"),
+				HealthCheckPort:     awssdk.String("traffic-port"),
+				HealthCheckProtocol: elbv2types.ProtocolEnum("HTTP"),
+			}},
+			apiV2APIs: []apigatewayv2types.Api{{
+				ApiEndpoint:  awssdk.String("https://api-123.execute-api.us-east-1.amazonaws.com"),
+				ApiId:        awssdk.String(v2APIID),
+				Name:         awssdk.String("orders-http"),
+				ProtocolType: apigatewayv2types.ProtocolType("HTTP"),
+			}},
+			apiV2Stages: map[string][]apigatewayv2types.Stage{v2APIID: {{
+				AutoDeploy: awssdk.Bool(true),
+				StageName:  awssdk.String("$default"),
+			}}},
+			apiV2Routes: map[string][]apigatewayv2types.Route{v2APIID: {{
+				AuthorizationType: apigatewayv2types.AuthorizationType("NONE"),
+				RouteId:           awssdk.String("route-1"),
+				RouteKey:          awssdk.String("GET /orders"),
+				Target:            awssdk.String("integrations/int-1"),
+			}}},
+			apiV2Integrations: map[string][]apigatewayv2types.Integration{v2APIID: {{
+				ConnectionType:    apigatewayv2types.ConnectionType("INTERNET"),
+				IntegrationId:     awssdk.String("int-1"),
+				IntegrationMethod: awssdk.String("POST"),
+				IntegrationType:   apigatewayv2types.IntegrationType("AWS_PROXY"),
+				IntegrationUri:    awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders"),
+			}}},
+			originAccessControls: []cloudfronttypes.OriginAccessControlSummary{{
+				Description:                   awssdk.String("orders bucket OAC"),
+				Id:                            awssdk.String("oac-123"),
+				Name:                          awssdk.String("orders-oac"),
+				OriginAccessControlOriginType: cloudfronttypes.OriginAccessControlOriginTypes("s3"),
+				SigningBehavior:               cloudfronttypes.OriginAccessControlSigningBehaviors("always"),
+				SigningProtocol:               cloudfronttypes.OriginAccessControlSigningProtocols("sigv4"),
+			}},
+			keyGroups: []cloudfronttypes.KeyGroupSummary{{
+				KeyGroup: &cloudfronttypes.KeyGroup{
+					Id: awssdk.String("kg-123"),
+					KeyGroupConfig: &cloudfronttypes.KeyGroupConfig{
+						Name:  awssdk.String("orders-key-group"),
+						Items: []string{"pk-123"},
+					},
+				},
+			}},
+			publicKeys: []cloudfronttypes.PublicKeySummary{{
+				EncodedKey: awssdk.String("public-key-material"),
+				Id:         awssdk.String("pk-123"),
+				Name:       awssdk.String("orders-public-key"),
+			}},
+			responseHeadersPolicies: []cloudfronttypes.ResponseHeadersPolicySummary{{
+				Type: cloudfronttypes.ResponseHeadersPolicyType("custom"),
+				ResponseHeadersPolicy: &cloudfronttypes.ResponseHeadersPolicy{
+					Id: awssdk.String("rhp-123"),
+					ResponseHeadersPolicyConfig: &cloudfronttypes.ResponseHeadersPolicyConfig{
+						Name:                  awssdk.String("orders-security-headers"),
+						SecurityHeadersConfig: &cloudfronttypes.ResponseHeadersPolicySecurityHeadersConfig{},
+					},
+				},
+			}},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyELBListener, kind: "aws.elb_listener", attr: "target_group_arns", want: targetGroupARN},
+		{family: familyELBTargetGroup, kind: "aws.elb_target_group", attr: "vpc_id", want: "vpc-1"},
+		{family: familyAPIGatewayStage, kind: "aws.api_gateway_stage", attr: "stage_name", want: "$default"},
+		{family: familyAPIGatewayRoute, kind: "aws.api_gateway_route", attr: "route_key", want: "GET /orders"},
+		{family: familyAPIGatewayIntegrate, kind: "aws.api_gateway_integration", attr: "integration_uri", want: "arn:aws:lambda:us-east-1:123456789012:function:orders"},
+		{family: familyCloudFrontOAC, kind: "aws.cloudfront_origin_access_control", attr: "signing_behavior", want: "always"},
+		{family: familyCloudFrontKeyGroup, kind: "aws.cloudfront_key_group", attr: "public_key_ids", want: "pk-123"},
+		{family: familyCloudFrontPublicKey, kind: "aws.cloudfront_public_key", attr: "name", want: "orders-public-key"},
+		{family: familyCloudFrontRHP, kind: "aws.cloudfront_response_headers_policy", attr: "has_security_headers_config", want: "true"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -1491,6 +1625,40 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 	}
+	networkEdgeData := func(fake *recordingAWS) {
+		loadBalancerARN := "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/orders/abc"
+		listenerARN := "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/orders/abc/def"
+		targetGroupARN := "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/tg"
+		restAPIID := "rest-123"
+		v2APIID := "api-123"
+		fake.loadBalancers = []elbv2types.LoadBalancer{{LoadBalancerArn: awssdk.String(loadBalancerARN)}}
+		fake.listeners = []elbv2types.Listener{{ListenerArn: awssdk.String(listenerARN), LoadBalancerArn: awssdk.String(loadBalancerARN)}}
+		fake.targetGroups = []elbv2types.TargetGroup{{TargetGroupArn: awssdk.String(targetGroupARN), TargetGroupName: awssdk.String("orders")}}
+		fake.restAPIs = []apigatewaytypes.RestApi{{Id: awssdk.String(restAPIID), Name: awssdk.String("orders-rest")}}
+		fake.apiStages = map[string][]apigatewaytypes.Stage{restAPIID: {{StageName: awssdk.String("prod")}}}
+		fake.apiResources = map[string][]apigatewaytypes.Resource{
+			restAPIID: {{
+				Id:   awssdk.String("resource-1"),
+				Path: awssdk.String("/orders"),
+				ResourceMethods: map[string]apigatewaytypes.Method{
+					"GET": {
+						HttpMethod: awssdk.String("GET"),
+						MethodIntegration: &apigatewaytypes.Integration{
+							Uri: awssdk.String("https://orders.example.com"),
+						},
+					},
+				},
+			}},
+		}
+		fake.apiV2APIs = []apigatewayv2types.Api{{ApiId: awssdk.String(v2APIID), Name: awssdk.String("orders-http")}}
+		fake.apiV2Stages = map[string][]apigatewayv2types.Stage{v2APIID: {{StageName: awssdk.String("$default")}}}
+		fake.apiV2Routes = map[string][]apigatewayv2types.Route{v2APIID: {{RouteId: awssdk.String("route-1"), RouteKey: awssdk.String("GET /orders")}}}
+		fake.apiV2Integrations = map[string][]apigatewayv2types.Integration{v2APIID: {{IntegrationId: awssdk.String("int-1"), IntegrationUri: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders")}}}
+		fake.originAccessControls = []cloudfronttypes.OriginAccessControlSummary{{Id: awssdk.String("oac-123"), Name: awssdk.String("orders-oac")}}
+		fake.keyGroups = []cloudfronttypes.KeyGroupSummary{{KeyGroup: &cloudfronttypes.KeyGroup{Id: awssdk.String("kg-123"), KeyGroupConfig: &cloudfronttypes.KeyGroupConfig{Name: awssdk.String("orders-key-group")}}}}
+		fake.publicKeys = []cloudfronttypes.PublicKeySummary{{Id: awssdk.String("pk-123"), Name: awssdk.String("orders-public-key")}}
+		fake.responseHeadersPolicies = []cloudfronttypes.ResponseHeadersPolicySummary{{ResponseHeadersPolicy: &cloudfronttypes.ResponseHeadersPolicy{Id: awssdk.String("rhp-123"), ResponseHeadersPolicyConfig: &cloudfronttypes.ResponseHeadersPolicyConfig{Name: awssdk.String("orders-security-headers")}}}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -1505,6 +1673,41 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyAssetMetadata,
 			seed:    assetMetadataData,
 			wantAPI: []string{"tagging:GetResources"},
+		},
+		{
+			family:  familyAPIGatewayStage,
+			seed:    networkEdgeData,
+			wantAPI: []string{"apigateway:GetRestApis", "apigateway:GetStages", "apigatewayv2:GetApis", "apigatewayv2:GetStages"},
+		},
+		{
+			family:  familyAPIGatewayRoute,
+			seed:    networkEdgeData,
+			wantAPI: []string{"apigateway:GetResources", "apigateway:GetRestApis", "apigatewayv2:GetApis", "apigatewayv2:GetRoutes"},
+		},
+		{
+			family:  familyAPIGatewayIntegrate,
+			seed:    networkEdgeData,
+			wantAPI: []string{"apigateway:GetResources", "apigateway:GetRestApis", "apigatewayv2:GetApis", "apigatewayv2:GetIntegrations"},
+		},
+		{
+			family:  familyCloudFrontOAC,
+			seed:    networkEdgeData,
+			wantAPI: []string{"cloudfront:ListOriginAccessControls"},
+		},
+		{
+			family:  familyCloudFrontKeyGroup,
+			seed:    networkEdgeData,
+			wantAPI: []string{"cloudfront:ListKeyGroups"},
+		},
+		{
+			family:  familyCloudFrontPublicKey,
+			seed:    networkEdgeData,
+			wantAPI: []string{"cloudfront:ListPublicKeys"},
+		},
+		{
+			family:  familyCloudFrontRHP,
+			seed:    networkEdgeData,
+			wantAPI: []string{"cloudfront:ListResponseHeadersPolicies"},
 		},
 		{
 			family:  familyEC2Instance,
@@ -1560,6 +1763,16 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECSTaskDefinition,
 			seed:    computeData,
 			wantAPI: []string{"ecs:DescribeTaskDefinition", "ecs:ListTaskDefinitions"},
+		},
+		{
+			family:  familyELBListener,
+			seed:    networkEdgeData,
+			wantAPI: []string{"elasticloadbalancing:DescribeListeners", "elasticloadbalancing:DescribeLoadBalancers"},
+		},
+		{
+			family:  familyELBTargetGroup,
+			seed:    networkEdgeData,
+			wantAPI: []string{"elasticloadbalancing:DescribeTargetGroups"},
 		},
 		{
 			family:  familyEKSCluster,
@@ -1870,7 +2083,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fakeAPIGateway{fake: &fake}, apiGatewayV2: fakeAPIGatewayV2{fake: &fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +2099,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: recordingAPIGateway{fake: fake}, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1957,17 +2170,28 @@ type fakeAWS struct {
 }
 
 type fakeAWSNetwork struct {
-	securityGroups    []ec2types.SecurityGroup
-	addresses         []ec2types.Address
-	networkInterfaces []ec2types.NetworkInterface
-	hostedZones       []route53types.HostedZone
-	recordSets        []route53types.ResourceRecordSet
-	distributions     []cloudfronttypes.DistributionSummary
-	loadBalancers     []elbv2types.LoadBalancer
-	apiDomains        []apigatewaytypes.DomainName
-	restAPIs          []apigatewaytypes.RestApi
-	apiV2Domains      []apigatewayv2types.DomainName
-	apiV2APIs         []apigatewayv2types.Api
+	securityGroups          []ec2types.SecurityGroup
+	addresses               []ec2types.Address
+	networkInterfaces       []ec2types.NetworkInterface
+	hostedZones             []route53types.HostedZone
+	recordSets              []route53types.ResourceRecordSet
+	distributions           []cloudfronttypes.DistributionSummary
+	originAccessControls    []cloudfronttypes.OriginAccessControlSummary
+	keyGroups               []cloudfronttypes.KeyGroupSummary
+	publicKeys              []cloudfronttypes.PublicKeySummary
+	responseHeadersPolicies []cloudfronttypes.ResponseHeadersPolicySummary
+	loadBalancers           []elbv2types.LoadBalancer
+	listeners               []elbv2types.Listener
+	targetGroups            []elbv2types.TargetGroup
+	apiDomains              []apigatewaytypes.DomainName
+	restAPIs                []apigatewaytypes.RestApi
+	apiStages               map[string][]apigatewaytypes.Stage
+	apiResources            map[string][]apigatewaytypes.Resource
+	apiV2Domains            []apigatewayv2types.DomainName
+	apiV2APIs               []apigatewayv2types.Api
+	apiV2Stages             map[string][]apigatewayv2types.Stage
+	apiV2Routes             map[string][]apigatewayv2types.Route
+	apiV2Integrations       map[string][]apigatewayv2types.Integration
 }
 
 type fakeAWSData struct {
@@ -2188,19 +2412,39 @@ func (f *recordingAWS) ListDistributions(ctx context.Context, input *cloudfront.
 	return f.fakeAWS.ListDistributions(ctx, input, options...)
 }
 
+func (f *recordingAWS) ListOriginAccessControls(ctx context.Context, input *cloudfront.ListOriginAccessControlsInput, options ...func(*cloudfront.Options)) (*cloudfront.ListOriginAccessControlsOutput, error) {
+	f.record("cloudfront:ListOriginAccessControls")
+	return f.fakeAWS.ListOriginAccessControls(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListKeyGroups(ctx context.Context, input *cloudfront.ListKeyGroupsInput, options ...func(*cloudfront.Options)) (*cloudfront.ListKeyGroupsOutput, error) {
+	f.record("cloudfront:ListKeyGroups")
+	return f.fakeAWS.ListKeyGroups(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListPublicKeys(ctx context.Context, input *cloudfront.ListPublicKeysInput, options ...func(*cloudfront.Options)) (*cloudfront.ListPublicKeysOutput, error) {
+	f.record("cloudfront:ListPublicKeys")
+	return f.fakeAWS.ListPublicKeys(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListResponseHeadersPolicies(ctx context.Context, input *cloudfront.ListResponseHeadersPoliciesInput, options ...func(*cloudfront.Options)) (*cloudfront.ListResponseHeadersPoliciesOutput, error) {
+	f.record("cloudfront:ListResponseHeadersPolicies")
+	return f.fakeAWS.ListResponseHeadersPolicies(ctx, input, options...)
+}
+
 func (f *recordingAWS) DescribeLoadBalancers(ctx context.Context, input *elbv2.DescribeLoadBalancersInput, options ...func(*elbv2.Options)) (*elbv2.DescribeLoadBalancersOutput, error) {
 	f.record("elasticloadbalancing:DescribeLoadBalancers")
 	return f.fakeAWS.DescribeLoadBalancers(ctx, input, options...)
 }
 
-func (f *recordingAWS) GetDomainNames(ctx context.Context, input *apigateway.GetDomainNamesInput, options ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error) {
-	f.record("apigateway:GetDomainNames")
-	return f.fakeAWS.GetDomainNames(ctx, input, options...)
+func (f *recordingAWS) DescribeListeners(ctx context.Context, input *elbv2.DescribeListenersInput, options ...func(*elbv2.Options)) (*elbv2.DescribeListenersOutput, error) {
+	f.record("elasticloadbalancing:DescribeListeners")
+	return f.fakeAWS.DescribeListeners(ctx, input, options...)
 }
 
-func (f *recordingAWS) GetRestApis(ctx context.Context, input *apigateway.GetRestApisInput, options ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error) {
-	f.record("apigateway:GetRestApis")
-	return f.fakeAWS.GetRestApis(ctx, input, options...)
+func (f *recordingAWS) DescribeTargetGroups(ctx context.Context, input *elbv2.DescribeTargetGroupsInput, options ...func(*elbv2.Options)) (*elbv2.DescribeTargetGroupsOutput, error) {
+	f.record("elasticloadbalancing:DescribeTargetGroups")
+	return f.fakeAWS.DescribeTargetGroups(ctx, input, options...)
 }
 
 func (f *recordingAWS) GetResources(ctx context.Context, input *resourcegroupstaggingapi.GetResourcesInput, options ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
@@ -2292,14 +2536,53 @@ type recordingAPIGatewayV2 struct {
 	fake *recordingAWS
 }
 
+type recordingAPIGateway struct {
+	fake *recordingAWS
+}
+
+func (f recordingAPIGateway) GetDomainNames(ctx context.Context, input *apigateway.GetDomainNamesInput, options ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error) {
+	f.fake.record("apigateway:GetDomainNames")
+	return fakeAPIGateway{fake: &f.fake.fakeAWS}.GetDomainNames(ctx, input, options...)
+}
+
+func (f recordingAPIGateway) GetRestApis(ctx context.Context, input *apigateway.GetRestApisInput, options ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error) {
+	f.fake.record("apigateway:GetRestApis")
+	return fakeAPIGateway{fake: &f.fake.fakeAWS}.GetRestApis(ctx, input, options...)
+}
+
+func (f recordingAPIGateway) GetStages(ctx context.Context, input *apigateway.GetStagesInput, options ...func(*apigateway.Options)) (*apigateway.GetStagesOutput, error) {
+	f.fake.record("apigateway:GetStages")
+	return fakeAPIGateway{fake: &f.fake.fakeAWS}.GetStages(ctx, input, options...)
+}
+
+func (f recordingAPIGateway) GetResources(ctx context.Context, input *apigateway.GetResourcesInput, options ...func(*apigateway.Options)) (*apigateway.GetResourcesOutput, error) {
+	f.fake.record("apigateway:GetResources")
+	return fakeAPIGateway{fake: &f.fake.fakeAWS}.GetResources(ctx, input, options...)
+}
+
 func (f recordingAPIGatewayV2) GetApis(ctx context.Context, input *apigatewayv2.GetApisInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error) {
 	f.fake.record("apigatewayv2:GetApis")
-	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetApis(ctx, input, options...)
+	return fakeAPIGatewayV2{fake: &f.fake.fakeAWS}.GetApis(ctx, input, options...)
 }
 
 func (f recordingAPIGatewayV2) GetDomainNames(ctx context.Context, input *apigatewayv2.GetDomainNamesInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
 	f.fake.record("apigatewayv2:GetDomainNames")
-	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetDomainNames(ctx, input, options...)
+	return fakeAPIGatewayV2{fake: &f.fake.fakeAWS}.GetDomainNames(ctx, input, options...)
+}
+
+func (f recordingAPIGatewayV2) GetStages(ctx context.Context, input *apigatewayv2.GetStagesInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetStagesOutput, error) {
+	f.fake.record("apigatewayv2:GetStages")
+	return fakeAPIGatewayV2{fake: &f.fake.fakeAWS}.GetStages(ctx, input, options...)
+}
+
+func (f recordingAPIGatewayV2) GetRoutes(ctx context.Context, input *apigatewayv2.GetRoutesInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetRoutesOutput, error) {
+	f.fake.record("apigatewayv2:GetRoutes")
+	return fakeAPIGatewayV2{fake: &f.fake.fakeAWS}.GetRoutes(ctx, input, options...)
+}
+
+func (f recordingAPIGatewayV2) GetIntegrations(ctx context.Context, input *apigatewayv2.GetIntegrationsInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetIntegrationsOutput, error) {
+	f.fake.record("apigatewayv2:GetIntegrations")
+	return fakeAPIGatewayV2{fake: &f.fake.fakeAWS}.GetIntegrations(ctx, input, options...)
 }
 
 type fakeSNS struct {
@@ -2743,8 +3026,52 @@ func (f fakeAWS) ListDistributions(context.Context, *cloudfront.ListDistribution
 	return &cloudfront.ListDistributionsOutput{DistributionList: &cloudfronttypes.DistributionList{Items: f.distributions}}, nil
 }
 
+func (f fakeAWS) ListOriginAccessControls(context.Context, *cloudfront.ListOriginAccessControlsInput, ...func(*cloudfront.Options)) (*cloudfront.ListOriginAccessControlsOutput, error) {
+	return &cloudfront.ListOriginAccessControlsOutput{OriginAccessControlList: &cloudfronttypes.OriginAccessControlList{Items: f.originAccessControls}}, nil
+}
+
+func (f fakeAWS) ListKeyGroups(context.Context, *cloudfront.ListKeyGroupsInput, ...func(*cloudfront.Options)) (*cloudfront.ListKeyGroupsOutput, error) {
+	return &cloudfront.ListKeyGroupsOutput{KeyGroupList: &cloudfronttypes.KeyGroupList{Items: f.keyGroups}}, nil
+}
+
+func (f fakeAWS) ListPublicKeys(context.Context, *cloudfront.ListPublicKeysInput, ...func(*cloudfront.Options)) (*cloudfront.ListPublicKeysOutput, error) {
+	return &cloudfront.ListPublicKeysOutput{PublicKeyList: &cloudfronttypes.PublicKeyList{Items: f.publicKeys}}, nil
+}
+
+func (f fakeAWS) ListResponseHeadersPolicies(context.Context, *cloudfront.ListResponseHeadersPoliciesInput, ...func(*cloudfront.Options)) (*cloudfront.ListResponseHeadersPoliciesOutput, error) {
+	return &cloudfront.ListResponseHeadersPoliciesOutput{ResponseHeadersPolicyList: &cloudfronttypes.ResponseHeadersPolicyList{Items: f.responseHeadersPolicies}}, nil
+}
+
 func (f fakeAWS) DescribeLoadBalancers(context.Context, *elbv2.DescribeLoadBalancersInput, ...func(*elbv2.Options)) (*elbv2.DescribeLoadBalancersOutput, error) {
 	return &elbv2.DescribeLoadBalancersOutput{LoadBalancers: f.loadBalancers}, nil
+}
+
+func (f fakeAWS) DescribeListeners(context.Context, *elbv2.DescribeListenersInput, ...func(*elbv2.Options)) (*elbv2.DescribeListenersOutput, error) {
+	return &elbv2.DescribeListenersOutput{Listeners: f.listeners}, nil
+}
+
+func (f fakeAWS) DescribeTargetGroups(context.Context, *elbv2.DescribeTargetGroupsInput, ...func(*elbv2.Options)) (*elbv2.DescribeTargetGroupsOutput, error) {
+	return &elbv2.DescribeTargetGroupsOutput{TargetGroups: f.targetGroups}, nil
+}
+
+type fakeAPIGateway struct {
+	fake *fakeAWS
+}
+
+func (f fakeAPIGateway) GetDomainNames(_ context.Context, _ *apigateway.GetDomainNamesInput, _ ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error) {
+	return &apigateway.GetDomainNamesOutput{Items: f.fake.apiDomains}, nil
+}
+
+func (f fakeAPIGateway) GetRestApis(_ context.Context, _ *apigateway.GetRestApisInput, _ ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error) {
+	return &apigateway.GetRestApisOutput{Items: f.fake.restAPIs}, nil
+}
+
+func (f fakeAPIGateway) GetStages(_ context.Context, input *apigateway.GetStagesInput, _ ...func(*apigateway.Options)) (*apigateway.GetStagesOutput, error) {
+	return &apigateway.GetStagesOutput{Item: f.fake.apiStages[awssdk.ToString(input.RestApiId)]}, nil
+}
+
+func (f fakeAPIGateway) GetResources(_ context.Context, input *apigateway.GetResourcesInput, _ ...func(*apigateway.Options)) (*apigateway.GetResourcesOutput, error) {
+	return &apigateway.GetResourcesOutput{Items: f.fake.apiResources[awssdk.ToString(input.RestApiId)]}, nil
 }
 
 func (f fakeAWS) GetDomainNames(_ context.Context, _ *apigateway.GetDomainNamesInput, _ ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error) {
@@ -2857,16 +3184,27 @@ func (f fakeAWS) ListQueueTags(_ context.Context, input *sqs.ListQueueTagsInput,
 }
 
 type fakeAPIGatewayV2 struct {
-	domains []apigatewayv2types.DomainName
-	apis    []apigatewayv2types.Api
+	fake *fakeAWS
 }
 
 func (f fakeAPIGatewayV2) GetApis(_ context.Context, _ *apigatewayv2.GetApisInput, _ ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error) {
-	return &apigatewayv2.GetApisOutput{Items: f.apis}, nil
+	return &apigatewayv2.GetApisOutput{Items: f.fake.apiV2APIs}, nil
 }
 
 func (f fakeAPIGatewayV2) GetDomainNames(_ context.Context, _ *apigatewayv2.GetDomainNamesInput, _ ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
-	return &apigatewayv2.GetDomainNamesOutput{Items: f.domains}, nil
+	return &apigatewayv2.GetDomainNamesOutput{Items: f.fake.apiV2Domains}, nil
+}
+
+func (f fakeAPIGatewayV2) GetStages(_ context.Context, input *apigatewayv2.GetStagesInput, _ ...func(*apigatewayv2.Options)) (*apigatewayv2.GetStagesOutput, error) {
+	return &apigatewayv2.GetStagesOutput{Items: f.fake.apiV2Stages[awssdk.ToString(input.ApiId)]}, nil
+}
+
+func (f fakeAPIGatewayV2) GetRoutes(_ context.Context, input *apigatewayv2.GetRoutesInput, _ ...func(*apigatewayv2.Options)) (*apigatewayv2.GetRoutesOutput, error) {
+	return &apigatewayv2.GetRoutesOutput{Items: f.fake.apiV2Routes[awssdk.ToString(input.ApiId)]}, nil
+}
+
+func (f fakeAPIGatewayV2) GetIntegrations(_ context.Context, input *apigatewayv2.GetIntegrationsInput, _ ...func(*apigatewayv2.Options)) (*apigatewayv2.GetIntegrationsOutput, error) {
+	return &apigatewayv2.GetIntegrationsOutput{Items: f.fake.apiV2Integrations[awssdk.ToString(input.ApiId)]}, nil
 }
 
 func timePtr(value string) *time.Time {

@@ -4,12 +4,21 @@ description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
+  - aws.api_gateway_integration
+  - aws.api_gateway_route
+  - aws.api_gateway_stage
   - aws.cloudtrail
+  - aws.cloudfront_key_group
+  - aws.cloudfront_origin_access_control
+  - aws.cloudfront_public_key
+  - aws.cloudfront_response_headers_policy
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
   - aws.ecs_task
   - aws.ecs_task_definition
+  - aws.elb_listener
+  - aws.elb_target_group
   - aws.eks_cluster
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
@@ -32,13 +41,22 @@ emitted_kinds:
   - aws.lambda_function
 runtime_families:
   - access_key
+  - api_gateway_integration
+  - api_gateway_route
+  - api_gateway_stage
   - asset_metadata
   - cloudtrail
+  - cloudfront_key_group
+  - cloudfront_origin_access_control
+  - cloudfront_public_key
+  - cloudfront_response_headers_policy
   - ec2_instance
   - ecr_repository
   - ecs_service
   - ecs_task
   - ecs_task_definition
+  - elb_listener
+  - elb_target_group
   - eks_cluster
   - eks_nodegroup
   - eks_fargate_profile
