@@ -595,7 +595,7 @@ func apiGatewayStagePublic(stage awsAPIGatewayStage) bool {
 	if stage.Version == "v2" {
 		return awssdk.ToString(stage.API.ApiEndpoint) != "" && !awssdk.ToBool(stage.API.DisableExecuteApiEndpoint)
 	}
-	return true
+	return restAPIGatewayPublic(stage.RestAPI)
 }
 
 func apiGatewayStageTime(stage awsAPIGatewayStage) time.Time {
@@ -686,6 +686,21 @@ func apiGatewayRouteIntegrationTarget(route awsAPIGatewayRoute) string {
 func apiGatewayRoutePublic(route awsAPIGatewayRoute) bool {
 	if route.Version == "v2" {
 		return !awssdk.ToBool(route.API.DisableExecuteApiEndpoint)
+	}
+	return restAPIGatewayPublic(route.RestAPI)
+}
+
+func restAPIGatewayPublic(api apigatewaytypes.RestApi) bool {
+	if api.DisableExecuteApiEndpoint {
+		return false
+	}
+	if api.EndpointConfiguration == nil {
+		return true
+	}
+	for _, endpointType := range api.EndpointConfiguration.Types {
+		if endpointType == apigatewaytypes.EndpointTypePrivate {
+			return false
+		}
 	}
 	return true
 }
