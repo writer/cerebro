@@ -374,6 +374,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+		{family: familyACMCertificate, kind: "aws.acm_certificate"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyBatchComputeEnv, kind: "aws.batch_compute_environment"},
 		{family: familyBatchJobQueue, kind: "aws.batch_job_queue"},
@@ -446,6 +447,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
+		{family: familyRoute53ResolverEndpoint, kind: "aws.route53_resolver_endpoint"},
+		{family: familyRoute53ResolverRule, kind: "aws.route53_resolver_rule"},
 		{family: familySSOAssignment, kind: "aws.sso_account_assignment"},
 		{family: familySSOInstance, kind: "aws.sso_instance"},
 		{family: familySSOPermissionSet, kind: "aws.sso_permission_set"},

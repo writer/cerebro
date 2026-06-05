@@ -20,6 +20,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
@@ -65,6 +66,7 @@ import (
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3control"
 	"github.com/aws/aws-sdk-go-v2/service/scheduler"
@@ -101,6 +103,7 @@ const (
 	publicEndpointCursorV2         = 2
 	awsAssumeRoleSessionName       = "cerebro-source-runtime"
 	familyAccessKey                = "access_key"
+	familyACMCertificate           = "acm_certificate"
 	familyAppRunnerService         = "apprunner_service"
 	familyAssetMetadata            = "asset_metadata"
 	familyAthenaDataCatalog        = "athena_data_catalog"
@@ -174,6 +177,8 @@ const (
 	familyPublicEndpoint           = "public_endpoint"
 	familyRDSInstance              = "rds_instance"
 	familyResourceExposure         = "resource_exposure"
+	familyRoute53ResolverEndpoint  = "route53_resolver_endpoint"
+	familyRoute53ResolverRule      = "route53_resolver_rule"
 	familyS3AccessPoint            = "s3_access_point"
 	familyS3Bucket                 = "s3_bucket"
 	familyS3MultiRegionAccessPoint = "s3_multi_region_access_point"
@@ -237,25 +242,33 @@ type awsClients struct {
 	awsStorageClients
 }
 
+type awsACMAPI interface {
+	ListCertificates(context.Context, *acm.ListCertificatesInput, ...func(*acm.Options)) (*acm.ListCertificatesOutput, error)
+	DescribeCertificate(context.Context, *acm.DescribeCertificateInput, ...func(*acm.Options)) (*acm.DescribeCertificateOutput, error)
+	ListTagsForCertificate(context.Context, *acm.ListTagsForCertificateInput, ...func(*acm.Options)) (*acm.ListTagsForCertificateOutput, error)
+}
+
 type awsPlatformClients struct {
-	cfg          awssdk.Config
-	iam          awsIAMAPI
-	cloudTrail   awsCloudTrailAPI
-	ec2          awsEC2API
-	route53      awsRoute53API
-	cloudFront   awsCloudFrontAPI
-	elbv2        awsELBV2API
-	globalAccel  awsGlobalAcceleratorAPI
-	vpcLattice   awsVPCLatticeAPI
-	ecs          awsECSAPI
-	eks          awsEKSAPI
-	ecr          awsECRAPI
-	apiGateway   awsAPIGatewayAPI
-	apiGatewayV2 awsAPIGatewayV2API
-	lambda       awsLambdaAPI
-	tagging      awsResourceGroupsTaggingAPI
-	s3           awsS3API
-	s3ByRegion   func(string) awsS3API
+	cfg             awssdk.Config
+	acm             awsACMAPI
+	iam             awsIAMAPI
+	cloudTrail      awsCloudTrailAPI
+	ec2             awsEC2API
+	route53         awsRoute53API
+	route53Resolver awsRoute53ResolverAPI
+	cloudFront      awsCloudFrontAPI
+	elbv2           awsELBV2API
+	globalAccel     awsGlobalAcceleratorAPI
+	vpcLattice      awsVPCLatticeAPI
+	ecs             awsECSAPI
+	eks             awsEKSAPI
+	ecr             awsECRAPI
+	apiGateway      awsAPIGatewayAPI
+	apiGatewayV2    awsAPIGatewayV2API
+	lambda          awsLambdaAPI
+	tagging         awsResourceGroupsTaggingAPI
+	s3              awsS3API
+	s3ByRegion      func(string) awsS3API
 }
 
 type awsStorageClients struct {
@@ -359,6 +372,12 @@ type awsECRAPI interface {
 type awsRoute53API interface {
 	ListHostedZones(context.Context, *route53.ListHostedZonesInput, ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error)
 	ListResourceRecordSets(context.Context, *route53.ListResourceRecordSetsInput, ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error)
+}
+
+type awsRoute53ResolverAPI interface {
+	ListResolverEndpoints(context.Context, *route53resolver.ListResolverEndpointsInput, ...func(*route53resolver.Options)) (*route53resolver.ListResolverEndpointsOutput, error)
+	ListResolverRules(context.Context, *route53resolver.ListResolverRulesInput, ...func(*route53resolver.Options)) (*route53resolver.ListResolverRulesOutput, error)
+	ListTagsForResource(context.Context, *route53resolver.ListTagsForResourceInput, ...func(*route53resolver.Options)) (*route53resolver.ListTagsForResourceOutput, error)
 }
 
 type awsCloudFrontAPI interface {
@@ -824,6 +843,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:access_key:%s:%s", settings.accountID, settings.userName, awssdk.ToString(key.AccessKeyId)), nil
 			},
 			CursorFallback: func(key iamtypes.AccessKeyMetadata) string { return awssdk.ToString(key.AccessKeyId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsACMCertificate]{
+			Name:  familyACMCertificate,
+			Label: "aws acm certificates",
+			List:  listACMCertificates,
+			Event: acmCertificateEvent,
+			URN: func(settings settings, certificate awsACMCertificate) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_acm_certificate:%s", settings.accountID, firstNonEmpty(awssdk.ToString(certificate.Certificate.CertificateArn), awssdk.ToString(certificate.Certificate.DomainName))), nil
+			},
+			CursorFallback: func(certificate awsACMCertificate) string {
+				return firstNonEmpty(awssdk.ToString(certificate.Certificate.CertificateArn), awssdk.ToString(certificate.Certificate.DomainName))
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsAssetMetadata]{
 			Name:  familyAssetMetadata,
@@ -1737,6 +1768,30 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_resource_exposure:%s", settings.accountID, firstNonEmpty(exposure.ExposureID, exposure.ResourceID)), nil
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRoute53ResolverEndpoint]{
+			Name:  familyRoute53ResolverEndpoint,
+			Label: "aws route53 resolver endpoints",
+			List:  listRoute53ResolverEndpoints,
+			Event: route53ResolverEndpointEvent,
+			URN: func(settings settings, endpoint awsRoute53ResolverEndpoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_route53_resolver_endpoint:%s", settings.accountID, firstNonEmpty(awssdk.ToString(endpoint.Endpoint.Arn), awssdk.ToString(endpoint.Endpoint.Id))), nil
+			},
+			CursorFallback: func(endpoint awsRoute53ResolverEndpoint) string {
+				return firstNonEmpty(awssdk.ToString(endpoint.Endpoint.Arn), awssdk.ToString(endpoint.Endpoint.Id))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRoute53ResolverRule]{
+			Name:  familyRoute53ResolverRule,
+			Label: "aws route53 resolver rules",
+			List:  listRoute53ResolverRules,
+			Event: route53ResolverRuleEvent,
+			URN: func(settings settings, rule awsRoute53ResolverRule) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_route53_resolver_rule:%s", settings.accountID, firstNonEmpty(awssdk.ToString(rule.Rule.Arn), awssdk.ToString(rule.Rule.Id))), nil
+			},
+			CursorFallback: func(rule awsRoute53ResolverRule) string {
+				return firstNonEmpty(awssdk.ToString(rule.Rule.Arn), awssdk.ToString(rule.Rule.Id))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsPublicEndpoint]{
 			Name:  familyPublicEndpoint,
 			Label: "aws public endpoints",
@@ -1872,23 +1927,25 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 	}
 	return awsClients{
 		awsPlatformClients: awsPlatformClients{
-			cfg:          cfg,
-			iam:          iam.NewFromConfig(cfg),
-			cloudTrail:   cloudtrail.NewFromConfig(cfg),
-			ec2:          ec2.NewFromConfig(cfg),
-			route53:      route53.NewFromConfig(cfg),
-			cloudFront:   cloudfront.NewFromConfig(cfg),
-			elbv2:        elbv2.NewFromConfig(cfg),
-			globalAccel:  globalaccelerator.NewFromConfig(cfg),
-			vpcLattice:   vpclattice.NewFromConfig(cfg),
-			ecs:          ecs.NewFromConfig(cfg),
-			eks:          eks.NewFromConfig(cfg),
-			ecr:          ecr.NewFromConfig(cfg),
-			apiGateway:   apigateway.NewFromConfig(cfg),
-			apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
-			lambda:       lambda.NewFromConfig(cfg),
-			tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
-			s3:           s3.NewFromConfig(cfg),
+			cfg:             cfg,
+			acm:             acm.NewFromConfig(cfg),
+			iam:             iam.NewFromConfig(cfg),
+			cloudTrail:      cloudtrail.NewFromConfig(cfg),
+			ec2:             ec2.NewFromConfig(cfg),
+			route53:         route53.NewFromConfig(cfg),
+			route53Resolver: route53resolver.NewFromConfig(cfg),
+			cloudFront:      cloudfront.NewFromConfig(cfg),
+			elbv2:           elbv2.NewFromConfig(cfg),
+			globalAccel:     globalaccelerator.NewFromConfig(cfg),
+			vpcLattice:      vpclattice.NewFromConfig(cfg),
+			ecs:             ecs.NewFromConfig(cfg),
+			eks:             eks.NewFromConfig(cfg),
+			ecr:             ecr.NewFromConfig(cfg),
+			apiGateway:      apigateway.NewFromConfig(cfg),
+			apiGatewayV2:    apigatewayv2.NewFromConfig(cfg),
+			lambda:          lambda.NewFromConfig(cfg),
+			tagging:         resourcegroupstaggingapi.NewFromConfig(cfg),
+			s3:              s3.NewFromConfig(cfg),
 			s3ByRegion: func(region string) awsS3API {
 				regionalCfg := cfg
 				regionalCfg.Region = region
@@ -1986,7 +2043,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
+	case familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName

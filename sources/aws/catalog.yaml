@@ -3,6 +3,7 @@ name: AWS
 description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
+  - aws.acm_certificate
   - aws.apprunner_service
   - asset.data_sensitivity
   - aws.batch_compute_environment
@@ -75,6 +76,8 @@ emitted_kinds:
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
+  - aws.route53_resolver_endpoint
+  - aws.route53_resolver_rule
   - aws.s3_access_point
   - aws.s3_bucket
   - aws.s3_multi_region_access_point
@@ -95,6 +98,7 @@ emitted_kinds:
   - aws.lambda_function
 runtime_families:
   - access_key
+  - acm_certificate
   - apprunner_service
   - asset_metadata
   - batch_compute_environment
@@ -167,6 +171,8 @@ runtime_families:
   - public_endpoint
   - rds_instance
   - resource_exposure
+  - route53_resolver_endpoint
+  - route53_resolver_rule
   - s3_access_point
   - s3_bucket
   - s3_multi_region_access_point
