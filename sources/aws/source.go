@@ -28,6 +28,7 @@ import (
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -48,6 +49,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3control"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -67,42 +69,48 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily             = familyCloudTrail
-	defaultRegion             = "us-east-1"
-	defaultPageSize           = 10
-	maxPageSize               = 200
-	cloudTrailCursorVersion   = 1
-	cloudTrailCursorMaxAge    = 55 * time.Minute
-	publicEndpointCursorV2    = 2
-	awsAssumeRoleSessionName  = "cerebro-source-runtime"
-	familyAccessKey           = "access_key"
-	familyAssetMetadata       = "asset_metadata"
-	familyCloudTrail          = "cloudtrail"
-	familyEC2Instance         = "ec2_instance"
-	familyECRRepository       = "ecr_repository"
-	familyECSService          = "ecs_service"
-	familyECSTask             = "ecs_task"
-	familyECSTaskDefinition   = "ecs_task_definition"
-	familyEKSCluster          = "eks_cluster"
-	familyEKSNodegroup        = "eks_nodegroup"
-	familyEKSFargateProfile   = "eks_fargate_profile"
-	familyEKSPodIdentity      = "eks_pod_identity_association"
-	familyEffectivePermission = "effective_permission"
-	familyIAMGroup            = "iam_group"
-	familyIAMMembership       = "iam_group_membership"
-	familyIAMRoleTrust        = "iam_role_trust"
-	familyIAMRoleAssign       = "iam_role_assignment"
-	familyIAMRole             = "iam_role"
-	familyIAMUser             = "iam_user"
-	familyKMSKey              = "kms_key"
-	familyPublicEndpoint      = "public_endpoint"
-	familyRDSInstance         = "rds_instance"
-	familyResourceExposure    = "resource_exposure"
-	familyS3Bucket            = "s3_bucket"
-	familySecret              = "secret"
-	familySNSTopic            = "sns_topic"
-	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
+	defaultFamily                  = familyCloudTrail
+	defaultRegion                  = "us-east-1"
+	defaultPageSize                = 10
+	maxPageSize                    = 200
+	cloudTrailCursorVersion        = 1
+	cloudTrailCursorMaxAge         = 55 * time.Minute
+	publicEndpointCursorV2         = 2
+	awsAssumeRoleSessionName       = "cerebro-source-runtime"
+	familyAccessKey                = "access_key"
+	familyAssetMetadata            = "asset_metadata"
+	familyCloudTrail               = "cloudtrail"
+	familyEC2Instance              = "ec2_instance"
+	familyEBSVolume                = "ebs_volume"
+	familyEBSSnapshot              = "ebs_snapshot"
+	familyECRRepository            = "ecr_repository"
+	familyECSService               = "ecs_service"
+	familyECSTask                  = "ecs_task"
+	familyECSTaskDefinition        = "ecs_task_definition"
+	familyDataSyncLocation         = "datasync_location"
+	familyDataSyncTask             = "datasync_task"
+	familyEKSCluster               = "eks_cluster"
+	familyEKSNodegroup             = "eks_nodegroup"
+	familyEKSFargateProfile        = "eks_fargate_profile"
+	familyEKSPodIdentity           = "eks_pod_identity_association"
+	familyEffectivePermission      = "effective_permission"
+	familyIAMGroup                 = "iam_group"
+	familyIAMMembership            = "iam_group_membership"
+	familyIAMRoleTrust             = "iam_role_trust"
+	familyIAMRoleAssign            = "iam_role_assignment"
+	familyIAMRole                  = "iam_role"
+	familyIAMUser                  = "iam_user"
+	familyKMSKey                   = "kms_key"
+	familyPublicEndpoint           = "public_endpoint"
+	familyRDSInstance              = "rds_instance"
+	familyResourceExposure         = "resource_exposure"
+	familyS3AccessPoint            = "s3_access_point"
+	familyS3Bucket                 = "s3_bucket"
+	familyS3MultiRegionAccessPoint = "s3_multi_region_access_point"
+	familySecret                   = "secret"
+	familySNSTopic                 = "sns_topic"
+	familySQSQueue                 = "sqs_queue"
+	familyLambdaFunction           = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -157,8 +165,10 @@ type awsClients struct {
 	tagging      awsResourceGroupsTaggingAPI
 	s3           awsS3API
 	s3ByRegion   func(string) awsS3API
+	s3control    awsS3ControlAPI
 	rds          awsRDSAPI
 	kms          awsKMSAPI
+	datasync     awsDataSyncAPI
 	secrets      awsSecretsManagerAPI
 	sqs          awsSQSAPI
 	sns          awsSNSAPI
@@ -193,6 +203,9 @@ type awsEC2API interface {
 	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
 	DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 	DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+	DescribeVolumes(context.Context, *ec2.DescribeVolumesInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error)
+	DescribeSnapshots(context.Context, *ec2.DescribeSnapshotsInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotsOutput, error)
+	DescribeSnapshotAttribute(context.Context, *ec2.DescribeSnapshotAttributeInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotAttributeOutput, error)
 }
 
 type awsECSAPI interface {
@@ -262,6 +275,16 @@ type awsS3API interface {
 	GetPublicAccessBlock(context.Context, *s3.GetPublicAccessBlockInput, ...func(*s3.Options)) (*s3.GetPublicAccessBlockOutput, error)
 }
 
+type awsS3ControlAPI interface {
+	ListAccessPoints(context.Context, *s3control.ListAccessPointsInput, ...func(*s3control.Options)) (*s3control.ListAccessPointsOutput, error)
+	GetAccessPoint(context.Context, *s3control.GetAccessPointInput, ...func(*s3control.Options)) (*s3control.GetAccessPointOutput, error)
+	GetAccessPointPolicyStatus(context.Context, *s3control.GetAccessPointPolicyStatusInput, ...func(*s3control.Options)) (*s3control.GetAccessPointPolicyStatusOutput, error)
+	ListMultiRegionAccessPoints(context.Context, *s3control.ListMultiRegionAccessPointsInput, ...func(*s3control.Options)) (*s3control.ListMultiRegionAccessPointsOutput, error)
+	GetMultiRegionAccessPoint(context.Context, *s3control.GetMultiRegionAccessPointInput, ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointOutput, error)
+	GetMultiRegionAccessPointPolicyStatus(context.Context, *s3control.GetMultiRegionAccessPointPolicyStatusInput, ...func(*s3control.Options)) (*s3control.GetMultiRegionAccessPointPolicyStatusOutput, error)
+	ListTagsForResource(context.Context, *s3control.ListTagsForResourceInput, ...func(*s3control.Options)) (*s3control.ListTagsForResourceOutput, error)
+}
+
 type awsRDSAPI interface {
 	DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error)
 }
@@ -275,6 +298,24 @@ type awsKMSAPI interface {
 
 type awsSecretsManagerAPI interface {
 	ListSecrets(context.Context, *secretsmanager.ListSecretsInput, ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error)
+}
+
+type awsDataSyncAPI interface {
+	ListTasks(context.Context, *datasync.ListTasksInput, ...func(*datasync.Options)) (*datasync.ListTasksOutput, error)
+	DescribeTask(context.Context, *datasync.DescribeTaskInput, ...func(*datasync.Options)) (*datasync.DescribeTaskOutput, error)
+	ListLocations(context.Context, *datasync.ListLocationsInput, ...func(*datasync.Options)) (*datasync.ListLocationsOutput, error)
+	DescribeLocationS3(context.Context, *datasync.DescribeLocationS3Input, ...func(*datasync.Options)) (*datasync.DescribeLocationS3Output, error)
+	DescribeLocationEfs(context.Context, *datasync.DescribeLocationEfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationEfsOutput, error)
+	DescribeLocationFsxLustre(context.Context, *datasync.DescribeLocationFsxLustreInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxLustreOutput, error)
+	DescribeLocationFsxOntap(context.Context, *datasync.DescribeLocationFsxOntapInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOntapOutput, error)
+	DescribeLocationFsxOpenZfs(context.Context, *datasync.DescribeLocationFsxOpenZfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxOpenZfsOutput, error)
+	DescribeLocationFsxWindows(context.Context, *datasync.DescribeLocationFsxWindowsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationFsxWindowsOutput, error)
+	DescribeLocationNfs(context.Context, *datasync.DescribeLocationNfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationNfsOutput, error)
+	DescribeLocationSmb(context.Context, *datasync.DescribeLocationSmbInput, ...func(*datasync.Options)) (*datasync.DescribeLocationSmbOutput, error)
+	DescribeLocationObjectStorage(context.Context, *datasync.DescribeLocationObjectStorageInput, ...func(*datasync.Options)) (*datasync.DescribeLocationObjectStorageOutput, error)
+	DescribeLocationHdfs(context.Context, *datasync.DescribeLocationHdfsInput, ...func(*datasync.Options)) (*datasync.DescribeLocationHdfsOutput, error)
+	DescribeLocationAzureBlob(context.Context, *datasync.DescribeLocationAzureBlobInput, ...func(*datasync.Options)) (*datasync.DescribeLocationAzureBlobOutput, error)
+	ListTagsForResource(context.Context, *datasync.ListTagsForResourceInput, ...func(*datasync.Options)) (*datasync.ListTagsForResourceOutput, error)
 }
 
 type awsSQSAPI interface {
@@ -537,6 +578,54 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(bucket awsS3Bucket) string { return firstNonEmpty(bucket.ARN, bucket.Name) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsS3AccessPoint]{
+			Name:  familyS3AccessPoint,
+			Label: "aws s3 access points",
+			List:  listS3AccessPoints,
+			Event: s3AccessPointEvent,
+			URN: func(settings settings, accessPoint awsS3AccessPoint) (string, error) {
+				name := firstNonEmpty(s3AccessPointDetailName(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.Name))
+				arn := s3AccessPointARN(settings, firstNonEmpty(s3AccessPointDetailARN(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.AccessPointArn)), name)
+				return fmt.Sprintf("urn:cerebro:%s:aws_s3_access_point:%s", settings.accountID, firstNonEmpty(arn, name)), nil
+			},
+			CursorFallback: func(accessPoint awsS3AccessPoint) string {
+				return firstNonEmpty(s3AccessPointDetailARN(accessPoint.Detail), awssdk.ToString(accessPoint.Summary.AccessPointArn), awssdk.ToString(accessPoint.Summary.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsS3MultiRegionAccessPoint]{
+			Name:  familyS3MultiRegionAccessPoint,
+			Label: "aws s3 multi-region access points",
+			List:  listS3MultiRegionAccessPoints,
+			Event: s3MultiRegionAccessPointEvent,
+			URN: func(settings settings, accessPoint awsS3MultiRegionAccessPoint) (string, error) {
+				name := awssdk.ToString(accessPoint.Report.Name)
+				return fmt.Sprintf("urn:cerebro:%s:aws_s3_multi_region_access_point:%s", settings.accountID, firstNonEmpty(s3MultiRegionAccessPointARN(settings, name), name)), nil
+			},
+			CursorFallback: func(accessPoint awsS3MultiRegionAccessPoint) string {
+				return awssdk.ToString(accessPoint.Report.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.Volume]{
+			Name:  familyEBSVolume,
+			Label: "aws ebs volumes",
+			List:  listEBSVolumes,
+			Event: ebsVolumeEvent,
+			URN: func(settings settings, volume ec2types.Volume) (string, error) {
+				volumeID := awssdk.ToString(volume.VolumeId)
+				return fmt.Sprintf("urn:cerebro:%s:aws_ebs_volume:%s", settings.accountID, firstNonEmpty(ebsVolumeARN(settings, volumeID), volumeID)), nil
+			},
+			CursorFallback: func(volume ec2types.Volume) string { return awssdk.ToString(volume.VolumeId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEBSSnapshot]{
+			Name:  familyEBSSnapshot,
+			Label: "aws ebs snapshots",
+			List:  listEBSSnapshots,
+			Event: ebsSnapshotEvent,
+			URN: func(settings settings, snapshot awsEBSSnapshot) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ebs_snapshot:%s", settings.accountID, awssdk.ToString(snapshot.Snapshot.SnapshotId)), nil
+			},
+			CursorFallback: func(snapshot awsEBSSnapshot) string { return awssdk.ToString(snapshot.Snapshot.SnapshotId) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsRDSInstance]{
 			Name:  familyRDSInstance,
 			Label: "aws rds instances",
@@ -603,6 +692,28 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(repository awsECRRepository) string {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDataSyncTask]{
+			Name:  familyDataSyncTask,
+			Label: "aws datasync tasks",
+			List:  listDataSyncTasks,
+			Event: dataSyncTaskEvent,
+			URN: func(settings settings, task awsDataSyncTask) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_datasync_task:%s", settings.accountID, awssdk.ToString(task.Task.TaskArn)), nil
+			},
+			CursorFallback: func(task awsDataSyncTask) string { return awssdk.ToString(task.Task.TaskArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDataSyncLocation]{
+			Name:  familyDataSyncLocation,
+			Label: "aws datasync locations",
+			List:  listDataSyncLocations,
+			Event: dataSyncLocationEvent,
+			URN: func(settings settings, location awsDataSyncLocation) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_datasync_location:%s", settings.accountID, firstNonEmpty(awssdk.ToString(location.Entry.LocationArn), awssdk.ToString(location.Entry.LocationUri))), nil
+			},
+			CursorFallback: func(location awsDataSyncLocation) string {
+				return firstNonEmpty(awssdk.ToString(location.Entry.LocationArn), awssdk.ToString(location.Entry.LocationUri))
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
@@ -888,11 +999,13 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:     rds.NewFromConfig(cfg),
-		kms:     kms.NewFromConfig(cfg),
-		secrets: secretsmanager.NewFromConfig(cfg),
-		sqs:     sqs.NewFromConfig(cfg),
-		sns:     sns.NewFromConfig(cfg),
+		s3control: s3control.NewFromConfig(cfg),
+		rds:       rds.NewFromConfig(cfg),
+		kms:       kms.NewFromConfig(cfg),
+		datasync:  datasync.NewFromConfig(cfg),
+		secrets:   secretsmanager.NewFromConfig(cfg),
+		sqs:       sqs.NewFromConfig(cfg),
+		sns:       sns.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -949,7 +1062,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyCloudTrail, familyDataSyncLocation, familyDataSyncTask, familyEBSVolume, familyEBSSnapshot, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1077,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, datasync_location, datasync_task, ebs_snapshot, ebs_volume, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_access_point, s3_bucket, s3_multi_region_access_point, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }

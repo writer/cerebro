@@ -5,6 +5,10 @@ emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
   - aws.cloudtrail
+  - aws.datasync_location
+  - aws.datasync_task
+  - aws.ebs_snapshot
+  - aws.ebs_volume
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
@@ -25,7 +29,9 @@ emitted_kinds:
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
+  - aws.s3_access_point
   - aws.s3_bucket
+  - aws.s3_multi_region_access_point
   - aws.secret
   - aws.sns_topic
   - aws.sqs_queue
@@ -34,6 +40,10 @@ runtime_families:
   - access_key
   - asset_metadata
   - cloudtrail
+  - datasync_location
+  - datasync_task
+  - ebs_snapshot
+  - ebs_volume
   - ec2_instance
   - ecr_repository
   - ecs_service
@@ -54,7 +64,9 @@ runtime_families:
   - public_endpoint
   - rds_instance
   - resource_exposure
+  - s3_access_point
   - s3_bucket
+  - s3_multi_region_access_point
   - secret
   - sns_topic
   - sqs_queue

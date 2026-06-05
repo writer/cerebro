@@ -17,6 +17,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3
+	github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
@@ -29,6 +30,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2
+	github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.21
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.43.1

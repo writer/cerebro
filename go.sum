@@ -26,6 +26,8 @@ github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1 h1:UXPRXa3HLrJolDM098DfX
 github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1/go.mod h1:Uu2kNhTTM1ZrJcIL3FDLlzaHwOZUugiMmL8K8ibBbvo=
 github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3 h1:iqqLURTPGkD3xbdRAM8ZW9+PhA+2J2t1ZtomGaJCaU8=
 github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3/go.mod h1:6IFZ3ceNZcMB7NZsYpp7HSKJp4nceLFvnY0/XyVPt24=
+github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5 h1:5fcF+s5hXULXEYPAnuVCmL9woUXTh1lhK9p2FxSF9ds=
+github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5/go.mod h1:B47PnG4zNN3pII2NkE9aNxALa9ODZPN+L4lEysYALQ0=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2 h1:xcHUdx4FNgUZmLuI6vqB5QDsVnWx1MVbPSoaXtLxUB8=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2/go.mod h1:SUtka5kgdr5Wx2BdRrH/IGkCKHW63IVQoyBkP0P1gdo=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2 h1:sSfN1WfNyYjV0CQC8moHP4uxgNXSUxDT0X2vXbcJSbc=
@@ -58,6 +60,8 @@ github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2 h1:5PG11zFh4s6n+FjyhCOs00K/
 github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2/go.mod h1:pUzWuR5MLjU1xlMmCT0qUALPqBFFxf/zdHAmusQlVuM=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2 h1:b4ikkRk22T4xYkEgaWc3Voe+3xbt5YbbFhNehOWyUiY=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2/go.mod h1:Gp7eHZ0NZ8ZK5RXpoIUp/C8OeAmJqpCgdwEK1D/QOek=
+github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4 h1:Or+7J1Kr4sNlGT/5Uh3VvtIFrwoABZ3NMWXNL61mfzo=
+github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4/go.mod h1:hpR7KgZJuRoBndHkhYXZmPNjsvuanVWC4G1tMVNXBIc=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1 h1:AH4hyaVe/2+p7zx/GkmjQLXOfVTul6EFMTRy8QVl71Q=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1/go.mod h1:BXtBSoY9TdCQwc46RZtaxNb+kKfcCbHOvk4h8drQUqM=
 github.com/aws/aws-sdk-go-v2/service/signin v1.1.4 h1:YcpVyIPLCbiypN6KSphijN5fC7DDjX114SqA7prnnxg=
@@ -78,6 +82,7 @@ github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ3
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
 github.com/google/go-cmp v0.5.2/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
@@ -120,14 +125,17 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 golang.org/x/crypto v0.51.0 h1:IBPXwPfKxY7cWQZ38ZCIRPI50YLeevDLlLnyC5wRGTI=
 golang.org/x/crypto v0.51.0/go.mod h1:8AdwkbraGNABw2kOX6YFPs3WM22XqI4EXEd8g+x7Oc8=
+golang.org/x/mod v0.35.0/go.mod h1:+GwiRhIInF8wPm+4AoT6L0FA1QWAad3OMdTRx4tFYlU=
 golang.org/x/net v0.55.0 h1:bcvxaJn3e1U6InsFWt1JUq1aSjnRxLzT2rtD2KfkDF8=
 golang.org/x/net v0.55.0/go.mod h1:L5U2KuzuOe1lY7Z+aWVIKK6qEeJXnXV9yzGA+WCHJww=
 golang.org/x/sync v0.20.0 h1:e0PTpb7pjO8GAtTs2dQ6jYa5BWYlMuX047Dco/pItO4=
 golang.org/x/sync v0.20.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
 golang.org/x/sys v0.45.0 h1:dO4czNzziLiiXplLQgBCEpCvXQ3dnkn0SdaZSYdQ+FY=
 golang.org/x/sys v0.45.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+golang.org/x/term v0.43.0/go.mod h1:lrhlHNdQJHO+1qVYiHfFKVuVioJIheAc3fBSMFYEIsk=
 golang.org/x/text v0.37.0 h1:Cqjiwd9eSg8e0QAkyCaQTNHFIIzWtidPahFWR83rTrc=
 golang.org/x/text v0.37.0/go.mod h1:a5sjxXGs9hsn/AJVwuElvCAo9v8QYLzvavO5z2PiM38=
+golang.org/x/tools v0.44.0/go.mod h1:KA0AfVErSdxRZIsOVipbv3rQhVXTnlU6UhKxHd1seDI=
 golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 google.golang.org/protobuf v1.36.11 h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
 google.golang.org/protobuf v1.36.11/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
