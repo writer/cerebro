@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "make help",
+      "type": "shell",
+      "command": "make help",
+      "problemMatcher": []
+    },
+    {
+      "label": "make build",
+      "type": "shell",
+      "command": "make build",
+      "group": "build",
+      "problemMatcher": "$go"
+    },
+    {
+      "label": "make test",
+      "type": "shell",
+      "command": "make test",
+      "group": "test",
+      "problemMatcher": "$go"
+    },
+    {
+      "label": "make lint",
+      "type": "shell",
+      "command": "make lint",
+      "problemMatcher": "$go"
+    },
+    {
+      "label": "make verify",
+      "type": "shell",
+      "command": "make verify",
+      "problemMatcher": "$go"
+    }
+  ]
+}
