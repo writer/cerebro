@@ -3,6 +3,7 @@ name: AWS
 description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
+  - aws.access_analyzer
   - aws.acm_certificate
   - aws.apprunner_service
   - asset.data_sensitivity
@@ -13,6 +14,7 @@ emitted_kinds:
   - aws.backup_protected_resource
   - aws.backup_recovery_point
   - aws.cloudtrail
+  - aws.config_recorder
   - aws.datasync_location
   - aws.datasync_task
   - aws.docdb_cluster
@@ -48,6 +50,7 @@ emitted_kinds:
   - aws.cloudfront_public_key
   - aws.cloudfront_response_headers_policy
   - aws.effective_permission
+  - aws.guardduty_finding
   - aws.eventbridge_archive
   - aws.eventbridge_event_bus
   - aws.eventbridge_pipe
@@ -63,6 +66,9 @@ emitted_kinds:
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.inspector2_finding
+  - aws.macie2_finding
+  - aws.network_firewall
   - aws.kinesis_stream
   - aws.kms_key
   - aws.lakeformation_lf_tag
@@ -89,17 +95,10 @@ emitted_kinds:
   - aws.scheduler_schedule
   - aws.scheduler_schedule_group
   - aws.secret
+  - aws.securityhub_finding
   - aws.sns_topic
   - aws.sqs_queue
-  - aws.ssm_association
-  - aws.ssm_document
-  - aws.ssm_managed_instance
-  - aws.ssm_parameter
-  - aws.stepfunctions_activity
-  - aws.stepfunctions_state_machine
-  - aws.sso_account_assignment
-  - aws.sso_instance
-  - aws.sso_permission_set
+  - aws.wafv2_web_acl
   - aws.lambda_function
 runtime_families:
   - access_key
@@ -113,6 +112,7 @@ runtime_families:
   - backup_protected_resource
   - backup_recovery_point
   - cloudtrail
+  - config_recorder
   - datasync_location
   - datasync_task
   - docdb_cluster
@@ -148,6 +148,7 @@ runtime_families:
   - cloudfront_public_key
   - cloudfront_response_headers_policy
   - effective_permission
+  - guardduty_finding
   - eventbridge_archive
   - eventbridge_event_bus
   - eventbridge_pipe
@@ -163,8 +164,11 @@ runtime_families:
   - iam_role_assignment
   - iam_role_trust
   - iam_user
-  - kinesis_stream
+  - inspector2_finding
   - kms_key
+  - macie2_finding
+  - network_firewall
+  - kinesis_stream
   - lakeformation_lf_tag
   - lakeformation_permission
   - lakeformation_resource
@@ -189,8 +193,10 @@ runtime_families:
   - scheduler_schedule
   - scheduler_schedule_group
   - secret
+  - securityhub_finding
   - sns_topic
   - sqs_queue
+  - wafv2_web_acl
   - ssm_association
   - ssm_document
   - ssm_managed_instance

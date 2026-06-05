@@ -238,7 +238,7 @@ func TestCloudTrailCursorFreezesRelativeSinceAcrossPages(t *testing.T) {
 	if first.NextCursor == nil {
 		t.Fatal("first.NextCursor = nil, want encoded cursor")
 	}
-	if _, ok := parseCloudTrailCursor(first.NextCursor.GetOpaque(), settings{since: "PT2H"}, time.Now().UTC()); !ok {
+	if _, ok := parseCloudTrailCursor(first.NextCursor.GetOpaque(), settings{cloudTrail: cloudTrailSettings{since: "PT2H"}}, time.Now().UTC()); !ok {
 		t.Fatalf("first.NextCursor is not a resumable CloudTrail cursor: %q", first.NextCursor.GetOpaque())
 	}
 	if _, err = source.Read(context.Background(), config, first.NextCursor); err != nil {
@@ -268,7 +268,7 @@ func TestCloudTrailCursorInvalidatesUnsafeTokens(t *testing.T) {
 		{
 			name: "expired encoded cursor",
 			cursor: encodeCloudTrailCursor(
-				settings{since: "PT2H"},
+				settings{cloudTrail: cloudTrailSettings{since: "PT2H"}},
 				&cloudtrail.LookupEventsInput{StartTime: timePtr("2026-05-24T00:00:00Z")},
 				"expired-token",
 				time.Now().UTC().Add(-2*time.Hour),
@@ -278,7 +278,7 @@ func TestCloudTrailCursorInvalidatesUnsafeTokens(t *testing.T) {
 		{
 			name: "selector changed",
 			cursor: encodeCloudTrailCursor(
-				settings{since: "PT1H"},
+				settings{cloudTrail: cloudTrailSettings{since: "PT1H"}},
 				&cloudtrail.LookupEventsInput{StartTime: timePtr("2026-05-24T00:00:00Z")},
 				"mismatched-token",
 				time.Now().UTC(),
@@ -380,6 +380,9 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+		{family: familyAccessAnalyzer, kind: "aws.access_analyzer"},
+		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyConfigRecorder, kind: "aws.config_recorder"},
 		{family: familyACMCertificate, kind: "aws.acm_certificate"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyBatchComputeEnv, kind: "aws.batch_compute_environment"},
@@ -421,6 +424,9 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyCloudFrontPublicKey, kind: "aws.cloudfront_public_key"},
 		{family: familyCloudFrontRHP, kind: "aws.cloudfront_response_headers_policy"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyGuardDutyFinding, kind: "aws.guardduty_finding"},
+		{family: familyIAMUser, kind: "aws.iam_user"},
+		{family: familyInspector2Finding, kind: "aws.inspector2_finding"},
 		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream"},
 		{family: familyGlueCrawler, kind: "aws.glue_crawler"},
 		{family: familyGlueDatabase, kind: "aws.glue_database"},
@@ -433,6 +439,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyLakeFormationPerm, kind: "aws.lakeformation_permission"},
 		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
+		{family: familyMacie2Finding, kind: "aws.macie2_finding"},
+		{family: familyNetworkFirewall, kind: "aws.network_firewall"},
 		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyNeptuneCluster, kind: "aws.neptune_cluster"},
 		{family: familyNeptuneInstance, kind: "aws.neptune_instance"},
@@ -442,8 +450,10 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
 		{family: familyS3MultiRegionAccessPoint, kind: "aws.s3_multi_region_access_point"},
 		{family: familySecret, kind: "aws.secret"},
+		{family: familySecurityHubFinding, kind: "aws.securityhub_finding"},
 		{family: familySNSTopic, kind: "aws.sns_topic"},
 		{family: familySQSQueue, kind: "aws.sqs_queue"},
+		{family: familyWAFV2WebACL, kind: "aws.wafv2_web_acl"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust"},
 		{family: familyIAMGroup, kind: "aws.iam_group"},
