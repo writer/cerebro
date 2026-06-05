@@ -16,7 +16,7 @@
 ## Repository Conventions
 
 - Prefer repo `make` targets over ad-hoc commands.
-- Go dependencies are vendored; avoid dependency changes unless explicitly requested.
+- Go dependencies are module-managed; avoid dependency changes unless explicitly requested and validate them through the relevant `make` targets.
 - Do not hand-edit generated or contract-governed outputs without running the matching `Makefile` check/sync target.
 - Public-facing config/example changes should run `python3 scripts/oss_audit.py` when that script is present.
 

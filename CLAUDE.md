@@ -6,7 +6,7 @@ Only repo-specific, non-obvious guidance lives here.
 
 - This is Writer's original public `cerebro` repo. Do not describe it as a fork or downstream mirror.
 - The repo is Go, but many validations are repo-specific and should usually be run via `make`/DevEx wrappers rather than ad-hoc commands.
-- Go dependencies are vendored (`GOFLAGS=-mod=vendor`), so dependency changes should usually be checked with `make vendor-check`.
+- Go dependencies are module-managed; avoid dependency changes unless explicitly requested and validate them through the relevant `make` targets.
 
 ## Scope discipline
 
@@ -30,7 +30,7 @@ If you touch these areas, expect generated artifacts and compatibility checks:
 - CloudEvents docs/contracts
 - report contract docs/contracts
 - entity facet docs/contracts
-- Agent SDK docs/contracts/packages
+- SDK helper docs/packages
 - DevEx codegen catalog
 
 Check the corresponding `Makefile` `*-check` / `*-compat` targets before finishing.
