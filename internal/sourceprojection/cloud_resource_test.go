@@ -99,3 +99,39 @@ func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, systemIdentityURN)
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, userIdentityURN)
 }
+
+func TestProjectAWSDatabaseInstanceLinksClusterAndAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-docdb-instance",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.docdb_instance",
+		Attributes: map[string]string{
+			"cluster_arn":            "arn:aws:rds:us-east-1:123456789012:cluster:docdb-prod",
+			"cluster_name":           "docdb-prod",
+			"db_cluster_identifier":  "docdb-prod",
+			"db_instance_identifier": "docdb-prod-1",
+			"domain":                 "123456789012",
+			"owner":                  "database@writer.com",
+			"region":                 "us-east-1",
+			"resource_id":            "arn:aws:rds:us-east-1:123456789012:db:docdb-prod-1",
+			"resource_name":          "docdb-prod-1",
+			"resource_provider":      "aws",
+			"resource_type":          "docdb_instance",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	instanceURN := "urn:cerebro:writer:aws_docdb_instance:arn:aws:rds:us-east-1:123456789012:db:docdb-prod-1"
+	clusterURN := "urn:cerebro:writer:aws_docdb_cluster:arn:aws:rds:us-east-1:123456789012:cluster:docdb-prod"
+	if entity := state.entities[clusterURN]; entity == nil || entity.EntityType != "aws.docdb.cluster" {
+		t.Fatalf("docdb cluster entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, instanceURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}

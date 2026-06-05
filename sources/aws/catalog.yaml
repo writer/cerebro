@@ -5,6 +5,8 @@ emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
   - aws.cloudtrail
+  - aws.docdb_cluster
+  - aws.docdb_instance
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
@@ -22,18 +24,23 @@ emitted_kinds:
   - aws.iam_role_trust
   - aws.iam_user
   - aws.kms_key
+  - aws.lambda_function
+  - aws.neptune_cluster
+  - aws.neptune_instance
   - aws.public_endpoint
   - aws.rds_instance
+  - aws.redshift_cluster
   - aws.resource_exposure
   - aws.s3_bucket
   - aws.secret
   - aws.sns_topic
   - aws.sqs_queue
-  - aws.lambda_function
 runtime_families:
   - access_key
   - asset_metadata
   - cloudtrail
+  - docdb_cluster
+  - docdb_instance
   - ec2_instance
   - ecr_repository
   - ecs_service
@@ -51,11 +58,14 @@ runtime_families:
   - iam_role_trust
   - iam_user
   - kms_key
+  - lambda_function
+  - neptune_cluster
+  - neptune_instance
   - public_endpoint
   - rds_instance
+  - redshift_cluster
   - resource_exposure
   - s3_bucket
   - secret
   - sns_topic
   - sqs_queue
-  - lambda_function

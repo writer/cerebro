@@ -28,6 +28,7 @@ import (
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/docdb"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -42,7 +43,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/neptune"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
+	"github.com/aws/aws-sdk-go-v2/service/redshift"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -78,6 +81,8 @@ const (
 	familyAccessKey           = "access_key"
 	familyAssetMetadata       = "asset_metadata"
 	familyCloudTrail          = "cloudtrail"
+	familyDocDBCluster        = "docdb_cluster"
+	familyDocDBInstance       = "docdb_instance"
 	familyEC2Instance         = "ec2_instance"
 	familyECRRepository       = "ecr_repository"
 	familyECSService          = "ecs_service"
@@ -95,14 +100,17 @@ const (
 	familyIAMRole             = "iam_role"
 	familyIAMUser             = "iam_user"
 	familyKMSKey              = "kms_key"
+	familyLambdaFunction      = "lambda_function"
+	familyNeptuneCluster      = "neptune_cluster"
+	familyNeptuneInstance     = "neptune_instance"
 	familyPublicEndpoint      = "public_endpoint"
+	familyRedshiftCluster     = "redshift_cluster"
 	familyRDSInstance         = "rds_instance"
 	familyResourceExposure    = "resource_exposure"
 	familyS3Bucket            = "s3_bucket"
 	familySecret              = "secret"
 	familySNSTopic            = "sns_topic"
 	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -158,6 +166,9 @@ type awsClients struct {
 	s3           awsS3API
 	s3ByRegion   func(string) awsS3API
 	rds          awsRDSAPI
+	redshift     awsRedshiftAPI
+	docdb        awsDocDBAPI
+	neptune      awsNeptuneAPI
 	kms          awsKMSAPI
 	secrets      awsSecretsManagerAPI
 	sqs          awsSQSAPI
@@ -264,6 +275,22 @@ type awsS3API interface {
 
 type awsRDSAPI interface {
 	DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error)
+}
+
+type awsRedshiftAPI interface {
+	DescribeClusters(context.Context, *redshift.DescribeClustersInput, ...func(*redshift.Options)) (*redshift.DescribeClustersOutput, error)
+}
+
+type awsDocDBAPI interface {
+	DescribeDBClusters(context.Context, *docdb.DescribeDBClustersInput, ...func(*docdb.Options)) (*docdb.DescribeDBClustersOutput, error)
+	DescribeDBInstances(context.Context, *docdb.DescribeDBInstancesInput, ...func(*docdb.Options)) (*docdb.DescribeDBInstancesOutput, error)
+	ListTagsForResource(context.Context, *docdb.ListTagsForResourceInput, ...func(*docdb.Options)) (*docdb.ListTagsForResourceOutput, error)
+}
+
+type awsNeptuneAPI interface {
+	DescribeDBClusters(context.Context, *neptune.DescribeDBClustersInput, ...func(*neptune.Options)) (*neptune.DescribeDBClustersOutput, error)
+	DescribeDBInstances(context.Context, *neptune.DescribeDBInstancesInput, ...func(*neptune.Options)) (*neptune.DescribeDBInstancesOutput, error)
+	ListTagsForResource(context.Context, *neptune.ListTagsForResourceInput, ...func(*neptune.Options)) (*neptune.ListTagsForResourceOutput, error)
 }
 
 type awsKMSAPI interface {
@@ -546,6 +573,66 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_rds_instance:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))), nil
 			},
 			CursorFallback: func(record awsRDSInstance) string {
+				return firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRedshiftCluster]{
+			Name:  familyRedshiftCluster,
+			Label: "aws redshift clusters",
+			List:  listRedshiftClusters,
+			Event: redshiftClusterEvent,
+			URN: func(settings settings, record awsRedshiftCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_redshift_cluster:%s", settings.accountID, firstNonEmpty(redshiftClusterARN(settings, awssdk.ToString(record.Cluster.ClusterIdentifier)), awssdk.ToString(record.Cluster.ClusterIdentifier))), nil
+			},
+			CursorFallback: func(record awsRedshiftCluster) string {
+				return awssdk.ToString(record.Cluster.ClusterIdentifier)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDocDBCluster]{
+			Name:  familyDocDBCluster,
+			Label: "aws documentdb clusters",
+			List:  listDocDBClusters,
+			Event: docDBClusterEvent,
+			URN: func(settings settings, record awsDocDBCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_docdb_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))), nil
+			},
+			CursorFallback: func(record awsDocDBCluster) string {
+				return firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDocDBInstance]{
+			Name:  familyDocDBInstance,
+			Label: "aws documentdb instances",
+			List:  listDocDBInstances,
+			Event: docDBInstanceEvent,
+			URN: func(settings settings, record awsDocDBInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_docdb_instance:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))), nil
+			},
+			CursorFallback: func(record awsDocDBInstance) string {
+				return firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsNeptuneCluster]{
+			Name:  familyNeptuneCluster,
+			Label: "aws neptune clusters",
+			List:  listNeptuneClusters,
+			Event: neptuneClusterEvent,
+			URN: func(settings settings, record awsNeptuneCluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_neptune_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))), nil
+			},
+			CursorFallback: func(record awsNeptuneCluster) string {
+				return firstNonEmpty(awssdk.ToString(record.Cluster.DBClusterArn), awssdk.ToString(record.Cluster.DBClusterIdentifier))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsNeptuneInstance]{
+			Name:  familyNeptuneInstance,
+			Label: "aws neptune instances",
+			List:  listNeptuneInstances,
+			Event: neptuneInstanceEvent,
+			URN: func(settings settings, record awsNeptuneInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_neptune_instance:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))), nil
+			},
+			CursorFallback: func(record awsNeptuneInstance) string {
 				return firstNonEmpty(awssdk.ToString(record.Instance.DBInstanceArn), awssdk.ToString(record.Instance.DBInstanceIdentifier))
 			},
 		}),
@@ -888,11 +975,14 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:     rds.NewFromConfig(cfg),
-		kms:     kms.NewFromConfig(cfg),
-		secrets: secretsmanager.NewFromConfig(cfg),
-		sqs:     sqs.NewFromConfig(cfg),
-		sns:     sns.NewFromConfig(cfg),
+		rds:      rds.NewFromConfig(cfg),
+		redshift: redshift.NewFromConfig(cfg),
+		docdb:    docdb.NewFromConfig(cfg),
+		neptune:  neptune.NewFromConfig(cfg),
+		kms:      kms.NewFromConfig(cfg),
+		secrets:  secretsmanager.NewFromConfig(cfg),
+		sqs:      sqs.NewFromConfig(cfg),
+		sns:      sns.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -949,7 +1039,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyCloudTrail, familyDocDBCluster, familyDocDBInstance, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyNeptuneCluster, familyNeptuneInstance, familyPublicEndpoint, familyRDSInstance, familyRedshiftCluster, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1054,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, docdb_cluster, docdb_instance, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, neptune_cluster, neptune_instance, public_endpoint, rds_instance, redshift_cluster, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }
