@@ -358,33 +358,33 @@ func organizationsRootPolicyTypes(root organizationstypes.Root) []string {
 }
 
 func organizationsTargetIDs(targets []organizationstypes.PolicyTargetSummary) []string {
-	values := make([]string, 0, len(targets))
-	for _, target := range targets {
-		values = append(values, awssdk.ToString(target.TargetId))
-	}
-	return cleanStrings(values)
+	return organizationsTargetField(targets, func(target organizationstypes.PolicyTargetSummary) string {
+		return awssdk.ToString(target.TargetId)
+	})
 }
 
 func organizationsTargetARNs(targets []organizationstypes.PolicyTargetSummary) []string {
-	values := make([]string, 0, len(targets))
-	for _, target := range targets {
-		values = append(values, awssdk.ToString(target.Arn))
-	}
-	return cleanStrings(values)
+	return organizationsTargetField(targets, func(target organizationstypes.PolicyTargetSummary) string {
+		return awssdk.ToString(target.Arn)
+	})
 }
 
 func organizationsTargetNames(targets []organizationstypes.PolicyTargetSummary) []string {
-	values := make([]string, 0, len(targets))
-	for _, target := range targets {
-		values = append(values, awssdk.ToString(target.Name))
-	}
-	return cleanStrings(values)
+	return organizationsTargetField(targets, func(target organizationstypes.PolicyTargetSummary) string {
+		return awssdk.ToString(target.Name)
+	})
 }
 
 func organizationsTargetTypes(targets []organizationstypes.PolicyTargetSummary) []string {
+	return organizationsTargetField(targets, func(target organizationstypes.PolicyTargetSummary) string {
+		return string(target.Type)
+	})
+}
+
+func organizationsTargetField(targets []organizationstypes.PolicyTargetSummary, extract func(organizationstypes.PolicyTargetSummary) string) []string {
 	values := make([]string, 0, len(targets))
 	for _, target := range targets {
-		values = append(values, string(target.Type))
+		values = append(values, strings.TrimSpace(extract(target)))
 	}
-	return cleanStrings(values)
+	return values
 }

@@ -172,10 +172,10 @@ type awsOrganizationsPolicyTarget struct {
 }
 
 func awsOrganizationsPolicyTargets(attributes map[string]string) []awsOrganizationsPolicyTarget {
-	ids := splitCloudAttributeList(attributes["target_ids"])
-	types := splitCloudAttributeList(attributes["target_types"])
-	names := splitCloudAttributeList(attributes["target_names"])
-	arns := splitCloudAttributeList(attributes["target_arns"])
+	ids := splitCloudAttributeListAligned(attributes["target_ids"])
+	types := splitCloudAttributeListAligned(attributes["target_types"])
+	names := splitCloudAttributeListAligned(attributes["target_names"])
+	arns := splitCloudAttributeListAligned(attributes["target_arns"])
 	targets := make([]awsOrganizationsPolicyTarget, 0, len(ids))
 	for index, id := range ids {
 		target := awsOrganizationsPolicyTarget{ID: id, Type: awsOrganizationsValueAt(types, index), Name: awsOrganizationsValueAt(names, index), ARN: awsOrganizationsValueAt(arns, index)}
@@ -283,6 +283,21 @@ func awsOrganizationsValueAt(values []string, index int) string {
 		return ""
 	}
 	return strings.TrimSpace(values[index])
+}
+
+func splitCloudAttributeListAligned(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t'
+	})
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		trimmed := strings.TrimSpace(field)
+		if trimmed == "" {
+			continue
+		}
+		result = append(result, trimmed)
+	}
+	return result
 }
 
 func awsOrganizationsTargetTypeFromID(id string) string {
