@@ -243,15 +243,11 @@ func listIdentityCenterAssignmentsForPermissionSet(ctx context.Context, clients 
 	permissionSetARN := awssdk.ToString(permissionSet.PermissionSetArn)
 	accounts := []string{settings.targetAccountID}
 	if settings.targetAccountID == "" {
-		out, err := clients.ssoAdmin.ListAccountsForProvisionedPermissionSet(ctx, &ssoadmin.ListAccountsForProvisionedPermissionSetInput{
-			InstanceArn:      awssdk.String(instanceARN),
-			PermissionSetArn: awssdk.String(permissionSetARN),
-			MaxResults:       int32Ptr(limit),
-		})
+		var err error
+		accounts, err = listAllIdentityCenterProvisionedAccounts(ctx, clients, instanceARN, permissionSetARN, limit)
 		if err != nil {
 			return nil, "", err
 		}
-		accounts = out.AccountIds
 	}
 	records := make([]identityCenterAccountAssignment, 0)
 	accountStarted := page.AccountID == ""
@@ -302,6 +298,28 @@ func listIdentityCenterAssignmentsForPermissionSet(ctx context.Context, clients 
 		}
 	}
 	return records, "", nil
+}
+
+func listAllIdentityCenterProvisionedAccounts(ctx context.Context, clients awsClients, instanceARN string, permissionSetARN string, limit int) ([]string, error) {
+	var accounts []string
+	var next *string
+	for {
+		out, err := clients.ssoAdmin.ListAccountsForProvisionedPermissionSet(ctx, &ssoadmin.ListAccountsForProvisionedPermissionSetInput{
+			InstanceArn:      awssdk.String(instanceARN),
+			PermissionSetArn: awssdk.String(permissionSetARN),
+			MaxResults:       awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+			NextToken:        next,
+		})
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, out.AccountIds...)
+		if awssdk.ToString(out.NextToken) == "" {
+			break
+		}
+		next = out.NextToken
+	}
+	return cleanStrings(accounts), nil
 }
 
 func identityStoreID(ctx context.Context, clients awsClients, settings settings) (string, error) {
@@ -377,6 +395,7 @@ func listIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, 
 	if err != nil {
 		return nil, "", err
 	}
+	resumeAfterGroupID := page.GroupID
 	if page.GroupID != "" {
 		pages, next, err := listIdentityStoreGroupMembershipPage(ctx, clients, storeID, page.GroupID, page.MembershipToken, limit)
 		if err != nil {
@@ -398,9 +417,16 @@ func listIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, 
 		return nil, "", err
 	}
 	records := make([]identityStoreGroupMembership, 0)
+	groupStarted := resumeAfterGroupID == ""
 	for _, group := range groups {
 		groupID := awssdk.ToString(group.GroupId)
 		if groupID == "" {
+			continue
+		}
+		if !groupStarted {
+			if groupID == resumeAfterGroupID {
+				groupStarted = true
+			}
 			continue
 		}
 		groupRecords, next, err := listIdentityStoreGroupMembershipPage(ctx, clients, storeID, groupID, "", limit)
