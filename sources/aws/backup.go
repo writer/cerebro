@@ -134,10 +134,15 @@ func listBackupRecoveryPoints(ctx context.Context, clients awsClients, _ setting
 				found = true
 				break
 			}
+			if name > state.VaultName {
+				vaultIndex = index
+				state.NextToken = ""
+				found = true
+				break
+			}
 		}
 		if !found {
-			state = backupRecoveryPointCursor{}
-			vaultIndex = 0
+			return nil, "", nil
 		}
 	}
 	remaining := limit
