@@ -679,88 +679,90 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
-			s3Buckets: []s3types.Bucket{{
-				Name:         awssdk.String("prod-data"),
-				CreationDate: timePtr("2026-04-23T00:00:00Z"),
-			}},
-			s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
-			s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
-			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
-				Rules: []s3types.ServerSideEncryptionRule{{
-					ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
-						SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
-						KMSMasterKeyID: awssdk.String(kmsARN),
-					},
+			fakeAWSCoreData: fakeAWSCoreData{
+				s3Buckets: []s3types.Bucket{{
+					Name:         awssdk.String("prod-data"),
+					CreationDate: timePtr("2026-04-23T00:00:00Z"),
 				}},
-			}},
-			s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
-			s3Logging:    map[string]bool{"prod-data": true},
-			s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
-				BlockPublicAcls:       awssdk.Bool(true),
-				BlockPublicPolicy:     awssdk.Bool(true),
-				IgnorePublicAcls:      awssdk.Bool(true),
-				RestrictPublicBuckets: awssdk.Bool(true),
-			}},
-			rdsInstances: []rdstypes.DBInstance{{
-				DBInstanceArn:         awssdk.String(rdsARN),
-				DBInstanceIdentifier:  awssdk.String("orders-db"),
-				Engine:                awssdk.String("postgres"),
-				StorageEncrypted:      awssdk.Bool(true),
-				KmsKeyId:              awssdk.String(kmsARN),
-				DeletionProtection:    awssdk.Bool(true),
-				BackupRetentionPeriod: awssdk.Int32(7),
-				PubliclyAccessible:    awssdk.Bool(false),
-				InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
-				TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
-			}},
-			kmsKeys: []kmstypes.KeyMetadata{{
-				Arn:          awssdk.String(kmsARN),
-				KeyId:        awssdk.String("key-123"),
-				CreationDate: timePtr("2026-04-23T00:00:00Z"),
-				Enabled:      true,
-				KeyManager:   kmstypes.KeyManagerTypeCustomer,
-				KeyState:     kmstypes.KeyStateEnabled,
-				KeySpec:      kmstypes.KeySpecSymmetricDefault,
-				KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
-				Origin:       kmstypes.OriginTypeAwsKms,
-			}},
-			kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
-			kmsRotation: map[string]bool{"key-123": true},
-			secrets: []secretsmanagertypes.SecretListEntry{{
-				ARN:             awssdk.String(secretARN),
-				Name:            awssdk.String("prod/api-key"),
-				CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
-				KmsKeyId:        awssdk.String(kmsARN),
-				RotationEnabled: awssdk.Bool(true),
-				Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
-			}},
-			sqsQueueURLs: []string{sqsURL},
-			sqsAttributes: map[string]map[string]string{sqsURL: {
-				"QueueArn":               sqsARN,
-				"KmsMasterKeyId":         kmsARN,
-				"MessageRetentionPeriod": "1209600",
-				"CreatedTimestamp":       "1776902400",
-			}},
-			sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
-			snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
-			snsAttributes: map[string]map[string]string{snsARN: {
-				"TopicArn":       snsARN,
-				"KmsMasterKeyId": kmsARN,
-			}},
-			snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
-			ecrRepositories: []ecrtypes.Repository{{
-				RepositoryArn:  awssdk.String(ecrARN),
-				RepositoryName: awssdk.String("orders"),
-				RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
-				CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
-				EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
-					EncryptionType: ecrtypes.EncryptionTypeKms,
-					KmsKey:         awssdk.String(kmsARN),
-				},
-				ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
-				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
-			}},
-			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
+				s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
+				s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
+					Rules: []s3types.ServerSideEncryptionRule{{
+						ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
+							SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
+							KMSMasterKeyID: awssdk.String(kmsARN),
+						},
+					}},
+				}},
+				s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
+				s3Logging:    map[string]bool{"prod-data": true},
+				s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
+					BlockPublicAcls:       awssdk.Bool(true),
+					BlockPublicPolicy:     awssdk.Bool(true),
+					IgnorePublicAcls:      awssdk.Bool(true),
+					RestrictPublicBuckets: awssdk.Bool(true),
+				}},
+				rdsInstances: []rdstypes.DBInstance{{
+					DBInstanceArn:         awssdk.String(rdsARN),
+					DBInstanceIdentifier:  awssdk.String("orders-db"),
+					Engine:                awssdk.String("postgres"),
+					StorageEncrypted:      awssdk.Bool(true),
+					KmsKeyId:              awssdk.String(kmsARN),
+					DeletionProtection:    awssdk.Bool(true),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					PubliclyAccessible:    awssdk.Bool(false),
+					InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
+					TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				}},
+				kmsKeys: []kmstypes.KeyMetadata{{
+					Arn:          awssdk.String(kmsARN),
+					KeyId:        awssdk.String("key-123"),
+					CreationDate: timePtr("2026-04-23T00:00:00Z"),
+					Enabled:      true,
+					KeyManager:   kmstypes.KeyManagerTypeCustomer,
+					KeyState:     kmstypes.KeyStateEnabled,
+					KeySpec:      kmstypes.KeySpecSymmetricDefault,
+					KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
+					Origin:       kmstypes.OriginTypeAwsKms,
+				}},
+				kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
+				kmsRotation: map[string]bool{"key-123": true},
+				secrets: []secretsmanagertypes.SecretListEntry{{
+					ARN:             awssdk.String(secretARN),
+					Name:            awssdk.String("prod/api-key"),
+					CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
+					KmsKeyId:        awssdk.String(kmsARN),
+					RotationEnabled: awssdk.Bool(true),
+					Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+				}},
+				sqsQueueURLs: []string{sqsURL},
+				sqsAttributes: map[string]map[string]string{sqsURL: {
+					"QueueArn":               sqsARN,
+					"KmsMasterKeyId":         kmsARN,
+					"MessageRetentionPeriod": "1209600",
+					"CreatedTimestamp":       "1776902400",
+				}},
+				sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
+				snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
+				snsAttributes: map[string]map[string]string{snsARN: {
+					"TopicArn":       snsARN,
+					"KmsMasterKeyId": kmsARN,
+				}},
+				snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				ecrRepositories: []ecrtypes.Repository{{
+					RepositoryArn:  awssdk.String(ecrARN),
+					RepositoryName: awssdk.String("orders"),
+					RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
+					CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+					EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
+						EncryptionType: ecrtypes.EncryptionTypeKms,
+						KmsKey:         awssdk.String(kmsARN),
+					},
+					ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
+					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
+				}},
+				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
 		},
 	})
 	for _, tt := range []struct {
@@ -807,57 +809,59 @@ func TestReadAWSDataServiceInventoryEvents(t *testing.T) {
 	neptuneClusterARN := "arn:aws:rds:us-east-1:123456789012:cluster:graph-prod"
 	neptuneInstanceARN := "arn:aws:rds:us-east-1:123456789012:db:graph-prod-1"
 	source := newTestSource(t, fakeAWS{fakeAWSData: fakeAWSData{
-		openSearchDomains: []opensearchtypes.DomainStatus{{
-			ARN: awssdk.String(opensearchARN), DomainName: awssdk.String("search-prod"), EngineVersion: awssdk.String("OpenSearch_2.11"),
-			EncryptionAtRestOptions: &opensearchtypes.EncryptionAtRestOptions{Enabled: awssdk.Bool(true), KmsKeyId: awssdk.String("key-search")},
-		}},
-		openSearchTags: map[string][]opensearchtypes.Tag{opensearchARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("search@writer.com")}}},
-		ossCollections: []opensearchserverlesstypes.CollectionDetail{{
-			Arn: awssdk.String(ossCollectionARN), Id: awssdk.String("orders"), Name: awssdk.String("orders"),
-			CollectionEndpoint: awssdk.String("https://orders.us-east-1.aoss.amazonaws.com"), KmsKeyArn: awssdk.String("arn:aws:kms:us-east-1:123456789012:key/aoss"),
-		}},
-		ossPolicies: []opensearchserverlesstypes.SecurityPolicyDetail{{
-			Name: awssdk.String("orders-encryption"), Type: opensearchserverlesstypes.SecurityPolicyTypeEncryption, PolicyVersion: awssdk.String("1"),
-		}},
-		elasticacheGroups: []elasticachetypes.ReplicationGroup{{
-			ARN: awssdk.String(elasticacheARN), ReplicationGroupId: awssdk.String("orders-cache"), Engine: awssdk.String("redis"),
-			AtRestEncryptionEnabled: awssdk.Bool(true), TransitEncryptionEnabled: awssdk.Bool(true), SnapshotRetentionLimit: awssdk.Int32(7),
-		}},
-		elasticacheClusters: []elasticachetypes.CacheCluster{{
-			ARN: awssdk.String(elasticacheClusterARN), CacheClusterId: awssdk.String("cache-001"), Engine: awssdk.String("redis"), AtRestEncryptionEnabled: awssdk.Bool(true),
-		}},
-		elasticacheSubnets: []elasticachetypes.CacheSubnetGroup{{
-			ARN: awssdk.String("arn:aws:elasticache:us-east-1:123456789012:subnetgroup:orders-cache-subnets"), CacheSubnetGroupName: awssdk.String("orders-cache-subnets"), VpcId: awssdk.String("vpc-1"),
-			Subnets: []elasticachetypes.Subnet{{SubnetIdentifier: awssdk.String("subnet-1")}},
-		}},
-		elasticacheTags: map[string][]elasticachetypes.Tag{
-			elasticacheARN:        {{Key: awssdk.String("Team"), Value: awssdk.String("data")}},
-			elasticacheClusterARN: {{Key: awssdk.String("Team"), Value: awssdk.String("data")}},
+		fakeAWSDataStoreData: fakeAWSDataStoreData{
+			openSearchDomains: []opensearchtypes.DomainStatus{{
+				ARN: awssdk.String(opensearchARN), DomainName: awssdk.String("search-prod"), EngineVersion: awssdk.String("OpenSearch_2.11"),
+				EncryptionAtRestOptions: &opensearchtypes.EncryptionAtRestOptions{Enabled: awssdk.Bool(true), KmsKeyId: awssdk.String("key-search")},
+			}},
+			openSearchTags: map[string][]opensearchtypes.Tag{opensearchARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("search@writer.com")}}},
+			ossCollections: []opensearchserverlesstypes.CollectionDetail{{
+				Arn: awssdk.String(ossCollectionARN), Id: awssdk.String("orders"), Name: awssdk.String("orders"),
+				CollectionEndpoint: awssdk.String("https://orders.us-east-1.aoss.amazonaws.com"), KmsKeyArn: awssdk.String("arn:aws:kms:us-east-1:123456789012:key/aoss"),
+			}},
+			ossPolicies: []opensearchserverlesstypes.SecurityPolicyDetail{{
+				Name: awssdk.String("orders-encryption"), Type: opensearchserverlesstypes.SecurityPolicyTypeEncryption, PolicyVersion: awssdk.String("1"),
+			}},
+			elasticacheGroups: []elasticachetypes.ReplicationGroup{{
+				ARN: awssdk.String(elasticacheARN), ReplicationGroupId: awssdk.String("orders-cache"), Engine: awssdk.String("redis"),
+				AtRestEncryptionEnabled: awssdk.Bool(true), TransitEncryptionEnabled: awssdk.Bool(true), SnapshotRetentionLimit: awssdk.Int32(7),
+			}},
+			elasticacheClusters: []elasticachetypes.CacheCluster{{
+				ARN: awssdk.String(elasticacheClusterARN), CacheClusterId: awssdk.String("cache-001"), Engine: awssdk.String("redis"), AtRestEncryptionEnabled: awssdk.Bool(true),
+			}},
+			elasticacheSubnets: []elasticachetypes.CacheSubnetGroup{{
+				ARN: awssdk.String("arn:aws:elasticache:us-east-1:123456789012:subnetgroup:orders-cache-subnets"), CacheSubnetGroupName: awssdk.String("orders-cache-subnets"), VpcId: awssdk.String("vpc-1"),
+				Subnets: []elasticachetypes.Subnet{{SubnetIdentifier: awssdk.String("subnet-1")}},
+			}},
+			elasticacheTags: map[string][]elasticachetypes.Tag{
+				elasticacheARN:        {{Key: awssdk.String("Team"), Value: awssdk.String("data")}},
+				elasticacheClusterARN: {{Key: awssdk.String("Team"), Value: awssdk.String("data")}},
+			},
+			fsxFileSystems: []fsxtypes.FileSystem{{
+				ResourceARN: awssdk.String(fsxARN), FileSystemId: awssdk.String("fs-123"), KmsKeyId: awssdk.String("key-fsx"), VpcId: awssdk.String("vpc-1"),
+				FileSystemType: fsxtypes.FileSystemTypeLustre, LustreConfiguration: &fsxtypes.LustreFileSystemConfiguration{AutomaticBackupRetentionDays: awssdk.Int32(7)},
+			}},
+			redshiftClusters: []redshifttypes.Cluster{{
+				ClusterNamespaceArn: awssdk.String(redshiftARN), ClusterIdentifier: awssdk.String("warehouse"), Encrypted: awssdk.Bool(false), PubliclyAccessible: awssdk.Bool(true),
+				AutomatedSnapshotRetentionPeriod: awssdk.Int32(0), VpcSecurityGroups: []redshifttypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-redshift")}},
+			}},
+			docdbClusters: []docdbtypes.DBCluster{{
+				DBClusterArn: awssdk.String(docdbClusterARN), DBClusterIdentifier: awssdk.String("docdb-prod"), Engine: awssdk.String("docdb"), StorageEncrypted: awssdk.Bool(true),
+				VpcSecurityGroups: []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
+			}},
+			docdbInstances: []docdbtypes.DBInstance{{
+				DBInstanceArn: awssdk.String(docdbInstanceARN), DBInstanceIdentifier: awssdk.String("docdb-prod-1"), DBClusterIdentifier: awssdk.String("docdb-prod"), Engine: awssdk.String("docdb"), StorageEncrypted: awssdk.Bool(true), PubliclyAccessible: awssdk.Bool(false),
+			}},
+			docdbTags: map[string][]docdbtypes.Tag{docdbClusterARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}}, docdbInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}}},
+			neptuneClusters: []neptunetypes.DBCluster{{
+				DBClusterArn: awssdk.String(neptuneClusterARN), DBClusterIdentifier: awssdk.String("graph-prod"), Engine: awssdk.String("neptune"), StorageEncrypted: awssdk.Bool(true),
+				VpcSecurityGroups: []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
+			}},
+			neptuneInstances: []neptunetypes.DBInstance{{
+				DBInstanceArn: awssdk.String(neptuneInstanceARN), DBInstanceIdentifier: awssdk.String("graph-prod-1"), DBClusterIdentifier: awssdk.String("graph-prod"), Engine: awssdk.String("neptune"), StorageEncrypted: awssdk.Bool(true), PubliclyAccessible: awssdk.Bool(false),
+			}},
+			neptuneTags: map[string][]neptunetypes.Tag{neptuneClusterARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("graph@writer.com")}}, neptuneInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("graph@writer.com")}}},
 		},
-		fsxFileSystems: []fsxtypes.FileSystem{{
-			ResourceARN: awssdk.String(fsxARN), FileSystemId: awssdk.String("fs-123"), KmsKeyId: awssdk.String("key-fsx"), VpcId: awssdk.String("vpc-1"),
-			FileSystemType: fsxtypes.FileSystemTypeLustre, LustreConfiguration: &fsxtypes.LustreFileSystemConfiguration{AutomaticBackupRetentionDays: awssdk.Int32(7)},
-		}},
-		redshiftClusters: []redshifttypes.Cluster{{
-			ClusterNamespaceArn: awssdk.String(redshiftARN), ClusterIdentifier: awssdk.String("warehouse"), Encrypted: awssdk.Bool(false), PubliclyAccessible: awssdk.Bool(true),
-			AutomatedSnapshotRetentionPeriod: awssdk.Int32(0), VpcSecurityGroups: []redshifttypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-redshift")}},
-		}},
-		docdbClusters: []docdbtypes.DBCluster{{
-			DBClusterArn: awssdk.String(docdbClusterARN), DBClusterIdentifier: awssdk.String("docdb-prod"), Engine: awssdk.String("docdb"), StorageEncrypted: awssdk.Bool(true),
-			VpcSecurityGroups: []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
-		}},
-		docdbInstances: []docdbtypes.DBInstance{{
-			DBInstanceArn: awssdk.String(docdbInstanceARN), DBInstanceIdentifier: awssdk.String("docdb-prod-1"), DBClusterIdentifier: awssdk.String("docdb-prod"), Engine: awssdk.String("docdb"), StorageEncrypted: awssdk.Bool(true), PubliclyAccessible: awssdk.Bool(false),
-		}},
-		docdbTags: map[string][]docdbtypes.Tag{docdbClusterARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}}, docdbInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}}},
-		neptuneClusters: []neptunetypes.DBCluster{{
-			DBClusterArn: awssdk.String(neptuneClusterARN), DBClusterIdentifier: awssdk.String("graph-prod"), Engine: awssdk.String("neptune"), StorageEncrypted: awssdk.Bool(true),
-			VpcSecurityGroups: []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
-		}},
-		neptuneInstances: []neptunetypes.DBInstance{{
-			DBInstanceArn: awssdk.String(neptuneInstanceARN), DBInstanceIdentifier: awssdk.String("graph-prod-1"), DBClusterIdentifier: awssdk.String("graph-prod"), Engine: awssdk.String("neptune"), StorageEncrypted: awssdk.Bool(true), PubliclyAccessible: awssdk.Bool(false),
-		}},
-		neptuneTags: map[string][]neptunetypes.Tag{neptuneClusterARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("graph@writer.com")}}, neptuneInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("graph@writer.com")}}},
 	}})
 	for _, tt := range []struct {
 		family string
@@ -952,12 +956,18 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 		topics = append(topics, snstypes.Topic{TopicArn: awssdk.String(arn)})
 		attributes[arn] = map[string]string{"TopicArn": arn}
 	}
-	records, _, err := listSNSTopics(context.Background(), awsClients{sns: fakeSNS{fake: &fakeAWS{
-		fakeAWSData: fakeAWSData{
-			snsTopics:     topics,
-			snsAttributes: attributes,
+	records, _, err := listSNSTopics(context.Background(), awsClients{
+		awsDataStoreClients: awsDataStoreClients{
+			sns: fakeSNS{fake: &fakeAWS{
+				fakeAWSData: fakeAWSData{
+					fakeAWSCoreData: fakeAWSCoreData{
+						snsTopics:     topics,
+						snsAttributes: attributes,
+					},
+				},
+			}},
 		},
-	}}}, settings{}, "", 10)
+	}, settings{}, "", 10)
 	if err != nil {
 		t.Fatalf("listSNSTopics: %v", err)
 	}
@@ -1007,27 +1017,33 @@ func TestS3BucketPublicTreatsMissingPublicAccessBlockAsExposed(t *testing.T) {
 
 func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 	base := fakeAWS{fakeAWSData: fakeAWSData{
-		s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
-		s3BucketRegions: map[string]s3types.BucketLocationConstraint{
-			"legacy-eu": s3types.BucketLocationConstraint("EU"),
+		fakeAWSCoreData: fakeAWSCoreData{
+			s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
+			s3BucketRegions: map[string]s3types.BucketLocationConstraint{
+				"legacy-eu": s3types.BucketLocationConstraint("EU"),
+			},
 		},
 	}}
 	regional := fakeAWS{fakeAWSData: fakeAWSData{
-		s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
-		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
-			ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
-		}}}},
-		s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
-		s3Logging:    map[string]bool{"legacy-eu": true},
+		fakeAWSCoreData: fakeAWSCoreData{
+			s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
+			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
+				ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
+			}}}},
+			s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
+			s3Logging:    map[string]bool{"legacy-eu": true},
+		},
 	}}
 	records, _, err := listS3Buckets(context.Background(), awsClients{
 		cfg: awssdk.Config{Region: "us-east-1"},
-		s3:  base,
-		s3ByRegion: func(region string) awsS3API {
-			if region != "eu-west-1" {
-				t.Fatalf("regional client requested for %q, want eu-west-1", region)
-			}
-			return regional
+		awsDataStoreClients: awsDataStoreClients{
+			s3: base,
+			s3ByRegion: func(region string) awsS3API {
+				if region != "eu-west-1" {
+					t.Fatalf("regional client requested for %q, want eu-west-1", region)
+				}
+				return regional
+			},
 		},
 	}, settings{region: "us-east-1"}, "", 0)
 	if err != nil {
@@ -1783,21 +1799,25 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 }
 
 func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
-	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{ec2: fakeAWS{
-		fakeAWSNetwork: fakeAWSNetwork{
-			networkInterfaces: []ec2types.NetworkInterface{{
-				NetworkInterfaceId: awssdk.String("eni-1"),
-				Description:        awssdk.String("prod-web-eni"),
-				Association: &ec2types.NetworkInterfaceAssociation{
-					PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
-					PublicIp:      awssdk.String("203.0.113.10"),
+	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{
+		awsPlatformClients: awsPlatformClients{
+			ec2: fakeAWS{
+				fakeAWSNetwork: fakeAWSNetwork{
+					networkInterfaces: []ec2types.NetworkInterface{{
+						NetworkInterfaceId: awssdk.String("eni-1"),
+						Description:        awssdk.String("prod-web-eni"),
+						Association: &ec2types.NetworkInterfaceAssociation{
+							PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
+							PublicIp:      awssdk.String("203.0.113.10"),
+						},
+						Attachment: &ec2types.NetworkInterfaceAttachment{
+							InstanceId: awssdk.String("i-1234567890abcdef0"),
+						},
+					}},
 				},
-				Attachment: &ec2types.NetworkInterfaceAttachment{
-					InstanceId: awssdk.String("i-1234567890abcdef0"),
-				},
-			}},
+			},
 		},
-	}}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
+	}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
 	if err != nil {
 		t.Fatalf("listNetworkInterfacePublicEndpoints() error = %v", err)
 	}
@@ -2009,7 +2029,20 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, docdb: fakeDocDB{fake: &fake}, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, elasticache: fakeElastiCache{fake: &fake}, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, fsx: fakeFSx{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, neptune: fakeNeptune{fake: &fake}, openSearch: fakeOpenSearch{fake: &fake}, openSearchServerless: fakeOpenSearchServerless{fake: &fake}, tagging: fake, s3: fake, rds: fake, redshift: fakeRedshift{fake: &fake}, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{
+			awsPlatformClients: awsPlatformClients{
+				iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake,
+				ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake},
+				apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs},
+				lambda: fake, tagging: fake,
+			},
+			awsDataStoreClients: awsDataStoreClients{
+				docdb: fakeDocDB{fake: &fake}, elasticache: fakeElastiCache{fake: &fake}, fsx: fakeFSx{fake: &fake},
+				neptune: fakeNeptune{fake: &fake}, openSearch: fakeOpenSearch{fake: &fake},
+				openSearchServerless: fakeOpenSearchServerless{fake: &fake},
+				s3:                   fake, rds: fake, redshift: fakeRedshift{fake: &fake}, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake},
+			},
+		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -2025,7 +2058,16 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{
+			awsPlatformClients: awsPlatformClients{
+				iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake,
+				ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake},
+				apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake,
+			},
+			awsDataStoreClients: awsDataStoreClients{
+				s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake},
+			},
+		}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -2110,6 +2152,11 @@ type fakeAWSNetwork struct {
 }
 
 type fakeAWSData struct {
+	fakeAWSCoreData
+	fakeAWSDataStoreData
+}
+
+type fakeAWSCoreData struct {
 	s3Buckets            []s3types.Bucket
 	s3BucketRegions      map[string]s3types.BucketLocationConstraint
 	s3Tags               map[string][]s3types.Tag
@@ -2131,22 +2178,25 @@ type fakeAWSData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
-	fsxFileSystems       []fsxtypes.FileSystem
-	openSearchDomains    []opensearchtypes.DomainStatus
-	openSearchTags       map[string][]opensearchtypes.Tag
-	ossCollections       []opensearchserverlesstypes.CollectionDetail
-	ossPolicies          []opensearchserverlesstypes.SecurityPolicyDetail
-	elasticacheGroups    []elasticachetypes.ReplicationGroup
-	elasticacheClusters  []elasticachetypes.CacheCluster
-	elasticacheSubnets   []elasticachetypes.CacheSubnetGroup
-	elasticacheTags      map[string][]elasticachetypes.Tag
-	redshiftClusters     []redshifttypes.Cluster
-	docdbClusters        []docdbtypes.DBCluster
-	docdbInstances       []docdbtypes.DBInstance
-	docdbTags            map[string][]docdbtypes.Tag
-	neptuneClusters      []neptunetypes.DBCluster
-	neptuneInstances     []neptunetypes.DBInstance
-	neptuneTags          map[string][]neptunetypes.Tag
+}
+
+type fakeAWSDataStoreData struct {
+	fsxFileSystems      []fsxtypes.FileSystem
+	openSearchDomains   []opensearchtypes.DomainStatus
+	openSearchTags      map[string][]opensearchtypes.Tag
+	ossCollections      []opensearchserverlesstypes.CollectionDetail
+	ossPolicies         []opensearchserverlesstypes.SecurityPolicyDetail
+	elasticacheGroups   []elasticachetypes.ReplicationGroup
+	elasticacheClusters []elasticachetypes.CacheCluster
+	elasticacheSubnets  []elasticachetypes.CacheSubnetGroup
+	elasticacheTags     map[string][]elasticachetypes.Tag
+	redshiftClusters    []redshifttypes.Cluster
+	docdbClusters       []docdbtypes.DBCluster
+	docdbInstances      []docdbtypes.DBInstance
+	docdbTags           map[string][]docdbtypes.Tag
+	neptuneClusters     []neptunetypes.DBCluster
+	neptuneInstances    []neptunetypes.DBInstance
+	neptuneTags         map[string][]neptunetypes.Tag
 }
 
 type fakeAWSCompute struct {

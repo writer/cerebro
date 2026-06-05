@@ -160,26 +160,34 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg                  awssdk.Config
-	iam                  awsIAMAPI
-	cloudTrail           awsCloudTrailAPI
+	cfg awssdk.Config
+	awsPlatformClients
+	awsDataStoreClients
+}
+
+type awsPlatformClients struct {
+	iam          awsIAMAPI
+	cloudTrail   awsCloudTrailAPI
+	ec2          awsEC2API
+	route53      awsRoute53API
+	cloudFront   awsCloudFrontAPI
+	elbv2        awsELBV2API
+	ecs          awsECSAPI
+	eks          awsEKSAPI
+	ecr          awsECRAPI
+	apiGateway   awsAPIGatewayAPI
+	apiGatewayV2 awsAPIGatewayV2API
+	lambda       awsLambdaAPI
+	tagging      awsResourceGroupsTaggingAPI
+}
+
+type awsDataStoreClients struct {
 	docdb                awsDocDBAPI
-	ec2                  awsEC2API
-	route53              awsRoute53API
-	cloudFront           awsCloudFrontAPI
-	elbv2                awsELBV2API
 	elasticache          awsElastiCacheAPI
-	ecs                  awsECSAPI
-	eks                  awsEKSAPI
-	ecr                  awsECRAPI
 	fsx                  awsFSxAPI
-	apiGateway           awsAPIGatewayAPI
-	apiGatewayV2         awsAPIGatewayV2API
-	lambda               awsLambdaAPI
 	neptune              awsNeptuneAPI
 	openSearch           awsOpenSearchAPI
 	openSearchServerless awsOpenSearchServerlessAPI
-	tagging              awsResourceGroupsTaggingAPI
 	s3                   awsS3API
 	s3ByRegion           func(string) awsS3API
 	rds                  awsRDSAPI
@@ -1038,38 +1046,42 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:                  cfg,
-		iam:                  iam.NewFromConfig(cfg),
-		cloudTrail:           cloudtrail.NewFromConfig(cfg),
-		docdb:                docdb.NewFromConfig(cfg),
-		ec2:                  ec2.NewFromConfig(cfg),
-		route53:              route53.NewFromConfig(cfg),
-		cloudFront:           cloudfront.NewFromConfig(cfg),
-		elbv2:                elbv2.NewFromConfig(cfg),
-		elasticache:          elasticache.NewFromConfig(cfg),
-		ecs:                  ecs.NewFromConfig(cfg),
-		eks:                  eks.NewFromConfig(cfg),
-		ecr:                  ecr.NewFromConfig(cfg),
-		fsx:                  fsx.NewFromConfig(cfg),
-		apiGateway:           apigateway.NewFromConfig(cfg),
-		apiGatewayV2:         apigatewayv2.NewFromConfig(cfg),
-		lambda:               lambda.NewFromConfig(cfg),
-		neptune:              neptune.NewFromConfig(cfg),
-		openSearch:           opensearch.NewFromConfig(cfg),
-		openSearchServerless: opensearchserverless.NewFromConfig(cfg),
-		tagging:              resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:                   s3.NewFromConfig(cfg),
-		s3ByRegion: func(region string) awsS3API {
-			regionalCfg := cfg
-			regionalCfg.Region = region
-			return s3.NewFromConfig(regionalCfg)
+		cfg: cfg,
+		awsPlatformClients: awsPlatformClients{
+			iam:          iam.NewFromConfig(cfg),
+			cloudTrail:   cloudtrail.NewFromConfig(cfg),
+			ec2:          ec2.NewFromConfig(cfg),
+			route53:      route53.NewFromConfig(cfg),
+			cloudFront:   cloudfront.NewFromConfig(cfg),
+			elbv2:        elbv2.NewFromConfig(cfg),
+			ecs:          ecs.NewFromConfig(cfg),
+			eks:          eks.NewFromConfig(cfg),
+			ecr:          ecr.NewFromConfig(cfg),
+			apiGateway:   apigateway.NewFromConfig(cfg),
+			apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
+			lambda:       lambda.NewFromConfig(cfg),
+			tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
 		},
-		rds:      rds.NewFromConfig(cfg),
-		redshift: redshift.NewFromConfig(cfg),
-		kms:      kms.NewFromConfig(cfg),
-		secrets:  secretsmanager.NewFromConfig(cfg),
-		sqs:      sqs.NewFromConfig(cfg),
-		sns:      sns.NewFromConfig(cfg),
+		awsDataStoreClients: awsDataStoreClients{
+			docdb:                docdb.NewFromConfig(cfg),
+			elasticache:          elasticache.NewFromConfig(cfg),
+			fsx:                  fsx.NewFromConfig(cfg),
+			neptune:              neptune.NewFromConfig(cfg),
+			openSearch:           opensearch.NewFromConfig(cfg),
+			openSearchServerless: opensearchserverless.NewFromConfig(cfg),
+			s3:                   s3.NewFromConfig(cfg),
+			s3ByRegion: func(region string) awsS3API {
+				regionalCfg := cfg
+				regionalCfg.Region = region
+				return s3.NewFromConfig(regionalCfg)
+			},
+			rds:      rds.NewFromConfig(cfg),
+			redshift: redshift.NewFromConfig(cfg),
+			kms:      kms.NewFromConfig(cfg),
+			secrets:  secretsmanager.NewFromConfig(cfg),
+			sqs:      sqs.NewFromConfig(cfg),
+			sns:      sns.NewFromConfig(cfg),
+		},
 	}, nil
 }
 
