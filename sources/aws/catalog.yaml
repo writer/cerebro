@@ -182,6 +182,7 @@ runtime_families:
   - organizations_account
   - organizations_organizational_unit
   - organizations_policy
+  - organizations_root
   - public_endpoint
   - rds_instance
   - resource_exposure
