@@ -55,7 +55,7 @@ func TestProjectAWSBackupPlanAndRecoveryPointRelationships(t *testing.T) {
 			"resource_type":        "backup_recovery_point",
 			"source_resource_arn":  resourceARN,
 			"source_resource_name": "orders-db",
-			"source_resource_type": "rds_instance",
+			"source_resource_type": "rds",
 		},
 	}); err != nil {
 		t.Fatalf("Project(backup_recovery_point) error = %v", err)
