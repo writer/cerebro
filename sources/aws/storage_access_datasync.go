@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -515,8 +514,11 @@ func describeDataSyncLocation(ctx context.Context, clients awsClients, entry dat
 			return location, err
 		}
 		location.CreationTime, location.AgentARNs = out.CreationTime, out.AgentArns
-		location.AuthenticationType, location.KMSKeyID = string(out.AuthenticationType), awssdk.ToString(out.KmsKeyProviderUri)
+		location.AuthenticationType = string(out.AuthenticationType)
 		location.KMSKeyID, location.SecretARN, location.RoleARN = dataSyncSecretAttributes(out.CmkSecretConfig, out.CustomSecretConfig, out.ManagedSecretConfig)
+		if location.KMSKeyID == "" {
+			location.KMSKeyID = awssdk.ToString(out.KmsKeyProviderUri)
+		}
 		location.Entry.LocationArn, location.Entry.LocationUri = out.LocationArn, out.LocationUri
 	case "azure_blob":
 		out, err := clients.datasync.DescribeLocationAzureBlob(ctx, &datasync.DescribeLocationAzureBlobInput{LocationArn: awssdk.String(arn)})
@@ -812,8 +814,3 @@ func int64AttrString(value *int64) string {
 	return strconv.FormatInt(*value, 10)
 }
 
-func sortedAWSStrings(values []string) []string {
-	values = cleanStrings(values)
-	sort.Strings(values)
-	return values
-}
