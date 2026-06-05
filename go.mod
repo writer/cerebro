@@ -12,6 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.41.12
 	github.com/aws/aws-sdk-go-v2/config v1.32.23
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.22
+	github.com/aws/aws-sdk-go-v2/service/accessanalyzer v1.49.4
 	github.com/aws/aws-sdk-go-v2/service/acm v1.39.5
 	github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5
@@ -24,6 +25,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.58.2
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.75.1
+	github.com/aws/aws-sdk-go-v2/service/configservice v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2
@@ -36,13 +38,17 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/fsx v1.66.5
 	github.com/aws/aws-sdk-go-v2/service/globalaccelerator v1.36.5
 	github.com/aws/aws-sdk-go-v2/service/glue v1.143.0
+	github.com/aws/aws-sdk-go-v2/service/guardduty v1.79.2
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.3
 	github.com/aws/aws-sdk-go-v2/service/identitystore v1.37.5
+	github.com/aws/aws-sdk-go-v2/service/inspector2 v1.49.1
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.52.5
 	github.com/aws/aws-sdk-go-v2/service/kinesis v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.53.2
 	github.com/aws/aws-sdk-go-v2/service/lakeformation v1.48.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2
+	github.com/aws/aws-sdk-go-v2/service/macie2 v1.52.1
+	github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.61.6
 	github.com/aws/aws-sdk-go-v2/service/opensearch v1.70.6
 	github.com/aws/aws-sdk-go-v2/service/opensearchserverless v1.32.0
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.51.9
@@ -55,6 +61,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4
 	github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1
+	github.com/aws/aws-sdk-go-v2/service/securityhub v1.71.5
 	github.com/aws/aws-sdk-go-v2/service/sfn v1.42.2
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.21
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.43.1
@@ -62,6 +69,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssoadmin v1.39.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.2
 	github.com/aws/aws-sdk-go-v2/service/vpclattice v1.22.1
+	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.72.3
 	github.com/aws/smithy-go v1.27.1
 	github.com/google/go-github/v66 v66.0.0
 	github.com/jackc/pgx/v5 v5.10.0
