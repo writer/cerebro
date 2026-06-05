@@ -702,83 +702,85 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
 				TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
 			}},
-			redshiftClusters: []redshifttypes.Cluster{{
-				ClusterIdentifier:                awssdk.String("warehouse-prod"),
-				ClusterStatus:                    awssdk.String("available"),
-				ClusterCreateTime:                timePtr("2026-04-23T00:00:00Z"),
-				ClusterVersion:                   awssdk.String("1.0"),
-				Encrypted:                        awssdk.Bool(true),
-				EnhancedVpcRouting:               awssdk.Bool(true),
-				KmsKeyId:                         awssdk.String(kmsARN),
-				NodeType:                         awssdk.String("ra3.xlplus"),
-				NumberOfNodes:                    awssdk.Int32(2),
-				PubliclyAccessible:               awssdk.Bool(false),
-				AutomatedSnapshotRetentionPeriod: awssdk.Int32(7),
-				Tags:                             []redshifttypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}},
-				VpcId:                            awssdk.String("vpc-data"),
-				VpcSecurityGroups:                []redshifttypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-redshift")}},
-			}},
-			docdbClusters: []docdbtypes.DBCluster{{
-				DBClusterArn:          awssdk.String(docdbClusterARN),
-				DBClusterIdentifier:   awssdk.String("docdb-prod"),
-				BackupRetentionPeriod: awssdk.Int32(7),
-				ClusterCreateTime:     timePtr("2026-04-23T00:00:00Z"),
-				DBSubnetGroup:         awssdk.String("data-subnets"),
-				DeletionProtection:    awssdk.Bool(true),
-				Engine:                awssdk.String("docdb"),
-				EngineVersion:         awssdk.String("5.0.0"),
-				KmsKeyId:              awssdk.String(kmsARN),
-				Port:                  awssdk.Int32(27017),
-				Status:                awssdk.String("available"),
-				StorageEncrypted:      awssdk.Bool(true),
-				VpcSecurityGroups:     []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
-			}},
-			docdbInstances: []docdbtypes.DBInstance{{
-				DBClusterIdentifier:  awssdk.String("docdb-prod"),
-				DBInstanceArn:        awssdk.String(docdbInstanceARN),
-				DBInstanceClass:      awssdk.String("db.r6g.large"),
-				DBInstanceIdentifier: awssdk.String("docdb-prod-1"),
-				DBInstanceStatus:     awssdk.String("available"),
-				Endpoint:             &docdbtypes.Endpoint{Address: awssdk.String("docdb-prod-1.cluster.local"), Port: awssdk.Int32(27017)},
-				Engine:               awssdk.String("docdb"),
-				EngineVersion:        awssdk.String("5.0.0"),
-				InstanceCreateTime:   timePtr("2026-04-23T00:00:00Z"),
-				VpcSecurityGroups:    []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
-			}},
-			docdbTags: map[string][]docdbtypes.Tag{
-				docdbClusterARN:  {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
-				docdbInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
-			},
-			neptuneClusters: []neptunetypes.DBCluster{{
-				DBClusterArn:          awssdk.String(neptuneClusterARN),
-				DBClusterIdentifier:   awssdk.String("graph-prod"),
-				BackupRetentionPeriod: awssdk.Int32(7),
-				ClusterCreateTime:     timePtr("2026-04-23T00:00:00Z"),
-				DBSubnetGroup:         awssdk.String("data-subnets"),
-				DeletionProtection:    awssdk.Bool(true),
-				Engine:                awssdk.String("neptune"),
-				EngineVersion:         awssdk.String("1.3.2.0"),
-				KmsKeyId:              awssdk.String(kmsARN),
-				Port:                  awssdk.Int32(8182),
-				Status:                awssdk.String("available"),
-				StorageEncrypted:      awssdk.Bool(true),
-				VpcSecurityGroups:     []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
-			}},
-			neptuneInstances: []neptunetypes.DBInstance{{
-				DBClusterIdentifier:  awssdk.String("graph-prod"),
-				DBInstanceArn:        awssdk.String(neptuneInstanceARN),
-				DBInstanceClass:      awssdk.String("db.r6g.large"),
-				DBInstanceIdentifier: awssdk.String("graph-prod-1"),
-				DBInstanceStatus:     awssdk.String("available"),
-				Endpoint:             &neptunetypes.Endpoint{Address: awssdk.String("graph-prod-1.cluster.local"), Port: awssdk.Int32(8182)},
-				Engine:               awssdk.String("neptune"),
-				EngineVersion:        awssdk.String("1.3.2.0"),
-				InstanceCreateTime:   timePtr("2026-04-23T00:00:00Z"),
-				VpcSecurityGroups:    []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
-			}},
-			neptuneTags: map[string][]neptunetypes.Tag{
-				neptuneClusterARN:  {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
-				neptuneInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+			fakeAWSDataWarehouseData: fakeAWSDataWarehouseData{
+				redshiftClusters: []redshifttypes.Cluster{{
+					ClusterIdentifier:                awssdk.String("warehouse-prod"),
+					ClusterStatus:                    awssdk.String("available"),
+					ClusterCreateTime:                timePtr("2026-04-23T00:00:00Z"),
+					ClusterVersion:                   awssdk.String("1.0"),
+					Encrypted:                        awssdk.Bool(true),
+					EnhancedVpcRouting:               awssdk.Bool(true),
+					KmsKeyId:                         awssdk.String(kmsARN),
+					NodeType:                         awssdk.String("ra3.xlplus"),
+					NumberOfNodes:                    awssdk.Int32(2),
+					PubliclyAccessible:               awssdk.Bool(false),
+					AutomatedSnapshotRetentionPeriod: awssdk.Int32(7),
+					Tags:                             []redshifttypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}},
+					VpcId:                            awssdk.String("vpc-data"),
+					VpcSecurityGroups:                []redshifttypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-redshift")}},
+				}},
+				docdbClusters: []docdbtypes.DBCluster{{
+					DBClusterArn:          awssdk.String(docdbClusterARN),
+					DBClusterIdentifier:   awssdk.String("docdb-prod"),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					ClusterCreateTime:     timePtr("2026-04-23T00:00:00Z"),
+					DBSubnetGroup:         awssdk.String("data-subnets"),
+					DeletionProtection:    awssdk.Bool(true),
+					Engine:                awssdk.String("docdb"),
+					EngineVersion:         awssdk.String("5.0.0"),
+					KmsKeyId:              awssdk.String(kmsARN),
+					Port:                  awssdk.Int32(27017),
+					Status:                awssdk.String("available"),
+					StorageEncrypted:      awssdk.Bool(true),
+					VpcSecurityGroups:     []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
+				}},
+				docdbInstances: []docdbtypes.DBInstance{{
+					DBClusterIdentifier:  awssdk.String("docdb-prod"),
+					DBInstanceArn:        awssdk.String(docdbInstanceARN),
+					DBInstanceClass:      awssdk.String("db.r6g.large"),
+					DBInstanceIdentifier: awssdk.String("docdb-prod-1"),
+					DBInstanceStatus:     awssdk.String("available"),
+					Endpoint:             &docdbtypes.Endpoint{Address: awssdk.String("docdb-prod-1.cluster.local"), Port: awssdk.Int32(27017)},
+					Engine:               awssdk.String("docdb"),
+					EngineVersion:        awssdk.String("5.0.0"),
+					InstanceCreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					VpcSecurityGroups:    []docdbtypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-docdb")}},
+				}},
+				docdbTags: map[string][]docdbtypes.Tag{
+					docdbClusterARN:  {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+					docdbInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				},
+				neptuneClusters: []neptunetypes.DBCluster{{
+					DBClusterArn:          awssdk.String(neptuneClusterARN),
+					DBClusterIdentifier:   awssdk.String("graph-prod"),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					ClusterCreateTime:     timePtr("2026-04-23T00:00:00Z"),
+					DBSubnetGroup:         awssdk.String("data-subnets"),
+					DeletionProtection:    awssdk.Bool(true),
+					Engine:                awssdk.String("neptune"),
+					EngineVersion:         awssdk.String("1.3.2.0"),
+					KmsKeyId:              awssdk.String(kmsARN),
+					Port:                  awssdk.Int32(8182),
+					Status:                awssdk.String("available"),
+					StorageEncrypted:      awssdk.Bool(true),
+					VpcSecurityGroups:     []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
+				}},
+				neptuneInstances: []neptunetypes.DBInstance{{
+					DBClusterIdentifier:  awssdk.String("graph-prod"),
+					DBInstanceArn:        awssdk.String(neptuneInstanceARN),
+					DBInstanceClass:      awssdk.String("db.r6g.large"),
+					DBInstanceIdentifier: awssdk.String("graph-prod-1"),
+					DBInstanceStatus:     awssdk.String("available"),
+					Endpoint:             &neptunetypes.Endpoint{Address: awssdk.String("graph-prod-1.cluster.local"), Port: awssdk.Int32(8182)},
+					Engine:               awssdk.String("neptune"),
+					EngineVersion:        awssdk.String("1.3.2.0"),
+					InstanceCreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					VpcSecurityGroups:    []neptunetypes.VpcSecurityGroupMembership{{VpcSecurityGroupId: awssdk.String("sg-neptune")}},
+				}},
+				neptuneTags: map[string][]neptunetypes.Tag{
+					neptuneClusterARN:  {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+					neptuneInstanceARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				},
 			},
 			kmsKeys: []kmstypes.KeyMetadata{{
 				Arn:          awssdk.String(kmsARN),
@@ -2080,25 +2082,29 @@ type fakeAWSData struct {
 	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
 	s3OptionalError      error
 	rdsInstances         []rdstypes.DBInstance
-	redshiftClusters     []redshifttypes.Cluster
-	docdbClusters        []docdbtypes.DBCluster
-	docdbInstances       []docdbtypes.DBInstance
-	docdbTags            map[string][]docdbtypes.Tag
-	neptuneClusters      []neptunetypes.DBCluster
-	neptuneInstances     []neptunetypes.DBInstance
-	neptuneTags          map[string][]neptunetypes.Tag
-	kmsKeys              []kmstypes.KeyMetadata
-	kmsTags              map[string][]kmstypes.Tag
-	kmsRotation          map[string]bool
-	secrets              []secretsmanagertypes.SecretListEntry
-	sqsQueueURLs         []string
-	sqsAttributes        map[string]map[string]string
-	sqsTags              map[string]map[string]string
-	snsTopics            []snstypes.Topic
-	snsAttributes        map[string]map[string]string
-	snsTags              map[string][]snstypes.Tag
-	ecrRepositories      []ecrtypes.Repository
-	ecrTags              map[string][]ecrtypes.Tag
+	fakeAWSDataWarehouseData
+	kmsKeys         []kmstypes.KeyMetadata
+	kmsTags         map[string][]kmstypes.Tag
+	kmsRotation     map[string]bool
+	secrets         []secretsmanagertypes.SecretListEntry
+	sqsQueueURLs    []string
+	sqsAttributes   map[string]map[string]string
+	sqsTags         map[string]map[string]string
+	snsTopics       []snstypes.Topic
+	snsAttributes   map[string]map[string]string
+	snsTags         map[string][]snstypes.Tag
+	ecrRepositories []ecrtypes.Repository
+	ecrTags         map[string][]ecrtypes.Tag
+}
+
+type fakeAWSDataWarehouseData struct {
+	redshiftClusters []redshifttypes.Cluster
+	docdbClusters    []docdbtypes.DBCluster
+	docdbInstances   []docdbtypes.DBInstance
+	docdbTags        map[string][]docdbtypes.Tag
+	neptuneClusters  []neptunetypes.DBCluster
+	neptuneInstances []neptunetypes.DBInstance
+	neptuneTags      map[string][]neptunetypes.Tag
 }
 
 type fakeAWSCompute struct {
