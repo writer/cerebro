@@ -942,7 +942,7 @@ func TestNetNewRetiredRulesNoEmit(t *testing.T) {
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 36; got != want {
+	if got, want := len(keepRules), 38; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1203,6 +1203,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "identity-github-active-without-okta-link", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "identity-mfa-factor-reset-or-disabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
 		{RuleID: "identity-okta-authenticator-weak-factor-enabled", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
+		{RuleID: "identity-okta-deprovisioned-active-cloud-access", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
 		{RuleID: "identity-okta-oauth-public-client-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
 		{RuleID: "identity-okta-threat-insight-not-blocking", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
 		{RuleID: "identity-okta-deprovisioned-active-in-github", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
@@ -1219,6 +1220,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "sentinelone-agent-not-up-to-date", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-agent-stale", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-endpoint-active-infection", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
+		{RuleID: "sentinelone-infected-endpoint-privileged-owner", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-infected-endpoint", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
 		{RuleID: "sentinelone-malicious-or-fileless-threat", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
 		{RuleID: "sentinelone-mitigation-failed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},

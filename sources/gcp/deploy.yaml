@@ -1,0 +1,136 @@
+sourceId: gcp
+secretKeys:
+  - GCP_ARTIFACT_REPOSITORY
+  - GCP_CUSTOMER_ID
+  - GCP_GROUP_KEY
+  - GCP_KEY_RING
+  - GCP_KMS_LOCATION
+  - GCP_PROJECT_ID
+  - GCP_SERVICE_ACCOUNT_EMAIL
+  - GCP_TOKEN
+runtimes:
+  - localId: asset-metadata
+    config:
+      family: asset_metadata
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: artifact-registry-image
+    config:
+      artifact_repository: env:GCP_ARTIFACT_REPOSITORY
+      family: artifact_registry_image
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: artifact-registry-repository
+    config:
+      family: artifact_registry_repository
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: audit
+    config:
+      family: audit
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: cloud-function
+    config:
+      family: cloud_function
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: cloud-run-service
+    config:
+      family: cloud_run_service
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: cloud-sql-instance
+    config:
+      family: cloud_sql_instance
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: compute-instance
+    config:
+      family: compute_instance
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: effective-permission
+    config:
+      family: effective_permission
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: gcs-bucket
+    config:
+      family: gcs_bucket
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: gke-cluster
+    config:
+      family: gke_cluster
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: group
+    config:
+      customer_id: env:GCP_CUSTOMER_ID
+      family: group
+      per_page: "100"
+      token: env:GCP_TOKEN
+  - localId: group-membership
+    config:
+      family: group_membership
+      group_key: env:GCP_GROUP_KEY
+      per_page: "100"
+      token: env:GCP_TOKEN
+  - localId: iam-role-assignment
+    config:
+      family: iam_role_assignment
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: kms-key
+    config:
+      family: kms_key
+      key_ring: env:GCP_KEY_RING
+      location: env:GCP_KMS_LOCATION
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: resource-exposure
+    config:
+      family: resource_exposure
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: secret-manager-secret
+    config:
+      family: secret_manager_secret
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: service-account
+    config:
+      family: service_account
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: service-account-impersonation
+    config:
+      family: service_account_impersonation
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      service_account_email: env:GCP_SERVICE_ACCOUNT_EMAIL
+      token: env:GCP_TOKEN
+  - localId: service-account-key
+    config:
+      family: service_account_key
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      service_account_email: env:GCP_SERVICE_ACCOUNT_EMAIL
+      token: env:GCP_TOKEN
