@@ -665,152 +665,152 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
 			fakeAWSCoreData: fakeAWSCoreData{
-			s3Buckets: []s3types.Bucket{{
-				Name:         awssdk.String("prod-data"),
-				CreationDate: timePtr("2026-04-23T00:00:00Z"),
-			}},
-			s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
-			s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
-			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
-				Rules: []s3types.ServerSideEncryptionRule{{
-					ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
-						SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
-						KMSMasterKeyID: awssdk.String(kmsARN),
-					},
+				s3Buckets: []s3types.Bucket{{
+					Name:         awssdk.String("prod-data"),
+					CreationDate: timePtr("2026-04-23T00:00:00Z"),
 				}},
-			}},
-			s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
-			s3Logging:    map[string]bool{"prod-data": true},
-			s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
-				BlockPublicAcls:       awssdk.Bool(true),
-				BlockPublicPolicy:     awssdk.Bool(true),
-				IgnorePublicAcls:      awssdk.Bool(true),
-				RestrictPublicBuckets: awssdk.Bool(true),
-			}},
-			rdsInstances: []rdstypes.DBInstance{{
-				DBInstanceArn:         awssdk.String(rdsARN),
-				DBInstanceIdentifier:  awssdk.String("orders-db"),
-				Engine:                awssdk.String("postgres"),
-				StorageEncrypted:      awssdk.Bool(true),
-				KmsKeyId:              awssdk.String(kmsARN),
-				DeletionProtection:    awssdk.Bool(true),
-				BackupRetentionPeriod: awssdk.Int32(7),
-				PubliclyAccessible:    awssdk.Bool(false),
-				InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
-				TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
-			}},
-			kmsKeys: []kmstypes.KeyMetadata{{
-				Arn:          awssdk.String(kmsARN),
-				KeyId:        awssdk.String("key-123"),
-				CreationDate: timePtr("2026-04-23T00:00:00Z"),
-				Enabled:      true,
-				KeyManager:   kmstypes.KeyManagerTypeCustomer,
-				KeyState:     kmstypes.KeyStateEnabled,
-				KeySpec:      kmstypes.KeySpecSymmetricDefault,
-				KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
-				Origin:       kmstypes.OriginTypeAwsKms,
-			}},
-			kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
-			kmsRotation: map[string]bool{"key-123": true},
-			secrets: []secretsmanagertypes.SecretListEntry{{
-				ARN:             awssdk.String(secretARN),
-				Name:            awssdk.String("prod/api-key"),
-				CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
-				KmsKeyId:        awssdk.String(kmsARN),
-				RotationEnabled: awssdk.Bool(true),
-				Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
-			}},
-			sqsQueueURLs: []string{sqsURL},
-			sqsAttributes: map[string]map[string]string{sqsURL: {
-				"QueueArn":               sqsARN,
-				"KmsMasterKeyId":         kmsARN,
-				"MessageRetentionPeriod": "1209600",
-				"CreatedTimestamp":       "1776902400",
-			}},
-			sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
-			snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
-			snsAttributes: map[string]map[string]string{snsARN: {
-				"TopicArn":       snsARN,
-				"KmsMasterKeyId": kmsARN,
-			}},
-			snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
-			ecrRepositories: []ecrtypes.Repository{{
-				RepositoryArn:  awssdk.String(ecrARN),
-				RepositoryName: awssdk.String("orders"),
-				RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
-				CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
-				EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
-					EncryptionType: ecrtypes.EncryptionTypeKms,
-					KmsKey:         awssdk.String(kmsARN),
-				},
-				ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
-				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
-			}},
-			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
+				s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
+				s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
+					Rules: []s3types.ServerSideEncryptionRule{{
+						ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
+							SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
+							KMSMasterKeyID: awssdk.String(kmsARN),
+						},
+					}},
+				}},
+				s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
+				s3Logging:    map[string]bool{"prod-data": true},
+				s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
+					BlockPublicAcls:       awssdk.Bool(true),
+					BlockPublicPolicy:     awssdk.Bool(true),
+					IgnorePublicAcls:      awssdk.Bool(true),
+					RestrictPublicBuckets: awssdk.Bool(true),
+				}},
+				rdsInstances: []rdstypes.DBInstance{{
+					DBInstanceArn:         awssdk.String(rdsARN),
+					DBInstanceIdentifier:  awssdk.String("orders-db"),
+					Engine:                awssdk.String("postgres"),
+					StorageEncrypted:      awssdk.Bool(true),
+					KmsKeyId:              awssdk.String(kmsARN),
+					DeletionProtection:    awssdk.Bool(true),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					PubliclyAccessible:    awssdk.Bool(false),
+					InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
+					TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				}},
+				kmsKeys: []kmstypes.KeyMetadata{{
+					Arn:          awssdk.String(kmsARN),
+					KeyId:        awssdk.String("key-123"),
+					CreationDate: timePtr("2026-04-23T00:00:00Z"),
+					Enabled:      true,
+					KeyManager:   kmstypes.KeyManagerTypeCustomer,
+					KeyState:     kmstypes.KeyStateEnabled,
+					KeySpec:      kmstypes.KeySpecSymmetricDefault,
+					KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
+					Origin:       kmstypes.OriginTypeAwsKms,
+				}},
+				kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
+				kmsRotation: map[string]bool{"key-123": true},
+				secrets: []secretsmanagertypes.SecretListEntry{{
+					ARN:             awssdk.String(secretARN),
+					Name:            awssdk.String("prod/api-key"),
+					CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
+					KmsKeyId:        awssdk.String(kmsARN),
+					RotationEnabled: awssdk.Bool(true),
+					Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+				}},
+				sqsQueueURLs: []string{sqsURL},
+				sqsAttributes: map[string]map[string]string{sqsURL: {
+					"QueueArn":               sqsARN,
+					"KmsMasterKeyId":         kmsARN,
+					"MessageRetentionPeriod": "1209600",
+					"CreatedTimestamp":       "1776902400",
+				}},
+				sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
+				snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
+				snsAttributes: map[string]map[string]string{snsARN: {
+					"TopicArn":       snsARN,
+					"KmsMasterKeyId": kmsARN,
+				}},
+				snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				ecrRepositories: []ecrtypes.Repository{{
+					RepositoryArn:  awssdk.String(ecrARN),
+					RepositoryName: awssdk.String("orders"),
+					RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
+					CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+					EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
+						EncryptionType: ecrtypes.EncryptionTypeKms,
+						KmsKey:         awssdk.String(kmsARN),
+					},
+					ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
+					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
+				}},
+				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
 			},
 			fakeAWSStreamingData: fakeAWSStreamingData{
-			kinesisStreams: []kinesistypes.StreamDescriptionSummary{{
-				EncryptionType:          kinesistypes.EncryptionTypeKms,
-				KeyId:                   awssdk.String(kmsARN),
-				OpenShardCount:          awssdk.Int32(2),
-				RetentionPeriodHours:    awssdk.Int32(168),
-				StreamARN:               awssdk.String(kinesisARN),
-				StreamCreationTimestamp: timePtr("2026-04-23T00:00:00Z"),
-				StreamName:              awssdk.String("orders"),
-				StreamStatus:            kinesistypes.StreamStatusActive,
-			}},
-			kinesisTags:     map[string][]kinesistypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
-			kinesisPolicies: map[string]string{kinesisARN: `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"kinesis:DescribeStream"}]}`},
-			firehoseStreams: []firehosetypes.DeliveryStreamDescription{{
-				CreateTimestamp:      timePtr("2026-04-23T00:00:00Z"),
-				DeliveryStreamARN:    awssdk.String(firehoseARN),
-				DeliveryStreamName:   awssdk.String("orders"),
-				DeliveryStreamStatus: firehosetypes.DeliveryStreamStatusActive,
-				DeliveryStreamType:   firehosetypes.DeliveryStreamTypeKinesisStreamAsSource,
-				DeliveryStreamEncryptionConfiguration: &firehosetypes.DeliveryStreamEncryptionConfiguration{
-					KeyARN:  awssdk.String(kmsARN),
-					KeyType: firehosetypes.KeyTypeCustomerManagedCmk,
-					Status:  firehosetypes.DeliveryStreamEncryptionStatusEnabled,
-				},
-				Destinations: []firehosetypes.DestinationDescription{{
-					DestinationId: awssdk.String("destinationId-000000000001"),
-					ExtendedS3DestinationDescription: &firehosetypes.ExtendedS3DestinationDescription{
-						BucketARN: awssdk.String("arn:aws:s3:::prod-data"),
+				kinesisStreams: []kinesistypes.StreamDescriptionSummary{{
+					EncryptionType:          kinesistypes.EncryptionTypeKms,
+					KeyId:                   awssdk.String(kmsARN),
+					OpenShardCount:          awssdk.Int32(2),
+					RetentionPeriodHours:    awssdk.Int32(168),
+					StreamARN:               awssdk.String(kinesisARN),
+					StreamCreationTimestamp: timePtr("2026-04-23T00:00:00Z"),
+					StreamName:              awssdk.String("orders"),
+					StreamStatus:            kinesistypes.StreamStatusActive,
+				}},
+				kinesisTags:     map[string][]kinesistypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				kinesisPolicies: map[string]string{kinesisARN: `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"kinesis:DescribeStream"}]}`},
+				firehoseStreams: []firehosetypes.DeliveryStreamDescription{{
+					CreateTimestamp:      timePtr("2026-04-23T00:00:00Z"),
+					DeliveryStreamARN:    awssdk.String(firehoseARN),
+					DeliveryStreamName:   awssdk.String("orders"),
+					DeliveryStreamStatus: firehosetypes.DeliveryStreamStatusActive,
+					DeliveryStreamType:   firehosetypes.DeliveryStreamTypeKinesisStreamAsSource,
+					DeliveryStreamEncryptionConfiguration: &firehosetypes.DeliveryStreamEncryptionConfiguration{
+						KeyARN:  awssdk.String(kmsARN),
+						KeyType: firehosetypes.KeyTypeCustomerManagedCmk,
+						Status:  firehosetypes.DeliveryStreamEncryptionStatusEnabled,
+					},
+					Destinations: []firehosetypes.DestinationDescription{{
+						DestinationId: awssdk.String("destinationId-000000000001"),
+						ExtendedS3DestinationDescription: &firehosetypes.ExtendedS3DestinationDescription{
+							BucketARN: awssdk.String("arn:aws:s3:::prod-data"),
+						},
+					}},
+					Source: &firehosetypes.SourceDescription{
+						KinesisStreamSourceDescription: &firehosetypes.KinesisStreamSourceDescription{KinesisStreamARN: awssdk.String(kinesisARN)},
 					},
 				}},
-				Source: &firehosetypes.SourceDescription{
-					KinesisStreamSourceDescription: &firehosetypes.KinesisStreamSourceDescription{KinesisStreamARN: awssdk.String(kinesisARN)},
-				},
-			}},
-			firehoseTags: map[string][]firehosetypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}}},
-			mskClusters: []kafkatypes.Cluster{{
-				ClusterArn:   awssdk.String(mskARN),
-				ClusterName:  awssdk.String("orders"),
-				ClusterType:  kafkatypes.ClusterTypeProvisioned,
-				CreationTime: timePtr("2026-04-23T00:00:00Z"),
-				Provisioned: &kafkatypes.Provisioned{
-					BrokerNodeGroupInfo: &kafkatypes.BrokerNodeGroupInfo{
-						ClientSubnets:  []string{"subnet-1", "subnet-2"},
-						InstanceType:   awssdk.String("kafka.m5.large"),
-						SecurityGroups: []string{"sg-msk"},
-						ConnectivityInfo: &kafkatypes.ConnectivityInfo{
-							PublicAccess: &kafkatypes.PublicAccess{Type: awssdk.String("SERVICE_PROVIDED_EIPS")},
+				firehoseTags: map[string][]firehosetypes.Tag{"orders": {{Key: awssdk.String("Team"), Value: awssdk.String("analytics")}}},
+				mskClusters: []kafkatypes.Cluster{{
+					ClusterArn:   awssdk.String(mskARN),
+					ClusterName:  awssdk.String("orders"),
+					ClusterType:  kafkatypes.ClusterTypeProvisioned,
+					CreationTime: timePtr("2026-04-23T00:00:00Z"),
+					Provisioned: &kafkatypes.Provisioned{
+						BrokerNodeGroupInfo: &kafkatypes.BrokerNodeGroupInfo{
+							ClientSubnets:  []string{"subnet-1", "subnet-2"},
+							InstanceType:   awssdk.String("kafka.m5.large"),
+							SecurityGroups: []string{"sg-msk"},
+							ConnectivityInfo: &kafkatypes.ConnectivityInfo{
+								PublicAccess: &kafkatypes.PublicAccess{Type: awssdk.String("SERVICE_PROVIDED_EIPS")},
+							},
 						},
-					},
-					CurrentBrokerSoftwareInfo: &kafkatypes.BrokerSoftwareInfo{KafkaVersion: awssdk.String("3.6.0")},
-					EncryptionInfo: &kafkatypes.EncryptionInfo{
-						EncryptionAtRest: &kafkatypes.EncryptionAtRest{DataVolumeKMSKeyId: awssdk.String(kmsARN)},
-						EncryptionInTransit: &kafkatypes.EncryptionInTransit{
-							ClientBroker: kafkatypes.ClientBrokerTls,
-							InCluster:    awssdk.Bool(true),
+						CurrentBrokerSoftwareInfo: &kafkatypes.BrokerSoftwareInfo{KafkaVersion: awssdk.String("3.6.0")},
+						EncryptionInfo: &kafkatypes.EncryptionInfo{
+							EncryptionAtRest: &kafkatypes.EncryptionAtRest{DataVolumeKMSKeyId: awssdk.String(kmsARN)},
+							EncryptionInTransit: &kafkatypes.EncryptionInTransit{
+								ClientBroker: kafkatypes.ClientBrokerTls,
+								InCluster:    awssdk.Bool(true),
+							},
 						},
+						NumberOfBrokerNodes: awssdk.Int32(3),
 					},
-					NumberOfBrokerNodes: awssdk.Int32(3),
-				},
-				State: kafkatypes.ClusterStateActive,
-				Tags:  map[string]string{"Team": "streaming"},
-			}},
-			mskTags: map[string]map[string]string{mskARN: {"Owner": "streaming@writer.com"}},
+					State: kafkatypes.ClusterStateActive,
+					Tags:  map[string]string{"Team": "streaming"},
+				}},
+				mskTags: map[string]map[string]string{mskARN: {"Owner": "streaming@writer.com"}},
 			},
 		},
 	})
@@ -897,8 +897,8 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 	records, _, err := listSNSTopics(context.Background(), awsClients{sns: fakeSNS{fake: &fakeAWS{
 		fakeAWSData: fakeAWSData{
 			fakeAWSCoreData: fakeAWSCoreData{
-			snsTopics:     topics,
-			snsAttributes: attributes,
+				snsTopics:     topics,
+				snsAttributes: attributes,
 			},
 		},
 	}}}, settings{}, "", 10)
@@ -952,20 +952,20 @@ func TestS3BucketPublicTreatsMissingPublicAccessBlockAsExposed(t *testing.T) {
 func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 	base := fakeAWS{fakeAWSData: fakeAWSData{
 		fakeAWSCoreData: fakeAWSCoreData{
-		s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
-		s3BucketRegions: map[string]s3types.BucketLocationConstraint{
-			"legacy-eu": s3types.BucketLocationConstraint("EU"),
-		},
+			s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
+			s3BucketRegions: map[string]s3types.BucketLocationConstraint{
+				"legacy-eu": s3types.BucketLocationConstraint("EU"),
+			},
 		},
 	}}
 	regional := fakeAWS{fakeAWSData: fakeAWSData{
 		fakeAWSCoreData: fakeAWSCoreData{
-		s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
-		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
-			ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
-		}}}},
-		s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
-		s3Logging:    map[string]bool{"legacy-eu": true},
+			s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
+			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
+				ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
+			}}}},
+			s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
+			s3Logging:    map[string]bool{"legacy-eu": true},
 		},
 	}}
 	records, _, err := listS3Buckets(context.Background(), awsClients{
