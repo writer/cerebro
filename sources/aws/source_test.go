@@ -16,10 +16,16 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/apprunner"
+	apprunnertypes "github.com/aws/aws-sdk-go-v2/service/apprunner/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -49,6 +55,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -328,7 +336,10 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+		{family: familyAppRunnerService, kind: "aws.app_runner_service"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyCloudWatchAlarm, kind: "aws.cloudwatch_alarm"},
+		{family: familyCloudWatchLogGroup, kind: "aws.cloudwatch_log_group"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
@@ -347,6 +358,10 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familySecret, kind: "aws.secret"},
 		{family: familySNSTopic, kind: "aws.sns_topic"},
 		{family: familySQSQueue, kind: "aws.sqs_queue"},
+		{family: familySSMAssociation, kind: "aws.ssm_association"},
+		{family: familySSMDocument, kind: "aws.ssm_document"},
+		{family: familySSMManagedInstance, kind: "aws.ssm_managed_instance"},
+		{family: familySSMParameter, kind: "aws.ssm_parameter"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust"},
 		{family: familyIAMGroup, kind: "aws.iam_group"},
@@ -643,6 +658,9 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 }
 
 func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
+	appRunnerARN := "arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e"
+	alarmARN := "arn:aws:cloudwatch:us-east-1:123456789012:alarm:HighErrors"
+	logGroupARN := "arn:aws:logs:us-east-1:123456789012:log-group:/aws/apprunner/api"
 	rdsARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
 	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
 	secretARN := "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-AbCd"
@@ -650,8 +668,59 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 	snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+	ssmParameterARN := "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api/db-password"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
+			appRunnerServices: []apprunnertypes.Service{{
+				CreatedAt:   timePtr("2026-04-23T00:00:00Z"),
+				ServiceArn:  awssdk.String(appRunnerARN),
+				ServiceId:   awssdk.String("0f2d1e"),
+				ServiceName: awssdk.String("api"),
+				ServiceUrl:  awssdk.String("api.us-east-1.awsapprunner.com"),
+				InstanceConfiguration: &apprunnertypes.InstanceConfiguration{
+					InstanceRoleArn: awssdk.String("arn:aws:iam::123456789012:role/AppRunnerInstanceRole"),
+				},
+				NetworkConfiguration: &apprunnertypes.NetworkConfiguration{
+					IngressConfiguration: &apprunnertypes.IngressConfiguration{IsPubliclyAccessible: true},
+				},
+				ObservabilityConfiguration: &apprunnertypes.ServiceObservabilityConfiguration{ObservabilityEnabled: true, ObservabilityConfigurationArn: awssdk.String("arn:aws:apprunner:us-east-1:123456789012:observabilityconfiguration/xray-tracing/1")},
+				SourceConfiguration: &apprunnertypes.SourceConfiguration{
+					AutoDeploymentsEnabled: awssdk.Bool(true),
+					ImageRepository:        &apprunnertypes.ImageRepository{ImageIdentifier: awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/api:latest"), ImageRepositoryType: apprunnertypes.ImageRepositoryTypeEcr},
+				},
+				Status: apprunnertypes.ServiceStatusRunning,
+			}},
+			appRunnerTags: map[string][]apprunnertypes.Tag{appRunnerARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}}},
+			cloudWatchAlarms: []cloudwatchtypes.MetricAlarm{{
+				ActionsEnabled:                     awssdk.Bool(true),
+				AlarmArn:                           awssdk.String(alarmARN),
+				AlarmName:                          awssdk.String("HighErrors"),
+				ComparisonOperator:                 cloudwatchtypes.ComparisonOperatorGreaterThanThreshold,
+				DatapointsToAlarm:                  awssdk.Int32(2),
+				Dimensions:                         []cloudwatchtypes.Dimension{{Name: awssdk.String("ServiceName"), Value: awssdk.String("api")}},
+				EvaluationPeriods:                  awssdk.Int32(3),
+				MetricName:                         awssdk.String("5xxStatusResponses"),
+				Namespace:                          awssdk.String("AWS/AppRunner"),
+				Period:                             awssdk.Int32(60),
+				StateUpdatedTimestamp:              timePtr("2026-04-23T00:00:00Z"),
+				StateValue:                         cloudwatchtypes.StateValueAlarm,
+				Statistic:                          cloudwatchtypes.StatisticSum,
+				Threshold:                          awssdk.Float64(1),
+				TreatMissingData:                   awssdk.String("notBreaching"),
+				AlarmConfigurationUpdatedTimestamp: timePtr("2026-04-22T00:00:00Z"),
+			}},
+			cloudWatchTags: map[string][]cloudwatchtypes.Tag{alarmARN: {{Key: awssdk.String("Team"), Value: awssdk.String("platform")}}},
+			logGroups: []cloudwatchlogstypes.LogGroup{{
+				CreationTime:      awssdk.Int64(1776902400000),
+				KmsKeyId:          awssdk.String(kmsARN),
+				LogGroupArn:       awssdk.String(logGroupARN),
+				LogGroupClass:     cloudwatchlogstypes.LogGroupClassStandard,
+				LogGroupName:      awssdk.String("/aws/apprunner/api"),
+				RetentionInDays:   awssdk.Int32(30),
+				StoredBytes:       awssdk.Int64(2048),
+				MetricFilterCount: awssdk.Int32(1),
+			}},
+			logGroupTags: map[string]map[string]string{logGroupARN: {"Owner": "observability@writer.com"}},
 			s3Buckets: []s3types.Bucket{{
 				Name:         awssdk.String("prod-data"),
 				CreationDate: timePtr("2026-04-23T00:00:00Z"),
@@ -734,6 +803,54 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
 			}},
 			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			ssmManagedInstances: []ssmtypes.InstanceInformation{{
+				AgentVersion:     awssdk.String("3.3.1"),
+				ComputerName:     awssdk.String("ip-10-0-1-10"),
+				InstanceId:       awssdk.String("i-123"),
+				IamRole:          awssdk.String("AmazonSSMManagedInstanceCore"),
+				LastPingDateTime: timePtr("2026-04-23T00:00:00Z"),
+				Name:             awssdk.String("prod-web"),
+				PingStatus:       ssmtypes.PingStatusOnline,
+				PlatformName:     awssdk.String("Amazon Linux"),
+				PlatformType:     ssmtypes.PlatformTypeLinux,
+				PlatformVersion:  awssdk.String("2023"),
+				RegistrationDate: timePtr("2026-01-01T00:00:00Z"),
+				ResourceType:     ssmtypes.ResourceTypeEc2Instance,
+			}},
+			ssmDocuments: []ssmtypes.DocumentIdentifier{{
+				CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
+				DocumentFormat:  ssmtypes.DocumentFormatYaml,
+				DocumentType:    ssmtypes.DocumentTypeCommand,
+				DocumentVersion: awssdk.String("1"),
+				Name:            awssdk.String("Cerebro-ConfigureAgent"),
+				Owner:           awssdk.String("123456789012"),
+				PlatformTypes:   []ssmtypes.PlatformType{ssmtypes.PlatformTypeLinux},
+				Tags:            []ssmtypes.Tag{{Key: awssdk.String("Team"), Value: awssdk.String("platform")}},
+			}},
+			ssmAssociations: []ssmtypes.Association{{
+				AssociationId:      awssdk.String("assoc-123"),
+				AssociationName:    awssdk.String("configure-agent"),
+				AssociationVersion: awssdk.String("1"),
+				LastExecutionDate:  timePtr("2026-04-23T00:00:00Z"),
+				Name:               awssdk.String("Cerebro-ConfigureAgent"),
+				Overview:           &ssmtypes.AssociationOverview{Status: awssdk.String("Success")},
+				ScheduleExpression: awssdk.String("rate(1 day)"),
+				Targets:            []ssmtypes.Target{{Key: awssdk.String("tag:Role"), Values: []string{"web"}}},
+			}},
+			ssmParameters: []ssmtypes.ParameterMetadata{{
+				ARN:              awssdk.String(ssmParameterARN),
+				DataType:         awssdk.String("text"),
+				KeyId:            awssdk.String(kmsARN),
+				LastModifiedDate: timePtr("2026-04-23T00:00:00Z"),
+				Name:             awssdk.String("/prod/api/db-password"),
+				Tier:             ssmtypes.ParameterTierAdvanced,
+				Type:             ssmtypes.ParameterTypeSecureString,
+				Version:          7,
+			}},
+			ssmTags: map[string][]ssmtypes.Tag{
+				string(ssmtypes.ResourceTypeForTaggingManagedInstance) + ":i-123":           {{Key: awssdk.String("Role"), Value: awssdk.String("web")}},
+				string(ssmtypes.ResourceTypeForTaggingParameter) + ":/prod/api/db-password": {{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+			},
 		},
 	})
 	for _, tt := range []struct {
@@ -742,6 +859,9 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		attr   string
 		want   string
 	}{
+		{family: familyAppRunnerService, kind: "aws.app_runner_service", attr: "observability_enabled", want: "true"},
+		{family: familyCloudWatchAlarm, kind: "aws.cloudwatch_alarm", attr: "state", want: "ALARM"},
+		{family: familyCloudWatchLogGroup, kind: "aws.cloudwatch_log_group", attr: "retention_days", want: "30"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket", attr: "versioning", want: "Enabled"},
 		{family: familyRDSInstance, kind: "aws.rds_instance", attr: "deletion_protection", want: "true"},
 		{family: familyKMSKey, kind: "aws.kms_key", attr: "rotation", want: "true"},
@@ -749,6 +869,10 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+		{family: familySSMManagedInstance, kind: "aws.ssm_managed_instance", attr: "ping_status", want: "Online"},
+		{family: familySSMDocument, kind: "aws.ssm_document", attr: "document_type", want: "Command"},
+		{family: familySSMAssociation, kind: "aws.ssm_association", attr: "state", want: "Success"},
+		{family: familySSMParameter, kind: "aws.ssm_parameter", attr: "encryption", want: "true"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -1870,7 +1994,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, appRunner: fakeAppRunner{fake: &fake}, cloudWatch: fakeCloudWatch{fake: &fake}, logs: fakeCloudWatchLogs{fake: &fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}, ssm: fakeSSM{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +2010,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, appRunner: recordingAppRunner{fake: fake}, cloudWatch: recordingCloudWatch{fake: fake}, logs: recordingCloudWatchLogs{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}, ssm: recordingSSM{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1971,6 +2095,12 @@ type fakeAWSNetwork struct {
 }
 
 type fakeAWSData struct {
+	appRunnerServices    []apprunnertypes.Service
+	appRunnerTags        map[string][]apprunnertypes.Tag
+	cloudWatchAlarms     []cloudwatchtypes.MetricAlarm
+	cloudWatchTags       map[string][]cloudwatchtypes.Tag
+	logGroups            []cloudwatchlogstypes.LogGroup
+	logGroupTags         map[string]map[string]string
 	s3Buckets            []s3types.Bucket
 	s3BucketRegions      map[string]s3types.BucketLocationConstraint
 	s3Tags               map[string][]s3types.Tag
@@ -1992,6 +2122,11 @@ type fakeAWSData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
+	ssmManagedInstances  []ssmtypes.InstanceInformation
+	ssmDocuments         []ssmtypes.DocumentIdentifier
+	ssmAssociations      []ssmtypes.Association
+	ssmParameters        []ssmtypes.ParameterMetadata
+	ssmTags              map[string][]ssmtypes.Tag
 }
 
 type fakeAWSCompute struct {
@@ -2335,6 +2470,165 @@ func (f fakeSNS) GetTopicAttributes(_ context.Context, input *sns.GetTopicAttrib
 
 func (f fakeSNS) ListTagsForResource(_ context.Context, input *sns.ListTagsForResourceInput, _ ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error) {
 	return &sns.ListTagsForResourceOutput{Tags: f.fake.snsTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeAppRunner struct {
+	fake *fakeAWS
+}
+
+type recordingAppRunner struct {
+	fake *recordingAWS
+}
+
+func (f recordingAppRunner) ListServices(ctx context.Context, input *apprunner.ListServicesInput, options ...func(*apprunner.Options)) (*apprunner.ListServicesOutput, error) {
+	f.fake.record("apprunner:ListServices")
+	return fakeAppRunner{fake: &f.fake.fakeAWS}.ListServices(ctx, input, options...)
+}
+
+func (f recordingAppRunner) DescribeService(ctx context.Context, input *apprunner.DescribeServiceInput, options ...func(*apprunner.Options)) (*apprunner.DescribeServiceOutput, error) {
+	f.fake.record("apprunner:DescribeService")
+	return fakeAppRunner{fake: &f.fake.fakeAWS}.DescribeService(ctx, input, options...)
+}
+
+func (f recordingAppRunner) ListTagsForResource(ctx context.Context, input *apprunner.ListTagsForResourceInput, options ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error) {
+	f.fake.record("apprunner:ListTagsForResource")
+	return fakeAppRunner{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeAppRunner) ListServices(context.Context, *apprunner.ListServicesInput, ...func(*apprunner.Options)) (*apprunner.ListServicesOutput, error) {
+	summaries := make([]apprunnertypes.ServiceSummary, 0, len(f.fake.appRunnerServices))
+	for _, service := range f.fake.appRunnerServices {
+		summaries = append(summaries, apprunnertypes.ServiceSummary{
+			CreatedAt:   service.CreatedAt,
+			ServiceArn:  service.ServiceArn,
+			ServiceId:   service.ServiceId,
+			ServiceName: service.ServiceName,
+			ServiceUrl:  service.ServiceUrl,
+			Status:      service.Status,
+			UpdatedAt:   service.UpdatedAt,
+		})
+	}
+	return &apprunner.ListServicesOutput{ServiceSummaryList: summaries}, nil
+}
+
+func (f fakeAppRunner) DescribeService(_ context.Context, input *apprunner.DescribeServiceInput, _ ...func(*apprunner.Options)) (*apprunner.DescribeServiceOutput, error) {
+	arn := awssdk.ToString(input.ServiceArn)
+	for _, service := range f.fake.appRunnerServices {
+		if awssdk.ToString(service.ServiceArn) == arn {
+			copy := service
+			return &apprunner.DescribeServiceOutput{Service: &copy}, nil
+		}
+	}
+	return &apprunner.DescribeServiceOutput{}, nil
+}
+
+func (f fakeAppRunner) ListTagsForResource(_ context.Context, input *apprunner.ListTagsForResourceInput, _ ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error) {
+	return &apprunner.ListTagsForResourceOutput{Tags: f.fake.appRunnerTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeCloudWatch struct {
+	fake *fakeAWS
+}
+
+type recordingCloudWatch struct {
+	fake *recordingAWS
+}
+
+func (f recordingCloudWatch) DescribeAlarms(ctx context.Context, input *cloudwatch.DescribeAlarmsInput, options ...func(*cloudwatch.Options)) (*cloudwatch.DescribeAlarmsOutput, error) {
+	f.fake.record("cloudwatch:DescribeAlarms")
+	return fakeCloudWatch{fake: &f.fake.fakeAWS}.DescribeAlarms(ctx, input, options...)
+}
+
+func (f recordingCloudWatch) ListTagsForResource(ctx context.Context, input *cloudwatch.ListTagsForResourceInput, options ...func(*cloudwatch.Options)) (*cloudwatch.ListTagsForResourceOutput, error) {
+	f.fake.record("cloudwatch:ListTagsForResource")
+	return fakeCloudWatch{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeCloudWatch) DescribeAlarms(context.Context, *cloudwatch.DescribeAlarmsInput, ...func(*cloudwatch.Options)) (*cloudwatch.DescribeAlarmsOutput, error) {
+	return &cloudwatch.DescribeAlarmsOutput{MetricAlarms: f.fake.cloudWatchAlarms}, nil
+}
+
+func (f fakeCloudWatch) ListTagsForResource(_ context.Context, input *cloudwatch.ListTagsForResourceInput, _ ...func(*cloudwatch.Options)) (*cloudwatch.ListTagsForResourceOutput, error) {
+	return &cloudwatch.ListTagsForResourceOutput{Tags: f.fake.cloudWatchTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+type fakeCloudWatchLogs struct {
+	fake *fakeAWS
+}
+
+type recordingCloudWatchLogs struct {
+	fake *recordingAWS
+}
+
+func (f recordingCloudWatchLogs) DescribeLogGroups(ctx context.Context, input *cloudwatchlogs.DescribeLogGroupsInput, options ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.DescribeLogGroupsOutput, error) {
+	f.fake.record("logs:DescribeLogGroups")
+	return fakeCloudWatchLogs{fake: &f.fake.fakeAWS}.DescribeLogGroups(ctx, input, options...)
+}
+
+func (f recordingCloudWatchLogs) ListTagsForResource(ctx context.Context, input *cloudwatchlogs.ListTagsForResourceInput, options ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.ListTagsForResourceOutput, error) {
+	f.fake.record("logs:ListTagsForResource")
+	return fakeCloudWatchLogs{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeCloudWatchLogs) DescribeLogGroups(context.Context, *cloudwatchlogs.DescribeLogGroupsInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.DescribeLogGroupsOutput, error) {
+	return &cloudwatchlogs.DescribeLogGroupsOutput{LogGroups: f.fake.logGroups}, nil
+}
+
+func (f fakeCloudWatchLogs) ListTagsForResource(_ context.Context, input *cloudwatchlogs.ListTagsForResourceInput, _ ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.ListTagsForResourceOutput, error) {
+	return &cloudwatchlogs.ListTagsForResourceOutput{Tags: f.fake.logGroupTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeSSM struct {
+	fake *fakeAWS
+}
+
+type recordingSSM struct {
+	fake *recordingAWS
+}
+
+func (f recordingSSM) DescribeInstanceInformation(ctx context.Context, input *ssm.DescribeInstanceInformationInput, options ...func(*ssm.Options)) (*ssm.DescribeInstanceInformationOutput, error) {
+	f.fake.record("ssm:DescribeInstanceInformation")
+	return fakeSSM{fake: &f.fake.fakeAWS}.DescribeInstanceInformation(ctx, input, options...)
+}
+
+func (f recordingSSM) ListDocuments(ctx context.Context, input *ssm.ListDocumentsInput, options ...func(*ssm.Options)) (*ssm.ListDocumentsOutput, error) {
+	f.fake.record("ssm:ListDocuments")
+	return fakeSSM{fake: &f.fake.fakeAWS}.ListDocuments(ctx, input, options...)
+}
+
+func (f recordingSSM) ListAssociations(ctx context.Context, input *ssm.ListAssociationsInput, options ...func(*ssm.Options)) (*ssm.ListAssociationsOutput, error) {
+	f.fake.record("ssm:ListAssociations")
+	return fakeSSM{fake: &f.fake.fakeAWS}.ListAssociations(ctx, input, options...)
+}
+
+func (f recordingSSM) DescribeParameters(ctx context.Context, input *ssm.DescribeParametersInput, options ...func(*ssm.Options)) (*ssm.DescribeParametersOutput, error) {
+	f.fake.record("ssm:DescribeParameters")
+	return fakeSSM{fake: &f.fake.fakeAWS}.DescribeParameters(ctx, input, options...)
+}
+
+func (f recordingSSM) ListTagsForResource(ctx context.Context, input *ssm.ListTagsForResourceInput, options ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error) {
+	f.fake.record("ssm:ListTagsForResource")
+	return fakeSSM{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeSSM) DescribeInstanceInformation(context.Context, *ssm.DescribeInstanceInformationInput, ...func(*ssm.Options)) (*ssm.DescribeInstanceInformationOutput, error) {
+	return &ssm.DescribeInstanceInformationOutput{InstanceInformationList: f.fake.ssmManagedInstances}, nil
+}
+
+func (f fakeSSM) ListDocuments(context.Context, *ssm.ListDocumentsInput, ...func(*ssm.Options)) (*ssm.ListDocumentsOutput, error) {
+	return &ssm.ListDocumentsOutput{DocumentIdentifiers: f.fake.ssmDocuments}, nil
+}
+
+func (f fakeSSM) ListAssociations(context.Context, *ssm.ListAssociationsInput, ...func(*ssm.Options)) (*ssm.ListAssociationsOutput, error) {
+	return &ssm.ListAssociationsOutput{Associations: f.fake.ssmAssociations}, nil
+}
+
+func (f fakeSSM) DescribeParameters(context.Context, *ssm.DescribeParametersInput, ...func(*ssm.Options)) (*ssm.DescribeParametersOutput, error) {
+	return &ssm.DescribeParametersOutput{Parameters: f.fake.ssmParameters}, nil
+}
+
+func (f fakeSSM) ListTagsForResource(_ context.Context, input *ssm.ListTagsForResourceInput, _ ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error) {
+	return &ssm.ListTagsForResourceOutput{TagList: f.fake.ssmTags[string(input.ResourceType)+":"+awssdk.ToString(input.ResourceId)]}, nil
 }
 
 type fakeECR struct {

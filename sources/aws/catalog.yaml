@@ -3,8 +3,11 @@ name: AWS
 description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
+  - aws.app_runner_service
   - asset.data_sensitivity
   - aws.cloudtrail
+  - aws.cloudwatch_alarm
+  - aws.cloudwatch_log_group
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
@@ -29,11 +32,18 @@ emitted_kinds:
   - aws.secret
   - aws.sns_topic
   - aws.sqs_queue
+  - aws.ssm_association
+  - aws.ssm_document
+  - aws.ssm_managed_instance
+  - aws.ssm_parameter
   - aws.lambda_function
 runtime_families:
   - access_key
+  - app_runner_service
   - asset_metadata
   - cloudtrail
+  - cloudwatch_alarm
+  - cloudwatch_log_group
   - ec2_instance
   - ecr_repository
   - ecs_service
@@ -58,4 +68,8 @@ runtime_families:
   - secret
   - sns_topic
   - sqs_queue
+  - ssm_association
+  - ssm_document
+  - ssm_managed_instance
+  - ssm_parameter
   - lambda_function

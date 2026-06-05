@@ -24,10 +24,13 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/apprunner"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -51,6 +54,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -76,8 +81,11 @@ const (
 	publicEndpointCursorV2    = 2
 	awsAssumeRoleSessionName  = "cerebro-source-runtime"
 	familyAccessKey           = "access_key"
+	familyAppRunnerService    = "app_runner_service"
 	familyAssetMetadata       = "asset_metadata"
 	familyCloudTrail          = "cloudtrail"
+	familyCloudWatchAlarm     = "cloudwatch_alarm"
+	familyCloudWatchLogGroup  = "cloudwatch_log_group"
 	familyEC2Instance         = "ec2_instance"
 	familyECRRepository       = "ecr_repository"
 	familyECSService          = "ecs_service"
@@ -102,6 +110,10 @@ const (
 	familySecret              = "secret"
 	familySNSTopic            = "sns_topic"
 	familySQSQueue            = "sqs_queue"
+	familySSMAssociation      = "ssm_association"
+	familySSMDocument         = "ssm_document"
+	familySSMManagedInstance  = "ssm_managed_instance"
+	familySSMParameter        = "ssm_parameter"
 	familyLambdaFunction      = "lambda_function"
 )
 
@@ -153,6 +165,9 @@ type awsClients struct {
 	ecr          awsECRAPI
 	apiGateway   awsAPIGatewayAPI
 	apiGatewayV2 awsAPIGatewayV2API
+	appRunner    awsAppRunnerAPI
+	cloudWatch   awsCloudWatchAPI
+	logs         awsCloudWatchLogsAPI
 	lambda       awsLambdaAPI
 	tagging      awsResourceGroupsTaggingAPI
 	s3           awsS3API
@@ -162,6 +177,7 @@ type awsClients struct {
 	secrets      awsSecretsManagerAPI
 	sqs          awsSQSAPI
 	sns          awsSNSAPI
+	ssm          awsSSMAPI
 }
 
 type awsIAMAPI interface {
@@ -287,6 +303,30 @@ type awsSNSAPI interface {
 	ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error)
 	GetTopicAttributes(context.Context, *sns.GetTopicAttributesInput, ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error)
 	ListTagsForResource(context.Context, *sns.ListTagsForResourceInput, ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error)
+}
+
+type awsAppRunnerAPI interface {
+	ListServices(context.Context, *apprunner.ListServicesInput, ...func(*apprunner.Options)) (*apprunner.ListServicesOutput, error)
+	DescribeService(context.Context, *apprunner.DescribeServiceInput, ...func(*apprunner.Options)) (*apprunner.DescribeServiceOutput, error)
+	ListTagsForResource(context.Context, *apprunner.ListTagsForResourceInput, ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error)
+}
+
+type awsCloudWatchAPI interface {
+	DescribeAlarms(context.Context, *cloudwatch.DescribeAlarmsInput, ...func(*cloudwatch.Options)) (*cloudwatch.DescribeAlarmsOutput, error)
+	ListTagsForResource(context.Context, *cloudwatch.ListTagsForResourceInput, ...func(*cloudwatch.Options)) (*cloudwatch.ListTagsForResourceOutput, error)
+}
+
+type awsCloudWatchLogsAPI interface {
+	DescribeLogGroups(context.Context, *cloudwatchlogs.DescribeLogGroupsInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.DescribeLogGroupsOutput, error)
+	ListTagsForResource(context.Context, *cloudwatchlogs.ListTagsForResourceInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.ListTagsForResourceOutput, error)
+}
+
+type awsSSMAPI interface {
+	DescribeInstanceInformation(context.Context, *ssm.DescribeInstanceInformationInput, ...func(*ssm.Options)) (*ssm.DescribeInstanceInformationOutput, error)
+	ListDocuments(context.Context, *ssm.ListDocumentsInput, ...func(*ssm.Options)) (*ssm.ListDocumentsOutput, error)
+	ListAssociations(context.Context, *ssm.ListAssociationsInput, ...func(*ssm.Options)) (*ssm.ListAssociationsOutput, error)
+	DescribeParameters(context.Context, *ssm.DescribeParametersInput, ...func(*ssm.Options)) (*ssm.DescribeParametersOutput, error)
+	ListTagsForResource(context.Context, *ssm.ListTagsForResourceInput, ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -527,6 +567,42 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAppRunnerService]{
+			Name:  familyAppRunnerService,
+			Label: "aws app runner services",
+			List:  listAppRunnerServices,
+			Event: appRunnerServiceEvent,
+			URN: func(settings settings, service awsAppRunnerService) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_app_runner_service:%s", settings.accountID, firstNonEmpty(awssdk.ToString(service.Service.ServiceArn), awssdk.ToString(service.Service.ServiceId), awssdk.ToString(service.Service.ServiceName))), nil
+			},
+			CursorFallback: func(service awsAppRunnerService) string {
+				return firstNonEmpty(awssdk.ToString(service.Service.ServiceArn), awssdk.ToString(service.Service.ServiceId), awssdk.ToString(service.Service.ServiceName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsCloudWatchAlarm]{
+			Name:  familyCloudWatchAlarm,
+			Label: "aws cloudwatch alarms",
+			List:  listCloudWatchAlarms,
+			Event: cloudWatchAlarmEvent,
+			URN: func(settings settings, alarm awsCloudWatchAlarm) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudwatch_alarm:%s", settings.accountID, firstNonEmpty(awssdk.ToString(alarm.Alarm.AlarmArn), awssdk.ToString(alarm.Alarm.AlarmName))), nil
+			},
+			CursorFallback: func(alarm awsCloudWatchAlarm) string {
+				return firstNonEmpty(awssdk.ToString(alarm.Alarm.AlarmArn), awssdk.ToString(alarm.Alarm.AlarmName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsCloudWatchLogGroup]{
+			Name:  familyCloudWatchLogGroup,
+			Label: "aws cloudwatch logs log groups",
+			List:  listCloudWatchLogGroups,
+			Event: cloudWatchLogGroupEvent,
+			URN: func(settings settings, group awsCloudWatchLogGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudwatch_log_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(group.LogGroup.LogGroupArn), awssdk.ToString(group.LogGroup.Arn), awssdk.ToString(group.LogGroup.LogGroupName))), nil
+			},
+			CursorFallback: func(group awsCloudWatchLogGroup) string {
+				return firstNonEmpty(awssdk.ToString(group.LogGroup.LogGroupArn), awssdk.ToString(group.LogGroup.Arn), awssdk.ToString(group.LogGroup.LogGroupName))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsS3Bucket]{
 			Name:  familyS3Bucket,
 			Label: "aws s3 buckets",
@@ -603,6 +679,50 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(repository awsECRRepository) string {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMManagedInstance]{
+			Name:  familySSMManagedInstance,
+			Label: "aws ssm managed instances",
+			List:  listSSMManagedInstances,
+			Event: ssmManagedInstanceEvent,
+			URN: func(settings settings, instance awsSSMManagedInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_managed_instance:%s", settings.accountID, awssdk.ToString(instance.Instance.InstanceId)), nil
+			},
+			CursorFallback: func(instance awsSSMManagedInstance) string { return awssdk.ToString(instance.Instance.InstanceId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ssmtypes.DocumentIdentifier]{
+			Name:  familySSMDocument,
+			Label: "aws ssm documents",
+			List:  listSSMDocuments,
+			Event: ssmDocumentEvent,
+			URN: func(settings settings, document ssmtypes.DocumentIdentifier) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_document:%s", settings.accountID, awssdk.ToString(document.Name)), nil
+			},
+			CursorFallback: func(document ssmtypes.DocumentIdentifier) string { return awssdk.ToString(document.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ssmtypes.Association]{
+			Name:  familySSMAssociation,
+			Label: "aws ssm associations",
+			List:  listSSMAssociations,
+			Event: ssmAssociationEvent,
+			URN: func(settings settings, association ssmtypes.Association) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_association:%s", settings.accountID, firstNonEmpty(awssdk.ToString(association.AssociationId), awssdk.ToString(association.AssociationName))), nil
+			},
+			CursorFallback: func(association ssmtypes.Association) string {
+				return firstNonEmpty(awssdk.ToString(association.AssociationId), awssdk.ToString(association.AssociationName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMParameter]{
+			Name:  familySSMParameter,
+			Label: "aws ssm parameters",
+			List:  listSSMParameters,
+			Event: ssmParameterEvent,
+			URN: func(settings settings, parameter awsSSMParameter) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_parameter:%s", settings.accountID, firstNonEmpty(awssdk.ToString(parameter.Parameter.ARN), awssdk.ToString(parameter.Parameter.Name))), nil
+			},
+			CursorFallback: func(parameter awsSSMParameter) string {
+				return firstNonEmpty(awssdk.ToString(parameter.Parameter.ARN), awssdk.ToString(parameter.Parameter.Name))
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
@@ -880,6 +1000,9 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		ecr:          ecr.NewFromConfig(cfg),
 		apiGateway:   apigateway.NewFromConfig(cfg),
 		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
+		appRunner:    apprunner.NewFromConfig(cfg),
+		cloudWatch:   cloudwatch.NewFromConfig(cfg),
+		logs:         cloudwatchlogs.NewFromConfig(cfg),
 		lambda:       lambda.NewFromConfig(cfg),
 		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
 		s3:           s3.NewFromConfig(cfg),
@@ -893,6 +1016,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		secrets: secretsmanager.NewFromConfig(cfg),
 		sqs:     sqs.NewFromConfig(cfg),
 		sns:     sns.NewFromConfig(cfg),
+		ssm:     ssm.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -949,7 +1073,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAppRunnerService, familyAssetMetadata, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1088,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, app_runner_service, asset_metadata, cloudtrail, cloudwatch_alarm, cloudwatch_log_group, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, sqs_queue, ssm_association, ssm_document, ssm_managed_instance, or ssm_parameter")
 	}
 	return settings, nil
 }
