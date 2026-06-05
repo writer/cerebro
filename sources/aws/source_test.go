@@ -2178,6 +2178,7 @@ type fakeAWSNetwork struct {
 	apiV2APIs         []apigatewayv2types.Api
 }
 
+// cerebro:lint:allow maxfields AWS fixture aggregates service-specific fake responses.
 type fakeAWSData struct {
 	appRunnerServices    []apprunnertypes.Service
 	appRunnerTags        map[string][]apprunnertypes.Tag
