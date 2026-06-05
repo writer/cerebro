@@ -3451,6 +3451,67 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	assertProjectedLink(t, state, kubernetesServiceAccountURN, relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSPaymentsPodRole")
 }
 
+func TestProjectAWSRuntimeEventResources(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	for _, event := range []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aws-sfn-state-machine-orders",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.sfn_state_machine",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"resource_id":       "arn:aws:states:us-east-1:123456789012:stateMachine:orders-workflow",
+				"resource_name":     "orders-workflow",
+				"resource_provider": "aws",
+				"resource_type":     "sfn_state_machine",
+			},
+		},
+		{
+			Id:       "aws-eventbridge-rule-orders",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.eventbridge_rule",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"resource_id":       "arn:aws:events:us-east-1:123456789012:rule/orders/send-to-fulfillment",
+				"resource_name":     "send-to-fulfillment",
+				"resource_provider": "aws",
+				"resource_type":     "eventbridge_rule",
+			},
+		},
+		{
+			Id:       "aws-scheduler-schedule-orders",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.scheduler_schedule",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"resource_id":       "arn:aws:scheduler:us-east-1:123456789012:schedule/orders/hourly-reconcile",
+				"resource_name":     "hourly-reconcile",
+				"resource_provider": "aws",
+				"resource_type":     "scheduler_schedule",
+			},
+		},
+	} {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	for urn, entityType := range map[string]string{
+		projectionURN("writer", "aws_sfn_state_machine", "arn:aws:states:us-east-1:123456789012:stateMachine:orders-workflow"):         "aws.sfn.state.machine",
+		projectionURN("writer", "aws_eventbridge_rule", "arn:aws:events:us-east-1:123456789012:rule/orders/send-to-fulfillment"):       "aws.eventbridge.rule",
+		projectionURN("writer", "aws_scheduler_schedule", "arn:aws:scheduler:us-east-1:123456789012:schedule/orders/hourly-reconcile"): "aws.scheduler.schedule",
+	} {
+		if entity := state.entities[urn]; entity == nil || entity.EntityType != entityType {
+			t.Fatalf("projected entity %q = %#v, want type %q", urn, entity, entityType)
+		}
+		assertProjectedLink(t, state, urn, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	}
+}
+
 func TestProjectAWSRestrictedEKSClusterDoesNotCreatePublicReachability(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

@@ -30,12 +30,16 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	eventbridgetypes "github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/pipes"
+	pipestypes "github.com/aws/aws-sdk-go-v2/service/pipes/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
@@ -44,8 +48,12 @@ import (
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/scheduler"
+	schedulertypes "github.com/aws/aws-sdk-go-v2/service/scheduler/types"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	secretsmanagertypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+	"github.com/aws/aws-sdk-go-v2/service/sfn"
+	sfntypes "github.com/aws/aws-sdk-go-v2/service/sfn/types"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -338,13 +346,21 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEKSNodegroup, kind: "aws.eks_nodegroup"},
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
 		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
+		{family: familyEventBridgeArchive, kind: "aws.eventbridge_archive"},
+		{family: familyEventBridgeBus, kind: "aws.eventbridge_event_bus"},
+		{family: familyEventBridgePipe, kind: "aws.eventbridge_pipe"},
+		{family: familyEventBridgeRule, kind: "aws.eventbridge_rule"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyKMSKey, kind: "aws.kms_key"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
+		{family: familySchedulerSchedule, kind: "aws.scheduler_schedule"},
+		{family: familySchedulerScheduleGroup, kind: "aws.scheduler_schedule_group"},
 		{family: familySecret, kind: "aws.secret"},
+		{family: familySFNActivity, kind: "aws.sfn_activity"},
+		{family: familySFNStateMachine, kind: "aws.sfn_state_machine"},
 		{family: familySNSTopic, kind: "aws.sns_topic"},
 		{family: familySQSQueue, kind: "aws.sqs_queue"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
@@ -749,6 +765,123 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSRuntimeEventInventoryEvents(t *testing.T) {
+	stateMachineARN := "arn:aws:states:us-east-1:123456789012:stateMachine:orders-workflow"
+	activityARN := "arn:aws:states:us-east-1:123456789012:activity:ship-order"
+	eventBusARN := "arn:aws:events:us-east-1:123456789012:event-bus/orders"
+	ruleARN := "arn:aws:events:us-east-1:123456789012:rule/orders/send-to-fulfillment"
+	archiveARN := "arn:aws:events:us-east-1:123456789012:archive/orders-archive"
+	pipeARN := "arn:aws:pipes:us-east-1:123456789012:pipe/orders-pipe"
+	groupARN := "arn:aws:scheduler:us-east-1:123456789012:schedule-group/orders"
+	scheduleARN := "arn:aws:scheduler:us-east-1:123456789012:schedule/orders/hourly-reconcile"
+	source := newTestSource(t, fakeAWS{fakeAWSRuntimeEvents: fakeAWSRuntimeEvents{
+		sfnStateMachines: []sfn.DescribeStateMachineOutput{{
+			CreationDate:    timePtr("2026-04-23T00:00:00Z"),
+			Name:            awssdk.String("orders-workflow"),
+			RoleArn:         awssdk.String("arn:aws:iam::123456789012:role/StepFunctionsOrdersRole"),
+			StateMachineArn: awssdk.String(stateMachineARN),
+			Status:          sfntypes.StateMachineStatusActive,
+			Type:            sfntypes.StateMachineTypeStandard,
+		}},
+		sfnActivities: []sfn.DescribeActivityOutput{{
+			ActivityArn:  awssdk.String(activityARN),
+			CreationDate: timePtr("2026-04-23T00:00:00Z"),
+			Name:         awssdk.String("ship-order"),
+		}},
+		sfnTags: map[string][]sfntypes.Tag{
+			stateMachineARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+			activityARN:     {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
+		},
+		eventBuses: []eventbridge.DescribeEventBusOutput{{
+			Arn:              awssdk.String(eventBusARN),
+			CreationTime:     timePtr("2026-04-23T00:00:00Z"),
+			KmsKeyIdentifier: awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+			Name:             awssdk.String("orders"),
+		}},
+		eventBusTags: map[string][]eventbridgetypes.Tag{eventBusARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+		eventBridgeRules: map[string][]eventbridgetypes.Rule{"orders": {{
+			Arn:          awssdk.String(ruleARN),
+			EventBusName: awssdk.String("orders"),
+			Name:         awssdk.String("send-to-fulfillment"),
+			RoleArn:      awssdk.String("arn:aws:iam::123456789012:role/EventBridgeOrdersRole"),
+			State:        eventbridgetypes.RuleStateEnabled,
+		}}},
+		eventBridgeTargets: map[string][]eventbridgetypes.Target{"orders/send-to-fulfillment": {{
+			Arn:     awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:fulfillment"),
+			Id:      awssdk.String("fulfillment"),
+			RoleArn: awssdk.String("arn:aws:iam::123456789012:role/EventBridgeTargetRole"),
+		}}},
+		eventBridgeRuleTags: map[string][]eventbridgetypes.Tag{ruleARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+		eventBridgeArchives: []eventbridge.DescribeArchiveOutput{{
+			ArchiveArn:     awssdk.String(archiveARN),
+			ArchiveName:    awssdk.String("orders-archive"),
+			CreationTime:   timePtr("2026-04-23T00:00:00Z"),
+			EventSourceArn: awssdk.String(eventBusARN),
+			RetentionDays:  awssdk.Int32(30),
+			State:          eventbridgetypes.ArchiveStateEnabled,
+		}},
+		eventBridgeArchiveTags: map[string][]eventbridgetypes.Tag{archiveARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+		pipes: []pipes.DescribePipeOutput{{
+			Arn:          awssdk.String(pipeARN),
+			CreationTime: timePtr("2026-04-23T00:00:00Z"),
+			CurrentState: pipestypes.PipeStateRunning,
+			Name:         awssdk.String("orders-pipe"),
+			RoleArn:      awssdk.String("arn:aws:iam::123456789012:role/PipesOrdersRole"),
+			Source:       awssdk.String("arn:aws:sqs:us-east-1:123456789012:orders"),
+			Target:       awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:fulfillment"),
+		}},
+		pipeTags: map[string]map[string]string{pipeARN: {"Team": "payments"}},
+		scheduleGroups: []scheduler.GetScheduleGroupOutput{{
+			Arn:          awssdk.String(groupARN),
+			CreationDate: timePtr("2026-04-23T00:00:00Z"),
+			Name:         awssdk.String("orders"),
+			State:        schedulertypes.ScheduleGroupStateActive,
+		}},
+		scheduleGroupTags: map[string][]schedulertypes.Tag{groupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+		schedules: map[string][]scheduler.GetScheduleOutput{"orders": {{
+			Arn:                awssdk.String(scheduleARN),
+			CreationDate:       timePtr("2026-04-23T00:00:00Z"),
+			GroupName:          awssdk.String("orders"),
+			Name:               awssdk.String("hourly-reconcile"),
+			ScheduleExpression: awssdk.String("rate(1 hour)"),
+			State:              schedulertypes.ScheduleStateEnabled,
+			Target:             &schedulertypes.Target{Arn: awssdk.String(stateMachineARN), RoleArn: awssdk.String("arn:aws:iam::123456789012:role/SchedulerOrdersRole")},
+		}}},
+		scheduleTags: map[string][]schedulertypes.Tag{scheduleARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+	}})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familySFNStateMachine, kind: "aws.sfn_state_machine", attr: "role_name", want: "StepFunctionsOrdersRole"},
+		{family: familySFNActivity, kind: "aws.sfn_activity", attr: "activity_name", want: "ship-order"},
+		{family: familyEventBridgeBus, kind: "aws.eventbridge_event_bus", attr: "encryption", want: "true"},
+		{family: familyEventBridgeRule, kind: "aws.eventbridge_rule", attr: "target_arns", want: "arn:aws:lambda:us-east-1:123456789012:function:fulfillment"},
+		{family: familyEventBridgeArchive, kind: "aws.eventbridge_archive", attr: "retention_days", want: "30"},
+		{family: familyEventBridgePipe, kind: "aws.eventbridge_pipe", attr: "role_name", want: "PipesOrdersRole"},
+		{family: familySchedulerScheduleGroup, kind: "aws.scheduler_schedule_group", attr: "state", want: "ACTIVE"},
+		{family: familySchedulerSchedule, kind: "aws.scheduler_schedule", attr: "target_arn", want: stateMachineARN},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -1491,6 +1624,32 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 	}
+	runtimeEventsData := func(fake *recordingAWS) {
+		stateMachineARN := "arn:aws:states:us-east-1:123456789012:stateMachine:orders-workflow"
+		activityARN := "arn:aws:states:us-east-1:123456789012:activity:ship-order"
+		eventBusARN := "arn:aws:events:us-east-1:123456789012:event-bus/orders"
+		ruleARN := "arn:aws:events:us-east-1:123456789012:rule/orders/send-to-fulfillment"
+		archiveARN := "arn:aws:events:us-east-1:123456789012:archive/orders-archive"
+		pipeARN := "arn:aws:pipes:us-east-1:123456789012:pipe/orders-pipe"
+		groupARN := "arn:aws:scheduler:us-east-1:123456789012:schedule-group/orders"
+		scheduleARN := "arn:aws:scheduler:us-east-1:123456789012:schedule/orders/hourly-reconcile"
+		fake.sfnStateMachines = []sfn.DescribeStateMachineOutput{{StateMachineArn: awssdk.String(stateMachineARN), Name: awssdk.String("orders-workflow"), RoleArn: awssdk.String("arn:aws:iam::123456789012:role/StepFunctionsOrdersRole")}}
+		fake.sfnActivities = []sfn.DescribeActivityOutput{{ActivityArn: awssdk.String(activityARN), Name: awssdk.String("ship-order")}}
+		fake.sfnTags = map[string][]sfntypes.Tag{stateMachineARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}, activityARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.eventBuses = []eventbridge.DescribeEventBusOutput{{Arn: awssdk.String(eventBusARN), Name: awssdk.String("orders")}}
+		fake.eventBusTags = map[string][]eventbridgetypes.Tag{eventBusARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.eventBridgeRules = map[string][]eventbridgetypes.Rule{"orders": {{Arn: awssdk.String(ruleARN), EventBusName: awssdk.String("orders"), Name: awssdk.String("send-to-fulfillment")}}}
+		fake.eventBridgeTargets = map[string][]eventbridgetypes.Target{"orders/send-to-fulfillment": {{Arn: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:fulfillment"), Id: awssdk.String("fulfillment")}}}
+		fake.eventBridgeRuleTags = map[string][]eventbridgetypes.Tag{ruleARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.eventBridgeArchives = []eventbridge.DescribeArchiveOutput{{ArchiveArn: awssdk.String(archiveARN), ArchiveName: awssdk.String("orders-archive")}}
+		fake.eventBridgeArchiveTags = map[string][]eventbridgetypes.Tag{archiveARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.pipes = []pipes.DescribePipeOutput{{Arn: awssdk.String(pipeARN), Name: awssdk.String("orders-pipe")}}
+		fake.pipeTags = map[string]map[string]string{pipeARN: {"Team": "payments"}}
+		fake.scheduleGroups = []scheduler.GetScheduleGroupOutput{{Arn: awssdk.String(groupARN), Name: awssdk.String("orders")}}
+		fake.scheduleGroupTags = map[string][]schedulertypes.Tag{groupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.schedules = map[string][]scheduler.GetScheduleOutput{"orders": {{Arn: awssdk.String(scheduleARN), GroupName: awssdk.String("orders"), Name: awssdk.String("hourly-reconcile")}}}
+		fake.scheduleTags = map[string][]schedulertypes.Tag{scheduleARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -1545,6 +1704,46 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECRRepository,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
+		},
+		{
+			family:  familySFNStateMachine,
+			seed:    runtimeEventsData,
+			wantAPI: []string{"sfn:DescribeStateMachine", "sfn:ListStateMachines", "sfn:ListTagsForResource"},
+		},
+		{
+			family:  familySFNActivity,
+			seed:    runtimeEventsData,
+			wantAPI: []string{"sfn:DescribeActivity", "sfn:ListActivities", "sfn:ListTagsForResource"},
+		},
+		{
+			family:  familyEventBridgeBus,
+			seed:    runtimeEventsData,
+			wantAPI: []string{"eventbridge:DescribeEventBus", "eventbridge:ListEventBuses", "eventbridge:ListTagsForResource"},
+		},
+		{
+			family:  familyEventBridgeRule,
+			seed:    runtimeEventsData,
+			wantAPI: []string{"eventbridge:ListEventBuses", "eventbridge:ListRules", "eventbridge:ListTagsForResource", "eventbridge:ListTargetsByRule"},
+		},
+		{
+			family:  familyEventBridgeArchive,
+			seed:    runtimeEventsData,
+			wantAPI: []string{"eventbridge:DescribeArchive", "eventbridge:ListArchives", "eventbridge:ListTagsForResource"},
+		},
+		{
+			family:  familyEventBridgePipe,
+			seed:    runtimeEventsData,
+			wantAPI: []string{"pipes:DescribePipe", "pipes:ListPipes", "pipes:ListTagsForResource"},
+		},
+		{
+			family:  familySchedulerScheduleGroup,
+			seed:    runtimeEventsData,
+			wantAPI: []string{"scheduler:GetScheduleGroup", "scheduler:ListScheduleGroups", "scheduler:ListTagsForResource"},
+		},
+		{
+			family:  familySchedulerSchedule,
+			seed:    runtimeEventsData,
+			wantAPI: []string{"scheduler:GetSchedule", "scheduler:ListScheduleGroups", "scheduler:ListSchedules", "scheduler:ListTagsForResource"},
 		},
 		{
 			family:  familyECSService,
@@ -1870,7 +2069,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}, sfn: fakeSFN{fake: &fake}, eventBridge: fakeEventBridge{fake: &fake}, pipes: fakePipes{fake: &fake}, scheduler: fakeScheduler{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +2085,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}, sfn: recordingSFN{fake: fake}, eventBridge: recordingEventBridge{fake: fake}, pipes: recordingPipes{fake: fake}, scheduler: recordingScheduler{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1954,6 +2153,7 @@ type fakeAWS struct {
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 	fakeAWSData
+	fakeAWSRuntimeEvents
 }
 
 type fakeAWSNetwork struct {
@@ -1992,6 +2192,25 @@ type fakeAWSData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
+}
+
+type fakeAWSRuntimeEvents struct {
+	sfnStateMachines       []sfn.DescribeStateMachineOutput
+	sfnActivities          []sfn.DescribeActivityOutput
+	sfnTags                map[string][]sfntypes.Tag
+	eventBuses             []eventbridge.DescribeEventBusOutput
+	eventBusTags           map[string][]eventbridgetypes.Tag
+	eventBridgeRules       map[string][]eventbridgetypes.Rule
+	eventBridgeTargets     map[string][]eventbridgetypes.Target
+	eventBridgeRuleTags    map[string][]eventbridgetypes.Tag
+	eventBridgeArchives    []eventbridge.DescribeArchiveOutput
+	eventBridgeArchiveTags map[string][]eventbridgetypes.Tag
+	pipes                  []pipes.DescribePipeOutput
+	pipeTags               map[string]map[string]string
+	scheduleGroups         []scheduler.GetScheduleGroupOutput
+	scheduleGroupTags      map[string][]schedulertypes.Tag
+	schedules              map[string][]scheduler.GetScheduleOutput
+	scheduleTags           map[string][]schedulertypes.Tag
 }
 
 type fakeAWSCompute struct {
@@ -2854,6 +3073,363 @@ func (f fakeAWS) GetQueueAttributes(_ context.Context, input *sqs.GetQueueAttrib
 
 func (f fakeAWS) ListQueueTags(_ context.Context, input *sqs.ListQueueTagsInput, _ ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
 	return &sqs.ListQueueTagsOutput{Tags: f.sqsTags[awssdk.ToString(input.QueueUrl)]}, nil
+}
+
+type fakeSFN struct {
+	fake *fakeAWS
+}
+
+func (f fakeSFN) ListStateMachines(context.Context, *sfn.ListStateMachinesInput, ...func(*sfn.Options)) (*sfn.ListStateMachinesOutput, error) {
+	stateMachines := make([]sfntypes.StateMachineListItem, 0, len(f.fake.sfnStateMachines))
+	for _, machine := range f.fake.sfnStateMachines {
+		stateMachines = append(stateMachines, sfntypes.StateMachineListItem{
+			CreationDate:    machine.CreationDate,
+			Name:            machine.Name,
+			StateMachineArn: machine.StateMachineArn,
+			Type:            machine.Type,
+		})
+	}
+	return &sfn.ListStateMachinesOutput{StateMachines: stateMachines}, nil
+}
+
+func (f fakeSFN) DescribeStateMachine(_ context.Context, input *sfn.DescribeStateMachineInput, _ ...func(*sfn.Options)) (*sfn.DescribeStateMachineOutput, error) {
+	arn := awssdk.ToString(input.StateMachineArn)
+	for _, machine := range f.fake.sfnStateMachines {
+		if awssdk.ToString(machine.StateMachineArn) == arn {
+			copy := machine
+			return &copy, nil
+		}
+	}
+	return &sfn.DescribeStateMachineOutput{}, nil
+}
+
+func (f fakeSFN) ListActivities(context.Context, *sfn.ListActivitiesInput, ...func(*sfn.Options)) (*sfn.ListActivitiesOutput, error) {
+	activities := make([]sfntypes.ActivityListItem, 0, len(f.fake.sfnActivities))
+	for _, activity := range f.fake.sfnActivities {
+		activities = append(activities, sfntypes.ActivityListItem{
+			ActivityArn:  activity.ActivityArn,
+			CreationDate: activity.CreationDate,
+			Name:         activity.Name,
+		})
+	}
+	return &sfn.ListActivitiesOutput{Activities: activities}, nil
+}
+
+func (f fakeSFN) DescribeActivity(_ context.Context, input *sfn.DescribeActivityInput, _ ...func(*sfn.Options)) (*sfn.DescribeActivityOutput, error) {
+	arn := awssdk.ToString(input.ActivityArn)
+	for _, activity := range f.fake.sfnActivities {
+		if awssdk.ToString(activity.ActivityArn) == arn {
+			copy := activity
+			return &copy, nil
+		}
+	}
+	return &sfn.DescribeActivityOutput{}, nil
+}
+
+func (f fakeSFN) ListTagsForResource(_ context.Context, input *sfn.ListTagsForResourceInput, _ ...func(*sfn.Options)) (*sfn.ListTagsForResourceOutput, error) {
+	return &sfn.ListTagsForResourceOutput{Tags: f.fake.sfnTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeEventBridge struct {
+	fake *fakeAWS
+}
+
+func (f fakeEventBridge) ListEventBuses(context.Context, *eventbridge.ListEventBusesInput, ...func(*eventbridge.Options)) (*eventbridge.ListEventBusesOutput, error) {
+	buses := make([]eventbridgetypes.EventBus, 0, len(f.fake.eventBuses))
+	for _, bus := range f.fake.eventBuses {
+		buses = append(buses, eventbridgetypes.EventBus{
+			Arn:              bus.Arn,
+			CreationTime:     bus.CreationTime,
+			Description:      bus.Description,
+			LastModifiedTime: bus.LastModifiedTime,
+			Name:             bus.Name,
+			Policy:           bus.Policy,
+		})
+	}
+	return &eventbridge.ListEventBusesOutput{EventBuses: buses}, nil
+}
+
+func (f fakeEventBridge) DescribeEventBus(_ context.Context, input *eventbridge.DescribeEventBusInput, _ ...func(*eventbridge.Options)) (*eventbridge.DescribeEventBusOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, bus := range f.fake.eventBuses {
+		if awssdk.ToString(bus.Name) == name || awssdk.ToString(bus.Arn) == name {
+			copy := bus
+			return &copy, nil
+		}
+	}
+	return &eventbridge.DescribeEventBusOutput{}, nil
+}
+
+func (f fakeEventBridge) ListRules(_ context.Context, input *eventbridge.ListRulesInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListRulesOutput, error) {
+	return &eventbridge.ListRulesOutput{Rules: f.fake.eventBridgeRules[awssdk.ToString(input.EventBusName)]}, nil
+}
+
+func (f fakeEventBridge) ListTargetsByRule(_ context.Context, input *eventbridge.ListTargetsByRuleInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListTargetsByRuleOutput, error) {
+	key := awssdk.ToString(input.EventBusName) + "/" + awssdk.ToString(input.Rule)
+	return &eventbridge.ListTargetsByRuleOutput{Targets: f.fake.eventBridgeTargets[key]}, nil
+}
+
+func (f fakeEventBridge) ListArchives(context.Context, *eventbridge.ListArchivesInput, ...func(*eventbridge.Options)) (*eventbridge.ListArchivesOutput, error) {
+	archives := make([]eventbridgetypes.Archive, 0, len(f.fake.eventBridgeArchives))
+	for _, archive := range f.fake.eventBridgeArchives {
+		archives = append(archives, eventbridgetypes.Archive{
+			ArchiveName:    archive.ArchiveName,
+			CreationTime:   archive.CreationTime,
+			EventCount:     archive.EventCount,
+			EventSourceArn: archive.EventSourceArn,
+			RetentionDays:  archive.RetentionDays,
+			SizeBytes:      archive.SizeBytes,
+			State:          archive.State,
+			StateReason:    archive.StateReason,
+		})
+	}
+	return &eventbridge.ListArchivesOutput{Archives: archives}, nil
+}
+
+func (f fakeEventBridge) DescribeArchive(_ context.Context, input *eventbridge.DescribeArchiveInput, _ ...func(*eventbridge.Options)) (*eventbridge.DescribeArchiveOutput, error) {
+	name := awssdk.ToString(input.ArchiveName)
+	for _, archive := range f.fake.eventBridgeArchives {
+		if awssdk.ToString(archive.ArchiveName) == name || awssdk.ToString(archive.ArchiveArn) == name {
+			copy := archive
+			return &copy, nil
+		}
+	}
+	return &eventbridge.DescribeArchiveOutput{}, nil
+}
+
+func (f fakeEventBridge) ListTagsForResource(_ context.Context, input *eventbridge.ListTagsForResourceInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListTagsForResourceOutput, error) {
+	arn := awssdk.ToString(input.ResourceARN)
+	if tags := f.fake.eventBusTags[arn]; len(tags) != 0 {
+		return &eventbridge.ListTagsForResourceOutput{Tags: tags}, nil
+	}
+	if tags := f.fake.eventBridgeRuleTags[arn]; len(tags) != 0 {
+		return &eventbridge.ListTagsForResourceOutput{Tags: tags}, nil
+	}
+	return &eventbridge.ListTagsForResourceOutput{Tags: f.fake.eventBridgeArchiveTags[arn]}, nil
+}
+
+type fakePipes struct {
+	fake *fakeAWS
+}
+
+func (f fakePipes) ListPipes(context.Context, *pipes.ListPipesInput, ...func(*pipes.Options)) (*pipes.ListPipesOutput, error) {
+	summaries := make([]pipestypes.Pipe, 0, len(f.fake.pipes))
+	for _, pipe := range f.fake.pipes {
+		summaries = append(summaries, pipestypes.Pipe{
+			Arn:              pipe.Arn,
+			CreationTime:     pipe.CreationTime,
+			CurrentState:     pipe.CurrentState,
+			DesiredState:     pipestypes.RequestedPipeState(pipe.DesiredState),
+			Enrichment:       pipe.Enrichment,
+			LastModifiedTime: pipe.LastModifiedTime,
+			Name:             pipe.Name,
+			Source:           pipe.Source,
+			StateReason:      pipe.StateReason,
+			Target:           pipe.Target,
+		})
+	}
+	return &pipes.ListPipesOutput{Pipes: summaries}, nil
+}
+
+func (f fakePipes) DescribePipe(_ context.Context, input *pipes.DescribePipeInput, _ ...func(*pipes.Options)) (*pipes.DescribePipeOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, pipe := range f.fake.pipes {
+		if awssdk.ToString(pipe.Name) == name || awssdk.ToString(pipe.Arn) == name {
+			copy := pipe
+			return &copy, nil
+		}
+	}
+	return &pipes.DescribePipeOutput{}, nil
+}
+
+func (f fakePipes) ListTagsForResource(_ context.Context, input *pipes.ListTagsForResourceInput, _ ...func(*pipes.Options)) (*pipes.ListTagsForResourceOutput, error) {
+	return &pipes.ListTagsForResourceOutput{Tags: f.fake.pipeTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeScheduler struct {
+	fake *fakeAWS
+}
+
+func (f fakeScheduler) ListScheduleGroups(context.Context, *scheduler.ListScheduleGroupsInput, ...func(*scheduler.Options)) (*scheduler.ListScheduleGroupsOutput, error) {
+	groups := make([]schedulertypes.ScheduleGroupSummary, 0, len(f.fake.scheduleGroups))
+	for _, group := range f.fake.scheduleGroups {
+		groups = append(groups, schedulertypes.ScheduleGroupSummary{
+			Arn:                  group.Arn,
+			CreationDate:         group.CreationDate,
+			LastModificationDate: group.LastModificationDate,
+			Name:                 group.Name,
+			State:                group.State,
+		})
+	}
+	return &scheduler.ListScheduleGroupsOutput{ScheduleGroups: groups}, nil
+}
+
+func (f fakeScheduler) GetScheduleGroup(_ context.Context, input *scheduler.GetScheduleGroupInput, _ ...func(*scheduler.Options)) (*scheduler.GetScheduleGroupOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, group := range f.fake.scheduleGroups {
+		if awssdk.ToString(group.Name) == name || awssdk.ToString(group.Arn) == name {
+			copy := group
+			return &copy, nil
+		}
+	}
+	return &scheduler.GetScheduleGroupOutput{}, nil
+}
+
+func (f fakeScheduler) ListSchedules(_ context.Context, input *scheduler.ListSchedulesInput, _ ...func(*scheduler.Options)) (*scheduler.ListSchedulesOutput, error) {
+	schedules := f.fake.schedules[awssdk.ToString(input.GroupName)]
+	summaries := make([]schedulertypes.ScheduleSummary, 0, len(schedules))
+	for _, schedule := range schedules {
+		var target *schedulertypes.TargetSummary
+		if schedule.Target != nil {
+			target = &schedulertypes.TargetSummary{Arn: schedule.Target.Arn}
+		}
+		summaries = append(summaries, schedulertypes.ScheduleSummary{
+			Arn:                  schedule.Arn,
+			CreationDate:         schedule.CreationDate,
+			GroupName:            schedule.GroupName,
+			LastModificationDate: schedule.LastModificationDate,
+			Name:                 schedule.Name,
+			State:                schedule.State,
+			Target:               target,
+		})
+	}
+	return &scheduler.ListSchedulesOutput{Schedules: summaries}, nil
+}
+
+func (f fakeScheduler) GetSchedule(_ context.Context, input *scheduler.GetScheduleInput, _ ...func(*scheduler.Options)) (*scheduler.GetScheduleOutput, error) {
+	groupName := awssdk.ToString(input.GroupName)
+	name := awssdk.ToString(input.Name)
+	for _, schedule := range f.fake.schedules[groupName] {
+		if awssdk.ToString(schedule.Name) == name || awssdk.ToString(schedule.Arn) == name {
+			copy := schedule
+			return &copy, nil
+		}
+	}
+	return &scheduler.GetScheduleOutput{}, nil
+}
+
+func (f fakeScheduler) ListTagsForResource(_ context.Context, input *scheduler.ListTagsForResourceInput, _ ...func(*scheduler.Options)) (*scheduler.ListTagsForResourceOutput, error) {
+	arn := awssdk.ToString(input.ResourceArn)
+	if tags := f.fake.scheduleGroupTags[arn]; len(tags) != 0 {
+		return &scheduler.ListTagsForResourceOutput{Tags: tags}, nil
+	}
+	return &scheduler.ListTagsForResourceOutput{Tags: f.fake.scheduleTags[arn]}, nil
+}
+
+type recordingSFN struct {
+	fake *recordingAWS
+}
+
+func (r recordingSFN) ListStateMachines(ctx context.Context, input *sfn.ListStateMachinesInput, options ...func(*sfn.Options)) (*sfn.ListStateMachinesOutput, error) {
+	r.fake.record("sfn:ListStateMachines")
+	return fakeSFN{fake: &r.fake.fakeAWS}.ListStateMachines(ctx, input, options...)
+}
+
+func (r recordingSFN) DescribeStateMachine(ctx context.Context, input *sfn.DescribeStateMachineInput, options ...func(*sfn.Options)) (*sfn.DescribeStateMachineOutput, error) {
+	r.fake.record("sfn:DescribeStateMachine")
+	return fakeSFN{fake: &r.fake.fakeAWS}.DescribeStateMachine(ctx, input, options...)
+}
+
+func (r recordingSFN) ListActivities(ctx context.Context, input *sfn.ListActivitiesInput, options ...func(*sfn.Options)) (*sfn.ListActivitiesOutput, error) {
+	r.fake.record("sfn:ListActivities")
+	return fakeSFN{fake: &r.fake.fakeAWS}.ListActivities(ctx, input, options...)
+}
+
+func (r recordingSFN) DescribeActivity(ctx context.Context, input *sfn.DescribeActivityInput, options ...func(*sfn.Options)) (*sfn.DescribeActivityOutput, error) {
+	r.fake.record("sfn:DescribeActivity")
+	return fakeSFN{fake: &r.fake.fakeAWS}.DescribeActivity(ctx, input, options...)
+}
+
+func (r recordingSFN) ListTagsForResource(ctx context.Context, input *sfn.ListTagsForResourceInput, options ...func(*sfn.Options)) (*sfn.ListTagsForResourceOutput, error) {
+	r.fake.record("sfn:ListTagsForResource")
+	return fakeSFN{fake: &r.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+type recordingEventBridge struct {
+	fake *recordingAWS
+}
+
+func (r recordingEventBridge) ListEventBuses(ctx context.Context, input *eventbridge.ListEventBusesInput, options ...func(*eventbridge.Options)) (*eventbridge.ListEventBusesOutput, error) {
+	r.fake.record("eventbridge:ListEventBuses")
+	return fakeEventBridge{fake: &r.fake.fakeAWS}.ListEventBuses(ctx, input, options...)
+}
+
+func (r recordingEventBridge) DescribeEventBus(ctx context.Context, input *eventbridge.DescribeEventBusInput, options ...func(*eventbridge.Options)) (*eventbridge.DescribeEventBusOutput, error) {
+	r.fake.record("eventbridge:DescribeEventBus")
+	return fakeEventBridge{fake: &r.fake.fakeAWS}.DescribeEventBus(ctx, input, options...)
+}
+
+func (r recordingEventBridge) ListRules(ctx context.Context, input *eventbridge.ListRulesInput, options ...func(*eventbridge.Options)) (*eventbridge.ListRulesOutput, error) {
+	r.fake.record("eventbridge:ListRules")
+	return fakeEventBridge{fake: &r.fake.fakeAWS}.ListRules(ctx, input, options...)
+}
+
+func (r recordingEventBridge) ListTargetsByRule(ctx context.Context, input *eventbridge.ListTargetsByRuleInput, options ...func(*eventbridge.Options)) (*eventbridge.ListTargetsByRuleOutput, error) {
+	r.fake.record("eventbridge:ListTargetsByRule")
+	return fakeEventBridge{fake: &r.fake.fakeAWS}.ListTargetsByRule(ctx, input, options...)
+}
+
+func (r recordingEventBridge) ListArchives(ctx context.Context, input *eventbridge.ListArchivesInput, options ...func(*eventbridge.Options)) (*eventbridge.ListArchivesOutput, error) {
+	r.fake.record("eventbridge:ListArchives")
+	return fakeEventBridge{fake: &r.fake.fakeAWS}.ListArchives(ctx, input, options...)
+}
+
+func (r recordingEventBridge) DescribeArchive(ctx context.Context, input *eventbridge.DescribeArchiveInput, options ...func(*eventbridge.Options)) (*eventbridge.DescribeArchiveOutput, error) {
+	r.fake.record("eventbridge:DescribeArchive")
+	return fakeEventBridge{fake: &r.fake.fakeAWS}.DescribeArchive(ctx, input, options...)
+}
+
+func (r recordingEventBridge) ListTagsForResource(ctx context.Context, input *eventbridge.ListTagsForResourceInput, options ...func(*eventbridge.Options)) (*eventbridge.ListTagsForResourceOutput, error) {
+	r.fake.record("eventbridge:ListTagsForResource")
+	return fakeEventBridge{fake: &r.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+type recordingPipes struct {
+	fake *recordingAWS
+}
+
+func (r recordingPipes) ListPipes(ctx context.Context, input *pipes.ListPipesInput, options ...func(*pipes.Options)) (*pipes.ListPipesOutput, error) {
+	r.fake.record("pipes:ListPipes")
+	return fakePipes{fake: &r.fake.fakeAWS}.ListPipes(ctx, input, options...)
+}
+
+func (r recordingPipes) DescribePipe(ctx context.Context, input *pipes.DescribePipeInput, options ...func(*pipes.Options)) (*pipes.DescribePipeOutput, error) {
+	r.fake.record("pipes:DescribePipe")
+	return fakePipes{fake: &r.fake.fakeAWS}.DescribePipe(ctx, input, options...)
+}
+
+func (r recordingPipes) ListTagsForResource(ctx context.Context, input *pipes.ListTagsForResourceInput, options ...func(*pipes.Options)) (*pipes.ListTagsForResourceOutput, error) {
+	r.fake.record("pipes:ListTagsForResource")
+	return fakePipes{fake: &r.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+type recordingScheduler struct {
+	fake *recordingAWS
+}
+
+func (r recordingScheduler) ListScheduleGroups(ctx context.Context, input *scheduler.ListScheduleGroupsInput, options ...func(*scheduler.Options)) (*scheduler.ListScheduleGroupsOutput, error) {
+	r.fake.record("scheduler:ListScheduleGroups")
+	return fakeScheduler{fake: &r.fake.fakeAWS}.ListScheduleGroups(ctx, input, options...)
+}
+
+func (r recordingScheduler) GetScheduleGroup(ctx context.Context, input *scheduler.GetScheduleGroupInput, options ...func(*scheduler.Options)) (*scheduler.GetScheduleGroupOutput, error) {
+	r.fake.record("scheduler:GetScheduleGroup")
+	return fakeScheduler{fake: &r.fake.fakeAWS}.GetScheduleGroup(ctx, input, options...)
+}
+
+func (r recordingScheduler) ListSchedules(ctx context.Context, input *scheduler.ListSchedulesInput, options ...func(*scheduler.Options)) (*scheduler.ListSchedulesOutput, error) {
+	r.fake.record("scheduler:ListSchedules")
+	return fakeScheduler{fake: &r.fake.fakeAWS}.ListSchedules(ctx, input, options...)
+}
+
+func (r recordingScheduler) GetSchedule(ctx context.Context, input *scheduler.GetScheduleInput, options ...func(*scheduler.Options)) (*scheduler.GetScheduleOutput, error) {
+	r.fake.record("scheduler:GetSchedule")
+	return fakeScheduler{fake: &r.fake.fakeAWS}.GetSchedule(ctx, input, options...)
+}
+
+func (r recordingScheduler) ListTagsForResource(ctx context.Context, input *scheduler.ListTagsForResourceInput, options ...func(*scheduler.Options)) (*scheduler.ListTagsForResourceOutput, error) {
+	r.fake.record("scheduler:ListTagsForResource")
+	return fakeScheduler{fake: &r.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
 }
 
 type fakeAPIGatewayV2 struct {
