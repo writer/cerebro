@@ -28,11 +28,14 @@ import (
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/aws/aws-sdk-go-v2/service/efs"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -78,11 +81,16 @@ const (
 	familyAccessKey           = "access_key"
 	familyAssetMetadata       = "asset_metadata"
 	familyCloudTrail          = "cloudtrail"
+	familyDynamoDBBackup      = "dynamodb_backup"
+	familyDynamoDBStream      = "dynamodb_stream"
+	familyDynamoDBTable       = "dynamodb_table"
 	familyEC2Instance         = "ec2_instance"
 	familyECRRepository       = "ecr_repository"
 	familyECSService          = "ecs_service"
 	familyECSTask             = "ecs_task"
 	familyECSTaskDefinition   = "ecs_task_definition"
+	familyEFSAccessPoint      = "efs_access_point"
+	familyEFSFileSystem       = "efs_file_system"
 	familyEKSCluster          = "eks_cluster"
 	familyEKSNodegroup        = "eks_nodegroup"
 	familyEKSFargateProfile   = "eks_fargate_profile"
@@ -141,27 +149,30 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg          awssdk.Config
-	iam          awsIAMAPI
-	cloudTrail   awsCloudTrailAPI
-	ec2          awsEC2API
-	route53      awsRoute53API
-	cloudFront   awsCloudFrontAPI
-	elbv2        awsELBV2API
-	ecs          awsECSAPI
-	eks          awsEKSAPI
-	ecr          awsECRAPI
-	apiGateway   awsAPIGatewayAPI
-	apiGatewayV2 awsAPIGatewayV2API
-	lambda       awsLambdaAPI
-	tagging      awsResourceGroupsTaggingAPI
-	s3           awsS3API
-	s3ByRegion   func(string) awsS3API
-	rds          awsRDSAPI
-	kms          awsKMSAPI
-	secrets      awsSecretsManagerAPI
-	sqs          awsSQSAPI
-	sns          awsSNSAPI
+	cfg             awssdk.Config
+	iam             awsIAMAPI
+	cloudTrail      awsCloudTrailAPI
+	dynamodb        awsDynamoDBAPI
+	dynamodbStreams awsDynamoDBStreamsAPI
+	ec2             awsEC2API
+	route53         awsRoute53API
+	cloudFront      awsCloudFrontAPI
+	elbv2           awsELBV2API
+	ecs             awsECSAPI
+	efs             awsEFSAPI
+	eks             awsEKSAPI
+	ecr             awsECRAPI
+	apiGateway      awsAPIGatewayAPI
+	apiGatewayV2    awsAPIGatewayV2API
+	lambda          awsLambdaAPI
+	tagging         awsResourceGroupsTaggingAPI
+	s3              awsS3API
+	s3ByRegion      func(string) awsS3API
+	rds             awsRDSAPI
+	kms             awsKMSAPI
+	secrets         awsSecretsManagerAPI
+	sqs             awsSQSAPI
+	sns             awsSNSAPI
 }
 
 type awsIAMAPI interface {
@@ -188,6 +199,20 @@ type awsCloudTrailAPI interface {
 	LookupEvents(context.Context, *cloudtrail.LookupEventsInput, ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error)
 }
 
+type awsDynamoDBAPI interface {
+	ListTables(context.Context, *dynamodb.ListTablesInput, ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error)
+	DescribeTable(context.Context, *dynamodb.DescribeTableInput, ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error)
+	ListTagsOfResource(context.Context, *dynamodb.ListTagsOfResourceInput, ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error)
+	DescribeContinuousBackups(context.Context, *dynamodb.DescribeContinuousBackupsInput, ...func(*dynamodb.Options)) (*dynamodb.DescribeContinuousBackupsOutput, error)
+	DescribeTimeToLive(context.Context, *dynamodb.DescribeTimeToLiveInput, ...func(*dynamodb.Options)) (*dynamodb.DescribeTimeToLiveOutput, error)
+	ListBackups(context.Context, *dynamodb.ListBackupsInput, ...func(*dynamodb.Options)) (*dynamodb.ListBackupsOutput, error)
+}
+
+type awsDynamoDBStreamsAPI interface {
+	ListStreams(context.Context, *dynamodbstreams.ListStreamsInput, ...func(*dynamodbstreams.Options)) (*dynamodbstreams.ListStreamsOutput, error)
+	DescribeStream(context.Context, *dynamodbstreams.DescribeStreamInput, ...func(*dynamodbstreams.Options)) (*dynamodbstreams.DescribeStreamOutput, error)
+}
+
 type awsEC2API interface {
 	DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
 	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
@@ -203,6 +228,13 @@ type awsECSAPI interface {
 	DescribeTasks(context.Context, *ecs.DescribeTasksInput, ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error)
 	ListTaskDefinitions(context.Context, *ecs.ListTaskDefinitionsInput, ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error)
 	DescribeTaskDefinition(context.Context, *ecs.DescribeTaskDefinitionInput, ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error)
+}
+
+type awsEFSAPI interface {
+	DescribeFileSystems(context.Context, *efs.DescribeFileSystemsInput, ...func(*efs.Options)) (*efs.DescribeFileSystemsOutput, error)
+	DescribeMountTargets(context.Context, *efs.DescribeMountTargetsInput, ...func(*efs.Options)) (*efs.DescribeMountTargetsOutput, error)
+	DescribeMountTargetSecurityGroups(context.Context, *efs.DescribeMountTargetSecurityGroupsInput, ...func(*efs.Options)) (*efs.DescribeMountTargetSecurityGroupsOutput, error)
+	DescribeAccessPoints(context.Context, *efs.DescribeAccessPointsInput, ...func(*efs.Options)) (*efs.DescribeAccessPointsOutput, error)
 }
 
 type awsEKSAPI interface {
@@ -527,6 +559,40 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDynamoDBTable]{
+			Name:  familyDynamoDBTable,
+			Label: "aws dynamodb tables",
+			List:  listDynamoDBTables,
+			Event: dynamoDBTableEvent,
+			URN: func(settings settings, table awsDynamoDBTable) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_dynamodb_table:%s", settings.accountID, firstNonEmpty(awssdk.ToString(table.Table.TableArn), awssdk.ToString(table.Table.TableName))), nil
+			},
+			CursorFallback: func(table awsDynamoDBTable) string {
+				return firstNonEmpty(awssdk.ToString(table.Table.TableArn), awssdk.ToString(table.Table.TableName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDynamoDBBackup]{
+			Name:  familyDynamoDBBackup,
+			Label: "aws dynamodb backups",
+			List:  listDynamoDBBackups,
+			Event: dynamoDBBackupEvent,
+			URN: func(settings settings, backup awsDynamoDBBackup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_dynamodb_backup:%s", settings.accountID, firstNonEmpty(awssdk.ToString(backup.BackupArn), awssdk.ToString(backup.BackupName))), nil
+			},
+			CursorFallback: func(backup awsDynamoDBBackup) string { return awssdk.ToString(backup.BackupArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsDynamoDBStream]{
+			Name:  familyDynamoDBStream,
+			Label: "aws dynamodb streams",
+			List:  listDynamoDBStreams,
+			Event: dynamoDBStreamEvent,
+			URN: func(settings settings, stream awsDynamoDBStream) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_dynamodb_stream:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stream.Stream.StreamArn), awssdk.ToString(stream.Stream.StreamLabel))), nil
+			},
+			CursorFallback: func(stream awsDynamoDBStream) string {
+				return firstNonEmpty(awssdk.ToString(stream.Stream.StreamArn), awssdk.ToString(stream.Stream.StreamLabel))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsS3Bucket]{
 			Name:  familyS3Bucket,
 			Label: "aws s3 buckets",
@@ -603,6 +669,30 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(repository awsECRRepository) string {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEFSFileSystem]{
+			Name:  familyEFSFileSystem,
+			Label: "aws efs file systems",
+			List:  listEFSFileSystems,
+			Event: efsFileSystemEvent,
+			URN: func(settings settings, fileSystem awsEFSFileSystem) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_efs_file_system:%s", settings.accountID, firstNonEmpty(awssdk.ToString(fileSystem.FileSystem.FileSystemArn), awssdk.ToString(fileSystem.FileSystem.FileSystemId))), nil
+			},
+			CursorFallback: func(fileSystem awsEFSFileSystem) string {
+				return firstNonEmpty(awssdk.ToString(fileSystem.FileSystem.FileSystemArn), awssdk.ToString(fileSystem.FileSystem.FileSystemId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEFSAccessPoint]{
+			Name:  familyEFSAccessPoint,
+			Label: "aws efs access points",
+			List:  listEFSAccessPoints,
+			Event: efsAccessPointEvent,
+			URN: func(settings settings, accessPoint awsEFSAccessPoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_efs_access_point:%s", settings.accountID, firstNonEmpty(awssdk.ToString(accessPoint.AccessPoint.AccessPointArn), awssdk.ToString(accessPoint.AccessPoint.AccessPointId))), nil
+			},
+			CursorFallback: func(accessPoint awsEFSAccessPoint) string {
+				return firstNonEmpty(awssdk.ToString(accessPoint.AccessPoint.AccessPointArn), awssdk.ToString(accessPoint.AccessPoint.AccessPointId))
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
@@ -868,21 +958,24 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:          cfg,
-		iam:          iam.NewFromConfig(cfg),
-		cloudTrail:   cloudtrail.NewFromConfig(cfg),
-		ec2:          ec2.NewFromConfig(cfg),
-		route53:      route53.NewFromConfig(cfg),
-		cloudFront:   cloudfront.NewFromConfig(cfg),
-		elbv2:        elbv2.NewFromConfig(cfg),
-		ecs:          ecs.NewFromConfig(cfg),
-		eks:          eks.NewFromConfig(cfg),
-		ecr:          ecr.NewFromConfig(cfg),
-		apiGateway:   apigateway.NewFromConfig(cfg),
-		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
-		lambda:       lambda.NewFromConfig(cfg),
-		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:           s3.NewFromConfig(cfg),
+		cfg:             cfg,
+		iam:             iam.NewFromConfig(cfg),
+		cloudTrail:      cloudtrail.NewFromConfig(cfg),
+		dynamodb:        dynamodb.NewFromConfig(cfg),
+		dynamodbStreams: dynamodbstreams.NewFromConfig(cfg),
+		ec2:             ec2.NewFromConfig(cfg),
+		route53:         route53.NewFromConfig(cfg),
+		cloudFront:      cloudfront.NewFromConfig(cfg),
+		elbv2:           elbv2.NewFromConfig(cfg),
+		ecs:             ecs.NewFromConfig(cfg),
+		efs:             efs.NewFromConfig(cfg),
+		eks:             eks.NewFromConfig(cfg),
+		ecr:             ecr.NewFromConfig(cfg),
+		apiGateway:      apigateway.NewFromConfig(cfg),
+		apiGatewayV2:    apigatewayv2.NewFromConfig(cfg),
+		lambda:          lambda.NewFromConfig(cfg),
+		tagging:         resourcegroupstaggingapi.NewFromConfig(cfg),
+		s3:              s3.NewFromConfig(cfg),
 		s3ByRegion: func(region string) awsS3API {
 			regionalCfg := cfg
 			regionalCfg.Region = region
@@ -949,7 +1042,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyCloudTrail, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEFSAccessPoint, familyEFSFileSystem, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1057,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, dynamodb_backup, dynamodb_stream, dynamodb_table, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, efs_access_point, efs_file_system, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }

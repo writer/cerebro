@@ -5,11 +5,16 @@ emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
   - aws.cloudtrail
+  - aws.dynamodb_backup
+  - aws.dynamodb_stream
+  - aws.dynamodb_table
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
   - aws.ecs_task
   - aws.ecs_task_definition
+  - aws.efs_access_point
+  - aws.efs_file_system
   - aws.eks_cluster
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
@@ -34,11 +39,16 @@ runtime_families:
   - access_key
   - asset_metadata
   - cloudtrail
+  - dynamodb_backup
+  - dynamodb_stream
+  - dynamodb_table
   - ec2_instance
   - ecr_repository
   - ecs_service
   - ecs_task
   - ecs_task_definition
+  - efs_access_point
+  - efs_file_system
   - eks_cluster
   - eks_nodegroup
   - eks_fargate_profile
