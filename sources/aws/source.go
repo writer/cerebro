@@ -20,6 +20,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
@@ -47,6 +48,7 @@ import (
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
@@ -67,42 +69,45 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily             = familyCloudTrail
-	defaultRegion             = "us-east-1"
-	defaultPageSize           = 10
-	maxPageSize               = 200
-	cloudTrailCursorVersion   = 1
-	cloudTrailCursorMaxAge    = 55 * time.Minute
-	publicEndpointCursorV2    = 2
-	awsAssumeRoleSessionName  = "cerebro-source-runtime"
-	familyAccessKey           = "access_key"
-	familyAssetMetadata       = "asset_metadata"
-	familyCloudTrail          = "cloudtrail"
-	familyEC2Instance         = "ec2_instance"
-	familyECRRepository       = "ecr_repository"
-	familyECSService          = "ecs_service"
-	familyECSTask             = "ecs_task"
-	familyECSTaskDefinition   = "ecs_task_definition"
-	familyEKSCluster          = "eks_cluster"
-	familyEKSNodegroup        = "eks_nodegroup"
-	familyEKSFargateProfile   = "eks_fargate_profile"
-	familyEKSPodIdentity      = "eks_pod_identity_association"
-	familyEffectivePermission = "effective_permission"
-	familyIAMGroup            = "iam_group"
-	familyIAMMembership       = "iam_group_membership"
-	familyIAMRoleTrust        = "iam_role_trust"
-	familyIAMRoleAssign       = "iam_role_assignment"
-	familyIAMRole             = "iam_role"
-	familyIAMUser             = "iam_user"
-	familyKMSKey              = "kms_key"
-	familyPublicEndpoint      = "public_endpoint"
-	familyRDSInstance         = "rds_instance"
-	familyResourceExposure    = "resource_exposure"
-	familyS3Bucket            = "s3_bucket"
-	familySecret              = "secret"
-	familySNSTopic            = "sns_topic"
-	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
+	defaultFamily                 = familyCloudTrail
+	defaultRegion                 = "us-east-1"
+	defaultPageSize               = 10
+	maxPageSize                   = 200
+	cloudTrailCursorVersion       = 1
+	cloudTrailCursorMaxAge        = 55 * time.Minute
+	publicEndpointCursorV2        = 2
+	awsAssumeRoleSessionName      = "cerebro-source-runtime"
+	familyAccessKey               = "access_key"
+	familyACMCertificate          = "acm_certificate"
+	familyAssetMetadata           = "asset_metadata"
+	familyCloudTrail              = "cloudtrail"
+	familyEC2Instance             = "ec2_instance"
+	familyECRRepository           = "ecr_repository"
+	familyECSService              = "ecs_service"
+	familyECSTask                 = "ecs_task"
+	familyECSTaskDefinition       = "ecs_task_definition"
+	familyEKSCluster              = "eks_cluster"
+	familyEKSNodegroup            = "eks_nodegroup"
+	familyEKSFargateProfile       = "eks_fargate_profile"
+	familyEKSPodIdentity          = "eks_pod_identity_association"
+	familyEffectivePermission     = "effective_permission"
+	familyIAMGroup                = "iam_group"
+	familyIAMMembership           = "iam_group_membership"
+	familyIAMRoleTrust            = "iam_role_trust"
+	familyIAMRoleAssign           = "iam_role_assignment"
+	familyIAMRole                 = "iam_role"
+	familyIAMUser                 = "iam_user"
+	familyKMSKey                  = "kms_key"
+	familyPublicEndpoint          = "public_endpoint"
+	familyRDSInstance             = "rds_instance"
+	familyResourceExposure        = "resource_exposure"
+	familyRoute53ResolverEndpoint = "route53_resolver_endpoint"
+	familyRoute53ResolverRule     = "route53_resolver_rule"
+	familyS3Bucket                = "s3_bucket"
+	familySecret                  = "secret"
+	familySNSTopic                = "sns_topic"
+	familySQSQueue                = "sqs_queue"
+	familyLambdaFunction          = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -141,27 +146,35 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg          awssdk.Config
-	iam          awsIAMAPI
-	cloudTrail   awsCloudTrailAPI
-	ec2          awsEC2API
-	route53      awsRoute53API
-	cloudFront   awsCloudFrontAPI
-	elbv2        awsELBV2API
-	ecs          awsECSAPI
-	eks          awsEKSAPI
-	ecr          awsECRAPI
-	apiGateway   awsAPIGatewayAPI
-	apiGatewayV2 awsAPIGatewayV2API
-	lambda       awsLambdaAPI
-	tagging      awsResourceGroupsTaggingAPI
-	s3           awsS3API
-	s3ByRegion   func(string) awsS3API
-	rds          awsRDSAPI
-	kms          awsKMSAPI
-	secrets      awsSecretsManagerAPI
-	sqs          awsSQSAPI
-	sns          awsSNSAPI
+	cfg             awssdk.Config
+	acm             awsACMAPI
+	iam             awsIAMAPI
+	cloudTrail      awsCloudTrailAPI
+	ec2             awsEC2API
+	route53         awsRoute53API
+	route53Resolver awsRoute53ResolverAPI
+	cloudFront      awsCloudFrontAPI
+	elbv2           awsELBV2API
+	ecs             awsECSAPI
+	eks             awsEKSAPI
+	ecr             awsECRAPI
+	apiGateway      awsAPIGatewayAPI
+	apiGatewayV2    awsAPIGatewayV2API
+	lambda          awsLambdaAPI
+	tagging         awsResourceGroupsTaggingAPI
+	s3              awsS3API
+	s3ByRegion      func(string) awsS3API
+	rds             awsRDSAPI
+	kms             awsKMSAPI
+	secrets         awsSecretsManagerAPI
+	sqs             awsSQSAPI
+	sns             awsSNSAPI
+}
+
+type awsACMAPI interface {
+	ListCertificates(context.Context, *acm.ListCertificatesInput, ...func(*acm.Options)) (*acm.ListCertificatesOutput, error)
+	DescribeCertificate(context.Context, *acm.DescribeCertificateInput, ...func(*acm.Options)) (*acm.DescribeCertificateOutput, error)
+	ListTagsForCertificate(context.Context, *acm.ListTagsForCertificateInput, ...func(*acm.Options)) (*acm.ListTagsForCertificateOutput, error)
 }
 
 type awsIAMAPI interface {
@@ -224,6 +237,12 @@ type awsECRAPI interface {
 type awsRoute53API interface {
 	ListHostedZones(context.Context, *route53.ListHostedZonesInput, ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error)
 	ListResourceRecordSets(context.Context, *route53.ListResourceRecordSetsInput, ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error)
+}
+
+type awsRoute53ResolverAPI interface {
+	ListResolverEndpoints(context.Context, *route53resolver.ListResolverEndpointsInput, ...func(*route53resolver.Options)) (*route53resolver.ListResolverEndpointsOutput, error)
+	ListResolverRules(context.Context, *route53resolver.ListResolverRulesInput, ...func(*route53resolver.Options)) (*route53resolver.ListResolverRulesOutput, error)
+	ListTagsForResource(context.Context, *route53resolver.ListTagsForResourceInput, ...func(*route53resolver.Options)) (*route53resolver.ListTagsForResourceOutput, error)
 }
 
 type awsCloudFrontAPI interface {
@@ -517,6 +536,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(key iamtypes.AccessKeyMetadata) string { return awssdk.ToString(key.AccessKeyId) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsACMCertificate]{
+			Name:  familyACMCertificate,
+			Label: "aws acm certificates",
+			List:  listACMCertificates,
+			Event: acmCertificateEvent,
+			URN: func(settings settings, certificate awsACMCertificate) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_acm_certificate:%s", settings.accountID, firstNonEmpty(awssdk.ToString(certificate.Certificate.CertificateArn), awssdk.ToString(certificate.Certificate.DomainName))), nil
+			},
+			CursorFallback: func(certificate awsACMCertificate) string {
+				return firstNonEmpty(awssdk.ToString(certificate.Certificate.CertificateArn), awssdk.ToString(certificate.Certificate.DomainName))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsAssetMetadata]{
 			Name:  familyAssetMetadata,
 			Label: "aws asset metadata",
@@ -734,6 +765,30 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_resource_exposure:%s", settings.accountID, firstNonEmpty(exposure.ExposureID, exposure.ResourceID)), nil
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRoute53ResolverEndpoint]{
+			Name:  familyRoute53ResolverEndpoint,
+			Label: "aws route53 resolver endpoints",
+			List:  listRoute53ResolverEndpoints,
+			Event: route53ResolverEndpointEvent,
+			URN: func(settings settings, endpoint awsRoute53ResolverEndpoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_route53_resolver_endpoint:%s", settings.accountID, firstNonEmpty(awssdk.ToString(endpoint.Endpoint.Arn), awssdk.ToString(endpoint.Endpoint.Id))), nil
+			},
+			CursorFallback: func(endpoint awsRoute53ResolverEndpoint) string {
+				return firstNonEmpty(awssdk.ToString(endpoint.Endpoint.Arn), awssdk.ToString(endpoint.Endpoint.Id))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsRoute53ResolverRule]{
+			Name:  familyRoute53ResolverRule,
+			Label: "aws route53 resolver rules",
+			List:  listRoute53ResolverRules,
+			Event: route53ResolverRuleEvent,
+			URN: func(settings settings, rule awsRoute53ResolverRule) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_route53_resolver_rule:%s", settings.accountID, firstNonEmpty(awssdk.ToString(rule.Rule.Arn), awssdk.ToString(rule.Rule.Id))), nil
+			},
+			CursorFallback: func(rule awsRoute53ResolverRule) string {
+				return firstNonEmpty(awssdk.ToString(rule.Rule.Arn), awssdk.ToString(rule.Rule.Id))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsPublicEndpoint]{
 			Name:  familyPublicEndpoint,
 			Label: "aws public endpoints",
@@ -868,21 +923,23 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:          cfg,
-		iam:          iam.NewFromConfig(cfg),
-		cloudTrail:   cloudtrail.NewFromConfig(cfg),
-		ec2:          ec2.NewFromConfig(cfg),
-		route53:      route53.NewFromConfig(cfg),
-		cloudFront:   cloudfront.NewFromConfig(cfg),
-		elbv2:        elbv2.NewFromConfig(cfg),
-		ecs:          ecs.NewFromConfig(cfg),
-		eks:          eks.NewFromConfig(cfg),
-		ecr:          ecr.NewFromConfig(cfg),
-		apiGateway:   apigateway.NewFromConfig(cfg),
-		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
-		lambda:       lambda.NewFromConfig(cfg),
-		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:           s3.NewFromConfig(cfg),
+		cfg:             cfg,
+		acm:             acm.NewFromConfig(cfg),
+		iam:             iam.NewFromConfig(cfg),
+		cloudTrail:      cloudtrail.NewFromConfig(cfg),
+		ec2:             ec2.NewFromConfig(cfg),
+		route53:         route53.NewFromConfig(cfg),
+		route53Resolver: route53resolver.NewFromConfig(cfg),
+		cloudFront:      cloudfront.NewFromConfig(cfg),
+		elbv2:           elbv2.NewFromConfig(cfg),
+		ecs:             ecs.NewFromConfig(cfg),
+		eks:             eks.NewFromConfig(cfg),
+		ecr:             ecr.NewFromConfig(cfg),
+		apiGateway:      apigateway.NewFromConfig(cfg),
+		apiGatewayV2:    apigatewayv2.NewFromConfig(cfg),
+		lambda:          lambda.NewFromConfig(cfg),
+		tagging:         resourcegroupstaggingapi.NewFromConfig(cfg),
+		s3:              s3.NewFromConfig(cfg),
 		s3ByRegion: func(region string) awsS3API {
 			regionalCfg := cfg
 			regionalCfg.Region = region
@@ -949,7 +1006,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyACMCertificate, familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1021,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, acm_certificate, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, route53_resolver_endpoint, route53_resolver_rule, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }

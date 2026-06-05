@@ -328,6 +328,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+		{family: familyACMCertificate, kind: "aws.acm_certificate"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
@@ -355,6 +356,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
+		{family: familyRoute53ResolverEndpoint, kind: "aws.route53_resolver_endpoint"},
+		{family: familyRoute53ResolverRule, kind: "aws.route53_resolver_rule"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"account_id": "123456789012", "family": tt.family}
