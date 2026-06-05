@@ -102,7 +102,6 @@ func listDynamoDBStreams(ctx context.Context, clients awsClients, _ settings, cu
 		}
 		describe, err := clients.dynamodbStreams.DescribeStream(ctx, &dynamodbstreams.DescribeStreamInput{
 			StreamArn: awssdk.String(arn),
-			Limit:     awssdk.Int32(1),
 		})
 		if err != nil {
 			return nil, "", fmt.Errorf("describe dynamodb stream %q: %w", arn, err)
@@ -132,7 +131,7 @@ func dynamoDBTableEvent(settings settings, record awsDynamoDBTable) (*primitives
 	attributes["stream_enabled"] = boolString(table.StreamSpecification != nil && awssdk.ToBool(table.StreamSpecification.StreamEnabled))
 	attributes["latest_stream_arn"] = awssdk.ToString(table.LatestStreamArn)
 	attributes["latest_stream_label"] = awssdk.ToString(table.LatestStreamLabel)
-	attributes["encryption"] = boolString(table.SSEDescription != nil)
+	attributes["encryption"] = boolString(table.SSEDescription != nil && table.SSEDescription.Status == dynamodbtypes.SSEStatusEnabled)
 	attributes["gsi_count"] = strconv.Itoa(len(table.GlobalSecondaryIndexes))
 	attributes["lsi_count"] = strconv.Itoa(len(table.LocalSecondaryIndexes))
 	attributes["replica_count"] = strconv.Itoa(len(table.Replicas))
