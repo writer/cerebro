@@ -45,7 +45,7 @@ func awsSSOAccountAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*port
 			URN:        permissionSetURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: "aws.sso.permission_set",
+			EntityType: "aws.sso.permission.set",
 			Label:      firstNonEmpty(attributes["permission_set_name"], permissionSetARN),
 			Attributes: compactAttributes(map[string]string{
 				"account_id":          accountID,

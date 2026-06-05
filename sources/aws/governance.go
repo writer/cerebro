@@ -82,16 +82,24 @@ type awsIdentityStoreGroupMembership struct {
 	Membership      identitystoretypes.GroupMembership
 }
 
-func listOrganizationsAccounts(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsOrganizationsAccount, string, error) {
+func listOrganizationsAccounts(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsOrganizationsAccount, string, error) {
+	records, err := listAllOrganizationsAccounts(ctx, clients)
+	if err != nil {
+		return nil, "", err
+	}
+	return governancePage(records, cursor, limit)
+}
+
+func listAllOrganizationsAccounts(ctx context.Context, clients awsClients) ([]awsOrganizationsAccount, error) {
 	var records []awsOrganizationsAccount
 	var next *string
 	for {
 		output, err := clients.organizations.ListAccounts(ctx, &organizations.ListAccountsInput{
-			MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 20))),
+			MaxResults: awssdk.Int32(20),
 			NextToken:  next,
 		})
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		for _, account := range output.Accounts {
 			id := awssdk.ToString(account.Id)
@@ -105,7 +113,8 @@ func listOrganizationsAccounts(ctx context.Context, clients awsClients, settings
 		}
 		next = output.NextToken
 	}
-	return governancePage(records, cursor, limit, func(record awsOrganizationsAccount) string { return record.ID })
+	sort.Slice(records, func(i, j int) bool { return records[i].ID < records[j].ID })
+	return records, nil
 }
 
 func listOrganizationsOUs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsOrganizationsOU, string, error) {
@@ -126,7 +135,7 @@ func listOrganizationsOUs(ctx context.Context, clients awsClients, _ settings, c
 		records = append(records, children...)
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].ID < records[j].ID })
-	return governancePage(records, cursor, limit, func(record awsOrganizationsOU) string { return record.ID })
+	return governancePage(records, cursor, limit)
 }
 
 func listOrganizationsPolicies(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsOrganizationsPolicy, string, error) {
@@ -140,6 +149,9 @@ func listOrganizationsPolicies(ctx context.Context, clients awsClients, _ settin
 				NextToken:  next,
 			})
 			if err != nil {
+				if optionalAWSError(err, "PolicyTypeNotEnabledException", "AccessDeniedException") {
+					break
+				}
 				return nil, "", fmt.Errorf("list organizations policies %s: %w", policyType, err)
 			}
 			for _, policy := range output.Policies {
@@ -160,7 +172,7 @@ func listOrganizationsPolicies(ctx context.Context, clients awsClients, _ settin
 		}
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].ID < records[j].ID })
-	return governancePage(records, cursor, limit, func(record awsOrganizationsPolicy) string { return record.ID })
+	return governancePage(records, cursor, limit)
 }
 
 func listSSOInstances(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSSOInstance, string, error) {
@@ -168,13 +180,21 @@ func listSSOInstances(ctx context.Context, clients awsClients, _ settings, curso
 	if err != nil {
 		return nil, "", err
 	}
-	return governancePage(instances, cursor, limit, func(record awsSSOInstance) string { return firstNonEmpty(record.InstanceARN, record.IdentityStoreID) })
+	return governancePage(instances, cursor, limit)
 }
 
 func listSSOPermissionSets(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSSOPermissionSet, string, error) {
-	instances, err := listAllSSOInstances(ctx, clients)
+	records, err := listAllSSOPermissionSets(ctx, clients)
 	if err != nil {
 		return nil, "", err
+	}
+	return governancePage(records, cursor, limit)
+}
+
+func listAllSSOPermissionSets(ctx context.Context, clients awsClients) ([]awsSSOPermissionSet, error) {
+	instances, err := listAllSSOInstances(ctx, clients)
+	if err != nil {
+		return nil, err
 	}
 	var records []awsSSOPermissionSet
 	for _, instance := range instances {
@@ -182,16 +202,16 @@ func listSSOPermissionSets(ctx context.Context, clients awsClients, _ settings, 
 		for {
 			output, err := clients.sso.ListPermissionSets(ctx, &ssoadmin.ListPermissionSetsInput{
 				InstanceArn: awssdk.String(instance.InstanceARN),
-				MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+				MaxResults:  awssdk.Int32(100),
 				NextToken:   next,
 			})
 			if err != nil {
-				return nil, "", fmt.Errorf("list sso permission sets for %q: %w", instance.InstanceARN, err)
+				return nil, fmt.Errorf("list sso permission sets for %q: %w", instance.InstanceARN, err)
 			}
 			for _, arn := range output.PermissionSets {
 				describe, err := clients.sso.DescribePermissionSet(ctx, &ssoadmin.DescribePermissionSetInput{InstanceArn: awssdk.String(instance.InstanceARN), PermissionSetArn: awssdk.String(arn)})
 				if err != nil {
-					return nil, "", fmt.Errorf("describe sso permission set %q: %w", arn, err)
+					return nil, fmt.Errorf("describe sso permission set %q: %w", arn, err)
 				}
 				if describe.PermissionSet != nil {
 					records = append(records, awsSSOPermissionSet{InstanceARN: instance.InstanceARN, IdentityStoreID: instance.IdentityStoreID, PermissionSet: *describe.PermissionSet, PermissionSetARN: arn})
@@ -204,7 +224,7 @@ func listSSOPermissionSets(ctx context.Context, clients awsClients, _ settings, 
 		}
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].PermissionSetARN < records[j].PermissionSetARN })
-	return governancePage(records, cursor, limit, func(record awsSSOPermissionSet) string { return record.PermissionSetARN })
+	return records, nil
 }
 
 func listSSOAccountAssignments(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsSSOAccountAssignment, string, error) {
@@ -216,7 +236,7 @@ func listSSOAccountAssignments(ctx context.Context, clients awsClients, settings
 	if err != nil {
 		return nil, "", err
 	}
-	permissionSets, _, err := listSSOPermissionSets(ctx, clients, settings, "", 0)
+	permissionSets, err := listAllSSOPermissionSets(ctx, clients)
 	if err != nil {
 		return nil, "", err
 	}
@@ -269,9 +289,7 @@ func listSSOAccountAssignments(ctx context.Context, clients awsClients, settings
 		return strings.Join([]string{records[i].AccountID, records[i].PermissionSetARN, records[i].PrincipalID}, ":") <
 			strings.Join([]string{records[j].AccountID, records[j].PermissionSetARN, records[j].PrincipalID}, ":")
 	})
-	return governancePage(records, cursor, limit, func(record awsSSOAccountAssignment) string {
-		return strings.Join([]string{record.AccountID, record.PermissionSetARN, record.PrincipalID}, ":")
-	})
+	return governancePage(records, cursor, limit)
 }
 
 func listIdentityStoreUsers(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsIdentityStoreUser, string, error) {
@@ -303,7 +321,8 @@ func listIdentityStoreUsers(ctx context.Context, clients awsClients, settings se
 			next = output.NextToken
 		}
 	}
-	return governancePage(records, cursor, limit, func(record awsIdentityStoreUser) string { return record.UserID })
+	sort.Slice(records, func(i, j int) bool { return records[i].UserID < records[j].UserID })
+	return governancePage(records, cursor, limit)
 }
 
 func listIdentityStoreGroups(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsIdentityStoreGroup, string, error) {
@@ -311,7 +330,7 @@ func listIdentityStoreGroups(ctx context.Context, clients awsClients, settings s
 	if err != nil {
 		return nil, "", err
 	}
-	return governancePage(groups, cursor, limit, func(record awsIdentityStoreGroup) string { return record.GroupID })
+	return governancePage(groups, cursor, limit)
 }
 
 func listIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsIdentityStoreGroupMembership, string, error) {
@@ -345,9 +364,7 @@ func listIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, 
 			next = output.NextToken
 		}
 	}
-	return governancePage(records, cursor, limit, func(record awsIdentityStoreGroupMembership) string {
-		return strings.Join([]string{record.GroupID, record.MemberID}, ":")
-	})
+	return governancePage(records, cursor, limit)
 }
 
 func organizationsAccountEvent(settings settings, record awsOrganizationsAccount) (*primitives.Event, error) {
@@ -630,7 +647,7 @@ func listAllSSOInstances(ctx context.Context, clients awsClients) ([]awsSSOInsta
 }
 
 func listAllOrganizationAccountIDs(ctx context.Context, clients awsClients, settings settings) ([]string, error) {
-	records, _, err := listOrganizationsAccounts(ctx, clients, settings, "", 0)
+	records, err := listAllOrganizationsAccounts(ctx, clients)
 	if err != nil {
 		return nil, err
 	}
@@ -688,13 +705,16 @@ func listAllIdentityStoreGroups(ctx context.Context, clients awsClients, setting
 	return records, nil
 }
 
-func governancePage[T any](records []T, cursor string, limit int, key func(T) string) ([]T, string, error) {
+func governancePage[T any](records []T, cursor string, limit int) ([]T, string, error) {
 	start := 0
 	cursor = strings.TrimSpace(cursor)
 	if cursor != "" {
 		parsed, err := strconv.Atoi(cursor)
-		if err != nil || parsed < 0 || parsed > len(records) {
+		if err != nil {
 			return nil, "", fmt.Errorf("parse aws governance cursor: %w", err)
+		}
+		if parsed < 0 || parsed > len(records) {
+			return nil, "", fmt.Errorf("aws governance cursor offset %d out of range [0,%d]", parsed, len(records))
 		}
 		start = parsed
 	}
@@ -707,9 +727,6 @@ func governancePage[T any](records []T, cursor string, limit int, key func(T) st
 	end := start + limit
 	if end >= len(records) {
 		return records[start:], "", nil
-	}
-	if key != nil && key(records[end-1]) == "" {
-		return records[start:end], strconv.Itoa(end), nil
 	}
 	return records[start:end], strconv.Itoa(end), nil
 }

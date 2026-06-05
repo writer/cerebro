@@ -34,7 +34,7 @@ func TestProjectAWSSSOAccountAssignmentLinksPrincipalPermissionSetAndAccount(t *
 	principalURN := "urn:cerebro:writer:aws_user:user-1"
 	permissionSetURN := "urn:cerebro:writer:aws_sso_permission_set:" + permissionSetARN
 	accountURN := "urn:cerebro:writer:cloud_account:210987654321"
-	if entity := state.entities[permissionSetURN]; entity == nil || entity.EntityType != "aws.sso.permission_set" {
+	if entity := state.entities[permissionSetURN]; entity == nil || entity.EntityType != "aws.sso.permission.set" {
 		t.Fatalf("permission set entity missing or wrong type: %#v", entity)
 	}
 	assertProjectedLink(t, state, principalURN, relationAssignedTo, permissionSetURN)
