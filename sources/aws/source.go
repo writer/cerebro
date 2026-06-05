@@ -46,12 +46,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/glue"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/identitystore"
 	"github.com/aws/aws-sdk-go-v2/service/kafka"
 	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
@@ -65,6 +67,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -122,6 +125,9 @@ const (
 	familyIAMRoleAssign            = "iam_role_assignment"
 	familyIAMRole                  = "iam_role"
 	familyIAMUser                  = "iam_user"
+	familyIdentityStoreGroup       = "identitystore_group"
+	familyIdentityStoreMember      = "identitystore_group_membership"
+	familyIdentityStoreUser        = "identitystore_user"
 	familyKinesisStream            = "kinesis_stream"
 	familyKMSKey                   = "kms_key"
 	familyLakeFormationLFTag       = "lakeformation_lf_tag"
@@ -129,6 +135,9 @@ const (
 	familyLakeFormationRes         = "lakeformation_resource"
 	familyLambdaFunction           = "lambda_function"
 	familyMSKCluster               = "msk_cluster"
+	familyOrganizationsAcct        = "organizations_account"
+	familyOrganizationsOU          = "organizations_organizational_unit"
+	familyOrganizationsPolicy      = "organizations_policy"
 	familyPublicEndpoint           = "public_endpoint"
 	familyRDSInstance              = "rds_instance"
 	familyResourceExposure         = "resource_exposure"
@@ -138,6 +147,9 @@ const (
 	familySecret                   = "secret"
 	familySNSTopic                 = "sns_topic"
 	familySQSQueue                 = "sqs_queue"
+	familySSOAssignment            = "sso_account_assignment"
+	familySSOInstance              = "sso_instance"
+	familySSOPermissionSet         = "sso_permission_set"
 	familySSMAssociation           = "ssm_association"
 	familySSMDocument              = "ssm_document"
 	familySSMManagedInstance       = "ssm_managed_instance"
@@ -171,6 +183,7 @@ type settings struct {
 	principalType              string
 	principalName              string
 	userName                   string
+	identityStoreID            string
 	lookupKey                  string
 	lookupValue                string
 	startTime                  string
@@ -185,6 +198,7 @@ type awsClients struct {
 	awsPlatformClients
 	awsRuntimeClients
 	awsAnalyticsClients
+	awsGovernanceClients
 }
 
 type awsPlatformClients struct {
@@ -229,6 +243,12 @@ type awsAnalyticsClients struct {
 	glue     awsGlueAPI
 	athena   awsAthenaAPI
 	lake     awsLakeFormationAPI
+}
+
+type awsGovernanceClients struct {
+	organizations awsOrganizationsAPI
+	sso           awsSSOAdminAPI
+	identityStore awsIdentityStoreAPI
 }
 
 type awsIAMAPI interface {
@@ -445,6 +465,27 @@ type awsLakeFormationAPI interface {
 	ListResources(context.Context, *lakeformation.ListResourcesInput, ...func(*lakeformation.Options)) (*lakeformation.ListResourcesOutput, error)
 	ListLFTags(context.Context, *lakeformation.ListLFTagsInput, ...func(*lakeformation.Options)) (*lakeformation.ListLFTagsOutput, error)
 	ListPermissions(context.Context, *lakeformation.ListPermissionsInput, ...func(*lakeformation.Options)) (*lakeformation.ListPermissionsOutput, error)
+}
+
+type awsOrganizationsAPI interface {
+	ListAccounts(context.Context, *organizations.ListAccountsInput, ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error)
+	ListRoots(context.Context, *organizations.ListRootsInput, ...func(*organizations.Options)) (*organizations.ListRootsOutput, error)
+	ListOrganizationalUnitsForParent(context.Context, *organizations.ListOrganizationalUnitsForParentInput, ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error)
+	ListPolicies(context.Context, *organizations.ListPoliciesInput, ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error)
+	ListTargetsForPolicy(context.Context, *organizations.ListTargetsForPolicyInput, ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error)
+}
+
+type awsSSOAdminAPI interface {
+	ListInstances(context.Context, *ssoadmin.ListInstancesInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListInstancesOutput, error)
+	ListPermissionSets(context.Context, *ssoadmin.ListPermissionSetsInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListPermissionSetsOutput, error)
+	DescribePermissionSet(context.Context, *ssoadmin.DescribePermissionSetInput, ...func(*ssoadmin.Options)) (*ssoadmin.DescribePermissionSetOutput, error)
+	ListAccountAssignments(context.Context, *ssoadmin.ListAccountAssignmentsInput, ...func(*ssoadmin.Options)) (*ssoadmin.ListAccountAssignmentsOutput, error)
+}
+
+type awsIdentityStoreAPI interface {
+	ListUsers(context.Context, *identitystore.ListUsersInput, ...func(*identitystore.Options)) (*identitystore.ListUsersOutput, error)
+	ListGroups(context.Context, *identitystore.ListGroupsInput, ...func(*identitystore.Options)) (*identitystore.ListGroupsOutput, error)
+	ListGroupMemberships(context.Context, *identitystore.ListGroupMembershipsInput, ...func(*identitystore.Options)) (*identitystore.ListGroupMembershipsOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -1057,6 +1098,102 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(parameter awsSSMParameter) string { return firstNonEmpty(parameter.ARN, parameter.Name) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOrganizationsAccount]{
+			Name:  familyOrganizationsAcct,
+			Label: "aws organizations accounts",
+			List:  listOrganizationsAccounts,
+			Event: organizationsAccountEvent,
+			URN: func(settings settings, account awsOrganizationsAccount) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_organizations_account:%s", settings.accountID, account.ID), nil
+			},
+			CursorFallback: func(account awsOrganizationsAccount) string { return account.ID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOrganizationsOU]{
+			Name:  familyOrganizationsOU,
+			Label: "aws organizations organizational units",
+			List:  listOrganizationsOUs,
+			Event: organizationsOUEvent,
+			URN: func(settings settings, ou awsOrganizationsOU) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_organizations_organizational_unit:%s", settings.accountID, ou.ID), nil
+			},
+			CursorFallback: func(ou awsOrganizationsOU) string { return ou.ID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOrganizationsPolicy]{
+			Name:  familyOrganizationsPolicy,
+			Label: "aws organizations policies",
+			List:  listOrganizationsPolicies,
+			Event: organizationsPolicyEvent,
+			URN: func(settings settings, policy awsOrganizationsPolicy) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_organizations_policy:%s", settings.accountID, policy.ID), nil
+			},
+			CursorFallback: func(policy awsOrganizationsPolicy) string { return policy.ID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSOInstance]{
+			Name:  familySSOInstance,
+			Label: "aws sso instances",
+			List:  listSSOInstances,
+			Event: ssoInstanceEvent,
+			URN: func(settings settings, instance awsSSOInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sso_instance:%s", settings.accountID, firstNonEmpty(instance.InstanceARN, instance.IdentityStoreID)), nil
+			},
+			CursorFallback: func(instance awsSSOInstance) string {
+				return firstNonEmpty(instance.InstanceARN, instance.IdentityStoreID)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSOPermissionSet]{
+			Name:  familySSOPermissionSet,
+			Label: "aws sso permission sets",
+			List:  listSSOPermissionSets,
+			Event: ssoPermissionSetEvent,
+			URN: func(settings settings, permissionSet awsSSOPermissionSet) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sso_permission_set:%s", settings.accountID, permissionSet.PermissionSetARN), nil
+			},
+			CursorFallback: func(permissionSet awsSSOPermissionSet) string { return permissionSet.PermissionSetARN },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSOAccountAssignment]{
+			Name:  familySSOAssignment,
+			Label: "aws sso account assignments",
+			List:  listSSOAccountAssignments,
+			Event: ssoAccountAssignmentEvent,
+			URN: func(settings settings, assignment awsSSOAccountAssignment) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sso_account_assignment:%s:%s:%s", settings.accountID, assignment.AccountID, assignment.PermissionSetARN, assignment.PrincipalID), nil
+			},
+			CursorFallback: func(assignment awsSSOAccountAssignment) string {
+				return strings.Join([]string{assignment.AccountID, assignment.PermissionSetARN, assignment.PrincipalID}, ":")
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsIdentityStoreUser]{
+			Name:  familyIdentityStoreUser,
+			Label: "aws identity store users",
+			List:  listIdentityStoreUsers,
+			Event: identityStoreUserEvent,
+			URN: func(settings settings, user awsIdentityStoreUser) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_user:%s", settings.accountID, user.UserID), nil
+			},
+			CursorFallback: func(user awsIdentityStoreUser) string { return user.UserID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsIdentityStoreGroup]{
+			Name:  familyIdentityStoreGroup,
+			Label: "aws identity store groups",
+			List:  listIdentityStoreGroups,
+			Event: identityStoreGroupEvent,
+			URN: func(settings settings, group awsIdentityStoreGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_group:%s", settings.accountID, group.GroupID), nil
+			},
+			CursorFallback: func(group awsIdentityStoreGroup) string { return group.GroupID },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsIdentityStoreGroupMembership]{
+			Name:  familyIdentityStoreMember,
+			Label: "aws identity store group memberships",
+			List:  listIdentityStoreGroupMemberships,
+			Event: identityStoreGroupMembershipEvent,
+			URN: func(settings settings, membership awsIdentityStoreGroupMembership) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_identitystore_group_membership:%s:%s", settings.accountID, membership.GroupID, membership.MemberID), nil
+			},
+			CursorFallback: func(membership awsIdentityStoreGroupMembership) string {
+				return strings.Join([]string{membership.GroupID, membership.MemberID}, ":")
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
 			Name:  familyCloudTrail,
 			Label: "aws cloudtrail events",
@@ -1365,6 +1502,11 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			athena:   athena.NewFromConfig(cfg),
 			lake:     lakeformation.NewFromConfig(cfg),
 		},
+		awsGovernanceClients: awsGovernanceClients{
+			organizations: organizations.NewFromConfig(cfg),
+			sso:           ssoadmin.NewFromConfig(cfg),
+			identityStore: identitystore.NewFromConfig(cfg),
+		},
 	}, nil
 }
 
@@ -1387,6 +1529,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		principalType:              configValue(cfg, "principal_type"),
 		principalName:              configValue(cfg, "principal_name"),
 		userName:                   configValue(cfg, "user_name"),
+		identityStoreID:            configValue(cfg, "identity_store_id"),
 		lookupKey:                  configValue(cfg, "lookup_key"),
 		lookupValue:                configValue(cfg, "lookup_value"),
 		startTime:                  configValue(cfg, "start_time"),
@@ -1421,7 +1564,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familyStepFunctionActivity, familyStepFunctionStateMachine:
+	case familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName

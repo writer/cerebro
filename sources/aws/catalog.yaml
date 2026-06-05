@@ -41,6 +41,12 @@ emitted_kinds:
   - aws.lakeformation_permission
   - aws.lakeformation_resource
   - aws.msk_cluster
+  - aws.identitystore_group
+  - aws.identitystore_group_membership
+  - aws.identitystore_user
+  - aws.organizations_account
+  - aws.organizations_organizational_unit
+  - aws.organizations_policy
   - aws.public_endpoint
   - aws.rds_instance
   - aws.resource_exposure
@@ -56,6 +62,9 @@ emitted_kinds:
   - aws.ssm_parameter
   - aws.stepfunctions_activity
   - aws.stepfunctions_state_machine
+  - aws.sso_account_assignment
+  - aws.sso_instance
+  - aws.sso_permission_set
   - aws.lambda_function
 runtime_families:
   - access_key
@@ -97,6 +106,12 @@ runtime_families:
   - lakeformation_permission
   - lakeformation_resource
   - msk_cluster
+  - identitystore_group
+  - identitystore_group_membership
+  - identitystore_user
+  - organizations_account
+  - organizations_organizational_unit
+  - organizations_policy
   - public_endpoint
   - rds_instance
   - resource_exposure
@@ -112,4 +127,7 @@ runtime_families:
   - ssm_parameter
   - stepfunctions_activity
   - stepfunctions_state_machine
+  - sso_account_assignment
+  - sso_instance
+  - sso_permission_set
   - lambda_function
