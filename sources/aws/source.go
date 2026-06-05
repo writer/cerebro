@@ -159,7 +159,12 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg          awssdk.Config
+	cfg awssdk.Config
+	awsPlatformClients
+	awsAnalyticsClients
+}
+
+type awsPlatformClients struct {
 	iam          awsIAMAPI
 	cloudTrail   awsCloudTrailAPI
 	ec2          awsEC2API
@@ -180,7 +185,6 @@ type awsClients struct {
 	secrets      awsSecretsManagerAPI
 	sqs          awsSQSAPI
 	sns          awsSNSAPI
-	awsAnalyticsClients
 }
 
 type awsAnalyticsClients struct {
@@ -1079,32 +1083,41 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:          cfg,
-		iam:          iam.NewFromConfig(cfg),
-		cloudTrail:   cloudtrail.NewFromConfig(cfg),
-		ec2:          ec2.NewFromConfig(cfg),
-		route53:      route53.NewFromConfig(cfg),
-		cloudFront:   cloudfront.NewFromConfig(cfg),
-		elbv2:        elbv2.NewFromConfig(cfg),
-		ecs:          ecs.NewFromConfig(cfg),
-		eks:          eks.NewFromConfig(cfg),
-		ecr:          ecr.NewFromConfig(cfg),
-		apiGateway:   apigateway.NewFromConfig(cfg),
-		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
-		lambda:       lambda.NewFromConfig(cfg),
-		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:           s3.NewFromConfig(cfg),
-		s3ByRegion: func(region string) awsS3API {
-			regionalCfg := cfg
-			regionalCfg.Region = region
-			return s3.NewFromConfig(regionalCfg)
+		cfg: cfg,
+		awsPlatformClients: awsPlatformClients{
+			iam:          iam.NewFromConfig(cfg),
+			cloudTrail:   cloudtrail.NewFromConfig(cfg),
+			ec2:          ec2.NewFromConfig(cfg),
+			route53:      route53.NewFromConfig(cfg),
+			cloudFront:   cloudfront.NewFromConfig(cfg),
+			elbv2:        elbv2.NewFromConfig(cfg),
+			ecs:          ecs.NewFromConfig(cfg),
+			eks:          eks.NewFromConfig(cfg),
+			ecr:          ecr.NewFromConfig(cfg),
+			apiGateway:   apigateway.NewFromConfig(cfg),
+			apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
+			lambda:       lambda.NewFromConfig(cfg),
+			tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
+			s3:           s3.NewFromConfig(cfg),
+			s3ByRegion: func(region string) awsS3API {
+				regionalCfg := cfg
+				regionalCfg.Region = region
+				return s3.NewFromConfig(regionalCfg)
+			},
+			rds:     rds.NewFromConfig(cfg),
+			kms:     kms.NewFromConfig(cfg),
+			secrets: secretsmanager.NewFromConfig(cfg),
+			sqs:     sqs.NewFromConfig(cfg),
+			sns:     sns.NewFromConfig(cfg),
 		},
-		rds:                 rds.NewFromConfig(cfg),
-		kms:                 kms.NewFromConfig(cfg),
-		secrets:             secretsmanager.NewFromConfig(cfg),
-		sqs:                 sqs.NewFromConfig(cfg),
-		sns:                 sns.NewFromConfig(cfg),
-		awsAnalyticsClients: awsAnalyticsClients{kinesis: kinesis.NewFromConfig(cfg), firehose: firehose.NewFromConfig(cfg), kafka: kafka.NewFromConfig(cfg), glue: glue.NewFromConfig(cfg), athena: athena.NewFromConfig(cfg), lake: lakeformation.NewFromConfig(cfg)},
+		awsAnalyticsClients: awsAnalyticsClients{
+			kinesis:  kinesis.NewFromConfig(cfg),
+			firehose: firehose.NewFromConfig(cfg),
+			kafka:    kafka.NewFromConfig(cfg),
+			glue:     glue.NewFromConfig(cfg),
+			athena:   athena.NewFromConfig(cfg),
+			lake:     lakeformation.NewFromConfig(cfg),
+		},
 	}, nil
 }
 
