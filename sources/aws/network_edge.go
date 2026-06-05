@@ -503,6 +503,7 @@ func globalAcceleratorEndpointGroupEvent(settings settings, record awsGlobalAcce
 	attributes["arn"] = arn
 	attributes["accelerator_arn"] = awssdk.ToString(record.Accelerator.AcceleratorArn)
 	attributes["listener_arn"] = awssdk.ToString(record.Listener.ListenerArn)
+	attributes["endpoint_group_region"] = region
 	attributes["endpoint_ids"] = strings.Join(globalAcceleratorEndpointIDs(group.EndpointDescriptions), ",")
 	attributes["health_check_path"] = awssdk.ToString(group.HealthCheckPath)
 	attributes["health_check_port"] = int32AttrString(group.HealthCheckPort)

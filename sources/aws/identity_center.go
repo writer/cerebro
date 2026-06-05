@@ -382,12 +382,12 @@ func listLegacyIdentityStoreGroupMemberships(ctx context.Context, clients awsCli
 		if err != nil {
 			return nil, "", err
 		}
-		group := identitystoretypes.Group{GroupId: awssdk.String(page.GroupID), IdentityStoreId: awssdk.String(storeID)}
+		group := identitystoretypes.Group{DisplayName: awssdk.String(page.GroupName), GroupId: awssdk.String(page.GroupID), IdentityStoreId: awssdk.String(storeID)}
 		for _, membershipPage := range pages {
 			records = append(records, legacyIdentityStoreGroupMembership{Group: group, Membership: membershipPage.Membership})
 		}
 		if next != "" {
-			return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: page.GroupToken, GroupID: page.GroupID, MembershipToken: next}), nil
+			return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: page.GroupToken, GroupID: page.GroupID, GroupName: page.GroupName, MembershipToken: next}), nil
 		}
 		page.GroupID = ""
 		page.MembershipToken = ""
@@ -416,7 +416,7 @@ func listLegacyIdentityStoreGroupMemberships(ctx context.Context, clients awsCli
 			records = append(records, legacyIdentityStoreGroupMembership{Group: group, Membership: record.Membership})
 		}
 		if next != "" {
-			return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: page.GroupToken, GroupID: groupID, MembershipToken: next}), nil
+			return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: page.GroupToken, GroupID: groupID, GroupName: awssdk.ToString(group.DisplayName), MembershipToken: next}), nil
 		}
 	}
 	if nextGroups != "" {
@@ -609,6 +609,7 @@ type identityCenterAccountAssignmentCursor struct {
 type identityStoreGroupMembershipCursor struct {
 	GroupToken      string `json:"group_token,omitempty"`
 	GroupID         string `json:"group_id,omitempty"`
+	GroupName       string `json:"group_name,omitempty"`
 	MembershipToken string `json:"membership_token,omitempty"`
 }
 

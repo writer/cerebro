@@ -864,7 +864,7 @@ func organizationPolicyTargetField(targets []organizationstypes.PolicyTargetSumm
 	for _, target := range targets {
 		fields = append(fields, strings.TrimSpace(value(target)))
 	}
-	return cleanStrings(fields)
+	return fields
 }
 
 func organizationsRootPolicyTypes(root organizationstypes.Root) []string {

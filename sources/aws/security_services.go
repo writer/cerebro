@@ -654,7 +654,8 @@ func wafv2WebACLEvent(settings settings, record awsWAFV2WebACL) (*primitives.Eve
 		name = firstNonEmpty(awssdk.ToString(webACL.Name), name)
 		id = firstNonEmpty(awssdk.ToString(webACL.Id), id)
 	}
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyWAFV2WebACL, firstNonEmpty(arn, id), name, "wafv2_web_acl", nil)
+	region := wafv2WebACLRegion(settings, record.Scope)
+	attributes := commonCloudAssetAttributes(settings, region, familyWAFV2WebACL, firstNonEmpty(arn, id), name, "wafv2_web_acl", nil)
 	attributes["arn"] = arn
 	attributes["default_action"] = wafv2DefaultAction(webACL)
 	attributes["description"] = awssdk.ToString(record.Summary.Description)
@@ -672,7 +673,7 @@ func wafv2WebACLEvent(settings settings, record awsWAFV2WebACL) (*primitives.Eve
 			attributes["sampled_requests_enabled"] = boolString(webACL.VisibilityConfig.SampledRequestsEnabled)
 		}
 	}
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "scope": record.Scope, "summary": record.Summary, "web_acl": webACL})
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": region, "scope": record.Scope, "summary": record.Summary, "web_acl": webACL})
 	if err != nil {
 		return nil, err
 	}
@@ -941,6 +942,13 @@ func wafv2ClientForScope(clients awsClients, scope wafv2types.Scope) awsWAFV2API
 	return clients.wafv2
 }
 
+func wafv2WebACLRegion(settings settings, scope wafv2types.Scope) string {
+	if scope == wafv2types.ScopeCloudfront {
+		return "us-east-1"
+	}
+	return settings.region
+}
+
 func firstInspector2Resource(resources []inspector2types.Resource) *inspector2types.Resource {
 	for index := range resources {
 		return &resources[index]
@@ -965,7 +973,7 @@ func macie2AffectedS3(finding macie2types.Finding) (string, string, string, stri
 		bucketARN = firstNonEmpty(awssdk.ToString(object.BucketArn), bucketARN)
 		objectKey = awssdk.ToString(object.Key)
 		objectPath = awssdk.ToString(object.Path)
-		publicAccess = awssdk.ToBool(object.PublicAccess)
+		publicAccess = publicAccess || awssdk.ToBool(object.PublicAccess)
 	}
 	return bucketARN, bucketName, objectKey, objectPath, publicAccess
 }

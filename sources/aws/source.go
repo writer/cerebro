@@ -1332,7 +1332,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: s3MultiRegionAccessPointEvent,
 			URN: func(settings settings, accessPoint awsS3MultiRegionAccessPoint) (string, error) {
 				name := awssdk.ToString(accessPoint.Report.Name)
-				return fmt.Sprintf("urn:cerebro:%s:aws_s3_multi_region_access_point:%s", settings.accountID, firstNonEmpty(s3MultiRegionAccessPointARN(settings, name), name)), nil
+				return fmt.Sprintf("urn:cerebro:%s:aws_s3_multi_region_access_point:%s", settings.accountID, firstNonEmpty(s3MultiRegionAccessPointARN(settings, awssdk.ToString(accessPoint.Report.Alias), name), name)), nil
 			},
 			CursorFallback: func(accessPoint awsS3MultiRegionAccessPoint) string {
 				return awssdk.ToString(accessPoint.Report.Name)
@@ -2335,6 +2335,8 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		})
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
+	globalAcceleratorConfig := cfg
+	globalAcceleratorConfig.Region = "us-west-2"
 	return awsClients{
 		awsPlatformClients: awsPlatformClients{
 			cfg:             cfg,
@@ -2346,7 +2348,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			route53Resolver: route53resolver.NewFromConfig(cfg),
 			cloudFront:      cloudfront.NewFromConfig(cfg),
 			elbv2:           elbv2.NewFromConfig(cfg),
-			globalAccel:     globalaccelerator.NewFromConfig(cfg),
+			globalAccel:     globalaccelerator.NewFromConfig(globalAcceleratorConfig),
 			vpcLattice:      vpclattice.NewFromConfig(cfg),
 			ecs:             ecs.NewFromConfig(cfg),
 			eks:             eks.NewFromConfig(cfg),

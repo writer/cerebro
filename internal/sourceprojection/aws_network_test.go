@@ -110,7 +110,6 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 				"resource_provider": "aws",
 				"resource_type":     "vpclattice_listener",
 				"service_arn":       serviceARN,
-				"target_group_ids":  targetGroupARN,
 			},
 		},
 		{
@@ -126,7 +125,6 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 				"service_arns":      serviceARN,
 				"target_group_arn":  targetGroupARN,
 				"target_group_id":   "tg-123",
-				"target_ids":        "i-123",
 				"target_type":       "INSTANCE",
 				"vpc_id":            "vpc-1",
 			},
@@ -140,10 +138,7 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 	serviceURNProjected := "urn:cerebro:writer:aws_vpclattice_service:" + serviceARN
 	listenerURNProjected := "urn:cerebro:writer:aws_vpclattice_listener:" + listenerARN
 	targetGroupURNProjected := "urn:cerebro:writer:aws_vpclattice_target_group:" + targetGroupARN
-	targetURN := "urn:cerebro:writer:aws_vpclattice_target:tg-123:i-123"
 	assertProjectedLink(t, state, listenerURNProjected, relationBelongsTo, serviceURNProjected)
-	assertProjectedLink(t, state, listenerURNProjected, relationDependsOn, targetGroupURNProjected)
 	assertProjectedLink(t, state, targetGroupURNProjected, relationBelongsTo, serviceURNProjected)
 	assertProjectedLink(t, state, targetGroupURNProjected, relationBelongsTo, "urn:cerebro:writer:aws_vpc:vpc-1")
-	assertProjectedLink(t, state, targetGroupURNProjected, relationTargeted, targetURN)
 }
