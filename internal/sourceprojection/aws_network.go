@@ -102,7 +102,7 @@ func awsVPCLatticeListenerProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), listenerURN, serviceURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "vpc_lattice_listener_service"}))
 	}
 	for _, targetGroupID := range splitCloudAttributeList(attributes["target_group_ids"]) {
-		targetGroupURN := projectionURN(tenantID, "aws_vpc_lattice_target_group", targetGroupID)
+		targetGroupURN := awsVPCLatticeTargetGroupURN(tenantID, attributes, targetGroupID)
 		if targetGroupURN == "" {
 			continue
 		}
@@ -170,4 +170,19 @@ func addAWSNetworkServiceEntity(entities map[string]*ports.ProjectedEntity, tena
 		Label:      firstNonEmpty(label, urn),
 		Attributes: compactAttributes(attributes),
 	})
+}
+
+func awsVPCLatticeTargetGroupURN(tenantID string, attributes map[string]string, identifier string) string {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return ""
+	}
+	if !strings.HasPrefix(identifier, "arn:") {
+		region := strings.TrimSpace(attributes["region"])
+		accountID := strings.TrimSpace(attributes["domain"])
+		if region != "" && accountID != "" {
+			identifier = "arn:aws:vpc-lattice:" + region + ":" + accountID + ":targetgroup/" + identifier
+		}
+	}
+	return projectionURN(tenantID, "aws_vpc_lattice_target_group", identifier)
 }
