@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/workflowevents"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -311,6 +312,105 @@ func TestVulnViewActionableExternalFindingServicePreservesCollapsedEvidence(t *t
 	if !containsString(stored.RiskReasons, "multiple_events") {
 		t.Fatalf("RiskReasons = %#v, want multiple_events", stored.RiskReasons)
 	}
+}
+
+func TestVulnViewActionableExternalFindingRecordsPanopticonThreatHuntAction(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	graph := &stubGraphStore{}
+	store := &stubFindingStore{}
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-vulnerability", SourceId: "vulnview", TenantId: "writer"}
+	event := vulnViewActionableExternalFindingEventAt("vulnview-cve-1", "https://app.example.com/login", "open", "critical", identityTrajectoryBaseTime)
+	event.Attributes["external_id"] = "scan-1:cve-2026-1234:app.example.com"
+	event.Attributes["host"] = "app.example.com"
+	event.Attributes["name"] = "CVE-2026-1234 test exposure"
+	event.Attributes["target_id"] = "app.example.com"
+	event.Attributes["template_id"] = "cve-2026-1234"
+	service := New(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{event}},
+		store,
+		store,
+		store,
+		store,
+	).WithGraphStore(graph).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: runtime.GetId(),
+		RuleID:    vulnViewActionableExternalFindingRuleID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("Findings = %#v, want one VulnView finding", result.Findings)
+	}
+	var actionEvent *cerebrov1.EventEnvelope
+	for _, event := range appendLog.events {
+		if event.GetKind() == workflowevents.EventKindKnowledgeActionRecorded {
+			actionEvent = event
+			break
+		}
+	}
+	if actionEvent == nil {
+		t.Fatalf("appendLog events = %#v, want Panopticon action event", eventKindsForTest(appendLog.events))
+	}
+	action, err := workflowevents.DecodeActionRecorded(actionEvent)
+	if err != nil {
+		t.Fatalf("DecodeActionRecorded() error = %v", err)
+	}
+	if action.ActionType != panopticonThreatHuntActionType {
+		t.Fatalf("ActionType = %q, want %q", action.ActionType, panopticonThreatHuntActionType)
+	}
+	if action.Status != "requested" {
+		t.Fatalf("Status = %q, want requested", action.Status)
+	}
+	if action.Metadata["cve_id"] != "CVE-2026-1234" {
+		t.Fatalf("metadata cve_id = %#v, want CVE-2026-1234", action.Metadata["cve_id"])
+	}
+	if action.Metadata["handoff_target"] != "panopticon" || action.Metadata["panopticon_orchestrator"] != "soc-planner" {
+		t.Fatalf("metadata = %#v, want Panopticon soc-planner handoff", action.Metadata)
+	}
+	if action.Metadata["ioc_lookup_required"] != true {
+		t.Fatalf("metadata ioc_lookup_required = %#v, want true", action.Metadata["ioc_lookup_required"])
+	}
+	findingURN := findingGraphFindingURN("writer", result.Findings[0])
+	if len(action.TargetIDs) != 1 || action.TargetIDs[0] != findingURN {
+		t.Fatalf("TargetIDs = %#v, want finding target %q", action.TargetIDs, findingURN)
+	}
+	linkKey := action.ActionID + "|targets|" + findingURN
+	if _, ok := graph.links[linkKey]; !ok {
+		t.Fatalf("graph action target link %q missing; links=%#v", linkKey, graph.links)
+	}
+}
+
+func TestVulnViewActionableExternalFindingSkipsPanopticonThreatHuntWithoutCVE(t *testing.T) {
+	finding := &ports.FindingRecord{
+		ID:        "finding-1",
+		TenantID:  "writer",
+		RuntimeID: "writer-vulnview-vulnerability",
+		RuleID:    vulnViewActionableExternalFindingRuleID,
+		Status:    findingStatusOpen,
+		Severity:  "HIGH",
+		Attributes: map[string]string{
+			"event_kind":  "vulnview.vulnerability",
+			"template_id": "exposed-panel",
+		},
+	}
+	event, err := panopticonThreatHuntActionEvent(finding)
+	if err != nil {
+		t.Fatalf("panopticonThreatHuntActionEvent() error = %v", err)
+	}
+	if event != nil {
+		t.Fatalf("panopticonThreatHuntActionEvent() = %#v, want nil for non-CVE template", event)
+	}
+}
+
+func eventKindsForTest(events []*cerebrov1.EventEnvelope) []string {
+	kinds := make([]string, 0, len(events))
+	for _, event := range events {
+		kinds = append(kinds, event.GetKind())
+	}
+	return kinds
 }
 
 func vulnViewActionableExternalFindingEventAt(id string, matchedAt string, status string, severity string, occurredAt time.Time) *cerebrov1.EventEnvelope {

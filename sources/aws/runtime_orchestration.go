@@ -873,7 +873,10 @@ func ssmDocumentEvent(settings settings, record awsSSMDocument) (*primitives.Eve
 	attributes["document_type"] = string(document.DocumentType)
 	attributes["document_format"] = string(document.DocumentFormat)
 	attributes["document_version"] = awssdk.ToString(document.DocumentVersion)
-	attributes["owner"] = firstNonEmpty(attributes["owner"], awssdk.ToString(document.Owner))
+	documentOwner := strings.TrimSpace(awssdk.ToString(document.Owner))
+	if attributes["owner"] == "" && useSSMDocumentOwner(documentOwner, settings.accountID) {
+		attributes["owner"] = documentOwner
+	}
 	attributes["author"] = awssdk.ToString(document.Author)
 	attributes["review_status"] = string(document.ReviewStatus)
 	attributes["schema_version"] = awssdk.ToString(document.SchemaVersion)
@@ -909,8 +912,9 @@ func ssmAssociationEvent(settings settings, record awsSSMAssociation) (*primitiv
 
 func ssmParameterEvent(settings settings, record awsSSMParameter) (*primitives.Event, error) {
 	parameter := record.Parameter
-	arn := firstNonEmpty(awssdk.ToString(parameter.ARN), record.ARN)
-	name := firstNonEmpty(awssdk.ToString(parameter.Name), record.Name, awsResourceName(arn))
+	name := firstNonEmpty(awssdk.ToString(parameter.Name), record.Name)
+	arn := firstNonEmpty(awssdk.ToString(parameter.ARN), record.ARN, ssmParameterARN(settings, name))
+	name = firstNonEmpty(name, awsResourceName(arn))
 	attributes := commonCloudAssetAttributes(settings, settings.region, familySSMParameter, firstNonEmpty(arn, name), name, "ssm_parameter", record.Tags)
 	attributes["arn"] = arn
 	attributes["parameter_arn"] = arn
@@ -1021,6 +1025,41 @@ func cloudWatchLogsTagARN(group cloudwatchlogstypes.LogGroup) string {
 		return strings.TrimSuffix(arn, ":*")
 	}
 	return strings.TrimSuffix(awssdk.ToString(group.Arn), ":*")
+}
+
+func ssmParameterARN(settings settings, name string) string {
+	normalizedName := strings.TrimSpace(name)
+	if normalizedName == "" {
+		return ""
+	}
+	if !strings.HasPrefix(normalizedName, "/") {
+		normalizedName = "/" + normalizedName
+	}
+	return fmt.Sprintf("arn:aws:ssm:%s:%s:parameter%s", settings.region, settings.accountID, normalizedName)
+}
+
+func useSSMDocumentOwner(owner, accountID string) bool {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return false
+	}
+	if owner == strings.TrimSpace(accountID) {
+		return false
+	}
+	return !looksLikeAWSAccountID(owner)
+}
+
+func looksLikeAWSAccountID(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != 12 {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func int64PtrAttrString(value *int64) string {
