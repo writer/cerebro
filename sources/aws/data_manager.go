@@ -334,7 +334,7 @@ func openSearchServerlessCollectionEvent(settings settings, record awsOpenSearch
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-opensearch-serverless-collection-"+resourceID, "aws.opensearch_serverless_collection", "aws/opensearch_serverless_collection/v1", payload, attributes, epochTime(collection.CreatedDate))
+	return sourceEvent(settings, "aws-opensearch-serverless-collection-"+resourceID, "aws.opensearch_serverless_collection", "aws/opensearch_serverless_collection/v1", payload, attributes, epochTimeOrNow(collection.CreatedDate))
 }
 
 func openSearchServerlessSecurityPolicyEvent(settings settings, record awsOpenSearchServerlessSecurityPolicy) (*primitives.Event, error) {
@@ -354,7 +354,7 @@ func openSearchServerlessSecurityPolicyEvent(settings settings, record awsOpenSe
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-opensearch-serverless-security-policy-"+resourceID, "aws.opensearch_serverless_security_policy", "aws/opensearch_serverless_security_policy/v1", payload, attributes, epochTime(policy.CreatedDate))
+	return sourceEvent(settings, "aws-opensearch-serverless-security-policy-"+resourceID, "aws.opensearch_serverless_security_policy", "aws/opensearch_serverless_security_policy/v1", payload, attributes, epochTimeOrNow(policy.CreatedDate))
 }
 
 func elasticacheReplicationGroupEvent(settings settings, record awsElastiCacheReplicationGroup) (*primitives.Event, error) {
@@ -657,6 +657,13 @@ func epochTime(value *int64) time.Time {
 		return time.UnixMilli(*value).UTC()
 	}
 	return time.Unix(*value, 0).UTC()
+}
+
+func epochTimeOrNow(value *int64) time.Time {
+	if timestamp := epochTime(value); !timestamp.IsZero() {
+		return timestamp
+	}
+	return time.Now().UTC()
 }
 
 func encodeJSONAttribute(value any) string {
