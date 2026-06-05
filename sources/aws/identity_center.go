@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -50,7 +51,7 @@ type identityStoreGroupMembership struct {
 }
 
 func listIdentityCenterInstances(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]ssoadmintypes.InstanceMetadata, string, error) {
-	if settings.identityCenterInstanceARN != "" {
+	if settings.identityCenterInstanceARN != "" && settings.identityStoreID != "" {
 		return []ssoadmintypes.InstanceMetadata{{
 			InstanceArn:     awssdk.String(settings.identityCenterInstanceARN),
 			IdentityStoreId: stringPtr(settings.identityStoreID),
@@ -61,21 +62,45 @@ func listIdentityCenterInstances(ctx context.Context, clients awsClients, settin
 	if err != nil {
 		return nil, "", err
 	}
+	if settings.identityCenterInstanceARN != "" {
+		for _, instance := range out.Instances {
+			if awssdk.ToString(instance.InstanceArn) == settings.identityCenterInstanceARN {
+				return []ssoadmintypes.InstanceMetadata{instance}, "", nil
+			}
+		}
+		return nil, "", fmt.Errorf("identity center instance %q not found", settings.identityCenterInstanceARN)
+	}
 	return out.Instances, awssdk.ToString(out.NextToken), nil
 }
 
 func listIdentityCenterPermissionSets(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]identityCenterPermissionSet, string, error) {
-	instances, nextInstances, err := listIdentityCenterInstances(ctx, clients, settings, "", limit)
+	page, err := decodeIdentityCenterPermissionSetCursor(cursor)
+	if err != nil {
+		return nil, "", err
+	}
+	instances, _, err := listIdentityCenterInstances(ctx, clients, settings, "", limit)
 	if err != nil {
 		return nil, "", err
 	}
 	records := make([]identityCenterPermissionSet, 0)
+	started := page.InstanceARN == ""
 	for _, instance := range instances {
 		instanceARN := awssdk.ToString(instance.InstanceArn)
 		if instanceARN == "" {
 			continue
 		}
-		permissionSets, next, err := listIdentityCenterPermissionSetsForInstance(ctx, clients, settings, instance, cursor, limit)
+		if !started {
+			if instanceARN == page.InstanceARN {
+				started = true
+			} else {
+				continue
+			}
+		}
+		token := ""
+		if instanceARN == page.InstanceARN {
+			token = page.Token
+		}
+		permissionSets, next, err := listIdentityCenterPermissionSetsForInstance(ctx, clients, settings, instance, token, limit)
 		if err != nil {
 			return nil, "", err
 		}
@@ -83,8 +108,11 @@ func listIdentityCenterPermissionSets(ctx context.Context, clients awsClients, s
 		if settings.identityCenterInstanceARN != "" {
 			return records, next, nil
 		}
+		if next != "" {
+			return records, encodeIdentityCenterPermissionSetCursor(identityCenterPermissionSetCursor{InstanceARN: instanceARN, Token: next}), nil
+		}
 	}
-	return records, nextInstances, nil
+	return records, "", nil
 }
 
 func listIdentityCenterPermissionSetsForInstance(ctx context.Context, clients awsClients, settings settings, instance ssoadmintypes.InstanceMetadata, cursor string, limit int) ([]identityCenterPermissionSet, string, error) {
@@ -130,31 +158,87 @@ func describeIdentityCenterPermissionSet(ctx context.Context, clients awsClients
 }
 
 func listIdentityCenterAccountAssignments(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]identityCenterAccountAssignment, string, error) {
+	page, err := decodeIdentityCenterAccountAssignmentCursor(cursor)
+	if err != nil {
+		return nil, "", err
+	}
 	instances, _, err := listIdentityCenterInstances(ctx, clients, settings, "", limit)
 	if err != nil {
 		return nil, "", err
 	}
 	records := make([]identityCenterAccountAssignment, 0)
+	instanceStarted := page.InstanceARN == ""
 	for _, instance := range instances {
-		permissionSets, _, err := listIdentityCenterPermissionSetsForInstance(ctx, clients, settings, instance, "", limit)
-		if err != nil {
-			return nil, "", err
+		instanceARN := awssdk.ToString(instance.InstanceArn)
+		if !instanceStarted {
+			if instanceARN == page.InstanceARN {
+				instanceStarted = true
+			} else {
+				continue
+			}
 		}
-		for _, permissionSet := range permissionSets {
-			assignmentRecords, next, err := listIdentityCenterAssignmentsForPermissionSet(ctx, clients, settings, instance, permissionSet.PermissionSet, cursor, limit)
+		permissionSetToken := ""
+		if instanceARN == page.InstanceARN {
+			permissionSetToken = page.PermissionSetToken
+		}
+		for {
+			permissionSets, nextPermissionSets, err := listIdentityCenterPermissionSetsForInstance(ctx, clients, settings, instance, permissionSetToken, limit)
 			if err != nil {
 				return nil, "", err
 			}
-			records = append(records, assignmentRecords...)
-			if settings.identityCenterInstanceARN != "" && settings.permissionSetARN != "" && settings.targetAccountID != "" {
-				return records, next, nil
+			permissionSetStarted := page.PermissionSetARN == ""
+			for _, permissionSet := range permissionSets {
+				permissionSetARN := awssdk.ToString(permissionSet.PermissionSet.PermissionSetArn)
+				if !permissionSetStarted {
+					if permissionSetARN == page.PermissionSetARN {
+						permissionSetStarted = true
+					} else {
+						continue
+					}
+				}
+				assignmentCursor := identityCenterAccountAssignmentCursor{
+					InstanceARN:        instanceARN,
+					PermissionSetToken: permissionSetToken,
+					PermissionSetARN:   permissionSetARN,
+					AccountID:          page.AccountID,
+					Token:              page.Token,
+				}
+				if permissionSetARN != page.PermissionSetARN {
+					assignmentCursor.AccountID = ""
+					assignmentCursor.Token = ""
+				}
+				assignmentRecords, next, err := listIdentityCenterAssignmentsForPermissionSet(ctx, clients, settings, instance, permissionSet.PermissionSet, encodeIdentityCenterAccountAssignmentCursor(assignmentCursor), limit)
+				if err != nil {
+					return nil, "", err
+				}
+				records = append(records, assignmentRecords...)
+				if settings.identityCenterInstanceARN != "" && settings.permissionSetARN != "" && settings.targetAccountID != "" {
+					return records, next, nil
+				}
+				if next != "" {
+					return records, next, nil
+				}
+				page.PermissionSetARN = ""
+				page.AccountID = ""
+				page.Token = ""
 			}
+			if nextPermissionSets == "" {
+				break
+			}
+			permissionSetToken = nextPermissionSets
+			page.PermissionSetARN = ""
+			page.AccountID = ""
+			page.Token = ""
 		}
 	}
 	return records, "", nil
 }
 
 func listIdentityCenterAssignmentsForPermissionSet(ctx context.Context, clients awsClients, settings settings, instance ssoadmintypes.InstanceMetadata, permissionSet ssoadmintypes.PermissionSet, cursor string, limit int) ([]identityCenterAccountAssignment, string, error) {
+	page, err := decodeIdentityCenterAccountAssignmentCursor(cursor)
+	if err != nil {
+		return nil, "", err
+	}
 	instanceARN := awssdk.ToString(instance.InstanceArn)
 	permissionSetARN := awssdk.ToString(permissionSet.PermissionSetArn)
 	accounts := []string{settings.targetAccountID}
@@ -170,13 +254,29 @@ func listIdentityCenterAssignmentsForPermissionSet(ctx context.Context, clients 
 		accounts = out.AccountIds
 	}
 	records := make([]identityCenterAccountAssignment, 0)
-	for _, accountID := range cleanStrings(accounts) {
+	accountStarted := page.AccountID == ""
+	for _, accountID := range accounts {
+		accountID = strings.TrimSpace(accountID)
+		if accountID == "" {
+			continue
+		}
+		if !accountStarted {
+			if accountID == page.AccountID {
+				accountStarted = true
+			} else {
+				continue
+			}
+		}
+		token := ""
+		if accountID == page.AccountID {
+			token = page.Token
+		}
 		out, err := clients.ssoAdmin.ListAccountAssignments(ctx, &ssoadmin.ListAccountAssignmentsInput{
 			AccountId:        awssdk.String(accountID),
 			InstanceArn:      awssdk.String(instanceARN),
 			PermissionSetArn: awssdk.String(permissionSetARN),
 			MaxResults:       int32Ptr(limit),
-			NextToken:        stringPtr(cursor),
+			NextToken:        stringPtr(token),
 		})
 		if err != nil {
 			return nil, "", err
@@ -188,8 +288,17 @@ func listIdentityCenterAssignmentsForPermissionSet(ctx context.Context, clients 
 				PermissionSetName: awssdk.ToString(permissionSet.Name),
 			})
 		}
+		if next := awssdk.ToString(out.NextToken); next != "" {
+			return records, encodeIdentityCenterAccountAssignmentCursor(identityCenterAccountAssignmentCursor{
+				InstanceARN:        instanceARN,
+				PermissionSetToken: page.PermissionSetToken,
+				PermissionSetARN:   permissionSetARN,
+				AccountID:          accountID,
+				Token:              next,
+			}), nil
+		}
 		if settings.targetAccountID != "" {
-			return records, awssdk.ToString(out.NextToken), nil
+			return records, "", nil
 		}
 	}
 	return records, "", nil
@@ -264,7 +373,27 @@ func listIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, 
 		}
 		return records, awssdk.ToString(out.NextToken), nil
 	}
-	groups, nextGroups, err := listIdentityStoreGroups(ctx, clients, settings, cursor, limit)
+	page, err := decodeIdentityStoreGroupMembershipCursor(cursor)
+	if err != nil {
+		return nil, "", err
+	}
+	if page.GroupID != "" {
+		pages, next, err := listIdentityStoreGroupMembershipPage(ctx, clients, storeID, page.GroupID, page.MembershipToken, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		group := identitystoretypes.Group{GroupId: awssdk.String(page.GroupID), IdentityStoreId: awssdk.String(storeID)}
+		records := make([]identityStoreGroupMembership, 0, len(pages))
+		for _, membershipPage := range pages {
+			records = append(records, identityStoreGroupMembership{Group: group, Membership: membershipPage.Membership})
+		}
+		if next != "" {
+			return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: page.GroupToken, GroupID: page.GroupID, MembershipToken: next}), nil
+		}
+		page.GroupID = ""
+		page.MembershipToken = ""
+	}
+	groups, nextGroups, err := listIdentityStoreGroups(ctx, clients, settings, page.GroupToken, limit)
 	if err != nil {
 		return nil, "", err
 	}
@@ -274,19 +403,21 @@ func listIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, 
 		if groupID == "" {
 			continue
 		}
-		out, err := clients.identityStore.ListGroupMemberships(ctx, &identitystore.ListGroupMembershipsInput{
-			GroupId:         awssdk.String(groupID),
-			IdentityStoreId: awssdk.String(storeID),
-			MaxResults:      int32Ptr(limit),
-		})
+		groupRecords, next, err := listIdentityStoreGroupMembershipPage(ctx, clients, storeID, groupID, "", limit)
 		if err != nil {
 			return nil, "", err
 		}
-		for _, membership := range out.GroupMemberships {
-			records = append(records, identityStoreGroupMembership{Group: group, Membership: membership})
+		for _, record := range groupRecords {
+			records = append(records, identityStoreGroupMembership{Group: group, Membership: record.Membership})
+		}
+		if next != "" {
+			return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: page.GroupToken, GroupID: groupID, MembershipToken: next}), nil
 		}
 	}
-	return records, nextGroups, nil
+	if nextGroups != "" {
+		return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: nextGroups}), nil
+	}
+	return records, "", nil
 }
 
 func identityCenterPermissionSetEvent(settings settings, record identityCenterPermissionSet) (*primitives.Event, error) {
@@ -455,4 +586,92 @@ func identityStoreMembershipUserID(member identitystoretypes.MemberId) string {
 	default:
 		return ""
 	}
+}
+
+type identityCenterPermissionSetCursor struct {
+	InstanceARN string `json:"instance_arn,omitempty"`
+	Token       string `json:"token,omitempty"`
+}
+
+type identityCenterAccountAssignmentCursor struct {
+	InstanceARN        string `json:"instance_arn,omitempty"`
+	PermissionSetToken string `json:"permission_set_token,omitempty"`
+	PermissionSetARN   string `json:"permission_set_arn,omitempty"`
+	AccountID          string `json:"account_id,omitempty"`
+	Token              string `json:"token,omitempty"`
+}
+
+type identityStoreGroupMembershipCursor struct {
+	GroupToken      string `json:"group_token,omitempty"`
+	GroupID         string `json:"group_id,omitempty"`
+	MembershipToken string `json:"membership_token,omitempty"`
+}
+
+type identityStoreGroupMembershipPage struct {
+	Membership identitystoretypes.GroupMembership
+}
+
+func listIdentityStoreGroupMembershipPage(ctx context.Context, clients awsClients, storeID string, groupID string, cursor string, limit int) ([]identityStoreGroupMembershipPage, string, error) {
+	out, err := clients.identityStore.ListGroupMemberships(ctx, &identitystore.ListGroupMembershipsInput{
+		GroupId:         awssdk.String(groupID),
+		IdentityStoreId: awssdk.String(storeID),
+		MaxResults:      int32Ptr(limit),
+		NextToken:       stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]identityStoreGroupMembershipPage, 0, len(out.GroupMemberships))
+	for _, membership := range out.GroupMemberships {
+		records = append(records, identityStoreGroupMembershipPage{Membership: membership})
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func decodeIdentityCenterPermissionSetCursor(raw string) (identityCenterPermissionSetCursor, error) {
+	return decodeIdentityCenterCursor[identityCenterPermissionSetCursor](raw)
+}
+
+func encodeIdentityCenterPermissionSetCursor(cursor identityCenterPermissionSetCursor) string {
+	return encodeIdentityCenterCursor(cursor)
+}
+
+func decodeIdentityCenterAccountAssignmentCursor(raw string) (identityCenterAccountAssignmentCursor, error) {
+	return decodeIdentityCenterCursor[identityCenterAccountAssignmentCursor](raw)
+}
+
+func encodeIdentityCenterAccountAssignmentCursor(cursor identityCenterAccountAssignmentCursor) string {
+	return encodeIdentityCenterCursor(cursor)
+}
+
+func decodeIdentityStoreGroupMembershipCursor(raw string) (identityStoreGroupMembershipCursor, error) {
+	return decodeIdentityCenterCursor[identityStoreGroupMembershipCursor](raw)
+}
+
+func encodeIdentityStoreGroupMembershipCursor(cursor identityStoreGroupMembershipCursor) string {
+	return encodeIdentityCenterCursor(cursor)
+}
+
+func decodeIdentityCenterCursor[T any](raw string) (T, error) {
+	var cursor T
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return cursor, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return cursor, fmt.Errorf("decode identity center cursor: %w", err)
+	}
+	if err := json.Unmarshal(decoded, &cursor); err != nil {
+		return cursor, fmt.Errorf("parse identity center cursor: %w", err)
+	}
+	return cursor, nil
+}
+
+func encodeIdentityCenterCursor(cursor any) string {
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
 }
