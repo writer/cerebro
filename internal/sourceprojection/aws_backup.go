@@ -90,7 +90,7 @@ func awsBackupRecoveryPointProjections(event *cerebrov1.EventEnvelope) ([]*ports
 		addAWSBackupVault(entityMap, linkMap, tenantID, event.GetSourceId(), event, vaultURN, attributes["backup_vault_name"], attributes)
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), recoveryURN, vaultURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "backup_recovery_point_vault"}))
 	}
-	if planURN := awsBackupPlanURN(tenantID, attributes); planURN != "" {
+	if planURN := projectionURN(tenantID, "aws_backup_plan", firstNonEmpty(attributes["backup_plan_arn"], attributes["backup_plan_id"])); planURN != "" {
 		addEntity(entityMap, &ports.ProjectedEntity{URN: planURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "aws.backup.plan", Label: firstNonEmpty(attributes["backup_plan_id"], attributes["backup_plan_arn"]), Attributes: map[string]string{"backup_plan_arn": strings.TrimSpace(attributes["backup_plan_arn"]), "backup_plan_id": strings.TrimSpace(attributes["backup_plan_id"])}})
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), recoveryURN, planURN, relationDependsOn, map[string]string{"backup_rule_id": strings.TrimSpace(attributes["backup_rule_id"]), "event_id": event.GetId(), "match_type": "backup_recovery_point_plan"}))
 	}
@@ -185,6 +185,10 @@ func awsBackupProjectedResourceFamily(resourceType string) string {
 	switch normalized {
 	case "rds":
 		return "rds_instance"
+	case "ec2":
+		return "ec2_instance"
+	case "s3":
+		return "s3_bucket"
 	default:
 		return normalized
 	}
