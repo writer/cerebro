@@ -1072,6 +1072,42 @@ paths:
       responses:
         '200':
           description: Cloud attack paths.
+  /platform/graph/person-access-paths:
+    get:
+      summary: Query person access paths
+      tags:
+        - Graph
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: person_urn
+          in: query
+          schema:
+            type: string
+        - name: person_query
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Person access paths.
   /platform/graph/crown-jewel-rankings:
     get:
       summary: Query personalized crown-jewel graph rankings

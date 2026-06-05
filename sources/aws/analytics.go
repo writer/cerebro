@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,16 +13,36 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	athenatypes "github.com/aws/aws-sdk-go-v2/service/athena/types"
+	"github.com/aws/aws-sdk-go-v2/service/firehose"
+	firehosetypes "github.com/aws/aws-sdk-go-v2/service/firehose/types"
 	"github.com/aws/aws-sdk-go-v2/service/glue"
 	gluetypes "github.com/aws/aws-sdk-go-v2/service/glue/types"
+	"github.com/aws/aws-sdk-go-v2/service/kafka"
+	kafkatypes "github.com/aws/aws-sdk-go-v2/service/kafka/types"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+	kinesistypes "github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/aws/aws-sdk-go-v2/service/lakeformation"
 	lakeformationtypes "github.com/aws/aws-sdk-go-v2/service/lakeformation/types"
 
 	"github.com/writer/cerebro/internal/primitives"
 )
 
+type awsKinesisStream struct {
+	Summary kinesistypes.StreamDescriptionSummary
+	Tags    map[string]string
+}
+
+type awsFirehoseDeliveryStream struct {
+	Description firehosetypes.DeliveryStreamDescription
+	Tags        map[string]string
+}
+
+type awsMSKCluster struct {
+	Cluster kafkatypes.Cluster
+	Tags    map[string]string
+}
+
 type awsGlueDatabase struct {
-	Name     string
 	Database gluetypes.Database
 	Tags     map[string]string
 }
@@ -44,12 +63,7 @@ type awsGlueJob struct {
 	Tags map[string]string
 }
 
-type awsGlueTableCursor struct {
-	DatabaseName string `json:"database_name,omitempty"`
-	TableToken   string `json:"table_token,omitempty"`
-}
-
-type awsAthenaWorkGroup struct {
+type awsAthenaWorkgroup struct {
 	WorkGroup athenatypes.WorkGroup
 	Tags      map[string]string
 }
@@ -59,8 +73,161 @@ type awsAthenaDataCatalog struct {
 	Tags    map[string]string
 }
 
+type awsLakeFormationResource struct {
+	Resource lakeformationtypes.ResourceInfo
+}
+
+type awsLakeFormationLFTag struct {
+	Tag lakeformationtypes.LFTagPair
+}
+
+type awsLakeFormationPermission struct {
+	Permission lakeformationtypes.PrincipalResourcePermissions
+}
+
+type glueTablePageCursor struct {
+	DatabaseName string `json:"database_name,omitempty"`
+	TableToken   string `json:"table_token,omitempty"`
+}
+
+func listKinesisStreams(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsKinesisStream, string, error) {
+	out, err := clients.kinesis.ListStreams(ctx, &kinesis.ListStreamsInput{
+		NextToken: stringPtr(cursor),
+		Limit:     awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsKinesisStream, 0, len(out.StreamNames))
+	for _, name := range out.StreamNames {
+		describe, err := clients.kinesis.DescribeStreamSummary(ctx, &kinesis.DescribeStreamSummaryInput{StreamName: awssdk.String(name)})
+		if err != nil {
+			return nil, "", fmt.Errorf("describe kinesis stream %q: %w", name, err)
+		}
+		if describe.StreamDescriptionSummary == nil {
+			continue
+		}
+		record := awsKinesisStream{Summary: *describe.StreamDescriptionSummary}
+		tags, err := listKinesisStreamTags(ctx, clients, awssdk.ToString(record.Summary.StreamName), awssdk.ToString(record.Summary.StreamARN))
+		if err != nil {
+			return nil, "", err
+		}
+		record.Tags = tags
+		records = append(records, record)
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listKinesisStreamTags(ctx context.Context, clients awsClients, name string, arn string) (map[string]string, error) {
+	tags := map[string]string{}
+	var marker string
+	for {
+		out, err := clients.kinesis.ListTagsForStream(ctx, &kinesis.ListTagsForStreamInput{
+			ExclusiveStartTagKey: stringPtr(marker),
+			Limit:                awssdk.Int32(50),
+			StreamARN:            stringPtr(arn),
+			StreamName:           stringPtr(name),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list kinesis tags %q: %w", firstNonEmpty(arn, name), err)
+		}
+		for _, tag := range out.Tags {
+			key := awssdk.ToString(tag.Key)
+			if key != "" {
+				tags[key] = awssdk.ToString(tag.Value)
+				marker = key
+			}
+		}
+		if !awssdk.ToBool(out.HasMoreTags) || marker == "" {
+			return tags, nil
+		}
+	}
+}
+
+func listFirehoseDeliveryStreams(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsFirehoseDeliveryStream, string, error) {
+	out, err := clients.firehose.ListDeliveryStreams(ctx, &firehose.ListDeliveryStreamsInput{
+		ExclusiveStartDeliveryStreamName: stringPtr(cursor),
+		Limit:                            awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsFirehoseDeliveryStream, 0, len(out.DeliveryStreamNames))
+	for _, name := range out.DeliveryStreamNames {
+		describe, err := clients.firehose.DescribeDeliveryStream(ctx, &firehose.DescribeDeliveryStreamInput{DeliveryStreamName: awssdk.String(name)})
+		if err != nil {
+			return nil, "", fmt.Errorf("describe firehose delivery stream %q: %w", name, err)
+		}
+		if describe.DeliveryStreamDescription == nil {
+			continue
+		}
+		record := awsFirehoseDeliveryStream{Description: *describe.DeliveryStreamDescription}
+		tags, err := listFirehoseTags(ctx, clients, name)
+		if err != nil {
+			return nil, "", err
+		}
+		record.Tags = tags
+		records = append(records, record)
+	}
+	next := ""
+	if awssdk.ToBool(out.HasMoreDeliveryStreams) && len(out.DeliveryStreamNames) > 0 {
+		next = out.DeliveryStreamNames[len(out.DeliveryStreamNames)-1]
+	}
+	return records, next, nil
+}
+
+func listFirehoseTags(ctx context.Context, clients awsClients, name string) (map[string]string, error) {
+	tags := map[string]string{}
+	var marker string
+	for {
+		out, err := clients.firehose.ListTagsForDeliveryStream(ctx, &firehose.ListTagsForDeliveryStreamInput{
+			DeliveryStreamName:   awssdk.String(name),
+			ExclusiveStartTagKey: stringPtr(marker),
+			Limit:                awssdk.Int32(50),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list firehose tags %q: %w", name, err)
+		}
+		for _, tag := range out.Tags {
+			key := awssdk.ToString(tag.Key)
+			if key != "" {
+				tags[key] = awssdk.ToString(tag.Value)
+				marker = key
+			}
+		}
+		if !awssdk.ToBool(out.HasMoreTags) || marker == "" {
+			return tags, nil
+		}
+	}
+}
+
+func listMSKClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsMSKCluster, string, error) {
+	out, err := clients.kafka.ListClustersV2(ctx, &kafka.ListClustersV2Input{
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsMSKCluster, 0, len(out.ClusterInfoList))
+	for _, cluster := range out.ClusterInfoList {
+		record := awsMSKCluster{Cluster: cluster, Tags: cluster.Tags}
+		if arn := awssdk.ToString(cluster.ClusterArn); arn != "" {
+			tags, err := clients.kafka.ListTagsForResource(ctx, &kafka.ListTagsForResourceInput{ResourceArn: awssdk.String(arn)})
+			if err != nil {
+				return nil, "", fmt.Errorf("list msk tags %q: %w", arn, err)
+			}
+			if len(tags.Tags) != 0 {
+				record.Tags = tags.Tags
+			}
+		}
+		records = append(records, record)
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
 func listGlueDatabases(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGlueDatabase, string, error) {
-	output, err := clients.glue.GetDatabases(ctx, &glue.GetDatabasesInput{
+	out, err := clients.glue.GetDatabases(ctx, &glue.GetDatabasesInput{
 		CatalogId:  awssdk.String(settings.accountID),
 		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 		NextToken:  stringPtr(cursor),
@@ -68,25 +235,25 @@ func listGlueDatabases(ctx context.Context, clients awsClients, settings setting
 	if err != nil {
 		return nil, "", err
 	}
-	records := make([]awsGlueDatabase, 0, len(output.DatabaseList))
-	for _, database := range output.DatabaseList {
-		name := awssdk.ToString(database.Name)
-		if name == "" {
-			continue
+	records := make([]awsGlueDatabase, 0, len(out.DatabaseList))
+	for _, database := range out.DatabaseList {
+		record := awsGlueDatabase{Database: database}
+		arn := glueDatabaseARN(settings, awssdk.ToString(database.CatalogId), awssdk.ToString(database.Name))
+		if arn != "" {
+			tags, err := clients.glue.GetTags(ctx, &glue.GetTagsInput{ResourceArn: awssdk.String(arn)})
+			if err == nil {
+				record.Tags = tags.Tags
+			} else if !optionalAWSError(err, "EntityNotFoundException") {
+				return nil, "", fmt.Errorf("get glue database tags %q: %w", arn, err)
+			}
 		}
-		record := awsGlueDatabase{Name: name, Database: database}
-		tags, err := glueTags(ctx, clients, glueDatabaseARN(settings, name))
-		if err != nil {
-			return nil, "", fmt.Errorf("get glue database tags %q: %w", name, err)
-		}
-		record.Tags = tags
 		records = append(records, record)
 	}
-	return records, awssdk.ToString(output.NextToken), nil
+	return records, awssdk.ToString(out.NextToken), nil
 }
 
 func listGlueTables(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGlueTable, string, error) {
-	databases, err := listAllGlueDatabases(ctx, clients, settings)
+	databases, err := listAllGlueDatabaseNames(ctx, clients, settings)
 	if err != nil {
 		return nil, "", err
 	}
@@ -124,7 +291,7 @@ func listGlueTables(ctx context.Context, clients awsClients, settings settings, 
 	records := make([]awsGlueTable, 0, remaining)
 	for databaseIndex < len(databases) && len(records) < remaining {
 		databaseName := databases[databaseIndex]
-		output, err := clients.glue.GetTables(ctx, &glue.GetTablesInput{
+		out, err := clients.glue.GetTables(ctx, &glue.GetTablesInput{
 			CatalogId:    awssdk.String(settings.accountID),
 			DatabaseName: awssdk.String(databaseName),
 			MaxResults:   awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
@@ -133,22 +300,25 @@ func listGlueTables(ctx context.Context, clients awsClients, settings settings, 
 		if err != nil {
 			return nil, "", fmt.Errorf("get glue tables for database %q: %w", databaseName, err)
 		}
-		for _, table := range output.TableList {
-			name := awssdk.ToString(table.Name)
-			if name == "" {
-				continue
+		for _, table := range out.TableList {
+			if awssdk.ToString(table.DatabaseName) == "" {
+				table.DatabaseName = awssdk.String(databaseName)
 			}
-			record := awsGlueTable{DatabaseName: firstNonEmpty(awssdk.ToString(table.DatabaseName), databaseName), Table: table}
-			tags, err := glueTags(ctx, clients, glueTableARN(settings, record.DatabaseName, name))
-			if err != nil {
-				return nil, "", fmt.Errorf("get glue table tags %q/%q: %w", record.DatabaseName, name, err)
+			record := awsGlueTable{DatabaseName: databaseName, Table: table}
+			arn := glueTableARN(settings, firstNonEmpty(awssdk.ToString(table.CatalogId), settings.accountID), databaseName, awssdk.ToString(table.Name))
+			if arn != "" {
+				tags, err := clients.glue.GetTags(ctx, &glue.GetTagsInput{ResourceArn: awssdk.String(arn)})
+				if err == nil {
+					record.Tags = tags.Tags
+				} else if !optionalAWSError(err, "EntityNotFoundException") {
+					return nil, "", fmt.Errorf("get glue table tags %q: %w", arn, err)
+				}
 			}
-			record.Tags = tags
 			records = append(records, record)
 		}
-		if awssdk.ToString(output.NextToken) != "" {
+		if awssdk.ToString(out.NextToken) != "" {
 			state.DatabaseName = databaseName
-			state.TableToken = awssdk.ToString(output.NextToken)
+			state.TableToken = awssdk.ToString(out.NextToken)
 			return records, encodeGlueTableCursor(state), nil
 		}
 		databaseIndex++
@@ -161,136 +331,312 @@ func listGlueTables(ctx context.Context, clients awsClients, settings settings, 
 	return records, "", nil
 }
 
+func listAllGlueDatabaseNames(ctx context.Context, clients awsClients, settings settings) ([]string, error) {
+	var names []string
+	var token string
+	for {
+		out, err := clients.glue.GetDatabases(ctx, &glue.GetDatabasesInput{
+			CatalogId:  awssdk.String(settings.accountID),
+			MaxResults: awssdk.Int32(100),
+			NextToken:  stringPtr(token),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, database := range out.DatabaseList {
+			if name := awssdk.ToString(database.Name); name != "" {
+				names = append(names, name)
+			}
+		}
+		token = awssdk.ToString(out.NextToken)
+		if token == "" {
+			sort.Strings(names)
+			return names, nil
+		}
+	}
+}
+
 func listGlueCrawlers(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGlueCrawler, string, error) {
-	output, err := clients.glue.GetCrawlers(ctx, &glue.GetCrawlersInput{
+	out, err := clients.glue.ListCrawlers(ctx, &glue.ListCrawlersInput{
 		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
 		return nil, "", err
 	}
-	records := make([]awsGlueCrawler, 0, len(output.Crawlers))
-	for _, crawler := range output.Crawlers {
-		name := awssdk.ToString(crawler.Name)
-		if name == "" {
+	records := make([]awsGlueCrawler, 0, len(out.CrawlerNames))
+	for _, name := range out.CrawlerNames {
+		crawler, err := clients.glue.GetCrawler(ctx, &glue.GetCrawlerInput{Name: awssdk.String(name)})
+		if err != nil {
+			return nil, "", fmt.Errorf("get glue crawler %q: %w", name, err)
+		}
+		if crawler.Crawler == nil {
 			continue
 		}
-		record := awsGlueCrawler{Crawler: crawler}
-		tags, err := glueTags(ctx, clients, glueCrawlerARN(settings, crawler.Name))
-		if err != nil {
-			return nil, "", fmt.Errorf("get glue crawler tags %q: %w", name, err)
+		record := awsGlueCrawler{Crawler: *crawler.Crawler}
+		arn := glueCrawlerARN(settings, name)
+		if arn != "" {
+			tags, err := clients.glue.GetTags(ctx, &glue.GetTagsInput{ResourceArn: awssdk.String(arn)})
+			if err == nil {
+				record.Tags = tags.Tags
+			} else if !optionalAWSError(err, "EntityNotFoundException") {
+				return nil, "", fmt.Errorf("get glue crawler tags %q: %w", arn, err)
+			}
 		}
-		record.Tags = tags
 		records = append(records, record)
 	}
-	return records, awssdk.ToString(output.NextToken), nil
+	return records, awssdk.ToString(out.NextToken), nil
 }
 
 func listGlueJobs(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGlueJob, string, error) {
-	output, err := clients.glue.GetJobs(ctx, &glue.GetJobsInput{
+	out, err := clients.glue.ListJobs(ctx, &glue.ListJobsInput{
 		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
 		return nil, "", err
 	}
-	records := make([]awsGlueJob, 0, len(output.Jobs))
-	for _, job := range output.Jobs {
-		name := awssdk.ToString(job.Name)
-		if name == "" {
+	records := make([]awsGlueJob, 0, len(out.JobNames))
+	for _, name := range out.JobNames {
+		job, err := clients.glue.GetJob(ctx, &glue.GetJobInput{JobName: awssdk.String(name)})
+		if err != nil {
+			return nil, "", fmt.Errorf("get glue job %q: %w", name, err)
+		}
+		if job.Job == nil {
 			continue
 		}
-		record := awsGlueJob{Job: job}
-		tags, err := glueTags(ctx, clients, glueJobARN(settings, job.Name))
-		if err != nil {
-			return nil, "", fmt.Errorf("get glue job tags %q: %w", name, err)
+		record := awsGlueJob{Job: *job.Job}
+		arn := glueJobARN(settings, name)
+		if arn != "" {
+			tags, err := clients.glue.GetTags(ctx, &glue.GetTagsInput{ResourceArn: awssdk.String(arn)})
+			if err == nil {
+				record.Tags = tags.Tags
+			} else if !optionalAWSError(err, "EntityNotFoundException") {
+				return nil, "", fmt.Errorf("get glue job tags %q: %w", arn, err)
+			}
 		}
-		record.Tags = tags
 		records = append(records, record)
 	}
-	return records, awssdk.ToString(output.NextToken), nil
+	return records, awssdk.ToString(out.NextToken), nil
 }
 
-func listAthenaWorkGroups(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAthenaWorkGroup, string, error) {
-	output, err := clients.athena.ListWorkGroups(ctx, &athena.ListWorkGroupsInput{
+func listAthenaWorkgroups(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAthenaWorkgroup, string, error) {
+	out, err := clients.athena.ListWorkGroups(ctx, &athena.ListWorkGroupsInput{
 		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
 		return nil, "", err
 	}
-	records := make([]awsAthenaWorkGroup, 0, len(output.WorkGroups))
-	for _, summary := range output.WorkGroups {
+	records := make([]awsAthenaWorkgroup, 0, len(out.WorkGroups))
+	for _, summary := range out.WorkGroups {
 		name := awssdk.ToString(summary.Name)
-		if name == "" {
-			continue
-		}
-		detail, err := clients.athena.GetWorkGroup(ctx, &athena.GetWorkGroupInput{WorkGroup: awssdk.String(name)})
+		workgroup, err := clients.athena.GetWorkGroup(ctx, &athena.GetWorkGroupInput{WorkGroup: awssdk.String(name)})
 		if err != nil {
 			return nil, "", fmt.Errorf("get athena workgroup %q: %w", name, err)
 		}
-		if detail.WorkGroup != nil {
-			record := awsAthenaWorkGroup{WorkGroup: *detail.WorkGroup}
-			tags, err := athenaTags(ctx, clients, athenaWorkGroupARN(settings, detail.WorkGroup.Name))
-			if err != nil {
-				return nil, "", fmt.Errorf("list athena workgroup tags %q: %w", name, err)
-			}
-			record.Tags = tags
-			records = append(records, record)
+		if workgroup.WorkGroup == nil {
+			continue
 		}
+		record := awsAthenaWorkgroup{WorkGroup: *workgroup.WorkGroup}
+		tags, err := listAthenaTags(ctx, clients, athenaWorkgroupARN(settings, name))
+		if err != nil {
+			return nil, "", err
+		}
+		record.Tags = tags
+		records = append(records, record)
 	}
-	return records, awssdk.ToString(output.NextToken), nil
+	return records, awssdk.ToString(out.NextToken), nil
 }
 
 func listAthenaDataCatalogs(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAthenaDataCatalog, string, error) {
-	output, err := clients.athena.ListDataCatalogs(ctx, &athena.ListDataCatalogsInput{
+	out, err := clients.athena.ListDataCatalogs(ctx, &athena.ListDataCatalogsInput{
 		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 2, 50))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
 		return nil, "", err
 	}
-	records := make([]awsAthenaDataCatalog, 0, len(output.DataCatalogsSummary))
-	for _, summary := range output.DataCatalogsSummary {
+	records := make([]awsAthenaDataCatalog, 0, len(out.DataCatalogsSummary))
+	for _, summary := range out.DataCatalogsSummary {
 		name := awssdk.ToString(summary.CatalogName)
-		if name == "" {
-			continue
-		}
-		detail, err := clients.athena.GetDataCatalog(ctx, &athena.GetDataCatalogInput{Name: awssdk.String(name)})
+		catalog, err := clients.athena.GetDataCatalog(ctx, &athena.GetDataCatalogInput{Name: awssdk.String(name)})
 		if err != nil {
 			return nil, "", fmt.Errorf("get athena data catalog %q: %w", name, err)
 		}
-		if detail.DataCatalog != nil {
-			record := awsAthenaDataCatalog{Catalog: *detail.DataCatalog}
-			tags, err := athenaTags(ctx, clients, athenaDataCatalogARN(settings, detail.DataCatalog.Name))
-			if err != nil {
-				return nil, "", fmt.Errorf("list athena data catalog tags %q: %w", name, err)
-			}
-			record.Tags = tags
-			records = append(records, record)
+		if catalog.DataCatalog == nil {
+			continue
 		}
+		record := awsAthenaDataCatalog{Catalog: *catalog.DataCatalog}
+		tags, err := listAthenaTags(ctx, clients, athenaDataCatalogARN(settings, name))
+		if err != nil {
+			return nil, "", err
+		}
+		record.Tags = tags
+		records = append(records, record)
 	}
-	return records, awssdk.ToString(output.NextToken), nil
+	return records, awssdk.ToString(out.NextToken), nil
 }
 
-func listLakeFormationResources(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]lakeformationtypes.ResourceInfo, string, error) {
-	output, err := clients.lakeFormation.ListResources(ctx, &lakeformation.ListResourcesInput{
+func listAthenaTags(ctx context.Context, clients awsClients, arn string) (map[string]string, error) {
+	tags := map[string]string{}
+	var token string
+	for arn != "" {
+		out, err := clients.athena.ListTagsForResource(ctx, &athena.ListTagsForResourceInput{
+			ResourceARN: awssdk.String(arn),
+			MaxResults:  awssdk.Int32(75),
+			NextToken:   stringPtr(token),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list athena tags %q: %w", arn, err)
+		}
+		for _, tag := range out.Tags {
+			if key := awssdk.ToString(tag.Key); key != "" {
+				tags[key] = awssdk.ToString(tag.Value)
+			}
+		}
+		token = awssdk.ToString(out.NextToken)
+		if token == "" {
+			return tags, nil
+		}
+	}
+	return tags, nil
+}
+
+func listLakeFormationResources(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsLakeFormationResource, string, error) {
+	out, err := clients.lake.ListResources(ctx, &lakeformation.ListResourcesInput{
 		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
 		return nil, "", err
 	}
-	return output.ResourceInfoList, awssdk.ToString(output.NextToken), nil
+	records := make([]awsLakeFormationResource, 0, len(out.ResourceInfoList))
+	for _, resource := range out.ResourceInfoList {
+		records = append(records, awsLakeFormationResource{Resource: resource})
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listLakeFormationLFTags(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsLakeFormationLFTag, string, error) {
+	out, err := clients.lake.ListLFTags(ctx, &lakeformation.ListLFTagsInput{
+		CatalogId:  awssdk.String(settings.accountID),
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsLakeFormationLFTag, 0, len(out.LFTags))
+	for _, tag := range out.LFTags {
+		records = append(records, awsLakeFormationLFTag{Tag: tag})
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listLakeFormationPermissions(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsLakeFormationPermission, string, error) {
+	out, err := clients.lake.ListPermissions(ctx, &lakeformation.ListPermissionsInput{
+		CatalogId:  awssdk.String(settings.accountID),
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsLakeFormationPermission, 0, len(out.PrincipalResourcePermissions))
+	for _, permission := range out.PrincipalResourcePermissions {
+		records = append(records, awsLakeFormationPermission{Permission: permission})
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func kinesisStreamEvent(settings settings, record awsKinesisStream) (*primitives.Event, error) {
+	stream := record.Summary
+	arn := awssdk.ToString(stream.StreamARN)
+	name := awssdk.ToString(stream.StreamName)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyKinesisStream, firstNonEmpty(arn, name), name, "kinesis_stream", record.Tags)
+	attributes["arn"] = arn
+	attributes["stream_arn"] = arn
+	attributes["stream_name"] = name
+	attributes["state"] = string(stream.StreamStatus)
+	attributes["encryption"] = boolString(stream.EncryptionType != "" && stream.EncryptionType != kinesistypes.EncryptionTypeNone)
+	attributes["encryption_type"] = string(stream.EncryptionType)
+	attributes["kms_key_id"] = awssdk.ToString(stream.KeyId)
+	attributes["retention_hours"] = int32AttrString(stream.RetentionPeriodHours)
+	attributes["open_shard_count"] = int32AttrString(stream.OpenShardCount)
+	attributes["consumer_count"] = int32AttrString(stream.ConsumerCount)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "stream": stream, "tags": record.Tags})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-kinesis-stream-"+firstNonEmpty(arn, name), "aws.kinesis_stream", "aws/kinesis_stream/v1", payload, attributes, firstTime(stream.StreamCreationTimestamp))
+}
+
+func firehoseDeliveryStreamEvent(settings settings, record awsFirehoseDeliveryStream) (*primitives.Event, error) {
+	stream := record.Description
+	arn := awssdk.ToString(stream.DeliveryStreamARN)
+	name := awssdk.ToString(stream.DeliveryStreamName)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyFirehoseDelivery, firstNonEmpty(arn, name), name, "firehose_delivery_stream", record.Tags)
+	attributes["arn"] = arn
+	attributes["delivery_stream_arn"] = arn
+	attributes["delivery_stream_name"] = name
+	attributes["state"] = string(stream.DeliveryStreamStatus)
+	attributes["stream_type"] = string(stream.DeliveryStreamType)
+	attributes["destination_types"] = strings.Join(firehoseDestinationTypes(stream.Destinations), ",")
+	if stream.DeliveryStreamEncryptionConfiguration != nil {
+		encryption := stream.DeliveryStreamEncryptionConfiguration
+		attributes["encryption"] = boolString(encryption.Status == firehosetypes.DeliveryStreamEncryptionStatusEnabled || encryption.Status == firehosetypes.DeliveryStreamEncryptionStatusEnabling)
+		attributes["encryption_status"] = string(encryption.Status)
+		attributes["encryption_type"] = string(encryption.KeyType)
+		attributes["kms_key_id"] = awssdk.ToString(encryption.KeyARN)
+	}
+	if stream.Source != nil && stream.Source.KinesisStreamSourceDescription != nil {
+		attributes["source_kinesis_stream_arn"] = awssdk.ToString(stream.Source.KinesisStreamSourceDescription.KinesisStreamARN)
+		attributes["role_arn"] = awssdk.ToString(stream.Source.KinesisStreamSourceDescription.RoleARN)
+	}
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "delivery_stream": stream, "tags": record.Tags})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-firehose-delivery-stream-"+firstNonEmpty(arn, name), "aws.firehose_delivery_stream", "aws/firehose_delivery_stream/v1", payload, attributes, firstTime(stream.CreateTimestamp))
+}
+
+func mskClusterEvent(settings settings, record awsMSKCluster) (*primitives.Event, error) {
+	cluster := record.Cluster
+	arn := awssdk.ToString(cluster.ClusterArn)
+	name := awssdk.ToString(cluster.ClusterName)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyMSKCluster, firstNonEmpty(arn, name), name, "msk_cluster", record.Tags)
+	attributes["arn"] = arn
+	attributes["cluster_arn"] = arn
+	attributes["cluster_name"] = name
+	attributes["cluster_type"] = string(cluster.ClusterType)
+	attributes["state"] = string(cluster.State)
+	attributes["current_version"] = awssdk.ToString(cluster.CurrentVersion)
+	if cluster.Provisioned != nil {
+		attributes["broker_count"] = int32AttrString(cluster.Provisioned.NumberOfBrokerNodes)
+		attributes["encryption"] = boolString(cluster.Provisioned.EncryptionInfo != nil)
+		if cluster.Provisioned.CurrentBrokerSoftwareInfo != nil {
+			attributes["kafka_version"] = awssdk.ToString(cluster.Provisioned.CurrentBrokerSoftwareInfo.KafkaVersion)
+		}
+	}
+	if cluster.Serverless != nil {
+		attributes["serverless"] = boolString(true)
+	}
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "cluster": cluster, "tags": record.Tags})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-msk-cluster-"+firstNonEmpty(arn, name), "aws.msk_cluster", "aws/msk_cluster/v1", payload, attributes, firstTime(cluster.CreationTime))
 }
 
 func glueDatabaseEvent(settings settings, record awsGlueDatabase) (*primitives.Event, error) {
 	database := record.Database
-	name := firstNonEmpty(record.Name, awssdk.ToString(database.Name))
-	arn := glueDatabaseARN(settings, name)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueDatabase, arn, name, "glue_database", record.Tags)
+	catalogID := firstNonEmpty(awssdk.ToString(database.CatalogId), settings.accountID)
+	name := awssdk.ToString(database.Name)
+	arn := glueDatabaseARN(settings, catalogID, name)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueDatabase, firstNonEmpty(arn, name), name, "glue_database", record.Tags)
 	attributes["arn"] = arn
-	attributes["catalog_id"] = firstNonEmpty(awssdk.ToString(database.CatalogId), settings.accountID)
+	attributes["catalog_id"] = catalogID
 	attributes["database_name"] = name
 	attributes["description"] = awssdk.ToString(database.Description)
 	attributes["location_uri"] = awssdk.ToString(database.LocationUri)
@@ -303,34 +649,37 @@ func glueDatabaseEvent(settings settings, record awsGlueDatabase) (*primitives.E
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-glue-database-"+arn, "aws.glue_database", "aws/glue_database/v1", payload, attributes, firstTime(database.CreateTime))
+	return sourceEvent(settings, "aws-glue-database-"+firstNonEmpty(arn, name), "aws.glue_database", "aws/glue_database/v1", payload, attributes, firstTime(database.CreateTime))
 }
 
 func glueTableEvent(settings settings, record awsGlueTable) (*primitives.Event, error) {
 	table := record.Table
-	name := awssdk.ToString(table.Name)
 	databaseName := firstNonEmpty(record.DatabaseName, awssdk.ToString(table.DatabaseName))
-	arn := glueTableARN(settings, databaseName, name)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueTable, arn, name, "glue_table", record.Tags)
+	catalogID := firstNonEmpty(awssdk.ToString(table.CatalogId), settings.accountID)
+	name := awssdk.ToString(table.Name)
+	arn := glueTableARN(settings, catalogID, databaseName, name)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueTable, firstNonEmpty(arn, glueTableResourceID(settings, record)), name, "glue_table", record.Tags)
 	attributes["arn"] = arn
-	attributes["catalog_id"] = firstNonEmpty(awssdk.ToString(table.CatalogId), settings.accountID)
+	attributes["catalog_id"] = catalogID
 	attributes["created_by"] = awssdk.ToString(table.CreatedBy)
 	attributes["database_name"] = databaseName
 	attributes["description"] = awssdk.ToString(table.Description)
 	attributes["is_materialized_view"] = boolString(awssdk.ToBool(table.IsMaterializedView))
 	attributes["is_registered_with_lakeformation"] = boolString(table.IsRegisteredWithLakeFormation)
-	attributes["owner"] = firstNonEmpty(attributes["owner"], awssdk.ToString(table.Owner))
-	attributes["partition_key_count"] = strconv.Itoa(len(table.PartitionKeys))
-	attributes["retention_days"] = strconv.FormatInt(int64(table.Retention), 10)
 	attributes["table_name"] = name
 	attributes["table_type"] = awssdk.ToString(table.TableType)
+	attributes["owner"] = firstNonEmpty(tagLookup(record.Tags, "owner", "application_owner", "business_owner", "service_owner"), awssdk.ToString(table.Owner))
+	attributes["registered_with_lakeformation"] = boolString(table.IsRegisteredWithLakeFormation)
+	attributes["partition_key_count"] = strconv.Itoa(len(table.PartitionKeys))
+	attributes["retention_days"] = strconv.FormatInt(int64(table.Retention), 10)
 	attributes["version_id"] = awssdk.ToString(table.VersionId)
 	if table.StorageDescriptor != nil {
-		attributes["column_count"] = strconv.Itoa(len(table.StorageDescriptor.Columns))
-		attributes["compressed"] = boolString(table.StorageDescriptor.Compressed)
-		attributes["input_format"] = awssdk.ToString(table.StorageDescriptor.InputFormat)
+		attributes["location"] = awssdk.ToString(table.StorageDescriptor.Location)
 		attributes["location_uri"] = awssdk.ToString(table.StorageDescriptor.Location)
+		attributes["input_format"] = awssdk.ToString(table.StorageDescriptor.InputFormat)
 		attributes["output_format"] = awssdk.ToString(table.StorageDescriptor.OutputFormat)
+		attributes["compressed"] = boolString(table.StorageDescriptor.Compressed)
+		attributes["column_count"] = strconv.Itoa(len(table.StorageDescriptor.Columns))
 		if table.StorageDescriptor.SerdeInfo != nil {
 			attributes["serde_library"] = awssdk.ToString(table.StorageDescriptor.SerdeInfo.SerializationLibrary)
 		}
@@ -348,15 +697,15 @@ func glueTableEvent(settings settings, record awsGlueTable) (*primitives.Event, 
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-glue-table-"+arn, "aws.glue_table", "aws/glue_table/v1", payload, attributes, firstTime(table.UpdateTime, table.CreateTime))
+	return sourceEvent(settings, "aws-glue-table-"+firstNonEmpty(arn, databaseName+"-"+name), "aws.glue_table", "aws/glue_table/v1", payload, attributes, firstTime(table.UpdateTime, table.CreateTime))
 }
 
 func glueCrawlerEvent(settings settings, record awsGlueCrawler) (*primitives.Event, error) {
 	crawler := record.Crawler
 	name := awssdk.ToString(crawler.Name)
-	arn := glueCrawlerARN(settings, crawler.Name)
+	arn := glueCrawlerARN(settings, name)
 	roleARN := awssdk.ToString(crawler.Role)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueCrawler, arn, name, "glue_crawler", record.Tags)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueCrawler, firstNonEmpty(arn, name), name, "glue_crawler", record.Tags)
 	attributes["arn"] = arn
 	attributes["crawler_name"] = name
 	attributes["database_name"] = awssdk.ToString(crawler.DatabaseName)
@@ -364,13 +713,18 @@ func glueCrawlerEvent(settings settings, record awsGlueCrawler) (*primitives.Eve
 	attributes["lineage"] = glueCrawlerLineage(crawler)
 	attributes["recrawl_behavior"] = glueCrawlerRecrawlBehavior(crawler)
 	attributes["relationship"] = "runs_as"
+	attributes["state"] = string(crawler.State)
 	attributes["role_arn"] = roleARN
 	attributes["role_name"] = roleNameFromARN(roleARN)
 	attributes["schedule"] = glueCrawlerSchedule(crawler)
-	attributes["state"] = string(crawler.State)
+	attributes["security_configuration"] = awssdk.ToString(crawler.CrawlerSecurityConfiguration)
 	attributes["table_prefix"] = awssdk.ToString(crawler.TablePrefix)
 	attributes["target_count"] = strconv.Itoa(glueCrawlerTargetCount(crawler.Targets))
 	attributes["version"] = strconv.FormatInt(crawler.Version, 10)
+	if crawler.LakeFormationConfiguration != nil {
+		attributes["lakeformation_credentials"] = boolString(awssdk.ToBool(crawler.LakeFormationConfiguration.UseLakeFormationCredentials))
+		attributes["lakeformation_account_id"] = awssdk.ToString(crawler.LakeFormationConfiguration.AccountId)
+	}
 	if crawler.LastCrawl != nil {
 		attributes["last_crawl_status"] = string(crawler.LastCrawl.Status)
 		attributes["last_crawl_error"] = awssdk.ToString(crawler.LastCrawl.ErrorMessage)
@@ -382,15 +736,15 @@ func glueCrawlerEvent(settings settings, record awsGlueCrawler) (*primitives.Eve
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-glue-crawler-"+arn, "aws.glue_crawler", "aws/glue_crawler/v1", payload, attributes, firstTime(crawler.LastUpdated, crawler.CreationTime))
+	return sourceEvent(settings, "aws-glue-crawler-"+firstNonEmpty(arn, name), "aws.glue_crawler", "aws/glue_crawler/v1", payload, attributes, firstTime(crawler.LastUpdated, crawler.CreationTime))
 }
 
 func glueJobEvent(settings settings, record awsGlueJob) (*primitives.Event, error) {
 	job := record.Job
 	name := awssdk.ToString(job.Name)
-	arn := glueJobARN(settings, job.Name)
+	arn := glueJobARN(settings, name)
 	roleARN := awssdk.ToString(job.Role)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueJob, arn, name, "glue_job", record.Tags)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyGlueJob, firstNonEmpty(arn, name), name, "glue_job", record.Tags)
 	attributes["arn"] = arn
 	if job.MaxCapacity != nil {
 		attributes["allocated_capacity"] = strconv.FormatFloat(awssdk.ToFloat64(job.MaxCapacity), 'f', -1, 64)
@@ -427,44 +781,55 @@ func glueJobEvent(settings settings, record awsGlueJob) (*primitives.Event, erro
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-glue-job-"+arn, "aws.glue_job", "aws/glue_job/v1", payload, attributes, firstTime(job.LastModifiedOn, job.CreatedOn))
+	return sourceEvent(settings, "aws-glue-job-"+firstNonEmpty(arn, name), "aws.glue_job", "aws/glue_job/v1", payload, attributes, firstTime(job.LastModifiedOn, job.CreatedOn))
 }
 
-func athenaWorkGroupEvent(settings settings, record awsAthenaWorkGroup) (*primitives.Event, error) {
+func athenaWorkgroupEvent(settings settings, record awsAthenaWorkgroup) (*primitives.Event, error) {
 	workgroup := record.WorkGroup
 	name := awssdk.ToString(workgroup.Name)
-	arn := athenaWorkGroupARN(settings, workgroup.Name)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyAthenaWorkGroup, arn, name, "athena_workgroup", record.Tags)
+	arn := athenaWorkgroupARN(settings, name)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyAthenaWorkgroup, firstNonEmpty(arn, name), name, "athena_workgroup", record.Tags)
 	attributes["arn"] = arn
 	attributes["description"] = awssdk.ToString(workgroup.Description)
-	attributes["identity_center_application_arn"] = awssdk.ToString(workgroup.IdentityCenterApplicationArn)
-	attributes["state"] = string(workgroup.State)
 	attributes["workgroup_name"] = name
+	attributes["state"] = string(workgroup.State)
+	attributes["identity_center_application_arn"] = awssdk.ToString(workgroup.IdentityCenterApplicationArn)
 	if workgroup.Configuration != nil {
-		attributes["bytes_scanned_cutoff_per_query"] = int64AttrString(workgroup.Configuration.BytesScannedCutoffPerQuery)
-		attributes["enforce_workgroup_configuration"] = boolString(awssdk.ToBool(workgroup.Configuration.EnforceWorkGroupConfiguration))
-		attributes["minimum_encryption_enabled"] = boolString(awssdk.ToBool(workgroup.Configuration.EnableMinimumEncryptionConfiguration))
-		attributes["publish_cloudwatch_metrics_enabled"] = boolString(awssdk.ToBool(workgroup.Configuration.PublishCloudWatchMetricsEnabled))
-		attributes["requester_pays_enabled"] = boolString(awssdk.ToBool(workgroup.Configuration.RequesterPaysEnabled))
-		attributes["result_output_location"] = athenaResultOutputLocation(workgroup.Configuration.ResultConfiguration)
-		attributes["encryption"] = athenaResultEncryption(workgroup.Configuration.ResultConfiguration)
-		attributes["kms_key_id"] = athenaResultKMSKey(workgroup.Configuration.ResultConfiguration)
-		attributes["role_arn"] = awssdk.ToString(workgroup.Configuration.ExecutionRole)
-		attributes["role_name"] = roleNameFromARN(awssdk.ToString(workgroup.Configuration.ExecutionRole))
+		config := workgroup.Configuration
+		attributes["bytes_scanned_cutoff_per_query"] = int64AttrString(config.BytesScannedCutoffPerQuery)
+		attributes["enforce_workgroup_configuration"] = boolString(awssdk.ToBool(config.EnforceWorkGroupConfiguration))
+		attributes["minimum_encryption_enabled"] = boolString(awssdk.ToBool(config.EnableMinimumEncryptionConfiguration))
+		attributes["publish_cloudwatch_metrics_enabled"] = boolString(awssdk.ToBool(config.PublishCloudWatchMetricsEnabled))
+		attributes["cloudwatch_metrics_enabled"] = attributes["publish_cloudwatch_metrics_enabled"]
+		attributes["requester_pays_enabled"] = boolString(awssdk.ToBool(config.RequesterPaysEnabled))
+		attributes["role_arn"] = awssdk.ToString(config.ExecutionRole)
+		attributes["role_name"] = roleNameFromARN(awssdk.ToString(config.ExecutionRole))
+		attributes["execution_role_arn"] = attributes["role_arn"]
+		if config.ResultConfiguration != nil {
+			attributes["result_output_location"] = athenaResultOutputLocation(config.ResultConfiguration)
+			attributes["output_location"] = attributes["result_output_location"]
+			attributes["expected_bucket_owner"] = awssdk.ToString(config.ResultConfiguration.ExpectedBucketOwner)
+			if config.ResultConfiguration.EncryptionConfiguration != nil {
+				encryption := config.ResultConfiguration.EncryptionConfiguration
+				attributes["encryption"] = string(encryption.EncryptionOption)
+				attributes["encryption_type"] = string(encryption.EncryptionOption)
+				attributes["kms_key_id"] = awssdk.ToString(encryption.KmsKey)
+			}
+		}
 	}
 	addTimeAttribute(attributes, "created_at", workgroup.CreationTime)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "workgroup": workgroup, "tags": record.Tags})
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-athena-workgroup-"+arn, "aws.athena_workgroup", "aws/athena_workgroup/v1", payload, attributes, firstTime(workgroup.CreationTime))
+	return sourceEvent(settings, "aws-athena-workgroup-"+firstNonEmpty(arn, name), "aws.athena_workgroup", "aws/athena_workgroup/v1", payload, attributes, firstTime(workgroup.CreationTime))
 }
 
 func athenaDataCatalogEvent(settings settings, record awsAthenaDataCatalog) (*primitives.Event, error) {
 	catalog := record.Catalog
 	name := awssdk.ToString(catalog.Name)
-	arn := athenaDataCatalogARN(settings, catalog.Name)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyAthenaDataCatalog, arn, name, "athena_data_catalog", record.Tags)
+	arn := athenaDataCatalogARN(settings, name)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyAthenaDataCatalog, firstNonEmpty(arn, name), name, "athena_data_catalog", record.Tags)
 	attributes["arn"] = arn
 	attributes["catalog_name"] = name
 	attributes["catalog_type"] = string(catalog.Type)
@@ -477,157 +842,116 @@ func athenaDataCatalogEvent(settings settings, record awsAthenaDataCatalog) (*pr
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-athena-data-catalog-"+arn, "aws.athena_data_catalog", "aws/athena_data_catalog/v1", payload, attributes, time.Now().UTC())
+	return sourceEvent(settings, "aws-athena-data-catalog-"+firstNonEmpty(arn, name), "aws.athena_data_catalog", "aws/athena_data_catalog/v1", payload, attributes, time.Now().UTC())
 }
 
-func lakeFormationResourceEvent(settings settings, resource lakeformationtypes.ResourceInfo) (*primitives.Event, error) {
+func lakeFormationResourceEvent(settings settings, record awsLakeFormationResource) (*primitives.Event, error) {
+	resource := record.Resource
 	arn := awssdk.ToString(resource.ResourceArn)
-	name := firstNonEmpty(awsResourceName(arn), path.Base(arn), arn)
+	name := firstNonEmpty(awsResourceName(arn), arn)
 	roleARN := awssdk.ToString(resource.RoleArn)
-	attributes := commonCloudAssetAttributes(settings, settings.region, familyLakeFormationResource, arn, name, "lakeformation_resource", nil)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyLakeFormationRes, firstNonEmpty(arn, awssdk.ToString(resource.RoleArn)), name, "lakeformation_resource", nil)
 	attributes["arn"] = arn
+	attributes["resource_arn"] = arn
+	attributes["expected_owner_account"] = awssdk.ToString(resource.ExpectedResourceOwnerAccount)
 	attributes["expected_resource_owner_account"] = awssdk.ToString(resource.ExpectedResourceOwnerAccount)
 	attributes["hybrid_access_enabled"] = boolString(awssdk.ToBool(resource.HybridAccessEnabled))
 	attributes["relationship"] = "runs_as"
 	attributes["role_arn"] = roleARN
 	attributes["role_name"] = roleNameFromARN(roleARN)
-	attributes["verification_status"] = string(resource.VerificationStatus)
 	attributes["with_federation"] = boolString(awssdk.ToBool(resource.WithFederation))
 	attributes["with_privileged_access"] = boolString(awssdk.ToBool(resource.WithPrivilegedAccess))
+	attributes["verification_status"] = string(resource.VerificationStatus)
 	addTimeAttribute(attributes, "updated_at", resource.LastModified)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "resource": resource})
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-lakeformation-resource-"+arn, "aws.lakeformation_resource", "aws/lakeformation_resource/v1", payload, attributes, firstTime(resource.LastModified))
+	return sourceEvent(settings, "aws-lakeformation-resource-"+firstNonEmpty(arn, awssdk.ToString(resource.RoleArn)), "aws.lakeformation_resource", "aws/lakeformation_resource/v1", payload, attributes, firstTime(resource.LastModified))
 }
 
-func listAllGlueDatabases(ctx context.Context, clients awsClients, settings settings) ([]string, error) {
-	var databases []string
-	var next *string
-	for {
-		output, err := clients.glue.GetDatabases(ctx, &glue.GetDatabasesInput{CatalogId: awssdk.String(settings.accountID), MaxResults: awssdk.Int32(100), NextToken: next})
-		if err != nil {
-			return nil, err
-		}
-		for _, database := range output.DatabaseList {
-			if name := awssdk.ToString(database.Name); name != "" {
-				databases = append(databases, name)
-			}
-		}
-		if awssdk.ToString(output.NextToken) == "" {
-			break
-		}
-		next = output.NextToken
-	}
-	sort.Strings(databases)
-	return databases, nil
-}
-
-func glueTags(ctx context.Context, clients awsClients, arn string) (map[string]string, error) {
-	arn = strings.TrimSpace(arn)
-	if arn == "" {
-		return nil, nil
-	}
-	output, err := clients.glue.GetTags(ctx, &glue.GetTagsInput{ResourceArn: awssdk.String(arn)})
+func lakeFormationLFTagEvent(settings settings, record awsLakeFormationLFTag) (*primitives.Event, error) {
+	tag := record.Tag
+	resourceID := lakeFormationLFTagResourceID(record)
+	tags := map[string]string{"lf_tag_key": awssdk.ToString(tag.TagKey)}
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyLakeFormationLFTag, resourceID, awssdk.ToString(tag.TagKey), "lakeformation_lf_tag", tags)
+	attributes["catalog_id"] = firstNonEmpty(awssdk.ToString(tag.CatalogId), settings.accountID)
+	attributes["tag_key"] = awssdk.ToString(tag.TagKey)
+	attributes["tag_values"] = strings.Join(cleanStrings(tag.TagValues), ",")
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "lf_tag": tag})
 	if err != nil {
-		if optionalAWSError(err, "EntityNotFoundException", "ResourceNotFoundException") {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return output.Tags, nil
+	return sourceEvent(settings, "aws-lakeformation-lf-tag-"+resourceID, "aws.lakeformation_lf_tag", "aws/lakeformation_lf_tag/v1", payload, attributes, time.Now().UTC())
 }
 
-func athenaTags(ctx context.Context, clients awsClients, arn string) (map[string]string, error) {
-	arn = strings.TrimSpace(arn)
-	if arn == "" {
-		return nil, nil
+func lakeFormationPermissionEvent(settings settings, record awsLakeFormationPermission) (*primitives.Event, error) {
+	permission := record.Permission
+	resourceID := lakeFormationPermissionResourceID(record)
+	principal := ""
+	if permission.Principal != nil {
+		principal = awssdk.ToString(permission.Principal.DataLakePrincipalIdentifier)
 	}
-	tags := map[string]string{}
-	var next *string
-	for {
-		output, err := clients.athena.ListTagsForResource(ctx, &athena.ListTagsForResourceInput{
-			ResourceARN: awssdk.String(arn),
-			MaxResults:  awssdk.Int32(75),
-			NextToken:   next,
-		})
-		if err != nil {
-			if optionalAWSError(err, "InvalidRequestException", "ResourceNotFoundException") {
-				return nil, nil
-			}
-			return nil, err
-		}
-		for _, tag := range output.Tags {
-			if key := strings.TrimSpace(awssdk.ToString(tag.Key)); key != "" {
-				tags[key] = strings.TrimSpace(awssdk.ToString(tag.Value))
-			}
-		}
-		if awssdk.ToString(output.NextToken) == "" {
-			break
-		}
-		next = output.NextToken
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyLakeFormationPerm, resourceID, principal, "lakeformation_permission", nil)
+	attributes["principal"] = principal
+	attributes["permissions"] = lakeFormationPermissions(permission.Permissions)
+	attributes["grantable_permissions"] = lakeFormationPermissions(permission.PermissionsWithGrantOption)
+	attributes["resource_ref"] = lakeFormationResourceRef(permission.Resource)
+	attributes["last_updated_by"] = awssdk.ToString(permission.LastUpdatedBy)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "permission": permission})
+	if err != nil {
+		return nil, err
 	}
-	return tags, nil
+	return sourceEvent(settings, "aws-lakeformation-permission-"+resourceID, "aws.lakeformation_permission", "aws/lakeformation_permission/v1", payload, attributes, firstTime(permission.LastUpdated))
 }
 
-func glueDatabaseARN(settings settings, databaseName string) string {
-	return awsRegionalARN("glue", settings.region, settings.accountID, "database/"+strings.TrimSpace(databaseName))
-}
-
-func glueTableARN(settings settings, databaseName string, tableName string) string {
-	return awsRegionalARN("glue", settings.region, settings.accountID, "table/"+strings.TrimSpace(databaseName)+"/"+strings.TrimSpace(tableName))
-}
-
-func glueCrawlerARN(settings settings, crawlerName *string) string {
-	return awsRegionalARN("glue", settings.region, settings.accountID, "crawler/"+awssdk.ToString(crawlerName))
-}
-
-func glueJobARN(settings settings, jobName *string) string {
-	return awsRegionalARN("glue", settings.region, settings.accountID, "job/"+awssdk.ToString(jobName))
-}
-
-func athenaWorkGroupARN(settings settings, workgroupName *string) string {
-	return awsRegionalARN("athena", settings.region, settings.accountID, "workgroup/"+awssdk.ToString(workgroupName))
-}
-
-func athenaDataCatalogARN(settings settings, catalogName *string) string {
-	return awsRegionalARN("athena", settings.region, settings.accountID, "datacatalog/"+awssdk.ToString(catalogName))
-}
-
-func awsRegionalARN(service string, region string, accountID string, resource string) string {
-	service = strings.TrimSpace(service)
-	region = strings.TrimSpace(region)
-	accountID = strings.TrimSpace(accountID)
-	resource = strings.Trim(strings.TrimSpace(resource), "/")
-	if service == "" || region == "" || accountID == "" || resource == "" {
-		return ""
-	}
-	return fmt.Sprintf("arn:aws:%s:%s:%s:%s", service, region, accountID, resource)
-}
-
-func decodeGlueTableCursor(raw string) (awsGlueTableCursor, error) {
+func decodeGlueTableCursor(raw string) (glueTablePageCursor, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return awsGlueTableCursor{}, nil
+		return glueTablePageCursor{}, nil
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
-		return awsGlueTableCursor{}, fmt.Errorf("decode glue table cursor: %w", err)
+		return glueTablePageCursor{}, fmt.Errorf("parse aws glue_table cursor: %w", err)
 	}
-	var cursor awsGlueTableCursor
+	var cursor glueTablePageCursor
 	if err := json.Unmarshal(decoded, &cursor); err != nil {
-		return awsGlueTableCursor{}, fmt.Errorf("parse glue table cursor: %w", err)
+		return glueTablePageCursor{}, fmt.Errorf("parse aws glue_table cursor: %w", err)
 	}
 	return cursor, nil
 }
 
-func encodeGlueTableCursor(cursor awsGlueTableCursor) string {
+func encodeGlueTableCursor(cursor glueTablePageCursor) string {
 	payload, err := json.Marshal(cursor)
 	if err != nil {
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func firehoseDestinationTypes(destinations []firehosetypes.DestinationDescription) []string {
+	var values []string
+	for _, destination := range destinations {
+		switch {
+		case destination.ExtendedS3DestinationDescription != nil, destination.S3DestinationDescription != nil:
+			values = append(values, "s3")
+		case destination.RedshiftDestinationDescription != nil:
+			values = append(values, "redshift")
+		case destination.ElasticsearchDestinationDescription != nil, destination.AmazonopensearchserviceDestinationDescription != nil:
+			values = append(values, "opensearch")
+		case destination.AmazonOpenSearchServerlessDestinationDescription != nil:
+			values = append(values, "opensearch_serverless")
+		case destination.HttpEndpointDestinationDescription != nil:
+			values = append(values, "http_endpoint")
+		case destination.IcebergDestinationDescription != nil:
+			values = append(values, "iceberg")
+		case destination.SnowflakeDestinationDescription != nil:
+			values = append(values, "snowflake")
+		case destination.SplunkDestinationDescription != nil:
+			values = append(values, "splunk")
+		}
+	}
+	return cleanStrings(values)
 }
 
 func glueCrawlerTargetCount(targets *gluetypes.CrawlerTargets) int {
@@ -679,23 +1003,101 @@ func athenaResultOutputLocation(config *athenatypes.ResultConfiguration) string 
 	return awssdk.ToString(config.OutputLocation)
 }
 
-func athenaResultEncryption(config *athenatypes.ResultConfiguration) string {
-	if config == nil || config.EncryptionConfiguration == nil {
+func glueDatabaseARN(settings settings, catalogID string, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		return ""
 	}
-	return string(config.EncryptionConfiguration.EncryptionOption)
+	return fmt.Sprintf("arn:aws:glue:%s:%s:database/%s", settings.region, firstNonEmpty(catalogID, settings.accountID), name)
 }
 
-func athenaResultKMSKey(config *athenatypes.ResultConfiguration) string {
-	if config == nil || config.EncryptionConfiguration == nil {
+func glueTableARN(settings settings, catalogID string, databaseName string, tableName string) string {
+	databaseName = strings.TrimSpace(databaseName)
+	tableName = strings.TrimSpace(tableName)
+	if databaseName == "" || tableName == "" {
 		return ""
 	}
-	return awssdk.ToString(config.EncryptionConfiguration.KmsKey)
+	return fmt.Sprintf("arn:aws:glue:%s:%s:table/%s/%s", settings.region, firstNonEmpty(catalogID, settings.accountID), databaseName, tableName)
 }
 
-func int64AttrString(value *int64) string {
-	if value == nil {
+func glueTableResourceID(settings settings, table awsGlueTable) string {
+	return firstNonEmpty(
+		glueTableARN(settings, firstNonEmpty(awssdk.ToString(table.Table.CatalogId), settings.accountID), firstNonEmpty(table.DatabaseName, awssdk.ToString(table.Table.DatabaseName)), awssdk.ToString(table.Table.Name)),
+		firstNonEmpty(table.DatabaseName, awssdk.ToString(table.Table.DatabaseName))+"/"+awssdk.ToString(table.Table.Name),
+	)
+}
+
+func glueCrawlerARN(settings settings, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		return ""
 	}
-	return strconv.FormatInt(*value, 10)
+	return fmt.Sprintf("arn:aws:glue:%s:%s:crawler/%s", settings.region, settings.accountID, name)
+}
+
+func glueJobARN(settings settings, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:glue:%s:%s:job/%s", settings.region, settings.accountID, name)
+}
+
+func athenaWorkgroupARN(settings settings, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:athena:%s:%s:workgroup/%s", settings.region, settings.accountID, name)
+}
+
+func athenaDataCatalogARN(settings settings, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:athena:%s:%s:datacatalog/%s", settings.region, settings.accountID, name)
+}
+
+func lakeFormationLFTagResourceID(record awsLakeFormationLFTag) string {
+	return strings.Join(cleanStrings([]string{
+		awssdk.ToString(record.Tag.CatalogId),
+		awssdk.ToString(record.Tag.TagKey),
+		strings.Join(cleanStrings(record.Tag.TagValues), "|"),
+	}), ":")
+}
+
+func lakeFormationPermissionResourceID(record awsLakeFormationPermission) string {
+	permission := record.Permission
+	principal := ""
+	if permission.Principal != nil {
+		principal = awssdk.ToString(permission.Principal.DataLakePrincipalIdentifier)
+	}
+	return strings.Join(cleanStrings([]string{
+		principal,
+		lakeFormationResourceRef(permission.Resource),
+		lakeFormationPermissions(permission.Permissions),
+	}), ":")
+}
+
+func lakeFormationPermissions(values []lakeformationtypes.Permission) string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if string(value) != "" {
+			result = append(result, string(value))
+		}
+	}
+	sort.Strings(result)
+	return strings.Join(result, ",")
+}
+
+func lakeFormationResourceRef(resource *lakeformationtypes.Resource) string {
+	if resource == nil {
+		return ""
+	}
+	payload, err := json.Marshal(resource)
+	if err != nil {
+		return ""
+	}
+	return string(payload)
 }

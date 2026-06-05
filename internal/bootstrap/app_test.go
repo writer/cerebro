@@ -3656,6 +3656,65 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 	}
 }
 
+func TestGraphPersonAccessPathsEndpoint(t *testing.T) {
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
+		{{Values: map[string]any{
+			"person_urn":            "urn:cerebro:writer:person:vanta:person-1",
+			"person_entity_type":    "person",
+			"person_label":          "designer@example.com",
+			"identity_urn":          "urn:cerebro:writer:identity:email:designer@example.com",
+			"identity_entity_type":  "identity.email",
+			"identity_label":        "designer@example.com",
+			"principal_urn":         "urn:cerebro:writer:okta_user:00u1",
+			"principal_entity_type": "okta.user",
+			"principal_label":       "designer@example.com",
+			"target_urn":            "urn:cerebro:writer:aws_role:DesignerAnalytics",
+			"target_entity_type":    "aws.role",
+			"target_label":          "DesignerAnalytics",
+			"relation_chain":        []any{"assigned_to"},
+		}}},
+	}}
+	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/platform/graph/person-access-paths?tenant_id=writer&person_query=Product%20Designer&limit=5&depth=2")
+	if err != nil {
+		t.Fatalf("GET /platform/graph/person-access-paths error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/graph/person-access-paths status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		TenantID string `json:"tenant_id"`
+		Counts   struct {
+			Paths int `json:"paths"`
+		} `json:"counts"`
+		Paths []struct {
+			Principal struct {
+				URN string `json:"urn"`
+			} `json:"principal"`
+			AccessTarget struct {
+				URN string `json:"urn"`
+			} `json:"access_target"`
+			RelationChain []string `json:"relation_chain"`
+		} `json:"paths"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.TenantID != "writer" || body.Counts.Paths != 1 || len(body.Paths) != 1 {
+		t.Fatalf("body = %#v", body)
+	}
+	if body.Paths[0].Principal.URN != "urn:cerebro:writer:okta_user:00u1" || body.Paths[0].AccessTarget.URN != "urn:cerebro:writer:aws_role:DesignerAnalytics" {
+		t.Fatalf("paths = %#v", body.Paths)
+	}
+	if len(graph.cypherRequests) != 1 || graph.cypherRequests[0].Params["person_query"] != "product designer" {
+		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
+	}
+}
+
 func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
 	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
 		{{Values: map[string]any{
