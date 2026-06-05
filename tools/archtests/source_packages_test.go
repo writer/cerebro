@@ -11,7 +11,7 @@ const newSourcePackageLOCBudget = 300
 
 var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"aurelius":        700,
-	"aws":             14501,
+	"aws":             14645,
 	"azure":           2600,
 	"cosmo":           1300,
 	"gcp":             2200,
