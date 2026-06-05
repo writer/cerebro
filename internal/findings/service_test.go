@@ -4884,7 +4884,7 @@ func TestMergeVulnViewActionableEvidenceUsesActiveGeneratedRow(t *testing.T) {
 		},
 		LastObservedAt: now.Add(time.Minute),
 	}
-	merged, err := service.mergeExistingFindingEvidence(context.Background(), incoming)
+	merged, _, err := service.mergeExistingFindingEvidence(context.Background(), incoming)
 	if err != nil {
 		t.Fatalf("mergeExistingFindingEvidence() error = %v", err)
 	}

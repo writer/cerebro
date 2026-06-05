@@ -118,7 +118,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			evaluationErr := fmt.Errorf("reconcile finding identity for graph rule %q: %w", spec.GetId(), err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
-		stored, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
+		stored, isNewFinding, err := s.upsertFindingWithRiskAndNewness(ctx, record, runtime, startedAt)
 		if err != nil {
 			evaluationErr := fmt.Errorf("persist finding for graph rule %q: %w", spec.GetId(), err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
@@ -141,6 +141,12 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		if err := s.projectFindingAnchor(ctx, stored); err != nil {
 			evaluationErr := fmt.Errorf("project graph rule %q finding %q anchor: %w", spec.GetId(), stored.ID, err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+		}
+		if isNewFinding {
+			if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
+				evaluationErr := fmt.Errorf("project graph rule %q finding %q action recommendations: %w", spec.GetId(), stored.ID, err)
+				return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+			}
 		}
 	}
 	if !result.Truncated {
