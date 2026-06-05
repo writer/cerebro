@@ -16,6 +16,12 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/apprunner"
+	apprunnertypes "github.com/aws/aws-sdk-go-v2/service/apprunner/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -30,12 +36,16 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	eventbridgetypes "github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/pipes"
+	pipestypes "github.com/aws/aws-sdk-go-v2/service/pipes/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
@@ -44,11 +54,17 @@ import (
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/scheduler"
+	schedulertypes "github.com/aws/aws-sdk-go-v2/service/scheduler/types"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	secretsmanagertypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sfn"
+	sfntypes "github.com/aws/aws-sdk-go-v2/service/sfn/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -1870,7 +1886,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}, appRunner: fakeAppRunner{runtime: fake.fakeAWSRuntime}, stepFunctions: fakeStepFunctions{runtime: fake.fakeAWSRuntime}, eventBridge: fakeEventBridge{runtime: fake.fakeAWSRuntime}, pipes: fakePipes{runtime: fake.fakeAWSRuntime}, scheduler: fakeScheduler{runtime: fake.fakeAWSRuntime}, cloudWatch: fakeCloudWatch{runtime: fake.fakeAWSRuntime}, cloudWatchLogs: fakeCloudWatchLogs{runtime: fake.fakeAWSRuntime}, ssm: fakeSSM{runtime: fake.fakeAWSRuntime}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +1902,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}, appRunner: fakeAppRunner{runtime: fake.fakeAWSRuntime}, stepFunctions: fakeStepFunctions{runtime: fake.fakeAWSRuntime}, eventBridge: fakeEventBridge{runtime: fake.fakeAWSRuntime}, pipes: fakePipes{runtime: fake.fakeAWSRuntime}, scheduler: fakeScheduler{runtime: fake.fakeAWSRuntime}, cloudWatch: fakeCloudWatch{runtime: fake.fakeAWSRuntime}, cloudWatchLogs: fakeCloudWatchLogs{runtime: fake.fakeAWSRuntime}, ssm: fakeSSM{runtime: fake.fakeAWSRuntime}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1954,6 +1970,7 @@ type fakeAWS struct {
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 	fakeAWSData
+	fakeAWSRuntime
 }
 
 type fakeAWSNetwork struct {
@@ -1992,6 +2009,36 @@ type fakeAWSData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
+}
+
+type fakeAWSRuntime struct {
+	appRunnerSummaries    []apprunnertypes.ServiceSummary
+	appRunnerServices     map[string]apprunnertypes.Service
+	appRunnerTags         map[string][]apprunnertypes.Tag
+	sfnStateMachines      []sfntypes.StateMachineListItem
+	sfnStateMachineDetails map[string]sfn.DescribeStateMachineOutput
+	sfnActivities         []sfntypes.ActivityListItem
+	sfnTags               map[string][]sfntypes.Tag
+	eventBuses            []eventbridgetypes.EventBus
+	eventRules            map[string][]eventbridgetypes.Rule
+	eventArchives         []eventbridgetypes.Archive
+	eventTags             map[string][]eventbridgetypes.Tag
+	pipes                 []pipestypes.Pipe
+	pipeDetails           map[string]pipes.DescribePipeOutput
+	pipeTags              map[string]map[string]string
+	schedulerSchedules    []schedulertypes.ScheduleSummary
+	schedulerGroups       []schedulertypes.ScheduleGroupSummary
+	schedulerTags         map[string][]schedulertypes.Tag
+	cloudWatchMetricAlarms []cloudwatchtypes.MetricAlarm
+	cloudWatchCompositeAlarms []cloudwatchtypes.CompositeAlarm
+	cloudWatchTags       map[string][]cloudwatchtypes.Tag
+	logGroups             []cloudwatchlogstypes.LogGroup
+	logGroupTags          map[string]map[string]string
+	ssmInstances          []ssmtypes.InstanceInformation
+	ssmDocuments          []ssmtypes.DocumentIdentifier
+	ssmAssociations       []ssmtypes.Association
+	ssmParameters         []ssmtypes.ParameterMetadata
+	ssmTags               map[string][]ssmtypes.Tag
 }
 
 type fakeAWSCompute struct {
@@ -2361,6 +2408,145 @@ func (f fakeECR) DescribeRepositories(context.Context, *ecr.DescribeRepositories
 
 func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForResourceInput, _ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
 	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeAppRunner struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeAppRunner) ListServices(context.Context, *apprunner.ListServicesInput, ...func(*apprunner.Options)) (*apprunner.ListServicesOutput, error) {
+	return &apprunner.ListServicesOutput{ServiceSummaryList: f.runtime.appRunnerSummaries}, nil
+}
+
+func (f fakeAppRunner) DescribeService(_ context.Context, input *apprunner.DescribeServiceInput, _ ...func(*apprunner.Options)) (*apprunner.DescribeServiceOutput, error) {
+	service := f.runtime.appRunnerServices[awssdk.ToString(input.ServiceArn)]
+	return &apprunner.DescribeServiceOutput{Service: &service}, nil
+}
+
+func (f fakeAppRunner) ListTagsForResource(_ context.Context, input *apprunner.ListTagsForResourceInput, _ ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error) {
+	return &apprunner.ListTagsForResourceOutput{Tags: f.runtime.appRunnerTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeStepFunctions struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeStepFunctions) ListStateMachines(context.Context, *sfn.ListStateMachinesInput, ...func(*sfn.Options)) (*sfn.ListStateMachinesOutput, error) {
+	return &sfn.ListStateMachinesOutput{StateMachines: f.runtime.sfnStateMachines}, nil
+}
+
+func (f fakeStepFunctions) DescribeStateMachine(_ context.Context, input *sfn.DescribeStateMachineInput, _ ...func(*sfn.Options)) (*sfn.DescribeStateMachineOutput, error) {
+	detail := f.runtime.sfnStateMachineDetails[awssdk.ToString(input.StateMachineArn)]
+	return &detail, nil
+}
+
+func (f fakeStepFunctions) ListActivities(context.Context, *sfn.ListActivitiesInput, ...func(*sfn.Options)) (*sfn.ListActivitiesOutput, error) {
+	return &sfn.ListActivitiesOutput{Activities: f.runtime.sfnActivities}, nil
+}
+
+func (f fakeStepFunctions) ListTagsForResource(_ context.Context, input *sfn.ListTagsForResourceInput, _ ...func(*sfn.Options)) (*sfn.ListTagsForResourceOutput, error) {
+	return &sfn.ListTagsForResourceOutput{Tags: f.runtime.sfnTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeEventBridge struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeEventBridge) ListEventBuses(context.Context, *eventbridge.ListEventBusesInput, ...func(*eventbridge.Options)) (*eventbridge.ListEventBusesOutput, error) {
+	return &eventbridge.ListEventBusesOutput{EventBuses: f.runtime.eventBuses}, nil
+}
+
+func (f fakeEventBridge) ListRules(_ context.Context, input *eventbridge.ListRulesInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListRulesOutput, error) {
+	return &eventbridge.ListRulesOutput{Rules: f.runtime.eventRules[awssdk.ToString(input.EventBusName)]}, nil
+}
+
+func (f fakeEventBridge) ListArchives(context.Context, *eventbridge.ListArchivesInput, ...func(*eventbridge.Options)) (*eventbridge.ListArchivesOutput, error) {
+	return &eventbridge.ListArchivesOutput{Archives: f.runtime.eventArchives}, nil
+}
+
+func (f fakeEventBridge) ListTagsForResource(_ context.Context, input *eventbridge.ListTagsForResourceInput, _ ...func(*eventbridge.Options)) (*eventbridge.ListTagsForResourceOutput, error) {
+	return &eventbridge.ListTagsForResourceOutput{Tags: f.runtime.eventTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+type fakePipes struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakePipes) ListPipes(context.Context, *pipes.ListPipesInput, ...func(*pipes.Options)) (*pipes.ListPipesOutput, error) {
+	return &pipes.ListPipesOutput{Pipes: f.runtime.pipes}, nil
+}
+
+func (f fakePipes) DescribePipe(_ context.Context, input *pipes.DescribePipeInput, _ ...func(*pipes.Options)) (*pipes.DescribePipeOutput, error) {
+	detail := f.runtime.pipeDetails[awssdk.ToString(input.Name)]
+	return &detail, nil
+}
+
+func (f fakePipes) ListTagsForResource(_ context.Context, input *pipes.ListTagsForResourceInput, _ ...func(*pipes.Options)) (*pipes.ListTagsForResourceOutput, error) {
+	return &pipes.ListTagsForResourceOutput{Tags: f.runtime.pipeTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeScheduler struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeScheduler) ListSchedules(context.Context, *scheduler.ListSchedulesInput, ...func(*scheduler.Options)) (*scheduler.ListSchedulesOutput, error) {
+	return &scheduler.ListSchedulesOutput{Schedules: f.runtime.schedulerSchedules}, nil
+}
+
+func (f fakeScheduler) ListScheduleGroups(context.Context, *scheduler.ListScheduleGroupsInput, ...func(*scheduler.Options)) (*scheduler.ListScheduleGroupsOutput, error) {
+	return &scheduler.ListScheduleGroupsOutput{ScheduleGroups: f.runtime.schedulerGroups}, nil
+}
+
+func (f fakeScheduler) ListTagsForResource(_ context.Context, input *scheduler.ListTagsForResourceInput, _ ...func(*scheduler.Options)) (*scheduler.ListTagsForResourceOutput, error) {
+	return &scheduler.ListTagsForResourceOutput{Tags: f.runtime.schedulerTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeCloudWatch struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeCloudWatch) DescribeAlarms(context.Context, *cloudwatch.DescribeAlarmsInput, ...func(*cloudwatch.Options)) (*cloudwatch.DescribeAlarmsOutput, error) {
+	return &cloudwatch.DescribeAlarmsOutput{MetricAlarms: f.runtime.cloudWatchMetricAlarms, CompositeAlarms: f.runtime.cloudWatchCompositeAlarms}, nil
+}
+
+func (f fakeCloudWatch) ListTagsForResource(_ context.Context, input *cloudwatch.ListTagsForResourceInput, _ ...func(*cloudwatch.Options)) (*cloudwatch.ListTagsForResourceOutput, error) {
+	return &cloudwatch.ListTagsForResourceOutput{Tags: f.runtime.cloudWatchTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+type fakeCloudWatchLogs struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeCloudWatchLogs) DescribeLogGroups(context.Context, *cloudwatchlogs.DescribeLogGroupsInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.DescribeLogGroupsOutput, error) {
+	return &cloudwatchlogs.DescribeLogGroupsOutput{LogGroups: f.runtime.logGroups}, nil
+}
+
+func (f fakeCloudWatchLogs) ListTagsForResource(_ context.Context, input *cloudwatchlogs.ListTagsForResourceInput, _ ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.ListTagsForResourceOutput, error) {
+	return &cloudwatchlogs.ListTagsForResourceOutput{Tags: f.runtime.logGroupTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeSSM struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeSSM) DescribeInstanceInformation(context.Context, *ssm.DescribeInstanceInformationInput, ...func(*ssm.Options)) (*ssm.DescribeInstanceInformationOutput, error) {
+	return &ssm.DescribeInstanceInformationOutput{InstanceInformationList: f.runtime.ssmInstances}, nil
+}
+
+func (f fakeSSM) ListDocuments(context.Context, *ssm.ListDocumentsInput, ...func(*ssm.Options)) (*ssm.ListDocumentsOutput, error) {
+	return &ssm.ListDocumentsOutput{DocumentIdentifiers: f.runtime.ssmDocuments}, nil
+}
+
+func (f fakeSSM) ListAssociations(context.Context, *ssm.ListAssociationsInput, ...func(*ssm.Options)) (*ssm.ListAssociationsOutput, error) {
+	return &ssm.ListAssociationsOutput{Associations: f.runtime.ssmAssociations}, nil
+}
+
+func (f fakeSSM) DescribeParameters(context.Context, *ssm.DescribeParametersInput, ...func(*ssm.Options)) (*ssm.DescribeParametersOutput, error) {
+	return &ssm.DescribeParametersOutput{Parameters: f.runtime.ssmParameters}, nil
+}
+
+func (f fakeSSM) ListTagsForResource(_ context.Context, input *ssm.ListTagsForResourceInput, _ ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error) {
+	return &ssm.ListTagsForResourceOutput{TagList: f.runtime.ssmTags[string(input.ResourceType)+"/"+awssdk.ToString(input.ResourceId)]}, nil
 }
 
 type fakeEKS struct {

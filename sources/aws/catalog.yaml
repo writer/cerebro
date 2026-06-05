@@ -3,8 +3,11 @@ name: AWS
 description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
+  - aws.apprunner_service
   - asset.data_sensitivity
   - aws.cloudtrail
+  - aws.cloudwatch_alarm
+  - aws.cloudwatch_log_group
   - aws.ec2_instance
   - aws.ecr_repository
   - aws.ecs_service
@@ -15,6 +18,10 @@ emitted_kinds:
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
   - aws.effective_permission
+  - aws.eventbridge_archive
+  - aws.eventbridge_event_bus
+  - aws.eventbridge_pipe
+  - aws.eventbridge_rule
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
@@ -26,14 +33,25 @@ emitted_kinds:
   - aws.rds_instance
   - aws.resource_exposure
   - aws.s3_bucket
+  - aws.scheduler_schedule
+  - aws.scheduler_schedule_group
   - aws.secret
   - aws.sns_topic
   - aws.sqs_queue
+  - aws.ssm_association
+  - aws.ssm_document
+  - aws.ssm_managed_instance
+  - aws.ssm_parameter
+  - aws.stepfunctions_activity
+  - aws.stepfunctions_state_machine
   - aws.lambda_function
 runtime_families:
   - access_key
+  - apprunner_service
   - asset_metadata
   - cloudtrail
+  - cloudwatch_alarm
+  - cloudwatch_log_group
   - ec2_instance
   - ecr_repository
   - ecs_service
@@ -44,6 +62,10 @@ runtime_families:
   - eks_fargate_profile
   - eks_pod_identity_association
   - effective_permission
+  - eventbridge_archive
+  - eventbridge_event_bus
+  - eventbridge_pipe
+  - eventbridge_rule
   - iam_group
   - iam_group_membership
   - iam_role
@@ -55,7 +77,15 @@ runtime_families:
   - rds_instance
   - resource_exposure
   - s3_bucket
+  - scheduler_schedule
+  - scheduler_schedule_group
   - secret
   - sns_topic
   - sqs_queue
+  - ssm_association
+  - ssm_document
+  - ssm_managed_instance
+  - ssm_parameter
+  - stepfunctions_activity
+  - stepfunctions_state_machine
   - lambda_function

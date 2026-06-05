@@ -24,10 +24,13 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/apprunner"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -37,20 +40,25 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/scheduler"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/aws-sdk-go-v2/service/sfn"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -67,42 +75,57 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily             = familyCloudTrail
-	defaultRegion             = "us-east-1"
-	defaultPageSize           = 10
-	maxPageSize               = 200
-	cloudTrailCursorVersion   = 1
-	cloudTrailCursorMaxAge    = 55 * time.Minute
-	publicEndpointCursorV2    = 2
-	awsAssumeRoleSessionName  = "cerebro-source-runtime"
-	familyAccessKey           = "access_key"
-	familyAssetMetadata       = "asset_metadata"
-	familyCloudTrail          = "cloudtrail"
-	familyEC2Instance         = "ec2_instance"
-	familyECRRepository       = "ecr_repository"
-	familyECSService          = "ecs_service"
-	familyECSTask             = "ecs_task"
-	familyECSTaskDefinition   = "ecs_task_definition"
-	familyEKSCluster          = "eks_cluster"
-	familyEKSNodegroup        = "eks_nodegroup"
-	familyEKSFargateProfile   = "eks_fargate_profile"
-	familyEKSPodIdentity      = "eks_pod_identity_association"
-	familyEffectivePermission = "effective_permission"
-	familyIAMGroup            = "iam_group"
-	familyIAMMembership       = "iam_group_membership"
-	familyIAMRoleTrust        = "iam_role_trust"
-	familyIAMRoleAssign       = "iam_role_assignment"
-	familyIAMRole             = "iam_role"
-	familyIAMUser             = "iam_user"
-	familyKMSKey              = "kms_key"
-	familyPublicEndpoint      = "public_endpoint"
-	familyRDSInstance         = "rds_instance"
-	familyResourceExposure    = "resource_exposure"
-	familyS3Bucket            = "s3_bucket"
-	familySecret              = "secret"
-	familySNSTopic            = "sns_topic"
-	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
+	defaultFamily                  = familyCloudTrail
+	defaultRegion                  = "us-east-1"
+	defaultPageSize                = 10
+	maxPageSize                    = 200
+	cloudTrailCursorVersion        = 1
+	cloudTrailCursorMaxAge         = 55 * time.Minute
+	publicEndpointCursorV2         = 2
+	awsAssumeRoleSessionName       = "cerebro-source-runtime"
+	familyAccessKey                = "access_key"
+	familyAppRunnerService         = "apprunner_service"
+	familyAssetMetadata            = "asset_metadata"
+	familyCloudTrail               = "cloudtrail"
+	familyCloudWatchAlarm          = "cloudwatch_alarm"
+	familyCloudWatchLogGroup       = "cloudwatch_log_group"
+	familyEC2Instance              = "ec2_instance"
+	familyECRRepository            = "ecr_repository"
+	familyECSService               = "ecs_service"
+	familyECSTask                  = "ecs_task"
+	familyECSTaskDefinition        = "ecs_task_definition"
+	familyEKSCluster               = "eks_cluster"
+	familyEKSNodegroup             = "eks_nodegroup"
+	familyEKSFargateProfile        = "eks_fargate_profile"
+	familyEKSPodIdentity           = "eks_pod_identity_association"
+	familyEffectivePermission      = "effective_permission"
+	familyEventBridgeArchive       = "eventbridge_archive"
+	familyEventBridgeBus           = "eventbridge_event_bus"
+	familyEventBridgePipe          = "eventbridge_pipe"
+	familyEventBridgeRule          = "eventbridge_rule"
+	familyIAMGroup                 = "iam_group"
+	familyIAMMembership            = "iam_group_membership"
+	familyIAMRoleTrust             = "iam_role_trust"
+	familyIAMRoleAssign            = "iam_role_assignment"
+	familyIAMRole                  = "iam_role"
+	familyIAMUser                  = "iam_user"
+	familyKMSKey                   = "kms_key"
+	familyPublicEndpoint           = "public_endpoint"
+	familyRDSInstance              = "rds_instance"
+	familyResourceExposure         = "resource_exposure"
+	familyS3Bucket                 = "s3_bucket"
+	familySecret                   = "secret"
+	familySchedulerSchedule        = "scheduler_schedule"
+	familySchedulerGroup           = "scheduler_schedule_group"
+	familySNSTopic                 = "sns_topic"
+	familySQSQueue                 = "sqs_queue"
+	familySSMAssociation           = "ssm_association"
+	familySSMDocument              = "ssm_document"
+	familySSMManagedInstance       = "ssm_managed_instance"
+	familySSMParameter             = "ssm_parameter"
+	familyStepFunctionActivity     = "stepfunctions_activity"
+	familyStepFunctionStateMachine = "stepfunctions_state_machine"
+	familyLambdaFunction           = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -141,27 +164,35 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg          awssdk.Config
-	iam          awsIAMAPI
-	cloudTrail   awsCloudTrailAPI
-	ec2          awsEC2API
-	route53      awsRoute53API
-	cloudFront   awsCloudFrontAPI
-	elbv2        awsELBV2API
-	ecs          awsECSAPI
-	eks          awsEKSAPI
-	ecr          awsECRAPI
-	apiGateway   awsAPIGatewayAPI
-	apiGatewayV2 awsAPIGatewayV2API
-	lambda       awsLambdaAPI
-	tagging      awsResourceGroupsTaggingAPI
-	s3           awsS3API
-	s3ByRegion   func(string) awsS3API
-	rds          awsRDSAPI
-	kms          awsKMSAPI
-	secrets      awsSecretsManagerAPI
-	sqs          awsSQSAPI
-	sns          awsSNSAPI
+	cfg            awssdk.Config
+	iam            awsIAMAPI
+	cloudTrail     awsCloudTrailAPI
+	ec2            awsEC2API
+	route53        awsRoute53API
+	cloudFront     awsCloudFrontAPI
+	elbv2          awsELBV2API
+	ecs            awsECSAPI
+	eks            awsEKSAPI
+	ecr            awsECRAPI
+	apiGateway     awsAPIGatewayAPI
+	apiGatewayV2   awsAPIGatewayV2API
+	lambda         awsLambdaAPI
+	tagging        awsResourceGroupsTaggingAPI
+	s3             awsS3API
+	s3ByRegion     func(string) awsS3API
+	rds            awsRDSAPI
+	kms            awsKMSAPI
+	secrets        awsSecretsManagerAPI
+	sqs            awsSQSAPI
+	sns            awsSNSAPI
+	appRunner      awsAppRunnerAPI
+	stepFunctions  awsStepFunctionsAPI
+	eventBridge    awsEventBridgeAPI
+	pipes          awsPipesAPI
+	scheduler      awsSchedulerAPI
+	cloudWatch     awsCloudWatchAPI
+	cloudWatchLogs awsCloudWatchLogsAPI
+	ssm            awsSSMAPI
 }
 
 type awsIAMAPI interface {
@@ -287,6 +318,56 @@ type awsSNSAPI interface {
 	ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error)
 	GetTopicAttributes(context.Context, *sns.GetTopicAttributesInput, ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error)
 	ListTagsForResource(context.Context, *sns.ListTagsForResourceInput, ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error)
+}
+
+type awsAppRunnerAPI interface {
+	ListServices(context.Context, *apprunner.ListServicesInput, ...func(*apprunner.Options)) (*apprunner.ListServicesOutput, error)
+	DescribeService(context.Context, *apprunner.DescribeServiceInput, ...func(*apprunner.Options)) (*apprunner.DescribeServiceOutput, error)
+	ListTagsForResource(context.Context, *apprunner.ListTagsForResourceInput, ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error)
+}
+
+type awsStepFunctionsAPI interface {
+	ListStateMachines(context.Context, *sfn.ListStateMachinesInput, ...func(*sfn.Options)) (*sfn.ListStateMachinesOutput, error)
+	DescribeStateMachine(context.Context, *sfn.DescribeStateMachineInput, ...func(*sfn.Options)) (*sfn.DescribeStateMachineOutput, error)
+	ListActivities(context.Context, *sfn.ListActivitiesInput, ...func(*sfn.Options)) (*sfn.ListActivitiesOutput, error)
+	ListTagsForResource(context.Context, *sfn.ListTagsForResourceInput, ...func(*sfn.Options)) (*sfn.ListTagsForResourceOutput, error)
+}
+
+type awsEventBridgeAPI interface {
+	ListEventBuses(context.Context, *eventbridge.ListEventBusesInput, ...func(*eventbridge.Options)) (*eventbridge.ListEventBusesOutput, error)
+	ListRules(context.Context, *eventbridge.ListRulesInput, ...func(*eventbridge.Options)) (*eventbridge.ListRulesOutput, error)
+	ListArchives(context.Context, *eventbridge.ListArchivesInput, ...func(*eventbridge.Options)) (*eventbridge.ListArchivesOutput, error)
+	ListTagsForResource(context.Context, *eventbridge.ListTagsForResourceInput, ...func(*eventbridge.Options)) (*eventbridge.ListTagsForResourceOutput, error)
+}
+
+type awsPipesAPI interface {
+	ListPipes(context.Context, *pipes.ListPipesInput, ...func(*pipes.Options)) (*pipes.ListPipesOutput, error)
+	DescribePipe(context.Context, *pipes.DescribePipeInput, ...func(*pipes.Options)) (*pipes.DescribePipeOutput, error)
+	ListTagsForResource(context.Context, *pipes.ListTagsForResourceInput, ...func(*pipes.Options)) (*pipes.ListTagsForResourceOutput, error)
+}
+
+type awsSchedulerAPI interface {
+	ListSchedules(context.Context, *scheduler.ListSchedulesInput, ...func(*scheduler.Options)) (*scheduler.ListSchedulesOutput, error)
+	ListScheduleGroups(context.Context, *scheduler.ListScheduleGroupsInput, ...func(*scheduler.Options)) (*scheduler.ListScheduleGroupsOutput, error)
+	ListTagsForResource(context.Context, *scheduler.ListTagsForResourceInput, ...func(*scheduler.Options)) (*scheduler.ListTagsForResourceOutput, error)
+}
+
+type awsCloudWatchAPI interface {
+	DescribeAlarms(context.Context, *cloudwatch.DescribeAlarmsInput, ...func(*cloudwatch.Options)) (*cloudwatch.DescribeAlarmsOutput, error)
+	ListTagsForResource(context.Context, *cloudwatch.ListTagsForResourceInput, ...func(*cloudwatch.Options)) (*cloudwatch.ListTagsForResourceOutput, error)
+}
+
+type awsCloudWatchLogsAPI interface {
+	DescribeLogGroups(context.Context, *cloudwatchlogs.DescribeLogGroupsInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.DescribeLogGroupsOutput, error)
+	ListTagsForResource(context.Context, *cloudwatchlogs.ListTagsForResourceInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.ListTagsForResourceOutput, error)
+}
+
+type awsSSMAPI interface {
+	DescribeInstanceInformation(context.Context, *ssm.DescribeInstanceInformationInput, ...func(*ssm.Options)) (*ssm.DescribeInstanceInformationOutput, error)
+	ListDocuments(context.Context, *ssm.ListDocumentsInput, ...func(*ssm.Options)) (*ssm.ListDocumentsOutput, error)
+	ListAssociations(context.Context, *ssm.ListAssociationsInput, ...func(*ssm.Options)) (*ssm.ListAssociationsOutput, error)
+	DescribeParameters(context.Context, *ssm.DescribeParametersInput, ...func(*ssm.Options)) (*ssm.DescribeParametersOutput, error)
+	ListTagsForResource(context.Context, *ssm.ListTagsForResourceInput, ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -605,6 +686,158 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAppRunnerService]{
+			Name:  familyAppRunnerService,
+			Label: "aws app runner services",
+			List:  listAppRunnerServices,
+			Event: appRunnerServiceEvent,
+			URN: func(settings settings, service awsAppRunnerService) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apprunner_service:%s", settings.accountID, firstNonEmpty(service.ARN, service.Name)), nil
+			},
+			CursorFallback: func(service awsAppRunnerService) string { return firstNonEmpty(service.ARN, service.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsStepFunctionStateMachine]{
+			Name:  familyStepFunctionStateMachine,
+			Label: "aws step functions state machines",
+			List:  listStepFunctionStateMachines,
+			Event: stepFunctionStateMachineEvent,
+			URN: func(settings settings, stateMachine awsStepFunctionStateMachine) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_stepfunctions_state_machine:%s", settings.accountID, firstNonEmpty(stateMachine.ARN, stateMachine.Name)), nil
+			},
+			CursorFallback: func(stateMachine awsStepFunctionStateMachine) string {
+				return firstNonEmpty(stateMachine.ARN, stateMachine.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsStepFunctionActivity]{
+			Name:  familyStepFunctionActivity,
+			Label: "aws step functions activities",
+			List:  listStepFunctionActivities,
+			Event: stepFunctionActivityEvent,
+			URN: func(settings settings, activity awsStepFunctionActivity) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_stepfunctions_activity:%s", settings.accountID, firstNonEmpty(activity.ARN, activity.Name)), nil
+			},
+			CursorFallback: func(activity awsStepFunctionActivity) string { return firstNonEmpty(activity.ARN, activity.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEventBridgeBus]{
+			Name:  familyEventBridgeBus,
+			Label: "aws eventbridge event buses",
+			List:  listEventBridgeBuses,
+			Event: eventBridgeBusEvent,
+			URN: func(settings settings, bus awsEventBridgeBus) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eventbridge_event_bus:%s", settings.accountID, firstNonEmpty(bus.ARN, bus.Name)), nil
+			},
+			CursorFallback: func(bus awsEventBridgeBus) string { return firstNonEmpty(bus.ARN, bus.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEventBridgeRule]{
+			Name:  familyEventBridgeRule,
+			Label: "aws eventbridge rules",
+			List:  listEventBridgeRules,
+			Event: eventBridgeRuleEvent,
+			URN: func(settings settings, rule awsEventBridgeRule) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eventbridge_rule:%s", settings.accountID, firstNonEmpty(rule.ARN, rule.Name)), nil
+			},
+			CursorFallback: func(rule awsEventBridgeRule) string { return firstNonEmpty(rule.ARN, rule.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEventBridgeArchive]{
+			Name:  familyEventBridgeArchive,
+			Label: "aws eventbridge archives",
+			List:  listEventBridgeArchives,
+			Event: eventBridgeArchiveEvent,
+			URN: func(settings settings, archive awsEventBridgeArchive) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eventbridge_archive:%s", settings.accountID, firstNonEmpty(archive.ARN, archive.Name)), nil
+			},
+			CursorFallback: func(archive awsEventBridgeArchive) string { return firstNonEmpty(archive.ARN, archive.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEventBridgePipe]{
+			Name:  familyEventBridgePipe,
+			Label: "aws eventbridge pipes",
+			List:  listEventBridgePipes,
+			Event: eventBridgePipeEvent,
+			URN: func(settings settings, pipe awsEventBridgePipe) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eventbridge_pipe:%s", settings.accountID, firstNonEmpty(pipe.ARN, pipe.Name)), nil
+			},
+			CursorFallback: func(pipe awsEventBridgePipe) string { return firstNonEmpty(pipe.ARN, pipe.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSchedulerSchedule]{
+			Name:  familySchedulerSchedule,
+			Label: "aws scheduler schedules",
+			List:  listSchedulerSchedules,
+			Event: schedulerScheduleEvent,
+			URN: func(settings settings, schedule awsSchedulerSchedule) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_scheduler_schedule:%s", settings.accountID, firstNonEmpty(schedule.ARN, schedule.Name)), nil
+			},
+			CursorFallback: func(schedule awsSchedulerSchedule) string { return firstNonEmpty(schedule.ARN, schedule.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSchedulerGroup]{
+			Name:  familySchedulerGroup,
+			Label: "aws scheduler schedule groups",
+			List:  listSchedulerGroups,
+			Event: schedulerGroupEvent,
+			URN: func(settings settings, group awsSchedulerGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_scheduler_schedule_group:%s", settings.accountID, firstNonEmpty(group.ARN, group.Name)), nil
+			},
+			CursorFallback: func(group awsSchedulerGroup) string { return firstNonEmpty(group.ARN, group.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsCloudWatchAlarm]{
+			Name:  familyCloudWatchAlarm,
+			Label: "aws cloudwatch alarms",
+			List:  listCloudWatchAlarms,
+			Event: cloudWatchAlarmEvent,
+			URN: func(settings settings, alarm awsCloudWatchAlarm) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudwatch_alarm:%s", settings.accountID, firstNonEmpty(alarm.ARN, alarm.Name)), nil
+			},
+			CursorFallback: func(alarm awsCloudWatchAlarm) string { return firstNonEmpty(alarm.ARN, alarm.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsCloudWatchLogGroup]{
+			Name:  familyCloudWatchLogGroup,
+			Label: "aws cloudwatch log groups",
+			List:  listCloudWatchLogGroups,
+			Event: cloudWatchLogGroupEvent,
+			URN: func(settings settings, group awsCloudWatchLogGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_cloudwatch_log_group:%s", settings.accountID, firstNonEmpty(group.ARN, group.Name)), nil
+			},
+			CursorFallback: func(group awsCloudWatchLogGroup) string { return firstNonEmpty(group.ARN, group.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMManagedInstance]{
+			Name:  familySSMManagedInstance,
+			Label: "aws ssm managed instances",
+			List:  listSSMManagedInstances,
+			Event: ssmManagedInstanceEvent,
+			URN: func(settings settings, instance awsSSMManagedInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_managed_instance:%s", settings.accountID, firstNonEmpty(instance.ID, instance.Name)), nil
+			},
+			CursorFallback: func(instance awsSSMManagedInstance) string { return firstNonEmpty(instance.ID, instance.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMDocument]{
+			Name:  familySSMDocument,
+			Label: "aws ssm documents",
+			List:  listSSMDocuments,
+			Event: ssmDocumentEvent,
+			URN: func(settings settings, document awsSSMDocument) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_document:%s", settings.accountID, document.Name), nil
+			},
+			CursorFallback: func(document awsSSMDocument) string { return document.Name },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMAssociation]{
+			Name:  familySSMAssociation,
+			Label: "aws ssm associations",
+			List:  listSSMAssociations,
+			Event: ssmAssociationEvent,
+			URN: func(settings settings, association awsSSMAssociation) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_association:%s", settings.accountID, firstNonEmpty(association.ID, association.Name)), nil
+			},
+			CursorFallback: func(association awsSSMAssociation) string { return firstNonEmpty(association.ID, association.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSSMParameter]{
+			Name:  familySSMParameter,
+			Label: "aws ssm parameters",
+			List:  listSSMParameters,
+			Event: ssmParameterEvent,
+			URN: func(settings settings, parameter awsSSMParameter) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ssm_parameter:%s", settings.accountID, firstNonEmpty(parameter.ARN, parameter.Name)), nil
+			},
+			CursorFallback: func(parameter awsSSMParameter) string { return firstNonEmpty(parameter.ARN, parameter.Name) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
 			Name:  familyCloudTrail,
 			Label: "aws cloudtrail events",
@@ -888,11 +1121,19 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:     rds.NewFromConfig(cfg),
-		kms:     kms.NewFromConfig(cfg),
-		secrets: secretsmanager.NewFromConfig(cfg),
-		sqs:     sqs.NewFromConfig(cfg),
-		sns:     sns.NewFromConfig(cfg),
+		rds:            rds.NewFromConfig(cfg),
+		kms:            kms.NewFromConfig(cfg),
+		secrets:        secretsmanager.NewFromConfig(cfg),
+		sqs:            sqs.NewFromConfig(cfg),
+		sns:            sns.NewFromConfig(cfg),
+		appRunner:      apprunner.NewFromConfig(cfg),
+		stepFunctions:  sfn.NewFromConfig(cfg),
+		eventBridge:    eventbridge.NewFromConfig(cfg),
+		pipes:          pipes.NewFromConfig(cfg),
+		scheduler:      scheduler.NewFromConfig(cfg),
+		cloudWatch:     cloudwatch.NewFromConfig(cfg),
+		cloudWatchLogs: cloudwatchlogs.NewFromConfig(cfg),
+		ssm:            ssm.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -949,7 +1190,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAppRunnerService, familyAssetMetadata, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familyStepFunctionActivity, familyStepFunctionStateMachine:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1205,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, apprunner_service, asset_metadata, cloudtrail, cloudwatch_alarm, cloudwatch_log_group, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, eventbridge_archive, eventbridge_event_bus, eventbridge_pipe, eventbridge_rule, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, scheduler_schedule, scheduler_schedule_group, secret, sns_topic, sqs_queue, ssm_association, ssm_document, ssm_managed_instance, ssm_parameter, stepfunctions_activity, or stepfunctions_state_machine")
 	}
 	return settings, nil
 }
