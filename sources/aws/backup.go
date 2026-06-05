@@ -208,7 +208,7 @@ func backupPlanEvent(settings settings, record awsBackupPlan) (*primitives.Event
 func backupProtectedResourceEvent(settings settings, record awsBackupProtectedResource) (*primitives.Event, error) {
 	resourceARN := awssdk.ToString(record.ResourceArn)
 	resourceName := firstNonEmpty(awssdk.ToString(record.ResourceName), awsResourceName(resourceARN), resourceARN)
-	resourceType := normalizeAWSResourceType(awssdk.ToString(record.ResourceType))
+	resourceType := backupSourceResourceType(awssdk.ToString(record.ResourceType))
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyBackupProtected, resourceARN, resourceName, "backup_protected_resource", nil)
 	attributes["protected_resource_arn"] = resourceARN
 	attributes["protected_resource_name"] = resourceName
@@ -251,7 +251,7 @@ func backupRecoveryPointEvent(settings settings, record awsBackupRecoveryPoint) 
 	attributes["source_backup_vault_arn"] = awssdk.ToString(record.SourceBackupVaultArn)
 	attributes["source_resource_arn"] = resourceARN
 	attributes["source_resource_name"] = resourceName
-	attributes["source_resource_type"] = normalizeAWSResourceType(awssdk.ToString(record.ResourceType))
+	attributes["source_resource_type"] = backupSourceResourceType(awssdk.ToString(record.ResourceType))
 	attributes["state"] = string(record.Status)
 	attributes["vault_type"] = string(record.VaultType)
 	addTimeAttribute(attributes, "completed_at", record.CompletionDate)
@@ -388,6 +388,16 @@ func backupRecoveryPointPlanID(record awsBackupRecoveryPoint) string {
 		return ""
 	}
 	return awssdk.ToString(record.CreatedBy.BackupPlanId)
+}
+
+func backupSourceResourceType(resourceType string) string {
+	normalized := normalizeAWSResourceType(resourceType)
+	switch normalized {
+	case "rds":
+		return "rds_instance"
+	default:
+		return normalized
+	}
 }
 
 func backupRecoveryPointRuleID(record awsBackupRecoveryPoint) string {

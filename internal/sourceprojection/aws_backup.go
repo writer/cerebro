@@ -173,5 +173,15 @@ func awsBackupSourceResourceURN(tenantID string, attributes map[string]string) s
 	if sourceARN == "" {
 		return ""
 	}
-	return projectionURN(tenantID, "aws_"+normalizeCloudType(firstNonEmpty(attributes["source_resource_type"], "resource")), sourceARN)
+	return projectionURN(tenantID, "aws_"+awsBackupProjectedResourceFamily(firstNonEmpty(attributes["source_resource_type"], attributes["protected_resource_type"])), sourceARN)
+}
+
+func awsBackupProjectedResourceFamily(resourceType string) string {
+	normalized := normalizeCloudType(resourceType)
+	switch normalized {
+	case "rds":
+		return "rds_instance"
+	default:
+		return normalized
+	}
 }
