@@ -408,6 +408,24 @@ func assertOktaMFAAttributes(t *testing.T, attributes map[string]string, wantEnr
 	}
 }
 
+func TestReadOktaUserEmitsEmploymentAttributes(t *testing.T) {
+	server := httptest.NewServer(newOktaAPIHandler(t))
+	defer server.Close()
+
+	event := readSingleOktaUserEvent(t, server.URL)
+	for key, want := range map[string]string{
+		"department":   "Security",
+		"job_title":    "Engineer",
+		"title":        "Engineer",
+		"organization": "Writer",
+		"user_type":    "employee",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	server := httptest.NewServer(newOktaAPIHandler(t))
 	defer server.Close()

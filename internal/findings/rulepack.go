@@ -46,6 +46,7 @@ func builtinRulePacks() []RulePack {
 			Rules: append([]Rule{
 				newOktaPolicyRuleLifecycleTamperingRule(),
 				newDeprovisionedOktaActiveGitHubRule(),
+				newDeprovisionedOktaActiveCloudAccessRule(),
 				newGitHubActiveWithoutOktaLinkRule(),
 				newOktaOAuthPublicClientReviewRule(),
 				newOktaAuthenticatorWeakFactorRule(),
@@ -85,6 +86,7 @@ func builtinRulePacks() []RulePack {
 			Description: "SentinelOne endpoint posture, response, and protection-control findings.",
 			Rules: []Rule{
 				newSentinelOneEndpointActiveInfectionRule(),
+				newSentinelOneInfectedPrivilegedOwnerRule(),
 				newSentinelOneMitigationFailedRule(),
 				newSentinelOneAgentStaleRule(),
 				newSentinelOneAgentNotUpToDateRule(),

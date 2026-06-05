@@ -150,6 +150,13 @@ func (r *deprovisionedOktaActiveGitHubRule) RuleMetadata() RuleDefinition {
 	return cloneRuleDefinition(r.definition)
 }
 
+func (r *deprovisionedOktaActiveCloudAccessRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
 func (r *githubActiveWithoutOktaLinkRule) RuleMetadata() RuleDefinition {
 	if r == nil {
 		return RuleDefinition{}
@@ -193,6 +200,13 @@ func (r *grcFailingControlOpenOperationalFindingsRule) RuleMetadata() RuleDefini
 }
 
 func (r *sentinelOneEndpointActiveInfectionGraphRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *sentinelOneInfectedPrivilegedOwnerRule) RuleMetadata() RuleDefinition {
 	if r == nil {
 		return RuleDefinition{}
 	}

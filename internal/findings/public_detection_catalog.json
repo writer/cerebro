@@ -11,6 +11,7 @@
       "evaluation_mode": "graph",
       "event_kinds": [
         "asset.data_sensitivity",
+        "aws.acm_certificate",
         "aws.asset_metadata",
         "aws.ec2_instance",
         "aws.ecs_service",
@@ -23,6 +24,8 @@
         "aws.lambda_function",
         "aws.public_endpoint",
         "aws.resource_exposure",
+        "aws.route53_resolver_endpoint",
+        "aws.route53_resolver_rule",
         "azure.aks_cluster",
         "azure.app_service",
         "azure.asset_metadata",
@@ -279,6 +282,7 @@
       "evaluation_mode": "graph",
       "event_kinds": [
         "asset.data_sensitivity",
+        "aws.acm_certificate",
         "aws.asset_metadata",
         "aws.ec2_instance",
         "aws.ecs_service",
@@ -294,6 +298,8 @@
         "aws.lambda_function",
         "aws.public_endpoint",
         "aws.resource_exposure",
+        "aws.route53_resolver_endpoint",
+        "aws.route53_resolver_rule",
         "azure.aks_cluster",
         "azure.app_role_assignment",
         "azure.app_service",
@@ -377,6 +383,7 @@
       "evaluation_mode": "event",
       "event_kinds": [
         "asset.data_sensitivity",
+        "aws.acm_certificate",
         "aws.asset_metadata",
         "aws.ec2_instance",
         "aws.ecs_service",
@@ -389,6 +396,8 @@
         "aws.lambda_function",
         "aws.public_endpoint",
         "aws.resource_exposure",
+        "aws.route53_resolver_endpoint",
+        "aws.route53_resolver_rule",
         "azure.aks_cluster",
         "azure.app_service",
         "azure.asset_metadata",
@@ -2752,6 +2761,72 @@
       ]
     },
     {
+      "id": "identity-okta-deprovisioned-active-cloud-access",
+      "pack_id": "identity",
+      "pack_name": "Identity",
+      "name": "Deprovisioned Okta Identity Still Has Cloud Access",
+      "description": "Detect Okta identities marked deprovisioned, suspended, or inactive whose email-backed cloud/SaaS principal still has recent activity or privileged access.",
+      "source_id": "okta",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "aws.cloudtrail",
+        "aws.effective_permission",
+        "aws.iam_role_assignment",
+        "azure.activity_log",
+        "azure.directory_role_assignment",
+        "azure.effective_permission",
+        "azure.iam_role_assignment",
+        "gcp.audit",
+        "gcp.effective_permission",
+        "gcp.iam_role_assignment",
+        "google_workspace.audit",
+        "google_workspace.role_assignment",
+        "okta.user"
+      ],
+      "output_kind": "finding.identity_okta_deprovisioned_active_cloud_access",
+      "severity": "CRITICAL",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1078",
+        "cloud",
+        "graph-rule",
+        "identity",
+        "offboarding"
+      ],
+      "references": [
+        "https://attack.mitre.org/techniques/T1078/",
+        "https://help.okta.com/en-us/content/topics/users-groups-profiles/usgp-user-lifecycle.htm"
+      ],
+      "false_positives": [
+        "Break-glass account intentionally retained during offboarding with a documented, time-bound exception.",
+        "Identity-provider or cloud-inventory sync lag immediately after a lifecycle transition."
+      ],
+      "runbook": "Confirm the Okta identity is offboarded, revoke the linked cloud/SaaS principal or its privileged grants, rotate credentials created by the account, and document any approved exception.",
+      "fingerprint_fields": [
+        "okta_user_urn",
+        "principal_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.16"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        }
+      ]
+    },
+    {
       "id": "identity-okta-deprovisioned-active-in-github",
       "pack_id": "identity",
       "pack_name": "Identity",
@@ -3344,6 +3419,72 @@
         "Approved security testing, decommissioned endpoint, documented exception, or SentinelOne false positive reviewed by security."
       ],
       "runbook": "Review SentinelOne endpoint state, linked threat/activity evidence, policy scope, and documented exceptions before remediation or closure."
+    },
+    {
+      "id": "sentinelone-infected-endpoint-privileged-owner",
+      "pack_id": "sentinelone",
+      "pack_name": "SentinelOne",
+      "name": "Infected SentinelOne Endpoint Owned By Privileged Identity",
+      "description": "Detect active SentinelOne endpoint infection evidence where the endpoint owner resolves to a privileged identity in a connected control plane.",
+      "source_id": "sentinelone",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "aws.effective_permission",
+        "aws.iam_role_assignment",
+        "azure.directory_role_assignment",
+        "azure.effective_permission",
+        "azure.iam_role_assignment",
+        "gcp.effective_permission",
+        "gcp.iam_role_assignment",
+        "github.audit",
+        "google_workspace.role_assignment",
+        "okta.admin_role",
+        "sentinelone.agent",
+        "sentinelone.threat"
+      ],
+      "output_kind": "finding.sentinelone_infected_endpoint_privileged_owner",
+      "severity": "CRITICAL",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1078",
+        "endpoint",
+        "graph-rule",
+        "identity",
+        "privilege",
+        "sentinelone"
+      ],
+      "references": [
+        "https://attack.mitre.org/techniques/T1078/",
+        "https://attack.mitre.org/techniques/T1566/"
+      ],
+      "false_positives": [
+        "Endpoint owner metadata is stale and no longer represents the current assignee.",
+        "Privileged role is break-glass only and disabled by compensating controls with documented exception."
+      ],
+      "runbook": "Prioritize containment of the infected endpoint, validate the owner identity's privileged grants, revoke or constrain active sessions, and rotate credentials used from the host.",
+      "fingerprint_fields": [
+        "agent_urn",
+        "principal_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.16"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.7"
+        }
+      ]
     },
     {
       "id": "sentinelone-malicious-or-fileless-threat",
