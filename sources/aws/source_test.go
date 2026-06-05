@@ -904,7 +904,7 @@ func TestReadAWSNetworkEdgeInventoryEvents(t *testing.T) {
 				apiV2Integrations: map[string][]apigatewayv2types.Integration{apiV2ID: {{
 					IntegrationId:   awssdk.String("integ-123"),
 					IntegrationType: apigatewayv2types.IntegrationTypeHttpProxy,
-					IntegrationUri:  awssdk.String("https://events.internal"),
+					IntegrationUri:  awssdk.String("https://events.example.com"),
 				}}},
 			},
 		},
@@ -925,7 +925,7 @@ func TestReadAWSNetworkEdgeInventoryEvents(t *testing.T) {
 		{family: familyELBV2TargetGroup, kind: "aws.elbv2_target_group", attr: "target_type", want: "ip"},
 		{family: familyAPIGatewayStage, kind: "aws.apigateway_stage", attr: "stage_name", want: "$default"},
 		{family: familyAPIGatewayRoute, kind: "aws.apigateway_route", attr: "route_key", want: "GET /events"},
-		{family: familyAPIGatewayInteg, kind: "aws.apigateway_integration", attr: "integration_uri", want: "https://events.internal"},
+		{family: familyAPIGatewayInteg, kind: "aws.apigateway_integration", attr: "integration_uri", want: "https://events.example.com"},
 		{family: familyCloudFrontOAC, kind: "aws.cloudfront_origin_access_control", attr: "signing_behavior", want: "always"},
 		{family: familyCloudFrontKeyGroup, kind: "aws.cloudfront_key_group", attr: "public_key_ids", want: "pk-123"},
 		{family: familyCloudFrontPublicKey, kind: "aws.cloudfront_public_key", attr: "public_key_id", want: "pk-123"},
