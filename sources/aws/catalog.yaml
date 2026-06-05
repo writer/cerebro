@@ -196,6 +196,7 @@ runtime_families:
   - opensearch_domain
   - opensearch_serverless_collection
   - opensearch_serverless_security_policy
+  - organizations_root
   - public_endpoint
   - rds_instance
   - resource_exposure

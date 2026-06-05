@@ -215,6 +215,7 @@ const (
 	familySSMParameter                       = "ssm_parameter"
 	familyStepFunctionActivity               = "stepfunctions_activity"
 	familyStepFunctionStateMachine           = "stepfunctions_state_machine"
+	familyOrganizationsRoot                  = "organizations_root"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -682,7 +683,9 @@ type awsOrganizationsAPI interface {
 	ListAccounts(context.Context, *organizations.ListAccountsInput, ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error)
 	ListRoots(context.Context, *organizations.ListRootsInput, ...func(*organizations.Options)) (*organizations.ListRootsOutput, error)
 	ListOrganizationalUnitsForParent(context.Context, *organizations.ListOrganizationalUnitsForParentInput, ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error)
+	ListParents(context.Context, *organizations.ListParentsInput, ...func(*organizations.Options)) (*organizations.ListParentsOutput, error)
 	ListPolicies(context.Context, *organizations.ListPoliciesInput, ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error)
+	DescribePolicy(context.Context, *organizations.DescribePolicyInput, ...func(*organizations.Options)) (*organizations.DescribePolicyOutput, error)
 	ListTargetsForPolicy(context.Context, *organizations.ListTargetsForPolicyInput, ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error)
 }
 
@@ -1631,6 +1634,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(policy awsOrganizationsPolicy) string { return policy.ID },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsOrganizationsRoot]{
+			Name:  familyOrganizationsRoot,
+			Label: "aws organizations roots",
+			List:  listOrganizationsRoots,
+			Event: organizationsRootEvent,
+			URN: func(settings settings, root awsOrganizationsRoot) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_organizations_root:%s", settings.accountID, root.ID), nil
+			},
+			CursorFallback: func(root awsOrganizationsRoot) string { return root.ID },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsSSOInstance]{
 			Name:  familySSOInstance,
 			Label: "aws sso instances",
@@ -2283,7 +2296,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyFSxFileSystem, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyFSxFileSystem, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
