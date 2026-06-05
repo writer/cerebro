@@ -129,7 +129,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.iam_role_trust":                        awsIAMRoleTrustProjections,
 	"aws.iam_user":                              awsIAMUserProjections,
 	"aws.inspector2_finding":                    awsCloudResourceProjections,
-	"aws.fsx_file_system":                       awsCloudResourceProjections,
+	"aws.fsx_file_system":                       awsDataResourceProjections,
 	"aws.kinesis_stream":                        awsCloudResourceProjections,
 	"aws.identitystore_group":                   awsIAMGroupProjections,
 	"aws.identitystore_group_membership":        awsIAMGroupMembershipProjections,
