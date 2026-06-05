@@ -97,6 +97,45 @@ func TestProjectAWSAppRunnerServiceLinksAccountExposureOwnerAndRuntimeRole(t *te
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
 }
 
+func TestProjectAWSStreamingCloudResourceMetadata(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:kinesis:us-east-1:123456789012:stream/orders"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-kinesis-orders",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.kinesis_stream",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"encryption":        "KMS",
+			"internet_exposed":  "true",
+			"kms_key_id":        "arn:aws:kms:us-east-1:123456789012:key/key-123",
+			"owner":             "streaming@writer.com",
+			"public":            "true",
+			"region":            "us-east-1",
+			"resource_id":       resourceARN,
+			"resource_name":     "orders",
+			"resource_provider": "aws",
+			"resource_type":     "kinesis_stream",
+			"retention_hours":   "168",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_kinesis_stream:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.kinesis.stream" {
+		t.Fatalf("kinesis stream entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationOwnedBy, "urn:cerebro:writer:owner:streaming@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:owner:streaming@writer.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:streaming@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+}
+
 func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
