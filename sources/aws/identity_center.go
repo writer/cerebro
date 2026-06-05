@@ -34,10 +34,10 @@ type legacyIdentityStoreGroupMembership struct {
 }
 
 func listIdentityCenterInstances(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]ssoadmintypes.InstanceMetadata, string, error) {
-	if settings.identityCenter.instanceARN != "" && settings.identityStoreID != "" {
+	if settings.identityCenter.instanceARN != "" && settings.identityCenter.storeID != "" {
 		return []ssoadmintypes.InstanceMetadata{{
 			InstanceArn:     awssdk.String(settings.identityCenter.instanceARN),
-			IdentityStoreId: stringPtr(settings.identityStoreID),
+			IdentityStoreId: stringPtr(settings.identityCenter.storeID),
 			OwnerAccountId:  awssdk.String(settings.accountID),
 		}}, "", nil
 	}
@@ -306,8 +306,8 @@ func listAllIdentityCenterProvisionedAccounts(ctx context.Context, clients awsCl
 }
 
 func identityStoreID(ctx context.Context, clients awsClients, settings settings) (string, error) {
-	if settings.identityStoreID != "" {
-		return settings.identityStoreID, nil
+	if settings.identityCenter.storeID != "" {
+		return settings.identityCenter.storeID, nil
 	}
 	instances, _, err := listIdentityCenterInstances(ctx, clients, settings, "", 1)
 	if err != nil {
@@ -550,7 +550,7 @@ func legacyIdentityStoreGroupMembershipEvent(settings settings, record legacyIde
 		"family":            familyIdentityStoreLegacyMember,
 		"group_id":          groupID,
 		"group_name":        awssdk.ToString(group.DisplayName),
-		"identity_store_id": firstNonEmpty(awssdk.ToString(membership.IdentityStoreId), awssdk.ToString(group.IdentityStoreId), settings.identityStoreID),
+		"identity_store_id": firstNonEmpty(awssdk.ToString(membership.IdentityStoreId), awssdk.ToString(group.IdentityStoreId), settings.identityCenter.storeID),
 		"member_id":         memberUserID,
 		"member_type":       "user",
 		"member_user_id":    memberUserID,
