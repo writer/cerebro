@@ -29,6 +29,13 @@ emitted_kinds:
   - aws.cloudwatch_alarm
   - aws.cloudwatch_log_group
   - aws.ec2_instance
+  - aws.vpc
+  - aws.subnet
+  - aws.security_group
+  - aws.route_table
+  - aws.internet_gateway
+  - aws.nat_gateway
+  - aws.vpc_endpoint
   - aws.ecr_repository
   - aws.ecs_service
   - aws.ecs_task
@@ -154,6 +161,13 @@ runtime_families:
   - cloudwatch_alarm
   - cloudwatch_log_group
   - ec2_instance
+  - vpc
+  - subnet
+  - security_group
+  - route_table
+  - internet_gateway
+  - nat_gateway
+  - vpc_endpoint
   - ecr_repository
   - ecs_service
   - ecs_task

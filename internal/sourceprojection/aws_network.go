@@ -11,6 +11,105 @@ func awsGlobalAcceleratorAcceleratorProjections(event *cerebrov1.EventEnvelope) 
 	return awsCloudResourceProjections(event)
 }
 
+func awsVPCProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsCloudResourceProjections(event)
+}
+
+func awsSubnetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateVPCOnlyProjections(event)
+}
+
+func awsSecurityGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateVPCOnlyProjections(event)
+}
+
+func awsRouteTableProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateProjections(event, func(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, resourceURN string, event *cerebrov1.EventEnvelope, attributes map[string]string) {
+		sourceID := event.GetSourceId()
+		accountID := strings.TrimSpace(attributes["domain"])
+		for _, subnetID := range splitCloudAttributeList(attributes["subnet_ids"]) {
+			subnetURN := addAWSNetworkNode(entities, tenantID, sourceID, "aws_subnet", "aws.subnet", subnetID, accountID)
+			addLink(links, projectedLink(tenantID, sourceID, resourceURN, subnetURN, relationAssociatedWith, map[string]string{"event_id": event.GetId(), "match_type": "aws_route_table_subnet"}))
+		}
+		for _, gatewayID := range splitCloudAttributeList(attributes["internet_gateway_ids"]) {
+			gatewayURN := addAWSNetworkNode(entities, tenantID, sourceID, "aws_internet_gateway", "aws.internet.gateway", gatewayID, accountID)
+			addLink(links, projectedLink(tenantID, sourceID, resourceURN, gatewayURN, relationDependsOn, map[string]string{"event_id": event.GetId(), "match_type": "aws_route_table_internet_gateway"}))
+		}
+		for _, gatewayID := range splitCloudAttributeList(attributes["nat_gateway_ids"]) {
+			gatewayURN := addAWSNetworkNode(entities, tenantID, sourceID, "aws_nat_gateway", "aws.nat.gateway", gatewayID, accountID)
+			addLink(links, projectedLink(tenantID, sourceID, resourceURN, gatewayURN, relationDependsOn, map[string]string{"event_id": event.GetId(), "match_type": "aws_route_table_nat_gateway"}))
+		}
+		for _, endpointID := range splitCloudAttributeList(attributes["vpc_endpoint_ids"]) {
+			endpointURN := addAWSNetworkNode(entities, tenantID, sourceID, "aws_vpc_endpoint", "aws.vpc.endpoint", endpointID, accountID)
+			addLink(links, projectedLink(tenantID, sourceID, resourceURN, endpointURN, relationDependsOn, map[string]string{"event_id": event.GetId(), "match_type": "aws_route_table_vpc_endpoint"}))
+		}
+	})
+}
+
+func awsInternetGatewayProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateProjections(event, nil)
+}
+
+func awsNATGatewayProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateProjections(event, nil)
+}
+
+func awsVPCEndpointProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateProjections(event, func(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, resourceURN string, event *cerebrov1.EventEnvelope, attributes map[string]string) {
+		sourceID := event.GetSourceId()
+		accountID := strings.TrimSpace(attributes["domain"])
+		for _, routeTableID := range splitCloudAttributeList(attributes["route_table_ids"]) {
+			tableURN := addAWSNetworkNode(entities, tenantID, sourceID, "aws_route_table", "aws.route.table", routeTableID, accountID)
+			addLink(links, projectedLink(tenantID, sourceID, resourceURN, tableURN, relationAssociatedWith, map[string]string{"event_id": event.GetId(), "match_type": "aws_vpc_endpoint_route_table"}))
+		}
+	})
+}
+
+func awsNetworkSubstrateProjections(event *cerebrov1.EventEnvelope, extra func(map[string]*ports.ProjectedEntity, map[string]*ports.ProjectedLink, string, string, *cerebrov1.EventEnvelope, map[string]string)) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	entities, links, err := awsCloudResourceProjections(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	entityMap := projectedEntitiesMap(entities)
+	linkMap := projectedLinksMap(links)
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	resourceType := cloudResourceProjectionType(event, "aws", attributes)
+	resourceURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenantID, "aws_"+resourceType, cloudResourceProjectionID(attributes)))
+	if resourceURN == "" {
+		return identityProjectionResult(entityMap, linkMap)
+	}
+	addAWSNetworkContextLinks(entityMap, linkMap, tenantID, event.GetSourceId(), event, resourceURN, attributes)
+	if extra != nil {
+		extra(entityMap, linkMap, tenantID, resourceURN, event, attributes)
+	}
+	return identityProjectionResult(entityMap, linkMap)
+}
+
+func awsNetworkSubstrateVPCOnlyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	entities, links, err := awsCloudResourceProjections(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	entityMap := projectedEntitiesMap(entities)
+	linkMap := projectedLinksMap(links)
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	resourceType := cloudResourceProjectionType(event, "aws", attributes)
+	resourceURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenantID, "aws_"+resourceType, cloudResourceProjectionID(attributes)))
+	vpcURN := addAWSNetworkNode(entityMap, tenantID, event.GetSourceId(), "aws_vpc", "aws.vpc", firstNonEmpty(attributes["vpc_id"], attributes["vpc"]), attributes["domain"])
+	if resourceURN != "" && vpcURN != "" && resourceURN != vpcURN {
+		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), resourceURN, vpcURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "aws_network_substrate_vpc"}))
+	}
+	return identityProjectionResult(entityMap, linkMap)
+}
+
 func awsGlobalAcceleratorListenerProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	entities, links, err := awsCloudResourceProjections(event)
 	if err != nil {

@@ -142,3 +142,91 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 	assertProjectedLink(t, state, targetGroupURNProjected, relationBelongsTo, serviceURNProjected)
 	assertProjectedLink(t, state, targetGroupURNProjected, relationBelongsTo, "urn:cerebro:writer:aws_vpc:vpc-1")
 }
+
+func TestProjectAWSNetworkSubstrateRelationships(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, event := range []*cerebrov1.EventEnvelope{
+		{
+			Id:       "subnet-1",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.subnet",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"resource_id":       "subnet-123",
+				"resource_provider": "aws",
+				"resource_type":     "subnet",
+				"subnet_id":         "subnet-123",
+				"vpc_id":            "vpc-123",
+			},
+		},
+		{
+			Id:       "sg-1",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.security_group",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"resource_id":       "sg-123",
+				"resource_provider": "aws",
+				"resource_type":     "security_group",
+				"security_group_id": "sg-123",
+				"vpc_id":            "vpc-123",
+			},
+		},
+		{
+			Id:       "route-1",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.route_table",
+			Attributes: map[string]string{
+				"domain":               "123456789012",
+				"internet_gateway_ids": "igw-123",
+				"nat_gateway_ids":      "nat-123",
+				"resource_id":          "rtb-123",
+				"resource_provider":    "aws",
+				"resource_type":        "route_table",
+				"subnet_ids":           "subnet-123",
+				"vpc_id":               "vpc-123",
+			},
+		},
+		{
+			Id:       "endpoint-1",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.vpc_endpoint",
+			Attributes: map[string]string{
+				"domain":             "123456789012",
+				"resource_id":        "vpce-123",
+				"resource_provider":  "aws",
+				"resource_type":      "vpc_endpoint",
+				"route_table_ids":    "rtb-123",
+				"security_group_ids": "sg-123",
+				"subnet_ids":         "subnet-123",
+				"vpc_id":             "vpc-123",
+			},
+		},
+	} {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.Kind, err)
+		}
+	}
+
+	subnetURN := "urn:cerebro:writer:aws_subnet:subnet-123"
+	securityGroupURN := "urn:cerebro:writer:aws_security_group:sg-123"
+	routeTableURN := "urn:cerebro:writer:aws_route_table:rtb-123"
+	vpcEndpointURN := "urn:cerebro:writer:aws_vpc_endpoint:vpce-123"
+	vpcURN := "urn:cerebro:writer:aws_vpc:vpc-123"
+	assertProjectedLink(t, state, subnetURN, relationBelongsTo, vpcURN)
+	assertProjectedLink(t, state, securityGroupURN, relationBelongsTo, vpcURN)
+	assertProjectedLink(t, state, routeTableURN, relationBelongsTo, vpcURN)
+	assertProjectedLink(t, state, routeTableURN, relationAssociatedWith, subnetURN)
+	assertProjectedLink(t, state, routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_internet_gateway:igw-123")
+	assertProjectedLink(t, state, routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_nat_gateway:nat-123")
+	assertProjectedLink(t, state, vpcEndpointURN, relationBelongsTo, vpcURN)
+	assertProjectedLink(t, state, vpcEndpointURN, relationBelongsTo, subnetURN)
+	assertProjectedLink(t, state, vpcEndpointURN, relationMemberOf, securityGroupURN)
+	assertProjectedLink(t, state, vpcEndpointURN, relationAssociatedWith, routeTableURN)
+}
