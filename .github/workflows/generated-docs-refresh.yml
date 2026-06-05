@@ -30,6 +30,12 @@ jobs:
           TARGET_BRANCH: ${{ inputs.branch }}
           BASE_BRANCH: ${{ inputs.base_branch }}
         run: |
+          case "${TARGET_BRANCH}" in
+            main|master)
+              echo "Refusing to push generated-doc refresh directly to protected branch ${TARGET_BRANCH}" >&2
+              exit 1
+              ;;
+          esac
           if [ "${TARGET_BRANCH}" = "${BASE_BRANCH}" ]; then
             echo "Refusing to push generated-doc refresh directly to ${BASE_BRANCH}" >&2
             exit 1

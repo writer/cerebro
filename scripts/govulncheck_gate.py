@@ -173,10 +173,14 @@ def is_reachable_finding(finding: dict[str, Any]) -> bool:
     return isinstance(top_frame, dict) and isinstance(top_frame.get("function"), str) and top_frame["function"] != ""
 
 
+def is_blocking_severity(severity: str, min_severity: str) -> bool:
+    return severity == "UNKNOWN" or SEVERITY_RANK.get(severity, 0) >= SEVERITY_RANK[min_severity]
+
+
 def run_govulncheck(patterns: list[str]) -> tuple[int, str, str]:
     env = os.environ.copy()
     env["GOFLAGS"] = ""
-    env["GOTOOLCHAIN"] = env.get("GOTOOLCHAIN", "go1.26.3")
+    env["GOTOOLCHAIN"] = env.get("GOTOOLCHAIN", "go1.26.4")
     command = ["go", "run", DEFAULT_TOOL, "-format", "json", *patterns]
     completed = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, check=False)
     return completed.returncode, completed.stdout, completed.stderr
@@ -217,7 +221,6 @@ def main() -> int:
         if isinstance(finding, dict):
             findings.append(finding)
 
-    threshold = SEVERITY_RANK[args.min_severity]
     blocking: list[tuple[str, str, str]] = []
     suppressed: list[str] = []
     for finding in findings:
@@ -230,12 +233,12 @@ def main() -> int:
             suppressed.append(osv_id)
             continue
         severity = severity_from_osv(osvs.get(osv_id, {}))
-        if SEVERITY_RANK.get(severity, 0) >= threshold:
+        if is_blocking_severity(severity, args.min_severity):
             summary = osvs.get(osv_id, {}).get("summary") or "reachable vulnerability"
             blocking.append((osv_id, severity, str(summary)))
 
     if blocking:
-        print(f"govulncheck found {len(blocking)} unsuppressed {args.min_severity}+ reachable vulnerabilities:", file=sys.stderr)
+        print(f"govulncheck found {len(blocking)} unsuppressed blocking reachable vulnerabilities:", file=sys.stderr)
         for osv_id, severity, summary in blocking:
             print(f"- {osv_id} [{severity}]: {summary}", file=sys.stderr)
         print(f"Add accepted risks to {args.ignore_file} with a justification comment.", file=sys.stderr)

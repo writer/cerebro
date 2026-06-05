@@ -23,6 +23,16 @@ class GovulncheckGateTests(unittest.TestCase):
         }
         self.assertEqual(gate.severity_from_osv(osv), "CRITICAL")
 
+    def test_unknown_and_unparsed_vector_severities_block(self):
+        self.assertEqual(
+            gate.severity_from_osv({"severity": [{"type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H"}]}),
+            "UNKNOWN",
+        )
+        self.assertTrue(gate.is_blocking_severity("UNKNOWN", "HIGH"))
+
+    def test_low_severity_does_not_block_high_threshold(self):
+        self.assertFalse(gate.is_blocking_severity("LOW", "HIGH"))
+
     def test_ignore_file_requires_justification(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / ".govulncheck-ignore"
