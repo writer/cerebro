@@ -658,6 +658,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSData: fakeAWSData{
+			fakeAWSCoreData: fakeAWSCoreData{
 			s3Buckets: []s3types.Bucket{{
 				Name:         awssdk.String("prod-data"),
 				CreationDate: timePtr("2026-04-23T00:00:00Z"),
@@ -740,6 +741,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
 			}},
 			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
 		},
 	})
 	for _, tt := range []struct {
@@ -779,6 +781,7 @@ func TestReadAWSDynamoDBInventoryEvents(t *testing.T) {
 	streamARN := "arn:aws:dynamodb:us-east-1:123456789012:table/orders/stream/2026-04-23T00:00:00.000"
 	backupARN := "arn:aws:dynamodb:us-east-1:123456789012:table/orders/backup/01776902400000-example"
 	source := newTestSource(t, fakeAWS{fakeAWSData: fakeAWSData{
+		fakeAWSExpandedData: fakeAWSExpandedData{
 		dynamoDBTables: []dynamodbtypes.TableDescription{{
 			TableName:                 awssdk.String("orders"),
 			TableArn:                  awssdk.String(tableARN),
@@ -825,6 +828,7 @@ func TestReadAWSDynamoDBInventoryEvents(t *testing.T) {
 			CreationRequestDateTime: timePtr("2026-04-23T00:00:00Z"),
 			Shards:                  []dynamodbstreamstypes.Shard{{ShardId: awssdk.String("shard-1")}},
 		}},
+		},
 	}})
 
 	for _, tt := range []struct {
@@ -859,6 +863,7 @@ func TestReadAWSEFSInventoryEvents(t *testing.T) {
 	fsARN := "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-123"
 	apARN := "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-123"
 	source := newTestSource(t, fakeAWS{fakeAWSData: fakeAWSData{
+		fakeAWSExpandedData: fakeAWSExpandedData{
 		efsFileSystems: []efstypes.FileSystemDescription{{
 			FileSystemArn:        awssdk.String(fsARN),
 			FileSystemId:         awssdk.String("fs-123"),
@@ -894,6 +899,7 @@ func TestReadAWSEFSInventoryEvents(t *testing.T) {
 			RootDirectory:  &efstypes.RootDirectory{Path: awssdk.String("/orders")},
 			Tags:           []efstypes.Tag{{Key: awssdk.String("Team"), Value: awssdk.String("payments")}},
 		}},
+		},
 	}})
 
 	for _, tt := range []struct {
@@ -970,8 +976,10 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 	}
 	records, _, err := listSNSTopics(context.Background(), awsClients{sns: fakeSNS{fake: &fakeAWS{
 		fakeAWSData: fakeAWSData{
-			snsTopics:     topics,
-			snsAttributes: attributes,
+			fakeAWSCoreData: fakeAWSCoreData{
+				snsTopics:     topics,
+				snsAttributes: attributes,
+			},
 		},
 	}}}, settings{}, "", 10)
 	if err != nil {
@@ -1023,18 +1031,22 @@ func TestS3BucketPublicTreatsMissingPublicAccessBlockAsExposed(t *testing.T) {
 
 func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 	base := fakeAWS{fakeAWSData: fakeAWSData{
-		s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
-		s3BucketRegions: map[string]s3types.BucketLocationConstraint{
-			"legacy-eu": s3types.BucketLocationConstraint("EU"),
+		fakeAWSCoreData: fakeAWSCoreData{
+			s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
+			s3BucketRegions: map[string]s3types.BucketLocationConstraint{
+				"legacy-eu": s3types.BucketLocationConstraint("EU"),
+			},
 		},
 	}}
 	regional := fakeAWS{fakeAWSData: fakeAWSData{
-		s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
-		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
-			ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
-		}}}},
-		s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
-		s3Logging:    map[string]bool{"legacy-eu": true},
+		fakeAWSCoreData: fakeAWSCoreData{
+			s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
+			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
+				ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
+			}}}},
+			s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
+			s3Logging:    map[string]bool{"legacy-eu": true},
+		},
 	}}
 	records, _, err := listS3Buckets(context.Background(), awsClients{
 		cfg: awssdk.Config{Region: "us-east-1"},
@@ -2126,27 +2138,35 @@ type fakeAWSNetwork struct {
 }
 
 type fakeAWSData struct {
-	s3Buckets                    []s3types.Bucket
-	s3BucketRegions              map[string]s3types.BucketLocationConstraint
-	s3Tags                       map[string][]s3types.Tag
-	s3Encryption                 map[string]*s3types.ServerSideEncryptionConfiguration
-	s3Versioning                 map[string]s3types.BucketVersioningStatus
-	s3Logging                    map[string]bool
-	s3PublicAccessBlocks         map[string]*s3types.PublicAccessBlockConfiguration
-	s3OptionalError              error
-	rdsInstances                 []rdstypes.DBInstance
-	kmsKeys                      []kmstypes.KeyMetadata
-	kmsTags                      map[string][]kmstypes.Tag
-	kmsRotation                  map[string]bool
-	secrets                      []secretsmanagertypes.SecretListEntry
-	sqsQueueURLs                 []string
-	sqsAttributes                map[string]map[string]string
-	sqsTags                      map[string]map[string]string
-	snsTopics                    []snstypes.Topic
-	snsAttributes                map[string]map[string]string
-	snsTags                      map[string][]snstypes.Tag
-	ecrRepositories              []ecrtypes.Repository
-	ecrTags                      map[string][]ecrtypes.Tag
+	fakeAWSCoreData
+	fakeAWSExpandedData
+}
+
+type fakeAWSCoreData struct {
+	s3Buckets            []s3types.Bucket
+	s3BucketRegions      map[string]s3types.BucketLocationConstraint
+	s3Tags               map[string][]s3types.Tag
+	s3Encryption         map[string]*s3types.ServerSideEncryptionConfiguration
+	s3Versioning         map[string]s3types.BucketVersioningStatus
+	s3Logging            map[string]bool
+	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
+	s3OptionalError      error
+	rdsInstances         []rdstypes.DBInstance
+	kmsKeys              []kmstypes.KeyMetadata
+	kmsTags              map[string][]kmstypes.Tag
+	kmsRotation          map[string]bool
+	secrets              []secretsmanagertypes.SecretListEntry
+	sqsQueueURLs         []string
+	sqsAttributes        map[string]map[string]string
+	sqsTags              map[string]map[string]string
+	snsTopics            []snstypes.Topic
+	snsAttributes        map[string]map[string]string
+	snsTags              map[string][]snstypes.Tag
+	ecrRepositories      []ecrtypes.Repository
+	ecrTags              map[string][]ecrtypes.Tag
+}
+
+type fakeAWSExpandedData struct {
 	dynamoDBTables               []dynamodbtypes.TableDescription
 	dynamoDBTags                 map[string][]dynamodbtypes.Tag
 	dynamoDBContinuousBackups    map[string]dynamodbtypes.ContinuousBackupsDescription
