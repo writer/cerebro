@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import subprocess
 import sys
@@ -15,73 +14,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TOOL = "golang.org/x/vuln/cmd/govulncheck@v1.1.4"
-SEVERITY_RANK = {
-    "LOW": 1,
-    "MEDIUM": 2,
-    "MODERATE": 2,
-    "HIGH": 3,
-    "CRITICAL": 4,
-}
-
-
-def cvss3_base_score(vector: str) -> float | None:
-    metrics = dict(part.split(":", 1) for part in vector.split("/") if ":" in part)
-    required = {"AV", "AC", "PR", "UI", "S", "C", "I", "A"}
-    if not required.issubset(metrics):
-        return None
-    impact_values = {"H": 0.56, "L": 0.22, "N": 0.0}
-    exploitability_values = {
-        "AV": {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.2},
-        "AC": {"L": 0.77, "H": 0.44},
-        "UI": {"N": 0.85, "R": 0.62},
-    }
-    privileges_required = {
-        "U": {"N": 0.85, "L": 0.62, "H": 0.27},
-        "C": {"N": 0.85, "L": 0.68, "H": 0.5},
-    }
-    scope = metrics["S"]
-    try:
-        isc_base = 1 - (
-            (1 - impact_values[metrics["C"]])
-            * (1 - impact_values[metrics["I"]])
-            * (1 - impact_values[metrics["A"]])
-        )
-        if scope == "U":
-            impact = 6.42 * isc_base
-        elif scope == "C":
-            impact = 7.52 * (isc_base - 0.029) - 3.25 * (isc_base - 0.02) ** 15
-        else:
-            return None
-        exploitability = (
-            8.22
-            * exploitability_values["AV"][metrics["AV"]]
-            * exploitability_values["AC"][metrics["AC"]]
-            * privileges_required[scope][metrics["PR"]]
-            * exploitability_values["UI"][metrics["UI"]]
-        )
-    except KeyError:
-        return None
-    if impact <= 0:
-        return 0.0
-    if scope == "U":
-        score = min(impact + exploitability, 10)
-    else:
-        score = min(1.08 * (impact + exploitability), 10)
-    return math.ceil(score * 10) / 10
-
-
-def severity_from_score(score: float) -> str:
-    if score >= 9:
-        return "CRITICAL"
-    if score >= 7:
-        return "HIGH"
-    if score >= 4:
-        return "MEDIUM"
-    if score > 0:
-        return "LOW"
-    return "UNKNOWN"
-
-
 def parse_ignore_file(path: Path) -> tuple[set[str], list[str]]:
     ignored: set[str] = set()
     errors: list[str] = []
@@ -99,42 +31,6 @@ def parse_ignore_file(path: Path) -> tuple[set[str], list[str]]:
             continue
         ignored.add(vuln_id)
     return ignored, errors
-
-
-def severity_from_osv(osv: dict[str, Any]) -> str:
-    severities: list[str] = []
-    for severity in osv.get("severity") or []:
-        if not isinstance(severity, dict):
-            continue
-        score = severity.get("score")
-        if not isinstance(score, str):
-            continue
-        try:
-            severities.append(severity_from_score(float(score)))
-            continue
-        except ValueError:
-            if not score.startswith("CVSS:3."):
-                continue
-        if score.startswith("CVSS:3."):
-            parsed = cvss3_base_score(score)
-            if parsed is not None:
-                severities.append(severity_from_score(parsed))
-    database_specific = osv.get("database_specific")
-    if isinstance(database_specific, dict):
-        value = database_specific.get("severity")
-        if isinstance(value, str):
-            severities.append(value)
-    for affected in osv.get("affected") or []:
-        if not isinstance(affected, dict):
-            continue
-        ecosystem_specific = affected.get("ecosystem_specific")
-        if isinstance(ecosystem_specific, dict):
-            value = ecosystem_specific.get("severity")
-            if isinstance(value, str):
-                severities.append(value)
-    ranked = [(SEVERITY_RANK.get(value.upper(), 0), value.upper()) for value in severities]
-    ranked.sort(reverse=True)
-    return ranked[0][1] if ranked else "UNKNOWN"
 
 
 def parse_json_stream(output: str) -> list[dict[str, Any]]:
@@ -173,10 +69,6 @@ def is_reachable_finding(finding: dict[str, Any]) -> bool:
     return isinstance(top_frame, dict) and isinstance(top_frame.get("function"), str) and top_frame["function"] != ""
 
 
-def is_blocking_severity(severity: str, min_severity: str) -> bool:
-    return severity == "UNKNOWN" or SEVERITY_RANK.get(severity, 0) >= SEVERITY_RANK[min_severity]
-
-
 def run_govulncheck(patterns: list[str]) -> tuple[int, str, str]:
     env = os.environ.copy()
     env["GOFLAGS"] = ""
@@ -190,7 +82,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("patterns", nargs="*", default=["./..."])
     parser.add_argument("--ignore-file", default=".govulncheck-ignore")
-    parser.add_argument("--min-severity", default="HIGH", choices=sorted(SEVERITY_RANK))
     args = parser.parse_args()
 
     ignored, ignore_errors = parse_ignore_file(ROOT / args.ignore_file)
@@ -211,17 +102,13 @@ def main() -> int:
             print(stdout, file=sys.stderr)
         return 2
 
-    osvs: dict[str, dict[str, Any]] = {}
     findings: list[dict[str, Any]] = []
     for message in messages:
-        osv = message.get("osv")
-        if isinstance(osv, dict) and isinstance(osv.get("id"), str):
-            osvs[osv["id"]] = osv
         finding = message.get("finding")
         if isinstance(finding, dict):
             findings.append(finding)
 
-    blocking: list[tuple[str, str, str]] = []
+    blocking: list[str] = []
     suppressed: list[str] = []
     for finding in findings:
         if not is_reachable_finding(finding):
@@ -232,15 +119,12 @@ def main() -> int:
         if osv_id in ignored:
             suppressed.append(osv_id)
             continue
-        severity = severity_from_osv(osvs.get(osv_id, {}))
-        if is_blocking_severity(severity, args.min_severity):
-            summary = osvs.get(osv_id, {}).get("summary") or "reachable vulnerability"
-            blocking.append((osv_id, severity, str(summary)))
+        blocking.append(osv_id)
 
     if blocking:
-        print(f"govulncheck found {len(blocking)} unsuppressed blocking reachable vulnerabilities:", file=sys.stderr)
-        for osv_id, severity, summary in blocking:
-            print(f"- {osv_id} [{severity}]: {summary}", file=sys.stderr)
+        print(f"govulncheck found {len(blocking)} unsuppressed reachable vulnerabilities:", file=sys.stderr)
+        for osv_id in blocking:
+            print(f"- {osv_id}", file=sys.stderr)
         print(f"Add accepted risks to {args.ignore_file} with a justification comment.", file=sys.stderr)
         return 1
     if exit_code != 0 and not findings:
@@ -248,7 +132,7 @@ def main() -> int:
         return exit_code
     if suppressed:
         print(f"govulncheck: suppressed {len(set(suppressed))} accepted findings")
-    print("govulncheck: no unsuppressed high/critical reachable vulnerabilities")
+    print("govulncheck: no unsuppressed reachable vulnerabilities")
     return 0
 
 
