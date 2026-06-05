@@ -114,6 +114,7 @@ func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/graph/impact/vulnerability/{id}", routeSurfacePlatformHTTP, app.handleGetVulnerabilityImpact)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/package", routeSurfacePlatformHTTP, app.handleGetPackageImpact)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/asset", routeSurfacePlatformHTTP, app.handleGetAssetImpact)
+	registerHTTPRoute(mux, "GET /platform/graph/person-access-paths", routeSurfacePlatformHTTP, app.handleGetPersonAccessPaths)
 	registerHTTPRoute(mux, "GET /platform/graph/attack-paths", routeSurfacePlatformHTTP, app.handleGetAttackPaths)
 	registerHTTPRoute(mux, "GET /platform/graph/crown-jewel-rankings", routeSurfacePlatformHTTP, app.handleGetCrownJewelRankings)
 	registerHTTPRoute(mux, "GET /platform/graph/aws-public-endpoint-insights", routeSurfacePlatformHTTP, app.handleGetAWSPublicEndpointInsights)

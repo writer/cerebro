@@ -985,6 +985,43 @@ func (a *App) handleGetAttackPaths(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (a *App) handleGetPersonAccessPaths(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenant_id")
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	personURN := r.URL.Query().Get("person_urn")
+	if strings.TrimSpace(personURN) != "" {
+		if err := authorizeCerebroURNTenant(r.Context(), personURN); err != nil {
+			writeGraphQueryError(w, err)
+			return
+		}
+	}
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	depth, err := uint32QueryParam(r, "depth")
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	result, err := a.graphQueryService().GetPersonAccessPaths(r.Context(), graphquery.PersonAccessPathRequest{
+		TenantID:    tenantID,
+		PersonURN:   personURN,
+		PersonQuery: firstNonEmpty(r.URL.Query().Get("person_query"), r.URL.Query().Get("q")),
+		Limit:       limit,
+		Depth:       depth,
+	})
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (a *App) handleGetCrownJewelRankings(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	if err := authorizeTenantID(r.Context(), tenantID); err != nil {

@@ -1617,11 +1617,18 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 		Kind:       "okta.user",
 		OccurredAt: timestamppb.New(historicalProfileEdit),
 		Attributes: map[string]string{
-			"domain":  "writer.okta.com",
-			"email":   "alice@writer.com",
-			"login":   "alice@writer.com",
-			"status":  "DEPROVISIONED",
-			"user_id": "00u1",
+			"department":      "Design",
+			"domain":          "writer.okta.com",
+			"email":           "alice@writer.com",
+			"employee_number": "E-1001",
+			"job_title":       "Product Designer",
+			"login":           "alice@writer.com",
+			"manager":         "manager@example.com",
+			"manager_id":      "00u-manager",
+			"organization":    "Writer",
+			"status":          "DEPROVISIONED",
+			"user_id":         "00u1",
+			"user_type":       "employee",
 		},
 	})
 	after := time.Now().UTC()
@@ -1648,6 +1655,20 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 	// Allow a small clock-skew margin around the projection call.
 	if stamped.Before(before.Add(-time.Second)) || stamped.After(after.Add(time.Second)) {
 		t.Fatalf("represents_identity attributes[at] = %v not within projection window [%v, %v]; expected observation-time stamp", stamped, before, after)
+	}
+	entity := graph.entities[userURN]
+	for key, want := range map[string]string{
+		"department":      "Design",
+		"employee_number": "E-1001",
+		"job_title":       "Product Designer",
+		"manager":         "manager@example.com",
+		"manager_id":      "00u-manager",
+		"organization":    "Writer",
+		"user_type":       "employee",
+	} {
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("user entity attributes[%q] = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -2371,7 +2392,13 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("okta canonical identity link missing for %q", canonicalIdentityURN)
 	}
-	awsActorURN := "urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"
+	awsActorURN := "urn:cerebro:writer:aws_assumed_role_session:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"
+	if entity := state.entities[awsActorURN]; entity == nil || entity.EntityType != "aws.assumed_role_session" {
+		t.Fatalf("aws assumed-role session entity = %#v, want aws.assumed_role_session", entity)
+	}
+	if _, ok := state.entities["urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"]; ok {
+		t.Fatalf("aws assumed-role CloudTrail actor must not be projected as aws.user")
+	}
 	if _, ok := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("aws canonical identity link missing for %q", canonicalIdentityURN)
 	}
@@ -2448,10 +2475,11 @@ func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T
 	service := New(state, nil)
 
 	event := &cerebrov1.EventEnvelope{
-		Id:       "aws-cloudtrail-email",
-		TenantId: "writer",
-		SourceId: "aws",
-		Kind:     "aws.cloudtrail",
+		Id:         "aws-cloudtrail-email",
+		TenantId:   "writer",
+		SourceId:   "aws",
+		Kind:       "aws.cloudtrail",
+		OccurredAt: timestamppb.New(time.Date(2026, time.June, 5, 17, 0, 0, 0, time.UTC)),
 		Attributes: map[string]string{
 			"actor_alternate_id": "AWSReservedSSO_admin/alice",
 			"actor_email":        "alice@writer.com",
@@ -2467,7 +2495,13 @@ func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	actorURN := "urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice"
+	actorURN := "urn:cerebro:writer:aws_assumed_role_session:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice"
+	if entity := state.entities[actorURN]; entity == nil || entity.EntityType != "aws.assumed_role_session" {
+		t.Fatalf("aws assumed-role session entity = %#v, want aws.assumed_role_session", entity)
+	}
+	if _, ok := state.entities["urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice"]; ok {
+		t.Fatalf("aws assumed-role CloudTrail actor must not be projected as aws.user")
+	}
 	emailIdentityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
 	alternateIdentifierURN := "urn:cerebro:writer:identifier:login:awsreservedsso_admin/alice"
 	if _, ok := state.links[actorURN+"|"+relationRepresentsIdentity+"|"+emailIdentityURN]; !ok {
@@ -2475,6 +2509,14 @@ func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T
 	}
 	if _, ok := state.links[actorURN+"|"+relationHasIdentifier+"|"+alternateIdentifierURN]; !ok {
 		t.Fatalf("aws actor alternate identifier link missing for %q", alternateIdentifierURN)
+	}
+	resourceURN := "urn:cerebro:writer:aws_account:123456789012"
+	actedOn := state.links[actorURN+"|"+relationActedOn+"|"+resourceURN]
+	if actedOn == nil {
+		t.Fatalf("aws acted_on link missing for %q", resourceURN)
+	}
+	if got, want := actedOn.Attributes["at"], "2026-06-05T17:00:00Z"; got != want {
+		t.Fatalf("aws acted_on attributes[at] = %q, want %q", got, want)
 	}
 }
 
@@ -3456,16 +3498,16 @@ func TestProjectAWSRuntimeEventResources(t *testing.T) {
 	service := New(state, nil)
 	for _, event := range []*cerebrov1.EventEnvelope{
 		{
-			Id:       "aws-sfn-state-machine-orders",
+			Id:       "aws-stepfunctions-state-machine-orders",
 			TenantId: "writer",
 			SourceId: "aws",
-			Kind:     "aws.sfn_state_machine",
+			Kind:     "aws.stepfunctions_state_machine",
 			Attributes: map[string]string{
 				"domain":            "123456789012",
 				"resource_id":       "arn:aws:states:us-east-1:123456789012:stateMachine:orders-workflow",
 				"resource_name":     "orders-workflow",
 				"resource_provider": "aws",
-				"resource_type":     "sfn_state_machine",
+				"resource_type":     "stepfunctions_state_machine",
 			},
 		},
 		{
@@ -3501,9 +3543,9 @@ func TestProjectAWSRuntimeEventResources(t *testing.T) {
 	}
 
 	for urn, entityType := range map[string]string{
-		projectionURN("writer", "aws_sfn_state_machine", "arn:aws:states:us-east-1:123456789012:stateMachine:orders-workflow"):         "aws.sfn.state.machine",
-		projectionURN("writer", "aws_eventbridge_rule", "arn:aws:events:us-east-1:123456789012:rule/orders/send-to-fulfillment"):       "aws.eventbridge.rule",
-		projectionURN("writer", "aws_scheduler_schedule", "arn:aws:scheduler:us-east-1:123456789012:schedule/orders/hourly-reconcile"): "aws.scheduler.schedule",
+		projectionURN("writer", "aws_stepfunctions_state_machine", "arn:aws:states:us-east-1:123456789012:stateMachine:orders-workflow"): "aws.stepfunctions.state.machine",
+		projectionURN("writer", "aws_eventbridge_rule", "arn:aws:events:us-east-1:123456789012:rule/orders/send-to-fulfillment"):         "aws.eventbridge.rule",
+		projectionURN("writer", "aws_scheduler_schedule", "arn:aws:scheduler:us-east-1:123456789012:schedule/orders/hourly-reconcile"):   "aws.scheduler.schedule",
 	} {
 		if entity := state.entities[urn]; entity == nil || entity.EntityType != entityType {
 			t.Fatalf("projected entity %q = %#v, want type %q", urn, entity, entityType)

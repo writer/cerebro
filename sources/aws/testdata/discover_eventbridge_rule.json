@@ -1,1 +1,1 @@
-["urn:cerebro:123456789012:aws_eventbridge_rule:arn:aws:events:us-east-1:123456789012:rule/orders/send-to-fulfillment"]
+["urn:cerebro:123456789012:aws_eventbridge_rule:arn:aws:events:us-east-1:123456789012:rule/default/orders-nightly"]
