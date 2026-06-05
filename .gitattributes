@@ -1,0 +1,3 @@
+# Generated Markdown docs are regenerated from source contracts and have little
+# hand-authored review value. Prefer union merges, then rerun generated checks.
+docs/*_AUTOGEN.md merge=union
