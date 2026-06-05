@@ -178,16 +178,29 @@ func listOpenSearchServerlessCollections(ctx context.Context, clients awsClients
 	return details.CollectionDetails, awssdk.ToString(out.NextToken), nil
 }
 
+const (
+	openSearchServerlessPolicyCursorEncryption = "encryption:"
+	openSearchServerlessPolicyCursorNetwork    = "network:"
+)
+
 func listOpenSearchServerlessSecurityPolicies(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsOpenSearchServerlessPolicy, string, error) {
 	policyType := opensearchserverlesstypes.SecurityPolicyTypeEncryption
-	if strings.TrimSpace(cursor) == "__network__" {
+	token := strings.TrimSpace(cursor)
+	switch {
+	case strings.HasPrefix(token, openSearchServerlessPolicyCursorNetwork):
 		policyType = opensearchserverlesstypes.SecurityPolicyTypeNetwork
-		cursor = ""
-	} else if strings.HasPrefix(cursor, "__network__:") {
+		token = strings.TrimPrefix(token, openSearchServerlessPolicyCursorNetwork)
+	case strings.HasPrefix(token, openSearchServerlessPolicyCursorEncryption):
+		policyType = opensearchserverlesstypes.SecurityPolicyTypeEncryption
+		token = strings.TrimPrefix(token, openSearchServerlessPolicyCursorEncryption)
+	case token == "__network__":
 		policyType = opensearchserverlesstypes.SecurityPolicyTypeNetwork
-		cursor = strings.TrimPrefix(cursor, "__network__:")
+		token = ""
+	case strings.HasPrefix(token, "__network__:"):
+		policyType = opensearchserverlesstypes.SecurityPolicyTypeNetwork
+		token = strings.TrimPrefix(token, "__network__:")
 	}
-	out, err := clients.openSearchServerless.ListSecurityPolicies(ctx, &opensearchserverless.ListSecurityPoliciesInput{Type: policyType, NextToken: stringPtr(cursor), MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100)))})
+	out, err := clients.openSearchServerless.ListSecurityPolicies(ctx, &opensearchserverless.ListSecurityPoliciesInput{Type: policyType, NextToken: stringPtr(token), MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100)))})
 	if err != nil {
 		return nil, "", err
 	}
@@ -208,11 +221,14 @@ func listOpenSearchServerlessSecurityPolicies(ctx context.Context, clients awsCl
 	next := awssdk.ToString(out.NextToken)
 	if policyType == opensearchserverlesstypes.SecurityPolicyTypeEncryption {
 		if next != "" {
-			return records, "__network__:" + next, nil
+			return records, openSearchServerlessPolicyCursorEncryption + next, nil
 		}
-		return records, "__network__", nil
+		return records, openSearchServerlessPolicyCursorNetwork, nil
 	}
-	return records, next, nil
+	if next != "" {
+		return records, openSearchServerlessPolicyCursorNetwork + next, nil
+	}
+	return records, "", nil
 }
 
 func listElastiCacheReplicationGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsElastiCacheReplicationGroup, string, error) {
@@ -686,18 +702,38 @@ func openSearchVPCID(domain opensearchtypes.DomainStatus) string {
 }
 
 func policyDocumentMentionsPublic(document any) bool {
-	if smithyDocument, ok := document.(opensearchserverlessdocument.Interface); ok {
-		if payload, err := smithyDocument.MarshalSmithyDocument(); err == nil {
-			normalized := strings.ToLower(string(payload))
-			return strings.Contains(normalized, "allowfrompublic") && strings.Contains(normalized, "true")
-		}
-	}
-	payload, err := json.Marshal(document)
+	payload, err := marshalOpenSearchServerlessPolicyDocument(document)
 	if err != nil {
 		return false
 	}
-	normalized := strings.ToLower(string(payload))
-	return strings.Contains(normalized, "allowfrompublic") && strings.Contains(normalized, "true")
+	var parsed map[string]any
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		return false
+	}
+	if allow, ok := parsed["AllowFromPublic"].(bool); ok && allow {
+		return true
+	}
+	rules, ok := parsed["Rules"].([]any)
+	if !ok {
+		return false
+	}
+	for _, rule := range rules {
+		ruleMap, ok := rule.(map[string]any)
+		if !ok {
+			continue
+		}
+		if allow, ok := ruleMap["AllowFromPublic"].(bool); ok && allow {
+			return true
+		}
+	}
+	return false
+}
+
+func marshalOpenSearchServerlessPolicyDocument(document any) ([]byte, error) {
+	if smithyDocument, ok := document.(opensearchserverlessdocument.Interface); ok {
+		return smithyDocument.MarshalSmithyDocument()
+	}
+	return json.Marshal(document)
 }
 
 func elasticacheTags(ctx context.Context, clients awsClients, arn string) (map[string]string, error) {
