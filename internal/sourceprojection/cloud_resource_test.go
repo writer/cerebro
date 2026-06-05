@@ -100,6 +100,64 @@ func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, userIdentityURN)
 }
 
+func TestProjectAWSBatchResourcesUseCloudResourceProjection(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	computeEnvironmentARN := "arn:aws:batch:us-east-1:123456789012:compute-environment/prod-batch"
+	jobQueueARN := "arn:aws:batch:us-east-1:123456789012:job-queue/prod-jobs"
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aws-batch-compute-environment-prod",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.batch_compute_environment",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"owner":             "platform@writer.com",
+				"resource_id":       computeEnvironmentARN,
+				"resource_name":     "prod-batch",
+				"resource_provider": "aws",
+				"resource_type":     "batch_compute_environment",
+				"role_arn":          "arn:aws:iam::123456789012:role/service-role/AWSBatchServiceRole",
+				"role_name":         "service-role/AWSBatchServiceRole",
+			},
+		},
+		{
+			Id:       "aws-batch-job-queue-prod",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.batch_job_queue",
+			Attributes: map[string]string{
+				"compute_environment_arns": computeEnvironmentARN,
+				"domain":                   "123456789012",
+				"resource_id":              jobQueueARN,
+				"resource_name":            "prod-jobs",
+				"resource_provider":        "aws",
+				"resource_type":            "batch_job_queue",
+			},
+		},
+	}
+
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetKind(), err)
+		}
+	}
+
+	computeURN := "urn:cerebro:writer:aws_batch_compute_environment:" + computeEnvironmentARN
+	queueURN := "urn:cerebro:writer:aws_batch_job_queue:" + jobQueueARN
+	roleURN := "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/service-role/AWSBatchServiceRole"
+	if entity := state.entities[computeURN]; entity == nil || entity.EntityType != "aws.batch.compute.environment" {
+		t.Fatalf("batch compute environment entity missing or wrong type: %#v", entity)
+	}
+	if entity := state.entities[queueURN]; entity == nil || entity.EntityType != "aws.batch.job.queue" {
+		t.Fatalf("batch job queue entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, computeURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, computeURN, relationOwnedBy, "urn:cerebro:writer:owner:platform@writer.com")
+	assertProjectedLink(t, state, computeURN, relationRunsAs, roleURN)
+	assertProjectedLink(t, state, queueURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
 func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 	for _, tt := range []struct {
 		name         string

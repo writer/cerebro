@@ -22,6 +22,8 @@ github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.5 h1:Wu0xyJoQ+ohGOdg9AgC8l
 github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.5/go.mod h1:oTLb6AzmfFuu6w0Ju4DZQWfJYGcnGykqKQs0FxuGojA=
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5 h1:V++M+jksBqWbQAqgXz1qUxllJ2ascUiTFxodXmC3+Js=
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5/go.mod h1:198XfedFZvclpFwW+UK7OE38WPRTY9Yj5dlM/3RC5Jc=
+github.com/aws/aws-sdk-go-v2/service/batch v1.65.5 h1:+bOiP++19XAWs3CRhFNkAhAe+DAGMF/eq7Q+4Ib5OlE=
+github.com/aws/aws-sdk-go-v2/service/batch v1.65.5/go.mod h1:H9zD0xL2LX2iF6XQAcvP1aJiMbIXTF2gVMoIG36mQTQ=
 github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5 h1:F9+qleYIBE+8vTDc7ziud/VDz/lwnOylAneeEwa6758=
 github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5/go.mod h1:7lvd8HgCk8mPW3LkZTpuc1r5xux1ZWi7cQ5wmORIdCA=
 github.com/aws/aws-sdk-go-v2/service/athena v1.58.3 h1:vjEUIly6U1SrRUajgNsF/Pv9ZRsf12S0gzMjbPzQZxc=

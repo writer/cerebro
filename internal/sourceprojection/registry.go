@@ -62,6 +62,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.acm_certificate":                    awsCloudResourceProjections,
 	"aws.apprunner_service":                  awsCloudResourceProjections,
 	"aws.asset_metadata":                     awsCloudResourceProjections,
+	"aws.batch_compute_environment":          awsCloudResourceProjections,
+	"aws.batch_job_queue":                    awsCloudResourceProjections,
 	"aws.backup_vault":                       awsBackupVaultProjections,
 	"aws.backup_plan":                        awsBackupPlanProjections,
 	"aws.backup_protected_resource":          awsBackupProtectedResourceProjections,

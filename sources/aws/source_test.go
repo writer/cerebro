@@ -22,6 +22,8 @@ import (
 	athenatypes "github.com/aws/aws-sdk-go-v2/service/athena/types"
 	"github.com/aws/aws-sdk-go-v2/service/backup"
 	backuptypes "github.com/aws/aws-sdk-go-v2/service/backup/types"
+	"github.com/aws/aws-sdk-go-v2/service/batch"
+	batchtypes "github.com/aws/aws-sdk-go-v2/service/batch/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -374,6 +376,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyACMCertificate, kind: "aws.acm_certificate"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyBatchComputeEnv, kind: "aws.batch_compute_environment"},
+		{family: familyBatchJobQueue, kind: "aws.batch_job_queue"},
 		{family: familyBackupVault, kind: "aws.backup_vault"},
 		{family: familyBackupPlan, kind: "aws.backup_plan"},
 		{family: familyBackupProtected, kind: "aws.backup_protected_resource"},
@@ -733,6 +737,72 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				t.Fatalf("kind = %q, want %q", got, tt.kind)
 			}
 			tt.assert(t, pull.Events[0])
+		})
+	}
+}
+
+func TestReadAWSBatchRuntimeEvents(t *testing.T) {
+	computeEnvironmentARN := "arn:aws:batch:us-east-1:123456789012:compute-environment/prod-batch"
+	jobQueueARN := "arn:aws:batch:us-east-1:123456789012:job-queue/prod-jobs"
+	serviceRoleARN := "arn:aws:iam::123456789012:role/service-role/AWSBatchServiceRole"
+	source := newTestSource(t, fakeAWS{compute: fakeAWSCompute{
+		batchComputeEnvironments: []batchtypes.ComputeEnvironmentDetail{{
+			ComputeEnvironmentArn:  awssdk.String(computeEnvironmentARN),
+			ComputeEnvironmentName: awssdk.String("prod-batch"),
+			ComputeResources: &batchtypes.ComputeResource{
+				AllocationStrategy: batchtypes.CRAllocationStrategyBestFitProgressive,
+				DesiredvCpus:       awssdk.Int32(4),
+				InstanceRole:       awssdk.String("ecsInstanceRole"),
+				InstanceTypes:      []string{"m7g.large"},
+				MaxvCpus:           awssdk.Int32(32),
+				MinvCpus:           awssdk.Int32(0),
+				SecurityGroupIds:   []string{"sg-batch"},
+				Subnets:            []string{"subnet-batch"},
+				Type:               batchtypes.CRTypeEc2,
+			},
+			EcsClusterArn: awssdk.String("arn:aws:ecs:us-east-1:123456789012:cluster/AWSBatch-prod-batch"),
+			ServiceRole:   awssdk.String(serviceRoleARN),
+			State:         batchtypes.CEStateEnabled,
+			Status:        batchtypes.CEStatusValid,
+			Tags:          map[string]string{"Owner": "platform@writer.com"},
+			Type:          batchtypes.CETypeManaged,
+		}},
+		batchJobQueues: []batchtypes.JobQueueDetail{{
+			ComputeEnvironmentOrder: []batchtypes.ComputeEnvironmentOrder{{
+				ComputeEnvironment: awssdk.String(computeEnvironmentARN),
+				Order:              awssdk.Int32(1),
+			}},
+			JobQueueArn:  awssdk.String(jobQueueARN),
+			JobQueueName: awssdk.String("prod-jobs"),
+			Priority:     awssdk.Int32(10),
+			State:        batchtypes.JQStateEnabled,
+			Status:       batchtypes.JQStatusValid,
+			Tags:         map[string]string{"Team": "platform"},
+		}},
+	}})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyBatchComputeEnv, kind: "aws.batch_compute_environment", attr: "role_name", want: "service-role/AWSBatchServiceRole"},
+		{family: familyBatchJobQueue, kind: "aws.batch_job_queue", attr: "compute_environment_arns", want: computeEnvironmentARN},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
 		})
 	}
 }
@@ -2173,6 +2243,26 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			},
 		}}
 	}
+	batchData := func(fake *recordingAWS) {
+		computeEnvironmentARN := "arn:aws:batch:us-east-1:123456789012:compute-environment/prod-batch"
+		fake.compute.batchComputeEnvironments = []batchtypes.ComputeEnvironmentDetail{{
+			ComputeEnvironmentArn:  awssdk.String(computeEnvironmentARN),
+			ComputeEnvironmentName: awssdk.String("prod-batch"),
+			ComputeResources:       &batchtypes.ComputeResource{MaxvCpus: awssdk.Int32(32), Subnets: []string{"subnet-batch"}, Type: batchtypes.CRTypeEc2},
+			ServiceRole:            awssdk.String("arn:aws:iam::123456789012:role/service-role/AWSBatchServiceRole"),
+			State:                  batchtypes.CEStateEnabled,
+			Status:                 batchtypes.CEStatusValid,
+			Type:                   batchtypes.CETypeManaged,
+		}}
+		fake.compute.batchJobQueues = []batchtypes.JobQueueDetail{{
+			ComputeEnvironmentOrder: []batchtypes.ComputeEnvironmentOrder{{ComputeEnvironment: awssdk.String(computeEnvironmentARN), Order: awssdk.Int32(1)}},
+			JobQueueArn:             awssdk.String("arn:aws:batch:us-east-1:123456789012:job-queue/prod-jobs"),
+			JobQueueName:            awssdk.String("prod-jobs"),
+			Priority:                awssdk.Int32(10),
+			State:                   batchtypes.JQStateEnabled,
+			Status:                  batchtypes.JQStatusValid,
+		}}
+	}
 	computeData := func(fake *recordingAWS) {
 		profileARN := "arn:aws:iam::123456789012:instance-profile/WebProfile"
 		taskDefinitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
@@ -2310,6 +2400,16 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyAssetMetadata,
 			seed:    assetMetadataData,
 			wantAPI: []string{"tagging:GetResources"},
+		},
+		{
+			family:  familyBatchComputeEnv,
+			seed:    batchData,
+			wantAPI: []string{"batch:DescribeComputeEnvironments"},
+		},
+		{
+			family:  familyBatchJobQueue,
+			seed:    batchData,
+			wantAPI: []string{"batch:DescribeJobQueues"},
 		},
 		{
 			family:  familyBackupVault,
@@ -2875,6 +2975,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				s3:           fake,
 			},
 			awsRuntimeClients: awsRuntimeClients{
+				batch:          fake,
 				rds:            fake,
 				kms:            fake,
 				secrets:        fake,
@@ -2930,6 +3031,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				s3:           fake,
 			},
 			awsRuntimeClients: awsRuntimeClients{
+				batch:          fake,
 				rds:            fake,
 				kms:            fake,
 				secrets:        fake,
@@ -3205,23 +3307,25 @@ type fakeAWSGovernance struct {
 }
 
 type fakeAWSCompute struct {
-	instances             []ec2types.Instance
-	instanceProfiles      map[string]iamtypes.InstanceProfile
-	lambdaFunctions       []lambdatypes.FunctionConfiguration
-	ecsClusters           []string
-	ecsServiceARNs        map[string][]string
-	ecsServices           map[string]ecstypes.Service
-	ecsTaskARNs           map[string][]string
-	ecsTasks              map[string]ecstypes.Task
-	ecsTaskDefinitionARNs []string
-	ecsTaskDefinitions    map[string]ecstypes.TaskDefinition
-	eksClusters           []ekstypes.Cluster
-	eksNodegroupNames     map[string][]string
-	eksNodegroups         map[string]ekstypes.Nodegroup
-	eksFargateNames       map[string][]string
-	eksFargateProfiles    map[string]ekstypes.FargateProfile
-	eksPodIdentityIDs     map[string][]string
-	eksPodIdentities      map[string]ekstypes.PodIdentityAssociation
+	instances                []ec2types.Instance
+	instanceProfiles         map[string]iamtypes.InstanceProfile
+	lambdaFunctions          []lambdatypes.FunctionConfiguration
+	ecsClusters              []string
+	ecsServiceARNs           map[string][]string
+	ecsServices              map[string]ecstypes.Service
+	ecsTaskARNs              map[string][]string
+	ecsTasks                 map[string]ecstypes.Task
+	ecsTaskDefinitionARNs    []string
+	ecsTaskDefinitions       map[string]ecstypes.TaskDefinition
+	eksClusters              []ekstypes.Cluster
+	eksNodegroupNames        map[string][]string
+	eksNodegroups            map[string]ekstypes.Nodegroup
+	eksFargateNames          map[string][]string
+	eksFargateProfiles       map[string]ekstypes.FargateProfile
+	eksPodIdentityIDs        map[string][]string
+	eksPodIdentities         map[string]ekstypes.PodIdentityAssociation
+	batchComputeEnvironments []batchtypes.ComputeEnvironmentDetail
+	batchJobQueues           []batchtypes.JobQueueDetail
 }
 
 type recordingAWS struct {
@@ -3366,6 +3470,16 @@ func (f *recordingAWS) ListAccountAssignments(ctx context.Context, input *ssoadm
 func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, options ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
 	f.record("cloudtrail:LookupEvents")
 	return f.fakeAWS.LookupEvents(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeComputeEnvironments(ctx context.Context, input *batch.DescribeComputeEnvironmentsInput, options ...func(*batch.Options)) (*batch.DescribeComputeEnvironmentsOutput, error) {
+	f.record("batch:DescribeComputeEnvironments")
+	return f.fakeAWS.DescribeComputeEnvironments(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeJobQueues(ctx context.Context, input *batch.DescribeJobQueuesInput, options ...func(*batch.Options)) (*batch.DescribeJobQueuesOutput, error) {
+	f.record("batch:DescribeJobQueues")
+	return f.fakeAWS.DescribeJobQueues(ctx, input, options...)
 }
 
 func (f *recordingAWS) DescribeSecurityGroups(ctx context.Context, input *ec2.DescribeSecurityGroupsInput, options ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
@@ -4897,7 +5011,37 @@ func paginateLambdaFunctions(values []lambdatypes.FunctionConfiguration, marker 
 	return values[start : start+limit], next
 }
 
+func paginateBatchComputeEnvironments(values []batchtypes.ComputeEnvironmentDetail, marker string, limit int) ([]batchtypes.ComputeEnvironmentDetail, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
 func paginateEBSVolumes(values []ec2types.Volume, marker string, limit int) ([]ec2types.Volume, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateBatchJobQueues(values []batchtypes.JobQueueDetail, marker string, limit int) ([]batchtypes.JobQueueDetail, string) {
 	start := 0
 	if marker != "" {
 		parsed, err := strconv.Atoi(marker)
@@ -5007,6 +5151,16 @@ func (f fakeAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEvent
 		return f.cloudTrailLookup(ctx, input)
 	}
 	return &cloudtrail.LookupEventsOutput{Events: f.cloudTrailEvents}, nil
+}
+
+func (f fakeAWS) DescribeComputeEnvironments(_ context.Context, input *batch.DescribeComputeEnvironmentsInput, _ ...func(*batch.Options)) (*batch.DescribeComputeEnvironmentsOutput, error) {
+	environments, next := paginateBatchComputeEnvironments(f.compute.batchComputeEnvironments, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &batch.DescribeComputeEnvironmentsOutput{ComputeEnvironments: environments, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeAWS) DescribeJobQueues(_ context.Context, input *batch.DescribeJobQueuesInput, _ ...func(*batch.Options)) (*batch.DescribeJobQueuesOutput, error) {
+	queues, next := paginateBatchJobQueues(f.compute.batchJobQueues, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &batch.DescribeJobQueuesOutput{JobQueues: queues, NextToken: stringPtr(next)}, nil
 }
 
 func (f fakeAWS) DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {

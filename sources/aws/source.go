@@ -28,6 +28,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/apprunner"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/backup"
+	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -107,6 +108,8 @@ const (
 	familyAssetMetadata            = "asset_metadata"
 	familyAthenaDataCatalog        = "athena_data_catalog"
 	familyAthenaWorkgroup          = "athena_workgroup"
+	familyBatchComputeEnv          = "batch_compute_environment"
+	familyBatchJobQueue            = "batch_job_queue"
 	familyBackupPlan               = "backup_plan"
 	familyBackupProtected          = "backup_protected_resource"
 	familyBackupRecoveryPoint      = "backup_recovery_point"
@@ -275,6 +278,7 @@ type awsStorageClients struct {
 }
 
 type awsRuntimeClients struct {
+	batch          awsBatchAPI
 	rds            awsRDSAPI
 	kms            awsKMSAPI
 	secrets        awsSecretsManagerAPI
@@ -861,6 +865,30 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_asset_metadata:%s", settings.accountID, firstNonEmpty(asset.ResourceARN, asset.ResourceID)), nil
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBatchComputeEnvironment]{
+			Name:  familyBatchComputeEnv,
+			Label: "aws batch compute environments",
+			List:  listBatchComputeEnvironments,
+			Event: batchComputeEnvironmentEvent,
+			URN: func(settings settings, environment awsBatchComputeEnvironment) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_batch_compute_environment:%s", settings.accountID, firstNonEmpty(awssdk.ToString(environment.ComputeEnvironmentArn), awssdk.ToString(environment.ComputeEnvironmentName))), nil
+			},
+			CursorFallback: func(environment awsBatchComputeEnvironment) string {
+				return firstNonEmpty(awssdk.ToString(environment.ComputeEnvironmentArn), awssdk.ToString(environment.ComputeEnvironmentName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBatchJobQueue]{
+			Name:  familyBatchJobQueue,
+			Label: "aws batch job queues",
+			List:  listBatchJobQueues,
+			Event: batchJobQueueEvent,
+			URN: func(settings settings, queue awsBatchJobQueue) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_batch_job_queue:%s", settings.accountID, firstNonEmpty(awssdk.ToString(queue.JobQueueArn), awssdk.ToString(queue.JobQueueName))), nil
+			},
+			CursorFallback: func(queue awsBatchJobQueue) string {
+				return firstNonEmpty(awssdk.ToString(queue.JobQueueArn), awssdk.ToString(queue.JobQueueName))
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsBackupVault]{
 			Name:  familyBackupVault,
@@ -1925,6 +1953,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			},
 		},
 		awsRuntimeClients: awsRuntimeClients{
+			batch:          batch.NewFromConfig(cfg),
 			rds:            rds.NewFromConfig(cfg),
 			kms:            kms.NewFromConfig(cfg),
 			secrets:        secretsmanager.NewFromConfig(cfg),
@@ -2014,7 +2043,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
+	case familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMSKCluster, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName

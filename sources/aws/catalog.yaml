@@ -6,6 +6,8 @@ emitted_kinds:
   - aws.acm_certificate
   - aws.apprunner_service
   - asset.data_sensitivity
+  - aws.batch_compute_environment
+  - aws.batch_job_queue
   - aws.backup_vault
   - aws.backup_plan
   - aws.backup_protected_resource
@@ -99,6 +101,8 @@ runtime_families:
   - acm_certificate
   - apprunner_service
   - asset_metadata
+  - batch_compute_environment
+  - batch_job_queue
   - backup_vault
   - backup_plan
   - backup_protected_resource
