@@ -137,7 +137,7 @@ def _parse_time(value: Any) -> datetime | None:
 
 
 def _last_activity(runtime: dict[str, Any]) -> datetime | None:
-    for key in ("last_sync_at", "lastSyncedAt", "updated_at", "updatedAt", "last_run_at", "lastRunAt"):
+    for key in ("last_synced_at", "lastSyncedAt", "last_sync_at", "lastSyncAt", "updated_at", "updatedAt", "last_run_at", "lastRunAt"):
         parsed = _parse_time(runtime.get(key))
         if parsed is not None:
             return parsed
