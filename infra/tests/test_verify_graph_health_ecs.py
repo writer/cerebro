@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import sys
 import unittest
 from datetime import UTC, datetime
@@ -39,6 +40,7 @@ from scripts.verify_graph_health_ecs import (
     _supports_attack_path_relations,
     _supports_graph_health_command,
     _supports_relation_counts,
+    _task_definition_without_bootstrap_from_definition,
     _verify_counts,
     _verify_current_ingest_runs,
     _verify_integrity,
@@ -195,6 +197,51 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         finally:
             verify_graph_health_ecs._aws = original_aws
 
+    def test_task_definition_without_bootstrap_removes_container_and_dependency(self) -> None:
+        payload = _task_definition_without_bootstrap_from_definition(
+            {
+                "family": "cerebro-sec-dev",
+                "taskRoleArn": "task-role",
+                "executionRoleArn": "execution-role",
+                "networkMode": "awsvpc",
+                "requiresCompatibilities": ["FARGATE"],
+                "cpu": "1024",
+                "memory": "2048",
+                "containerDefinitions": [
+                    {"name": "source-runtime-bootstrap", "image": "image", "command": ["source-runtime", "bootstrap"]},
+                    {"name": "sidecar", "image": "image"},
+                    {
+                        "name": "cerebro",
+                        "image": "image",
+                        "dependsOn": [
+                            {"containerName": "source-runtime-bootstrap", "condition": "SUCCESS"},
+                            {"containerName": "sidecar", "condition": "START"},
+                        ],
+                    },
+                ],
+            }
+        )
+
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(payload["family"], "cerebro-sec-dev-graph-command")
+        self.assertEqual(
+            [container["name"] for container in payload["containerDefinitions"]],
+            ["sidecar", "cerebro"],
+        )
+        cerebro = next(container for container in payload["containerDefinitions"] if container["name"] == "cerebro")
+        self.assertEqual(cerebro["dependsOn"], [{"containerName": "sidecar", "condition": "START"}])
+
+    def test_task_definition_without_bootstrap_returns_none_without_bootstrap(self) -> None:
+        self.assertIsNone(
+            _task_definition_without_bootstrap_from_definition(
+                {
+                    "family": "cerebro-sec-dev",
+                    "containerDefinitions": [{"name": "cerebro", "image": "image"}],
+                }
+            )
+        )
+
     def test_main_graph_command_runs_requested_command(self) -> None:
         context = GraphCommandContext(
             cluster="cluster",
@@ -324,15 +371,32 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             log_group="/ecs/cerebro",
             stream_prefix="runtime",
             has_source_runtime_bootstrap=True,
+            task_definition_without_bootstrap={
+                "family": "cerebro-go-production-graph-command",
+                "containerDefinitions": [{"name": "cerebro", "image": "image"}],
+            },
         )
+        registered = False
+        deregistered = False
 
         def fake_aws(args, _region):
-            nonlocal describe_definition_calls
+            nonlocal describe_definition_calls, registered, deregistered
             if args[:2] == ["ecs", "describe-task-definition"]:
                 describe_definition_calls += 1
                 raise AssertionError("task definition metadata should come from the cached context")
+            if args[:2] == ["ecs", "register-task-definition"]:
+                registered = True
+                payload = json.loads(args[args.index("--cli-input-json") + 1])
+                self.assertEqual(payload["family"], "cerebro-go-production-graph-command")
+                self.assertNotIn("source-runtime-bootstrap", json.dumps(payload))
+                return {"taskDefinition": {"taskDefinitionArn": "graph-task-definition"}}
+            if args[:2] == ["ecs", "deregister-task-definition"]:
+                deregistered = True
+                self.assertIn("graph-task-definition", args)
+                return {"taskDefinition": {"taskDefinitionArn": "graph-task-definition"}}
             if args[:2] == ["ecs", "run-task"]:
                 self.assertIn("--overrides", args)
+                self.assertEqual(args[args.index("--task-definition") + 1], "graph-task-definition")
                 override = args[args.index("--overrides") + 1]
                 self.assertNotIn("source-runtime-bootstrap", override)
                 return {"tasks": [{"taskArn": "task-arn"}]}
@@ -353,6 +417,8 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
 
         self.assertEqual(result.payload, {"nodes": 1, "relations": 2})
         self.assertEqual(describe_definition_calls, 0)
+        self.assertTrue(registered)
+        self.assertTrue(deregistered)
 
     def test_run_graph_command_reports_exit_failure_log_tail(self) -> None:
         original_aws = verify_graph_health_ecs._aws

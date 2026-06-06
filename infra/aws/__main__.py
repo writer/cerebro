@@ -661,6 +661,15 @@ if device_auth_enabled:
         "name": "CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON",
         "source": device_auth_signing_keys_secret_name,
     })
+if mcp_oauth_enabled:
+    secret_keys.append({
+        "name": "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID",
+        "source": mcp_oauth_upstream_client_id_secret_name,
+    })
+    secret_keys.append({
+        "name": "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET",
+        "source": mcp_oauth_upstream_client_secret_name,
+    })
 secret_keys.extend(source_secret_keys)
 
 app_environment = {

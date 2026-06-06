@@ -1594,7 +1594,7 @@ config:
       sourceId: security_tooling_map
       tenantId: writer
       config:
-        base_url: https://writerinternal.github.io/security-tooling-map/cerebro-source
+        base_url: https://sec-toolmap.adm.prod.qordobadev.com/cerebro-source
         family: tool
         per_page: "100"
         tenant_id: writer
@@ -1603,7 +1603,7 @@ config:
       sourceId: security_tooling_map
       tenantId: writer
       config:
-        base_url: https://writerinternal.github.io/security-tooling-map/cerebro-source
+        base_url: https://sec-toolmap.adm.prod.qordobadev.com/cerebro-source
         family: control_mapping
         per_page: "100"
         tenant_id: writer

@@ -40,6 +40,25 @@ AWS_CAN_PERFORM_REQUIRED_FAMILIES = {"effective_permission"}
 AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
 GRAPH_RELATIONS_TO_OBSERVE = AWS_ATTACK_PATH_RELATIONS | {"can_reach", "runs_as"}
 INGEST_RUN_ERROR_DETAIL_LIMIT = 500
+GRAPH_COMMAND_TASK_FAMILY_SUFFIX = "-graph-command"
+REGISTER_TASK_DEFINITION_KEYS = (
+    "taskRoleArn",
+    "executionRoleArn",
+    "networkMode",
+    "containerDefinitions",
+    "volumes",
+    "placementConstraints",
+    "requiresCompatibilities",
+    "cpu",
+    "memory",
+    "pidMode",
+    "ipcMode",
+    "proxyConfiguration",
+    "inferenceAccelerators",
+    "ephemeralStorage",
+    "runtimePlatform",
+    "enableFaultInjection",
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +77,7 @@ class GraphCommandContext:
     log_group: str
     stream_prefix: str
     has_source_runtime_bootstrap: bool
+    task_definition_without_bootstrap: dict[str, Any] | None = None
 
 
 class CurrentIngestRunsError(RuntimeError):
@@ -276,10 +296,72 @@ def _graph_command_overrides(task_definition: str, command: list[str], region: s
     return _graph_command_overrides_from_names(command, _task_definition_container_names(task_definition, region))
 
 
+def _graph_command_family(family: str) -> str:
+    if family.endswith(GRAPH_COMMAND_TASK_FAMILY_SUFFIX):
+        return family
+    return f"{family[: 255 - len(GRAPH_COMMAND_TASK_FAMILY_SUFFIX)]}{GRAPH_COMMAND_TASK_FAMILY_SUFFIX}"
+
+
+def _task_definition_without_bootstrap_from_definition(task_definition: dict[str, Any]) -> dict[str, Any] | None:
+    containers = task_definition.get("containerDefinitions") or []
+    if not any(container.get("name") == "source-runtime-bootstrap" for container in containers):
+        return None
+    graph_containers: list[dict[str, Any]] = []
+    for container in containers:
+        if container.get("name") == "source-runtime-bootstrap":
+            continue
+        updated = dict(container)
+        depends_on = [
+            dependency
+            for dependency in (updated.get("dependsOn") or [])
+            if dependency.get("containerName") != "source-runtime-bootstrap"
+        ]
+        if depends_on:
+            updated["dependsOn"] = depends_on
+        else:
+            updated.pop("dependsOn", None)
+        graph_containers.append(updated)
+    if not graph_containers:
+        raise RuntimeError("task definition contains no containers after removing source-runtime-bootstrap")
+    family = str(task_definition.get("family") or "").strip()
+    if not family:
+        raise RuntimeError("task definition is missing family")
+    payload = {
+        key: task_definition[key]
+        for key in REGISTER_TASK_DEFINITION_KEYS
+        if key in task_definition and task_definition[key] not in (None, [], {})
+    }
+    payload["family"] = _graph_command_family(family)
+    payload["containerDefinitions"] = graph_containers
+    return payload
+
+
+def _task_definition_without_bootstrap(task_definition: str, region: str) -> dict[str, Any] | None:
+    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
+    return _task_definition_without_bootstrap_from_definition(response.get("taskDefinition") or {})
+
+
+def _register_graph_command_task_definition(payload: dict[str, Any], region: str) -> str:
+    response = _aws(["ecs", "register-task-definition", "--cli-input-json", json.dumps(payload, separators=(",", ":"))], region)
+    arn = str(((response or {}).get("taskDefinition") or {}).get("taskDefinitionArn") or "").strip()
+    if not arn:
+        raise RuntimeError("register-task-definition did not return a taskDefinitionArn")
+    print(f"Using temporary graph command ECS task definition {arn}", file=sys.stderr)
+    return arn
+
+
+def _deregister_graph_command_task_definition(task_definition: str, region: str) -> None:
+    try:
+        _aws(["ecs", "deregister-task-definition", "--task-definition", task_definition], region)
+    except Exception as exc:
+        print(f"WARNING: failed to deregister temporary graph command task definition {task_definition}: {exc}", file=sys.stderr)
+
+
 def _graph_command_context(resource_prefix: str, service: dict[str, Any], region: str) -> GraphCommandContext:
     task_definition = _latest_active_task_definition(service["taskDefinition"], region)
     response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
-    container_definitions = response["taskDefinition"]["containerDefinitions"]
+    task_definition_payload = response["taskDefinition"]
+    container_definitions = task_definition_payload["containerDefinitions"]
     container_names = {
         str(container.get("name") or "").strip()
         for container in container_definitions
@@ -294,6 +376,7 @@ def _graph_command_context(resource_prefix: str, service: dict[str, Any], region
         log_group=options["awslogs-group"],
         stream_prefix=options["awslogs-stream-prefix"],
         has_source_runtime_bootstrap="source-runtime-bootstrap" in container_names,
+        task_definition_without_bootstrap=_task_definition_without_bootstrap_from_definition(task_definition_payload),
     )
 
 
@@ -483,23 +566,36 @@ def _run_graph_command(
         command,
         {"source-runtime-bootstrap"} if context.has_source_runtime_bootstrap else set(),
     )
-    response = _aws(
-        [
-            "ecs",
-            "run-task",
-            "--cluster",
-            context.cluster,
-            "--task-definition",
-            context.task_definition,
-            "--launch-type",
-            "FARGATE",
-            "--network-configuration",
-            json.dumps(context.network_configuration, separators=(",", ":")),
-            "--overrides",
-            json.dumps(overrides, separators=(",", ":")),
-        ],
-        region,
-    )
+    task_definition = context.task_definition
+    temporary_task_definition = None
+    if context.has_source_runtime_bootstrap:
+        payload = context.task_definition_without_bootstrap
+        if payload is None:
+            payload = _task_definition_without_bootstrap(context.task_definition, region)
+        if payload is not None:
+            temporary_task_definition = _register_graph_command_task_definition(payload, region)
+            task_definition = temporary_task_definition
+    try:
+        response = _aws(
+            [
+                "ecs",
+                "run-task",
+                "--cluster",
+                context.cluster,
+                "--task-definition",
+                task_definition,
+                "--launch-type",
+                "FARGATE",
+                "--network-configuration",
+                json.dumps(context.network_configuration, separators=(",", ":")),
+                "--overrides",
+                json.dumps(overrides, separators=(",", ":")),
+            ],
+            region,
+        )
+    finally:
+        if temporary_task_definition is not None:
+            _deregister_graph_command_task_definition(temporary_task_definition, region)
     failures = response.get("failures") or []
     if failures:
         raise RuntimeError(f"failed to start graph command {' '.join(command)}: {failures}")
