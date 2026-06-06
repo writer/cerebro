@@ -136,7 +136,37 @@ jobs:
           fi
           echo "url=${release_url}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve latest stable release
+        id: latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          latest_tag="$(
+            gh release list --repo writer/cerebro --limit 100 --json tagName,isDraft,isPrerelease \
+              --jq '.[] | select(.isDraft == false and .isPrerelease == false and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tagName' \
+              | sort -V \
+              | tail -n 1
+          )"
+          if [ -z "${latest_tag}" ]; then
+            echo "Could not resolve latest stable writer/cerebro release" >&2
+            exit 1
+          fi
+
+          superseded=false
+          if [ "${EVENT_NAME}" = "repository_dispatch" ] && [ "${IMAGE_TAG}" != "${latest_tag}" ]; then
+            superseded=true
+            echo "::notice::Superseding ${IMAGE_TAG}; latest stable writer/cerebro release is ${latest_tag}."
+          fi
+
+          echo "tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+          echo "superseded=${superseded}" >> "$GITHUB_OUTPUT"
+
       - name: Verify image signature and attestations
+        if: steps.latest.outputs.superseded != 'true'
         id: verify
         shell: bash
         env:
@@ -162,6 +192,7 @@ jobs:
           echo "verify_summary=signature and build attestations verified" >> "$GITHUB_OUTPUT"
 
       - name: Download and verify runtime deploy contract
+        if: steps.latest.outputs.superseded != 'true'
         id: contract
         shell: bash
         env:
@@ -192,6 +223,7 @@ jobs:
           echo "path=runtime-contract/cerebro-runtime-contract.json" >> "$GITHUB_OUTPUT"
 
       - name: Update stack config
+        if: steps.latest.outputs.superseded != 'true'
         id: update
         shell: bash
         env:
@@ -232,7 +264,7 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Apply stack config update
-        if: steps.update.outputs.changed == 'true'
+        if: steps.latest.outputs.superseded != 'true' && steps.update.outputs.changed == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN || github.token }}
@@ -248,6 +280,7 @@ jobs:
           VERIFY_SUMMARY: ${{ steps.verify.outputs.verify_summary }}
           DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository || '' }}
           DISPATCH_SOURCE_REF: ${{ github.event.client_payload.source_ref || '' }}
+          LATEST_STABLE_TAG: ${{ steps.latest.outputs.tag }}
         run: |
           set -euo pipefail
 
@@ -292,6 +325,86 @@ jobs:
               echo "Stack ${STACK_NAME} already uses ${IMAGE_TAG} after refreshing origin/main."
               exit 0
             fi
+          }
+
+          resolve_latest_stable_tag() {
+            gh release list --repo writer/cerebro --limit 100 --json tagName,isDraft,isPrerelease \
+              --jq '.[] | select(.isDraft == false and .isPrerelease == false and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tagName' \
+              | sort -V \
+              | tail -n 1
+          }
+
+          release_is_still_latest() {
+            local pr_url="${1:-}"
+            local latest_tag="${LATEST_STABLE_TAG}"
+            if [ -z "${latest_tag}" ]; then
+              latest_tag="$(resolve_latest_stable_tag)"
+            fi
+            if [ -z "${latest_tag}" ]; then
+              echo "Could not resolve latest stable writer/cerebro release" >&2
+              exit 1
+            fi
+            if [ "${IMAGE_TAG}" = "${latest_tag}" ]; then
+              return 0
+            fi
+
+            echo "::notice::Superseding ${IMAGE_TAG}; latest stable writer/cerebro release is ${latest_tag}."
+            if [ -n "${pr_url}" ]; then
+              gh pr close "${pr_url}" --comment "Superseded by latest stable Cerebro release ${latest_tag}." --delete-branch || true
+            fi
+            return 1
+          }
+
+          tag_at_least() {
+            local current="$1"
+            local target="$2"
+            [ "$(printf '%s\n%s\n' "${current}" "${target}" | sort -V | head -n 1)" = "${target}" ]
+          }
+
+          wait_for_sec_dev_release() {
+            local sec_dev_tag=""
+            local sec_dev_sha=""
+            local run=""
+            local status=""
+            local conclusion=""
+            local run_url=""
+
+            git fetch origin main:refs/remotes/origin/main
+            sec_dev_tag="$(git show origin/main:infra/aws/Pulumi.sec-dev.yaml | awk '$1 == "cerebro:imageTag:" { print $2; exit }')"
+            if ! tag_at_least "${sec_dev_tag}" "${IMAGE_TAG}"; then
+              echo "::notice::sec-dev is still on ${sec_dev_tag}; leaving ${IMAGE_TAG} go-prod PR open until sec-dev catches up."
+              return 1
+            fi
+
+            sec_dev_sha="$(git rev-parse origin/main)"
+            for _ in {1..60}; do
+              run="$(
+                gh run list \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --workflow infra-deploy.yml \
+                  --event workflow_dispatch \
+                  --branch main \
+                  --limit 50 \
+                  --json headSha,status,conclusion,url \
+                  --jq ".[] | select(.headSha == \"${sec_dev_sha}\") | [.status, (.conclusion // \"\"), .url] | @tsv" \
+                  | head -n 1
+              )"
+              if [ -n "${run}" ]; then
+                IFS=$'\t' read -r status conclusion run_url <<< "${run}"
+                if [ "${status}" = "completed" ] && [ "${conclusion}" = "success" ]; then
+                  echo "sec-dev deploy for ${sec_dev_tag} succeeded: ${run_url}"
+                  return 0
+                fi
+                if [ "${status}" = "completed" ]; then
+                  echo "::notice::sec-dev deploy for ${sec_dev_tag} completed with ${conclusion}; leaving go-prod PR open."
+                  return 1
+                fi
+              fi
+              sleep 10
+            done
+
+            echo "::notice::Timed out waiting for sec-dev deploy success for ${sec_dev_tag}; leaving go-prod PR open."
+            return 1
           }
 
           if [ "${APPLY_MODE}" = "direct_push" ]; then
@@ -462,6 +575,9 @@ jobs:
               echo "Refusing to auto-merge untrusted dispatch source ${DISPATCH_SOURCE_REPOSITORY} ${DISPATCH_SOURCE_REF}" >&2
               exit 1
             fi
+            if ! release_is_still_latest "${pr_url}"; then
+              return 0
+            fi
 
             changed_files="$(gh pr diff "${pr_url}" --name-only | sort)"
             expected_files="${expected_file}"
@@ -494,7 +610,22 @@ jobs:
               echo "::notice::Required PR checks for ${pr_url} did not all pass; leaving it open for the review-gated merge."
               return 0
             fi
+            if ! release_is_still_latest "${pr_url}"; then
+              return 0
+            fi
+            if ! wait_for_sec_dev_release; then
+              return 0
+            fi
             gh pr merge "${pr_url}" --merge --delete-branch
           }
 
           auto_merge_trusted_pr "${pr_url}"
+
+      - name: Report superseded release
+        if: steps.latest.outputs.superseded == 'true'
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          LATEST_STABLE_TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          echo "Cerebro ${IMAGE_TAG} is superseded by latest stable ${LATEST_STABLE_TAG}; no promotion changes were applied."

@@ -328,7 +328,7 @@ jobs:
     name: Deploy sec-dev
     runs-on: ubuntu-latest
     needs: [changes, static-validation]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_sec_dev == 'true'
+    if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_sec_dev == 'true' && !startsWith(github.event.head_commit.message, 'chore: deploy sec-dev Cerebro ') }}"
     concurrency:
       group: infra-${{ needs.changes.outputs.aws_sec_dev_deploy == 'true' && 'deploy' || 'verify' }}-sec-dev
       cancel-in-progress: true

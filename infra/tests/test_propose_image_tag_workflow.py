@@ -36,6 +36,28 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
             direct_push_block.index('changed_files="$(git diff --name-only)"'),
         )
 
+    def test_repository_dispatch_superseded_releases_skip_promotion(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("- name: Resolve latest stable release", workflow)
+        self.assertIn("superseded=true", workflow)
+        self.assertIn("if: steps.latest.outputs.superseded != 'true'", workflow)
+        self.assertIn("- name: Report superseded release", workflow)
+
+    def test_go_prod_auto_merge_rechecks_latest_and_sec_dev_success(self) -> None:
+        apply_step = self._apply_step()
+        auto_merge_block = apply_step.split("auto_merge_trusted_pr() {", 1)[1].split(
+            'gh pr merge "${pr_url}" --merge --delete-branch',
+            1,
+        )[0]
+
+        self.assertIn('release_is_still_latest "${pr_url}"', auto_merge_block)
+        self.assertIn("wait_for_sec_dev_release", auto_merge_block)
+        self.assertLess(
+            auto_merge_block.rindex('release_is_still_latest "${pr_url}"'),
+            auto_merge_block.index("wait_for_sec_dev_release"),
+        )
+
     def test_pulumi_preview_jobs_have_timeout(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         for job_name in ("Preview sec-dev", "Preview go-prod", "Preview gcp-dev", "Preview gcp-prod"):
@@ -49,6 +71,12 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
             with self.subTest(job_name=job_name):
                 job_block = workflow.split(f"name: {job_name}", 1)[1].split("      - name: Install uv", 1)[0]
                 self.assertIn("fetch-depth: 0", job_block)
+
+    def test_sec_dev_autorelease_push_uses_explicit_deploy_dispatch(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        deploy_block = workflow.split("  deploy-sec-dev-main:", 1)[1].split("  # Main merge: Pulumi up for go-prod stack", 1)[0]
+
+        self.assertIn("!startsWith(github.event.head_commit.message, 'chore: deploy sec-dev Cerebro ')", deploy_block)
 
 
 if __name__ == "__main__":
