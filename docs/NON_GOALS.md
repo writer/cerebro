@@ -158,7 +158,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - The Agent primitive composes Events, Streams, Views, Rules, and Actions under a policy. It does not get a private path to mutate Postgres or Neo4j. It does not author Cypher writes. It does not call Actions without going through the typed Action contract, including approval gates and trusted actuation scope where required.
 - Why: autonomous remediation is the failure mode that justifies most of the safety surface in Cerebro. Letting an Agent route around any of it would erase the reason the safety surface exists.
-- Enforced in: Agent contract in [`PLAN.md`](../PLAN.md) §4; `internal/graphagent/validator.go`; trusted actuation scope checks in `internal/runtime`.
+- Enforced in: Agent contract in [`PLAN.md`](../PLAN.md) §4; `internal/graphagent/validator.go`; trusted runtime-response scope derivation in `internal/bootstrap/auth.go` and mutation gating in `internal/runtimeresponse`.
 - What would change this: nothing structural. Agent capabilities grow by adding typed Actions and Rules, not by widening Agent's direct surface.
 
 ## Runtime Response

@@ -19,6 +19,8 @@ jobs:
             command: make build
           - name: test
             command: make test
+          - name: coverage
+            command: make cover
           - name: sdk
             command: make sdk-test
           - name: sdk-dependency-audit
