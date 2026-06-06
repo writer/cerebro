@@ -2,7 +2,11 @@ package github
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io"
 	"net"
@@ -62,6 +66,65 @@ func TestAuditRequiresToken(t *testing.T) {
 	}
 }
 
+func TestAuditSupportsGitHubAppAuth(t *testing.T) {
+	privateKey := testGitHubAppPrivateKeyPEM(t)
+	tokenRequests := 0
+	apiHandler := newGitHubAPIHandler(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v3/app/installations/123/access_tokens" {
+			tokenRequests++
+			if got := r.Header.Get("Authorization"); !strings.HasPrefix(got, "Bearer ") {
+				t.Fatalf("app token Authorization = %q, want bearer JWT", got)
+			}
+			if err := json.NewEncoder(w).Encode(map[string]string{
+				"token":      "installation-token",
+				"expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			}); err != nil {
+				t.Fatalf("encode installation token response: %v", err)
+			}
+			return
+		}
+		if r.URL.Path == "/api/v3/orgs/writer/audit-log" {
+			if got := r.Header.Get("Authorization"); got != "Bearer installation-token" {
+				t.Fatalf("audit Authorization = %q, want installation token", got)
+			}
+		}
+		apiHandler.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"app_id":          "42",
+		"base_url":        server.URL,
+		"family":          familyAudit,
+		"installation_id": "123",
+		"owner":           "writer",
+		"private_key":     privateKey,
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check(audit app auth) error = %v", err)
+	}
+	if tokenRequests != 1 {
+		t.Fatalf("installation token requests = %d, want 1", tokenRequests)
+	}
+}
+
+func TestGitHubAppAuthRejectsPartialCredentials(t *testing.T) {
+	if _, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"app_id": "42",
+		"family": familyAudit,
+		"owner":  "writer",
+	}), false, false); err == nil {
+		t.Fatal("parseSettings() error = nil, want partial app auth error")
+	}
+}
+
 func TestNewFixtureReturnsFixtureURNs(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
@@ -74,6 +137,18 @@ func TestNewFixtureReturnsFixtureURNs(t *testing.T) {
 	if len(urns) != 2 {
 		t.Fatalf("len(Discover()) = %d, want 2", len(urns))
 	}
+}
+
+func testGitHubAppPrivateKeyPEM(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}))
 }
 
 func TestNewFixtureReplaysFixturePages(t *testing.T) {
