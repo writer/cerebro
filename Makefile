@@ -13,6 +13,8 @@ PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
 DOCKER_SMOKE_GOARCH ?= amd64
+DOCKER_BUILD_ATTEMPTS ?= 3
+DOCKER_BUILD_RETRY_SLEEP ?= 10
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 COVER_PACKAGES ?= ./internal/runtimeresponse ./internal/graphagent ./internal/deviceauth ./internal/sourceprojection ./internal/findings
 COVERAGE_OUT ?= tmp/coverage.out
@@ -236,7 +238,19 @@ docker-smoke: ## Build and smoke-test the runtime Docker image.
 	@command -v docker >/dev/null || { echo "docker is required for docker-smoke" >&2; exit 2; }
 	mkdir -p .dist
 	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -o .dist/cerebro ./cmd/cerebro
-	docker build -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .
+	@attempt=1; \
+	while :; do \
+		if docker build -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .; then \
+			break; \
+		fi; \
+		if [ "$$attempt" -ge "$(DOCKER_BUILD_ATTEMPTS)" ]; then \
+			echo "docker build failed after $(DOCKER_BUILD_ATTEMPTS) attempts" >&2; \
+			exit 1; \
+		fi; \
+		echo "docker build failed; retrying in $(DOCKER_BUILD_RETRY_SLEEP)s" >&2; \
+		attempt=$$((attempt + 1)); \
+		sleep "$(DOCKER_BUILD_RETRY_SLEEP)"; \
+	done
 	@test -n "$$(docker run --rm "$(DOCKER_SMOKE_IMAGE)" version)"
 
 release-smoke: ## Validate GoReleaser configuration.
