@@ -280,6 +280,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"kubernetes.service_account":                kubernetesServiceAccountProjections,
 	"kubernetes.workload":                       kubernetesWorkloadProjections,
 	"kubernetes.workload_identity_binding":      kubernetesWorkloadIdentityBindingProjections,
+	"evidence_cas.object":                       runtimeEvidenceProjections,
 	"runtime.evidence":                          runtimeEvidenceProjections,
 	"security_tooling_map.control_mapping":      securityToolingMapControlMappingProjections,
 	"security_tooling_map.tool":                 securityToolingMapToolProjections,

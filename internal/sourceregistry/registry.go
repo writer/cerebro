@@ -9,6 +9,7 @@ import (
 	azuresource "github.com/writer/cerebro/sources/azure"
 	backstagesource "github.com/writer/cerebro/sources/backstage"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
+	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
@@ -29,6 +30,12 @@ type builtinSourceLoader struct {
 }
 
 var builtinSourceLoaders = []builtinSourceLoader{
+	{
+		name: "evidence_cas",
+		load: func() (sourcecdk.Source, error) {
+			return evidencecassource.New()
+		},
+	},
 	{
 		name: "aurelius",
 		load: func() (sourcecdk.Source, error) {
