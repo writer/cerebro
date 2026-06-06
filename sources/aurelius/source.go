@@ -274,17 +274,17 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		rawPageSize, ok = cfg.Lookup("page_size")
 	}
 	if ok && strings.TrimSpace(rawPageSize) != "" {
-		size, err := strconv.Atoi(strings.TrimSpace(rawPageSize))
+		size, err := strconv.ParseInt(strings.TrimSpace(rawPageSize), 10, 32)
 		if err != nil {
 			return settings{}, fmt.Errorf("%w: %w", ErrInvalidPageSize, err)
 		}
 		if size < 1 {
 			return settings{}, fmt.Errorf("%w: must be >= 1", ErrInvalidPageSize)
 		}
-		if size > maxPageSize {
-			size = maxPageSize
+		if size > int64(maxPageSize) {
+			size = int64(maxPageSize)
 		}
-		st.perPage = int32(size) // #nosec G109 -- size is clamped to maxPageSize above.
+		st.perPage = int32(size) // #nosec G109 G115 -- ParseInt bitSize 32 and maxPageSize bound ensure this conversion is safe.
 	}
 	if !isKnownFamily(st.family) {
 		return settings{}, fmt.Errorf("%w: %q", ErrUnsupportedFamily, st.family)
