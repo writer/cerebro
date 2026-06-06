@@ -19,12 +19,15 @@ IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
 AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
 COSMO_REQUIRED_STACKS = {"sec-dev", "go-prod"}
-COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_EXPORT_SECRET", "CEREBRO_SOURCE_COSMO_TOKEN"}
+COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_TOKEN"}
+COSMO_MESSAGE_EXPORT_SECRET = "CEREBRO_SOURCE_COSMO_EXPORT_SECRET"
 COSMO_RUNTIME_FAMILIES = {
     "writer-cosmo-session": "session",
     "writer-cosmo-fact": "fact",
-    "writer-cosmo-message": "message",
     "writer-cosmo-survey-feedback": "survey_feedback",
+}
+COSMO_OPTIONAL_RUNTIME_FAMILIES = {
+    "writer-cosmo-message": "message",
 }
 COSMO_GRAPH_BUDGETED_RUNTIMES = {"writer-cosmo-session", "writer-cosmo-fact"}
 COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
@@ -328,6 +331,21 @@ def _validate_cosmo_gitops(
             if runtime_id:
                 runtimes_by_id[runtime_id] = (index, runtime)
 
+    cosmo_runtime_families = dict(COSMO_RUNTIME_FAMILIES)
+    if COSMO_MESSAGE_EXPORT_SECRET in source_secret_names or any(
+        runtime_id in runtimes_by_id for runtime_id in COSMO_OPTIONAL_RUNTIME_FAMILIES
+    ):
+        cosmo_runtime_families.update(COSMO_OPTIONAL_RUNTIME_FAMILIES)
+        if COSMO_MESSAGE_EXPORT_SECRET not in source_secret_names:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:sourceSecretKeys",
+                    f"Cosmo message secret {COSMO_MESSAGE_EXPORT_SECRET!r} must be declared when the message runtime is configured",
+                )
+            )
+
     schedules_by_runtime: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     for index, schedule in enumerate(schedules):
         if isinstance(schedule, dict):
@@ -335,7 +353,7 @@ def _validate_cosmo_gitops(
             if runtime_id:
                 schedules_by_runtime.setdefault(runtime_id, []).append((index, schedule))
 
-    for runtime_id, family in COSMO_RUNTIME_FAMILIES.items():
+    for runtime_id, family in cosmo_runtime_families.items():
         runtime_entry = runtimes_by_id.get(runtime_id)
         if runtime_entry is None:
             findings.append(_finding("error", stack, "cerebro:sourceRuntimes", f"required Cosmo runtime {runtime_id!r} is missing"))

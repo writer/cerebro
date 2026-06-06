@@ -93,7 +93,6 @@ config:
   cerebro:openrouterApiKeySecret: CEREBRO_OPENROUTER_API_KEY
   cerebro:sourceSecretKeys:
     - CEREBRO_SOURCE_COSMO_BASE_URL
-    - CEREBRO_SOURCE_COSMO_EXPORT_SECRET
     - CEREBRO_SOURCE_COSMO_TOKEN
     - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
     - GITHUB_TOKEN
@@ -632,16 +631,6 @@ config:
         - page_limit=5
         - graph_page_limit=5
         - event_limit=500
-    - name: cosmo-message
-      scheduleExpression: cron(22,52 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-cosmo-message
-        - page_limit=2
-        - graph_page_limit=2
-        - event_limit=1000
     - name: cosmo-survey-feedback
       scheduleExpression: cron(7,37 * * * ? *)
       taskCount: 1
@@ -1211,20 +1200,6 @@ config:
         base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
         family: fact
         per_page: "100"
-        tenant_id: writer
-        token: env:CEREBRO_SOURCE_COSMO_TOKEN
-    - id: writer-cosmo-message
-      sourceId: cosmo
-      tenantId: writer
-      config:
-        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
-        client_id: cerebro-runtime
-        event_types: "message,completion"
-        export_secret: env:CEREBRO_SOURCE_COSMO_EXPORT_SECRET
-        family: message
-        max_window_hours: "24"
-        per_page: "100"
-        since: "2026-01-01T00:00:00Z"
         tenant_id: writer
         token: env:CEREBRO_SOURCE_COSMO_TOKEN
     - id: writer-cosmo-survey-feedback
