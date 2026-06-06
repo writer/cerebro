@@ -179,8 +179,28 @@ func githubRuntimeRequiresRepo(config map[string]string) bool {
 }
 
 func githubRequiresToken(config map[string]string) bool {
+	if githubHasAppAuthConfig(config) {
+		return false
+	}
 	family := strings.TrimSpace(config["family"])
 	return family == "audit" || family == "dependabot_alert"
+}
+
+func githubHasAppAuthConfig(config map[string]string) bool {
+	for _, key := range []string{
+		"app_id",
+		"app_installation_id",
+		"installation_id",
+		"app_private_key",
+		"private_key",
+		"app_private_key_base64",
+		"private_key_base64",
+	} {
+		if strings.TrimSpace(config[key]) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneConfig(config map[string]string) map[string]string {
