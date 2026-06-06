@@ -177,6 +177,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           DROID_PR: ${{ github.event.pull_request.number }}
           DROID_FEEDBACK_OUT: tmp/droid-feedback.md
           DROID_FEEDBACK_JSON_OUT: tmp/droid-feedback.json
