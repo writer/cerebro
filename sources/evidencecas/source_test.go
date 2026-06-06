@@ -1,4 +1,4 @@
-package agentcache
+package evidencecas
 
 import (
 	"context"
@@ -15,8 +15,8 @@ func TestSourceSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	if source.Spec().Id != "agentcache" {
-		t.Fatalf("Spec().Id = %q, want agentcache", source.Spec().Id)
+	if source.Spec().Id != "evidence_cas" {
+		t.Fatalf("Spec().Id = %q, want evidence_cas", source.Spec().Id)
 	}
 }
 
@@ -31,8 +31,8 @@ func TestReadObjectRefs(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"objects": []map[string]any{
 				{
-					"ref_type":         "agentcache.manifest.v2",
-					"uri":              "agentcache://cases/123/evidence/triage.tar",
+					"ref_type":         "evidencecas.manifest.v2",
+					"uri":              "evidencecas://cases/123/evidence/triage.tar",
 					"key":              "123/evidence/triage.tar",
 					"digest":           "sha256abc",
 					"size":             42,
@@ -70,19 +70,19 @@ func TestReadObjectRefs(t *testing.T) {
 		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
 	}
 	event := pull.Events[0]
-	if event.Kind != "agentcache.object" {
-		t.Fatalf("Kind = %q, want agentcache.object", event.Kind)
+	if event.Kind != "evidence_cas.object" {
+		t.Fatalf("Kind = %q, want evidence_cas.object", event.Kind)
 	}
-	if event.SchemaRef != "agentcache/object/v1" {
-		t.Fatalf("SchemaRef = %q, want agentcache/object/v1", event.SchemaRef)
+	if event.SchemaRef != "evidence_cas/object/v1" {
+		t.Fatalf("SchemaRef = %q, want evidence_cas/object/v1", event.SchemaRef)
 	}
 	if event.Attributes["evidence_id"] != "evidence-456" {
 		t.Fatalf("evidence_id = %q, want evidence-456", event.Attributes["evidence_id"])
 	}
-	if event.Attributes["agentcache_uri"] != "agentcache://cases/123/evidence/triage.tar" {
-		t.Fatalf("agentcache_uri = %q", event.Attributes["agentcache_uri"])
+	if event.Attributes["evidence_cas_uri"] != "evidencecas://cases/123/evidence/triage.tar" {
+		t.Fatalf("evidence_cas_uri = %q", event.Attributes["evidence_cas_uri"])
 	}
-	if event.Attributes["evidence_type"] != "agentcache.artifact" {
-		t.Fatalf("evidence_type = %q, want agentcache.artifact", event.Attributes["evidence_type"])
+	if event.Attributes["evidence_type"] != "evidence_cas.artifact" {
+		t.Fatalf("evidence_type = %q, want evidence_cas.artifact", event.Attributes["evidence_type"])
 	}
 }

@@ -1,4 +1,4 @@
-package agentcache
+package evidencecas
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID      = "agentcache"
+	sourceID      = "evidence_cas"
 	defaultFamily = familyObject
 
 	familyObject = "object"
@@ -44,24 +44,24 @@ func New() (*Source, error) {
 					"updated_at",
 				},
 				Attributes: map[string]string{
-					"evidence_id":                 "metadata.evidence_id|uri|key",
-					"evidence_type":               "metadata.evidence_type",
-					"resource_urn":                "metadata.resource_urn|metadata.case_urn",
-					"observed_at":                 "updated_at",
-					"case_id":                     "metadata.case_id",
-					"agentcache_uri":              "uri",
-					"agentcache_digest":           "digest",
-					"agentcache_manifest_version": "manifest_version",
-					"agentcache_merkle_root":      "merkle_root",
-					"agentcache_commit_id":        "commit_id",
-					"agentcache_content_type":     "content_type",
-					"agentcache_size_bytes":       "size",
-					"agentcache_blocks_count":     "blocks_count",
-					"agentcache_ref_type":         "ref_type",
+					"evidence_id":                   "metadata.evidence_id|uri|key",
+					"evidence_type":                 "metadata.evidence_type",
+					"resource_urn":                  "metadata.resource_urn|metadata.case_urn",
+					"observed_at":                   "updated_at",
+					"case_id":                       "metadata.case_id",
+					"evidence_cas_uri":              "uri",
+					"evidence_cas_digest":           "digest",
+					"evidence_cas_manifest_version": "manifest_version",
+					"evidence_cas_merkle_root":      "merkle_root",
+					"evidence_cas_commit_id":        "commit_id",
+					"evidence_cas_content_type":     "content_type",
+					"evidence_cas_size_bytes":       "size",
+					"evidence_cas_blocks_count":     "blocks_count",
+					"evidence_cas_ref_type":         "ref_type",
 				},
 				StaticAttributes: map[string]string{
-					"source_product": "agentcache",
-					"evidence_type":  "agentcache.artifact",
+					"source_product": "evidence_cas",
+					"evidence_type":  "evidence_cas.artifact",
 				},
 			},
 		},

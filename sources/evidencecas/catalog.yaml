@@ -1,0 +1,17 @@
+id: evidence_cas
+name: EvidenceCAS
+description: EvidenceCAS evidence manifest source.
+emitted_kinds:
+  - evidence_cas.object
+event_contracts:
+  - kind: evidence_cas.object
+    schema_ref: evidence_cas/object/v1
+    required_attributes:
+      - evidence_id
+      - evidence_type
+      - evidence_cas_uri
+      - evidence_cas_digest
+    required_payload_fields:
+      - uri
+      - digest
+      - manifest_version
