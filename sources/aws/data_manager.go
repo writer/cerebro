@@ -95,7 +95,7 @@ func listOpenSearchDomains(ctx context.Context, clients awsClients, _ settings, 
 
 func listOpenSearchServerlessCollections(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsOpenSearchServerlessCollection, string, error) {
 	output, err := clients.openSearchServerless.ListCollections(ctx, &opensearchserverless.ListCollectionsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -142,7 +142,7 @@ func listOpenSearchServerlessSecurityPolicies(ctx context.Context, clients awsCl
 		policyType := policyTypes[typeIndex]
 		output, err := clients.openSearchServerless.ListSecurityPolicies(ctx, &opensearchserverless.ListSecurityPoliciesInput{
 			Type:       policyType,
-			MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+			MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 			NextToken:  stringPtr(state.Token),
 		})
 		if err != nil {
@@ -180,7 +180,7 @@ func listOpenSearchServerlessSecurityPolicies(ctx context.Context, clients awsCl
 func listElastiCacheReplicationGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsElastiCacheReplicationGroup, string, error) {
 	output, err := clients.elasticache.DescribeReplicationGroups(ctx, &elasticache.DescribeReplicationGroupsInput{
 		Marker:     stringPtr(cursor),
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -203,7 +203,7 @@ func listElastiCacheReplicationGroups(ctx context.Context, clients awsClients, _
 func listElastiCacheClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsElastiCacheCluster, string, error) {
 	output, err := clients.elasticache.DescribeCacheClusters(ctx, &elasticache.DescribeCacheClustersInput{
 		Marker:            stringPtr(cursor),
-		MaxRecords:        awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords:        awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 		ShowCacheNodeInfo: awssdk.Bool(true),
 	})
 	if err != nil {
@@ -227,7 +227,7 @@ func listElastiCacheClusters(ctx context.Context, clients awsClients, _ settings
 func listElastiCacheSubnetGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsElastiCacheSubnetGroup, string, error) {
 	output, err := clients.elasticache.DescribeCacheSubnetGroups(ctx, &elasticache.DescribeCacheSubnetGroupsInput{
 		Marker:     stringPtr(cursor),
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -249,7 +249,7 @@ func listElastiCacheSubnetGroups(ctx context.Context, clients awsClients, _ sett
 
 func listFSxFileSystems(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsFSxFileSystem, string, error) {
 	output, err := clients.fsx.DescribeFileSystems(ctx, &fsx.DescribeFileSystemsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {

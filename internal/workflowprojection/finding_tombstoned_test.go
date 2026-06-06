@@ -66,6 +66,7 @@ func tombstonedFindingSnapshot(findingID, anchorURN string) workflowevents.Findi
 	}
 }
 
+//nolint:unparam // Helper keeps finding ID explicit in canonical tombstone payload fixtures.
 func canonicalFindingTombstonedPayload(findingID, anchorURN, priorStatus string) workflowevents.FindingTombstoned {
 	return workflowevents.FindingTombstoned{
 		Finding:      tombstonedFindingSnapshot(findingID, anchorURN),

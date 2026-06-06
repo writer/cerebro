@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -25,6 +26,16 @@ const (
 	findingCandidateDecisionType    = "finding_candidate_promotion"
 	findingCandidateRejectionType   = "finding_candidate_rejection"
 )
+
+func boundedUint32(value int) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
+}
 
 // EvaluateCandidateRulesRequest scopes one non-production candidate evaluation.
 type EvaluateCandidateRulesRequest struct {
@@ -152,7 +163,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 			return nil, s.markCandidateEvaluationsFailed(ctx, states, evaluationErr)
 		}
 	}
-	result.EventsEvaluated = uint32(len(events))
+	result.EventsEvaluated = boundedUint32(len(events))
 	for _, event := range events {
 		for _, state := range states {
 			if state.failed || !state.rule.SupportsRuntime(runtime) {
@@ -200,7 +211,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 			continue
 		}
 		state.run.EventsMatched = state.eventsMatched
-		state.run.Candidates = uint32(len(state.result.Candidates))
+		state.run.Candidates = boundedUint32(len(state.result.Candidates))
 		state.run.Status = "completed"
 		state.run.FinishedAt = time.Now().UTC()
 		if err := s.candidateStore.PutFindingCandidateRun(ctx, state.run); err != nil {
@@ -258,6 +269,8 @@ func (s *Service) GetFindingCandidate(ctx context.Context, id string) (*ports.Fi
 
 // PromoteFindingCandidate turns one reviewed candidate snapshot into production
 // finding state and records an audit decision for the promotion.
+// Candidate lifecycle transitions rely on store-owned compare-and-swap updates:
+// MarkFindingCandidatePromoted/Rejected only mutate rows still in candidate state.
 func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCandidateRequest) (*PromoteCandidateResult, error) {
 	if s == nil || s.candidateStore == nil || s.store == nil || s.evidenceStore == nil {
 		return nil, ErrRuntimeUnavailable
@@ -785,7 +798,7 @@ func (s *Service) markCandidateEvaluationFailed(ctx context.Context, state *cand
 	}
 	state.run.Status = "failed"
 	state.run.EventsMatched = state.eventsMatched
-	state.run.Candidates = uint32(len(state.result.Candidates))
+	state.run.Candidates = boundedUint32(len(state.result.Candidates))
 	state.run.Error = strings.TrimSpace(evaluationErr.Error())
 	state.run.FinishedAt = time.Now().UTC()
 	if err := s.candidateStore.PutFindingCandidateRun(ctx, state.run); err != nil {

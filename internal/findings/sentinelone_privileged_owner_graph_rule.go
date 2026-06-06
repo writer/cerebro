@@ -200,7 +200,7 @@ func (r *sentinelOneInfectedPrivilegedOwnerRule) EvaluateRows(_ context.Context,
 		}
 		agentAttrs := edgeStringAttributes(cypherRowString(row, "agent_attributes_json"))
 		activeThreats := sentinelOneActiveThreatsFromRow(row)
-		agentInfected := findingAttributeBool(agentAttrs, "is_infected", "infected") || sentinelOneIntAttribute(agentAttrs, "active_threats") > 0
+		agentInfected := findingAttributeBool(agentAttrs, "is_infected", "infected") || sentinelOneIntAttribute(agentAttrs) > 0
 		if !agentInfected && !sentinelOneGraphThreatsHaveInfectionEvidence(activeThreats) {
 			continue
 		}

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -246,7 +247,7 @@ func TestPostgresCleanupEndpointOwnerIDLinksIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run cleanup endpoint owner-id links: %v", err)
 	}
-	if result.LinksMatched != uint32(len(staleLinks)) || result.LinksDeleted != 0 {
+	if result.LinksMatched != uint32FromTestLen(len(staleLinks)) || result.LinksDeleted != 0 {
 		t.Fatalf("dry-run cleanup result = %#v, want %d matches and no deletes", result, len(staleLinks))
 	}
 	for _, link := range staleLinks {
@@ -257,7 +258,7 @@ func TestPostgresCleanupEndpointOwnerIDLinksIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cleanup endpoint owner-id links: %v", err)
 	}
-	if result.LinksMatched != uint32(len(staleLinks)) || result.LinksDeleted != uint32(len(staleLinks)) {
+	if result.LinksMatched != uint32FromTestLen(len(staleLinks)) || result.LinksDeleted != uint32FromTestLen(len(staleLinks)) {
 		t.Fatalf("cleanup result = %#v, want %d deletes", result, len(staleLinks))
 	}
 	for _, link := range staleLinks {
@@ -266,6 +267,13 @@ func TestPostgresCleanupEndpointOwnerIDLinksIntegration(t *testing.T) {
 	for _, link := range preservedLinks {
 		assertPostgresProjectedLinkExists(t, ctx, store, link)
 	}
+}
+
+func uint32FromTestLen(value int) uint32 {
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value) // #nosec G115 -- helper clamps test slice lengths before narrowing.
 }
 
 func assertPostgresProjectedLinkExists(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) {

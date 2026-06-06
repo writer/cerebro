@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -361,7 +362,7 @@ func (s *Service) ListRuns(ctx context.Context, filter graphstore.IngestRunFilte
 	if err != nil {
 		return nil, err
 	}
-	return &ListResult{Runs: runs, FailedCount: uint32(len(failed))}, nil
+	return &ListResult{Runs: runs, FailedCount: boundedUint32(len(failed))}, nil
 }
 
 func (s *Service) Health(ctx context.Context, limit uint32) (result *HealthResult, err error) {
@@ -408,10 +409,20 @@ func (s *Service) Health(ctx context.Context, limit uint32) (result *HealthResul
 	return &HealthResult{
 		Status:       healthStatus,
 		CheckedAt:    time.Now().UTC(),
-		FailedCount:  uint32(len(allFailed)),
-		RunningCount: uint32(len(running)),
+		FailedCount:  boundedUint32(len(allFailed)),
+		RunningCount: boundedUint32(len(running)),
 		FailedRuns:   failed,
 	}, nil
+}
+
+func boundedUint32(value int) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
 }
 
 func latestRunsByRuntime(runs []graphstore.IngestRun) []graphstore.IngestRun {
@@ -1009,7 +1020,7 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 }
 
 func normalizeFilter(filter graphstore.IngestRunFilter) (graphstore.IngestRunFilter, error) {
-	limit, err := normalizeStatusLimit(uint32(filter.Limit))
+	limit, err := normalizeStatusLimit(boundedUint32(filter.Limit))
 	if err != nil {
 		return graphstore.IngestRunFilter{}, err
 	}

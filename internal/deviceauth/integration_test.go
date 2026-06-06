@@ -44,6 +44,7 @@ func ecPublicKeyDER(t *testing.T, pub *ecdsa.PublicKey) []byte {
 	return der
 }
 
+//nolint:unparam // Helper keeps HTTP method explicit in DPoP fixture construction.
 func newDPoPProofES256(t *testing.T, key *ecdsa.PrivateKey, htm, htu string, iat time.Time, jti string) string {
 	t.Helper()
 	x, y := p256XY(t, &key.PublicKey)

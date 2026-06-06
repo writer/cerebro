@@ -78,5 +78,5 @@ func run(args []string) error {
 		_, err = os.Stdout.Write(data)
 		return err
 	}
-	return os.WriteFile(*out, data, 0o644)
+	return os.WriteFile(*out, data, 0o600)
 }

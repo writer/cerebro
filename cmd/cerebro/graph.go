@@ -434,6 +434,9 @@ func graphProjectedEntityCleanupUsage() string {
 }
 
 func runGraphInspect(args []string) error {
+	if len(args) == 0 {
+		return usageError(graphInspectUsage())
+	}
 	ctx := context.Background()
 	deps, closeDeps, err := openGraphDependencies(ctx)
 	if err != nil {

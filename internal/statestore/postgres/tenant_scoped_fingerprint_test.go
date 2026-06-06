@@ -225,7 +225,7 @@ func TestBackfillTenantScopedFindingFingerprints_IdempotentSkipsTombstonedLosers
 		id:           "idempotent-loser",
 		tenantID:     tenantID,
 		userID:       "00u-idempotent",
-		credentialID: "cred-idempotent",
+		credentialID: "cred-idempotent", // #nosec G101 -- test credential identifier fixture, not credential material.
 		resourceURN:  "urn:cerebro:" + tenantID + ":okta_user:idempotent-loser",
 		createdAt:    base,
 		updatedAt:    base.Add(1 * time.Minute),
@@ -234,7 +234,7 @@ func TestBackfillTenantScopedFindingFingerprints_IdempotentSkipsTombstonedLosers
 		id:           "idempotent-winner",
 		tenantID:     tenantID,
 		userID:       "00u-idempotent",
-		credentialID: "cred-idempotent",
+		credentialID: "cred-idempotent", // #nosec G101 -- test credential identifier fixture, not credential material.
 		resourceURN:  "urn:cerebro:" + tenantID + ":okta_user:idempotent-winner",
 		createdAt:    base.Add(2 * time.Minute),
 		updatedAt:    base.Add(3 * time.Minute),
@@ -431,6 +431,7 @@ type backfillCollisionEvent struct {
 	tombstonedAt time.Time
 }
 
+//nolint:unparam // Helper keeps run ID explicit to document the queried backfill fixture.
 func loadBackfillCollisionEvents(t *testing.T, ctx context.Context, store *Store, runID string) []backfillCollisionEvent {
 	t.Helper()
 	rows, err := store.db.QueryContext(ctx, `

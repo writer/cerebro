@@ -376,7 +376,7 @@ func (s *Service) Revoke(ctx context.Context, authorizationHeader string, form u
 	}
 	token, err := NormalizeOpaqueToken(rawToken)
 	if err != nil {
-		return RevokeResponse{}, nil
+		return RevokeResponse{}, nil //nolint:nilerr // RFC 7009 revocation is successful even for syntactically invalid tokens.
 	}
 	if err := s.store.RevokeOAuthRefreshToken(ctx, HashToken(token), client.ClientID); err != nil {
 		return RevokeResponse{}, fmt.Errorf("mcpoauth: revoke refresh token: %w", err)

@@ -65,10 +65,7 @@ func (s *Source) discoverAudit(ctx context.Context, client *gogithub.Client, set
 }
 
 func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	after, err := readAuditCursor(cursor)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
+	after := readAuditCursor(cursor)
 	entries, resp, err := client.Organizations.GetAuditLog(ctx, settings.owner, auditOptions(settings, after, settings.perPage))
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
@@ -129,11 +126,11 @@ func auditOptions(settings settings, after string, perPage int) *gogithub.GetAud
 	return opts
 }
 
-func readAuditCursor(cursor *cerebrov1.SourceCursor) (string, error) {
+func readAuditCursor(cursor *cerebrov1.SourceCursor) string {
 	if cursor == nil {
-		return "", nil
+		return ""
 	}
-	return strings.TrimSpace(cursor.GetOpaque()), nil
+	return strings.TrimSpace(cursor.GetOpaque())
 }
 
 type auditActorResolution struct {

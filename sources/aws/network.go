@@ -35,7 +35,7 @@ type awsRoute53ResolverRule struct {
 func listACMCertificates(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsACMCertificate, string, error) {
 	out, err := clients.acm.ListCertificates(ctx, &acm.ListCertificatesInput{
 		CertificateStatuses: acmtypes.CertificateStatus("").Values(),
-		MaxItems:            awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		MaxItems:            awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 1000)),
 		NextToken:           stringPtr(cursor),
 	})
 	if err != nil {
@@ -67,7 +67,7 @@ func listACMCertificates(ctx context.Context, clients awsClients, _ settings, cu
 
 func listRoute53ResolverEndpoints(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsRoute53ResolverEndpoint, string, error) {
 	out, err := clients.route53Resolver.ListResolverEndpoints(ctx, &route53resolver.ListResolverEndpointsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -90,7 +90,7 @@ func listRoute53ResolverEndpoints(ctx context.Context, clients awsClients, _ set
 
 func listRoute53ResolverRules(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsRoute53ResolverRule, string, error) {
 	out, err := clients.route53Resolver.ListResolverRules(ctx, &route53resolver.ListResolverRulesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {

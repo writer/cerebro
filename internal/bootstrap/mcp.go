@@ -207,7 +207,7 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 	decoder.UseNumber()
 	var request mcpJSONRPCRequest
 	if err := decoder.Decode(&request); err != nil {
-		mcpWriteJSONRPC(w, r, mcpJSONRPCResponse{
+		mcpWriteJSONRPC(w, mcpJSONRPCResponse{
 			JSONRPC: "2.0",
 			Error:   &mcpError{Code: -32700, Message: "parse error"},
 		})
@@ -238,7 +238,7 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := app.handleMCPRequest(r, request)
-	mcpWriteJSONRPC(w, r, response)
+	mcpWriteJSONRPC(w, response)
 	mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusOK, mcpResponseErrorCode(response), mcpResponseOutcome(response), mcpResponseToolErrorKind(response), time.Since(started), mcpTelemetryDetails{
 		RequestKind:      "request",
 		ParamsPresent:    len(request.Params) != 0,
@@ -464,7 +464,7 @@ func (app *App) mcpListSourceRuntimes(r *http.Request, args map[string]any) (any
 		RuntimeID: mcpStringArg(args, "runtime_id"),
 		TenantID:  mcpStringArg(args, "tenant_id"),
 		SourceID:  mcpStringArg(args, "source_id"),
-		Limit:     uint32(limit),
+		Limit:     boundedUint32(limit),
 	}
 	if filter.TenantID == "" {
 		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {
@@ -537,7 +537,7 @@ func (app *App) mcpListFindings(r *http.Request, args map[string]any) (any, erro
 	if err != nil {
 		return nil, err
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID); err != nil {
 		return nil, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 	}
 	response, err := app.findingService().ListFindings(r.Context(), findingdomain.ListRequest{
@@ -549,7 +549,7 @@ func (app *App) mcpListFindings(r *http.Request, args map[string]any) (any, erro
 		ResourceURN: mcpStringArg(args, "resource_urn"),
 		EventID:     mcpStringArg(args, "event_id"),
 		PolicyID:    mcpStringArg(args, "policy_id"),
-		Limit:       uint32(limit),
+		Limit:       boundedUint32(limit),
 		Order:       order,
 	})
 	if err != nil {
@@ -603,7 +603,7 @@ func (app *App) mcpSearchFindings(r *http.Request, args map[string]any) (any, er
 		status = findingStatusString(parsed)
 	}
 	if runtimeID != "" {
-		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID, false); err != nil {
+		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID); err != nil {
 			return nil, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 		}
 	}
@@ -622,7 +622,7 @@ func (app *App) mcpSearchFindings(r *http.Request, args map[string]any) (any, er
 		ResourceURN: mcpStringArg(args, "resource_urn"),
 		EventID:     mcpStringArg(args, "event_id"),
 		PolicyID:    mcpStringArg(args, "policy_id"),
-		Limit:       uint32(limit),
+		Limit:       boundedUint32(limit),
 		Order:       ports.FindingOrderRiskScore,
 	})
 	if err != nil {
@@ -657,7 +657,7 @@ func (app *App) mcpRuntimeStatus(r *http.Request, args map[string]any) (any, err
 	if runtimeStore == nil {
 		return nil, sourceruntime.ErrRuntimeUnavailable
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), runtimeStore, runtimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), runtimeStore, runtimeID); err != nil {
 		return nil, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 	}
 	runtime, err := runtimeStore.GetSourceRuntime(r.Context(), runtimeID)
@@ -693,7 +693,7 @@ func (app *App) mcpListEvidence(r *http.Request, args map[string]any) (any, erro
 	if err != nil {
 		return nil, err
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID); err != nil {
 		return nil, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 	}
 	response, err := app.findingService().ListEvidence(r.Context(), findingdomain.ListEvidenceRequest{
@@ -705,7 +705,7 @@ func (app *App) mcpListEvidence(r *http.Request, args map[string]any) (any, erro
 		EventID:      mcpStringArg(args, "event_id"),
 		GraphRootURN: mcpStringArg(args, "graph_root_urn"),
 		GraphPathURN: mcpStringArg(args, "graph_path_urn"),
-		Limit:        uint32(limit),
+		Limit:        boundedUint32(limit),
 	})
 	if err != nil {
 		return nil, err
@@ -729,7 +729,7 @@ func (app *App) mcpGetEvidence(r *http.Request, args map[string]any) (any, error
 	if err != nil {
 		return nil, err
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), evidence.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), evidence.GetRuntimeId()); err != nil {
 		return nil, mcpNormalizeIDLookupError(err, ports.ErrFindingEvidenceNotFound)
 	}
 	value, err := mcpSafeFindingEvidenceValue(evidence)
@@ -794,7 +794,7 @@ func (app *App) mcpAssetSearchResults(r *http.Request, args map[string]any) ([]m
 		}
 	}
 	if runtimeID != "" {
-		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID, false); err != nil {
+		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID); err != nil {
 			return nil, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 		}
 	}
@@ -858,7 +858,7 @@ func (app *App) mcpRiskSummary(r *http.Request, args map[string]any) (any, error
 	}
 	if runtimeID != "" {
 		runtimeStore := sourceRuntimeStore(app.deps.StateStore)
-		if err := authorizeSourceRuntimeIDTenant(r.Context(), runtimeStore, runtimeID, false); err != nil {
+		if err := authorizeSourceRuntimeIDTenant(r.Context(), runtimeStore, runtimeID); err != nil {
 			return nil, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 		}
 		if tenantID == "" {
@@ -879,7 +879,7 @@ func (app *App) mcpRiskSummary(r *http.Request, args map[string]any) (any, error
 		TenantID:  tenantID,
 		RuntimeID: runtimeID,
 		Status:    mcpStringArg(args, "status"),
-		Limit:     uint32(limit),
+		Limit:     boundedUint32(limit),
 		Order:     ports.FindingOrderRiskScore,
 	})
 	if err != nil {
@@ -902,7 +902,7 @@ func (app *App) mcpGraphNeighborhood(r *http.Request, args map[string]any) (any,
 	}
 	response, err := app.graphQueryService().GetEntityNeighborhood(r.Context(), graphquery.NeighborhoodRequest{
 		RootURN: rootURN,
-		Limit:   uint32(limitApplied),
+		Limit:   boundedUint32(limitApplied),
 	})
 	if err != nil {
 		return nil, err
@@ -934,7 +934,7 @@ func (app *App) mcpGraphImpact(r *http.Request, args map[string]any) (any, error
 		return nil, err
 	}
 	limitApplied := mcpNormalizeLimitValue(limit, defaultMCPImpactLimit, maxMCPImpactLimit)
-	request.Limit = uint32(limitApplied)
+	request.Limit = boundedUint32(limitApplied)
 	request.Depth = depth
 	if request.RootURN != "" {
 		if err := authorizeCerebroURNTenant(r.Context(), request.RootURN); err != nil {
@@ -985,7 +985,7 @@ func (app *App) mcpGraphPaths(r *http.Request, args map[string]any) (any, error)
 	result, err := app.graphQueryService().GetAttackPaths(r.Context(), graphquery.AttackPathRequest{
 		TenantID:  tenantID,
 		AccountID: mcpStringArg(args, "account_id"),
-		Limit:     uint32(limitApplied),
+		Limit:     boundedUint32(limitApplied),
 	})
 	if err != nil {
 		return nil, err
@@ -1016,7 +1016,7 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 	evidence, err := app.findingService().ListEvidence(r.Context(), findingdomain.ListEvidenceRequest{
 		RuntimeID: finding.RuntimeID,
 		FindingID: finding.ID,
-		Limit:     uint32(limit),
+		Limit:     boundedUint32(limit),
 	})
 	if err != nil {
 		return nil, err
@@ -1154,7 +1154,7 @@ func (app *App) mcpProposeRuntimeRefresh(r *http.Request, args map[string]any) (
 	if runtimeStore == nil {
 		return nil, sourceruntime.ErrRuntimeUnavailable
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), runtimeStore, runtimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), runtimeStore, runtimeID); err != nil {
 		return nil, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 	}
 	if _, err := runtimeStore.GetSourceRuntime(r.Context(), runtimeID); err != nil {
@@ -2105,10 +2105,11 @@ func (app *App) mcpListRiskFindings(r *http.Request, request ports.ListFindingsR
 		scoped.TenantID = strings.TrimSpace(runtime.GetTenantId())
 		scoped.RuntimeID = strings.TrimSpace(runtime.GetId())
 		if request.Limit != 0 {
-			if len(findings) >= int(request.Limit) {
+			findingsCount := boundedUint32(len(findings))
+			if findingsCount >= request.Limit {
 				break
 			}
-			scoped.Limit = request.Limit - uint32(len(findings))
+			scoped.Limit = request.Limit - findingsCount
 		}
 		items, err := store.ListFindings(ctx, scoped)
 		if err != nil {
@@ -2609,7 +2610,7 @@ func mcpUint32Arg(args map[string]any, key string) (uint32, error) {
 	return uint32(parsed), nil
 }
 
-func mcpWriteJSONRPC(w http.ResponseWriter, r *http.Request, response mcpJSONRPCResponse) {
+func mcpWriteJSONRPC(w http.ResponseWriter, response mcpJSONRPCResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("MCP-Protocol-Version", mcpProtocolVersion)
 	w.Header().Set("X-Cerebro-MCP-Stateless", "true")

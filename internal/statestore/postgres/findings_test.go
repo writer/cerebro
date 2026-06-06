@@ -689,6 +689,7 @@ func TestUpsertFindingStatementLimitsResolvedReopenToTTL(t *testing.T) {
 	}
 }
 
+//nolint:unparam // Helper keeps status explicit for upsert finding fixtures.
 func newUpsertFinding(id, fingerprint, status string, observed time.Time) *ports.FindingRecord {
 	return &ports.FindingRecord{
 		ID:              id,
@@ -1196,6 +1197,9 @@ func TestUpsertFinding_GenerationCounter_Monotonic(t *testing.T) {
 			t.Fatalf("scan generation: %v", err)
 		}
 		gens = append(gens, g)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate generations: %v", err)
 	}
 	want := []int{0, 1, 2, 3}
 	if !slices.Equal(gens, want) {

@@ -34,7 +34,7 @@ type awsEFSAccessPoint struct {
 func listEFSFileSystems(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsEFSFileSystem, string, error) {
 	out, err := clients.efs.DescribeFileSystems(ctx, &efs.DescribeFileSystemsInput{
 		Marker:   stringPtr(cursor),
-		MaxItems: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxItems: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -55,7 +55,7 @@ func listEFSFileSystems(ctx context.Context, clients awsClients, _ settings, cur
 func listEFSAccessPoints(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsEFSAccessPoint, string, error) {
 	out, err := clients.efs.DescribeAccessPoints(ctx, &efs.DescribeAccessPointsInput{
 		NextToken:  stringPtr(cursor),
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 	})
 	if err != nil {
 		return nil, "", err

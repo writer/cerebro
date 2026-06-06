@@ -60,8 +60,8 @@ type recordProjectorFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntit
 func (f recordProjectorFunc) Project(_ context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
 	entities, links, err := f(event)
 	return ports.ProjectionResult{
-		EntitiesProjected: uint32(len(entities)),
-		LinksProjected:    uint32(len(links)),
+		EntitiesProjected: boundedUint32(len(entities)),
+		LinksProjected:    boundedUint32(len(links)),
 	}, err
 }
 

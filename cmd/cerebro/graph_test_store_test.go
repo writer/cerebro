@@ -135,6 +135,7 @@ func (s *graphTestStore) GetEntityNeighborhood(_ context.Context, urn string, li
 	return result, nil
 }
 
+//nolint:unparam // Test store implements the graph store interface, including the error result.
 func (s *graphTestStore) IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error) {
 	return []graphstore.IntegrityCheck{
 		{Name: "tenant_mismatched_relations", Expected: 0, Actual: 0, Passed: true},

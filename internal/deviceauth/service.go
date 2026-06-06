@@ -224,7 +224,7 @@ type AuditEmitter func(ctx context.Context, event AuditEvent)
 // matches on; do not rename without coordinating with downstream
 // consumers.
 const (
-	AuditKindBootstrapTokenIssued = "deviceauth.bootstrap_token.issued"
+	AuditKindBootstrapTokenIssued = "deviceauth.bootstrap_token.issued" // #nosec G101 -- audit event kind, not a secret token.
 )
 
 // Service is the device-auth orchestration layer. It owns the lifecycle of

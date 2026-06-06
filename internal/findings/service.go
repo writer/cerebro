@@ -451,7 +451,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
 		}
 	}
-	result.EventsEvaluated = uint32(len(events))
+	result.EventsEvaluated = boundedUint32(len(events))
 	evaluatedEventIDs := map[string]struct{}{}
 	for _, event := range events {
 		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
@@ -2002,8 +2002,8 @@ func setFindingEvaluationRunMetrics(run *cerebrov1.FindingEvaluationRun, eventsP
 	run.EventsEvaluated = eventsProcessed
 	run.EventsProcessed = eventsProcessed
 	run.EventsMatched = eventsMatched
-	run.FindingsUpserted = uint32(len(findingIDs))
-	run.FindingsEmitted = uint32(len(findingIDs))
+	run.FindingsUpserted = boundedUint32(len(findingIDs))
+	run.FindingsEmitted = boundedUint32(len(findingIDs))
 	run.FindingIds = append([]string(nil), findingIDs...)
 }
 
@@ -2017,8 +2017,8 @@ func setGraphFindingEvaluationRunMetrics(run *cerebrov1.FindingEvaluationRun, gr
 		return
 	}
 	run.GraphRowsRead = proto.Uint32(graphRowsRead)
-	run.FindingsUpserted = uint32(len(findingIDs))
-	run.FindingsEmitted = uint32(len(findingIDs))
+	run.FindingsUpserted = boundedUint32(len(findingIDs))
+	run.FindingsEmitted = boundedUint32(len(findingIDs))
 	run.FindingIds = append([]string(nil), findingIDs...)
 }
 
@@ -2185,7 +2185,7 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 	if observation := findingevidence.ObservationFor(evidence); observation != nil {
 		evidence.Observations = []*cerebrov1.FindingEvidenceObservation{observation}
 	}
-	evidence.ObservationCount = uint32(len(evidence.GetObservations()))
+	evidence.ObservationCount = boundedUint32(len(evidence.GetObservations()))
 	return evidence, nil
 }
 

@@ -249,7 +249,7 @@ func TestGRCAskTelemetryCopiesErrorEventTimings(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/grc/ask", nil)
 	stderr := captureBootstrapStderr(t, func() {
-		evt.finish(req, httptest.NewRecorder(), time.Now(), http.StatusOK, errors.New("explain cypher failed"))
+		evt.finish(req, time.Now(), http.StatusOK, errors.New("explain cypher failed"))
 	})
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{

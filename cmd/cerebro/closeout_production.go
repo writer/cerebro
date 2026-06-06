@@ -93,7 +93,7 @@ func newSTSCloseoutLookup(client closeoutSTSGetCallerIdentityAPI) closeoutSTSLoo
 		}
 		out, err := client.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 		if err != nil {
-			return closeoutSTSIdentity{}, nil
+			return closeoutSTSIdentity{}, nil //nolint:nilerr // STS lookup failures intentionally fall back to local actor resolution.
 		}
 		arn := strings.TrimSpace(aws.ToString(out.Arn))
 		return closeoutSTSIdentity{Principal: arn, RoleARN: arn}, nil

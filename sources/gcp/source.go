@@ -883,12 +883,12 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 
 func listServiceAccounts(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]serviceAccountRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	if err := getJSON(ctx, source, settings, serviceBaseURL, http.MethodGet, "/v1/projects/"+url.PathEscape(settings.projectID)+"/serviceAccounts", query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Accounts, "gcp service account", func(record *serviceAccountRecord, raw json.RawMessage) {
+	records, err := decodeRecords(response.Accounts, "gcp service account", func(record *serviceAccountRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -896,13 +896,13 @@ func listServiceAccounts(ctx context.Context, source *Source, settings settings,
 
 func listServiceAccountKeys(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]serviceAccountKeyRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/serviceAccounts/" + url.PathEscape(settings.serviceAccountEmail) + "/keys"
 	if err := getJSON(ctx, source, settings, serviceBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Keys, "gcp service account key", func(record *serviceAccountKeyRecord, raw json.RawMessage) {
+	records, err := decodeRecords(response.Keys, "gcp service account key", func(record *serviceAccountKeyRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -910,12 +910,12 @@ func listServiceAccountKeys(ctx context.Context, source *Source, settings settin
 
 func listGroups(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]groupRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}, "parent": {"customers/" + settings.customerID}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	if err := getJSON(ctx, source, settings, identityBaseURL, http.MethodGet, "/v1/groups", query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Groups, "gcp group", func(record *groupRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := decodeRecords(response.Groups, "gcp group", func(record *groupRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, response.NextPageToken, err
 }
 
@@ -925,12 +925,12 @@ func listGroupMemberships(ctx context.Context, source *Source, settings settings
 		return nil, "", err
 	}
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	if err := getJSON(ctx, source, settings, identityBaseURL, http.MethodGet, "/v1/"+groupName+"/memberships", query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Memberships, "gcp group membership", func(record *membershipRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := decodeRecords(response.Memberships, "gcp group membership", func(record *membershipRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, response.NextPageToken, err
 }
 
@@ -969,13 +969,13 @@ func listRoleAssignments(ctx context.Context, source *Source, settings settings,
 
 func listAssetMetadata(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]assetMetadataRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + ":searchAllResources"
 	if err := getJSON(ctx, source, settings, cloudAssetBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Results, "gcp asset metadata", func(record *assetMetadataRecord, raw json.RawMessage) {
+	records, err := decodeRecords(response.Results, "gcp asset metadata", func(record *assetMetadataRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -983,7 +983,7 @@ func listAssetMetadata(ctx context.Context, source *Source, settings settings, p
 
 func listComputeInstances(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]computeInstanceRecord, string, error) {
 	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response computeAggregatedListResponse
 	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/instances"
 	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
@@ -1007,7 +1007,7 @@ func listComputeInstances(ctx context.Context, source *Source, settings settings
 			}
 		}
 	}
-	records, _, err := decodeRecords(rawRecords, "gcp compute instance", func(record *computeInstanceRecord, raw json.RawMessage) {
+	records, err := decodeRecords(rawRecords, "gcp compute instance", func(record *computeInstanceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -1015,25 +1015,25 @@ func listComputeInstances(ctx context.Context, source *Source, settings settings
 
 func listGKEClusters(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gkeClusterRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/-/clusters"
 	if err := getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Clusters, "gcp gke cluster", func(record *gkeClusterRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := decodeRecords(response.Clusters, "gcp gke cluster", func(record *gkeClusterRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, response.NextPageToken, err
 }
 
 func listCloudRunServices(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]cloudRunServiceRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/locations/-/services"
 	if err := getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Services, "gcp cloud run service", func(record *cloudRunServiceRecord, raw json.RawMessage) {
+	records, err := decodeRecords(response.Services, "gcp cloud run service", func(record *cloudRunServiceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -1041,13 +1041,13 @@ func listCloudRunServices(ctx context.Context, source *Source, settings settings
 
 func listCloudFunctions(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]cloudFunctionRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/locations/-/functions"
 	if err := getJSON(ctx, source, settings, functionsBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Functions, "gcp cloud function", func(record *cloudFunctionRecord, raw json.RawMessage) {
+	records, err := decodeRecords(response.Functions, "gcp cloud function", func(record *cloudFunctionRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -1055,13 +1055,13 @@ func listCloudFunctions(ctx context.Context, source *Source, settings settings, 
 
 func listCloudSQLInstances(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]cloudSQLInstanceRecord, string, error) {
 	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/sql/v1beta4/projects/" + url.PathEscape(settings.projectID) + "/instances"
 	if err := getJSON(ctx, source, settings, sqlBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Items, "gcp cloud sql instance", func(record *cloudSQLInstanceRecord, raw json.RawMessage) {
+	records, err := decodeRecords(response.Items, "gcp cloud sql instance", func(record *cloudSQLInstanceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -1069,48 +1069,48 @@ func listCloudSQLInstances(ctx context.Context, source *Source, settings setting
 
 func listGCSBuckets(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcsBucketRecord, string, error) {
 	query := url.Values{"project": {settings.projectID}, "maxResults": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	if err := getJSON(ctx, source, settings, storageBaseURL, http.MethodGet, "/storage/v1/b", query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Items, "gcp storage bucket", func(record *gcsBucketRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := decodeRecords(response.Items, "gcp storage bucket", func(record *gcsBucketRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, response.NextPageToken, err
 }
 
 func listSecrets(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]secretRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/secrets"
 	if err := getJSON(ctx, source, settings, secretManagerBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Secrets, "gcp secret", func(record *secretRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := decodeRecords(response.Secrets, "gcp secret", func(record *secretRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, response.NextPageToken, err
 }
 
 func listKMSKeys(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]kmsKeyRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(settings.location) + "/keyRings/" + url.PathEscape(settings.keyRing) + "/cryptoKeys"
 	if err := getJSON(ctx, source, settings, kmsBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.CryptoKeys, "gcp kms key", func(record *kmsKeyRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := decodeRecords(response.CryptoKeys, "gcp kms key", func(record *kmsKeyRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, response.NextPageToken, err
 }
 
 func listArtifactRepositories(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]artifactRepositoryRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/-/repositories"
 	if err := getJSON(ctx, source, settings, artifactRegistryBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Repositories, "gcp artifact registry repository", func(record *artifactRepositoryRecord, raw json.RawMessage) {
+	records, err := decodeRecords(response.Repositories, "gcp artifact registry repository", func(record *artifactRepositoryRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -1118,13 +1118,13 @@ func listArtifactRepositories(ctx context.Context, source *Source, settings sett
 
 func listArtifactImages(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]artifactImageRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/" + escapePathSegments(settings.artifactRepository) + "/dockerImages"
 	if err := getJSON(ctx, source, settings, artifactRegistryBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.DockerImages, "gcp artifact registry image", func(record *artifactImageRecord, raw json.RawMessage) {
+	records, err := decodeRecords(response.DockerImages, "gcp artifact registry image", func(record *artifactImageRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -1132,13 +1132,13 @@ func listArtifactImages(ctx context.Context, source *Source, settings settings, 
 
 func listResourceExposures(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]firewallRecord, string, error) {
 	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
-	addQuery(query, "pageToken", pageToken)
+	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/firewalls"
 	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	firewalls, _, err := decodeRecords(response.Items, "gcp firewall", func(record *firewallRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	firewalls, err := decodeRecords(response.Items, "gcp firewall", func(record *firewallRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	if err != nil {
 		return nil, "", err
 	}
@@ -1185,7 +1185,7 @@ func listAuditRecords(ctx context.Context, source *Source, settings settings, pa
 	if err := getJSON(ctx, source, settings, loggingBaseURL, http.MethodPost, "/v2/entries:list", nil, body, &response); err != nil {
 		return nil, "", err
 	}
-	records, _, err := decodeRecords(response.Entries, "gcp audit log", func(record *auditRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := decodeRecords(response.Entries, "gcp audit log", func(record *auditRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, response.NextPageToken, err
 }
 
@@ -1209,6 +1209,7 @@ func serviceAccountEvent(settings settings, record serviceAccountRecord) (*primi
 }
 
 func serviceAccountKeyEvent(settings settings, record serviceAccountKeyRecord) (*primitives.Event, error) {
+	// #nosec G101 -- these are credential metadata field names and event labels, not hardcoded secrets.
 	attributes := map[string]string{
 		"credential_id":   firstNonEmpty(record.Name, settings.serviceAccountEmail),
 		"credential_type": "gcp_service_account_key",
@@ -1989,19 +1990,19 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 	return net.DefaultResolver.LookupIPAddr
 }
 
-func decodeRecords[T any](rawRecords []json.RawMessage, label string, setRaw func(*T, json.RawMessage)) ([]T, string, error) {
+func decodeRecords[T any](rawRecords []json.RawMessage, label string, setRaw func(*T, json.RawMessage)) ([]T, error) {
 	records := make([]T, 0, len(rawRecords))
 	for _, raw := range rawRecords {
 		var record T
 		if err := json.Unmarshal(raw, &record); err != nil {
-			return nil, "", fmt.Errorf("decode %s: %w", label, err)
+			return nil, fmt.Errorf("decode %s: %w", label, err)
 		}
 		if setRaw != nil {
 			setRaw(&record, raw)
 		}
 		records = append(records, record)
 	}
-	return records, "", nil
+	return records, nil
 }
 
 func gcpPullFromRecords[T any](records []T, next string, build func(T) (*primitives.Event, error)) (sourcecdk.Pull, error) {
@@ -2176,9 +2177,9 @@ func serviceBaseURL() string          { return "https://iam.googleapis.com" }
 func sqlBaseURL() string              { return "https://sqladmin.googleapis.com" }
 func storageBaseURL() string          { return "https://storage.googleapis.com" }
 
-func addQuery(query url.Values, key string, value string) {
+func addQuery(query url.Values, value string) {
 	if strings.TrimSpace(value) != "" {
-		query.Set(key, strings.TrimSpace(value))
+		query.Set("pageToken", strings.TrimSpace(value))
 	}
 }
 

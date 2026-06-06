@@ -20,7 +20,7 @@ type trajectoryRecorder struct {
 	eventCount int
 }
 
-func newTrajectoryRecorder(store ports.AskTrajectoryStore, request AskRequest, traceID string, started time.Time, exec AskExecutionContext) *trajectoryRecorder {
+func newTrajectoryRecorder(store ports.AskTrajectoryStore, traceID string, started time.Time) *trajectoryRecorder {
 	if store == nil || traceID == "" {
 		return nil
 	}

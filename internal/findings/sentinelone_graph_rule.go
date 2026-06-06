@@ -81,7 +81,7 @@ func (r *sentinelOneEndpointActiveInfectionGraphRule) EvaluateRows(_ context.Con
 		}
 		agentAttrs := edgeStringAttributes(cypherRowString(row, "agent_attributes_json"))
 		activeThreats := sentinelOneActiveThreatsFromRow(row)
-		agentInfected := findingAttributeBool(agentAttrs, "is_infected", "infected") || sentinelOneIntAttribute(agentAttrs, "active_threats") > 0
+		agentInfected := findingAttributeBool(agentAttrs, "is_infected", "infected") || sentinelOneIntAttribute(agentAttrs) > 0
 		if !agentInfected && !sentinelOneGraphThreatsHaveInfectionEvidence(activeThreats) {
 			continue
 		}
@@ -461,7 +461,7 @@ func sentinelOneGraphRuleSupportsRuntime(runtime *cerebrov1.SourceRuntime, famil
 }
 
 func sentinelOneGraphInfectionSeverity(agentAttrs map[string]string, threats []sentinelOneGraphThreat) string {
-	if sentinelOneIntAttribute(agentAttrs, "active_threats") > 1 || len(threats) > 1 {
+	if sentinelOneIntAttribute(agentAttrs) > 1 || len(threats) > 1 {
 		return "CRITICAL"
 	}
 	for _, threat := range threats {
@@ -474,7 +474,7 @@ func sentinelOneGraphInfectionSeverity(agentAttrs map[string]string, threats []s
 
 func sentinelOneGraphThreatsHaveInfectionEvidence(threats []sentinelOneGraphThreat) bool {
 	for _, threat := range threats {
-		if findingAttributeBool(threat.Attributes, "is_infected", "infected") || sentinelOneIntAttribute(threat.Attributes, "active_threats") > 0 {
+		if findingAttributeBool(threat.Attributes, "is_infected", "infected") || sentinelOneIntAttribute(threat.Attributes) > 0 {
 			return true
 		}
 	}

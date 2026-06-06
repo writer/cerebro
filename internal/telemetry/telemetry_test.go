@@ -58,7 +58,7 @@ func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
 		if filepath.Ext(path) != ".go" {
 			return nil
 		}
-		contents, err := os.ReadFile(path)
+		contents, err := os.ReadFile(path) // #nosec G304 G122 -- path comes from WalkDir under the repository root in a repository-static lint test.
 		if err != nil {
 			return err
 		}

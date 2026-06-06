@@ -3,6 +3,7 @@ package graphquery
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -386,9 +387,9 @@ func cypherInt(row ports.CypherRow, key string) int {
 	case int32:
 		return int(value)
 	case int64:
-		return int(value)
+		return int64ToInt(value)
 	case uint:
-		return int(value)
+		return uint64ToInt(uint64(value))
 	case uint8:
 		return int(value)
 	case uint16:
@@ -396,7 +397,7 @@ func cypherInt(row ports.CypherRow, key string) int {
 	case uint32:
 		return int(value)
 	case uint64:
-		return int(value)
+		return uint64ToInt(value)
 	case float32:
 		return int(value)
 	case float64:
@@ -404,4 +405,21 @@ func cypherInt(row ports.CypherRow, key string) int {
 	default:
 		return 0
 	}
+}
+
+func int64ToInt(value int64) int {
+	if value > int64(math.MaxInt) {
+		return math.MaxInt
+	}
+	if value < int64(math.MinInt) {
+		return math.MinInt
+	}
+	return int(value)
+}
+
+func uint64ToInt(value uint64) int {
+	if value > uint64(math.MaxInt) {
+		return math.MaxInt
+	}
+	return int(value)
 }

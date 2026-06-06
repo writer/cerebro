@@ -248,7 +248,7 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 	result, err := findingService.EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
 		RuntimeID:  runtimeID,
 		RuleIDs:    githubAuditSOTARuleIDs(),
-		EventLimit: uint32(len(events)),
+		EventLimit: uint32(len(events)), // #nosec G115 -- test event fixture length is bounded by in-memory test setup.
 	})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
@@ -390,7 +390,7 @@ func (r *githubFindingsE2EReplayer) Replay(_ context.Context, request ports.Repl
 			continue
 		}
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
-		if request.Limit != 0 && uint32(len(events)) >= request.Limit {
+		if request.Limit != 0 && uint32(len(events)) >= request.Limit { // #nosec G115 -- replay fixture size is bounded by in-memory test setup.
 			break
 		}
 	}
@@ -582,7 +582,7 @@ func firstNonEmptyEnv(key string, fallback string) string {
 
 func writeGitHubFindingsGraphPreview(t *testing.T, outputPath string, preview any) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o750); err != nil { // #nosec G703 -- live-test preview path is operator-provided output.
 		t.Fatalf("create graph preview output directory: %v", err)
 	}
 	payload, err := json.MarshalIndent(preview, "", "  ")
@@ -590,7 +590,7 @@ func writeGitHubFindingsGraphPreview(t *testing.T, outputPath string, preview an
 		t.Fatalf("marshal graph preview: %v", err)
 	}
 	payload = append(payload, '\n')
-	if err := os.WriteFile(outputPath, payload, 0o644); err != nil {
+	if err := os.WriteFile(outputPath, payload, 0o600); err != nil { // #nosec G703 -- live-test preview path is operator-provided output.
 		t.Fatalf("write graph preview: %v", err)
 	}
 }

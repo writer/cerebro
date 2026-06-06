@@ -793,6 +793,7 @@ func cleanupCloseoutAtomicRows(t *testing.T, db *sql.DB, tenantID string, runIDs
 	})
 }
 
+//nolint:unparam // Helper keeps rule ID explicit to mirror closeout selector setup.
 func seedCloseoutAtomicFinding(t *testing.T, ctx context.Context, store *postgres.Store, tenantID, runtimeID, ruleID, findingID string, nonce int64) {
 	t.Helper()
 	now := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Microsecond)
@@ -816,6 +817,7 @@ func seedCloseoutAtomicFinding(t *testing.T, ctx context.Context, store *postgre
 	}
 }
 
+//nolint:unparam // Helper keeps rule ID explicit to mirror the atomic closeout fixture.
 func closeoutAtomicRequest(tenantID, ruleID, runID string) findings.CloseoutRequest {
 	return findings.CloseoutRequest{
 		Selector: findings.CloseoutSelector{
@@ -893,7 +895,7 @@ func installCloseoutAuditFailureConstraint(t *testing.T, ctx context.Context, db
 		t.Fatalf("install audit failure constraint: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = db.ExecContext(context.Background(), fmt.Sprintf(
+		_, _ = db.ExecContext(ctx, fmt.Sprintf(
 			`ALTER TABLE finding_tombstone_events DROP CONSTRAINT IF EXISTS %s`,
 			constraintName,
 		))

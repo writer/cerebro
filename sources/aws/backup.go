@@ -46,7 +46,7 @@ type awsBackupRecoveryPoint struct {
 
 func listBackupVaults(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsBackupVault, string, error) {
 	out, err := clients.backup.ListBackupVaults(ctx, &backup.ListBackupVaultsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -69,7 +69,7 @@ func listBackupVaults(ctx context.Context, clients awsClients, _ settings, curso
 
 func listBackupPlans(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsBackupPlan, string, error) {
 	out, err := clients.backup.ListBackupPlans(ctx, &backup.ListBackupPlansInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -104,7 +104,7 @@ func listBackupPlans(ctx context.Context, clients awsClients, _ settings, cursor
 
 func listBackupProtectedResources(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsBackupProtectedResource, string, error) {
 	out, err := clients.backup.ListProtectedResources(ctx, &backup.ListProtectedResourcesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -156,7 +156,7 @@ func listBackupRecoveryPoints(ctx context.Context, clients awsClients, _ setting
 		state.VaultName = vaultName
 		out, err := clients.backup.ListRecoveryPointsByBackupVault(ctx, &backup.ListRecoveryPointsByBackupVaultInput{
 			BackupVaultName: awssdk.String(vaultName),
-			MaxResults:      awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 1000))),
+			MaxResults:      awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 1000)),
 			NextToken:       stringPtr(state.NextToken),
 		})
 		if err != nil {

@@ -11,7 +11,7 @@ import (
 )
 
 func TestParseSettingsRejectsUnsafeBaseURL(t *testing.T) {
-	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- invalid config fixture uses placeholder secret text.
 		"tenant_id":     "writer",
 		"base_url":      "http://169.254.169.254/api",
 		"okta_issuer":   "https://example.okta.com/oauth2/default",
@@ -24,7 +24,7 @@ func TestParseSettingsRejectsUnsafeBaseURL(t *testing.T) {
 }
 
 func TestParseSettingsRejectsTokenURLOutsideOktaIssuer(t *testing.T) {
-	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- invalid config fixture uses placeholder secret text.
 		"tenant_id":     "writer",
 		"base_url":      "https://vulnview.writer-security.com/api",
 		"okta_issuer":   "https://writer.okta.com/oauth2/default",
@@ -55,8 +55,12 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/token":
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm: %v", err)
+			}
 			tokenRequests++
-			if got := r.FormValue("grant_type"); got != "client_credentials" {
+			if got := r.Form.Get("grant_type"); got != "client_credentials" {
 				t.Fatalf("grant_type = %q, want client_credentials", got)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
@@ -203,7 +207,11 @@ func TestAccessTokenCacheScopesByClientSecret(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/token":
-			secret := r.FormValue("client_secret")
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm: %v", err)
+			}
+			secret := r.Form.Get("client_secret")
 			tokenRequests[secret]++
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access-" + secret, "token_type": "Bearer", "expires_in": 3600})
 		case "/vulnerabilities":

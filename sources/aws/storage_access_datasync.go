@@ -68,7 +68,7 @@ func listS3AccessPoints(ctx context.Context, clients awsClients, settings settin
 	out, err := clients.s3control.ListAccessPoints(ctx, &s3control.ListAccessPointsInput{
 		AccountId:      awssdk.String(settings.accountID),
 		DataSourceType: awssdk.String("ALL"),
-		MaxResults:     int32(boundedAWSPageSize(limit, 1, 1000)),
+		MaxResults:     boundedAWSPageSizeInt32(limit, 1, 1000),
 		NextToken:      stringPtr(cursor),
 	})
 	if err != nil {
@@ -106,7 +106,7 @@ func listS3AccessPoints(ctx context.Context, clients awsClients, settings settin
 func listS3MultiRegionAccessPoints(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsS3MultiRegionAccessPoint, string, error) {
 	out, err := clients.s3control.ListMultiRegionAccessPoints(ctx, &s3control.ListMultiRegionAccessPointsInput{
 		AccountId:  awssdk.String(settings.accountID),
-		MaxResults: int32(boundedAWSPageSize(limit, 1, 100)),
+		MaxResults: boundedAWSPageSizeInt32(limit, 1, 100),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -143,7 +143,7 @@ func listS3MultiRegionAccessPoints(ctx context.Context, clients awsClients, sett
 
 func listEBSVolumes(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.Volume, string, error) {
 	out, err := clients.ec2.DescribeVolumes(ctx, &ec2.DescribeVolumesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 500))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 500)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -154,7 +154,7 @@ func listEBSVolumes(ctx context.Context, clients awsClients, _ settings, cursor 
 
 func listEBSSnapshots(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsEBSSnapshot, string, error) {
 	out, err := clients.ec2.DescribeSnapshots(ctx, &ec2.DescribeSnapshotsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
 		NextToken:  stringPtr(cursor),
 		OwnerIds:   []string{"self"},
 	})
@@ -182,7 +182,7 @@ func listEBSSnapshots(ctx context.Context, clients awsClients, settings settings
 
 func listDataSyncTasks(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsDataSyncTask, string, error) {
 	out, err := clients.datasync.ListTasks(ctx, &datasync.ListTasksInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -211,7 +211,7 @@ func listDataSyncTasks(ctx context.Context, clients awsClients, settings setting
 
 func listDataSyncLocations(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsDataSyncLocation, string, error) {
 	out, err := clients.datasync.ListLocations(ctx, &datasync.ListLocationsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {

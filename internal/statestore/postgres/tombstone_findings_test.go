@@ -192,6 +192,9 @@ func TestEnsureFindingStatements_AddsTombstoneColumns(t *testing.T) {
 			defs[name] = def
 		}
 	}
+	if err := idxRows.Err(); err != nil {
+		t.Fatalf("iterate indexes: %v", err)
+	}
 	for name, found := range indexes {
 		if !found {
 			t.Errorf("missing index %q on findings", name)
@@ -252,6 +255,9 @@ func TestEnsureFindingStatements_CreatesTombstoneEventsTable(t *testing.T) {
 			isNullable string
 		}{dt, nullable}
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate columns: %v", err)
+	}
 	for name, w := range want {
 		g, ok := got[name]
 		if !ok {
@@ -283,6 +289,9 @@ func TestEnsureFindingStatements_CreatesTombstoneEventsTable(t *testing.T) {
 		if _, ok := indexes[name]; ok {
 			indexes[name] = true
 		}
+	}
+	if err := idxRows.Err(); err != nil {
+		t.Fatalf("iterate tombstone event indexes: %v", err)
 	}
 	for name, found := range indexes {
 		if !found {
@@ -318,6 +327,9 @@ func TestEnsureFindingStatements_CreatesTombstoneEventsTable(t *testing.T) {
 			t.Fatalf("scan: %v", err)
 		}
 		coGot[name] = dt
+	}
+	if err := coRows.Err(); err != nil {
+		t.Fatalf("iterate closeout_run columns: %v", err)
 	}
 	for name, dt := range closeoutWant {
 		g, ok := coGot[name]
@@ -818,7 +830,7 @@ $$`, functionName, runLiteral)); err != nil {
 		t.Fatalf("create deferred commit failure function: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = store.db.ExecContext(context.Background(), fmt.Sprintf(`DROP FUNCTION IF EXISTS %s()`, functionName))
+		_, _ = store.db.ExecContext(ctx, fmt.Sprintf(`DROP FUNCTION IF EXISTS %s()`, functionName))
 	})
 
 	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(`
@@ -831,7 +843,7 @@ EXECUTE FUNCTION %s()`, triggerName, runLiteral, functionName)); err != nil {
 		t.Fatalf("create deferred commit failure trigger: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = store.db.ExecContext(context.Background(), fmt.Sprintf(`DROP TRIGGER IF EXISTS %s ON finding_tombstone_events`, triggerName))
+		_, _ = store.db.ExecContext(ctx, fmt.Sprintf(`DROP TRIGGER IF EXISTS %s ON finding_tombstone_events`, triggerName))
 	})
 }
 

@@ -17,7 +17,7 @@ import (
 
 func listVPCs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.Vpc, string, error) {
 	out, err := clients.ec2.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -28,7 +28,7 @@ func listVPCs(ctx context.Context, clients awsClients, _ settings, cursor string
 
 func listSubnets(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.Subnet, string, error) {
 	out, err := clients.ec2.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -39,7 +39,7 @@ func listSubnets(ctx context.Context, clients awsClients, _ settings, cursor str
 
 func listSecurityGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.SecurityGroup, string, error) {
 	out, err := clients.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -50,7 +50,7 @@ func listSecurityGroups(ctx context.Context, clients awsClients, _ settings, cur
 
 func listRouteTables(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.RouteTable, string, error) {
 	out, err := clients.ec2.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -61,7 +61,7 @@ func listRouteTables(ctx context.Context, clients awsClients, _ settings, cursor
 
 func listInternetGateways(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.InternetGateway, string, error) {
 	out, err := clients.ec2.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -72,7 +72,7 @@ func listInternetGateways(ctx context.Context, clients awsClients, _ settings, c
 
 func listNATGateways(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.NatGateway, string, error) {
 	out, err := clients.ec2.DescribeNatGateways(ctx, &ec2.DescribeNatGatewaysInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -83,7 +83,7 @@ func listNATGateways(ctx context.Context, clients awsClients, _ settings, cursor
 
 func listVPCEndpoints(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.VpcEndpoint, string, error) {
 	out, err := clients.ec2.DescribeVpcEndpoints(ctx, &ec2.DescribeVpcEndpointsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {

@@ -17,12 +17,13 @@ func (s *FileStore) lockStateFile() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+	fd := int(lock.Fd()) // #nosec G115 -- file descriptors fit in int on supported Unix platforms.
+	if err := syscall.Flock(fd, syscall.LOCK_EX); err != nil {
 		_ = lock.Close()
 		return nil, err
 	}
 	return func() {
-		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		_ = syscall.Flock(fd, syscall.LOCK_UN)
 		_ = lock.Close()
 	}, nil
 }

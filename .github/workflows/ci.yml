@@ -19,6 +19,8 @@ jobs:
             command: make build
           - name: test
             command: make test
+          - name: race
+            command: make test-race
           - name: coverage
             command: make cover
           - name: sdk

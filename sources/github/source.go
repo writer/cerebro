@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -208,7 +209,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 		return s.readSecretScanningAlerts(ctx, client, settings, cursor)
 	}
 	if settings.family == familyOrgInventory {
-		return s.readOrgInventory(ctx, client, settings, cursor)
+		return s.readOrgInventory(ctx, client, settings)
 	}
 	if settings.family == familyRepository {
 		return s.readRepositories(ctx, client, settings, cursor)
@@ -616,24 +617,31 @@ func parseNumericIPv4Host(host string) net.IP {
 	var ipv4 uint32
 	switch len(values) {
 	case 1:
-		ipv4 = uint32(values[0])
+		ipv4 = uint32FromUint64(values[0])
 	case 2:
 		if values[0] > 0xff || values[1] > 0xffffff {
 			return nil
 		}
-		ipv4 = uint32(values[0]<<24 | values[1])
+		ipv4 = uint32FromUint64(values[0]<<24 | values[1])
 	case 3:
 		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff {
 			return nil
 		}
-		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2])
+		ipv4 = uint32FromUint64(values[0]<<24 | values[1]<<16 | values[2])
 	case 4:
 		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xff || values[3] > 0xff {
 			return nil
 		}
-		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
+		ipv4 = uint32FromUint64(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
 	}
 	return net.IPv4(byte(ipv4>>24), byte(ipv4>>16), byte(ipv4>>8), byte(ipv4))
+}
+
+func uint32FromUint64(value uint64) uint32 {
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
 }
 
 func getRepo(ctx context.Context, client *gogithub.Client, owner string, repo string) (*gogithub.Repository, error) {

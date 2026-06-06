@@ -119,8 +119,8 @@ func ImportCISAKEV(ctx context.Context, store Store, reader io.Reader) (ImportRe
 		if vulnerability.Details == "" {
 			vulnerability.Details = strings.TrimSpace(entry.ShortDescription)
 		}
-		dueDate, _ := parseDate(entry.DueDate)
-		updatedAt, _ := parseDate(firstNonEmpty(entry.DateUpdated, entry.DateAdded))
+		dueDate := parseTime(entry.DueDate)
+		updatedAt := parseTime(firstNonEmpty(entry.DateUpdated, entry.DateAdded))
 		if updatedAt.IsZero() {
 			updatedAt = now
 		}
@@ -765,11 +765,6 @@ func parseTime(value string) time.Time {
 		}
 	}
 	return time.Time{}
-}
-
-func parseDate(value string) (time.Time, bool) {
-	t := parseTime(value)
-	return t, !t.IsZero()
 }
 
 func nvdEnglishDescription(descriptions []nvdDescription) string {

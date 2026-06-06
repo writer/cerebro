@@ -46,7 +46,7 @@ type awsNeptuneInstance struct {
 func listRedshiftClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsRedshiftCluster, string, error) {
 	out, err := clients.redshift.DescribeClusters(ctx, &redshift.DescribeClustersInput{
 		Marker:     stringPtr(cursor),
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -61,7 +61,7 @@ func listRedshiftClusters(ctx context.Context, clients awsClients, _ settings, c
 func listDocDBClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsDocDBCluster, string, error) {
 	out, err := clients.docdb.DescribeDBClusters(ctx, &docdb.DescribeDBClustersInput{
 		Marker:     stringPtr(cursor),
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -84,7 +84,7 @@ func listDocDBClusters(ctx context.Context, clients awsClients, _ settings, curs
 func listDocDBInstances(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsDocDBInstance, string, error) {
 	out, err := clients.docdb.DescribeDBInstances(ctx, &docdb.DescribeDBInstancesInput{
 		Marker:     stringPtr(cursor),
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -107,7 +107,7 @@ func listDocDBInstances(ctx context.Context, clients awsClients, _ settings, cur
 func listNeptuneClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsNeptuneCluster, string, error) {
 	out, err := clients.neptune.DescribeDBClusters(ctx, &neptune.DescribeDBClustersInput{
 		Marker:     stringPtr(cursor),
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -130,7 +130,7 @@ func listNeptuneClusters(ctx context.Context, clients awsClients, _ settings, cu
 func listNeptuneInstances(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsNeptuneInstance, string, error) {
 	out, err := clients.neptune.DescribeDBInstances(ctx, &neptune.DescribeDBInstancesInput{
 		Marker:     stringPtr(cursor),
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 	})
 	if err != nil {
 		return nil, "", err

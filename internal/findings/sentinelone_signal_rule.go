@@ -605,8 +605,8 @@ func sentinelOneStatus(value string) string {
 	return normalized
 }
 
-func sentinelOneIntAttribute(attributes map[string]string, key string) int {
-	value, err := strconv.Atoi(strings.TrimSpace(attributes[key]))
+func sentinelOneIntAttribute(attributes map[string]string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(attributes["active_threats"]))
 	if err != nil {
 		return 0
 	}

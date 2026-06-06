@@ -111,6 +111,7 @@ func TestGetCrownJewelRanksQueriesAndRanksPersonalizedSubgraph(t *testing.T) {
 	}
 }
 
+//nolint:unparam // Helper keeps seed URN explicit in crown-jewel path fixtures.
 func crownJewelRankPathRow(seedURN string, nodes []GraphEntityRef, relations []string) map[string]any {
 	pathNodes := make([]any, 0, len(nodes))
 	for _, node := range nodes {

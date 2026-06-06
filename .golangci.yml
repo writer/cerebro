@@ -15,6 +15,12 @@ linters:
     - noctx
     - errorlint
     - misspell
+    - gosec
+    - sqlclosecheck
+    - rowserrcheck
+    - contextcheck
+    - nilerr
+    - unparam
   exclusions:
     rules:
       - path: _test\.go

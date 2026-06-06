@@ -198,21 +198,21 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		errs           = make(chan error, 3)
 	)
 	wg.Add(2)
-	go func() {
+	go func(parent context.Context) {
 		defer wg.Done()
 		var err error
-		ctx, evidenceSpan := telemetry.Start(r.Context(), "grc.dashboard.evidence", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
+		ctx, evidenceSpan := telemetry.Start(parent, "grc.dashboard.evidence", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
 		evidenceRequest := r.WithContext(ctx)
 		evidence, err = a.grcListEvidenceRecords(evidenceRequest, runtimes, grcEvidenceFilter{FindingIDs: findingIDs, Limit: previewLimit})
 		telemetry.End(evidenceSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "evidence_count", Value: len(evidence)}))
 		if err != nil {
 			errs <- err
 		}
-	}()
-	go func() {
+	}(r.Context())
+	go func(parent context.Context) {
 		defer wg.Done()
 		var err error
-		ctx, aggregateSpan := telemetry.Start(r.Context(), "grc.dashboard.aggregate", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
+		ctx, aggregateSpan := telemetry.Start(parent, "grc.dashboard.aggregate", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
 		aggregateRequest := r.WithContext(ctx)
 		aggregate, err = a.grcDashboardAggregate(aggregateRequest, runtimes, grcFindingFilter{Status: "open"}, grcEvidenceFilter{FindingIDs: findingIDs})
 		if err == nil && aggregate == nil {
@@ -230,7 +230,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			errs <- err
 		}
-	}()
+	}(r.Context())
 	wg.Wait()
 	close(errs)
 	if err := <-errs; err != nil {

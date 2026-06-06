@@ -106,6 +106,7 @@ func newTTLResolverFixture(t *testing.T, kind LifecycleKind, ttl time.Duration) 
 	}
 }
 
+//nolint:unparam // Helper keeps status explicit so TTL test fixtures read like production records.
 func (f *ttlResolverFixture) seedFinding(id, status string, lastObserved time.Time, mutate func(*ports.FindingRecord)) *ports.FindingRecord {
 	finding := &ports.FindingRecord{
 		ID:              id,

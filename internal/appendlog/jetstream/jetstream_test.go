@@ -767,6 +767,7 @@ func replayEvent(id string, kind string, runtimeID string) *cerebrov1.EventEnvel
 	}
 }
 
+//nolint:unparam // Helper preserves explicit event-kind argument for table readability.
 func replayEventAt(id string, kind string, runtimeID string, occurredAt time.Time) *cerebrov1.EventEnvelope {
 	event := replayEvent(id, kind, runtimeID)
 	event.OccurredAt = timestamppb.New(occurredAt)

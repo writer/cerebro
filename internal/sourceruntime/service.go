@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -267,7 +268,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			return nil, err
 		}
 		pageNumber := i + 1
-		eventsRead := uint32(len(pull.Events))
+		eventsRead := boundedUint32(len(pull.Events))
 		telemetry.Event(ctx, "source_runtime.page_read", telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
@@ -488,6 +489,16 @@ func validateRuntimeTenantUnchanged(existing *cerebrov1.SourceRuntime, incoming 
 		return nil
 	}
 	return fmt.Errorf("%w: source runtime tenant_id cannot be changed", ErrInvalidRequest)
+}
+
+func boundedUint32(value int) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
 }
 
 func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {

@@ -212,14 +212,12 @@ func addAWSOrganizationsTargetEntity(entities map[string]*ports.ProjectedEntity,
 	}
 }
 
-func addAWSOrganizationsParentEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, id string, parentType string, label string) string {
+func addAWSOrganizationsParentEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, id string, parentType string, label string) {
 	switch strings.ToUpper(strings.TrimSpace(parentType)) {
 	case "ROOT":
-		return addAWSOrganizationsRootEntity(entities, tenantID, sourceID, id, label, "")
+		addAWSOrganizationsRootEntity(entities, tenantID, sourceID, id, label, "")
 	case "ORGANIZATIONAL_UNIT":
-		return addAWSOrganizationsOUEntity(entities, tenantID, sourceID, id, label, "")
-	default:
-		return ""
+		addAWSOrganizationsOUEntity(entities, tenantID, sourceID, id, label, "")
 	}
 }
 

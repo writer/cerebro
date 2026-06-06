@@ -18,7 +18,7 @@ const (
 	oauthAuthorizationServerMetadataPath        = "/.well-known/oauth-authorization-server"
 	oauthAuthorizePath                          = "/oauth/authorize"
 	oauthCallbackPath                           = "/oauth/callback"
-	oauthTokenPath                              = "/oauth/token"
+	oauthTokenPath                              = "/oauth/token" // #nosec G101 -- HTTP route path, not a secret token.
 	oauthRevokePath                             = "/oauth/revoke"
 	oauthRegisterPath                           = "/oauth/register"
 	oauthMaxFormBytes                     int64 = 1 << 20

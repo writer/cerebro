@@ -127,7 +127,7 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if image == "" {
 		image = "neo4j:5"
 	}
-	cmd := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--name", name,
+	cmd := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--name", name, // #nosec G204 G702 -- integration test invokes fixed docker binary with generated container arguments.
 		"-e", "NEO4J_AUTH=neo4j/"+password,
 		"-p", fmt.Sprintf("127.0.0.1:%d:7687", port),
 		image)
@@ -136,7 +136,7 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 		t.Fatalf("docker run neo4j: %v\n%s", err, string(output))
 	}
 	t.Cleanup(func() {
-		_ = exec.Command("docker", "rm", "-f", name).Run()
+		_ = exec.Command("docker", "rm", "-f", name).Run() // #nosec G204 -- integration test cleanup invokes fixed docker binary with generated container name.
 	})
 
 	store := waitForStore(t, ctx, config.GraphStoreConfig{
@@ -364,7 +364,8 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CleanupEndpointOwnerIDLinks(dry-run) error = %v", err)
 	}
-	if cleanupResult.LinksMatched != uint32(len(staleLinks)) || cleanupResult.LinksDeleted != 0 {
+	wantStaleLinks := uint32(len(staleLinks)) // #nosec G115 -- test fixture slice is statically bounded.
+	if cleanupResult.LinksMatched != wantStaleLinks || cleanupResult.LinksDeleted != 0 {
 		t.Fatalf("dry-run CleanupEndpointOwnerIDLinks() = %#v, want %d matches and no deletes", cleanupResult, len(staleLinks))
 	}
 	cleanupRequest.DryRun = false
@@ -372,7 +373,7 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CleanupEndpointOwnerIDLinks() error = %v", err)
 	}
-	if cleanupResult.LinksMatched != uint32(len(staleLinks)) || cleanupResult.LinksDeleted != uint32(len(staleLinks)) {
+	if cleanupResult.LinksMatched != wantStaleLinks || cleanupResult.LinksDeleted != wantStaleLinks {
 		t.Fatalf("CleanupEndpointOwnerIDLinks() = %#v, want %d deletes", cleanupResult, len(staleLinks))
 	}
 	for _, link := range staleLinks {
@@ -643,7 +644,7 @@ func waitForStore(t *testing.T, ctx context.Context, cfg config.GraphStoreConfig
 		} else {
 			lastErr = err
 		}
-		_ = store.CloseContext(context.Background())
+		_ = store.CloseContext(ctx)
 		select {
 		case <-ctx.Done():
 			t.Fatalf("context done waiting for neo4j: %v", ctx.Err())

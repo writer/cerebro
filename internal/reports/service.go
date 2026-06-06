@@ -993,7 +993,7 @@ func primaryResourceURN(finding *ports.FindingRecord) string {
 	return ""
 }
 
-func normalizePositiveLimit(raw string, defaultValue int, maxValue int, parameterID string) (int, error) {
+func normalizePositiveLimit(raw string, defaultValue int, maxValue int, parameterID string) (int, error) { //nolint:unparam // distinct report parameters intentionally carry separate defaults.
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return defaultValue, nil

@@ -556,10 +556,10 @@ func TestServicePushesTopRiskFiltersBeforeCandidateLimit(t *testing.T) {
 }
 
 func TestResourceTypeMatchesRepositoryFilterByEntityTypeOnly(t *testing.T) {
-	if resourceTypeMatchesFilter("github.runner", "urn:cerebro:writer:github_runner:repo:writer/cerebro:777", "repository") {
+	if resourceTypeMatchesFilter("github.runner", "repository") {
 		t.Fatal("repository filter matched github.runner because its URN contains repo")
 	}
-	if !resourceTypeMatchesFilter("github.repo", "urn:cerebro:writer:github_runner:repo:writer/cerebro:777", "repository") {
+	if !resourceTypeMatchesFilter("github.repo", "repository") {
 		t.Fatal("repository filter did not match github.repo entity type")
 	}
 }

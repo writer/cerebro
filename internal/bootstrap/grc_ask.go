@@ -23,7 +23,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxGRCAskBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
-		evt.finish(r, w, started, http.StatusBadRequest, err)
+		evt.finish(r, started, http.StatusBadRequest, err)
 		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
 		return
 	}
@@ -34,26 +34,26 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	evt.historyLen = len(request.History)
 
 	if err := authorizeTenantID(r.Context(), request.TenantID); err != nil {
-		evt.finish(r, w, started, http.StatusForbidden, err)
+		evt.finish(r, started, http.StatusForbidden, err)
 		writeGRCError(w, err)
 		return
 	}
 	if request.ScopeURN != "" {
 		if err := authorizeCerebroURNTenant(r.Context(), request.ScopeURN); err != nil {
-			evt.finish(r, w, started, http.StatusForbidden, err)
+			evt.finish(r, started, http.StatusForbidden, err)
 			writeGRCError(w, err)
 			return
 		}
 	}
 	if err := graphagent.ValidateRequest(request); err != nil {
-		evt.finish(r, w, started, http.StatusBadRequest, err)
+		evt.finish(r, started, http.StatusBadRequest, err)
 		writeGRCError(w, err)
 		return
 	}
 	graphStore := graphQueryStore(a.deps.GraphStore)
 	if graphStore == nil {
 		evt.failureStage = "graph_store_nil"
-		evt.finish(r, w, started, http.StatusServiceUnavailable, graphquery.ErrRuntimeUnavailable)
+		evt.finish(r, started, http.StatusServiceUnavailable, graphquery.ErrRuntimeUnavailable)
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
 		return
 	}
@@ -64,7 +64,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		err := errors.Join(graphagent.ErrRuntimeUnavailable, errors.New("graph agent llm is not configured"))
 		evt.failureStage = "llm_init"
 		evt.llmInitErrorKind = grcTelemetryErrorKind(err)
-		evt.finish(r, w, started, http.StatusServiceUnavailable, err)
+		evt.finish(r, started, http.StatusServiceUnavailable, err)
 		writeGRCError(w, err)
 		return
 	}
@@ -103,7 +103,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil && !streamStarted {
 		evt.failureStage = "stream"
-		evt.finish(r, w, started, http.StatusServiceUnavailable, err)
+		evt.finish(r, started, http.StatusServiceUnavailable, err)
 		writeGRCError(w, err)
 		return
 	}
@@ -130,11 +130,11 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 			log.Printf("write grc ask SSE error event: %v", writeErr)
 		}
 		evt.sseEvents = eventCount
-		evt.finish(r, w, started, http.StatusOK, err)
+		evt.finish(r, started, http.StatusOK, err)
 		return
 	}
 	evt.sseEvents = eventCount
-	evt.finish(r, w, started, http.StatusOK, nil)
+	evt.finish(r, started, http.StatusOK, nil)
 }
 
 type askWideEvent struct {
@@ -233,7 +233,7 @@ func (e *askWideEvent) observe(event graphagent.Event) {
 	}
 }
 
-func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started time.Time, status int, err error) {
+func (e *askWideEvent) finish(r *http.Request, started time.Time, status int, err error) {
 	durationMs := time.Since(started).Milliseconds()
 	outcome := "success"
 	if err != nil {

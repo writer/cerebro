@@ -301,7 +301,7 @@ func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 }
 
 func TestResolveRuntimeSourceConfigClassifiesEnvErrorsAsInvalidRequest(t *testing.T) {
-	_, err := resolveRuntimeSourceConfig(context.Background(), "github", map[string]string{
+	_, err := resolveRuntimeSourceConfig(context.Background(), "github", map[string]string{ // #nosec G101 -- env-reference test fixture, not credential material.
 		"token": "env:AWS_SECRET_ACCESS_KEY",
 	})
 	if !errors.Is(err, sourceruntime.ErrInvalidRequest) {
@@ -627,7 +627,7 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 			continue
 		}
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
-		if request.Limit != 0 && uint32(len(events)) >= request.Limit {
+		if request.Limit != 0 && uint32(len(events)) >= request.Limit { // #nosec G115 -- replay fixture size is bounded by in-memory test setup.
 			break
 		}
 	}
@@ -1814,7 +1814,7 @@ func TestBootstrapSourcePreviewEndpointsDoNotResolveEnvReferences(t *testing.T) 
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := sourceGet(t, server, "/sources/bootstrap_token/read", map[string]string{
+	resp, err := sourceGet(t, server, "/sources/bootstrap_token/read", map[string]string{ // #nosec G101 -- env-reference test fixture, not credential material.
 		"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN",
 	})
 	if err != nil {
@@ -1832,7 +1832,7 @@ func TestBootstrapSourcePreviewEndpointsDoNotResolveEnvReferences(t *testing.T) 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	if _, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
 		SourceId: "bootstrap_token",
-		Config:   map[string]string{"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN"},
+		Config:   map[string]string{"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN"}, // #nosec G101 -- env-reference test fixture, not credential material.
 	})); err != nil {
 		t.Fatalf("ReadSource() error = %v", err)
 	}
@@ -1925,7 +1925,7 @@ func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
 	if !ok {
 		t.Fatal("authenticateRequest() ok = false, want true")
 	}
-	for key, want := range map[string]string{
+	for key, want := range map[string]string{ // #nosec G101 -- credential_id/client_id are expected auth claim names in a test fixture.
 		"auth_mode":     "api_credential",
 		"credential_id": "legacy-api-key-1",
 		"client_id":     "legacy-api-key",
@@ -2766,6 +2766,7 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 	}
 }
 
+//nolint:unparam // Helper keeps explicit secret argument so JWT signing fixtures remain self-documenting.
 func signCapabilityToken(t *testing.T, secret string, claims map[string]any) string {
 	t.Helper()
 	header, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
@@ -4337,7 +4338,7 @@ func TestConnectSourceRuntimeEndpointsResolveEnvReferences(t *testing.T) {
 		Runtime: &cerebrov1.SourceRuntime{
 			Id:       "writer-runtime-token",
 			SourceId: "runtime_token",
-			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN"},
+			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN"}, // #nosec G101 -- env-reference test fixture, not credential material.
 		},
 	})); err != nil {
 		t.Fatalf("PutSourceRuntime() error = %v", err)

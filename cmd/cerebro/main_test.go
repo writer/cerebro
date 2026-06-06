@@ -410,7 +410,7 @@ func TestConfigureSourceRuntimeCommandServiceResolvesEnvReferences(t *testing.T)
 		"writer-command-token": {
 			Id:       "writer-command-token",
 			SourceId: "command_token",
-			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_COMMAND_TOKEN_TOKEN"},
+			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_COMMAND_TOKEN_TOKEN"}, // #nosec G101 -- env-reference test fixture, not credential material.
 		},
 	}}
 	t.Setenv("CEREBRO_SOURCE_COMMAND_TOKEN_TOKEN", "resolved-token")
@@ -607,6 +607,7 @@ func (s *preparingStateStore) PrepareGRCReadModels(context.Context) error {
 	return s.err
 }
 
+//nolint:unparam // Test fake implements the state-store interface, including the error result.
 func (s *blockingPreparingStateStore) PrepareGRCReadModels(context.Context) error {
 	close(s.started)
 	<-s.release
@@ -665,6 +666,7 @@ func (s *commandRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*c
 	return runtime, nil
 }
 
+//nolint:unparam // Test fake implements the runtime-store lease interface, including the error result.
 func (s *commandRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, _ time.Duration) (bool, error) {
 	s.leaseID = runtimeID
 	s.leaseOwner = owner
@@ -675,6 +677,7 @@ func (s *commandRuntimeStore) RenewSourceRuntimeLease(context.Context, string, s
 	return true, nil
 }
 
+//nolint:unparam // Test fake implements the runtime-store lease interface, including the error result.
 func (s *commandRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, runtimeID string, owner string) error {
 	s.releaseID = runtimeID
 	s.releaseOwner = owner

@@ -567,7 +567,7 @@ func readCloseoutRuleIDFile(path string) ([]string, error) {
 	if info.IsDir() {
 		return nil, fmt.Errorf("%s is a directory", path)
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- operator-provided local rule-id file.
 	if err != nil {
 		return nil, err
 	}
