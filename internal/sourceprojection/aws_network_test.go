@@ -219,15 +219,27 @@ func TestProjectAWSNetworkSubstrateRelationships(t *testing.T) {
 	routeTableURN := "urn:cerebro:writer:aws_route_table:rtb-123"
 	vpcEndpointURN := "urn:cerebro:writer:aws_vpc_endpoint:vpce-123"
 	vpcURN := "urn:cerebro:writer:aws_vpc:vpc-123"
-	assertProjectedLink(t, state, subnetURN, relationBelongsTo, vpcURN)
-	assertProjectedLink(t, state, securityGroupURN, relationBelongsTo, vpcURN)
-	assertProjectedLink(t, state, routeTableURN, relationBelongsTo, vpcURN)
-	assertProjectedLink(t, state, routeTableURN, relationAssociatedWith, subnetURN)
-	assertProjectedLinkMissing(t, state, routeTableURN, relationBelongsTo, subnetURN)
-	assertProjectedLink(t, state, routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_internet_gateway:igw-123")
-	assertProjectedLink(t, state, routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_nat_gateway:nat-123")
-	assertProjectedLink(t, state, vpcEndpointURN, relationBelongsTo, vpcURN)
-	assertProjectedLink(t, state, vpcEndpointURN, relationBelongsTo, subnetURN)
-	assertProjectedLink(t, state, vpcEndpointURN, relationMemberOf, securityGroupURN)
-	assertProjectedLink(t, state, vpcEndpointURN, relationAssociatedWith, routeTableURN)
+	accountURN := "urn:cerebro:writer:cloud_account:123456789012"
+	classificationURN := "urn:cerebro:writer:data_classification"
+	assertProjectedLinkSet(t, state,
+		wantProjectedLink(subnetURN, relationBelongsTo, accountURN),
+		wantProjectedLink(subnetURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(subnetURN, relationHasClassification, classificationURN),
+		wantProjectedLink(securityGroupURN, relationBelongsTo, accountURN),
+		wantProjectedLink(securityGroupURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(securityGroupURN, relationHasClassification, classificationURN),
+		wantProjectedLink(routeTableURN, relationBelongsTo, accountURN),
+		wantProjectedLink(routeTableURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(routeTableURN, relationHasClassification, classificationURN),
+		wantProjectedLink(vpcURN, relationBelongsTo, accountURN),
+		wantProjectedLink(routeTableURN, relationAssociatedWith, subnetURN),
+		wantProjectedLink(routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_internet_gateway:igw-123"),
+		wantProjectedLink(routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_nat_gateway:nat-123"),
+		wantProjectedLink(vpcEndpointURN, relationBelongsTo, accountURN),
+		wantProjectedLink(vpcEndpointURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(vpcEndpointURN, relationBelongsTo, subnetURN),
+		wantProjectedLink(vpcEndpointURN, relationHasClassification, classificationURN),
+		wantProjectedLink(vpcEndpointURN, relationMemberOf, securityGroupURN),
+		wantProjectedLink(vpcEndpointURN, relationAssociatedWith, routeTableURN),
+	)
 }
