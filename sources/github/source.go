@@ -6,10 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -40,8 +38,6 @@ const (
 	familyPullRequest   = "pull_request"
 )
 
-var errUnsafeBaseURLHost = errors.New("github base_url must not target loopback, private, or link-local hosts")
-
 // Source is the live GitHub source preview used by the builtin registry.
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
@@ -51,16 +47,20 @@ type Source struct {
 }
 
 type settings struct {
-	family       string
-	owner        string
-	repo         string
-	token        string
-	baseURL      string
-	state        string
-	auditInclude string
-	auditPhrase  string
-	auditOrder   string
-	perPage      int
+	family              string
+	owner               string
+	repo                string
+	token               string
+	appID               string
+	appInstallationID   string
+	appPrivateKey       string
+	appPrivateKeyBase64 string
+	baseURL             string
+	state               string
+	auditInclude        string
+	auditPhrase         string
+	auditOrder          string
+	perPage             int
 }
 
 type pullRequestPayload struct {
@@ -340,8 +340,14 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 		httpClient = s.client
 	}
 	httpClient = sourceHTTPClientNoRedirect(httpClient, allowLoopbackBaseURL, lookupIPAddrs)
+	if settings.usesGitHubAppAuth() {
+		httpClient, err = sourcehttp.WithGitHubAppAuth(httpClient, settings.githubAppAuthConfig())
+		if err != nil {
+			return nil, settings, fmt.Errorf("%w: %w", sourcecdk.ErrInvalidConfig, err)
+		}
+	}
 	client := gogithub.NewClient(httpClient)
-	if settings.token != "" {
+	if settings.token != "" && !settings.usesGitHubAppAuth() {
 		client = client.WithAuthToken(settings.token)
 	}
 	if settings.baseURL != "" {
@@ -370,10 +376,23 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		}
 	}()
 	settings := settings{
-		family:       configValue(cfg, "family"),
-		owner:        configValue(cfg, "owner"),
-		repo:         configValue(cfg, "repo"),
-		token:        configValue(cfg, "token"),
+		family: configValue(cfg, "family"),
+		owner:  configValue(cfg, "owner"),
+		repo:   configValue(cfg, "repo"),
+		token:  configValue(cfg, "token"),
+		appID:  configValue(cfg, "app_id"),
+		appInstallationID: firstNonEmptyString(
+			configValue(cfg, "app_installation_id"),
+			configValue(cfg, "installation_id"),
+		),
+		appPrivateKey: firstNonEmptyString(
+			configValue(cfg, "app_private_key"),
+			configValue(cfg, "private_key"),
+		),
+		appPrivateKeyBase64: firstNonEmptyString(
+			configValue(cfg, "app_private_key_base64"),
+			configValue(cfg, "private_key_base64"),
+		),
 		baseURL:      configValue(cfg, "base_url"),
 		state:        configValue(cfg, "state"),
 		auditInclude: configValue(cfg, "include"),
@@ -382,7 +401,7 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		perPage:      defaultPageSize,
 	}
 	if settings.baseURL != "" {
-		baseURL, err := normalizeBaseURL(settings.baseURL, allowLoopbackBaseURL)
+		baseURL, err := sourcehttp.NormalizeGitHubBaseURL(settings.baseURL, allowLoopbackBaseURL)
 		if err != nil {
 			return settings, err
 		}
@@ -390,6 +409,9 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 	}
 	if settings.owner == "" {
 		return settings, fmt.Errorf("github owner is required")
+	}
+	if err := settings.validateAuth(); err != nil {
+		return settings, err
 	}
 	if settings.family == "" {
 		settings.family = defaultFamily
@@ -426,8 +448,8 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
 		}
 	case familyDependabot:
-		if settings.token == "" {
-			return settings, fmt.Errorf("github token is required when family=%q", familyDependabot)
+		if !settings.hasAuth() {
+			return settings, fmt.Errorf("github token or app auth is required when family=%q", familyDependabot)
 		}
 		if settings.repo == "" {
 			return settings, fmt.Errorf("github repo is required when family=%q", familyDependabot)
@@ -444,8 +466,8 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
 		}
 	case familyOrgInventory:
-		if settings.token == "" {
-			return settings, fmt.Errorf("github token is required when family=%q", familyOrgInventory)
+		if !settings.hasAuth() {
+			return settings, fmt.Errorf("github token or app auth is required when family=%q", familyOrgInventory)
 		}
 		if settings.repo != "" {
 			return settings, fmt.Errorf("github repo is not supported when family=%q", familyOrgInventory)
@@ -457,8 +479,8 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
 		}
 	case familySecretScanning:
-		if settings.token == "" {
-			return settings, fmt.Errorf("github token is required when family=%q", familySecretScanning)
+		if !settings.hasAuth() {
+			return settings, fmt.Errorf("github token or app auth is required when family=%q", familySecretScanning)
 		}
 		if settings.repo != "" {
 			return settings, fmt.Errorf("github repo is not supported when family=%q (org-level scan)", familySecretScanning)
@@ -482,8 +504,8 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
 		}
 	case familyAudit:
-		if settings.token == "" {
-			return settings, fmt.Errorf("github token is required when family=%q", familyAudit)
+		if !settings.hasAuth() {
+			return settings, fmt.Errorf("github token or app auth is required when family=%q", familyAudit)
 		}
 		if settings.repo != "" {
 			return settings, fmt.Errorf("github repo is not supported when family=%q", familyAudit)
@@ -509,139 +531,6 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		}
 	}
 	return settings, nil
-}
-
-func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", fmt.Errorf("parse github base_url: %w", err)
-	}
-	host := parsed.Hostname()
-	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(host)
-	if parsed.Scheme != "https" && !allowInsecureLoopback {
-		return "", fmt.Errorf("github base_url must use https")
-	}
-	if strings.TrimSpace(host) == "" {
-		return "", fmt.Errorf("github base_url must include a host")
-	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
-		return "", fmt.Errorf("github base_url must not include user info, query, or fragment")
-	}
-	path := strings.TrimRight(parsed.EscapedPath(), "/")
-	if (path != "" && path != "/api/v3") || parsed.RawPath != "" {
-		return "", fmt.Errorf("github base_url must be an origin URL")
-	}
-	if isUnsafeHost(host) && (!allowLoopback || !isLoopbackHost(host)) {
-		return "", errUnsafeBaseURLHost
-	}
-	if path == "/api/v3" && isGitHubAPIHost(host) {
-		parsed.Path = "/api/v3"
-	} else {
-		parsed.Path = ""
-	}
-	return strings.TrimRight(parsed.String(), "/"), nil
-}
-
-func isGitHubAPIHost(host string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(host))
-	return strings.HasPrefix(normalized, "api.") || strings.Contains(normalized, ".api.")
-}
-
-func isUnsafeHost(host string) bool {
-	value := normalizedIPHost(host)
-	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
-		return true
-	}
-	ip := net.ParseIP(value)
-	if ip == nil {
-		ip = parseNumericIPv4Host(value)
-	}
-	if ip == nil {
-		return false
-	}
-	return isUnsafeIP(ip)
-}
-
-func isLoopbackHost(host string) bool {
-	value := normalizedIPHost(host)
-	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
-		return true
-	}
-	ip := net.ParseIP(value)
-	if ip == nil {
-		ip = parseNumericIPv4Host(value)
-	}
-	return ip != nil && ip.IsLoopback()
-}
-
-func isUnsafeIP(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-	return ip.IsLoopback() ||
-		ip.IsPrivate() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() ||
-		ip.IsMulticast()
-}
-
-func normalizedIPHost(host string) string {
-	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
-	value = strings.Trim(value, "[]")
-	if address, _, ok := strings.Cut(value, "%"); ok {
-		value = address
-	}
-	return value
-}
-
-func parseNumericIPv4Host(host string) net.IP {
-	if strings.Contains(host, ":") {
-		return nil
-	}
-	parts := strings.Split(host, ".")
-	if len(parts) == 0 || len(parts) > 4 {
-		return nil
-	}
-	values := make([]uint64, len(parts))
-	for i, part := range parts {
-		if part == "" {
-			return nil
-		}
-		value, err := strconv.ParseUint(part, 0, 32)
-		if err != nil {
-			return nil
-		}
-		values[i] = value
-	}
-	var ipv4 uint32
-	switch len(values) {
-	case 1:
-		ipv4 = uint32FromUint64(values[0])
-	case 2:
-		if values[0] > 0xff || values[1] > 0xffffff {
-			return nil
-		}
-		ipv4 = uint32FromUint64(values[0]<<24 | values[1])
-	case 3:
-		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff {
-			return nil
-		}
-		ipv4 = uint32FromUint64(values[0]<<24 | values[1]<<16 | values[2])
-	case 4:
-		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xff || values[3] > 0xff {
-			return nil
-		}
-		ipv4 = uint32FromUint64(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
-	}
-	return net.IPv4(byte(ipv4>>24), byte(ipv4>>16), byte(ipv4>>8), byte(ipv4))
-}
-
-func uint32FromUint64(value uint64) uint32 {
-	if value > math.MaxUint32 {
-		return math.MaxUint32
-	}
-	return uint32(value)
 }
 
 func getRepo(ctx context.Context, client *gogithub.Client, owner string, repo string) (*gogithub.Repository, error) {
@@ -923,6 +812,31 @@ func normalizeRepositoryEventID(value string) string {
 func configValue(cfg sourcecdk.Config, key string) string {
 	value, _ := cfg.Lookup(key)
 	return strings.TrimSpace(value)
+}
+
+func (st settings) githubAppAuthConfig() sourcehttp.GitHubAppAuthConfig {
+	return sourcehttp.GitHubAppAuthConfig{
+		AppID:            st.appID,
+		InstallationID:   st.appInstallationID,
+		PrivateKey:       st.appPrivateKey,
+		PrivateKeyBase64: st.appPrivateKeyBase64,
+		BaseURL:          st.baseURL,
+	}
+}
+
+func (st settings) hasAuth() bool {
+	return st.token != "" || st.usesGitHubAppAuth()
+}
+
+func (st settings) usesGitHubAppAuth() bool {
+	return st.githubAppAuthConfig().Configured()
+}
+
+func (st settings) validateAuth() error {
+	if err := st.githubAppAuthConfig().Validate(); err != nil {
+		return fmt.Errorf("%w: %w", sourcecdk.ErrInvalidConfig, err)
+	}
+	return nil
 }
 
 func branchLabel(branch *gogithub.PullRequestBranch) string {
