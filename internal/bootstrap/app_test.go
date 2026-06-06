@@ -4318,6 +4318,131 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 }
 
+func TestSourceRuntimeHealthEndpointIncludesRuntimeGraphAndFindingState(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	started := now.Add(-10 * time.Minute)
+	finished := now.Add(-9 * time.Minute)
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-users": {
+				Id:       "writer-okta-users",
+				SourceId: "okta",
+				TenantId: "writer",
+				Config:   map[string]string{"family": "user"},
+				Checkpoint: &cerebrov1.SourceCheckpoint{
+					Watermark:    timestamppb.New(now.Add(-2 * time.Hour)),
+					CursorOpaque: "checkpoint-secret",
+				},
+				NextCursor:   &cerebrov1.SourceCursor{Opaque: "next-secret"},
+				LastSyncedAt: timestamppb.New(now.Add(-30 * time.Minute)),
+			},
+		},
+		findingEvaluationRuns: map[string]*cerebrov1.FindingEvaluationRun{
+			"finding-run-1": {
+				Id:               "finding-run-1",
+				RuntimeId:        "writer-okta-users",
+				RuleId:           "okta.user.mfa",
+				Status:           "completed",
+				EventsEvaluated:  7,
+				EventsProcessed:  9,
+				EventsMatched:    3,
+				FindingsUpserted: 2,
+				FindingsEmitted:  1,
+				StartedAt:        timestamppb.New(started),
+				FinishedAt:       timestamppb.New(finished),
+			},
+		},
+	}
+	graphStore := &stubGraphStore{
+		ingestRuns: map[string]graphstore.IngestRun{
+			"graph-run-1": {
+				ID:                "graph-run-1",
+				RuntimeID:         "writer-okta-users",
+				Status:            graphstore.IngestRunStatusCompleted,
+				StartedAt:         started.Format(time.RFC3339Nano),
+				FinishedAt:        finished.Format(time.RFC3339Nano),
+				PagesRead:         4,
+				EventsRead:        8,
+				EntitiesProjected: 12,
+				LinksProjected:    16,
+				GraphNodesBefore:  100,
+				GraphNodesAfter:   109,
+				GraphLinksBefore:  200,
+				GraphLinksAfter:   211,
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: runtimeStore,
+		GraphStore: graphStore,
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/source-runtimes/health?tenant_id=writer")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/health error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close health response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes/health status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime health response: %v", err)
+	}
+	runtimes, ok := payload["runtimes"].([]any)
+	if !ok || len(runtimes) != 1 {
+		t.Fatalf("health runtimes = %#v, want one runtime", payload["runtimes"])
+	}
+	record, ok := runtimes[0].(map[string]any)
+	if !ok {
+		t.Fatalf("health runtime = %#v, want object", runtimes[0])
+	}
+	if got := record["runtime_id"]; got != "writer-okta-users" {
+		t.Fatalf("runtime_id = %#v, want writer-okta-users", got)
+	}
+	if got := record["family"]; got != "user" {
+		t.Fatalf("family = %#v, want user", got)
+	}
+	if got := record["cursor_pending"]; got != true {
+		t.Fatalf("cursor_pending = %#v, want true", got)
+	}
+	if got := record["checkpoint_cursor_present"]; got != true {
+		t.Fatalf("checkpoint_cursor_present = %#v, want true", got)
+	}
+	if _, ok := record["next_cursor"]; ok {
+		t.Fatalf("health record leaked next_cursor: %#v", record["next_cursor"])
+	}
+	graphRun, ok := record["latest_graph_run"].(map[string]any)
+	if !ok {
+		t.Fatalf("latest_graph_run = %#v, want object", record["latest_graph_run"])
+	}
+	if got := graphRun["graph_node_delta"]; got != float64(9) {
+		t.Fatalf("graph_node_delta = %#v, want 9", got)
+	}
+	if got := graphRun["graph_link_delta"]; got != float64(11) {
+		t.Fatalf("graph_link_delta = %#v, want 11", got)
+	}
+	if got := graphRun["duration_seconds"]; got != float64(60) {
+		t.Fatalf("graph duration_seconds = %#v, want 60", got)
+	}
+	findingRun, ok := record["latest_finding_evaluation"].(map[string]any)
+	if !ok {
+		t.Fatalf("latest_finding_evaluation = %#v, want object", record["latest_finding_evaluation"])
+	}
+	if got := findingRun["events_processed"]; got != float64(9) {
+		t.Fatalf("finding events_processed = %#v, want 9", got)
+	}
+	if got := findingRun["duration_seconds"]; got != float64(60) {
+		t.Fatalf("finding duration_seconds = %#v, want 60", got)
+	}
+}
+
 func TestConnectSourceRuntimeEndpointsResolveEnvReferences(t *testing.T) {
 	source := &bootstrapTokenSource{id: "runtime_token"}
 	registry, err := sourcecdk.NewRegistry(source)

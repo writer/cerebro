@@ -140,6 +140,7 @@ func (app *App) registerRuntimeResponseRoutes(mux *http.ServeMux) {
 
 func (app *App) registerSourceRuntimeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /source-runtimes", routeSurfacePlatformHTTP, app.handleListSourceRuntimes)
+	registerHTTPRoute(mux, "GET /source-runtimes/health", routeSurfacePlatformHTTP, app.handleListSourceRuntimeHealth)
 	registerHTTPRoute(mux, "PUT /source-runtimes/{runtimeID}", routeSurfacePlatformHTTP, app.handlePutSourceRuntime)
 	registerHTTPRoute(mux, "GET /source-runtimes/{runtimeID}", routeSurfacePlatformHTTP, app.handleGetSourceRuntime)
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/sync", routeSurfacePlatformHTTP, app.handleSyncSourceRuntime)

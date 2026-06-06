@@ -165,6 +165,32 @@ paths:
       responses:
         '200':
           description: Source runtime list.
+  /source-runtimes/health:
+    get:
+      summary: List consolidated source runtime health
+      tags:
+        - Sources
+      parameters:
+        - name: runtime_id
+          in: query
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Consolidated runtime freshness, graph ingest, and finding evaluation health.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceRuntimeHealthResponse'
   /source-runtimes/{runtimeID}:
     put:
       summary: Store source runtime configuration
@@ -2425,6 +2451,141 @@ components:
         last_synced_at:
           type: string
           format: date-time
+    SourceRuntimeHealthResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        runtimes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceRuntimeHealthRecord'
+    SourceRuntimeHealthRecord:
+      type: object
+      properties:
+        runtime_id:
+          type: string
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        family:
+          type: string
+        last_synced_at:
+          type: string
+          format: date-time
+        sync_lag_seconds:
+          type: integer
+          minimum: 0
+        checkpoint_watermark:
+          type: string
+          format: date-time
+        watermark_lag_seconds:
+          type: integer
+          minimum: 0
+        cursor_pending:
+          type: boolean
+        checkpoint_cursor_present:
+          type: boolean
+        latest_graph_run:
+          $ref: '#/components/schemas/SourceRuntimeHealthGraphRun'
+        graph_lag_seconds:
+          type: integer
+          minimum: 0
+        latest_finding_evaluation:
+          $ref: '#/components/schemas/SourceRuntimeHealthFindingEvaluation'
+        expected_cadence_seconds:
+          type: integer
+          minimum: 0
+        stale_after_seconds:
+          type: integer
+          minimum: 0
+        schedule_context_configured:
+          type: boolean
+        generated_at:
+          type: string
+          format: date-time
+    SourceRuntimeHealthGraphRun:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        pages_read:
+          type: integer
+        events_read:
+          type: integer
+        entities_projected:
+          type: integer
+        links_projected:
+          type: integer
+        graph_nodes_before:
+          type: integer
+        graph_links_before:
+          type: integer
+        graph_nodes_after:
+          type: integer
+        graph_links_after:
+          type: integer
+        graph_node_delta:
+          type: integer
+        graph_link_delta:
+          type: integer
+        duration_seconds:
+          type: integer
+          minimum: 0
+    SourceRuntimeHealthFindingEvaluation:
+      type: object
+      properties:
+        id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        events_evaluated:
+          type: integer
+          minimum: 0
+        events_processed:
+          type: integer
+          minimum: 0
+        events_matched:
+          type: integer
+          minimum: 0
+        findings_upserted:
+          type: integer
+          minimum: 0
+        findings_emitted:
+          type: integer
+          minimum: 0
+        graph_rule:
+          type: boolean
+        graph_rows_read:
+          type: integer
+          minimum: 0
+        duration_seconds:
+          type: integer
+          minimum: 0
     EntityRef:
       type: object
       required: [urn, entity_type]
