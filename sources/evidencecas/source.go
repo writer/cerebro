@@ -45,7 +45,6 @@ func New() (*Source, error) {
 				},
 				Attributes: map[string]string{
 					"evidence_id":                   "metadata.evidence_id|uri|key",
-					"evidence_type":                 "metadata.evidence_type",
 					"resource_urn":                  "metadata.resource_urn|metadata.case_urn",
 					"observed_at":                   "updated_at",
 					"case_id":                       "metadata.case_id",
