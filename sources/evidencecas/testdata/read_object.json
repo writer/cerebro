@@ -1,0 +1,22 @@
+{
+  "objects": [
+    {
+      "ref_type": "evidencecas.manifest.v2",
+      "uri": "evidencecas://cases/123/evidence/triage.tar",
+      "key": "123/evidence/triage.tar",
+      "digest": "sha256abc",
+      "size": 42,
+      "content_type": "application/x-tar",
+      "manifest_version": 2,
+      "merkle_root": "root",
+      "commit_id": "commit",
+      "blocks_count": 3,
+      "updated_at": "2026-06-06T00:00:00Z",
+      "metadata": {
+        "case_id": "123",
+        "evidence_id": "evidence-456",
+        "resource_urn": "urn:cerebro:writer:case:123"
+      }
+    }
+  ]
+}

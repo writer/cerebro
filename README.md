@@ -259,6 +259,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `backstage` | Backstage catalog source | components |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
+| `evidence_cas` | EvidenceCAS content-addressed evidence reference source | object manifests |
 | `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | audit, groups, IAM role assignments, service accounts, resource exposure |
 | `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests |
 | `google_workspace` | Google Workspace Directory and Admin audit source | audit, groups, group members, role assignments, users |
@@ -409,7 +410,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | Append log | NATS JetStream |
 | State store | Postgres |
 | Graph store | Neo4j/Aura |
-| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, SDK, SentinelOne, Security Tooling Map, Trusted Endpoint, VulnView |
+| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, EvidenceCAS, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, SDK, SentinelOne, Security Tooling Map, Trusted Endpoint, VulnView |
 | Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, OSS audit, custom structural linters, arch tests |
 
 ---
