@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.238
+  cerebro:imageTag: v2.1.239
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:webImageTag: sha-0c2721b59674
@@ -95,7 +95,9 @@ config:
     - CEREBRO_SOURCE_COSMO_BASE_URL
     - CEREBRO_SOURCE_COSMO_TOKEN
     - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
-    - GITHUB_TOKEN
+    - GITHUB_APP_ID
+    - GITHUB_APP_INSTALLATION_ID_WRITERINTERNAL
+    - GITHUB_APP_PRIVATE_KEY_BASE64
     - OKTA_API_TOKEN
     - OKTA_DOMAIN
     - SENTINELONE_API_TOKEN
@@ -250,16 +252,6 @@ config:
         - runtime_id=writer-sentinelone-activity
         - page_limit=10
         - graph_page_limit=100
-        - event_limit=1000
-    - name: github-audit-writer
-      scheduleExpression: cron(9,24,39,54 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-github-audit
-        - page_limit=5
-        - graph_page_limit=5
         - event_limit=1000
     - name: github-audit-writerinternal
       scheduleExpression: cron(12,27,42,57 * * * ? *)
@@ -730,22 +722,16 @@ config:
         per_page: "100"
         tenant_id: writer
         token: env:CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
-    - id: writer-github-audit
-      sourceId: github
-      tenantId: writer
-      config:
-        family: audit
-        owner: writer
-        per_page: "100"
-        token: env:GITHUB_TOKEN
     - id: writer-github-audit-writerinternal
       sourceId: github
       tenantId: writer
       config:
         family: audit
+        app_id: env:GITHUB_APP_ID
+        installation_id: env:GITHUB_APP_INSTALLATION_ID_WRITERINTERNAL
         owner: WriterInternal
         per_page: "100"
-        token: env:GITHUB_TOKEN
+        private_key_base64: env:GITHUB_APP_PRIVATE_KEY_BASE64
     - id: writer-okta-audit
       sourceId: okta
       tenantId: writer
