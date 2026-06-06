@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import json
 import os
 from pathlib import Path
+import re
 import sys
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -36,6 +37,8 @@ class CoverageRow:
     tenant_id: str
     schedule_name: str
     schedule_expression: str
+    schedule_cadence_seconds: int | None
+    stale_after_seconds: int | None
     task_count: int | None
     backfill: bool
     remove_after: str
@@ -140,6 +143,24 @@ def _schedule_map(schedules: list[Any]) -> dict[str, list[dict[str, Any]]]:
     return mapped
 
 
+def _schedule_cadence_seconds(expression: Any) -> int | None:
+    text = str(expression or "").strip().lower()
+    match = re.fullmatch(r"rate\(\s*(\d+)\s+([a-z]+)\s*\)", text)
+    if not match:
+        return None
+    amount = int(match.group(1))
+    unit = match.group(2)
+    if amount <= 0:
+        return None
+    if unit in {"minute", "minutes"}:
+        return amount * 60
+    if unit in {"hour", "hours"}:
+        return amount * 3600
+    if unit in {"day", "days"}:
+        return amount * 86400
+    return None
+
+
 def _parse_time(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -156,7 +177,7 @@ def _parse_time(value: Any) -> datetime | None:
 
 
 def _last_activity(runtime: dict[str, Any]) -> datetime | None:
-    for key in ("last_sync_at", "lastSyncedAt", "updated_at", "updatedAt", "last_run_at", "lastRunAt"):
+    for key in ("last_synced_at", "lastSyncedAt", "last_sync_at", "lastSyncAt", "updated_at", "updatedAt", "last_run_at", "lastRunAt"):
         parsed = _parse_time(runtime.get(key))
         if parsed is not None:
             return parsed
@@ -256,11 +277,23 @@ def build_report(
             if last_activity is not None:
                 last_activity_at = last_activity.isoformat().replace("+00:00", "Z")
                 age_hours = max(0.0, (now - last_activity).total_seconds() / 3600)
-                if max_age_hours > 0 and now - last_activity > timedelta(hours=max_age_hours):
-                    stale_runtime_count += 1
-                    findings.append(CoverageFinding("warning", runtime_id, "freshness", f"last activity is older than {max_age_hours} hours"))
 
         for schedule in runtime_schedules[:1]:
+            schedule_expression = str(schedule.get("scheduleExpression") or "").strip() if schedule else ""
+            cadence_seconds = _schedule_cadence_seconds(schedule_expression)
+            stale_after_seconds = max_age_hours * 3600 if max_age_hours > 0 else cadence_seconds * 2 if cadence_seconds else None
+            if live is not None and age_hours is not None and stale_after_seconds is not None:
+                age_seconds = age_hours * 3600
+                if age_seconds > stale_after_seconds:
+                    stale_runtime_count += 1
+                    findings.append(
+                        CoverageFinding(
+                            "warning",
+                            runtime_id,
+                            "freshness",
+                            f"last activity is older than stale_after_seconds={stale_after_seconds}",
+                        )
+                    )
             remove_after = str(schedule.get("removeAfter") or "").strip() if schedule else ""
             remove_after_time = _parse_time(remove_after)
             backfill = bool(remove_after) or "backfill" in runtime_id.lower() or "backfill" in str(schedule.get("name", "")).lower()
@@ -275,7 +308,9 @@ def build_report(
                     family=family,
                     tenant_id=tenant_id,
                     schedule_name=str(schedule.get("name") or "").strip() if schedule else "",
-                    schedule_expression=str(schedule.get("scheduleExpression") or "").strip() if schedule else "",
+                    schedule_expression=schedule_expression,
+                    schedule_cadence_seconds=cadence_seconds,
+                    stale_after_seconds=stale_after_seconds,
                     task_count=_int_or_none(schedule.get("taskCount")) if schedule else None,
                     backfill=backfill,
                     remove_after=remove_after,
@@ -295,7 +330,16 @@ def build_report(
 
     healthy_runtime_count = None
     if actual_by_id is not None:
-        healthy_runtime_count = sum(1 for row in rows if row.live_present and (row.age_hours is None or max_age_hours <= 0 or row.age_hours <= max_age_hours))
+        healthy_runtime_count = sum(
+            1
+            for row in rows
+            if row.live_present
+            and (
+                row.age_hours is None
+                or row.stale_after_seconds is None
+                or row.age_hours * 3600 <= row.stale_after_seconds
+            )
+        )
 
     return CoverageReport(
         generated_at=now.isoformat().replace("+00:00", "Z"),
@@ -371,18 +415,19 @@ def format_markdown(report: CoverageReport) -> str:
         lines.append("No source runtime coverage gaps detected.")
     lines.extend(["", "### Runtime coverage", ""])
     lines.extend([
-        "| Runtime | Source | Family | Schedule | Backfill | Live | Last activity |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Runtime | Source | Family | Schedule | SLA | Backfill | Live | Last activity |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
     for row in report.rows:
         live = "unknown" if row.live_present is None else "yes" if row.live_present else "missing"
         schedule = row.schedule_name or "missing"
+        sla = "unknown" if row.stale_after_seconds is None else f"{row.stale_after_seconds}s"
         last_activity = row.last_activity_at or "unknown"
         if row.age_hours is not None:
             last_activity = f"{last_activity} ({row.age_hours:.2f}h)"
         lines.append(
             f"| `{_markdown_escape(row.runtime_id)}` | `{_markdown_escape(row.source_id)}` | `{_markdown_escape(row.family)}` | "
-            f"`{_markdown_escape(schedule)}` | `{str(row.backfill).lower()}` | `{live}` | `{_markdown_escape(last_activity)}` |"
+            f"`{_markdown_escape(schedule)}` | `{sla}` | `{str(row.backfill).lower()}` | `{live}` | `{_markdown_escape(last_activity)}` |"
         )
     lines.append("")
     return "\n".join(lines)

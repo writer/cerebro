@@ -91,6 +91,8 @@ class SourceRuntimeCoverageReportTest(unittest.TestCase):
         self.assertEqual(report.expired_backfill_count, 0)
         self.assertEqual(report.sources, {"aws": 1, "okta": 2})
         self.assertEqual(report.findings, [])
+        self.assertEqual(report.rows[0].schedule_cadence_seconds, 900)
+        self.assertEqual(report.rows[0].stale_after_seconds, 1800)
 
     def test_missing_schedule_is_error(self) -> None:
         stack = self._stack_file(STACK_YAML.replace("        - runtime_id=writer-okta-audit\n", "        - runtime_id=writer-okta-audit-missing\n", 1))
@@ -125,9 +127,9 @@ class SourceRuntimeCoverageReportTest(unittest.TestCase):
 
     def test_live_stale_runtime_is_warning(self) -> None:
         actual = [
-            {"id": "writer-okta-audit", "source_id": "okta", "status": "ok", "last_sync_at": "2026-05-30T00:00:00Z"},
-            {"id": "writer-aws-prod-us1-public-endpoint", "source_id": "aws", "status": "ok", "last_sync_at": "2026-06-01T00:00:00Z"},
-            {"id": "writer-okta-audit-backfill", "source_id": "okta", "status": "ok", "last_sync_at": "2026-06-01T00:00:00Z"},
+            {"id": "writer-okta-audit", "source_id": "okta", "status": "ok", "last_synced_at": "2026-05-30T00:00:00Z"},
+            {"id": "writer-aws-prod-us1-public-endpoint", "source_id": "aws", "status": "ok", "last_synced_at": "2026-06-01T00:00:00Z"},
+            {"id": "writer-okta-audit-backfill", "source_id": "okta", "status": "ok", "last_synced_at": "2026-06-01T00:00:00Z"},
         ]
 
         report = build_report(
@@ -140,6 +142,25 @@ class SourceRuntimeCoverageReportTest(unittest.TestCase):
         self.assertEqual(report.stale_runtime_count, 1)
         self.assertEqual(report.healthy_runtime_count, 2)
         self.assertTrue(any(f.severity == "warning" and f.check == "freshness" for f in report.findings))
+
+    def test_live_stale_runtime_defaults_to_schedule_sla(self) -> None:
+        actual = [
+            {"id": "writer-okta-audit", "source_id": "okta", "status": "ok", "last_synced_at": "2026-06-01T11:00:00Z"},
+            {"id": "writer-aws-prod-us1-public-endpoint", "source_id": "aws", "status": "ok", "last_synced_at": "2026-06-01T12:00:00Z"},
+            {"id": "writer-okta-audit-backfill", "source_id": "okta", "status": "ok", "last_synced_at": "2026-06-01T12:00:00Z"},
+        ]
+
+        report = build_report(
+            self._stack_file(),
+            actual=actual,
+            now=datetime(2026, 6, 1, 12, 0, tzinfo=UTC),
+        )
+
+        row = next(row for row in report.rows if row.runtime_id == "writer-okta-audit")
+        self.assertEqual(row.schedule_cadence_seconds, 600)
+        self.assertEqual(row.stale_after_seconds, 1200)
+        self.assertEqual(report.stale_runtime_count, 1)
+        self.assertTrue(any("stale_after_seconds=1200" in f.message for f in report.findings))
 
     def test_unexpected_live_runtime_is_warning(self) -> None:
         actual = [
@@ -179,6 +200,8 @@ class SourceRuntimeCoverageReportTest(unittest.TestCase):
         self.assertEqual(payload["stack"], "go-prod")
         self.assertEqual(payload["declared_runtime_count"], 3)
         self.assertEqual(len(payload["rows"]), 3)
+        self.assertIn("schedule_cadence_seconds", payload["rows"][0])
+        self.assertIn("stale_after_seconds", payload["rows"][0])
 
     def test_tsv_has_runtime_rows(self) -> None:
         report = build_report(self._stack_file(), now=datetime(2026, 6, 1, tzinfo=UTC))

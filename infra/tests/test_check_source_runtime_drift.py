@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from urllib.error import HTTPError
@@ -85,6 +86,20 @@ class SourceRuntimeDriftTest(unittest.TestCase):
         drift = find_drift(EXPECTED, actual, allowed_unexpected={"trusted-endpoint"})
 
         self.assertEqual(drift, [])
+
+    def test_canonical_last_synced_at_satisfies_freshness_check(self) -> None:
+        actual = [{
+            "id": "writer-okta-audit",
+            "source_id": "okta",
+            "tenant_id": "writer",
+            "config": {"family": "audit"},
+            "last_synced_at": datetime.now().astimezone().isoformat(),
+        }]
+
+        drift = find_drift(EXPECTED, actual, max_age_hours=24)
+
+        self.assertFalse(any(finding.check == "freshness" for finding in drift if hasattr(finding, "check")))
+        self.assertFalse(any("last activity" in finding.message for finding in drift))
 
     def test_normalize_api_url_rewrites_alb_hostname_to_stack_domain(self) -> None:
         self.assertEqual(
