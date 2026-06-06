@@ -15,6 +15,7 @@ import sys
 import threading
 from typing import TextIO
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import yaml
@@ -303,6 +304,14 @@ def _graph_health_degradation_category(status: int, diagnostics: str) -> str | N
     )
     if any(token in text for token in blocking_tokens):
         return None
+    if "resourceinitializationerror" in text and (
+        "unable to retrieve secret" in text
+        or "unable to pull secrets" in text
+        or "secrets manager can't find the specified secret" in text
+    ):
+        return "ecs_secret_initialization_failed"
+    if "resourceinitializationerror" in text:
+        return "ecs_task_initialization_failed"
     categories = (
         ("latest graph ingest run is stale-running", "stale_ingest_run"),
         ("latest graph ingest run failed", "stale_or_transient_ingest_run"),
@@ -439,6 +448,55 @@ def _write_github_output(path: Path | None, **values: str) -> None:
             handle.write(f"{key}={value}\n")
 
 
+def _github_api_json(repository: str, token: str, path: str, *, method: str = "GET", payload: dict | None = None) -> object:
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}{path}",
+        data=data,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        method=method,
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _find_open_graph_health_issue(repository: str, token: str, title: str) -> dict | None:
+    for page in range(1, 6):
+        query = urllib.parse.urlencode({"state": "open", "per_page": "100", "page": str(page)})
+        issues = _github_api_json(repository, token, f"/issues?{query}")
+        if not isinstance(issues, list):
+            return None
+        for issue in issues:
+            if not isinstance(issue, dict) or issue.get("pull_request"):
+                continue
+            if issue.get("title") == title:
+                return issue
+        if len(issues) < 100:
+            break
+    return None
+
+
+def _graph_health_issue_body(stack: str, status: int, category: str, artifact_name: str, run_url: str, *, degraded: bool) -> str:
+    outcome = "degraded" if degraded else "blocked deployment"
+    return "\n".join(
+        [
+            f"Graph health verification {outcome} after an infrastructure deployment for `{stack}`.",
+            "",
+            f"- Category: `{category}`",
+            f"- Exit code: `{status}`",
+            f"- Workflow run: {run_url}",
+            f"- Artifact: `{artifact_name}`",
+            "",
+            "Please inspect the graph-health artifact and follow up on the degraded runtime or graph command.",
+        ]
+    )
+
+
 def _create_graph_health_issue(stack: str, status: int, category: str, artifact_name: str, *, degraded: bool = True) -> None:
     token = os.environ.get("GITHUB_TOKEN")
     repository = os.environ.get("GITHUB_REPOSITORY")
@@ -448,37 +506,24 @@ def _create_graph_health_issue(stack: str, status: int, category: str, artifact_
         return
     run_url = f"https://github.com/{repository}/actions/runs/{run_id}"
     outcome = "degraded" if degraded else "blocked deployment"
-    payload = json.dumps(
-        {
-            "title": f"Graph health {outcome} for {stack}",
-            "body": "\n".join(
-                [
-                    f"Graph health verification {outcome} after an infrastructure deployment for `{stack}`.",
-                    "",
-                    f"- Category: `{category}`",
-                    f"- Exit code: `{status}`",
-                    f"- Workflow run: {run_url}",
-                    f"- Artifact: `{artifact_name}`",
-                    "",
-                    "Please inspect the graph-health artifact and follow up on the degraded runtime or graph command.",
-                ]
-            ),
-        }
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{repository}/issues",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-        method="POST",
-    )
+    title = f"Graph health {outcome} for {stack}"
+    body = _graph_health_issue_body(stack, status, category, artifact_name, run_url, degraded=degraded)
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            created = json.loads(response.read().decode("utf-8"))
+        existing = _find_open_graph_health_issue(repository, token, title)
+        if existing:
+            issue_number = existing.get("number")
+            if issue_number:
+                updated = _github_api_json(
+                    repository,
+                    token,
+                    f"/issues/{issue_number}/comments",
+                    method="POST",
+                    payload={"body": body},
+                )
+                if isinstance(updated, dict):
+                    print(f"::notice::Updated existing graph-health follow-up issue: {updated.get('html_url')}")
+                    return
+        created = _github_api_json(repository, token, "/issues", method="POST", payload={"title": title, "body": body})
     except urllib.error.URLError as exc:
         print(f"WARNING: failed to create graph-health issue: {exc}", file=sys.stderr)
         return

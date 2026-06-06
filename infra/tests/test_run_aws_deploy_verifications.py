@@ -4,6 +4,7 @@ import argparse
 import contextlib
 from datetime import UTC, datetime, timedelta
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -37,6 +38,20 @@ class FakeProcess:
 
     def kill(self) -> None:
         self.killed = True
+
+
+class FakeHTTPResponse:
+    def __init__(self, payload: object) -> None:
+        self.payload = payload
+
+    def __enter__(self) -> FakeHTTPResponse:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
 
 
 class RunAwsDeployVerificationsTest(unittest.TestCase):
@@ -275,6 +290,18 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertIn("graph_health_degraded=true", outputs)
         self.assertIn("graph_health_degradation_category=graph_command_no_logs", outputs)
 
+    def test_resource_initialization_secret_failure_uses_specific_category(self) -> None:
+        diagnostics = (
+            "stoppedReason=ResourceInitializationError: unable to pull secrets or registry auth: "
+            "execution resource retrieval failed: unable to retrieve secret from asm: "
+            "ResourceNotFoundException: Secrets Manager can't find the specified secret. "
+            "GetLogEvents operation: The specified log stream does not exist."
+        )
+
+        category = run_aws_deploy_verifications._graph_health_degradation_category(1, diagnostics)
+
+        self.assertEqual(category, "ecs_secret_initialization_failed")
+
     def test_graph_integrity_failure_remains_blocking_when_degradation_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch(
@@ -454,6 +481,47 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertIn("::warning::Graph health verification degraded after deployment", stdout.getvalue())
         create_issue.assert_called_once_with("go-prod", 23, "stale_ingest_run", "graph-health-go-prod")
+
+    def test_graph_degradation_updates_existing_followup_issue(self) -> None:
+        requests = []
+
+        def fake_urlopen(request, timeout: int):  # noqa: ANN001
+            requests.append(request)
+            if request.get_method() == "GET":
+                return FakeHTTPResponse(
+                    [
+                        {
+                            "number": 956,
+                            "title": "Graph health degraded for go-prod",
+                            "html_url": "https://github.com/WriterInternal/cerebro/issues/956",
+                        }
+                    ]
+                )
+            return FakeHTTPResponse({"html_url": "https://github.com/WriterInternal/cerebro/issues/956#issuecomment-1"})
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GITHUB_TOKEN": "token",
+                    "GITHUB_REPOSITORY": "WriterInternal/cerebro",
+                    "GITHUB_RUN_ID": "27053505182",
+                },
+            ),
+            patch("scripts.run_aws_deploy_verifications.urllib.request.urlopen", side_effect=fake_urlopen),
+        ):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                run_aws_deploy_verifications._create_graph_health_issue(
+                    "go-prod",
+                    1,
+                    "ecs_secret_initialization_failed",
+                    "graph-health-go-prod",
+                )
+
+        self.assertEqual(len(requests), 2)
+        self.assertIn("/issues/956/comments", requests[1].full_url)
+        payload = json.loads(requests[1].data.decode("utf-8"))
+        self.assertIn("ecs_secret_initialization_failed", payload["body"])
 
     def test_graph_health_runtime_ids_parse_ingest_summaries(self) -> None:
         diagnostics = (
