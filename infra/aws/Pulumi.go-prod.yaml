@@ -18,7 +18,14 @@ config:
   cerebro:apiCpu: 2048
   cerebro:apiMemory: 4096
   cerebro:apiMinInstances: 1
-  cerebro:apiMaxInstances: 2
+  # apiMaxInstances pinned to 1 while deviceAuthEnabled is on: the DPoP
+  # replay cache is per-replica in-process (internal/deviceauth/dpop.go), so
+  # multi-replica would let a legitimate proof routed to a different task
+  # than the one that minted the access token look like a replay -> 401.
+  # validate_stack_config.py rejects deviceAuthEnabled + apiMaxInstances>1.
+  # Lift back to 2 once shared DPoP replay state ships (Phase-2: Redis-backed
+  # jti cache).
+  cerebro:apiMaxInstances: 1
   cerebro:apiRequestCountPerTargetScalingTarget: 500
   cerebro:apiRequestCountPerTargetAlarmThreshold: 1000
   cerebro:apiLatencyP95AlarmThresholdSeconds: 3
@@ -41,6 +48,19 @@ config:
   cerebro:alarmActionArns:
     - arn:aws:sns:us-east-1:837279440628:aws-controltower-SecurityNotifications
   cerebro:apiAuthEnabled: true
+  # secheck-agent sender-constrained tokens (DPoP). The Ed25519 signing
+  # bundle lives in AWS SecretsManager under the configured name; provision
+  # in Infisical's go-prod environment under the same key, with kid set to
+  # secheck-pilot-1 to match deviceAuthCurrentKID. Rotate via the same flow.
+  # Defaults for ttl/skew/risk come from internal/config/device_auth.go.
+  cerebro:deviceAuthEnabled: true
+  cerebro:deviceAuthCurrentKID: secheck-pilot-1
+  cerebro:deviceAuthSigningKeysSecretName: CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON
+  cerebro:deviceAuthIssuer: cerebro-go-prod
+  cerebro:deviceAuthAudience: cerebro-device
+  cerebro:deviceAuthRefreshTTL: 168h
+  cerebro:deviceAuthDPoPProofTTL: 60s
+  cerebro:deviceAuthClockSkew: 60s
   cerebro:accessAuditDeniedAlarmThreshold: 50
   cerebro:accessAuditAuthFailureAlarmThreshold: 25
   cerebro:accessAuditTenantMismatchAlarmThreshold: 0
