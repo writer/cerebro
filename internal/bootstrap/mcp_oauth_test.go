@@ -39,6 +39,7 @@ func TestMCPOAuthFlowIssuesCapabilityTokenForMCP(t *testing.T) {
 			values.Set("state", r.URL.Query().Get("state"))
 			http.Redirect(w, r, redirectURI+"?"+values.Encode(), http.StatusFound)
 		case "/token":
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 			clientID, secret, ok := r.BasicAuth()
 			if !ok || clientID != "writer-client" || secret != "writer-secret" {
 				t.Fatalf("upstream token BasicAuth = (%q,%q,%v)", clientID, secret, ok)

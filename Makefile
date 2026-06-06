@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve test test-race test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -69,6 +69,14 @@ serve: build ## Build and run the local HTTP server.
 
 test: ## Run all Go tests.
 	go test ./...
+
+test-race: ## Run all Go tests with the race detector.
+	go test -race -timeout 20m ./...
+
+test-coverage: ## Run all Go tests with per-package coverage and write a combined profile.
+	@mkdir -p tmp/coverage
+	go test -covermode=atomic -coverprofile=tmp/coverage/coverage.out ./...
+	go tool cover -func=tmp/coverage/coverage.out
 
 sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
 
@@ -291,4 +299,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race test-coverage sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.

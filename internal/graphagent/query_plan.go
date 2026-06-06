@@ -100,10 +100,10 @@ var (
 	cypherLimitPattern    = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\b`)
 )
 
-func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) conversionResult {
+func convertDraftToQuery(request AskRequest, draft *DraftResponse) conversionResult {
 	cypher := strings.TrimSpace(draft.Cypher)
 	if cypher == "" && strings.TrimSpace(draft.Refusal) != "" {
-		plan := normalizePlanWithoutInference(draft.Plan, request, maxRows)
+		plan := normalizePlanWithoutInference(draft.Plan, request, defaultMaxRows)
 		return conversionResult{
 			Plan:      plan,
 			Cypher:    "",
@@ -116,14 +116,14 @@ func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) 
 			}},
 		}
 	}
-	plan := normalizePlan(draft.Plan, request, cypher, maxRows)
+	plan := normalizePlan(draft.Plan, request, cypher, defaultMaxRows)
 	result := conversionResult{
 		Plan:      plan,
 		Cypher:    cypher,
 		Source:    "llm",
 		Corrected: false,
 	}
-	if rendered, ok := renderDeterministicPlan(plan, maxRows); ok {
+	if rendered, ok := renderDeterministicPlan(plan, defaultMaxRows); ok {
 		result.Cypher = rendered
 		result.Source = "deterministic_template"
 		result.Deterministic = true
@@ -136,7 +136,7 @@ func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) 
 			})
 		}
 	} else if cypher != "" {
-		limited, diagnostic, changed := enforceCypherLimit(cypher, maxRows)
+		limited, diagnostic, changed := enforceCypherLimit(cypher, defaultMaxRows)
 		if changed {
 			result.Cypher = limited
 			result.Corrected = true
@@ -162,7 +162,7 @@ func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) 
 	return result
 }
 
-func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, maxRows int) AskQueryPlan {
+func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaultMaxRows int) AskQueryPlan {
 	var out AskQueryPlan
 	if plan != nil {
 		out = *plan
@@ -172,7 +172,7 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, maxRow
 		out.Intent = inferIntent(request.Question, cypher)
 	}
 	out.ScopeURN = firstNonEmpty(out.ScopeURN, strings.TrimSpace(request.ScopeURN))
-	out.Limit = boundedLimit(out.Limit, maxRows)
+	out.Limit = boundedLimit(out.Limit, defaultMaxRows)
 	if out.Confidence == 0 && out.Intent != IntentRawCypher {
 		out.Confidence = 0.85
 	}
@@ -200,7 +200,7 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, maxRow
 	return out
 }
 
-func normalizePlanWithoutInference(plan *AskQueryPlan, request AskRequest, maxRows int) AskQueryPlan {
+func normalizePlanWithoutInference(plan *AskQueryPlan, request AskRequest, defaultMaxRows int) AskQueryPlan {
 	out := AskQueryPlan{Intent: IntentRawCypher}
 	if plan != nil {
 		out = *plan
@@ -210,7 +210,7 @@ func normalizePlanWithoutInference(plan *AskQueryPlan, request AskRequest, maxRo
 		out.Intent = IntentRawCypher
 	}
 	out.ScopeURN = firstNonEmpty(out.ScopeURN, strings.TrimSpace(request.ScopeURN))
-	out.Limit = boundedLimit(out.Limit, maxRows)
+	out.Limit = boundedLimit(out.Limit, defaultMaxRows)
 	if out.Filters == nil {
 		out.Filters = map[string]string{}
 	}
@@ -256,11 +256,11 @@ func inferIntent(question string, cypher string) string {
 	}
 }
 
-func renderDeterministicPlan(plan AskQueryPlan, maxRows int) (string, bool) {
+func renderDeterministicPlan(plan AskQueryPlan, defaultMaxRows int) (string, bool) {
 	if hasUnsupportedDeterministicModifiers(plan) {
 		return "", false
 	}
-	limit := boundedLimit(plan.Limit, maxRows)
+	limit := boundedLimit(plan.Limit, defaultMaxRows)
 	switch plan.Intent {
 	case IntentAggregateFindingsBySource:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
@@ -501,8 +501,8 @@ func ontologyDiagnostics(cypher string) []ConversionDiagnostic {
 	return diagnostics
 }
 
-func enforceCypherLimit(cypher string, maxRows int) (string, ConversionDiagnostic, bool) {
-	limit := boundedLimit(maxRows, maxRows)
+func enforceCypherLimit(cypher string, defaultMaxRows int) (string, ConversionDiagnostic, bool) {
+	limit := boundedLimit(defaultMaxRows, defaultMaxRows)
 	trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(cypher), ";"))
 	if trimmed == "" {
 		return cypher, ConversionDiagnostic{}, false

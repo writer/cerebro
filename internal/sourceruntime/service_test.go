@@ -91,7 +91,7 @@ func (s *runtimeStore) ListSourceRuntimes(_ context.Context, filter ports.Source
 			continue
 		}
 		runtimes = append(runtimes, proto.Clone(runtime).(*cerebrov1.SourceRuntime))
-		if filter.Limit > 0 && uint32(len(runtimes)) >= filter.Limit {
+		if filter.Limit > 0 && boundedUint32(len(runtimes)) >= filter.Limit {
 			break
 		}
 	}
@@ -490,7 +490,7 @@ func TestPutStoresSecretReferenceAfterResolvingForValidation(t *testing.T) {
 		Runtime: &cerebrov1.SourceRuntime{
 			Id:       "writer-token",
 			SourceId: "token_source",
-			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN"},
+			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN"}, // #nosec G101 -- test env reference string, not a secret value.
 		},
 	})
 	if err != nil {
@@ -521,7 +521,7 @@ func TestSyncResetsProgressWhenResolvedSelectorReferenceChanges(t *testing.T) {
 		"writer-token": {
 			Id:       "writer-token",
 			SourceId: "token_source",
-			Config: map[string]string{
+			Config: map[string]string{ // #nosec G101 -- test env reference strings, not secret values.
 				"domain":                     "env:CEREBRO_SOURCE_TOKEN_SOURCE_DOMAIN",
 				"token":                      "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN",
 				runtimeProgressConfigHashKey: oldHash,
@@ -554,7 +554,7 @@ func TestSyncResetsProgressWhenResolvedSelectorReferenceChanges(t *testing.T) {
 }
 
 func TestProgressConfigHashIncludesNonSecretKeySelectors(t *testing.T) {
-	rawConfig := map[string]string{
+	rawConfig := map[string]string{ // #nosec G101 -- test env reference strings, not secret values.
 		"lookup_key": "env:CEREBRO_SOURCE_TOKEN_SOURCE_LOOKUP_KEY",
 		"token":      "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN",
 	}
@@ -699,8 +699,8 @@ func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
 
 func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN", "lookup_key": "prod", "group_key": "eng"}},
-		"other-token":  {Id: "other-token", SourceId: "okta", TenantId: "other", Config: map[string]string{"token": "env:OTHER"}},
+		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN", "lookup_key": "prod", "group_key": "eng"}}, // #nosec G101 -- env-reference test fixture, not credential material.
+		"other-token":  {Id: "other-token", SourceId: "okta", TenantId: "other", Config: map[string]string{"token": "env:OTHER"}},                                                            // #nosec G101 -- env-reference test fixture, not credential material.
 	}}, nil, nil)
 
 	runtimes, err := service.List(context.Background(), ports.SourceRuntimeFilter{TenantID: "writer"})

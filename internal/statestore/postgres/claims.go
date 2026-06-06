@@ -212,6 +212,7 @@ func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest)
 	addCaseFoldFilter("status", request.Status)
 	addFilter("source_event_id", request.SourceEventID)
 
+	// #nosec G202 -- clauses are assembled only from fixed column names above; values remain parameterized.
 	query := `
 SELECT runtime_id, tenant_id, claim_json::text
 FROM claims

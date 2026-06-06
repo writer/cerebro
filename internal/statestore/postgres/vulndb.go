@@ -309,16 +309,15 @@ func (s *Store) MoveAffectedPackages(ctx context.Context, fromID string, toID st
 	if err != nil {
 		return fmt.Errorf("query affected packages for move %q: %w", fromID, err)
 	}
+	defer func() { _ = rows.Close() }()
 	moved := []vulndb.AffectedPackage{}
 	for rows.Next() {
 		var payload string
 		if err := rows.Scan(&payload); err != nil {
-			_ = rows.Close()
 			return fmt.Errorf("scan affected package for move: %w", err)
 		}
 		var affected vulndb.AffectedPackage
 		if err := json.Unmarshal([]byte(payload), &affected); err != nil {
-			_ = rows.Close()
 			return fmt.Errorf("decode affected package for move: %w", err)
 		}
 		affected.VulnerabilityID = toID
@@ -328,11 +327,7 @@ func (s *Store) MoveAffectedPackages(ctx context.Context, fromID string, toID st
 		moved = append(moved, affected)
 	}
 	if err := rows.Err(); err != nil {
-		_ = rows.Close()
 		return fmt.Errorf("iterate affected packages for move: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close affected packages for move: %w", err)
 	}
 	for _, affected := range moved {
 		if affected.Ecosystem == "" {

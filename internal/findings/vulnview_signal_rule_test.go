@@ -513,5 +513,5 @@ func enableVulnViewLoopbackForTest(t *testing.T, source *vulnviewsource.Source) 
 	if !field.IsValid() {
 		t.Fatal("vulnview.Source.allowLoopbackBaseURL field not found")
 	}
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().SetBool(true)
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().SetBool(true) // #nosec G103 -- test-only helper toggles an unexported loopback flag.
 }

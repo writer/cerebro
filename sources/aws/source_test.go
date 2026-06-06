@@ -911,7 +911,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	neptuneClusterARN := "arn:aws:rds:us-east-1:123456789012:cluster:graph-prod"
 	neptuneInstanceARN := "arn:aws:rds:us-east-1:123456789012:db:graph-prod-1"
 	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
-	secretARN := "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-AbCd"
+	secretARN := "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-AbCd" // #nosec G101 -- test ARN fixture, not credential material.
 	sqsARN := "arn:aws:sqs:us-east-1:123456789012:orders"
 	sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 	snsARN := "arn:aws:sns:us-east-1:123456789012:orders"

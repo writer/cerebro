@@ -11,7 +11,7 @@ import (
 const defaultDeviceAuthRefreshTTL = 7 * 24 * time.Hour
 
 func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
-	enabled, err := parseBoolEnv("CEREBRO_DEVICE_AUTH_ENABLED", false)
+	enabled, err := parseBoolEnv("CEREBRO_DEVICE_AUTH_ENABLED")
 	if err != nil {
 		return DeviceAuthConfig{}, err
 	}
@@ -73,7 +73,7 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 	if cfg.RiskHighThreshold, err = parseIntEnv("CEREBRO_DEVICE_AUTH_RISK_HIGH", 70); err != nil {
 		return DeviceAuthConfig{}, err
 	}
-	required, err := parseBoolEnv("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED", false)
+	required, err := parseBoolEnv("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED")
 	if err != nil {
 		return DeviceAuthConfig{}, err
 	}

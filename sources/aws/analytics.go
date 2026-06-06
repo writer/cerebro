@@ -94,7 +94,7 @@ type glueTablePageCursor struct {
 func listKinesisStreams(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsKinesisStream, string, error) {
 	out, err := clients.kinesis.ListStreams(ctx, &kinesis.ListStreamsInput{
 		NextToken: stringPtr(cursor),
-		Limit:     awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:     awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -156,7 +156,7 @@ func listKinesisStreamTags(ctx context.Context, clients awsClients, name string,
 func listFirehoseDeliveryStreams(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsFirehoseDeliveryStream, string, error) {
 	out, err := clients.firehose.ListDeliveryStreams(ctx, &firehose.ListDeliveryStreamsInput{
 		ExclusiveStartDeliveryStreamName: stringPtr(cursor),
-		Limit:                            awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:                            awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -212,7 +212,7 @@ func listFirehoseTags(ctx context.Context, clients awsClients, name string) (map
 
 func listMSKClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsMSKCluster, string, error) {
 	out, err := clients.kafka.ListClustersV2(ctx, &kafka.ListClustersV2Input{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -245,7 +245,7 @@ func listMSKClusters(ctx context.Context, clients awsClients, _ settings, cursor
 func listGlueDatabases(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGlueDatabase, string, error) {
 	out, err := clients.glue.GetDatabases(ctx, &glue.GetDatabasesInput{
 		CatalogId:  awssdk.String(settings.accountID),
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -310,7 +310,7 @@ func listGlueTables(ctx context.Context, clients awsClients, settings settings, 
 		out, err := clients.glue.GetTables(ctx, &glue.GetTablesInput{
 			CatalogId:    awssdk.String(settings.accountID),
 			DatabaseName: awssdk.String(databaseName),
-			MaxResults:   awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults:   awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:    stringPtr(state.TableToken),
 		})
 		if err != nil {
@@ -374,7 +374,7 @@ func listAllGlueDatabaseNames(ctx context.Context, clients awsClients, settings 
 
 func listGlueCrawlers(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGlueCrawler, string, error) {
 	out, err := clients.glue.ListCrawlers(ctx, &glue.ListCrawlersInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -406,7 +406,7 @@ func listGlueCrawlers(ctx context.Context, clients awsClients, settings settings
 
 func listGlueJobs(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGlueJob, string, error) {
 	out, err := clients.glue.ListJobs(ctx, &glue.ListJobsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -438,7 +438,7 @@ func listGlueJobs(ctx context.Context, clients awsClients, settings settings, cu
 
 func listAthenaWorkgroups(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAthenaWorkgroup, string, error) {
 	out, err := clients.athena.ListWorkGroups(ctx, &athena.ListWorkGroupsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -467,7 +467,7 @@ func listAthenaWorkgroups(ctx context.Context, clients awsClients, settings sett
 
 func listAthenaDataCatalogs(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAthenaDataCatalog, string, error) {
 	out, err := clients.athena.ListDataCatalogs(ctx, &athena.ListDataCatalogsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 2, 50))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 2, 50)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -521,7 +521,7 @@ func listAthenaTags(ctx context.Context, clients awsClients, arn string) (map[st
 
 func listLakeFormationResources(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsLakeFormationResource, string, error) {
 	out, err := clients.lake.ListResources(ctx, &lakeformation.ListResourcesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -537,7 +537,7 @@ func listLakeFormationResources(ctx context.Context, clients awsClients, _ setti
 func listLakeFormationLFTags(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsLakeFormationLFTag, string, error) {
 	out, err := clients.lake.ListLFTags(ctx, &lakeformation.ListLFTagsInput{
 		CatalogId:  awssdk.String(settings.accountID),
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -553,7 +553,7 @@ func listLakeFormationLFTags(ctx context.Context, clients awsClients, settings s
 func listLakeFormationPermissions(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsLakeFormationPermission, string, error) {
 	out, err := clients.lake.ListPermissions(ctx, &lakeformation.ListPermissionsInput{
 		CatalogId:  awssdk.String(settings.accountID),
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {

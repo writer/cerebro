@@ -470,7 +470,7 @@ func (s *Source) doJSON(req *http.Request, target any) error {
 		AllowLoopback: s.allowLoopbackBaseURL,
 		LookupIPAddrs: lookupIPAddrs(s),
 	})
-	resp, err := cloned.Do(req)
+	resp, err := cloned.Do(req) // #nosec G704 -- requests are constructed from normalized GRC source URLs before this call.
 	if err != nil {
 		return fmt.Errorf("request %s: %w", req.URL.Path, err)
 	}
@@ -528,11 +528,7 @@ func pullFromRecords(settings settings, family string, records []grcRecord, next
 	}
 	events := make([]*primitives.Event, 0, len(records))
 	for _, record := range records {
-		event, err := eventFromRecord(settings, family, record)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
+		events = append(events, eventFromRecord(settings, family, record))
 	}
 	pull := sourcecdk.Pull{
 		Events: events,
@@ -547,7 +543,7 @@ func pullFromRecords(settings settings, family string, records []grcRecord, next
 	return pull, nil
 }
 
-func eventFromRecord(settings settings, family string, record grcRecord) (*primitives.Event, error) {
+func eventFromRecord(settings settings, family string, record grcRecord) *primitives.Event {
 	occurredAt := occurredAtFor(family, record.Values)
 	payload := append([]byte(nil), record.Raw...)
 	return &primitives.Event{
@@ -559,7 +555,7 @@ func eventFromRecord(settings settings, family string, record grcRecord) (*primi
 		SchemaRef:  "grc/" + family + "/v1",
 		Payload:    payload,
 		Attributes: attributesFor(settings, family, record),
-	}, nil
+	}
 }
 
 func grcEventID(settings settings, family string, recordID string) string {

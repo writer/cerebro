@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -332,7 +333,7 @@ RETURN count(finding)`, params)
 		if err != nil {
 			return graphstore.OpenFindingPrimaryLinkRepairResult{}, fmt.Errorf("query open finding primary link repair candidates: %w", err)
 		}
-		result.LinksMatched = uint32(toInt64(value))
+		result.LinksMatched = uint32FromInt64(toInt64(value))
 		return result, nil
 	}
 	value, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -347,7 +348,7 @@ RETURN count(r)`, params)
 	if err != nil {
 		return graphstore.OpenFindingPrimaryLinkRepairResult{}, fmt.Errorf("repair open finding primary links: %w", err)
 	}
-	result.LinksMatched = uint32(toInt64(value))
+	result.LinksMatched = uint32FromInt64(toInt64(value))
 	result.LinksCreated = result.LinksMatched
 	return result, nil
 }
@@ -510,7 +511,7 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 
 // DeleteProjectedLink removes one normalized link from the graph store.
 func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
-	fromURN, toURN, relation, _, _, err := validateProjectedLinkIdentity(link)
+	fromURN, toURN, relation, err := validateProjectedLinkIdentity(link)
 	if err != nil {
 		return err
 	}
@@ -633,7 +634,7 @@ WITH collect(DISTINCT e) AS entities, count(DISTINCT rel) AS links
 		}); err != nil {
 			return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
 		}
-		return ports.ProjectionCleanupResult{EntitiesMatched: uint32(matchedEntities), LinksMatched: uint32(matchedLinks)}, nil
+		return ports.ProjectionCleanupResult{EntitiesMatched: uint32FromInt64(matchedEntities), LinksMatched: uint32FromInt64(matchedLinks)}, nil
 	}
 	query += `
 FOREACH (entity IN entities | DETACH DELETE entity)
@@ -659,10 +660,10 @@ RETURN size(entities), links`
 		return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
 	}
 	return ports.ProjectionCleanupResult{
-		EntitiesMatched: uint32(deletedEntities),
-		LinksMatched:    uint32(deletedLinks),
-		EntitiesDeleted: uint32(deletedEntities),
-		LinksDeleted:    uint32(deletedLinks),
+		EntitiesMatched: uint32FromInt64(deletedEntities),
+		LinksMatched:    uint32FromInt64(deletedLinks),
+		EntitiesDeleted: uint32FromInt64(deletedEntities),
+		LinksDeleted:    uint32FromInt64(deletedLinks),
 	}, nil
 }
 
@@ -691,7 +692,7 @@ func (s *Store) CleanupEndpointOwnerIDLinks(ctx context.Context, request ports.P
 		}); err != nil {
 			return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup endpoint owner-id links: %w", err)
 		}
-		return ports.ProjectionLinkCleanupResult{LinksMatched: uint32(matched)}, nil
+		return ports.ProjectionLinkCleanupResult{LinksMatched: uint32FromInt64(matched)}, nil
 	}
 	var deleted int64
 	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -704,7 +705,7 @@ func (s *Store) CleanupEndpointOwnerIDLinks(ctx context.Context, request ports.P
 	}); err != nil {
 		return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup endpoint owner-id links: %w", err)
 	}
-	return ports.ProjectionLinkCleanupResult{LinksMatched: uint32(deleted), LinksDeleted: uint32(deleted)}, nil
+	return ports.ProjectionLinkCleanupResult{LinksMatched: uint32FromInt64(deleted), LinksDeleted: uint32FromInt64(deleted)}, nil
 }
 
 func endpointOwnerIDLinkCleanupQuery(conditions []string, dryRun bool) string {
@@ -1380,7 +1381,7 @@ func countQuery(ctx context.Context, tx neo4jdriver.ManagedTransaction, query st
 }
 
 func validateProjectedLink(link *ports.ProjectedLink) (fromURN string, toURN string, relation string, tenantID string, sourceID string, err error) {
-	fromURN, toURN, relation, _, _, err = validateProjectedLinkIdentity(link)
+	fromURN, toURN, relation, err = validateProjectedLinkIdentity(link)
 	if err != nil {
 		return "", "", "", "", "", err
 	}
@@ -1395,23 +1396,23 @@ func validateProjectedLink(link *ports.ProjectedLink) (fromURN string, toURN str
 	return fromURN, toURN, relation, tenantID, sourceID, nil
 }
 
-func validateProjectedLinkIdentity(link *ports.ProjectedLink) (fromURN string, toURN string, relation string, tenantID string, sourceID string, err error) {
+func validateProjectedLinkIdentity(link *ports.ProjectedLink) (fromURN string, toURN string, relation string, err error) {
 	if link == nil {
-		return "", "", "", "", "", errors.New("projected link is required")
+		return "", "", "", errors.New("projected link is required")
 	}
 	fromURN = strings.TrimSpace(link.FromURN)
 	if fromURN == "" {
-		return "", "", "", "", "", errors.New("projected link from urn is required")
+		return "", "", "", errors.New("projected link from urn is required")
 	}
 	toURN = strings.TrimSpace(link.ToURN)
 	if toURN == "" {
-		return "", "", "", "", "", errors.New("projected link to urn is required")
+		return "", "", "", errors.New("projected link to urn is required")
 	}
 	relation = strings.TrimSpace(link.Relation)
 	if relation == "" {
-		return "", "", "", "", "", errors.New("projected link relation is required")
+		return "", "", "", errors.New("projected link relation is required")
 	}
-	return fromURN, toURN, relation, strings.TrimSpace(link.TenantID), strings.TrimSpace(link.SourceID), nil
+	return fromURN, toURN, relation, nil
 }
 
 func normalizeCleanupEntityTypes(values []string) []string {
@@ -1817,7 +1818,7 @@ func toInt64(value any) int64 {
 	case int64:
 		return typed
 	case uint:
-		return int64(typed)
+		return uint64ToInt64(uint64(typed))
 	case uint8:
 		return int64(typed)
 	case uint16:
@@ -1825,7 +1826,7 @@ func toInt64(value any) int64 {
 	case uint32:
 		return int64(typed)
 	case uint64:
-		return int64(typed)
+		return uint64ToInt64(typed)
 	case float32:
 		return int64(typed)
 	case float64:
@@ -1833,4 +1834,21 @@ func toInt64(value any) int64 {
 	default:
 		return 0
 	}
+}
+
+func uint32FromInt64(value int64) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
+}
+
+func uint64ToInt64(value uint64) int64 {
+	if value > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(value)
 }

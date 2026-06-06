@@ -1172,7 +1172,7 @@ func addGRCAssetTagLinks(entities map[string]*ports.ProjectedEntity, links map[s
 		return
 	}
 	for _, value := range grcAttributeSequence(rawValues) {
-		tagID := grcAssetTagID(namespace, value)
+		tagID := grcAssetTagID(value)
 		if tagID == "" {
 			continue
 		}
@@ -1197,7 +1197,7 @@ func addGRCAssetTagLinks(entities map[string]*ports.ProjectedEntity, links map[s
 	}
 }
 
-func grcAssetTagID(namespace string, value string) string {
+func grcAssetTagID(value string) string {
 	normalized := strings.Map(func(r rune) rune {
 		switch {
 		case r >= 'a' && r <= 'z':

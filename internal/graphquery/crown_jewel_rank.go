@@ -141,10 +141,14 @@ func normalizeCrownJewelRankSeedLimit(limit uint32) int {
 }
 
 func normalizeCrownJewelBound(value uint32, fallback int, maxValue int) int {
+	maxBound := uint32(math.MaxUint32)
+	if maxValue >= 0 && maxValue < math.MaxUint32 {
+		maxBound = uint32(maxValue)
+	}
 	switch {
 	case value == 0:
 		return fallback
-	case value > uint32(maxValue):
+	case value > maxBound:
 		return maxValue
 	default:
 		return int(value)

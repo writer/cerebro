@@ -28,6 +28,7 @@ func (s *cleanupStateStore) CleanupEndpointOwnerIDLinks(_ context.Context, reque
 	return s.result, s.err
 }
 
+//nolint:unparam // Test fake keeps the store interface signature, including the error result.
 func (s *cleanupStateStore) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
 	s.projectionRequest = request
 	return s.projectionResult, nil
@@ -119,7 +120,7 @@ func TestParseGraphIngestRuntimeArgsRequiresIntervalForSchedule(t *testing.T) {
 
 func TestPrepareGraphRuntimeSourceConfigResolvesEnvReferences(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_OKTA_TOKEN", "resolved-token")
-	config, err := prepareGraphRuntimeSourceConfig(context.Background(), "okta", map[string]string{
+	config, err := prepareGraphRuntimeSourceConfig(context.Background(), "okta", map[string]string{ // #nosec G101 -- env-reference test fixture, not credential material.
 		"token": "env:CEREBRO_SOURCE_OKTA_TOKEN",
 	})
 	if err != nil {

@@ -287,7 +287,7 @@ func (s *FileStore) saveLocked(ctx context.Context) error {
 		return err
 	}
 	tmp := s.path + ".tmp"
-	file, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	file, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) // #nosec G304 -- path is the configured local file-store path.
 	if err != nil {
 		return err
 	}
@@ -314,7 +314,7 @@ func (s *FileStore) saveLocked(ctx context.Context) error {
 }
 
 func syncDir(path string) {
-	dir, err := os.Open(path)
+	dir, err := os.Open(path) // #nosec G304 -- path is the directory containing the configured local file store.
 	if err != nil {
 		return
 	}

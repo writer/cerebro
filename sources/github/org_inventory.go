@@ -55,7 +55,7 @@ func (s *Source) discoverOrgInventory(ctx context.Context, client *gogithub.Clie
 	return []sourcecdk.URN{sourcecdk.URN(fmt.Sprintf("urn:cerebro:%s:org_inventory", settings.owner))}, nil
 }
 
-func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, settings settings) (sourcecdk.Pull, error) {
 	now := time.Now().UTC()
 	var events []*primitives.Event
 

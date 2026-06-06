@@ -132,7 +132,7 @@ func listS3Buckets(ctx context.Context, clients awsClients, settings settings, _
 func listRDSInstances(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsRDSInstance, string, error) {
 	out, err := clients.rds.DescribeDBInstances(ctx, &rds.DescribeDBInstancesInput{
 		Marker:     stringPtr(cursor),
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 20, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -147,7 +147,7 @@ func listRDSInstances(ctx context.Context, clients awsClients, _ settings, curso
 func listKMSKeys(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsKMSKey, string, error) {
 	out, err := clients.kms.ListKeys(ctx, &kms.ListKeysInput{
 		Marker: stringPtr(cursor),
-		Limit:  awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		Limit:  awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 1000)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -185,7 +185,7 @@ func listKMSKeys(ctx context.Context, clients awsClients, _ settings, cursor str
 func listSecrets(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]secretsmanagertypesSecret, string, error) {
 	out, err := clients.secrets.ListSecrets(ctx, &secretsmanager.ListSecretsInput{
 		NextToken:  stringPtr(cursor),
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -196,7 +196,7 @@ func listSecrets(ctx context.Context, clients awsClients, _ settings, cursor str
 func listSQSQueues(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSQSQueue, string, error) {
 	out, err := clients.sqs.ListQueues(ctx, &sqs.ListQueuesInput{
 		NextToken:  stringPtr(cursor),
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 1000)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -255,7 +255,7 @@ func listSNSTopics(ctx context.Context, clients awsClients, _ settings, cursor s
 func listECRRepositories(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsECRRepository, string, error) {
 	out, err := clients.ecr.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{
 		NextToken:  stringPtr(cursor),
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 1000)),
 	})
 	if err != nil {
 		return nil, "", err

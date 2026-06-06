@@ -240,7 +240,7 @@ func awsSecurityFamilies(clientFactory awsClientFactory) []sourcecdk.Family[sett
 
 func listAccessAnalyzers(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]accessanalyzertypes.AnalyzerSummary, string, error) {
 	output, err := clients.accessAnalyzer.ListAnalyzers(ctx, &accessanalyzer.ListAnalyzersInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -309,7 +309,7 @@ func listGuardDutyFindings(ctx context.Context, clients awsClients, _ settings, 
 		detectorID := detectors[state.DetectorIndex]
 		output, err := clients.guardDuty.ListFindings(ctx, &guardduty.ListFindingsInput{
 			DetectorId: awssdk.String(detectorID),
-			MaxResults: awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 50))),
+			MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 50)),
 			NextToken:  stringPtr(state.FindingToken),
 		})
 		if err != nil {
@@ -337,7 +337,7 @@ func listGuardDutyFindings(ctx context.Context, clients awsClients, _ settings, 
 
 func listSecurityHubFindings(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]securityhubtypes.AwsSecurityFinding, string, error) {
 	output, err := clients.securityHub.GetFindings(ctx, &securityhub.GetFindingsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -348,7 +348,7 @@ func listSecurityHubFindings(ctx context.Context, clients awsClients, _ settings
 
 func listInspector2Findings(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]inspector2types.Finding, string, error) {
 	out, err := clients.inspector2.ListFindings(ctx, &inspector2.ListFindingsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -359,7 +359,7 @@ func listInspector2Findings(ctx context.Context, clients awsClients, _ settings,
 
 func listMacie2Findings(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]macie2types.Finding, string, error) {
 	out, err := clients.macie2.ListFindings(ctx, &macie2.ListFindingsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -380,7 +380,7 @@ func listWAFV2WebACLs(ctx context.Context, clients awsClients, settings settings
 	wafClient := wafv2ClientForScope(clients, scope)
 	out, err := wafClient.ListWebACLs(ctx, &wafv2.ListWebACLsInput{
 		Scope:      scope,
-		Limit:      awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:      awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextMarker: stringPtr(cursor),
 	})
 	if err != nil {
@@ -406,7 +406,7 @@ func listWAFV2WebACLs(ctx context.Context, clients awsClients, settings settings
 
 func listNetworkFirewalls(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsNetworkFirewall, string, error) {
 	out, err := clients.networkFW.ListFirewalls(ctx, &networkfirewall.ListFirewallsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {

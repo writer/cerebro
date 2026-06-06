@@ -206,8 +206,7 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			}
 		}
 		if retracted := retractedRelation(runtime, claim); retracted != nil {
-			_, err := s.deleteRelationIfUnsupported(ctx, runtime, claim, retracted)
-			if err != nil {
+			if err := s.deleteRelationIfUnsupported(ctx, runtime, claim, retracted); err != nil {
 				return nil, err
 			}
 			delete(upsertedLinks, projectedLinkKey(retracted))
@@ -310,8 +309,7 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 		if _, err := s.store.UpsertClaim(ctx, retractedClaim(existingClaim, retractAt, snapshotEventID)); err != nil {
 			return retracted, fmt.Errorf("retract claim %q: %w", existingClaim.ID, err)
 		}
-		_, err := s.deleteRelationIfUnsupported(ctx, runtime, protoClaim(existingClaim), link)
-		if err != nil {
+		if err := s.deleteRelationIfUnsupported(ctx, runtime, protoClaim(existingClaim), link); err != nil {
 			return retracted, err
 		}
 		retracted++
@@ -319,24 +317,24 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 	return retracted, nil
 }
 
-func (s *Service) deleteRelationIfUnsupported(ctx context.Context, runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim, link *ports.ProjectedLink) (bool, error) {
+func (s *Service) deleteRelationIfUnsupported(ctx context.Context, runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim, link *ports.ProjectedLink) error {
 	if link == nil {
-		return false, nil
+		return nil
 	}
 	support, err := s.supportingAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), link)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if support != nil {
 		if _, err := s.upsertLink(ctx, support, map[string]struct{}{}); err != nil {
-			return false, err
+			return err
 		}
-		return false, nil
+		return nil
 	}
 	if err := s.deleteLink(ctx, link); err != nil {
-		return false, err
+		return err
 	}
-	return true, nil
+	return nil
 }
 
 func (s *Service) existingAssertedRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claimID string) (*ports.ProjectedLink, error) {

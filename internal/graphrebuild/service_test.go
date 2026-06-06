@@ -114,7 +114,7 @@ func (r *eventReplayer) Replay(_ context.Context, req ports.ReplayRequest) ([]*c
 			continue
 		}
 		replayed = append(replayed, proto.Clone(event).(*cerebrov1.EventEnvelope))
-		if req.Limit > 0 && uint32(len(replayed)) >= req.Limit {
+		if req.Limit > 0 && uint64(len(replayed)) >= uint64(req.Limit) { // #nosec G115 -- replayed length is widened only for comparison with uint32 request limit.
 			break
 		}
 	}
@@ -948,6 +948,7 @@ func containsTraversalPath(traversals []*TraversalPreview, want string) bool {
 	return false
 }
 
+//nolint:unparam // Helper keeps assertion fields explicit even when current fixtures use zero actuals.
 func containsAssertion(assertions []*AssertionPreview, name string, actual int64, expected int64, passed bool) bool {
 	for _, assertion := range assertions {
 		if assertion == nil {
@@ -996,6 +997,7 @@ func containsTopologyPreview(topology []*TopologyPreview, name string, count int
 	return false
 }
 
+//nolint:unparam // Helper keeps expected event count explicit in read-page assertions.
 func assertReadPage(t *testing.T, page *ReadPagePreview, wantPage uint32, wantEvents uint32, wantCheckpoint string, wantNext string, wantFirstEventID string, wantLastEventID string) {
 	t.Helper()
 	if page == nil {

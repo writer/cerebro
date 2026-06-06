@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"math"
 	"math/big"
 	"testing"
 	"time"
@@ -80,6 +81,7 @@ func mintAppleLeaf(t *testing.T, root appleRoot, leafKey *ecdsa.PrivateKey, nonc
 	return leafDER
 }
 
+//nolint:unparam // Helper keeps team and bundle explicit for App Attest fixture readability.
 func buildAuthData(t *testing.T, teamID, bundleID string, credID []byte) []byte {
 	t.Helper()
 	rpHash := sha256.Sum256([]byte(teamID + "." + bundleID))
@@ -91,8 +93,11 @@ func buildAuthData(t *testing.T, teamID, bundleID string, credID []byte) []byte 
 	out = append(out, counter...)
 	aaguid := make([]byte, 16)
 	out = append(out, aaguid...)
+	if len(credID) > math.MaxUint16 {
+		t.Fatalf("credential id length %d exceeds uint16", len(credID))
+	}
 	credIDLenBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(credIDLenBytes, uint16(len(credID)))
+	binary.BigEndian.PutUint16(credIDLenBytes, uint16(len(credID))) // #nosec G115 -- length is bounded above before conversion.
 	out = append(out, credIDLenBytes...)
 	out = append(out, credID...)
 	return out

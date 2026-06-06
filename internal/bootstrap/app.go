@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"reflect"
@@ -163,7 +164,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 				Audience:       cfg.Auth.CapabilityTokenAudience,
 				Subject:        grant.Subject,
 				IssuedAt:       now.Unix(),
-				CredentialID:   "mcp-oauth",
+				CredentialID:   "mcp-oauth", // #nosec G101 -- credential identifier label, not a secret.
 				ClientID:       grant.ClientID,
 				Resource:       grant.Resource,
 				TenantID:       grant.TenantID,
@@ -238,11 +239,11 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	observability.Default.Handler().ServeHTTP(w, r)
 }
 
-func authorizeSourceRuntimeIDTenant(ctx context.Context, store ports.SourceRuntimeStore, runtimeID string, allowMissing bool) error {
+func authorizeSourceRuntimeIDTenant(ctx context.Context, store ports.SourceRuntimeStore, runtimeID string) error {
 	if !hasAuthContext(ctx) {
 		return nil
 	}
-	_, err := sourceRuntimeTenantID(ctx, store, runtimeID, allowMissing)
+	_, err := sourceRuntimeTenantID(ctx, store, runtimeID, false)
 	return err
 }
 
@@ -557,7 +558,7 @@ func (a *App) handleGetFindingEvaluationRun(w http.ResponseWriter, r *http.Reque
 		writeFindingError(w, err)
 		return
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), response.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), response.GetRuntimeId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -572,7 +573,7 @@ func (a *App) handleGetFindingEvidence(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, err)
 		return
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), response.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), response.GetRuntimeId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1086,7 +1087,7 @@ func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request
 		request.CheckpointId = checkpointID
 	}
 	request.RuntimeId = r.PathValue("runtimeID")
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId()); err != nil {
 		writeGraphIngestError(w, err)
 		return
 	}
@@ -1140,7 +1141,7 @@ func (a *App) handleListGraphIngestRuns(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if request.GetRuntimeId() != "" {
-		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId()); err != nil {
 			writeGraphIngestError(w, err)
 			return
 		}
@@ -1201,7 +1202,7 @@ func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleGetSourceRuntime(w http.ResponseWriter, r *http.Request) {
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), r.PathValue("runtimeID"), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), r.PathValue("runtimeID")); err != nil {
 		writeSourceRuntimeError(w, err)
 		return
 	}
@@ -1282,7 +1283,7 @@ func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	request.Id = r.PathValue("runtimeID")
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId()); err != nil {
 		writeSourceRuntimeError(w, err)
 		return
 	}
@@ -1324,7 +1325,7 @@ func (a *App) handleListClaims(w http.ResponseWriter, r *http.Request) {
 		request.Status = r.URL.Query().Get("status")
 		request.SourceEventId = r.URL.Query().Get("source_event_id")
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId()); err != nil {
 		writeClaimError(w, err)
 		return
 	}
@@ -1356,7 +1357,7 @@ func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.RuntimeId = r.PathValue("runtimeID")
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId()); err != nil {
 		writeClaimError(w, err)
 		return
 	}
@@ -1389,7 +1390,7 @@ func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http
 	}
 	request.Id = r.PathValue("runtimeID")
 	request.RuleId = r.URL.Query().Get("rule_id")
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1426,7 +1427,7 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 	if ruleIDs := r.URL.Query()["rule_id"]; len(ruleIDs) != 0 {
 		request.RuleIds = ruleIDs
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1461,7 +1462,7 @@ func (a *App) handleEvaluateSourceRuntimeFindingCandidates(w http.ResponseWriter
 	if ruleIDs := r.URL.Query()["rule_id"]; len(ruleIDs) != 0 {
 		request.RuleIds = ruleIDs
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1533,7 +1534,7 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 			request.Order = order
 		}
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1576,7 +1577,7 @@ func (a *App) handleListFindingCandidates(w http.ResponseWriter, r *http.Request
 		request.Status = r.URL.Query().Get("status")
 		request.Fingerprint = r.URL.Query().Get("fingerprint")
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1602,7 +1603,7 @@ func (a *App) handleGetFindingCandidate(w http.ResponseWriter, r *http.Request) 
 		writeFindingError(w, err)
 		return
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1621,7 +1622,7 @@ func (a *App) handlePromoteFindingCandidate(w http.ResponseWriter, r *http.Reque
 		writeFindingError(w, err)
 		return
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1656,7 +1657,7 @@ func (a *App) handleRejectFindingCandidate(w http.ResponseWriter, r *http.Reques
 		writeFindingError(w, err)
 		return
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1702,7 +1703,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 		request.GraphRootUrn = r.URL.Query().Get("graph_root_urn")
 		request.GraphPathUrn = r.URL.Query().Get("graph_path_urn")
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1742,7 +1743,7 @@ func (a *App) handleListFindingEvaluationRuns(w http.ResponseWriter, r *http.Req
 		request.RuleId = r.URL.Query().Get("rule_id")
 		request.Status = r.URL.Query().Get("status")
 	}
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId()); err != nil {
 		writeFindingError(w, err)
 		return
 	}
@@ -1867,7 +1868,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 }
 
 func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.GetSourceRuntimeRequest]) (*connect.Response[cerebrov1.GetSourceRuntimeResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
 	response, err := newRuntimeService(s.deps, s.sources).Get(ctx, req.Msg)
@@ -1878,7 +1879,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 }
 
 func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.SyncSourceRuntimeRequest]) (*connect.Response[cerebrov1.SyncSourceRuntimeResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
 	response, err := newRuntimeService(s.deps, s.sources).SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
@@ -1891,7 +1892,7 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 }
 
 func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request[cerebrov1.WriteClaimsRequest]) (*connect.Response[cerebrov1.WriteClaimsResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, claimConnectError(err)
 	}
 	response, err := claims.New(
@@ -1916,7 +1917,7 @@ func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request
 }
 
 func (s *bootstrapService) ListClaims(ctx context.Context, req *connect.Request[cerebrov1.ListClaimsRequest]) (*connect.Response[cerebrov1.ListClaimsResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, claimConnectError(err)
 	}
 	response, err := claims.New(
@@ -1945,7 +1946,7 @@ func (s *bootstrapService) ListClaims(ctx context.Context, req *connect.Request[
 }
 
 func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Request[cerebrov1.ListFindingsRequest]) (*connect.Response[cerebrov1.ListFindingsResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	response, err := findings.New(
@@ -1992,7 +1993,7 @@ func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[
 }
 
 func (s *bootstrapService) ListFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.ListFindingCandidatesRequest]) (*connect.Response[cerebrov1.ListFindingCandidatesResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	response, err := findings.New(
@@ -2029,14 +2030,14 @@ func (s *bootstrapService) GetFindingCandidate(ctx context.Context, req *connect
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID); err != nil {
 		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingCandidateResponse{Candidate: findingCandidateMessage(candidate)}), nil
 }
 
 func (s *bootstrapService) EvaluateSourceRuntimeFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingCandidatesRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingCandidatesResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	response, err := findings.New(
@@ -2070,7 +2071,7 @@ func (s *bootstrapService) PromoteFindingCandidate(ctx context.Context, req *con
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID); err != nil {
 		return nil, findingConnectError(err)
 	}
 	if err := authorizeFindingCandidatePromotion(ctx); err != nil {
@@ -2103,7 +2104,7 @@ func (s *bootstrapService) RejectFindingCandidate(ctx context.Context, req *conn
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID, false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID); err != nil {
 		return nil, findingConnectError(err)
 	}
 	if err := authorizeFindingCandidatePromotion(ctx); err != nil {
@@ -2239,7 +2240,7 @@ func (s *bootstrapService) LinkFindingTicket(ctx context.Context, req *connect.R
 }
 
 func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect.Request[cerebrov1.ListFindingEvidenceRequest]) (*connect.Response[cerebrov1.ListFindingEvidenceResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	response, err := findings.New(
@@ -2269,7 +2270,7 @@ func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect
 }
 
 func (s *bootstrapService) ListFindingEvaluationRuns(ctx context.Context, req *connect.Request[cerebrov1.ListFindingEvaluationRunsRequest]) (*connect.Response[cerebrov1.ListFindingEvaluationRunsResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	response, err := findings.New(
@@ -2305,7 +2306,7 @@ func (s *bootstrapService) GetFindingEvaluationRun(ctx context.Context, req *con
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), run.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), run.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingEvaluationRunResponse{Run: run}), nil
@@ -2323,14 +2324,14 @@ func (s *bootstrapService) GetFindingEvidence(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), evidence.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), evidence.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingEvidenceResponse{Evidence: evidence}), nil
 }
 
 func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingRulesResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	response, err := findings.New(
@@ -2352,7 +2353,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context
 }
 
 func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingsResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(err)
 	}
 	response, err := findings.New(
@@ -2520,7 +2521,7 @@ func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *conne
 }
 
 func (s *bootstrapService) RunGraphIngestRuntime(ctx context.Context, req *connect.Request[cerebrov1.RunGraphIngestRuntimeRequest]) (*connect.Response[cerebrov1.RunGraphIngestRuntimeResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, graphIngestConnectError(err)
 	}
 	result, err := newGraphIngestService(s.deps, s.sources).RunRuntime(ctx, graphingest.RuntimeRequest{
@@ -2556,7 +2557,7 @@ func (s *bootstrapService) ListGraphIngestRuns(ctx context.Context, req *connect
 		return nil, graphIngestConnectError(err)
 	}
 	if req.Msg.GetRuntimeId() != "" {
-		if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+		if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 			return nil, graphIngestConnectError(err)
 		}
 	}
@@ -3438,12 +3439,32 @@ func findingResponse(result *findings.EvaluateResult) *cerebrov1.EvaluateSourceR
 		Runtime:          redactSourceRuntime(result.Runtime),
 		Rule:             result.Rule,
 		EventsEvaluated:  result.EventsEvaluated,
-		FindingsUpserted: uint32(len(result.Findings)),
+		FindingsUpserted: boundedUint32(len(result.Findings)),
 		Findings:         findingMessages(result.Findings),
 		Run:              result.Run,
 		Evidence:         result.Evidence,
 	}
 	return response
+}
+
+func boundedUint32(value int) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
+}
+
+func boundedInt32(value int) int32 {
+	if value > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if value < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(value)
 }
 
 func findingRulesResponse(result *findings.EvaluateRulesResult) *cerebrov1.EvaluateSourceRuntimeFindingRulesResponse {
@@ -3667,10 +3688,10 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		ControlRefs:       findingControlRefMessages(finding.ControlRefs),
 		Notes:             findingNoteMessages(finding.Notes),
 		Tickets:           findingTicketMessages(finding.Tickets),
-		RiskScore:         int32(finding.RiskScore),
-		LikelihoodScore:   int32(finding.LikelihoodScore),
-		ImpactScore:       int32(finding.ImpactScore),
-		ConfidenceScore:   int32(finding.ConfidenceScore),
+		RiskScore:         boundedInt32(finding.RiskScore),
+		LikelihoodScore:   boundedInt32(finding.LikelihoodScore),
+		ImpactScore:       boundedInt32(finding.ImpactScore),
+		ConfidenceScore:   boundedInt32(finding.ConfidenceScore),
 		LikelihoodLevel:   finding.LikelihoodLevel,
 		ImpactLevel:       finding.ImpactLevel,
 		RiskReasons:       append([]string(nil), finding.RiskReasons...),

@@ -814,7 +814,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 func listUsers(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]userRecord, string, error) {
 	query := graphListQuery(settings, limit)
 	var response graphPage
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, "/v1.0/users"), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/users"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure user", func(record *userRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
@@ -824,7 +824,7 @@ func listUsers(ctx context.Context, source *Source, settings settings, pageToken
 func listGroups(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]groupRecord, string, error) {
 	query := graphListQuery(settings, limit)
 	var response graphPage
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, "/v1.0/groups"), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/groups"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure group", func(record *groupRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
@@ -835,7 +835,7 @@ func listGroupMemberships(ctx context.Context, source *Source, settings settings
 	query := graphListQuery(settings, limit)
 	var response graphPage
 	path := "/v1.0/groups/" + url.PathEscape(settings.groupID) + "/members"
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure group member", func(record *graphPrincipalRecord, raw json.RawMessage) {
@@ -848,7 +848,7 @@ func listAppRoleAssignments(ctx context.Context, source *Source, settings settin
 	query := graphListQuery(settings, limit)
 	var response graphPage
 	path := "/v1.0/servicePrincipals/" + url.PathEscape(settings.servicePrincipalID) + "/appRoleAssignedTo"
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure app role assignment", func(record *appRoleAssignmentRecord, raw json.RawMessage) {
@@ -860,7 +860,7 @@ func listAppRoleAssignments(ctx context.Context, source *Source, settings settin
 func listApplications(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]applicationRecord, string, error) {
 	query := graphListQuery(settings, limit)
 	var response graphPage
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, "/v1.0/applications"), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/applications"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure application", func(record *applicationRecord, raw json.RawMessage) {
@@ -872,7 +872,7 @@ func listApplications(ctx context.Context, source *Source, settings settings, pa
 func listServicePrincipals(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]servicePrincipalRecord, string, error) {
 	query := graphListQuery(settings, limit)
 	var response graphPage
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, "/v1.0/servicePrincipals"), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/servicePrincipals"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure service principal", func(record *servicePrincipalRecord, raw json.RawMessage) {
@@ -910,7 +910,7 @@ func listDirectoryRoleAssignments(ctx context.Context, source *Source, settings 
 	query := graphListQuery(settings, limit)
 	query.Set("$expand", "principal,roleDefinition")
 	var response graphPage
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, "/v1.0/roleManagement/directory/roleAssignments"), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/roleManagement/directory/roleAssignments"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure directory role assignment", func(record *directoryRoleAssignmentRecord, raw json.RawMessage) {
@@ -922,7 +922,7 @@ func listDirectoryRoleAssignments(ctx context.Context, source *Source, settings 
 func listDirectoryAudits(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]directoryAuditRecord, string, error) {
 	query := graphListQuery(settings, limit)
 	var response graphPage
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, "/v1.0/auditLogs/directoryAudits"), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/auditLogs/directoryAudits"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure directory audit", func(record *directoryAuditRecord, raw json.RawMessage) {
@@ -935,7 +935,7 @@ func listIAMRoleAssignmentsBase(ctx context.Context, source *Source, settings se
 	query := url.Values{"api-version": {"2022-04-01"}}
 	var response armPage
 	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/providers/Microsoft.Authorization/roleAssignments"
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure rbac role assignment", func(record *armRoleAssignmentRecord, raw json.RawMessage) {
@@ -987,7 +987,7 @@ func listAssetMetadata(ctx context.Context, source *Source, settings settings, p
 	query := url.Values{"api-version": {"2021-04-01"}}
 	var response armPage
 	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/resources"
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure resource metadata", func(record *armResourceRecord, raw json.RawMessage) {
@@ -1000,7 +1000,7 @@ func listARMTypedResources(ctx context.Context, source *Source, settings setting
 	query := url.Values{"api-version": {apiVersion}}
 	var response armPage
 	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/providers/" + providerPath
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, label, func(record *armTypedResourceRecord, raw json.RawMessage) {
@@ -1060,12 +1060,12 @@ func listAKSClusters(ctx context.Context, source *Source, settings settings, pag
 	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.ContainerService/managedClusters", "2024-05-01", "azure aks cluster")
 }
 
-func listWebSites(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+func listWebSites(ctx context.Context, source *Source, settings settings, pageToken string) ([]armTypedResourceRecord, string, error) {
 	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Web/sites", "2023-12-01", "azure web site")
 }
 
 func listAppServices(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
-	sites, next, err := listWebSites(ctx, source, settings, pageToken, limit)
+	sites, next, err := listWebSites(ctx, source, settings, pageToken)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1079,7 +1079,7 @@ func listAppServices(ctx context.Context, source *Source, settings settings, pag
 }
 
 func listFunctionApps(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
-	sites, next, err := listWebSites(ctx, source, settings, pageToken, limit)
+	sites, next, err := listWebSites(ctx, source, settings, pageToken)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1144,7 +1144,7 @@ func listSQLDatabasesForServer(ctx context.Context, source *Source, settings set
 	query := url.Values{"api-version": {"2022-05-01-preview"}}
 	var response armPage
 	path := strings.TrimRight(server.ID, "/") + "/databases"
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	databases, err := decodeAzureRecords(response.Value, "azure sql database", func(record *armTypedResourceRecord, raw json.RawMessage) {
@@ -1217,7 +1217,7 @@ func listKeyVaultChildrenForVault(ctx context.Context, source *Source, settings 
 	query := url.Values{"api-version": {"2023-07-01"}}
 	var response armPage
 	path := strings.TrimRight(vault.ID, "/") + "/" + childPath
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	children, err := decodeAzureRecords(response.Value, label, func(record *armTypedResourceRecord, raw json.RawMessage) {
@@ -1251,7 +1251,7 @@ func listResourceExposures(ctx context.Context, source *Source, settings setting
 	query := url.Values{"api-version": {"2023-09-01"}}
 	var response armPage
 	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/providers/Microsoft.Network/networkSecurityGroups"
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	nsgs, err := decodeAzureRecords(response.Value, "azure network security group", func(record *nsgRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
@@ -1276,7 +1276,7 @@ func listActivityLogs(ctx context.Context, source *Source, settings settings, pa
 	}
 	var response armPage
 	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/providers/microsoft.insights/eventtypes/management/values"
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeAzureRecords(response.Value, "azure activity log", func(record *activityLogRecord, raw json.RawMessage) {
@@ -1970,7 +1970,7 @@ func getARMTypedResourceByID(ctx context.Context, source *Source, settings setti
 	}
 	query := url.Values{"api-version": {apiVersion}}
 	var record armTypedResourceRecord
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, path, query, nil, &record); err != nil {
+	if err := getARMJSON(ctx, source, settings, path, query, &record); err != nil {
 		return armTypedResourceRecord{}, false
 	}
 	if record.ID == "" {
@@ -2249,12 +2249,12 @@ func sourceEvent(settings settings, id string, kind string, schemaRef string, pa
 	return &primitives.Event{Id: sanitizeEventID(id), TenantId: tenantID(settings), SourceId: "azure", Kind: kind, OccurredAt: timestamppb.New(occurredAt.UTC()), SchemaRef: schemaRef, Payload: payload, Attributes: attributes}, nil
 }
 
-func getGraphJSON(ctx context.Context, source *Source, settings settings, method string, requestPath string, query url.Values, body any, target any) error {
-	return getJSON(ctx, source, graphBaseURL(settings), graphToken(settings), method, requestPath, query, body, target)
+func getGraphJSON(ctx context.Context, source *Source, settings settings, requestPath string, query url.Values, target any) error {
+	return getJSON(ctx, source, graphBaseURL(settings), graphToken(settings), http.MethodGet, requestPath, query, nil, target)
 }
 
-func getARMJSON(ctx context.Context, source *Source, settings settings, method string, requestPath string, query url.Values, body any, target any) error {
-	return getJSON(ctx, source, armBaseURL(settings), armToken(settings), method, requestPath, query, body, target)
+func getARMJSON(ctx context.Context, source *Source, settings settings, requestPath string, query url.Values, target any) error {
+	return getJSON(ctx, source, armBaseURL(settings), armToken(settings), http.MethodGet, requestPath, query, nil, target)
 }
 
 func getJSON(ctx context.Context, source *Source, baseURL string, token string, method string, requestPath string, query url.Values, body any, target any) error {
@@ -2474,7 +2474,7 @@ func resolveARMRoleName(ctx context.Context, source *Source, settings settings, 
 	}
 	query := url.Values{"api-version": {"2022-04-01"}}
 	var record armRoleDefinitionRecord
-	if err := getARMJSON(ctx, source, settings, http.MethodGet, path, query, nil, &record); err != nil {
+	if err := getARMJSON(ctx, source, settings, path, query, &record); err != nil {
 		return ""
 	}
 	return record.Properties.RoleName
@@ -2497,7 +2497,7 @@ func resolveAzurePrincipal(ctx context.Context, source *Source, settings setting
 		path = "/v1.0/directoryObjects/" + url.PathEscape(principalID)
 	}
 	var record graphPrincipalRecord
-	if err := getGraphJSON(ctx, source, settings, http.MethodGet, path, nil, nil, &record); err != nil {
+	if err := getGraphJSON(ctx, source, settings, path, nil, &record); err != nil {
 		return graphPrincipalRecord{}, false
 	}
 	if strings.TrimSpace(record.ID) == "" {

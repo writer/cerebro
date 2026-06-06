@@ -90,11 +90,11 @@ func (r *githubAuditCounterEventRule) CounterEventStates(event Event) []CounterE
 }
 
 const (
-	githubSecretScanningDisabledRuleID          = "github-secret-scanning-disabled"
+	githubSecretScanningDisabledRuleID          = "github-secret-scanning-disabled" // #nosec G101 -- finding rule identifier, not a secret.
 	githubPushProtectionDisabledRuleID          = "github-push-protection-disabled"
 	githubBranchProtectionDisabledRuleID        = "github-branch-protection-disabled"
 	githubRepositoryMadePublicRuleID            = "github-repository-made-public"
-	githubSecretScanningAlertCreatedRuleID      = "github-secret-scanning-alert-created"
+	githubSecretScanningAlertCreatedRuleID      = "github-secret-scanning-alert-created" // #nosec G101 -- finding rule identifier, not a secret.
 	githubSelfHostedRunnerChangeRuleID          = "github-self-hosted-runner-change"
 	githubRepositoryCollaboratorAddedRuleID     = "github-repository-collaborator-added"
 	githubOrganizationOwnerAddedRuleID          = "github-organization-owner-added"

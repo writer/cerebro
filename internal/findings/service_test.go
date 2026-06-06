@@ -1624,7 +1624,7 @@ func TestCounterEventRule_AnchorClose(t *testing.T) {
 }
 
 func TestResolveCounterEventOpenFindings_RefreshesResults(t *testing.T) {
-	_, _, result := evaluateCounterEventSameRunClose(t)
+	_, result := evaluateCounterEventSameRunClose(t)
 	if got := len(result.Findings); got != 1 {
 		t.Fatalf("len(Findings) = %d, want 1 same-run finding", got)
 	}
@@ -1641,7 +1641,7 @@ func TestResolveCounterEventOpenFindings_RefreshesResults(t *testing.T) {
 }
 
 func TestResolveCounterEventOpenFindings_PersistsCloseEvidence(t *testing.T) {
-	service, _, result := evaluateCounterEventSameRunClose(t)
+	service, result := evaluateCounterEventSameRunClose(t)
 	if got := len(result.Findings); got != 1 {
 		t.Fatalf("len(Findings) = %d, want 1 same-run finding", got)
 	}
@@ -1662,7 +1662,7 @@ func TestResolveCounterEventOpenFindings_PersistsCloseEvidence(t *testing.T) {
 	}
 }
 
-func evaluateCounterEventSameRunClose(t *testing.T) (*Service, *stubFindingStore, *EvaluateResult) {
+func evaluateCounterEventSameRunClose(t *testing.T) (*Service, *EvaluateResult) {
 	t.Helper()
 	rule := newCounterAnchorRule("counter-anchor-rule")
 	registry, err := NewRegistry(rule)
@@ -1712,7 +1712,7 @@ func evaluateCounterEventSameRunClose(t *testing.T) (*Service, *stubFindingStore
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
 	}
-	return service, store, result
+	return service, result
 }
 
 func TestCounterEventRule_OlderCloseDoesNotResolveNewerOpenFinding(t *testing.T) {
@@ -5329,6 +5329,7 @@ func TestGetEvidenceRequiresAvailableDependencies(t *testing.T) {
 	}
 }
 
+//nolint:unparam // Helper keeps outcome explicit to document audit fixture attributes.
 func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,

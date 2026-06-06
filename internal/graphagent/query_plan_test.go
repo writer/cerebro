@@ -144,7 +144,7 @@ func TestConvertDraftToQueryUsesDeterministicFindingSourceTemplate(t *testing.T)
 		Cypher: `MATCH (f:Entity {tenant_id: $tenant_id}) WHERE f.entity_type = 'Finding'
 OPTIONAL MATCH (f)-[:HAS_SOURCE]->(src:Entity {tenant_id: $tenant_id})
 RETURN apoc.convert.fromJsonMap(f.attributes_json).source_family AS source_family, count(f) LIMIT 10`,
-	}, 100)
+	})
 
 	if result.Plan.Intent != IntentAggregateFindingsBySource || !result.Deterministic || !result.Corrected {
 		t.Fatalf("conversion result = %#v, want deterministic corrected source aggregation", result)
@@ -173,7 +173,7 @@ func TestConvertDraftToQueryPreservesExplicitRefusal(t *testing.T) {
 	}, &DraftResponse{
 		Plan:    &AskQueryPlan{Intent: IntentRawCypher},
 		Refusal: "Read-only graph questions only.",
-	}, 100)
+	})
 
 	if result.Cypher != "" || result.Deterministic {
 		t.Fatalf("conversion result = %#v, want preserved refusal without deterministic cypher", result)
@@ -190,7 +190,7 @@ func TestConvertDraftToQueryScopesTopRiskAndReturnsOnlyScalarFields(t *testing.T
 		ScopeURN: "urn:cerebro:writer:repo:alpha",
 	}, &DraftResponse{
 		Plan: &AskQueryPlan{Intent: IntentTopRiskFindings, Limit: 25},
-	}, 100)
+	})
 
 	if result.Plan.Intent != IntentTopRiskFindings || !result.Deterministic {
 		t.Fatalf("conversion result = %#v, want deterministic top risk template", result)
@@ -223,7 +223,7 @@ LIMIT 25`
 	}, &DraftResponse{
 		Plan:   &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH", "status": "open", "resource_type": "repository"}},
 		Cypher: draftCypher,
-	}, 100)
+	})
 
 	if !result.Deterministic || result.Source != "deterministic_template" {
 		t.Fatalf("conversion result = %#v, want deterministic filtered template", result)
@@ -261,7 +261,7 @@ func TestConvertDraftToQueryRefusesUnsupportedPlanOnlyDraft(t *testing.T) {
 		Question: "Show high risk findings",
 	}, &DraftResponse{
 		Plan: &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}},
-	}, 100)
+	})
 
 	if result.Cypher != "" || result.Source != "conversion_refusal" {
 		t.Fatalf("conversion result = %#v, want conversion refusal without cypher", result)
@@ -281,7 +281,7 @@ func TestConvertDraftToQueryExplainFindingAvoidsBrittleSummaryExtraction(t *test
 		ScopeURN: "urn:cerebro:writer:finding:alpha",
 	}, &DraftResponse{
 		Plan: &AskQueryPlan{Intent: IntentExplainFinding, Limit: 25},
-	}, 100)
+	})
 
 	if result.Plan.Intent != IntentExplainFinding || !result.Deterministic {
 		t.Fatalf("conversion result = %#v, want deterministic explain finding template", result)
@@ -315,7 +315,7 @@ func TestConvertDraftToQueryScopesConnectorHealthTemplate(t *testing.T) {
 		ScopeURN: "urn:cerebro:writer:source:github",
 	}, &DraftResponse{
 		Plan: &AskQueryPlan{Intent: IntentConnectorHealth, Limit: 25},
-	}, 100)
+	})
 
 	if result.Plan.Intent != IntentConnectorHealth || !result.Deterministic {
 		t.Fatalf("conversion result = %#v, want deterministic connector health", result)
@@ -335,7 +335,7 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 		ScopeURN: "urn:cerebro:writer:github_user:alice",
 	}, &DraftResponse{
 		Plan: &AskQueryPlan{Intent: IntentIdentityBridge, Limit: 25},
-	}, 100)
+	})
 
 	if result.Plan.Intent != IntentIdentityBridge || !result.Deterministic {
 		t.Fatalf("conversion result = %#v, want deterministic identity bridge", result)
@@ -376,7 +376,7 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 				TenantID: "writer",
 				Question: tt.name,
 				ScopeURN: tt.scope,
-			}, &DraftResponse{Plan: &AskQueryPlan{Intent: tt.intent, Limit: 25}}, 100)
+			}, &DraftResponse{Plan: &AskQueryPlan{Intent: tt.intent, Limit: 25}})
 			if !result.Deterministic {
 				t.Fatalf("conversion result = %#v, want deterministic template", result)
 			}
@@ -447,7 +447,7 @@ func TestUnsupportedPlanOnlyMutationsAreRefused(t *testing.T) {
 		{name: "unsupported identity bridge group", plan: AskQueryPlan{Intent: IntentIdentityBridge, GroupBy: "email"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: tt.name}, &DraftResponse{Plan: &tt.plan}, 100)
+			result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: tt.name}, &DraftResponse{Plan: &tt.plan})
 			if result.Cypher != "" || result.Source != "conversion_refusal" {
 				t.Fatalf("conversion result = %#v, want conversion refusal", result)
 			}
@@ -481,7 +481,7 @@ func containsDiagnosticCode(diagnostics []ConversionDiagnostic, code string) boo
 func TestConvertDraftToQueryInjectsFallbackLimit(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{
 		Cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn`,
-	}, 100)
+	})
 
 	if result.Plan.Intent != IntentRawCypher || !result.Corrected {
 		t.Fatalf("conversion result = %#v, want corrected raw cypher", result)
@@ -494,7 +494,7 @@ func TestConvertDraftToQueryInjectsFallbackLimit(t *testing.T) {
 func TestConvertDraftToQueryCapsFallbackLimit(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{
 		Cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 500`,
-	}, 100)
+	})
 
 	if !result.Corrected || !strings.Contains(result.Cypher, "LIMIT 100") || strings.Contains(result.Cypher, "LIMIT 500") {
 		t.Fatalf("converted cypher did not cap limit:\n%s", result.Cypher)

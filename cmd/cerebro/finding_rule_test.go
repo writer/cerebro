@@ -156,7 +156,7 @@ func TestScaffoldFindingRuleWritesRuleTestAndFixture(t *testing.T) {
 		t.Fatalf("len(Files) = %d, want 3", len(result.Files))
 	}
 	rulePath := filepath.Join(outputDir, "internal", "findings", "github_secret_scanning_disabled_rule.go")
-	rulePayload, err := os.ReadFile(rulePath)
+	rulePayload, err := os.ReadFile(rulePath) // #nosec G304 -- generated file path is anchored under the test temp output directory.
 	if err != nil {
 		t.Fatalf("read generated rule: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestScaffoldFindingRuleWritesRuleTestAndFixture(t *testing.T) {
 		t.Fatalf("stat generated test: %v", err)
 	}
 	fixturePath := filepath.Join(outputDir, "internal", "findings", "testdata", "rules", "github-secret-scanning-disabled.json")
-	fixturePayload, err := os.ReadFile(fixturePath)
+	fixturePayload, err := os.ReadFile(fixturePath) // #nosec G304 -- generated file path is anchored under the test temp output directory.
 	if err != nil {
 		t.Fatalf("read generated fixture: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestScaffoldFindingRulePrefixesNumericIdentifiers(t *testing.T) {
 		t.Fatalf("scaffoldFindingRule() error = %v", err)
 	}
 	rulePath := filepath.Join(outputDir, "internal", "findings", "rule_123_github_rule_rule.go")
-	rulePayload, err := os.ReadFile(rulePath)
+	rulePayload, err := os.ReadFile(rulePath) // #nosec G304 -- generated file path is anchored under the test temp output directory.
 	if err != nil {
 		t.Fatalf("read generated rule: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestScaffoldFindingRule_RetiredGeneratedTestPasses(t *testing.T) {
 	}
 
 	testPath := filepath.Join(outputDir, "internal", "findings", "retired_scaffold_contract_rule_test.go")
-	testPayload, err := os.ReadFile(testPath)
+	testPayload, err := os.ReadFile(testPath) // #nosec G304 -- generated file path is anchored under the test temp output directory.
 	if err != nil {
 		t.Fatalf("read generated test: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestScaffoldFindingRule_RetiredGeneratedTestPasses(t *testing.T) {
 	}
 
 	fixturePath := filepath.Join(outputDir, "internal", "findings", "testdata", "rules", "retired-scaffold-contract.json")
-	fixturePayload, err := os.ReadFile(fixturePath)
+	fixturePayload, err := os.ReadFile(fixturePath) // #nosec G304 -- generated file path is anchored under the test temp output directory.
 	if err != nil {
 		t.Fatalf("read generated fixture: %v", err)
 	}
@@ -439,7 +439,7 @@ func shadowRepoForFindingRuleScaffold(t *testing.T, repoRoot string) string {
 	})
 
 	internalDir := filepath.Join(outputDir, "internal")
-	if err := os.MkdirAll(internalDir, 0o755); err != nil {
+	if err := os.MkdirAll(internalDir, 0o750); err != nil {
 		t.Fatalf("mkdir shadow internal dir: %v", err)
 	}
 	linkRepoEntries(t, filepath.Join(repoRoot, "internal"), internalDir, map[string]bool{
@@ -447,7 +447,7 @@ func shadowRepoForFindingRuleScaffold(t *testing.T, repoRoot string) string {
 	})
 
 	findingsDir := filepath.Join(internalDir, "findings")
-	if err := os.MkdirAll(filepath.Join(findingsDir, "testdata", "rules"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(findingsDir, "testdata", "rules"), 0o750); err != nil {
 		t.Fatalf("mkdir shadow findings testdata: %v", err)
 	}
 	linkRepoEntries(t, filepath.Join(repoRoot, "internal", "findings"), findingsDir, map[string]bool{
@@ -467,7 +467,7 @@ func linkRepoEntries(t *testing.T, srcDir, dstDir string, skip map[string]bool) 
 	if err != nil {
 		t.Fatalf("read dir %q: %v", srcDir, err)
 	}
-	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+	if err := os.MkdirAll(dstDir, 0o750); err != nil {
 		t.Fatalf("mkdir dir %q: %v", dstDir, err)
 	}
 	for _, entry := range entries {
@@ -487,17 +487,20 @@ func copyRepoTree(t *testing.T, srcDir, dstDir string) {
 	if err != nil {
 		t.Fatalf("read dir %q: %v", srcDir, err)
 	}
-	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+	if err := os.MkdirAll(dstDir, 0o750); err != nil {
 		t.Fatalf("mkdir dir %q: %v", dstDir, err)
 	}
 	for _, entry := range entries {
 		src := filepath.Join(srcDir, entry.Name())
 		dst := filepath.Join(dstDir, entry.Name())
+		if rel, err := filepath.Rel(dstDir, dst); err != nil || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
+			t.Fatalf("copy destination %q escaped %q", dst, dstDir)
+		}
 		if entry.IsDir() {
 			copyRepoTree(t, src, dst)
 			continue
 		}
-		payload, err := os.ReadFile(src)
+		payload, err := os.ReadFile(src) // #nosec G304 -- source path is a repository fixture copied into a temp shadow repo.
 		if err != nil {
 			t.Fatalf("read file %q: %v", src, err)
 		}
@@ -505,7 +508,7 @@ func copyRepoTree(t *testing.T, srcDir, dstDir string) {
 		if err != nil {
 			t.Fatalf("stat file %q: %v", src, err)
 		}
-		if err := os.WriteFile(dst, payload, info.Mode().Perm()); err != nil {
+		if err := os.WriteFile(dst, payload, info.Mode().Perm()&0o600); err != nil { // #nosec G703 -- destination is validated to remain under dstDir above.
 			t.Fatalf("write file %q: %v", dst, err)
 		}
 	}

@@ -193,6 +193,7 @@ func TestSentinelOneAgentStaleGraphRuleGroupsByScopeAndBucket(t *testing.T) {
 	}
 }
 
+//nolint:unparam // Helper keeps agent ID explicit in SentinelOne row fixtures.
 func sentinelOneInfectionRow(agentID string, agentLabel string, agentAttrs map[string]string, threats []map[string]string) ports.CypherRow {
 	threatRows := make([]any, 0, len(threats))
 	for _, threat := range threats {

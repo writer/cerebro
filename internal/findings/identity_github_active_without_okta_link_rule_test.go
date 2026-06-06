@@ -359,6 +359,8 @@ func githubActiveWithoutOktaRuleRowFull(githubUserURN, githubUserLabel string, t
 // exercised against the cypher row shape it sees in production. The
 // production projector serialises github.user attributes as a JSON map
 // keyed on attribute name; we emit the same string form here.
+//
+//nolint:unparam // Helper keeps target URN explicit to match the base row helper signature.
 func githubActiveWithoutOktaRuleRowWithGitHubAttrs(actedAttributesJSON, githubUserURN, githubUserLabel, targetURN string, githubAttrs map[string]string) ports.CypherRow {
 	row := githubActiveWithoutOktaRuleRow(actedAttributesJSON, githubUserURN, githubUserLabel, targetURN)
 	encoded, err := json.Marshal(githubAttrs)

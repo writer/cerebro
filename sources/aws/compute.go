@@ -59,7 +59,7 @@ type awsEKSFargateProfile struct {
 
 func listEC2Instances(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsEC2Instance, string, error) {
 	output, err := clients.ec2.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 1000))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -87,7 +87,7 @@ func listEC2Instances(ctx context.Context, clients awsClients, settings settings
 func listLambdaFunctions(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]lambdatypes.FunctionConfiguration, string, error) {
 	output, err := clients.lambda.ListFunctions(ctx, &lambda.ListFunctionsInput{
 		Marker:   stringPtr(cursor),
-		MaxItems: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxItems: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -120,7 +120,7 @@ func listECSServices(ctx context.Context, clients awsClients, _ settings, cursor
 		clusterARN := clusters[state.ClusterIndex]
 		output, err := clients.ecs.ListServices(ctx, &ecs.ListServicesInput{
 			Cluster:    awssdk.String(clusterARN),
-			MaxResults: awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:  stringPtr(state.ServiceToken),
 		})
 		if err != nil {
@@ -172,7 +172,7 @@ func listECSTasks(ctx context.Context, clients awsClients, _ settings, cursor st
 		output, err := clients.ecs.ListTasks(ctx, &ecs.ListTasksInput{
 			Cluster:       awssdk.String(clusterARN),
 			DesiredStatus: ecstypes.DesiredStatusRunning,
-			MaxResults:    awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults:    awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:     stringPtr(state.TaskToken),
 		})
 		if err != nil {
@@ -202,7 +202,7 @@ func listECSTasks(ctx context.Context, clients awsClients, _ settings, cursor st
 
 func listECSTaskDefinitions(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ecstypes.TaskDefinition, string, error) {
 	output, err := clients.ecs.ListTaskDefinitions(ctx, &ecs.ListTaskDefinitionsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -223,7 +223,7 @@ func listECSTaskDefinitions(ctx context.Context, clients awsClients, _ settings,
 
 func listEKSClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ekstypes.Cluster, string, error) {
 	output, err := clients.eks.ListClusters(ctx, &eks.ListClustersInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -267,7 +267,7 @@ func listEKSNodegroups(ctx context.Context, clients awsClients, _ settings, curs
 		clusterName := clusters[state.ClusterIndex]
 		output, err := clients.eks.ListNodegroups(ctx, &eks.ListNodegroupsInput{
 			ClusterName: awssdk.String(clusterName),
-			MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults:  awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:   stringPtr(state.NextToken),
 		})
 		if err != nil {
@@ -320,7 +320,7 @@ func listEKSFargateProfiles(ctx context.Context, clients awsClients, _ settings,
 		clusterName := clusters[state.ClusterIndex]
 		output, err := clients.eks.ListFargateProfiles(ctx, &eks.ListFargateProfilesInput{
 			ClusterName: awssdk.String(clusterName),
-			MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults:  awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:   stringPtr(state.NextToken),
 		})
 		if err != nil {
@@ -373,7 +373,7 @@ func listEKSPodIdentityAssociations(ctx context.Context, clients awsClients, _ s
 		clusterName := clusters[state.ClusterIndex]
 		output, err := clients.eks.ListPodIdentityAssociations(ctx, &eks.ListPodIdentityAssociationsInput{
 			ClusterName: awssdk.String(clusterName),
-			MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults:  awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:   stringPtr(state.NextToken),
 		})
 		if err != nil {
@@ -863,6 +863,10 @@ func boundedAWSPageSize(limit int, min int, max int) int {
 		return max
 	}
 	return limit
+}
+
+func boundedAWSPageSizeInt32(limit int, min int, max int) int32 {
+	return int32(boundedAWSPageSize(limit, min, max)) // #nosec G115 -- boundedAWSPageSize clamps to AWS API page-size ranges.
 }
 
 func instanceProfileName(arn string) string {

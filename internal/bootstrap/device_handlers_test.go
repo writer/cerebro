@@ -23,7 +23,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func newAppForDeviceTest(t *testing.T) (*App, []byte, []byte) {
+func newAppForDeviceTest(t *testing.T) *App {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -63,7 +63,7 @@ func newAppForDeviceTest(t *testing.T) (*App, []byte, []byte) {
 	if app.deviceService == nil {
 		t.Fatal("device service was not wired")
 	}
-	return app, []byte(pubPEM), []byte(privPEM)
+	return app
 }
 
 // deviceAuthMemStore wraps deviceauth.MemStore and implements ports.StateStore
@@ -103,7 +103,7 @@ func encodePEMPrivate(t *testing.T, priv ed25519.PrivateKey) string {
 }
 
 func TestDeviceAuthEndToEnd(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 
 	// Issue bootstrap token as an operator using the API key.
@@ -217,7 +217,7 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 }
 
 func TestDeviceAuthRevokeAuthorizesTargetDeviceTenant(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 	ctx := context.Background()
 
@@ -257,7 +257,7 @@ func TestDeviceAuthRevokeAuthorizesTargetDeviceTenant(t *testing.T) {
 }
 
 func TestDeviceAuthIssueBootstrapTokenRejectsNegativeTTLSeconds(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bytes.NewBufferString(`{"hardware_uuid":"hw-neg","tenant_id":"writer","ttl_seconds":-1}`))
@@ -487,7 +487,7 @@ func TestAuthMiddlewarePreservesDPoPErrorCodes(t *testing.T) {
 }
 
 func TestTelemetryIngestRejectsMalformedBodies(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 	bootstrap, err := app.deviceService.IssueBootstrapToken(context.Background(), deviceauth.IssueBootstrapTokenRequest{
 		HardwareUUID: "hw-json",
@@ -545,7 +545,7 @@ func TestRemoteIPForRateLimitIgnoresSpoofedLeftmostForwardedFor(t *testing.T) {
 }
 
 func TestDeviceAuthTokenLimiterUsesStableDeviceKey(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bytes.NewBufferString(`{"hardware_uuid":"hw-1","tenant_id":"writer","ttl_seconds":3600}`))
@@ -607,7 +607,7 @@ func TestDeviceAuthTokenLimiterUsesStableDeviceKey(t *testing.T) {
 }
 
 func TestDeviceAuthEnrollRejectsWrongHardware(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bytes.NewBufferString(`{"hardware_uuid":"hw-1","tenant_id":"writer"}`))
@@ -633,7 +633,7 @@ func TestDeviceAuthEnrollRejectsWrongHardware(t *testing.T) {
 }
 
 func TestDeviceAuthJWKSReturnsCurrentKey(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/device-jwks.json", nil)
@@ -654,7 +654,7 @@ func TestDeviceAuthJWKSReturnsCurrentKey(t *testing.T) {
 }
 
 func TestDeviceAuthIngestRequiresDeviceJWT(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/platform/telemetry/ingest", bytes.NewBufferString(`{}`))
@@ -681,7 +681,7 @@ func containsString(values []string, target string) bool {
 // required by RFC 6749 §5.1 to prevent intermediate caches from holding
 // access / refresh / bootstrap secret material.
 func TestDeviceAuthEnrollAndTokenSetNoStoreHeaders(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 
 	bootstrapBody := bytes.NewBufferString(`{"hardware_uuid":"hw-no-store","tenant_id":"writer","ttl_seconds":3600}`)
@@ -743,7 +743,7 @@ func assertNoStoreHeaders(t *testing.T, where string, h http.Header) {
 // access token whose cnf.jkt matches the supplied key. Without device_key
 // the access token has no DPoP binding (software-bearer mode).
 func TestDeviceAuthEnrollAcceptsAgentDeviceKey(t *testing.T) {
-	app, _, _ := newAppForDeviceTest(t)
+	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 
 	pub, _, err := ed25519.GenerateKey(rand.Reader)

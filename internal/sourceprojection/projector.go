@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -145,11 +146,21 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		}
 	}
 	return ports.ProjectionResult{
-		EntitiesProjected: uint32(len(entities)),
-		LinksProjected:    uint32(len(links)),
+		EntitiesProjected: boundedUint32(len(entities)),
+		LinksProjected:    boundedUint32(len(links)),
 		EntitiesDeleted:   entitiesDeleted,
 		LinksDeleted:      cleanupDeleted.LinksDeleted + retractedLinksDeleted,
 	}, nil
+}
+
+func boundedUint32(value int) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
 }
 
 // ProjectRecords converts one event into normalized projection records without

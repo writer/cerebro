@@ -284,7 +284,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		if size > maxPageSize {
 			size = maxPageSize
 		}
-		st.perPage = int32(size)
+		st.perPage = int32(size) // #nosec G109 -- size is clamped to maxPageSize above.
 	}
 	if !isKnownFamily(st.family) {
 		return settings{}, fmt.Errorf("%w: %q", ErrUnsupportedFamily, st.family)

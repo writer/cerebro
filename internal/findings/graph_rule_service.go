@@ -99,7 +99,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 	}
-	result.RowsRead = uint32(len(rows))
+	result.RowsRead = boundedUint32(len(rows))
 	result.Truncated = cypherRowsTruncated(queryRequest, len(rows))
 	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
 	if err != nil {

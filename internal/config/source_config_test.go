@@ -9,7 +9,7 @@ import (
 
 func TestResolveSourceConfigSecretReferencesResolvesEnvValues(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_GITHUB_TOKEN", "secret-token")
-	config := map[string]string{
+	config := map[string]string{ // #nosec G101 -- env-reference test fixture, not credential material.
 		"owner": "writer",
 		"token": "env:CEREBRO_SOURCE_GITHUB_TOKEN",
 	}
@@ -27,7 +27,7 @@ func TestResolveSourceConfigSecretReferencesResolvesEnvValues(t *testing.T) {
 }
 
 func TestResolveSourceConfigSecretReferencesRejectsUnsetEnv(t *testing.T) {
-	_, err := ResolveSourceConfigSecretReferences(context.Background(), "github", map[string]string{
+	_, err := ResolveSourceConfigSecretReferences(context.Background(), "github", map[string]string{ // #nosec G101 -- env-reference test fixture, not credential material.
 		"token": "env:CEREBRO_SOURCE_GITHUB_TOKEN",
 	})
 	if err == nil {
@@ -37,7 +37,7 @@ func TestResolveSourceConfigSecretReferencesRejectsUnsetEnv(t *testing.T) {
 
 func TestResolveSourceConfigSecretReferencesRejectsDisallowedEnv(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "deployment-secret")
-	_, err := ResolveSourceConfigSecretReferences(context.Background(), "github", map[string]string{
+	_, err := ResolveSourceConfigSecretReferences(context.Background(), "github", map[string]string{ // #nosec G101 -- disallowed env-reference fixture, not credential material.
 		"token": "env:AWS_SECRET_ACCESS_KEY",
 	})
 	if err == nil {
@@ -48,7 +48,7 @@ func TestResolveSourceConfigSecretReferencesRejectsDisallowedEnv(t *testing.T) {
 func TestResolveSourceConfigSecretReferencesAllowsExplicitEnvAllowlist(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST", "SHARED_GITHUB_TOKEN")
 	t.Setenv("SHARED_GITHUB_TOKEN", "secret-token")
-	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "github", map[string]string{
+	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "github", map[string]string{ // #nosec G101 -- allowlisted env-reference test fixture, not credential material.
 		"token": "env:SHARED_GITHUB_TOKEN",
 	})
 	if err != nil {

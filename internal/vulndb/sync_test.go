@@ -203,6 +203,7 @@ func TestSyncRunnerRecordsFailureWithCanceledRunContext(t *testing.T) {
 
 func TestSyncRunnerCompletesSuccessfulJobWithCanceledRunContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	store := NewMemoryStore()
 	if err := store.PutSyncJob(context.Background(), SyncJob{
 		ID:       "osv-hourly",

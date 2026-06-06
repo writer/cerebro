@@ -147,7 +147,7 @@ type awsSSMParameter struct {
 
 func listAppRunnerServices(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsAppRunnerService, string, error) {
 	out, err := clients.appRunner.ListServices(ctx, &apprunner.ListServicesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 20))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 20)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -180,7 +180,7 @@ func listAppRunnerServices(ctx context.Context, clients awsClients, _ settings, 
 
 func listStepFunctionStateMachines(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsStepFunctionStateMachine, string, error) {
 	out, err := clients.stepFunctions.ListStateMachines(ctx, &sfn.ListStateMachinesInput{
-		MaxResults: int32(boundedAWSPageSize(limit, 1, 1000)),
+		MaxResults: boundedAWSPageSizeInt32(limit, 1, 1000),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -211,7 +211,7 @@ func listStepFunctionStateMachines(ctx context.Context, clients awsClients, _ se
 
 func listStepFunctionActivities(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsStepFunctionActivity, string, error) {
 	out, err := clients.stepFunctions.ListActivities(ctx, &sfn.ListActivitiesInput{
-		MaxResults: int32(boundedAWSPageSize(limit, 1, 1000)),
+		MaxResults: boundedAWSPageSizeInt32(limit, 1, 1000),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -235,7 +235,7 @@ func listStepFunctionActivities(ctx context.Context, clients awsClients, _ setti
 
 func listEventBridgeBuses(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsEventBridgeBus, string, error) {
 	out, err := clients.eventBridge.ListEventBuses(ctx, &eventbridge.ListEventBusesInput{
-		Limit:     awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:     awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken: stringPtr(cursor),
 	})
 	if err != nil {
@@ -281,7 +281,7 @@ func listEventBridgeRules(ctx context.Context, clients awsClients, settings sett
 		bus := buses[state.ParentIndex]
 		out, err := clients.eventBridge.ListRules(ctx, &eventbridge.ListRulesInput{
 			EventBusName: awssdk.String(firstNonEmpty(bus.Name, bus.ARN)),
-			Limit:        awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			Limit:        awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:    stringPtr(state.NextToken),
 		})
 		if err != nil {
@@ -320,7 +320,7 @@ func listEventBridgeRules(ctx context.Context, clients awsClients, settings sett
 
 func listEventBridgeArchives(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsEventBridgeArchive, string, error) {
 	out, err := clients.eventBridge.ListArchives(ctx, &eventbridge.ListArchivesInput{
-		Limit:     awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:     awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken: stringPtr(cursor),
 	})
 	if err != nil {
@@ -340,7 +340,7 @@ func listEventBridgeArchives(ctx context.Context, clients awsClients, settings s
 
 func listEventBridgePipes(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsEventBridgePipe, string, error) {
 	out, err := clients.pipes.ListPipes(ctx, &pipes.ListPipesInput{
-		Limit:     awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:     awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken: stringPtr(cursor),
 	})
 	if err != nil {
@@ -374,7 +374,7 @@ func listEventBridgePipes(ctx context.Context, clients awsClients, _ settings, c
 
 func listSchedulerSchedules(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSchedulerSchedule, string, error) {
 	out, err := clients.scheduler.ListSchedules(ctx, &scheduler.ListSchedulesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -398,7 +398,7 @@ func listSchedulerSchedules(ctx context.Context, clients awsClients, _ settings,
 
 func listSchedulerGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSchedulerGroup, string, error) {
 	out, err := clients.scheduler.ListScheduleGroups(ctx, &scheduler.ListScheduleGroupsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -423,7 +423,7 @@ func listSchedulerGroups(ctx context.Context, clients awsClients, _ settings, cu
 func listCloudWatchAlarms(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsCloudWatchAlarm, string, error) {
 	out, err := clients.cloudWatch.DescribeAlarms(ctx, &cloudwatch.DescribeAlarmsInput{
 		AlarmTypes: []cloudwatchtypes.AlarmType{cloudwatchtypes.AlarmTypeMetricAlarm, cloudwatchtypes.AlarmTypeCompositeAlarm},
-		MaxRecords: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -459,7 +459,7 @@ func listCloudWatchAlarms(ctx context.Context, clients awsClients, _ settings, c
 
 func listCloudWatchLogGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsCloudWatchLogGroup, string, error) {
 	out, err := clients.cloudWatchLogs.DescribeLogGroups(ctx, &cloudwatchlogs.DescribeLogGroupsInput{
-		Limit:     awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		Limit:     awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
 		NextToken: stringPtr(cursor),
 	})
 	if err != nil {
@@ -483,7 +483,7 @@ func listCloudWatchLogGroups(ctx context.Context, clients awsClients, _ settings
 
 func listSSMManagedInstances(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSSMManagedInstance, string, error) {
 	out, err := clients.ssm.DescribeInstanceInformation(ctx, &ssm.DescribeInstanceInformationInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 5, 50))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 50)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -507,7 +507,7 @@ func listSSMManagedInstances(ctx context.Context, clients awsClients, _ settings
 
 func listSSMDocuments(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSSMDocument, string, error) {
 	out, err := clients.ssm.ListDocuments(ctx, &ssm.ListDocumentsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -531,7 +531,7 @@ func listSSMDocuments(ctx context.Context, clients awsClients, _ settings, curso
 
 func listSSMAssociations(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSSMAssociation, string, error) {
 	out, err := clients.ssm.ListAssociations(ctx, &ssm.ListAssociationsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -555,7 +555,7 @@ func listSSMAssociations(ctx context.Context, clients awsClients, _ settings, cu
 
 func listSSMParameters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSSMParameter, string, error) {
 	out, err := clients.ssm.DescribeParameters(ctx, &ssm.DescribeParametersInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 50))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {

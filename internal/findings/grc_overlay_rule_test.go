@@ -488,6 +488,7 @@ func grcFailingControlRow(testAttrs map[string]string, controlAttrs map[string]s
 	}}
 }
 
+//nolint:unparam // Helper keeps relation explicit for access-edge row fixtures.
 func grcOverlayAccessMap(relation string, resourceURN string, resourceType string, resourceLabel string, attributesJSON string) map[string]any {
 	return map[string]any{
 		"relation":        relation,

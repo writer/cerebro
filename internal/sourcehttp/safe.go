@@ -298,7 +298,7 @@ func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, op
 		if err != nil {
 			return ResponseBody{}, err
 		}
-		resp, err := client.Do(nextReq)
+		resp, err := client.Do(nextReq) // #nosec G704 -- callers must pass URLs normalized by this package's allowlist helpers.
 		if err != nil {
 			lastErr = err
 		} else {

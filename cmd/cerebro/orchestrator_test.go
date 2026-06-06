@@ -1085,6 +1085,7 @@ func (r *orchestratorGraphRule) QueryFor(*cerebrov1.SourceRuntime) ports.CypherQ
 	return r.query
 }
 
+//nolint:unparam // Test rule implements the graph-rule interface, including the error result.
 func (r *orchestratorGraphRule) EvaluateRows(_ context.Context, _ *cerebrov1.SourceRuntime, _ []ports.CypherRow) ([]*ports.FindingRecord, error) {
 	r.calls++
 	return r.emit, nil
@@ -1155,7 +1156,7 @@ func (l *orchestratorEventLog) Replay(_ context.Context, request ports.ReplayReq
 			continue
 		}
 		events = append(events, event)
-		if request.Limit > 0 && uint32(len(events)) >= request.Limit {
+		if request.Limit > 0 && uint32(len(events)) >= request.Limit { // #nosec G115 -- replay fixture size is bounded by in-memory test setup.
 			break
 		}
 	}

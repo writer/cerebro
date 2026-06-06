@@ -240,7 +240,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 			}
 			if matchesReplayRequest(event, request) {
 				candidates = append(candidates, replayCandidate{event: event, seq: seq})
-				if uint32(len(candidates)) >= candidateLimit {
+				if countAtLeastUint32(len(candidates), candidateLimit) {
 					break
 				}
 			}
@@ -252,7 +252,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return replayCandidateNewer(candidates[i], candidates[j])
 	})
-	if uint32(len(candidates)) > limit {
+	if countGreaterThanUint32(len(candidates), limit) {
 		candidates = candidates[:limit]
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
@@ -263,6 +263,14 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		events = append(events, candidate.event)
 	}
 	return events, nil
+}
+
+func countAtLeastUint32(count int, limit uint32) bool {
+	return uint64(count) >= uint64(limit) // #nosec G115 -- count is derived from slice length and compared only after widening.
+}
+
+func countGreaterThanUint32(count int, limit uint32) bool {
+	return uint64(count) > uint64(limit) // #nosec G115 -- count is derived from slice length and compared only after widening.
 }
 
 func replaySubjectPrefix(prefix string, kindPrefix string) string {

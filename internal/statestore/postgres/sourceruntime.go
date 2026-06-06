@@ -148,6 +148,7 @@ func (s *Store) ListSourceRuntimes(ctx context.Context, filter ports.SourceRunti
 		limit = 100
 	}
 	args = append(args, limit)
+	// #nosec G201 -- clauses and order are fixed predicates; values remain parameterized.
 	query := fmt.Sprintf(`
 SELECT runtime_json::text
 FROM source_runtimes

@@ -1,6 +1,7 @@
 package findingevidence
 
 import (
+	"math"
 	"sort"
 	"strings"
 
@@ -28,7 +29,7 @@ func Normalize(evidence *cerebrov1.FindingEvidence) *cerebrov1.FindingEvidence {
 			normalized.Observations = []*cerebrov1.FindingEvidenceObservation{observation}
 		}
 	}
-	normalized.ObservationCount = uint32(len(normalized.GetObservations()))
+	normalized.ObservationCount = boundedUint32(len(normalized.GetObservations()))
 	return normalized
 }
 
@@ -82,8 +83,18 @@ func Merge(existing *cerebrov1.FindingEvidence, latest *cerebrov1.FindingEvidenc
 	merged.RunIds = uniqueSortedStrings(append(append(existing.GetRunIds(), latest.GetRunIds()...), existing.GetRunId(), latest.GetRunId()))
 	merged.Attributes = mergeStringMaps(existing.GetAttributes(), latest.GetAttributes())
 	merged.Observations = mergeObservations(existing.GetObservations(), latest.GetObservations())
-	merged.ObservationCount = uint32(len(merged.GetObservations()))
+	merged.ObservationCount = boundedUint32(len(merged.GetObservations()))
 	return merged
+}
+
+func boundedUint32(value int) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
 }
 
 func mergeGraphEvidenceRows(groups ...[]*cerebrov1.GraphEvidenceRow) []*cerebrov1.GraphEvidenceRow {

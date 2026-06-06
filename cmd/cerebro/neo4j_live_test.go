@@ -32,7 +32,7 @@ func openNeo4jLiveGraphStore(t *testing.T, ctx context.Context) *graphstoreneo4j
 		t.Fatalf("ping Neo4j graph store: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = store.CloseContext(context.Background())
+		_ = store.CloseContext(ctx)
 	})
 	resetNeo4jLiveGraph(t, ctx, cfg)
 	return store
@@ -47,10 +47,10 @@ func resetNeo4jLiveGraph(t *testing.T, ctx context.Context, cfg configpkg.GraphS
 	if err != nil {
 		t.Fatalf("open Neo4j reset driver: %v", err)
 	}
-	defer func() { _ = driver.Close(context.Background()) }()
+	defer func() { _ = driver.Close(ctx) }()
 
 	session := driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: strings.TrimSpace(cfg.Neo4jDatabase)})
-	defer func() { _ = session.Close(context.Background()) }()
+	defer func() { _ = session.Close(ctx) }()
 	if _, err := session.ExecuteWrite(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		result, err := tx.Run(ctx, "MATCH (n) WHERE n:Entity OR n:IngestCheckpoint OR n:IngestRun DETACH DELETE n", nil)
 		if err != nil {

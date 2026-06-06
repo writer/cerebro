@@ -32,7 +32,7 @@ type awsDynamoDBStream struct {
 func listDynamoDBTables(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsDynamoDBTable, string, error) {
 	out, err := clients.dynamodb.ListTables(ctx, &dynamodb.ListTablesInput{
 		ExclusiveStartTableName: stringPtr(cursor),
-		Limit:                   awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:                   awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -78,7 +78,7 @@ func listDynamoDBBackups(ctx context.Context, clients awsClients, _ settings, cu
 	out, err := clients.dynamodb.ListBackups(ctx, &dynamodb.ListBackupsInput{
 		BackupType:              dynamodbtypes.BackupTypeFilterAll,
 		ExclusiveStartBackupArn: stringPtr(cursor),
-		Limit:                   awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:                   awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -89,7 +89,7 @@ func listDynamoDBBackups(ctx context.Context, clients awsClients, _ settings, cu
 func listDynamoDBStreams(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsDynamoDBStream, string, error) {
 	out, err := clients.dynamodbStreams.ListStreams(ctx, &dynamodbstreams.ListStreamsInput{
 		ExclusiveStartStreamArn: stringPtr(cursor),
-		Limit:                   awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		Limit:                   awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 	})
 	if err != nil {
 		return nil, "", err

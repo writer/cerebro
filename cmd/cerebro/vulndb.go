@@ -383,7 +383,7 @@ func (vulndbInputClient) Open(ctx context.Context, source string, allowInsecureH
 		}
 		return bootstrap.OpenVulnDBFeed(ctx, source, allowInsecureHTTP)
 	}
-	file, err := os.Open(source)
+	file, err := os.Open(source) // #nosec G304 -- operator-provided local vulnerability feed file.
 	if err != nil {
 		return nil, err
 	}

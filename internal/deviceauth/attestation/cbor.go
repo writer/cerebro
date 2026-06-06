@@ -50,7 +50,7 @@ func decodeCBOR(data []byte) (cborValue, []byte, error) {
 	major := first >> 5
 	additional := first & 0x1f
 	rest := data[1:]
-	val, rest, err := readCount(major, additional, rest)
+	val, rest, err := readCount(additional, rest)
 	if err != nil {
 		return cborValue{}, nil, err
 	}
@@ -112,7 +112,7 @@ func decodeCBOR(data []byte) (cborValue, []byte, error) {
 	}
 }
 
-func readCount(major, additional byte, rest []byte) (uint64, []byte, error) {
+func readCount(additional byte, rest []byte) (uint64, []byte, error) {
 	switch {
 	case additional < 24:
 		return uint64(additional), rest, nil
@@ -203,7 +203,10 @@ func encodeHead(major byte, count uint64) []byte {
 	case count <= math.MaxUint8:
 		return []byte{(major << 5) | 24, byte(count)}
 	case count <= math.MaxUint16:
-		return []byte{(major << 5) | 25, byte(count >> 8), byte(count)}
+		buf := []byte{(major << 5) | 25}
+		var b [2]byte
+		binary.BigEndian.PutUint16(b[:], uint16(count))
+		return append(buf, b[:]...)
 	case count <= math.MaxUint32:
 		buf := []byte{(major << 5) | 26}
 		var b [4]byte

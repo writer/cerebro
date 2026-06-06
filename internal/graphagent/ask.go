@@ -75,7 +75,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	params := askParams(request)
 	traceID := newTraceID()
 	exec := AskExecutionContext{TraceID: traceID, Depth: 0, Attempt: 0, MaxDepth: s.options.MaxDepth, MaxChildren: s.options.MaxChildren}
-	recorder := newTrajectoryRecorder(s.options.TrajectoryStore, request, traceID, started, exec)
+	recorder := newTrajectoryRecorder(s.options.TrajectoryStore, traceID, started)
 	recorder.start(ctx, request, exec)
 	status := "error"
 	defer func() {
@@ -127,7 +127,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	}
 
 	conversionStarted := time.Now()
-	conversion := convertDraftToQuery(request, draft, defaultMaxRows)
+	conversion := convertDraftToQuery(request, draft)
 	timings.ConversionMS = time.Since(conversionStarted).Milliseconds()
 	cypher := strings.TrimSpace(conversion.Cypher)
 	if err := emitQueryPlan(emit, conversion); err != nil {
@@ -538,12 +538,12 @@ func matchesTopRiskFilters(plan AskQueryPlan, row map[string]any, severity strin
 		return false
 	}
 	if want := firstNonEmpty(planFilterValue(plan.Filters, "resource_type"), planFilterValue(plan.Filters, "entity_type")); want != "" {
-		return resourceTypeMatchesFilter(stringRowValue(row, "resource_type"), stringRowValue(row, "resource_urn"), want)
+		return resourceTypeMatchesFilter(stringRowValue(row, "resource_type"), want)
 	}
 	return true
 }
 
-func resourceTypeMatchesFilter(resourceType string, resourceURN string, filter string) bool {
+func resourceTypeMatchesFilter(resourceType string, filter string) bool {
 	canonical := canonicalEntityType(filter)
 	if canonical == "github.code.repository" || canonical == "github.repo" {
 		return resourceType == "github.code.repository" || resourceType == "github.repo"

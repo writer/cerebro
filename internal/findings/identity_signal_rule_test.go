@@ -1315,7 +1315,7 @@ func TestIdentitySignalRulesDetectCloudCredentials(t *testing.T) {
 			name:     "gcp-service-account-key",
 			sourceID: "gcp",
 			kind:     "gcp.service_account_key",
-			attributes: map[string]string{
+			attributes: map[string]string{ // #nosec G101 -- test service-account key attributes are identifiers, not key material.
 				"credential_id":   "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
 				"credential_type": "gcp_service_account_key",
 				"domain":          "writer-prod",
@@ -1329,7 +1329,7 @@ func TestIdentitySignalRulesDetectCloudCredentials(t *testing.T) {
 			name:     "azure-application-password",
 			sourceID: "azure",
 			kind:     "azure.credential",
-			attributes: map[string]string{
+			attributes: map[string]string{ // #nosec G101 -- test Azure credential attributes are identifiers, not secret material.
 				"credential_id":   "app-password-1",
 				"credential_type": "azure_application_password",
 				"domain":          "tenant-1",

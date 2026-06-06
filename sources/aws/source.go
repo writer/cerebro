@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"path"
@@ -3693,7 +3694,7 @@ func inlinePolicyURN(principalType string, principalName string, policyName stri
 func listCloudTrailEvents(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]cloudtrailtypes.Event, string, error) {
 	now := time.Now().UTC()
 	state, resume := parseCloudTrailCursor(cursor, settings, now)
-	input := &cloudtrail.LookupEventsInput{MaxResults: awssdk.Int32(int32(limit))}
+	input := &cloudtrail.LookupEventsInput{MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50))}
 	if resume {
 		input.NextToken = stringPtr(state.Token)
 		if state.StartTime != "" {
@@ -4249,6 +4250,12 @@ func nextMarker(truncated bool, marker *string) string {
 func int32Ptr(value int) *int32 {
 	if value == 0 {
 		return nil
+	}
+	if value > math.MaxInt32 {
+		value = math.MaxInt32
+	}
+	if value < math.MinInt32 {
+		value = math.MinInt32
 	}
 	parsed := int32(value)
 	return &parsed

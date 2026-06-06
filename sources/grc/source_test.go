@@ -76,7 +76,7 @@ func TestParseSettingsRejectsUntrustedVantaHosts(t *testing.T) {
 	}
 	cases := map[string]map[string]string{
 		"base url":  {"base_url": "https://attacker.example"},
-		"token url": {"token_url": "https://attacker.example/oauth/token"},
+		"token url": {"token_url": "https://attacker.example/oauth/token"}, // #nosec G101 -- key name is a URL fixture, not credential material.
 	}
 	for name, overrides := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -274,22 +274,13 @@ func TestEventFromRecordScopesIDByTenantAndRuntimeConfig(t *testing.T) {
 		clientID: "client-a",
 		scope:    defaultReadScope,
 	}
-	first, err := eventFromRecord(base, familyControlTest, record)
-	if err != nil {
-		t.Fatalf("eventFromRecord(first) error = %v", err)
-	}
+	first := eventFromRecord(base, familyControlTest, record)
 	otherTenant := base
 	otherTenant.tenantID = "acme"
-	second, err := eventFromRecord(otherTenant, familyControlTest, record)
-	if err != nil {
-		t.Fatalf("eventFromRecord(second) error = %v", err)
-	}
+	second := eventFromRecord(otherTenant, familyControlTest, record)
 	otherRuntime := base
 	otherRuntime.baseURL = "https://api.eu.vanta.com"
-	third, err := eventFromRecord(otherRuntime, familyControlTest, record)
-	if err != nil {
-		t.Fatalf("eventFromRecord(third) error = %v", err)
-	}
+	third := eventFromRecord(otherRuntime, familyControlTest, record)
 	if first.Id == second.Id || first.Id == third.Id {
 		t.Fatalf("event IDs must be scoped per tenant/runtime config, got %q, %q, %q", first.Id, second.Id, third.Id)
 	}

@@ -90,6 +90,7 @@ func (s *Store) ListRuntimeBlocklistEntries(ctx context.Context, filter ports.Ru
 		limit = 100
 	}
 	args = append(args, limit)
+	// #nosec G201 -- clauses are fixed column predicates and LIMIT placeholder index is derived from args.
 	query := fmt.Sprintf(`
 SELECT id, tenant_id, entry_type, entry_value, reason, source, source_job_id, attributes_json::text,
        expires_at, revoked_at, created_at, updated_at
@@ -131,6 +132,7 @@ func (s *Store) RevokeRuntimeBlocklistEntry(ctx context.Context, tenantID string
 		args = append(args, tenantID)
 		clauses = append(clauses, fmt.Sprintf("tenant_id = $%d", len(args)))
 	}
+	// #nosec G201 -- clauses are assembled only from fixed column predicates; values remain parameterized.
 	query := fmt.Sprintf(`UPDATE runtime_blocklist_entries SET revoked_at = NOW(), updated_at = NOW() WHERE %s`, strings.Join(clauses, " AND "))
 	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {

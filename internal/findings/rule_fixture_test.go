@@ -344,7 +344,7 @@ func TestRetiredGitHubMirrorRulesAreCatalogued(t *testing.T) {
 // the canonical event payloads as evidence.
 func assertRetiredEventRuleFixture(t *testing.T, rule Rule, path string) {
 	t.Helper()
-	payload, err := os.ReadFile(path)
+	payload, err := os.ReadFile(path) // #nosec G304 -- test fixture path is repository-controlled.
 	if err != nil {
 		t.Fatalf("read fixture %q: %v", path, err)
 	}
@@ -373,7 +373,7 @@ func assertRetiredEventRuleFixture(t *testing.T, rule Rule, path string) {
 
 func assertRuleFixture(t *testing.T, rule Rule, path string) {
 	t.Helper()
-	payload, err := os.ReadFile(path)
+	payload, err := os.ReadFile(path) // #nosec G304 -- test fixture path is repository-controlled.
 	if err != nil {
 		t.Fatalf("read fixture %q: %v", path, err)
 	}

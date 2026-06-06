@@ -116,7 +116,7 @@ func TestGitHubLocalEndToEndWithGHCLI(t *testing.T) {
 
 func readGitHubPullWithGHCLI(ctx context.Context, owner string, repo string, number int) (ghAPIPull, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, number)
-	output, err := exec.CommandContext(ctx, "gh", "api", path).Output()
+	output, err := exec.CommandContext(ctx, "gh", "api", path).Output() // #nosec G204 -- live test shells out to the fixed gh binary with endpoint as an argument.
 	if err != nil {
 		return ghAPIPull{}, fmt.Errorf("read github pull with gh cli: %w", err)
 	}

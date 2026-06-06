@@ -81,6 +81,7 @@ func TestIdentityFingerprintHelpers_TenantScoped(t *testing.T) {
 	}
 }
 
+//nolint:unparam // Helper keeps tenant ID explicit for tenant-scoping fixtures.
 func tenantScopedIdentityEvent(id string, tenantID string, sourceID string, kind string, attrs map[string]string, occurredAt time.Time) *cerebrov1.EventEnvelope {
 	event := identitySignalEventAt(id, sourceID, kind, attrs, occurredAt)
 	event.TenantId = tenantID

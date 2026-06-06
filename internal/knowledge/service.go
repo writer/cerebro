@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -189,7 +190,7 @@ func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteReques
 	}
 	return &DecisionWriteResult{
 		DecisionID:  decisionID,
-		TargetCount: uint32(len(targetIDs)),
+		TargetCount: boundedUint32(len(targetIDs)),
 	}, nil
 }
 
@@ -260,7 +261,7 @@ func (s *Service) WriteAction(ctx context.Context, request ActionWriteRequest) (
 	return &ActionWriteResult{
 		ActionID:    actionID,
 		DecisionID:  decisionID,
-		TargetCount: uint32(len(targetIDs)),
+		TargetCount: boundedUint32(len(targetIDs)),
 	}, nil
 }
 
@@ -327,8 +328,18 @@ func (s *Service) WriteOutcome(ctx context.Context, request OutcomeWriteRequest)
 	return &OutcomeWriteResult{
 		OutcomeID:   outcomeID,
 		DecisionID:  decisionID,
-		TargetCount: uint32(len(targetIDs)),
+		TargetCount: boundedUint32(len(targetIDs)),
 	}, nil
+}
+
+func boundedUint32(value int) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
 }
 
 func (s *Service) requireEntity(ctx context.Context, id string) error {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -694,11 +695,7 @@ func pullFromRecords(settings settings, family string, records []record, next st
 	}
 	events := make([]*primitives.Event, 0, len(records))
 	for _, record := range records {
-		event, err := eventFromRecord(settings, family, record)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
+		events = append(events, eventFromRecord(settings, family, record))
 	}
 	pull := sourcecdk.Pull{
 		Events: events,
@@ -713,7 +710,7 @@ func pullFromRecords(settings settings, family string, records []record, next st
 	return pull, nil
 }
 
-func eventFromRecord(settings settings, family string, record record) (*primitives.Event, error) {
+func eventFromRecord(settings settings, family string, record record) *primitives.Event {
 	occurredAt := occurredAtFor(record.Values)
 	attrs := attributesFor(family, record.Values)
 	attrs["record_id"] = record.ID
@@ -727,7 +724,7 @@ func eventFromRecord(settings settings, family string, record record) (*primitiv
 		SchemaRef:  "cosmo/" + family + "/v1",
 		Payload:    cloneRaw(record.Raw),
 		Attributes: attrs,
-	}, nil
+	}
 }
 
 func eventID(settings settings, family string, recordID string) string {
@@ -923,11 +920,7 @@ func messagePullFromRecords(settings settings, records []record, next string, ch
 	}
 	events := make([]*primitives.Event, 0, len(records))
 	for _, record := range records {
-		event, err := eventFromRecord(settings, familyMessage, record)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
+		events = append(events, eventFromRecord(settings, familyMessage, record))
 	}
 	pull.Events = events
 	pull.Checkpoint.Watermark = events[len(events)-1].OccurredAt
@@ -1041,24 +1034,31 @@ func parseNumericIPv4Host(host string) net.IP {
 	var ipv4 uint32
 	switch len(values) {
 	case 1:
-		ipv4 = uint32(values[0])
+		ipv4 = uint32FromUint64(values[0])
 	case 2:
 		if values[0] > 0xff || values[1] > 0xffffff {
 			return nil
 		}
-		ipv4 = uint32(values[0]<<24 | values[1])
+		ipv4 = uint32FromUint64(values[0]<<24 | values[1])
 	case 3:
 		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff {
 			return nil
 		}
-		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2])
+		ipv4 = uint32FromUint64(values[0]<<24 | values[1]<<16 | values[2])
 	case 4:
 		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xff || values[3] > 0xff {
 			return nil
 		}
-		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
+		ipv4 = uint32FromUint64(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
 	}
 	return net.IPv4(byte(ipv4>>24), byte(ipv4>>16), byte(ipv4>>8), byte(ipv4))
+}
+
+func uint32FromUint64(value uint64) uint32 {
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
 }
 
 func occurredAtFor(values map[string]any) time.Time {

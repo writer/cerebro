@@ -649,6 +649,7 @@ WHERE ` + where
 	); err != nil {
 		return ports.FindingSummary{}, fmt.Errorf("summarize findings: %w", err)
 	}
+	// #nosec G202 -- where is assembled from fixed predicates with parameterized values.
 	controlQuery := `
 SELECT framework_name, control_id
 FROM (
@@ -1710,6 +1711,7 @@ func (s *Store) BackfillFindingRisk(ctx context.Context, includeUnprojected bool
 func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool) (updated []*ports.FindingRecord, err error) {
 	query := `SELECT ` + findingSelectColumns + ` FROM findings WHERE risk_model_version <> $1 OR risk_score = 0`
 	if includeUnprojected {
+		// #nosec G202 -- attribute key is a compile-time constant, not request input.
 		query += ` OR COALESCE(attributes_json->>'` + findingrisk.FindingRiskGraphProjectedModelVersionAttribute + `', '') <> $1`
 	}
 	rows, err := s.db.QueryContext(ctx, query, findingrisk.FindingRiskModelVersion)

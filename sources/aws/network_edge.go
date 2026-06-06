@@ -79,7 +79,7 @@ type indexedPageCursor struct {
 
 func listGlobalAccelerators(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]globalacceleratortypes.Accelerator, string, error) {
 	out, err := clients.globalAccel.ListAccelerators(ctx, &globalaccelerator.ListAcceleratorsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -104,7 +104,7 @@ func listGlobalAcceleratorListeners(ctx context.Context, clients awsClients, set
 		acceleratorARN := awssdk.ToString(accelerator.AcceleratorArn)
 		out, err := clients.globalAccel.ListListeners(ctx, &globalaccelerator.ListListenersInput{
 			AcceleratorArn: awssdk.String(acceleratorARN),
-			MaxResults:     awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults:     awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:      stringPtr(state.Token),
 		})
 		if err != nil {
@@ -142,7 +142,7 @@ func listGlobalAcceleratorEndpointGroups(ctx context.Context, clients awsClients
 		listenerARN := awssdk.ToString(parent.Listener.ListenerArn)
 		out, err := clients.globalAccel.ListEndpointGroups(ctx, &globalaccelerator.ListEndpointGroupsInput{
 			ListenerArn: awssdk.String(listenerARN),
-			MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults:  awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:   stringPtr(state.Token),
 		})
 		if err != nil {
@@ -166,7 +166,7 @@ func listGlobalAcceleratorEndpointGroups(ctx context.Context, clients awsClients
 
 func listVPCLatticeServices(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]vpclatticetypes.ServiceSummary, string, error) {
 	out, err := clients.vpcLattice.ListServices(ctx, &vpclattice.ListServicesInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -191,7 +191,7 @@ func listVPCLatticeListeners(ctx context.Context, clients awsClients, settings s
 		serviceID := firstNonEmpty(awssdk.ToString(service.Id), awssdk.ToString(service.Arn))
 		out, err := clients.vpcLattice.ListListeners(ctx, &vpclattice.ListListenersInput{
 			ServiceIdentifier: awssdk.String(serviceID),
-			MaxResults:        awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			MaxResults:        awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 100)),
 			NextToken:         stringPtr(state.Token),
 		})
 		if err != nil {
@@ -215,7 +215,7 @@ func listVPCLatticeListeners(ctx context.Context, clients awsClients, settings s
 
 func listVPCLatticeTargetGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]vpclatticetypes.TargetGroupSummary, string, error) {
 	out, err := clients.vpcLattice.ListTargetGroups(ctx, &vpclattice.ListTargetGroupsInput{
-		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {
@@ -240,7 +240,7 @@ func listELBV2Listeners(ctx context.Context, clients awsClients, _ settings, cur
 		out, err := clients.elbv2.DescribeListeners(ctx, &elbv2.DescribeListenersInput{
 			LoadBalancerArn: awssdk.String(loadBalancerARN),
 			Marker:          stringPtr(state.Token),
-			PageSize:        awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 400))),
+			PageSize:        awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 400)),
 		})
 		if err != nil {
 			return nil, "", fmt.Errorf("describe elbv2 listeners %q: %w", loadBalancerARN, err)
@@ -262,7 +262,7 @@ func listELBV2Listeners(ctx context.Context, clients awsClients, _ settings, cur
 func listELBV2TargetGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]elbv2types.TargetGroup, string, error) {
 	out, err := clients.elbv2.DescribeTargetGroups(ctx, &elbv2.DescribeTargetGroupsInput{
 		Marker:   stringPtr(cursor),
-		PageSize: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 400))),
+		PageSize: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 400)),
 	})
 	if err != nil {
 		return nil, "", err
@@ -415,7 +415,7 @@ func listAPIGatewayIntegrations(ctx context.Context, clients awsClients, setting
 }
 
 func listCloudFrontOACs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]cloudfronttypes.OriginAccessControlSummary, string, error) {
-	out, err := clients.cloudFront.ListOriginAccessControls(ctx, &cloudfront.ListOriginAccessControlsInput{Marker: stringPtr(cursor), MaxItems: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100)))})
+	out, err := clients.cloudFront.ListOriginAccessControls(ctx, &cloudfront.ListOriginAccessControlsInput{Marker: stringPtr(cursor), MaxItems: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100))})
 	if err != nil {
 		return nil, "", err
 	}
@@ -426,7 +426,7 @@ func listCloudFrontOACs(ctx context.Context, clients awsClients, _ settings, cur
 }
 
 func listCloudFrontKeyGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]cloudfronttypes.KeyGroupSummary, string, error) {
-	out, err := clients.cloudFront.ListKeyGroups(ctx, &cloudfront.ListKeyGroupsInput{Marker: stringPtr(cursor), MaxItems: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100)))})
+	out, err := clients.cloudFront.ListKeyGroups(ctx, &cloudfront.ListKeyGroupsInput{Marker: stringPtr(cursor), MaxItems: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100))})
 	if err != nil {
 		return nil, "", err
 	}
@@ -437,7 +437,7 @@ func listCloudFrontKeyGroups(ctx context.Context, clients awsClients, _ settings
 }
 
 func listCloudFrontPublicKeys(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]cloudfronttypes.PublicKeySummary, string, error) {
-	out, err := clients.cloudFront.ListPublicKeys(ctx, &cloudfront.ListPublicKeysInput{Marker: stringPtr(cursor), MaxItems: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100)))})
+	out, err := clients.cloudFront.ListPublicKeys(ctx, &cloudfront.ListPublicKeysInput{Marker: stringPtr(cursor), MaxItems: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100))})
 	if err != nil {
 		return nil, "", err
 	}
@@ -448,7 +448,7 @@ func listCloudFrontPublicKeys(ctx context.Context, clients awsClients, _ setting
 }
 
 func listCloudFrontResponseHeadersPolicies(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]cloudfronttypes.ResponseHeadersPolicySummary, string, error) {
-	out, err := clients.cloudFront.ListResponseHeadersPolicies(ctx, &cloudfront.ListResponseHeadersPoliciesInput{Marker: stringPtr(cursor), MaxItems: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100)))})
+	out, err := clients.cloudFront.ListResponseHeadersPolicies(ctx, &cloudfront.ListResponseHeadersPoliciesInput{Marker: stringPtr(cursor), MaxItems: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100))})
 	if err != nil {
 		return nil, "", err
 	}
@@ -809,7 +809,7 @@ func listAllELBV2LoadBalancers(ctx context.Context, clients awsClients) ([]elbv2
 	for {
 		out, err := clients.elbv2.DescribeLoadBalancers(ctx, &elbv2.DescribeLoadBalancersInput{
 			Marker:   stringPtr(cursor),
-			PageSize: awssdk.Int32(int32(boundedAWSPageSize(maxPageSize, 1, 400))),
+			PageSize: awssdk.Int32(boundedAWSPageSizeInt32(maxPageSize, 1, 400)),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("describe elbv2 load balancers: %w", err)
@@ -864,7 +864,7 @@ func listAllRestResources(ctx context.Context, clients awsClients, apiID string,
 	var records []apigatewaytypes.Resource
 	var cursor string
 	for {
-		out, err := clients.apiGateway.GetResources(ctx, &apigateway.GetResourcesInput{RestApiId: awssdk.String(apiID), Embed: []string{"methods"}, Limit: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 500))), Position: stringPtr(cursor)})
+		out, err := clients.apiGateway.GetResources(ctx, &apigateway.GetResourcesInput{RestApiId: awssdk.String(apiID), Embed: []string{"methods"}, Limit: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 500)), Position: stringPtr(cursor)})
 		if err != nil {
 			return nil, fmt.Errorf("get apigateway resources %q: %w", apiID, err)
 		}

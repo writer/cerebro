@@ -558,7 +558,7 @@ func TestProjectGitHubSecretScanningAlertLinksResolverAndBypasser(t *testing.T) 
 
 	alertURN := "urn:cerebro:writer:github_secret_scanning_alert:writer:42"
 	resolverURN := "urn:cerebro:writer:github_user:alice"
-	bypasserURN := "urn:cerebro:writer:github_user:bob"
+	bypasserURN := "urn:cerebro:writer:github_user:bob" // #nosec G101 -- test URN fixture, not a secret.
 	assertProjectedLink(t, graph, resolverURN, relationActedOn, alertURN)
 	assertProjectedLink(t, graph, resolverURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:alice")
 	assertProjectedLink(t, graph, resolverURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:alice")
@@ -1167,7 +1167,7 @@ func TestProjectOktaAuditRunsScopedCleanupForLaterStaleResources(t *testing.T) {
 			TenantId: "writer",
 			SourceId: "okta",
 			Kind:     "okta.audit",
-			Attributes: map[string]string{
+			Attributes: map[string]string{ // #nosec G101 -- test event type contains an access_token label, not credential material.
 				ports.EventAttributeSourceRuntimeID: "okta-audit-runtime",
 				"domain":                            "writer.okta.com",
 				"event_type":                        "app.oauth2.token.grant.access_token",
@@ -2077,7 +2077,7 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 	if _, ok := graph.entities[userURN]; ok {
 		t.Fatalf("github.user %q minted for unresolved public-key credential; deploy keys must be modeled as credentials", userURN)
 	}
-	credentialURN := "urn:cerebro:writer:github_credential:deploy_key@WriterInternal/k8s"
+	credentialURN := "urn:cerebro:writer:github_credential:deploy_key@WriterInternal/k8s" // #nosec G101 -- test credential URN fixture, not a secret.
 	credential, ok := graph.entities[credentialURN]
 	if !ok {
 		t.Fatalf("github.credential entity %q missing: %#v", credentialURN, graph.entities)
@@ -2129,7 +2129,7 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 	if err != nil {
 		t.Fatalf("Project() second repo error = %v", err)
 	}
-	otherCredentialURN := "urn:cerebro:writer:github_credential:deploy_key@WriterInternal/other"
+	otherCredentialURN := "urn:cerebro:writer:github_credential:deploy_key@WriterInternal/other" // #nosec G101 -- test credential URN fixture, not a secret.
 	if _, ok := graph.entities[otherCredentialURN]; !ok {
 		t.Fatalf("github.credential entity %q missing for same deploy_key actor on another repo", otherCredentialURN)
 	}
@@ -2158,7 +2158,7 @@ func TestProjectGitHubAuditProjectsProgrammaticResourceAsCredential(t *testing.T
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	credentialURN := "urn:cerebro:writer:github_credential:personal_access_token:555"
+	credentialURN := "urn:cerebro:writer:github_credential:personal_access_token:555" // #nosec G101 -- test credential URN fixture, not credential material.
 	credential, ok := graph.entities[credentialURN]
 	if !ok {
 		t.Fatalf("github.credential entity %q missing: %#v", credentialURN, graph.entities)
@@ -2868,7 +2868,7 @@ func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 			TenantId: "writer",
 			SourceId: "gcp",
 			Kind:     "gcp.service_account_key",
-			Attributes: map[string]string{
+			Attributes: map[string]string{ // #nosec G101 -- test service-account key attributes are identifiers, not key material.
 				"credential_id":   "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
 				"credential_type": "gcp_service_account_key",
 				"domain":          "writer-prod",
@@ -3005,7 +3005,7 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 			TenantId: "writer",
 			SourceId: "azure",
 			Kind:     "azure.credential",
-			Attributes: map[string]string{
+			Attributes: map[string]string{ // #nosec G101 -- test Azure credential attributes are identifiers, not secret material.
 				"credential_id":   "app-password-1",
 				"credential_type": "azure_application_password",
 				"domain":          "tenant-1",

@@ -731,11 +731,7 @@ func pullFromRecords(settings settings, family string, records []record, next st
 	}
 	events := make([]*primitives.Event, 0, len(records))
 	for _, record := range records {
-		event, err := eventFromRecord(settings, family, record)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
+		events = append(events, eventFromRecord(settings, family, record))
 	}
 	pull := sourcecdk.Pull{
 		Events: events,
@@ -750,7 +746,7 @@ func pullFromRecords(settings settings, family string, records []record, next st
 	return pull, nil
 }
 
-func eventFromRecord(settings settings, family string, record record) (*primitives.Event, error) {
+func eventFromRecord(settings settings, family string, record record) *primitives.Event {
 	occurredAt := occurredAtFor(record.Values)
 	return &primitives.Event{
 		Id:         eventID(settings, family, record.ID),
@@ -761,7 +757,7 @@ func eventFromRecord(settings settings, family string, record record) (*primitiv
 		SchemaRef:  sourceID + "/" + family + "/v1",
 		Payload:    cloneRaw(record.Raw),
 		Attributes: attributesFor(family, record),
-	}, nil
+	}
 }
 
 func eventID(settings settings, family string, recordID string) string {

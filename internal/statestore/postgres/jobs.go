@@ -147,6 +147,7 @@ func (s *Store) ListJobs(ctx context.Context, filter ports.JobFilter) ([]*ports.
 		limit = 50
 	}
 	args = append(args, limit)
+	// #nosec G201 -- clauses are fixed column predicates and LIMIT placeholder index is derived from args.
 	query := fmt.Sprintf(`
 SELECT id, kind, status, tenant_id, subject_type, subject_id, idempotency_key,
        progress_percent, message, error, payload_json::text, result_json::text,

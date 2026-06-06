@@ -255,10 +255,10 @@ func scaffoldFindingRule(request findingRuleScaffoldRequest) (*findingRuleScaffo
 				return nil, err
 			}
 		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(path, []byte(contents[path]), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(contents[path]), 0o600); err != nil {
 			return nil, err
 		}
 	}

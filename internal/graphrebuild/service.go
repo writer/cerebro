@@ -3,6 +3,7 @@ package graphrebuild
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -353,7 +354,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		Name:             "verify_path_patterns",
 		Status:           stageStatusSuccess,
 		DurationMillis:   durationMillis(patternStart),
-		PatternsVerified: uint32(len(result.GraphPathPatterns)),
+		PatternsVerified: boundedUint32(len(result.GraphPathPatterns)),
 	})
 
 	topologyStart := time.Now()
@@ -366,7 +367,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		Name:            "verify_topology",
 		Status:          stageStatusSuccess,
 		DurationMillis:  durationMillis(topologyStart),
-		TopologyBuckets: uint32(len(result.GraphTopology)),
+		TopologyBuckets: boundedUint32(len(result.GraphTopology)),
 	})
 
 	traversalStart := time.Now()
@@ -379,9 +380,19 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		Name:               "verify_traversals",
 		Status:             stageStatusSuccess,
 		DurationMillis:     durationMillis(traversalStart),
-		TraversalsVerified: uint32(len(result.GraphTraversals)),
+		TraversalsVerified: boundedUint32(len(result.GraphTraversals)),
 	})
 	return result, nil
+}
+
+func boundedUint32(value int) uint32 {
+	if value <= 0 {
+		return 0
+	}
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(value)
 }
 
 func (s *Service) lookupSource(id string) (sourcecdk.Source, error) {
@@ -515,10 +526,11 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 			return nil, fmt.Errorf("read source page %d: %w", page+1, err)
 		}
 		summary.PagesRead++
-		summary.EventsRead += uint32(len(pull.Events))
+		eventsRead := boundedUint32(len(pull.Events))
+		summary.EventsRead += eventsRead
 		pageSummary := &ReadPagePreview{
 			Page:             page + 1,
-			Events:           uint32(len(pull.Events)),
+			Events:           eventsRead,
 			CheckpointCursor: checkpointCursor(pull.Checkpoint),
 			NextCursor:       nextCursor(pull.NextCursor),
 			Watermark:        formatWatermark(pull.Checkpoint),

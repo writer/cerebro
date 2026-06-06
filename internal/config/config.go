@@ -287,7 +287,7 @@ func Load() (Config, error) {
 			},
 		},
 	}
-	authEnabled, err := parseBoolEnv("CEREBRO_API_AUTH_ENABLED", false)
+	authEnabled, err := parseBoolEnv("CEREBRO_API_AUTH_ENABLED")
 	if err != nil {
 		return Config{}, err
 	}
@@ -438,10 +438,10 @@ func validateRequestOriginConfig(cfg RequestOriginConfig) error {
 	return nil
 }
 
-func parseBoolEnv(name string, defaultValue bool) (bool, error) {
+func parseBoolEnv(name string) (bool, error) {
 	raw, ok := os.LookupEnv(name)
 	if !ok || strings.TrimSpace(raw) == "" {
-		return defaultValue, nil
+		return false, nil
 	}
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "1", "t", "true", "y", "yes", "on":

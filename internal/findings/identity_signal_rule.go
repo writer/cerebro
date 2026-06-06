@@ -581,7 +581,7 @@ func identityCounterEventAnchor(attributes map[string]string, fields ...string) 
 }
 
 func identityAdminPrivilegeCloseAnchor(event Event) (string, bool) {
-	attributes := identityCounterEventAttributes(event, nil)
+	attributes := identityCounterEventAttributes(event)
 	if !identityRoleAssignmentInactive(attributes) && !identityPrivilegeExplicitlyRemoved(attributes) {
 		return "", false
 	}
@@ -594,7 +594,7 @@ func identityMFACloseAnchor(event Event) (string, bool) {
 	if !identityMFAEnabled(attributes) {
 		return "", false
 	}
-	anchor := identityUserAnchor(identityCounterEventAttributes(event, nil))
+	anchor := identityUserAnchor(identityCounterEventAttributes(event))
 	return anchor, anchor != ""
 }
 
@@ -603,7 +603,7 @@ func identityAPITokenOrOAuthCloseAnchor(event Event) (string, bool) {
 	if !identityAPITokenOrOAuthInactive(attributes) {
 		return "", false
 	}
-	anchor := identityAPITokenOrOAuthAnchor(identityCounterEventAttributes(event, nil))
+	anchor := identityAPITokenOrOAuthAnchor(identityCounterEventAttributes(event))
 	return anchor, anchor != ""
 }
 
@@ -612,7 +612,7 @@ func identityExternalGroupMemberCloseAnchor(event Event) (string, bool) {
 	if identityGroupMembershipActiveOrUnknown(attributes) {
 		return "", false
 	}
-	anchor := identityExternalGroupMemberAnchor(identityCounterEventAttributes(event, nil))
+	anchor := identityExternalGroupMemberAnchor(identityCounterEventAttributes(event))
 	return anchor, anchor != ""
 }
 
@@ -624,7 +624,7 @@ func identityPrivilegedWithoutMFACloseAnchor(event Event) (string, bool) {
 	if !identityMFAEnabled(attributes) && !identityPrivilegeExplicitlyRemoved(attributes) {
 		return "", false
 	}
-	anchor := identityUserAnchor(identityCounterEventAttributes(event, nil))
+	anchor := identityUserAnchor(identityCounterEventAttributes(event))
 	return anchor, anchor != ""
 }
 
@@ -636,11 +636,11 @@ func identityStalePrivilegedCloseAnchor(event Event) (string, bool) {
 	if !identityStalePrivilegedRemediated(attributes) {
 		return "", false
 	}
-	anchor := identityUserAnchor(identityCounterEventAttributes(event, nil))
+	anchor := identityUserAnchor(identityCounterEventAttributes(event))
 	return anchor, anchor != ""
 }
 
-func identityCounterEventAttributes(event Event, projection *findingProjectionContext) map[string]string {
+func identityCounterEventAttributes(event Event) map[string]string {
 	if event == nil {
 		return nil
 	}
@@ -649,9 +649,6 @@ func identityCounterEventAttributes(event Event, projection *findingProjectionCo
 		attributes = map[string]string{}
 	}
 	context := findingProjectionContext{}
-	if projection != nil {
-		context = *projection
-	}
 	if value := identityCredentialID(attributes); value != "" {
 		attributes["credential_id"] = value
 	}
@@ -1000,7 +997,7 @@ func matchesIdentityAdminPrivilegeGranted(event *cerebrov1.EventEnvelope, attrib
 	if !identityAssignmentActiveOrUnknown(attributes) {
 		return false
 	}
-	if identityAdminPrivilegeAnchor(identityCounterEventAttributes(event, nil)) == "" {
+	if identityAdminPrivilegeAnchor(identityCounterEventAttributes(event)) == "" {
 		return false
 	}
 	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole) {

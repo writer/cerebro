@@ -173,7 +173,7 @@ func listOrganizationsPolicies(ctx context.Context, clients awsClients, _ settin
 		for {
 			output, err := clients.organizations.ListPolicies(ctx, &organizations.ListPoliciesInput{
 				Filter:     policyType,
-				MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 20))),
+				MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 20)),
 				NextToken:  next,
 			})
 			if err != nil {
@@ -295,7 +295,7 @@ func listSSOAccountAssignments(ctx context.Context, clients awsClients, settings
 						AccountId:        awssdk.String(accountID),
 						InstanceArn:      awssdk.String(instance.InstanceARN),
 						PermissionSetArn: awssdk.String(permissionSet.PermissionSetARN),
-						MaxResults:       awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+						MaxResults:       awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 						NextToken:        next,
 					})
 					if err != nil {
@@ -343,7 +343,7 @@ func listIdentityStoreUsers(ctx context.Context, clients awsClients, settings se
 		for {
 			output, err := clients.identityStore.ListUsers(ctx, &identitystore.ListUsersInput{
 				IdentityStoreId: awssdk.String(storeID),
-				MaxResults:      awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+				MaxResults:      awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 				NextToken:       next,
 			})
 			if err != nil {
@@ -385,7 +385,7 @@ func listIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, 
 			output, err := clients.identityStore.ListGroupMemberships(ctx, &identitystore.ListGroupMembershipsInput{
 				GroupId:         awssdk.String(group.GroupID),
 				IdentityStoreId: awssdk.String(group.IdentityStoreID),
-				MaxResults:      awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+				MaxResults:      awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 				NextToken:       next,
 			})
 			if err != nil {
