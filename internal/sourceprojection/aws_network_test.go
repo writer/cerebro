@@ -71,9 +71,19 @@ func TestProjectAWSGlobalAcceleratorNetworkRelationships(t *testing.T) {
 	listenerURNProjected := "urn:cerebro:writer:aws_globalaccelerator_listener:" + listenerARN
 	endpointGroupURNProjected := "urn:cerebro:writer:aws_globalaccelerator_endpoint_group:" + endpointGroupARN
 	endpointURNProjected := "urn:cerebro:writer:aws_globalaccelerator_endpoint:" + endpointARN
-	assertProjectedLink(t, state, listenerURNProjected, relationBelongsTo, acceleratorURN)
-	assertProjectedLink(t, state, endpointGroupURNProjected, relationBelongsTo, listenerURNProjected)
-	assertProjectedLink(t, state, endpointGroupURNProjected, relationTargeted, endpointURNProjected)
+	accountURN := "urn:cerebro:writer:cloud_account:123456789012"
+	classificationURN := "urn:cerebro:writer:data_classification"
+	assertProjectedLinkSet(t, state,
+		wantProjectedLink(acceleratorURN, relationBelongsTo, accountURN),
+		wantProjectedLink(acceleratorURN, relationHasClassification, classificationURN),
+		wantProjectedLink(listenerURNProjected, relationBelongsTo, accountURN),
+		wantProjectedLink(listenerURNProjected, relationBelongsTo, acceleratorURN),
+		wantProjectedLink(listenerURNProjected, relationHasClassification, classificationURN),
+		wantProjectedLink(endpointGroupURNProjected, relationBelongsTo, accountURN),
+		wantProjectedLink(endpointGroupURNProjected, relationBelongsTo, listenerURNProjected),
+		wantProjectedLink(endpointGroupURNProjected, relationHasClassification, classificationURN),
+		wantProjectedLink(endpointGroupURNProjected, relationTargeted, endpointURNProjected),
+	)
 }
 
 func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
@@ -138,9 +148,21 @@ func TestProjectAWSVPCLatticeNetworkRelationships(t *testing.T) {
 	serviceURNProjected := "urn:cerebro:writer:aws_vpclattice_service:" + serviceARN
 	listenerURNProjected := "urn:cerebro:writer:aws_vpclattice_listener:" + listenerARN
 	targetGroupURNProjected := "urn:cerebro:writer:aws_vpclattice_target_group:" + targetGroupARN
-	assertProjectedLink(t, state, listenerURNProjected, relationBelongsTo, serviceURNProjected)
-	assertProjectedLink(t, state, targetGroupURNProjected, relationBelongsTo, serviceURNProjected)
-	assertProjectedLink(t, state, targetGroupURNProjected, relationBelongsTo, "urn:cerebro:writer:aws_vpc:vpc-1")
+	accountURN := "urn:cerebro:writer:cloud_account:123456789012"
+	classificationURN := "urn:cerebro:writer:data_classification"
+	vpcURN := "urn:cerebro:writer:aws_vpc:vpc-1"
+	assertProjectedLinkSet(t, state,
+		wantProjectedLink(serviceURNProjected, relationBelongsTo, accountURN),
+		wantProjectedLink(serviceURNProjected, relationHasClassification, classificationURN),
+		wantProjectedLink(listenerURNProjected, relationBelongsTo, accountURN),
+		wantProjectedLink(listenerURNProjected, relationBelongsTo, serviceURNProjected),
+		wantProjectedLink(listenerURNProjected, relationHasClassification, classificationURN),
+		wantProjectedLink(targetGroupURNProjected, relationBelongsTo, accountURN),
+		wantProjectedLink(targetGroupURNProjected, relationBelongsTo, serviceURNProjected),
+		wantProjectedLink(targetGroupURNProjected, relationBelongsTo, vpcURN),
+		wantProjectedLink(targetGroupURNProjected, relationHasClassification, classificationURN),
+		wantProjectedLink(vpcURN, relationBelongsTo, accountURN),
+	)
 }
 
 func TestProjectAWSNetworkSubstrateRelationships(t *testing.T) {
@@ -219,14 +241,27 @@ func TestProjectAWSNetworkSubstrateRelationships(t *testing.T) {
 	routeTableURN := "urn:cerebro:writer:aws_route_table:rtb-123"
 	vpcEndpointURN := "urn:cerebro:writer:aws_vpc_endpoint:vpce-123"
 	vpcURN := "urn:cerebro:writer:aws_vpc:vpc-123"
-	assertProjectedLink(t, state, subnetURN, relationBelongsTo, vpcURN)
-	assertProjectedLink(t, state, securityGroupURN, relationBelongsTo, vpcURN)
-	assertProjectedLink(t, state, routeTableURN, relationBelongsTo, vpcURN)
-	assertProjectedLink(t, state, routeTableURN, relationAssociatedWith, subnetURN)
-	assertProjectedLink(t, state, routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_internet_gateway:igw-123")
-	assertProjectedLink(t, state, routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_nat_gateway:nat-123")
-	assertProjectedLink(t, state, vpcEndpointURN, relationBelongsTo, vpcURN)
-	assertProjectedLink(t, state, vpcEndpointURN, relationBelongsTo, subnetURN)
-	assertProjectedLink(t, state, vpcEndpointURN, relationMemberOf, securityGroupURN)
-	assertProjectedLink(t, state, vpcEndpointURN, relationAssociatedWith, routeTableURN)
+	accountURN := "urn:cerebro:writer:cloud_account:123456789012"
+	classificationURN := "urn:cerebro:writer:data_classification"
+	assertProjectedLinkSet(t, state,
+		wantProjectedLink(subnetURN, relationBelongsTo, accountURN),
+		wantProjectedLink(subnetURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(subnetURN, relationHasClassification, classificationURN),
+		wantProjectedLink(securityGroupURN, relationBelongsTo, accountURN),
+		wantProjectedLink(securityGroupURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(securityGroupURN, relationHasClassification, classificationURN),
+		wantProjectedLink(routeTableURN, relationBelongsTo, accountURN),
+		wantProjectedLink(routeTableURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(routeTableURN, relationHasClassification, classificationURN),
+		wantProjectedLink(vpcURN, relationBelongsTo, accountURN),
+		wantProjectedLink(routeTableURN, relationAssociatedWith, subnetURN),
+		wantProjectedLink(routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_internet_gateway:igw-123"),
+		wantProjectedLink(routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_nat_gateway:nat-123"),
+		wantProjectedLink(vpcEndpointURN, relationBelongsTo, accountURN),
+		wantProjectedLink(vpcEndpointURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(vpcEndpointURN, relationBelongsTo, subnetURN),
+		wantProjectedLink(vpcEndpointURN, relationHasClassification, classificationURN),
+		wantProjectedLink(vpcEndpointURN, relationMemberOf, securityGroupURN),
+		wantProjectedLink(vpcEndpointURN, relationAssociatedWith, routeTableURN),
+	)
 }

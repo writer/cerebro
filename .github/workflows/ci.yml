@@ -22,7 +22,7 @@ jobs:
           - name: race
             command: make test-race
           - name: coverage
-            command: make test-coverage
+            command: make cover
           - name: sdk
             command: make sdk-test
           - name: sdk-dependency-audit

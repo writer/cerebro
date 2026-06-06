@@ -3,6 +3,7 @@ package sourceprojection
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -4324,6 +4325,71 @@ func assertProjectedLinkMissing(t *testing.T, recorder *projectionRecorder, from
 	if _, ok := recorder.links[key]; ok {
 		t.Fatalf("projected link %q unexpectedly present; links=%v", key, recorder.links)
 	}
+}
+
+type projectedLinkExpectation struct {
+	fromURN  string
+	relation string
+	toURN    string
+}
+
+func wantProjectedLink(fromURN string, relation string, toURN string) projectedLinkExpectation {
+	return projectedLinkExpectation{fromURN: fromURN, relation: relation, toURN: toURN}
+}
+
+func assertProjectedLinkSet(t *testing.T, recorder *projectionRecorder, want ...projectedLinkExpectation) {
+	t.Helper()
+	actualKeys := make([]string, 0, len(recorder.links))
+	for key := range recorder.links {
+		actualKeys = append(actualKeys, key)
+	}
+	wantKeys := make([]string, 0, len(want))
+	for _, link := range want {
+		wantKeys = append(wantKeys, link.fromURN+"|"+link.relation+"|"+link.toURN)
+	}
+	sort.Strings(actualKeys)
+	sort.Strings(wantKeys)
+	if stringSlicesEqual(actualKeys, wantKeys) {
+		return
+	}
+	t.Fatalf("projected link set mismatch\nmissing:\n%s\nunexpected:\n%s\nactual:\n%s",
+		formatProjectedLinkKeys(diffStringSlices(wantKeys, actualKeys)),
+		formatProjectedLinkKeys(diffStringSlices(actualKeys, wantKeys)),
+		formatProjectedLinkKeys(actualKeys),
+	)
+}
+
+func stringSlicesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func diffStringSlices(left []string, right []string) []string {
+	rightSet := map[string]struct{}{}
+	for _, value := range right {
+		rightSet[value] = struct{}{}
+	}
+	var diff []string
+	for _, value := range left {
+		if _, ok := rightSet[value]; !ok {
+			diff = append(diff, value)
+		}
+	}
+	return diff
+}
+
+func formatProjectedLinkKeys(keys []string) string {
+	if len(keys) == 0 {
+		return "(none)"
+	}
+	return strings.Join(keys, "\n")
 }
 
 func mustJSON(t *testing.T, value any) []byte {

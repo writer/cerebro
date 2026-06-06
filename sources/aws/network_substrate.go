@@ -50,7 +50,7 @@ func listSecurityGroups(ctx context.Context, clients awsClients, _ settings, cur
 
 func listRouteTables(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.RouteTable, string, error) {
 	out, err := clients.ec2.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
-		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 100)),
 		NextToken:  stringPtr(cursor),
 	})
 	if err != nil {

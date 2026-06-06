@@ -3342,6 +3342,22 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 	}
 }
 
+func TestListRouteTablesCapsMaxResultsAtAWSLimit(t *testing.T) {
+	fake := &recordingAWS{}
+	_, _, err := listRouteTables(context.Background(), awsClients{
+		awsPlatformClients: awsPlatformClients{ec2: fake},
+	}, settings{}, "", 200)
+	if err != nil {
+		t.Fatalf("listRouteTables() error = %v", err)
+	}
+	if len(fake.routeTableMaxResults) != 1 {
+		t.Fatalf("DescribeRouteTables calls = %d, want 1", len(fake.routeTableMaxResults))
+	}
+	if got := fake.routeTableMaxResults[0]; got != 100 {
+		t.Fatalf("DescribeRouteTables MaxResults = %d, want 100", got)
+	}
+}
+
 func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
 	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{
 		awsPlatformClients: awsPlatformClients{
@@ -4087,7 +4103,8 @@ type fakeAWSCompute struct {
 
 type recordingAWS struct {
 	fakeAWS
-	calls []string
+	calls                []string
+	routeTableMaxResults []int32
 }
 
 func (f *recordingAWS) record(action string) {
@@ -4311,6 +4328,7 @@ func (f *recordingAWS) DescribeSubnets(ctx context.Context, input *ec2.DescribeS
 
 func (f *recordingAWS) DescribeRouteTables(ctx context.Context, input *ec2.DescribeRouteTablesInput, options ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
 	f.record("ec2:DescribeRouteTables")
+	f.routeTableMaxResults = append(f.routeTableMaxResults, awssdk.ToInt32(input.MaxResults))
 	return f.fakeAWS.DescribeRouteTables(ctx, input, options...)
 }
 

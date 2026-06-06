@@ -9,18 +9,21 @@ import (
 
 const newSourcePackageLOCBudget = 300
 
+// Grandfathered budgets are exact current nonblank Go LOC ceilings for legacy
+// sources. If a source shrinks, lower its ceiling in the same change; if a
+// source grows, move shared behavior into the Source CDK instead of raising it.
 var grandfatheredSourcePackageLOCBudgets = map[string]int{
-	"aurelius":        700,
+	"aurelius":        656,
 	"aws":             16222,
-	"azure":           2600,
-	"cosmo":           1300,
-	"gcp":             2200,
-	"github":          2300,
-	"googleworkspace": 900,
-	"grc":             1600,
-	"okta":            2600,
-	"sentinelone":     2400,
-	"vulnview":        1300,
+	"azure":           2599,
+	"cosmo":           1112,
+	"gcp":             2142,
+	"github":          2275,
+	"googleworkspace": 827,
+	"grc":             1378,
+	"okta":            2454,
+	"sentinelone":     2181,
+	"vulnview":        1064,
 }
 
 func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {
@@ -83,7 +86,21 @@ func TestSourcePackagesStayWithinLOCBudget(t *testing.T) {
 			t.Fatalf("count source LOC for %s: %v", entry.Name(), err)
 		}
 		if lines > limit {
-			t.Fatalf("sources/%s has %d Go LOC, budget is %d; move shared I/O/pagination logic into sources/internal or raise the ratchet intentionally", entry.Name(), lines, limit)
+			t.Fatalf("sources/%s has %d Go LOC, budget is %d; move shared I/O/pagination logic into the Source CDK instead of raising the ratchet", entry.Name(), lines, limit)
+		}
+	}
+}
+
+func TestGrandfatheredSourceLOCBudgetsRatchetDownToCurrentSize(t *testing.T) {
+	root := repoRoot(t)
+	sourceRoot := filepath.Join(root, "sources")
+	for name, budget := range grandfatheredSourcePackageLOCBudgets {
+		lines, err := sourcePackageGoLines(filepath.Join(sourceRoot, name))
+		if err != nil {
+			t.Fatalf("count source LOC for %s: %v", name, err)
+		}
+		if lines != budget {
+			t.Fatalf("sources/%s has %d Go LOC but grandfathered budget is %d; keep legacy source budgets as exact no-growth ceilings", name, lines, budget)
 		}
 	}
 }
