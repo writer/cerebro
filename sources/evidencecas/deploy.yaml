@@ -1,0 +1,13 @@
+sourceId: evidence_cas
+secretKeys:
+  - EVIDENCE_CAS_BASE_URL
+  - EVIDENCE_CAS_TOKEN
+  - EVIDENCE_CAS_TENANT_ID
+runtimes:
+  - localId: object
+    config:
+      base_url: env:EVIDENCE_CAS_BASE_URL
+      family: object
+      per_page: "100"
+      token: env:EVIDENCE_CAS_TOKEN
+      tenant_id: env:EVIDENCE_CAS_TENANT_ID
