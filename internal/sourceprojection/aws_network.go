@@ -7,6 +7,10 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+type awsNetworkSubstrateContext func(map[string]*ports.ProjectedEntity, map[string]*ports.ProjectedLink, string, string, *cerebrov1.EventEnvelope, string, map[string]string)
+
+type awsNetworkSubstrateExtra func(map[string]*ports.ProjectedEntity, map[string]*ports.ProjectedLink, string, string, *cerebrov1.EventEnvelope, map[string]string)
+
 func awsGlobalAcceleratorAcceleratorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return awsCloudResourceProjections(event)
 }
@@ -24,7 +28,7 @@ func awsSecurityGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 }
 
 func awsRouteTableProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return awsNetworkSubstrateProjections(event, func(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, resourceURN string, event *cerebrov1.EventEnvelope, attributes map[string]string) {
+	return awsNetworkSubstrateProjectionsWithContext(event, addAWSNetworkVPCContextLink, func(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, resourceURN string, event *cerebrov1.EventEnvelope, attributes map[string]string) {
 		sourceID := event.GetSourceId()
 		accountID := strings.TrimSpace(attributes["domain"])
 		for _, subnetID := range splitCloudAttributeList(attributes["subnet_ids"]) {
@@ -65,7 +69,11 @@ func awsVPCEndpointProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	})
 }
 
-func awsNetworkSubstrateProjections(event *cerebrov1.EventEnvelope, extra func(map[string]*ports.ProjectedEntity, map[string]*ports.ProjectedLink, string, string, *cerebrov1.EventEnvelope, map[string]string)) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func awsNetworkSubstrateProjections(event *cerebrov1.EventEnvelope, extra awsNetworkSubstrateExtra) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateProjectionsWithContext(event, addAWSNetworkContextLinks, extra)
+}
+
+func awsNetworkSubstrateProjectionsWithContext(event *cerebrov1.EventEnvelope, contextLinks awsNetworkSubstrateContext, extra awsNetworkSubstrateExtra) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	entities, links, err := awsCloudResourceProjections(event)
 	if err != nil {
 		return nil, nil, err
@@ -82,11 +90,22 @@ func awsNetworkSubstrateProjections(event *cerebrov1.EventEnvelope, extra func(m
 	if resourceURN == "" {
 		return identityProjectionResult(entityMap, linkMap)
 	}
-	addAWSNetworkContextLinks(entityMap, linkMap, tenantID, event.GetSourceId(), event, resourceURN, attributes)
+	if contextLinks != nil {
+		contextLinks(entityMap, linkMap, tenantID, event.GetSourceId(), event, resourceURN, attributes)
+	}
 	if extra != nil {
 		extra(entityMap, linkMap, tenantID, resourceURN, event, attributes)
 	}
 	return identityProjectionResult(entityMap, linkMap)
+}
+
+func addAWSNetworkVPCContextLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, resourceURN string, attributes map[string]string) {
+	accountID := strings.TrimSpace(attributes["domain"])
+	vpcURN := addAWSNetworkNode(entities, tenantID, sourceID, "aws_vpc", "aws.vpc", firstNonEmpty(attributes["vpc_id"], attributes["vpc"]), accountID)
+	if vpcURN != "" {
+		addLink(links, projectedLink(tenantID, sourceID, resourceURN, vpcURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "aws_compute_vpc"}))
+		addCloudAccountLink(entities, links, tenantID, sourceID, event, vpcURN, accountID, "aws")
+	}
 }
 
 func awsNetworkSubstrateVPCOnlyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

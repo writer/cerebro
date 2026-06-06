@@ -223,6 +223,7 @@ func TestProjectAWSNetworkSubstrateRelationships(t *testing.T) {
 	assertProjectedLink(t, state, securityGroupURN, relationBelongsTo, vpcURN)
 	assertProjectedLink(t, state, routeTableURN, relationBelongsTo, vpcURN)
 	assertProjectedLink(t, state, routeTableURN, relationAssociatedWith, subnetURN)
+	assertProjectedLinkMissing(t, state, routeTableURN, relationBelongsTo, subnetURN)
 	assertProjectedLink(t, state, routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_internet_gateway:igw-123")
 	assertProjectedLink(t, state, routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_nat_gateway:nat-123")
 	assertProjectedLink(t, state, vpcEndpointURN, relationBelongsTo, vpcURN)
