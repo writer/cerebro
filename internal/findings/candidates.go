@@ -269,6 +269,8 @@ func (s *Service) GetFindingCandidate(ctx context.Context, id string) (*ports.Fi
 
 // PromoteFindingCandidate turns one reviewed candidate snapshot into production
 // finding state and records an audit decision for the promotion.
+// Candidate lifecycle transitions rely on store-owned compare-and-swap updates:
+// MarkFindingCandidatePromoted/Rejected only mutate rows still in candidate state.
 func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCandidateRequest) (*PromoteCandidateResult, error) {
 	if s == nil || s.candidateStore == nil || s.store == nil || s.evidenceStore == nil {
 		return nil, ErrRuntimeUnavailable
