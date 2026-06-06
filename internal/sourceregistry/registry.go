@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	agentcachesource "github.com/writer/cerebro/sources/agentcache"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
@@ -29,6 +30,12 @@ type builtinSourceLoader struct {
 }
 
 var builtinSourceLoaders = []builtinSourceLoader{
+	{
+		name: "agentcache",
+		load: func() (sourcecdk.Source, error) {
+			return agentcachesource.New()
+		},
+	},
 	{
 		name: "aurelius",
 		load: func() (sourcecdk.Source, error) {
