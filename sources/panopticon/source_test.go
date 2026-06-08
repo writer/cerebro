@@ -174,6 +174,8 @@ func TestReadRejectsInvalidEnvelopesAndFamilyContracts(t *testing.T) {
 		{"wrong-source", withSource(validAlert("alert-1", fixed), "other"), "source_id"},
 		{"unsupported-kind", withKind(validAlert("alert-1", fixed), kindCase, schemaRefCase), "kind"},
 		{"schema-mismatch", withKind(validAlert("alert-1", fixed), kindAlert, "panopticon/alert/v2"), "schema_ref"},
+		{"missing-tenant", withTenant(validAlert("alert-1", fixed), ""), "tenant_id"},
+		{"blank-tenant", withTenant(validAlert("alert-1", fixed), "  "), "tenant_id"},
 		{"missing-title", withoutPayloadField(validAlert("alert-1", fixed), "title"), "title"},
 		{"empty-required-attribute", withAttribute(validAlert("alert-1", fixed), "severity", ""), "severity"},
 		{"mismatched-attribute-payload", withAttribute(validAlert("alert-1", fixed), "status", "closed"), "does not match"},
@@ -187,6 +189,58 @@ func TestReadRejectsInvalidEnvelopesAndFamilyContracts(t *testing.T) {
 				t.Fatalf("Read() error = %v, want containing %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestReadRejectsPayloadSynthesizedRequiredAttributesForAllFamilies(t *testing.T) {
+	fixed := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name      string
+		family    string
+		prefix    string
+		record    panopticonRecord
+		missing   string
+		wantError string
+	}{
+		{name: "alert", family: familyAlert, prefix: "alerts/", record: validAlert("alert-1", fixed), missing: "severity", wantError: "severity"},
+		{name: "case", family: familyCase, prefix: "cases/", record: validCase("case-1", fixed), missing: "status", wantError: "status"},
+		{name: "ioc", family: familyIOC, prefix: "iocs/", record: validIOC("ioc-1", fixed), missing: "value", wantError: "value"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			record := withoutAttribute(tc.record, tc.missing)
+			src := newTestSource(t, newFakeS3([]fakeObject{{key: tc.prefix + "bad.ndjson", records: []panopticonRecord{record}}}))
+			_, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"family": tc.family, "bucket": "writer-panopticon-exports", "prefix": tc.prefix, "tenant_id": "writer"}), nil)
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("Read() error = %v, want containing %q", err, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestFamilyValidationFailureDoesNotAdvanceCheckpoint(t *testing.T) {
+	fixed := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	client := newFakeS3([]fakeObject{
+		{key: "alerts/001-good.ndjson", records: []panopticonRecord{validAlert("good", fixed)}},
+		{key: "alerts/002-bad.ndjson", records: []panopticonRecord{withoutAttribute(validAlert("bad", fixed.Add(time.Minute)), "status")}},
+	})
+	src := newTestSource(t, client)
+	cfg := sourcecdk.NewConfig(map[string]string{"family": familyAlert, "bucket": "writer-panopticon-exports", "prefix": "alerts/", "tenant_id": "writer"})
+
+	pull, err := src.Read(context.Background(), cfg, nil)
+	if err == nil || !strings.Contains(err.Error(), "status") {
+		t.Fatalf("Read() error = %v, want required status failure", err)
+	}
+	if len(pull.Events) != 0 || pull.Checkpoint != nil || pull.NextCursor != nil {
+		t.Fatalf("failed pull advanced state: events=%d checkpoint=%v next=%v", len(pull.Events), pull.Checkpoint, pull.NextCursor)
+	}
+
+	retry, err := src.Read(context.Background(), cfg, nil)
+	if err == nil || !strings.Contains(err.Error(), "status") {
+		t.Fatalf("Read(retry) error = %v, want same required status failure", err)
+	}
+	if len(retry.Events) != 0 || retry.Checkpoint != nil || retry.NextCursor != nil {
+		t.Fatalf("failed retry advanced state: events=%d checkpoint=%v next=%v", len(retry.Events), retry.Checkpoint, retry.NextCursor)
 	}
 }
 
@@ -209,6 +263,29 @@ func TestReadRejectsMalformedArchivesDeterministically(t *testing.T) {
 	_, err := src.Read(context.Background(), cfg, nil)
 	if err == nil || !strings.Contains(err.Error(), "gunzip") {
 		t.Fatalf("Read() invalid gzip error = %v, want gunzip", err)
+	}
+}
+
+func TestReadEnforcesRawAndGzipDecompressedObjectSizeLimits(t *testing.T) {
+	rawTooLarge := newFakeS3([]fakeObject{{key: "alerts/too-large.ndjson", rawBody: bytes.Repeat([]byte{'x'}, maxObjectBytes+1)}})
+	src := newTestSource(t, rawTooLarge)
+	cfg := sourcecdk.NewConfig(map[string]string{"family": familyAlert, "bucket": "writer-panopticon-exports", "prefix": "alerts/", "tenant_id": "writer"})
+	_, err := src.Read(context.Background(), cfg, nil)
+	if err == nil || !strings.Contains(err.Error(), "object exceeds") {
+		t.Fatalf("Read() oversized raw object error = %v, want object exceeds", err)
+	}
+
+	compressed := &bytes.Buffer{}
+	gz := gzip.NewWriter(compressed)
+	if _, err := gz.Write(bytes.Repeat([]byte{'a'}, 128)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	_, err = readArchiveRecords(bytes.NewReader(compressed.Bytes()), "oversized.ndjson.gz", 64)
+	if !errors.Is(err, ErrDecompressedObjectTooLarge) {
+		t.Fatalf("readArchiveRecords() decompressed size error = %v, want ErrDecompressedObjectTooLarge", err)
 	}
 }
 
@@ -358,6 +435,10 @@ func withAttribute(rec panopticonRecord, key, value string) panopticonRecord {
 }
 func withoutPayloadField(rec panopticonRecord, key string) panopticonRecord {
 	delete(rec.Payload, key)
+	return rec
+}
+func withoutAttribute(rec panopticonRecord, key string) panopticonRecord {
+	delete(rec.Attributes, key)
 	return rec
 }
 

@@ -478,7 +478,14 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 		}
 		for recordIndex := startRecord; recordIndex < len(recs); recordIndex++ {
 			rec := recs[recordIndex]
-			if recordTenant := strings.TrimSpace(rec.TenantID); recordTenant != "" && recordTenant != st.tenantID {
+			recordTenant := strings.TrimSpace(rec.TenantID)
+			if recordTenant == "" {
+				return sourcecdk.Pull{}, fmt.Errorf("invalid event in s3://%s/%s: tenant_id is required", st.bucket, key)
+			}
+			if recordTenant != rec.TenantID {
+				return sourcecdk.Pull{}, fmt.Errorf("invalid event in s3://%s/%s: tenant_id must not have leading or trailing whitespace", st.bucket, key)
+			}
+			if recordTenant != st.tenantID {
 				continue
 			}
 			if st.runtimeID != "" && strings.TrimSpace(rec.Attributes["runtime_id"]) != "" && strings.TrimSpace(rec.Attributes["runtime_id"]) != st.runtimeID {
@@ -650,13 +657,16 @@ func buildEvent(st settings, rec panopticonRecord, kind, schemaRef string) (*pri
 	if rec.Payload == nil {
 		return nil, errors.New("payload is required")
 	}
+	if err := validateRawFamilyContract(kind, rec.Attributes, rec.Payload); err != nil {
+		return nil, err
+	}
 	payload, err := json.Marshal(rec.Payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal payload: %w", err)
 	}
 	tenantID := strings.TrimSpace(rec.TenantID)
 	if tenantID == "" {
-		tenantID = st.tenantID
+		return nil, errors.New("tenant_id is required")
 	}
 	attributes := make(map[string]string, len(rec.Attributes))
 	for k, v := range rec.Attributes {
@@ -683,21 +693,40 @@ func sourcecdkEventContracts() []sourcecdk.EventContract {
 	}
 }
 
+func validateRawFamilyContract(kind string, attributes map[string]string, payload map[string]interface{}) error {
+	required, err := requiredAttributeKeys(kind)
+	if err != nil {
+		return err
+	}
+	for _, key := range required {
+		attribute, ok := attributes[key]
+		if !ok || strings.TrimSpace(attribute) == "" {
+			return fmt.Errorf("kind %q missing required attribute %q", kind, key)
+		}
+		payloadValue := payloadAttributeString(payload[key])
+		if payloadValue == "" {
+			return fmt.Errorf("kind %q missing required payload field %q", kind, key)
+		}
+		if payloadValue != strings.TrimSpace(attribute) {
+			return fmt.Errorf("kind %q attribute %q does not match payload", kind, key)
+		}
+	}
+	if kind == kindAlert || kind == kindCase {
+		if payloadAttributeString(payload["title"]) == "" {
+			return fmt.Errorf("kind %q missing required payload field %q", kind, "title")
+		}
+	}
+	return nil
+}
+
 func validateFamilyContract(event *primitives.Event) error {
 	payload := map[string]interface{}{}
 	if err := json.Unmarshal(event.GetPayload(), &payload); err != nil {
 		return fmt.Errorf("decode payload object: %w", err)
 	}
-	var required []string
-	switch event.GetKind() {
-	case kindAlert:
-		required = []string{"alert_id", "severity", "status"}
-	case kindCase:
-		required = []string{"case_id", "status"}
-	case kindIOC:
-		required = []string{"ioc_id", "ioc_type", "value"}
-	default:
-		return fmt.Errorf("unsupported kind %q", event.GetKind())
+	required, err := requiredAttributeKeys(event.GetKind())
+	if err != nil {
+		return err
 	}
 	for _, key := range required {
 		attribute := strings.TrimSpace(event.GetAttributes()[key])
@@ -718,6 +747,19 @@ func validateFamilyContract(event *primitives.Event) error {
 		}
 	}
 	return nil
+}
+
+func requiredAttributeKeys(kind string) ([]string, error) {
+	switch kind {
+	case kindAlert:
+		return []string{"alert_id", "severity", "status"}, nil
+	case kindCase:
+		return []string{"case_id", "status"}, nil
+	case kindIOC:
+		return []string{"ioc_id", "ioc_type", "value"}, nil
+	default:
+		return nil, fmt.Errorf("unsupported kind %q", kind)
+	}
 }
 
 func promotePayloadAttributes(kind string, attributes map[string]string, payload map[string]interface{}) {
