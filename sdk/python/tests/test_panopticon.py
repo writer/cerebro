@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import unittest
 from pathlib import Path
@@ -202,6 +203,83 @@ class PanopticonPushClaimTests(unittest.TestCase):
                 )
 
         self.assertEqual(RecordingClient.requests, [])
+
+    def test_runtime_config_cannot_override_reserved_panopticon_metadata(self) -> None:
+        raw_claims = [
+            {
+                "subject_urn": "urn:cerebro:acme:runtime:acme-panopticon-push:alert:alert-123",
+                "predicate": "exists",
+                "claim_type": "existence",
+            }
+        ]
+
+        with patch.object(panopticon, "Client", RecordingClient):
+            panopticon.onboard_panopticon_push_claims(
+                "https://cerebro.example.com",
+                "acme",
+                "acme-panopticon-push",
+                raw_claims,
+                runtime_config={
+                    "integration": "jira",
+                    "source": "not-panopticon",
+                    "mode": "legacy_claims_ndjson",
+                    "source_id": "panopticon",
+                    "tenant_id": "other",
+                    "workspace": "secops",
+                },
+            )
+
+        self.assertEqual(
+            RecordingClient.requests[0],
+            (
+                "PUT",
+                "/source-runtimes/acme-panopticon-push",
+                {
+                    "runtime": {
+                        "source_id": "sdk",
+                        "tenant_id": "acme",
+                        "config": {
+                            "integration": "panopticon",
+                            "workspace": "secops",
+                            "source": "panopticon",
+                            "mode": "push_claims",
+                        },
+                    }
+                },
+            ),
+        )
+
+    def test_example_urns_use_selected_tenant(self) -> None:
+        repo_root = Path(__file__).resolve().parents[3]
+        example_path = repo_root / "sdk" / "python" / "examples" / "panopticon_push_claims.py"
+        spec = importlib.util.spec_from_file_location("panopticon_push_claims_example", example_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        example = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(example)
+        captured = {}
+
+        def record_onboard(**kwargs):
+            captured.update(kwargs)
+            return {"ok": True}
+
+        env = {
+            "CEREBRO_TENANT_ID": "acme",
+            "CEREBRO_RUNTIME_ID": "acme-panopticon-push",
+            "CEREBRO_BASE_URL": "https://cerebro.example.com",
+            "CEREBRO_API_KEY": "test-key",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with patch.object(example, "onboard_panopticon_push_claims", record_onboard):
+                example.main()
+
+        self.assertEqual(captured["tenant_id"], "acme")
+        self.assertEqual(captured["runtime_id"], "acme-panopticon-push")
+        for claim in captured["claims"]:
+            self.assertIn("urn:cerebro:acme:runtime:acme-panopticon-push:", claim["subject_urn"])
+            self.assertNotIn("urn:cerebro:writer:", claim["subject_urn"])
+            if "subject_ref" in claim:
+                self.assertEqual(claim["subject_ref"]["urn"], claim["subject_urn"])
 
     def test_no_claim_archive_ingestion_route_or_source_is_registered(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

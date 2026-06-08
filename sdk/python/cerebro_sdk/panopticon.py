@@ -6,6 +6,7 @@ from .client import Client
 SUPPORTED_CLAIM_TYPES = frozenset(("existence", "attribute", "relation", "classification"))
 SUPPORTED_STATUSES = frozenset(("asserted", "retracted", "refuted", "superseded"))
 PANOPTICON_RUNTIME_CONFIG = {"source": "panopticon", "mode": "push_claims"}
+RESERVED_RUNTIME_CONFIG_KEYS = frozenset(("integration", "source", "mode", "source_id", "tenant_id"))
 
 CANONICAL_CLAIM_FIELDS = frozenset(
     (
@@ -78,12 +79,19 @@ def onboard_panopticon_push_claims(
     submitted_claims = build_panopticon_push_claims(claims)
     client = Client(base_url=base_url, api_key=api_key or None)
     integration = client.integration(runtime_id=runtime_id, tenant_id=tenant_id, integration="panopticon")
-    integration.ensure_runtime({**PANOPTICON_RUNTIME_CONFIG, **string_map(runtime_config or {}, "runtime_config")})
+    integration.ensure_runtime(panopticon_runtime_config(runtime_config or {}))
     write_result = integration.write_claims(submitted_claims, {"replace_existing": replace_existing})
     return {
         "write_result": write_result,
         "submitted_claims": submitted_claims,
     }
+
+
+def panopticon_runtime_config(value: Dict[str, Any]) -> Dict[str, str]:
+    caller_config = string_map(value, "runtime_config")
+    normalized = {key: item for key, item in caller_config.items() if key not in RESERVED_RUNTIME_CONFIG_KEYS}
+    normalized.update(PANOPTICON_RUNTIME_CONFIG)
+    return normalized
 
 
 def string_map(value: Dict[str, Any], name: str) -> Dict[str, str]:

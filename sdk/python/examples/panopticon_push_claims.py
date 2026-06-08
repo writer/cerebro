@@ -6,15 +6,16 @@ from cerebro_sdk import onboard_panopticon_push_claims
 
 
 def main() -> None:
+    tenant_id = optional_string(os.environ.get("CEREBRO_TENANT_ID")) or "writer"
     runtime_id = optional_string(os.environ.get("CEREBRO_RUNTIME_ID")) or "writer-panopticon-push"
     claims = [
         {
             "subject_ref": {
-                "urn": f"urn:cerebro:writer:runtime:{runtime_id}:alert:alert-123",
+                "urn": f"urn:cerebro:{tenant_id}:runtime:{runtime_id}:alert:alert-123",
                 "entity_type": "alert",
                 "label": "Alert 123",
             },
-            "subject_urn": f"urn:cerebro:writer:runtime:{runtime_id}:alert:alert-123",
+            "subject_urn": f"urn:cerebro:{tenant_id}:runtime:{runtime_id}:alert:alert-123",
             "predicate": "exists",
             "claim_type": "existence",
             "status": "asserted",
@@ -25,11 +26,11 @@ def main() -> None:
         },
         {
             "subject_ref": {
-                "urn": f"urn:cerebro:writer:runtime:{runtime_id}:alert:alert-123",
+                "urn": f"urn:cerebro:{tenant_id}:runtime:{runtime_id}:alert:alert-123",
                 "entity_type": "alert",
                 "label": "Alert 123",
             },
-            "subject_urn": f"urn:cerebro:writer:runtime:{runtime_id}:alert:alert-123",
+            "subject_urn": f"urn:cerebro:{tenant_id}:runtime:{runtime_id}:alert:alert-123",
             "predicate": "severity",
             "object_value": "high",
             "claim_type": "attribute",
@@ -43,7 +44,7 @@ def main() -> None:
     result = onboard_panopticon_push_claims(
         base_url=optional_string(os.environ.get("CEREBRO_BASE_URL")) or "http://127.0.0.1:8080",
         api_key=optional_string(os.environ.get("CEREBRO_API_KEY")),
-        tenant_id=optional_string(os.environ.get("CEREBRO_TENANT_ID")) or "writer",
+        tenant_id=tenant_id,
         runtime_id=runtime_id,
         claims=claims,
     )
