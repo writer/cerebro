@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -132,6 +135,56 @@ func TestReadPlainAndGzipArchivesForAllFamilies(t *testing.T) {
 				}
 				if err := sourcecdk.ValidateEventEnvelopeWithContracts(ev, sourcecdkEventContracts()); err != nil {
 					t.Fatalf("ValidateEventEnvelopeWithContracts() error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestReadPanopticonGeneratedArchivesForAllFamilies(t *testing.T) {
+	manifest := generateCrossRepoPanopticonArchives(t)
+	objects := make([]fakeObject, 0, len(manifest.Archives))
+	for _, archive := range manifest.Archives {
+		raw, err := os.ReadFile(archive.Path)
+		if err != nil {
+			t.Fatalf("read generated archive %s: %v", archive.Path, err)
+		}
+		objects = append(objects, fakeObject{key: archive.Key, rawBody: raw})
+	}
+	src := newTestSource(t, newFakeS3(objects))
+
+	for _, tc := range []struct {
+		family string
+		prefix string
+		kind   string
+	}{
+		{familyAlert, "exports/alerts/", kindAlert},
+		{familyCase, "exports/cases/", kindCase},
+		{familyIOC, "exports/iocs/", kindIOC},
+	} {
+		t.Run(tc.family, func(t *testing.T) {
+			pull, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"family": tc.family, "bucket": "panopticon-cross-repo-contract", "prefix": tc.prefix, "tenant_id": "writer"}), nil)
+			if err != nil {
+				t.Fatalf("Read(generated Panopticon %s archives) error = %v", tc.family, err)
+			}
+			if len(pull.Events) != 2 {
+				t.Fatalf("generated Panopticon %s events = %d, want 2 (.ndjson and .ndjson.gz)", tc.family, len(pull.Events))
+			}
+			for _, ev := range pull.Events {
+				if ev.GetTenantId() != "writer" || ev.GetSourceId() != sourceID || ev.GetKind() != tc.kind {
+					t.Fatalf("generated event scope = tenant %q source %q kind %q", ev.GetTenantId(), ev.GetSourceId(), ev.GetKind())
+				}
+				if err := sourcecdk.ValidateEventEnvelopeWithContracts(ev, sourcecdkEventContracts()); err != nil {
+					t.Fatalf("generated event failed source contract validation: %v", err)
+				}
+				payloadText := string(ev.GetPayload())
+				for _, forbidden := range []string{"DO-NOT-EXPORT-CONTENTS", "DO-NOT-EXPORT-BYTES", "DO-NOT-EXPORT-INLINE", "DO-NOT-EXPORT-RAW"} {
+					if strings.Contains(payloadText, forbidden) {
+						t.Fatalf("generated event payload included inline evidence marker %q", forbidden)
+					}
+				}
+				if tc.family == familyCase && !strings.Contains(payloadText, "evidencecas://cases/42/evidence/triage.tar") {
+					t.Fatalf("generated case payload did not preserve EvidenceCAS pointer: %s", payloadText)
 				}
 			}
 		})
@@ -395,6 +448,43 @@ func newTestSource(t *testing.T, client *fakeS3) *Source {
 		src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
 	}
 	return src
+}
+
+type crossRepoPanopticonArchiveManifest struct {
+	Archives []struct {
+		Family string `json:"family"`
+		Gzip   bool   `json:"gzip"`
+		Key    string `json:"key"`
+		Path   string `json:"path"`
+	} `json:"archives"`
+}
+
+func generateCrossRepoPanopticonArchives(t *testing.T) crossRepoPanopticonArchiveManifest {
+	t.Helper()
+	panopticonRepo := os.Getenv("PANOPTICON_REPO")
+	if panopticonRepo == "" {
+		panopticonRepo = filepath.Clean("../../../panopticon")
+	}
+	script := filepath.Join(panopticonRepo, "scripts", "generate_cerebro_contract_archives.py")
+	if _, err := os.Stat(script); err != nil {
+		t.Skipf("Panopticon cross-repo archive generator not available at %s: %v", script, err)
+	}
+	outputDir := t.TempDir()
+	cmd := exec.Command("python3", script, "--output-dir", outputDir)
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generate Panopticon cross-repo archives: %v\n%s", err, out)
+	}
+	raw, err := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read generated Panopticon manifest: %v", err)
+	}
+	var manifest crossRepoPanopticonArchiveManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("decode generated Panopticon manifest: %v", err)
+	}
+	return manifest
 }
 
 func validAlert(id string, occurredAt time.Time) panopticonRecord {

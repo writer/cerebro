@@ -2,13 +2,150 @@ package sourceprojection
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type crossRepoPanopticonArchiveManifest struct {
+	Archives []struct {
+		Family string `json:"family"`
+		Gzip   bool   `json:"gzip"`
+		Path   string `json:"path"`
+	} `json:"archives"`
+}
+
+type crossRepoPanopticonEvent struct {
+	ID         string            `json:"id"`
+	TenantID   string            `json:"tenant_id"`
+	SourceID   string            `json:"source_id"`
+	Kind       string            `json:"kind"`
+	OccurredAt time.Time         `json:"occurred_at"`
+	SchemaRef  string            `json:"schema_ref"`
+	Payload    map[string]any    `json:"payload"`
+	Attributes map[string]string `json:"attributes"`
+}
+
+func TestProjectPanopticonGeneratedCaseArchivePreservesEvidenceCASPointer(t *testing.T) {
+	manifest := generatePanopticonCrossRepoArchives(t)
+	var caseEvent crossRepoPanopticonEvent
+	for _, archive := range manifest.Archives {
+		if archive.Family != "case" || archive.Gzip {
+			continue
+		}
+		caseEvent = readOneCrossRepoPanopticonEvent(t, archive.Path)
+		break
+	}
+	if caseEvent.ID == "" {
+		t.Fatal("generated Panopticon case archive not found")
+	}
+
+	payload, err := json.Marshal(caseEvent.Payload)
+	if err != nil {
+		t.Fatalf("marshal generated case payload: %v", err)
+	}
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         caseEvent.ID,
+		TenantId:   caseEvent.TenantID,
+		SourceId:   caseEvent.SourceID,
+		Kind:       caseEvent.Kind,
+		SchemaRef:  caseEvent.SchemaRef,
+		OccurredAt: timestamppb.New(caseEvent.OccurredAt),
+		Payload:    payload,
+		Attributes: caseEvent.Attributes,
+	})
+	if err != nil {
+		t.Fatalf("Project(generated Panopticon case) error = %v", err)
+	}
+	if result.EntitiesProjected == 0 || result.LinksProjected == 0 {
+		t.Fatalf("generated Panopticon case projected no graph context: entities=%d links=%d", result.EntitiesProjected, result.LinksProjected)
+	}
+
+	var pointer *ports.ProjectedEntity
+	for _, entity := range state.entities {
+		if entity.EntityType == "evidence.cas.pointer" {
+			pointer = entity
+			break
+		}
+	}
+	if pointer == nil {
+		t.Fatal("generated Panopticon case did not project an EvidenceCAS pointer entity")
+	}
+	if got := pointer.Attributes["evidence_cas_uri"]; got != "evidencecas://cases/42/evidence/triage.tar" {
+		t.Fatalf("projected EvidenceCAS URI = %q", got)
+	}
+	if got := pointer.Attributes["sha256"]; got != "sha256:abc" {
+		t.Fatalf("projected EvidenceCAS digest = %q", got)
+	}
+	if got := pointer.Attributes["chain_of_custody_present"]; got != "true" {
+		t.Fatalf("projected chain_of_custody_present = %q", got)
+	}
+	serialized, err := json.Marshal(state.entities)
+	if err != nil {
+		t.Fatalf("marshal projected entities: %v", err)
+	}
+	for _, forbidden := range []string{"DO-NOT-EXPORT-CONTENTS", "DO-NOT-EXPORT-BYTES", "DO-NOT-EXPORT-INLINE", "DO-NOT-EXPORT-RAW"} {
+		if strings.Contains(string(serialized), forbidden) {
+			t.Fatalf("projected generated Panopticon archive included inline evidence bytes marker %q", forbidden)
+		}
+	}
+}
+
+func generatePanopticonCrossRepoArchives(t *testing.T) crossRepoPanopticonArchiveManifest {
+	t.Helper()
+	panopticonRepo := os.Getenv("PANOPTICON_REPO")
+	if panopticonRepo == "" {
+		panopticonRepo = filepath.Clean("../../../panopticon")
+	}
+	script := filepath.Join(panopticonRepo, "scripts", "generate_cerebro_contract_archives.py")
+	if _, err := os.Stat(script); err != nil {
+		t.Skipf("Panopticon cross-repo archive generator not available at %s: %v", script, err)
+	}
+	outputDir := t.TempDir()
+	cmd := exec.Command("python3", script, "--output-dir", outputDir)
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generate Panopticon cross-repo archives: %v\n%s", err, out)
+	}
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read generated Panopticon manifest: %v", err)
+	}
+	var manifest crossRepoPanopticonArchiveManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("decode generated Panopticon manifest: %v", err)
+	}
+	return manifest
+}
+
+func readOneCrossRepoPanopticonEvent(t *testing.T, path string) crossRepoPanopticonEvent {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read generated Panopticon archive %s: %v", path, err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("generated Panopticon archive %s has %d records, want 1", path, len(lines))
+	}
+	var event crossRepoPanopticonEvent
+	if err := json.Unmarshal([]byte(lines[0]), &event); err != nil {
+		t.Fatalf("decode generated Panopticon event: %v", err)
+	}
+	return event
+}
 
 func TestProjectPanopticonCaseBuildsLinkedGraphAndEvidencePointers(t *testing.T) {
 	state := &projectionRecorder{}

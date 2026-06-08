@@ -274,7 +274,7 @@ func panopticonAddAssets(entities map[string]*ports.ProjectedEntity, tenantID st
 func panopticonAddEvidencePointers(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, eventID string, payload map[string]any) []string {
 	seen := map[string]struct{}{}
 	var urns []string
-	for _, evidence := range panopticonObjects(payload, "evidence", "evidence_pointers", "captures") {
+	for _, evidence := range panopticonObjects(payload, "evidence", "evidences", "evidence_pointers", "captures") {
 		pointer := panopticonEvidencePointer(evidence)
 		if pointer == "" {
 			continue
@@ -288,7 +288,7 @@ func panopticonAddEvidencePointers(entities map[string]*ports.ProjectedEntity, t
 			"evidence_id":      panopticonString(evidence, "evidence_id", "id"),
 			"evidence_cas":     pointer,
 			"evidence_cas_uri": pointer,
-			"sha256":           panopticonString(evidence, "sha256", "digest"),
+			"sha256":           panopticonEvidenceDigest(evidence),
 			"content_type":     panopticonString(evidence, "content_type"),
 			"ref_type":         panopticonString(evidence, "ref_type"),
 			"source_path":      panopticonString(evidence, "source_path"),
@@ -325,7 +325,34 @@ func panopticonEvidencePointer(evidence map[string]any) string {
 		return pointer
 	}
 	if custom := panopticonMap(evidence["custom_attributes"]); len(custom) != 0 {
-		return panopticonString(custom, "evidence_cas", "evidence_cas_uri", "uri")
+		if pointer := panopticonString(custom, "evidence_cas", "evidence_cas_uri", "uri"); pointer != "" {
+			return pointer
+		}
+		if evidenceCAS := panopticonMap(custom["evidence_cas"]); len(evidenceCAS) != 0 {
+			if pointer := panopticonString(evidenceCAS, "uri", "evidence_cas_uri", "cas_uri", "pointer"); pointer != "" {
+				return pointer
+			}
+		}
+	}
+	if custody := panopticonMap(evidence["chain_of_custody"]); len(custody) != 0 {
+		if pointer := panopticonString(custody, "evidence_cas", "evidence_cas_uri", "uri"); pointer != "" {
+			return pointer
+		}
+		if evidenceCAS := panopticonMap(custody["evidence_cas"]); len(evidenceCAS) != 0 {
+			return panopticonString(evidenceCAS, "uri", "evidence_cas_uri", "cas_uri", "pointer")
+		}
+	}
+	return ""
+}
+
+func panopticonEvidenceDigest(evidence map[string]any) string {
+	if digest := panopticonString(evidence, "sha256", "digest", "file_hash"); digest != "" {
+		return digest
+	}
+	if custom := panopticonMap(evidence["custom_attributes"]); len(custom) != 0 {
+		if evidenceCAS := panopticonMap(custom["evidence_cas"]); len(evidenceCAS) != 0 {
+			return panopticonString(evidenceCAS, "sha256", "digest", "file_hash")
+		}
 	}
 	return ""
 }
