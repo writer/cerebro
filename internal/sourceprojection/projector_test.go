@@ -3927,6 +3927,59 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationTaggedAs, "urn:cerebro:writer:asset_tag:crown_jewel")
 }
 
+func TestProjectEvidenceCASIRISReferenceLinksCaseEvidence(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "iris-evidence-ref",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"case_id":                       "123",
+			"evidence_cas_blocks_count":     "3",
+			"evidence_cas_commit_id":        "commit-1",
+			"evidence_cas_content_type":     "application/x-tar",
+			"evidence_cas_digest":           "sha256abc",
+			"evidence_cas_manifest_version": "2",
+			"evidence_cas_merkle_root":      "root",
+			"evidence_cas_ref_type":         "evidencecas.manifest.v2",
+			"evidence_cas_size_bytes":       "42",
+			"evidence_cas_uri":              "evidencecas://cases/123/evidence/file-uuid",
+			"evidence_id":                   "456",
+			"evidence_type":                 "evidence_cas.artifact",
+			"observed_at":                   "2026-06-08T00:00:00Z",
+			"resource_entity_type":          "case",
+			"resource_id":                   "123",
+			"resource_name":                 "IRIS case 123",
+			"resource_type":                 "case",
+			"resource_urn":                  "urn:cerebro:writer:case:123",
+			"source_system":                 "iris",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	evidenceURN := "urn:cerebro:writer:runtime_evidence:456"
+	evidence := state.entities[evidenceURN]
+	if evidence == nil {
+		t.Fatalf("runtime evidence entity %q missing", evidenceURN)
+	}
+	if got := evidence.Attributes["evidence_cas_uri"]; got != "evidencecas://cases/123/evidence/file-uuid" {
+		t.Fatalf("evidence_cas_uri = %q", got)
+	}
+	if got := evidence.Attributes["source_system"]; got != "iris" {
+		t.Fatalf("source_system = %q, want iris", got)
+	}
+	if got := state.entities["urn:cerebro:writer:case:123"].EntityType; got != "case" {
+		t.Fatalf("case entity type = %q, want case", got)
+	}
+	assertProjectedLink(t, state, "urn:cerebro:writer:case:123", relationHasEvidence, evidenceURN)
+	assertProjectedLink(t, state, evidenceURN, relationObservedOn, "urn:cerebro:writer:case:123")
+}
+
 func TestProjectKubernetesWorkloadBuildsClusterAndCloudAccountLinks(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

@@ -43,9 +43,13 @@ func TestReadObjectRefs(t *testing.T) {
 					"blocks_count":     3,
 					"updated_at":       "2026-06-06T00:00:00Z",
 					"metadata": map[string]any{
-						"case_id":      "123",
-						"evidence_id":  "evidence-456",
-						"resource_urn": "urn:cerebro:writer:case:123",
+						"case_id":              "123",
+						"evidence_id":          "evidence-456",
+						"filename":             "triage.tar",
+						"resource_entity_type": "case",
+						"resource_type":        "case",
+						"resource_urn":         "urn:cerebro:writer:case:123",
+						"source_system":        "iris",
 					},
 				},
 			},
@@ -84,6 +88,15 @@ func TestReadObjectRefs(t *testing.T) {
 	}
 	if event.Attributes["evidence_type"] != "evidence_cas.artifact" {
 		t.Fatalf("evidence_type = %q, want evidence_cas.artifact", event.Attributes["evidence_type"])
+	}
+	if event.Attributes["resource_entity_type"] != "case" {
+		t.Fatalf("resource_entity_type = %q, want case", event.Attributes["resource_entity_type"])
+	}
+	if event.Attributes["resource_name"] != "triage.tar" {
+		t.Fatalf("resource_name = %q, want triage.tar", event.Attributes["resource_name"])
+	}
+	if event.Attributes["source_system"] != "iris" {
+		t.Fatalf("source_system = %q, want iris", event.Attributes["source_system"])
 	}
 }
 
