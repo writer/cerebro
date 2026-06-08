@@ -49,6 +49,7 @@ def create_ecs_cluster(
 ) -> dict:
     """Create ECS cluster with an API service."""
     runtime_environment = _source_runtime_environment(environment or {}, source_runtimes or [])
+    secret_prefixes = _secret_prefixes(secret_keys or [], external_secrets_prefix)
     cluster = aws.ecs.Cluster(
         f"{name}-cluster",
         name=f"{name}-cluster",
@@ -69,7 +70,7 @@ def create_ecs_cluster(
         ],
     )
 
-    execution_role = _create_execution_role(name, kms_key_id, external_secrets_prefix)
+    execution_role = _create_execution_role(name, kms_key_id, secret_prefixes)
     task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
     worker_task_role = None
 
@@ -344,9 +345,25 @@ def _source_runtime_aws_role_arns(source_runtimes: list[dict]) -> list[str]:
     return sorted(role_arns)
 
 
-def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], external_secrets_prefix: str) -> aws.iam.Role:
-    if not external_secrets_prefix:
-        raise ValueError("external_secrets_prefix is required")
+def _secret_prefix(secret_key, default_prefix: str) -> str:
+    if isinstance(secret_key, dict):
+        return str(secret_key.get("prefix") or default_prefix).strip()
+    return str(default_prefix).strip()
+
+
+def _secret_prefixes(secret_keys: list, default_prefix: str) -> list[str]:
+    prefixes = {_secret_prefix(secret_key, default_prefix) for secret_key in (secret_keys or [])}
+    prefixes = {prefix for prefix in prefixes if prefix}
+    if not prefixes and default_prefix:
+        prefixes.add(str(default_prefix).strip())
+    if not prefixes:
+        raise ValueError("at least one secret prefix is required")
+    return sorted(prefixes)
+
+
+def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], secret_prefixes: list[str]) -> aws.iam.Role:
+    if not secret_prefixes:
+        raise ValueError("secret_prefixes is required")
 
     role = aws.iam.Role(
         f"{name}-exec-role",
@@ -370,7 +387,10 @@ def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], external_se
 
     caller = aws.get_caller_identity()
     region = aws.get_region()
-    secret_resources = [f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{external_secrets_prefix}/*"]
+    secret_resources = [
+        f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{prefix}/*"
+        for prefix in sorted(set(secret_prefixes))
+    ]
 
     aws.iam.RolePolicy(
         f"{name}-exec-secrets",
@@ -600,13 +620,12 @@ def _create_task_definition(
 
     region = aws.get_region().region
     caller = aws.get_caller_identity()
-    secrets_prefix_arn = f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}"
     secret_specs = []
     for secret_key in secret_keys:
         if isinstance(secret_key, dict):
-            secret_specs.append((secret_key["name"], secret_key["source"]))
+            secret_specs.append((secret_key["name"], secret_key["source"], secret_key.get("prefix") or external_secrets_prefix))
         else:
-            secret_specs.append((secret_key, secret_key))
+            secret_specs.append((secret_key, secret_key, external_secrets_prefix))
     source_runtime_bootstrap_payload = _source_runtime_bootstrap_payload(source_runtimes or [])
     env_items = sorted(environment.items())
     env_values = [value for _, value in env_items]
@@ -618,7 +637,10 @@ def _create_task_definition(
             {"name": key, "value": str(value)}
             for (key, _), value in zip(env_items, resolved_env_values)
         ]
-        secret_env = [{"name": name, "valueFrom": f"{secrets_prefix_arn}/{source}"} for name, source in secret_specs]
+        secret_env = [
+            {"name": name, "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{prefix}/{source}"}
+            for name, source, prefix in secret_specs
+        ]
         log_options = {
             "awslogs-group": log_group,
             "awslogs-region": region,
