@@ -1,0 +1,62 @@
+[
+  {
+    "id": "panopticon-alert-1",
+    "tenant_id": "writer",
+    "source_id": "panopticon",
+    "kind": "panopticon.alert",
+    "occurred_at": "2026-06-08T12:00:00Z",
+    "schema_ref": "panopticon/alert/v1",
+    "payload": {
+      "alert_id": "alert-1",
+      "severity": "high",
+      "status": "open",
+      "title": "Suspicious activity"
+    },
+    "attributes": {
+      "alert_id": "alert-1",
+      "severity": "high",
+      "status": "open"
+    }
+  },
+  {
+    "id": "panopticon-case-1",
+    "tenant_id": "writer",
+    "source_id": "panopticon",
+    "kind": "panopticon.case",
+    "occurred_at": "2026-06-08T12:01:00Z",
+    "schema_ref": "panopticon/case/v1",
+    "payload": {
+      "case_id": "case-1",
+      "status": "investigating",
+      "title": "Incident case",
+      "evidence": [
+        {
+          "evidence_cas": "cas://object/abc",
+          "sha256": "abc"
+        }
+      ]
+    },
+    "attributes": {
+      "case_id": "case-1",
+      "status": "investigating"
+    }
+  },
+  {
+    "id": "panopticon-ioc-1",
+    "tenant_id": "writer",
+    "source_id": "panopticon",
+    "kind": "panopticon.ioc",
+    "occurred_at": "2026-06-08T12:02:00Z",
+    "schema_ref": "panopticon/ioc/v1",
+    "payload": {
+      "ioc_id": "ioc-1",
+      "ioc_type": "domain",
+      "value": "evil.example"
+    },
+    "attributes": {
+      "ioc_id": "ioc-1",
+      "ioc_type": "domain",
+      "value": "evil.example"
+    }
+  }
+]
