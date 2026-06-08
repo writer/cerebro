@@ -953,6 +953,9 @@ elif pulumi.get_stack() == "go-prod":
 pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("ecs_service_name", ecs_stack["api_service"].name)
+pulumi.export("task_role_arn", ecs_stack["task_role"].arn)
+if ecs_stack.get("worker_task_role"):
+    pulumi.export("worker_task_role_arn", ecs_stack["worker_task_role"].arn)
 if web_stack:
     pulumi.export("web_ecs_service_name", web_stack["service"].name)
 if ecs_stack.get("orchestrator_task_definition"):

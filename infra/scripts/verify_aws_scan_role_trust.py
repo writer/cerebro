@@ -13,6 +13,12 @@ from typing import Any
 
 import yaml
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from cerebro_task_roles import resolve_task_role_arns
+
 
 EXPECTED_STACK_ACCOUNTS = {
     "sec-dev": "944130631940",
@@ -80,12 +86,16 @@ def _same_account_role_arns(role_arns: list[str], account_id: str) -> list[str]:
 
 
 def _expected_stack_principals(stack: str, config: dict[str, Any], account_id: str) -> list[str]:
-    environment = str(config.get("environment") or stack).strip()
-    prefix = f"cerebro-{environment}"
-    principals = [f"arn:aws:iam::{account_id}:role/{prefix}-task-role"]
-    if config.get("orchestratorEnabled", True):
-        principals.append(f"arn:aws:iam::{account_id}:role/{prefix}-worker-task-role")
-    return principals
+    return resolve_task_role_arns(stack, config, account_id).as_principals()
+
+
+def _expected_stack_principals_from_outputs(
+    stack: str,
+    config: dict[str, Any],
+    account_id: str,
+    outputs: dict[str, Any] | None = None,
+) -> list[str]:
+    return resolve_task_role_arns(stack, config, account_id, outputs).as_principals()
 
 
 def _action_allows_assume_role(action: Any) -> bool:
@@ -178,9 +188,24 @@ def _parse_profile_map(entries: list[str]) -> dict[str, str]:
     return result
 
 
+def _load_outputs(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    with path.open("r", encoding="utf-8") as handle:
+        loaded = json.load(handle)
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path} must contain a JSON object from `pulumi stack output --json`")
+    return loaded
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify AWS source scan roles trust the ECS task roles declared by a Cerebro stack.")
     parser.add_argument("--stack-file", type=Path, required=True)
+    parser.add_argument(
+        "--pulumi-outputs-json",
+        type=Path,
+        help="Optional JSON from `pulumi stack output --json`; task-role outputs are consumed when present and validated against deterministic fallback names.",
+    )
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--profile-by-account", action="append", default=[], help="AWS profile to read a target role account, as ACCOUNT_ID=PROFILE.")
     parser.add_argument("--same-account-only", action="store_true", help="Verify only source roles in the stack account.")
@@ -195,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
     role_arns = _source_runtime_role_arns(config)
     if args.same_account_only:
         role_arns = _same_account_role_arns(role_arns, stack_account)
-    expected_principals = _expected_stack_principals(stack, config, stack_account)
+    expected_principals = _expected_stack_principals_from_outputs(stack, config, stack_account, _load_outputs(args.pulumi_outputs_json))
     profiles = _parse_profile_map(args.profile_by_account)
 
     role_policies: dict[str, dict[str, Any]] = {}
