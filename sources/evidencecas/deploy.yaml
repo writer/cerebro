@@ -6,6 +6,7 @@ runtimes:
   - localId: object
     config:
       base_url: env:EVIDENCE_CAS_BASE_URL
+      bucket: cases
       family: object
       per_page: "100"
       token: env:EVIDENCE_CAS_TOKEN

@@ -38,6 +38,7 @@ type Family struct {
 	Attributes       map[string]string
 	StaticAttributes map[string]string
 	StaticQuery      map[string]string
+	ConfigQuery      map[string]string
 	PageSizeParams   []string
 	RequireID        bool
 }
@@ -71,6 +72,7 @@ type settings struct {
 	host     string
 	token    string
 	path     string
+	query    url.Values
 	perPage  int
 }
 
@@ -206,6 +208,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if err != nil {
 		return resolved, err
 	}
+	resolved.query = queryFromConfig(cfg, family.ConfigQuery)
 	return resolved, nil
 }
 
@@ -214,6 +217,11 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	for key, value := range family.StaticQuery {
 		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
 			query.Set(strings.TrimSpace(key), strings.TrimSpace(value))
+		}
+	}
+	for key, values := range settings.query {
+		for _, value := range values {
+			query.Add(key, value)
 		}
 	}
 	for _, param := range pageSizeParams(family) {
@@ -257,6 +265,21 @@ func pageSizeParams(family Family) []string {
 		return []string{"limit", "per_page"}
 	}
 	return params
+}
+
+func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Values {
+	query := url.Values{}
+	for queryKey, configKey := range configQuery {
+		queryKey = strings.TrimSpace(queryKey)
+		configKey = strings.TrimSpace(configKey)
+		if queryKey == "" || configKey == "" {
+			continue
+		}
+		if value := strings.TrimSpace(configValue(cfg, configKey)); value != "" {
+			query.Set(queryKey, value)
+		}
+	}
+	return query
 }
 
 func (s *Source) getJSON(ctx context.Context, settings settings, query url.Values, target any) error {
