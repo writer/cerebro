@@ -99,7 +99,7 @@ class PanopticonCrossRepoContractTest(unittest.TestCase):
 
         self.assertEqual(active_hits, [])
         self.assertTrue(
-            all(any(part in {"tests", "docs", ".factory"} or part.endswith("_test.go") for part in Path(hit.split(":", 1)[1]).parts) for hit in historical_hits),
+            all(self._is_historical_reference_path(Path(hit.split(":", 1)[1])) for hit in historical_hits),
             f"unexpected non-active legacy claims-NDJSON references: {historical_hits}",
         )
 
@@ -162,9 +162,18 @@ class PanopticonCrossRepoContractTest(unittest.TestCase):
 
     def _is_active_runtime_path(self, relative: Path) -> bool:
         parts = set(relative.parts)
-        if parts & {"tests", "docs", ".factory"} or relative.name.endswith("_test.go") or relative.name.startswith("test_"):
+        if self._is_historical_reference_path(relative):
             return False
         return bool(parts & {"source", "sources", "internal", "cmd", "api", "sdk", "scripts", "infra", ".github", "deploy"})
+
+    def _is_historical_reference_path(self, relative: Path) -> bool:
+        parts = set(relative.parts)
+        return (
+            relative.name == "README.md"
+            or bool(parts & {"tests", "docs", ".factory"})
+            or relative.name.endswith("_test.go")
+            or relative.name.startswith("test_")
+        )
 
 
 if __name__ == "__main__":

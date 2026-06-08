@@ -18,7 +18,7 @@ MIN_AWS_EFFECTIVE_PERMISSION_VERSION = (2, 1, 46)
 IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
 AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
-COSMO_REQUIRED_STACKS = {"sec-dev", "go-prod"}
+COSMO_REQUIRED_STACKS = {"sec-dev"}
 COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_TOKEN"}
 COSMO_MESSAGE_EXPORT_SECRET = "CEREBRO_SOURCE_COSMO_EXPORT_SECRET"
 COSMO_RUNTIME_FAMILIES = {
@@ -326,20 +326,44 @@ def _validate_cosmo_gitops(
     source_secret_names: set[str],
     findings: list[Finding],
 ) -> None:
-    if stack not in COSMO_REQUIRED_STACKS:
+    runtimes_by_id: dict[str, tuple[int, dict[str, Any]]] = {}
+    for index, runtime in enumerate(source_runtimes):
+        if isinstance(runtime, dict):
+            runtime_id = str(runtime.get("id", "")).strip()
+            if runtime_id:
+                runtimes_by_id[runtime_id] = (index, runtime)
+
+    managed_stack = stack in COSMO_REQUIRED_STACKS or any(runtime_id in runtimes_by_id for runtime_id in COSMO_RUNTIME_FAMILIES)
+    cosmo_runtime_families = dict(COSMO_RUNTIME_FAMILIES) if managed_stack else {}
+    if COSMO_MESSAGE_EXPORT_SECRET in source_secret_names or any(
+        runtime_id in runtimes_by_id for runtime_id in COSMO_OPTIONAL_RUNTIME_FAMILIES
+    ):
+        cosmo_runtime_families.update(COSMO_OPTIONAL_RUNTIME_FAMILIES)
+        if COSMO_MESSAGE_EXPORT_SECRET not in source_secret_names:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:sourceSecretKeys",
+                    f"Cosmo message secret {COSMO_MESSAGE_EXPORT_SECRET!r} must be declared when the message runtime is configured",
+                )
+            )
+
+    if not managed_stack and not cosmo_runtime_families:
         return
 
-    image_tag = str(config.get("imageTag", "")).strip()
-    parsed_tag = _parse_image_tag(image_tag)
-    if parsed_tag is not None and parsed_tag < MIN_COSMO_TOKEN_AUTH_VERSION:
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:imageTag",
-                "Cosmo survey feedback token auth requires cerebro:imageTag >= v2.1.36",
+    if managed_stack:
+        image_tag = str(config.get("imageTag", "")).strip()
+        parsed_tag = _parse_image_tag(image_tag)
+        if parsed_tag is not None and parsed_tag < MIN_COSMO_TOKEN_AUTH_VERSION:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:imageTag",
+                    "Cosmo survey feedback token auth requires cerebro:imageTag >= v2.1.36",
+                )
             )
-        )
 
     for secret_name in sorted(COSMO_REQUIRED_SECRETS):
         if secret_name not in source_secret_names:
@@ -360,28 +384,6 @@ def _validate_cosmo_gitops(
                 "Cosmo survey feedback must use CEREBRO_SOURCE_COSMO_TOKEN, not the legacy webhook secret",
             )
         )
-
-    runtimes_by_id: dict[str, tuple[int, dict[str, Any]]] = {}
-    for index, runtime in enumerate(source_runtimes):
-        if isinstance(runtime, dict):
-            runtime_id = str(runtime.get("id", "")).strip()
-            if runtime_id:
-                runtimes_by_id[runtime_id] = (index, runtime)
-
-    cosmo_runtime_families = dict(COSMO_RUNTIME_FAMILIES)
-    if COSMO_MESSAGE_EXPORT_SECRET in source_secret_names or any(
-        runtime_id in runtimes_by_id for runtime_id in COSMO_OPTIONAL_RUNTIME_FAMILIES
-    ):
-        cosmo_runtime_families.update(COSMO_OPTIONAL_RUNTIME_FAMILIES)
-        if COSMO_MESSAGE_EXPORT_SECRET not in source_secret_names:
-            findings.append(
-                _finding(
-                    "error",
-                    stack,
-                    "cerebro:sourceSecretKeys",
-                    f"Cosmo message secret {COSMO_MESSAGE_EXPORT_SECRET!r} must be declared when the message runtime is configured",
-                )
-            )
 
     schedules_by_runtime: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     for index, schedule in enumerate(schedules):

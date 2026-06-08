@@ -22,6 +22,7 @@ from scripts.verify_source_runtime_ecs import (
     _run_and_verify_task_with_retries,
     _run_task,
     _runtime_id_from_command,
+    _runtime_targets,
     _runtime_skip_reason,
     _runtime_skip_retryable,
     _schedule_suffix,
@@ -63,6 +64,28 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
     def test_schedule_suffix_matches_pulumi_names(self) -> None:
         self.assertEqual(_schedule_suffix("Cosmo Survey Feedback"), "cosmo-survey-feedback")
+
+    def test_runtime_targets_can_skip_not_yet_deployed_rule(self) -> None:
+        config = {
+            "orchestratorSchedules": [
+                {
+                    "name": "cosmo-message",
+                    "command": ["orchestrator", "run", "runtime_id=writer-cosmo-message"],
+                }
+            ]
+        }
+
+        with patch("scripts.verify_source_runtime_ecs._aws", return_value={"Targets": []}):
+            self.assertEqual(
+                _runtime_targets(
+                    config,
+                    ["writer-cosmo-message"],
+                    "cerebro-go-production",
+                    "us-east-1",
+                    allow_missing_targets=True,
+                ),
+                [],
+            )
 
     def test_task_family_from_arn(self) -> None:
         self.assertEqual(
