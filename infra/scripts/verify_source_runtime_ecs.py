@@ -228,7 +228,13 @@ def _declared_runtime_ids(config: dict[str, Any], source_id: str, requested: set
     return sorted(runtime_ids)
 
 
-def _runtime_targets(config: dict[str, Any], runtime_ids: list[str], resource_prefix: str, region: str) -> list[RuntimeTarget]:
+def _runtime_targets(
+    config: dict[str, Any],
+    runtime_ids: list[str],
+    resource_prefix: str,
+    region: str,
+    allow_missing_targets: bool = False,
+) -> list[RuntimeTarget]:
     schedules = config.get("orchestratorSchedules") or []
     if not isinstance(schedules, list):
         schedules = []
@@ -248,6 +254,9 @@ def _runtime_targets(config: dict[str, Any], runtime_ids: list[str], resource_pr
         response = _aws(["events", "list-targets-by-rule", "--rule", rule_name], region)
         rule_targets = response.get("Targets") or []
         if len(rule_targets) != 1:
+            if allow_missing_targets and not rule_targets:
+                print(f"warning: skipping {runtime_id}; deployed EventBridge rule {rule_name!r} has no target yet")
+                continue
             raise ValueError(f"EventBridge rule {rule_name!r} must have exactly one target, found {len(rule_targets)}")
         targets.append(RuntimeTarget(runtime_id=runtime_id, schedule_name=schedule_name, rule_name=rule_name, target=rule_targets[0]))
     return targets
@@ -951,6 +960,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wait-timeout-seconds", type=int, default=3600)
     parser.add_argument("--poll-seconds", type=int, default=10)
     parser.add_argument("--target-concurrency", type=_positive_int, default=1, help="Verify up to this many source runtime targets concurrently.")
+    parser.add_argument("--allow-missing-targets", action="store_true", help="Skip declared runtimes whose EventBridge target is not deployed yet.")
     args = parser.parse_args(argv)
 
     stack = _stack_name(args.stack_file)
@@ -967,7 +977,10 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(f"no declared source runtimes found for{scope}")
 
     _verify_account(stack, args.region)
-    targets = _runtime_targets(config, runtime_ids, resource_prefix, args.region)
+    targets = _runtime_targets(config, runtime_ids, resource_prefix, args.region, args.allow_missing_targets)
+    if not targets:
+        print("No deployed source runtime targets matched the requested scope.")
+        return 0
     results = _verify_runtime_targets(
         targets,
         VerificationOptions(

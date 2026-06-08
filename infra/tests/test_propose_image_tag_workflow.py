@@ -78,6 +78,24 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
 
         self.assertIn("!startsWith(github.event.head_commit.message, 'chore: deploy sec-dev Cerebro ')", deploy_block)
 
+    def test_go_prod_deploy_runs_cosmo_guard_before_pulumi_up(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        deploy_block = workflow.split("name: Deploy go-prod", 1)[1]
+        self.assertLess(deploy_block.index("Verify Cosmo source canary (go-prod)"), deploy_block.index("Pulumi Up (go-prod)"))
+
+    def test_go_prod_deploy_runs_secret_guard_before_pulumi_up(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        deploy_block = workflow.split("name: Deploy go-prod", 1)[1]
+        self.assertLess(deploy_block.index("Verify AWS secret imports (go-prod)"), deploy_block.index("Pulumi Up (go-prod)"))
+        self.assertIn("scripts/verify_aws_secret_imports.py --stack-file aws/Pulumi.go-prod.yaml", deploy_block)
+
+    def test_manual_aws_deploy_runs_guards_before_pulumi_up(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        deploy_block = workflow.split("  deploy-manual:", 1)[1]
+        self.assertLess(deploy_block.index("Verify AWS secret imports (AWS)"), deploy_block.index("Pulumi Up (AWS)"))
+        self.assertLess(deploy_block.index("Verify Cosmo source canary (AWS)"), deploy_block.index("Pulumi Up (AWS)"))
+        self.assertIn("if: github.event.inputs.environment == 'go-prod'", deploy_block)
+
 
 if __name__ == "__main__":
     unittest.main()
