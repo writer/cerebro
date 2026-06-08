@@ -147,7 +147,7 @@ jobs:
           done
 
       - name: Attest runtime binaries
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: |
             .dist/linux-amd64/cerebro
@@ -287,7 +287,7 @@ jobs:
           cosign sign --yes "${IMAGE_BASE}@${DIGEST}"
 
       - name: Attest release image provenance
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
