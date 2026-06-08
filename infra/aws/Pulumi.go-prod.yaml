@@ -84,6 +84,8 @@ config:
     - CEREBRO_SOURCE_COSMO_BASE_URL
     - CEREBRO_SOURCE_COSMO_TOKEN
     - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
+    - EVIDENCE_CAS_BASE_URL
+    - EVIDENCE_CAS_TOKEN
     - VANTA_CLIENT_ID
     - VANTA_CLIENT_SECRET
     - VULNVIEW_PROVIDER_OKTA_ISSUER
@@ -116,6 +118,16 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-security-tooling-map-controls
+        - page_limit=100
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: evidence-cas-cases
+      scheduleExpression: cron(26 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-evidence-cas-cases
         - page_limit=100
         - graph_page_limit=100
         - event_limit=1000
@@ -1616,6 +1628,15 @@ config:
         family: component
         per_page: "100"
         token: env:BACKSTAGE_EXTERNAL_ACCESS_TOKEN
+    - id: writer-evidence-cas-cases
+      sourceId: evidence_cas
+      tenantId: writer
+      config:
+        base_url: env:EVIDENCE_CAS_BASE_URL
+        bucket: cases
+        family: object
+        per_page: "100"
+        token: env:EVIDENCE_CAS_TOKEN
     - id: writer-grc-framework
       sourceId: grc
       tenantId: writer
