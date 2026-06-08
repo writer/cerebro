@@ -90,6 +90,18 @@ Guidelines:
 
 If `sourceId: s3`, the runtime task role needs explicit `s3:GetObject` and `s3:ListBucket` on the source bucket. Add the scope under `cerebro:s3Sources`; do **not** widen the role with `s3:*`. Reuse an existing scope entry if the bucket is already listed.
 
+### EvidenceCAS-backed evidence pointers
+
+Some source runtimes may emit evidence that is stored in EvidenceCAS. This
+repository does not implement an EvidenceCAS client; onboarding should preserve
+EvidenceCAS references as pointer-only supporting evidence. The runtime payload
+should include an `evidencecas://` URI plus digest, Merkle root, and commit id,
+and should not inline the referenced bytes into claims or findings.
+
+See [EvidenceCAS references](EVIDENCE_CAS_REFERENCES.md) for the required
+reference shape, bucket/key conventions, auth expectations, and troubleshooting
+guidance.
+
 ## Validation
 
 Run these before requesting review. They are cheap and catch the most common mistakes.

@@ -61,6 +61,7 @@ This repository is intentionally narrow: it deploys and operates Cerebro for Wri
 | `.github/workflows/graph-health-insight.yml` | Runs deep graph health insight after successful infra deploys or manual dispatch. |
 | `.github/workflows/closeout.yml` | Dispatches audited bulk closeout ECS tasks. |
 | `docs/SOURCE_ONBOARDING.md` | Canonical runbook for adding or changing source runtime instances. |
+| `docs/EVIDENCE_CAS_REFERENCES.md` | Integration contract for carrying EvidenceCAS pointers as source evidence without materializing payloads. |
 | `infra/aws` | AWS Pulumi program for networking, compute, storage, auth, monitoring, and runtime bootstrap. |
 | `infra/aws/Pulumi.sec-dev.yaml` | `sec-dev` AWS stack configuration. |
 | `infra/aws/Pulumi.go-prod.yaml` | `go-prod` AWS stack configuration. |
@@ -80,6 +81,12 @@ The `go-prod` runtime image must not lag behind `sec-dev`. The image proposal wo
 The API service can run as a singleton or scale out within stack-configured bounds. `cerebro:apiMaxInstances` defaults to `1`; values above `1` require `cerebro:imageTag >= v2.1.25`, where source-runtime cursor advances are protected by the same Postgres lease used by orchestrator runs. The orchestrator remains scheduled ECS tasks through EventBridge, not a second long-running API service.
 
 Source runtimes are GitOps-managed in stack config. Add or change `cerebro:sourceRuntimes`, `cerebro:sourceSecretKeys`, `cerebro:orchestratorSchedules`, and optional `cerebro:s3Sources` in the target stack, then follow `docs/SOURCE_ONBOARDING.md`.
+
+Source evidence that is stored in EvidenceCAS should enter Cerebro as a pointer
+containing an `evidencecas://` URI, digest, Merkle root, and commit id rather
+than as payload bytes. See
+[`docs/EVIDENCE_CAS_REFERENCES.md`](docs/EVIDENCE_CAS_REFERENCES.md) for the
+operator and source-runtime contract.
 
 ## Common operator tasks
 
