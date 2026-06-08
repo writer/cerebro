@@ -20,6 +20,7 @@ This repository is intentionally narrow: it deploys and operates Cerebro for Wri
 - **Runtime services**: ECS Fargate API, optional web console service, EventBridge-scheduled orchestrator tasks, RDS Postgres, NATS JetStream, and Neo4j/Aura.
 - **Access controls**: API authentication, tenant allowlists, capability tokens, MCP OAuth configuration, optional web OIDC, and secret import boundaries.
 - **Source runtime bootstrap**: declarative source definitions, per-runtime schedules, S3 source IAM scopes, and drift/coverage verification.
+- **Panopticon integration**: sec-dev and go-prod Panopticon `s3Sources`, alert/case/IOC source runtimes, source schedules, and task-role outputs/fallbacks.
 - **Observability and operations**: CloudWatch dashboards/alarms, graph health checks, source runtime verification, and bulk closeout audit storage.
 
 ## Non-goals
@@ -88,6 +89,13 @@ than as payload bytes. See
 [`docs/EVIDENCE_CAS_REFERENCES.md`](docs/EVIDENCE_CAS_REFERENCES.md) for the
 operator and source-runtime contract.
 
+Panopticon export wiring is active in both `sec-dev` and `go-prod`: the stack
+config declares least-privilege `cerebro:s3Sources`, `writer-panopticon-alerts`,
+`writer-panopticon-cases`, and `writer-panopticon-iocs` source runtimes,
+EventBridge schedules for each family, and cross-repo validators against the
+Panopticon Pulumi export contract. The integration consumes canonical S3
+NDJSON archives only; legacy claims-NDJSON import is not supported.
+
 ## Common operator tasks
 
 | Task | Where to start | Validation / follow-up |
@@ -97,6 +105,7 @@ operator and source-runtime contract.
 | Change AWS stack config | Edit `infra/aws/Pulumi.<stack>.yaml`. | Run stack validation and review Pulumi preview for only intended resources. |
 | Change GCP WIF/scanner IAM | Edit `infra/gcp/Pulumi.<stack>.yaml` or `infra/gcp`. | Run GCP config validation and the relevant Pulumi preview. |
 | Add or change a source runtime | Follow `docs/SOURCE_ONBOARDING.md`. | Run stack validation, preview the target stack, then verify source runtime and graph health after deploy. |
+| Update Panopticon exports | Coordinate with the Panopticon Pulumi export outputs, then update `cerebro:s3Sources`, source runtimes, and schedules for the target stack. | Run stack validation plus the Panopticon cross-repo contract test before deploy. |
 | Investigate source runtime drift | Dispatch `.github/workflows/source-runtime-drift.yml`. | Review coverage/drift artifacts and reconcile stack config or runtime state. |
 | Investigate graph health | Dispatch `.github/workflows/graph-health-insight.yml` or use deploy verification outputs. | Treat regressions as deploy blockers until explained or intentionally accepted. |
 | Run bulk closeout | Dispatch `.github/workflows/closeout.yml`. | Keep dry-run/apply inputs reviewed and preserve audit bucket output. |
@@ -191,7 +200,7 @@ git diff --check README.md
 | `cerebro:mcpOauth*` | MCP OAuth issuer, redirect, client secret references, group allowlist, and token tenant scope. |
 | `cerebro:sourceRuntimes`, `cerebro:sourceSecretKeys` | Declarative source runtime definitions and allowed secret-backed env references. |
 | `cerebro:orchestrator*` | Default and named EventBridge schedules plus ECS task sizing for source sync and graph ingest. |
-| `cerebro:s3Sources` | Least-privilege IAM read scope for S3-backed source runtimes. |
+| `cerebro:s3Sources` | Least-privilege IAM read scope for S3-backed source runtimes, including Panopticon archive prefixes. |
 | `cerebro:graphAgentLlm*`, `cerebro:openrouterApiKeySecret` | Optional graph agent LLM configuration and secret reference. |
 | `cerebro:accessAudit*`, `cerebro:dashboardLatency*`, `cerebro:alarm*` | Access audit, dashboard latency, and alarm notification settings. |
 | `cerebro:enableInfisicalSyncRole`, `cerebro:externalSecretsPrefix` | External secret import boundary. |
