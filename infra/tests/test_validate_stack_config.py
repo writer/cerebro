@@ -254,6 +254,17 @@ class ValidateStackConfigTest(unittest.TestCase):
 
         self.assertTrue(any("exactly one s3Sources entry named 'panopticon'" in message for message in messages))
 
+    def test_panopticon_source_runtime_is_required(self) -> None:
+        content = self._repo_stack_content("Pulumi.go-prod.yaml").replace(
+            "    - id: writer-panopticon-alerts\n",
+            "    - id: writer-panopticon-alerts-disabled\n",
+            1,
+        )
+
+        messages = self._panopticon_error_messages(content, "Pulumi.go-prod.yaml")
+
+        self.assertIn("required Panopticon runtime 'writer-panopticon-alerts' is missing", messages)
+
     def test_panopticon_env_account_isolation_is_exact(self) -> None:
         content = (
             self._repo_stack_content("Pulumi.sec-dev.yaml")
@@ -290,6 +301,23 @@ class ValidateStackConfigTest(unittest.TestCase):
         messages = self._panopticon_error_messages(content, "Pulumi.go-prod.yaml")
 
         self.assertTrue(any("Panopticon schedules must set taskCount: 1" in message for message in messages))
+
+    def test_panopticon_duplicate_schedule_is_error(self) -> None:
+        schedule = """\
+    - name: panopticon-alerts-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-panopticon-alerts
+"""
+        duplicate_schedule = schedule + schedule.replace("panopticon-alerts-live", "panopticon-alerts-shadow", 1)
+        content = self._repo_stack_content("Pulumi.go-prod.yaml").replace(schedule, duplicate_schedule, 1)
+
+        messages = self._panopticon_error_messages(content, "Pulumi.go-prod.yaml")
+
+        self.assertIn("Panopticon runtime 'writer-panopticon-alerts' must have exactly one schedule", messages)
 
     def test_panopticon_rejects_secrets_and_evidence_bytes_in_runtime_config(self) -> None:
         content = self._repo_stack_content("Pulumi.sec-dev.yaml").replace(
