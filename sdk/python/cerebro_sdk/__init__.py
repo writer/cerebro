@@ -12,6 +12,14 @@ from .jira import (
     load_jira_workspace_graph_layering,
     onboard_jira_workspace_posture,
 )
+from .panopticon import (
+    SUPPORTED_CLAIM_TYPES,
+    OnboardPanopticonPushClaimsResult,
+    PanopticonEntityRef,
+    PanopticonPushClaim,
+    build_panopticon_push_claims,
+    onboard_panopticon_push_claims,
+)
 
 __all__ = [
     "APIError",
@@ -28,4 +36,10 @@ __all__ = [
     "build_jira_workspace_claims",
     "load_jira_workspace_graph_layering",
     "onboard_jira_workspace_posture",
+    "SUPPORTED_CLAIM_TYPES",
+    "OnboardPanopticonPushClaimsResult",
+    "PanopticonEntityRef",
+    "PanopticonPushClaim",
+    "build_panopticon_push_claims",
+    "onboard_panopticon_push_claims",
 ]
