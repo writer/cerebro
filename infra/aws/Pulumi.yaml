@@ -399,7 +399,11 @@ config:
     items:
       type: string
     default: []
-    description: "Additional ECS secret env vars sourced from {externalSecretsPrefix}/<key> for source runtime env: references"
+    description: "Additional ECS secret env vars sourced from {infisicalSecretsPrefix}/<key> for source runtime env: references"
+  cerebro:infisicalSecretsPrefix:
+    type: string
+    default: ""
+    description: Secrets Manager prefix for Infisical-synced runtime inputs; keep separate from Pulumi-managed generated secrets when prune/delete is enabled
   cerebro:sourceRuntimes:
     type: array
     items:

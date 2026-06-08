@@ -11,6 +11,7 @@ def create_infisical_sync_role(
     assume_role_principal_arn: str,
     external_id: Optional[str] = None,
     kms_key_arn: pulumi.Output = None,
+    secrets_prefix: str | None = None,
 ) -> dict:
     """
     Create IAM role for Infisical to sync secrets to AWS Secrets Manager.
@@ -20,6 +21,7 @@ def create_infisical_sync_role(
         assume_role_principal_arn: ARN of Infisical's AWS principal
         external_id: Optional external ID for additional security
         kms_key_arn: KMS key ARN for encryption (required for production use)
+        secrets_prefix: Secrets Manager prefix Infisical may manage
     
     Returns:
         Dict with role and policy resources
@@ -30,6 +32,9 @@ def create_infisical_sync_role(
     if not kms_key_arn:
         raise ValueError("kms_key_arn is required for Infisical sync role - wildcard KMS access is not allowed")
     role_name = f"{name}-infisical-sync"
+    managed_secrets_prefix = (secrets_prefix or name).strip()
+    if not managed_secrets_prefix:
+        raise ValueError("secrets_prefix is required for Infisical sync role")
     
     # Build trust policy
     trust_statement = {
@@ -85,7 +90,7 @@ def create_infisical_sync_role(
                 "secretsmanager:TagResource",
                 "secretsmanager:UntagResource",
             ],
-            "Resource": f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{name}/*",
+            "Resource": f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{managed_secrets_prefix}/*",
         },
         {
             "Sid": "ListKMSAliases",
@@ -121,7 +126,7 @@ def create_infisical_sync_role(
                         "secretsmanager:TagResource",
                         "secretsmanager:UntagResource",
                     ],
-                    "Resource": f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{name}/*",
+                    "Resource": f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{managed_secrets_prefix}/*",
                 },
                 {
                     "Sid": "ListKMSAliases",
