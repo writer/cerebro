@@ -88,9 +88,9 @@ config:
   cerebro:orchestratorCommand:
     - orchestrator
     - run
-    - runtime_id=writer-cosmo-session
-    - page_limit=20
-    - graph_page_limit=100
+    - runtime_id=writer-cosmo-message
+    - page_limit=2
+    - graph_page_limit=2
     - event_limit=1000
   cerebro:orchestratorSchedules:
     - name: security-tooling-map-tools
@@ -1393,26 +1393,6 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: cosmo-session
-      scheduleExpression: cron(2,32 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-cosmo-session
-        - page_limit=20
-        - graph_page_limit=100
-        - event_limit=1000
-    - name: cosmo-fact
-      scheduleExpression: cron(12,42 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-cosmo-fact
-        - page_limit=20
-        - graph_page_limit=100
-        - event_limit=1000
     - name: cosmo-message
       scheduleExpression: cron(22,52 * * * ? *)
       taskCount: 1
@@ -1422,16 +1402,6 @@ config:
         - runtime_id=writer-cosmo-message
         - page_limit=2
         - graph_page_limit=2
-        - event_limit=1000
-    - name: cosmo-survey-feedback
-      scheduleExpression: cron(18,48 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-cosmo-survey-feedback
-        - page_limit=10
-        - graph_page_limit=100
         - event_limit=1000
   cerebro:sourceRuntimes:
     - id: writer-security-tooling-map-tools
@@ -2616,24 +2586,6 @@ config:
       config:
         <<: *aws_sec_dev_global_config
         family: effective_permission
-    - id: writer-cosmo-session
-      sourceId: cosmo
-      tenantId: writer
-      config:
-        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
-        family: session
-        per_page: "100"
-        tenant_id: writer
-        token: env:CEREBRO_SOURCE_COSMO_TOKEN
-    - id: writer-cosmo-fact
-      sourceId: cosmo
-      tenantId: writer
-      config:
-        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
-        family: fact
-        per_page: "100"
-        tenant_id: writer
-        token: env:CEREBRO_SOURCE_COSMO_TOKEN
     - id: writer-cosmo-message
       sourceId: cosmo
       tenantId: writer
@@ -2646,15 +2598,6 @@ config:
         max_window_hours: "24"
         per_page: "100"
         since: "2026-01-01T00:00:00Z"
-        tenant_id: writer
-        token: env:CEREBRO_SOURCE_COSMO_TOKEN
-    - id: writer-cosmo-survey-feedback
-      sourceId: cosmo
-      tenantId: writer
-      config:
-        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
-        family: survey_feedback
-        per_page: "100"
         tenant_id: writer
         token: env:CEREBRO_SOURCE_COSMO_TOKEN
   cerebro:enableTailscale: true
