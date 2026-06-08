@@ -108,10 +108,12 @@ func generatePanopticonCrossRepoArchives(t *testing.T) crossRepoPanopticonArchiv
 		panopticonRepo = filepath.Clean("../../../panopticon")
 	}
 	script := filepath.Join(panopticonRepo, "scripts", "generate_cerebro_contract_archives.py")
+	// #nosec G703 -- test-only optional local cross-repo fixture path.
 	if _, err := os.Stat(script); err != nil {
 		t.Skipf("Panopticon cross-repo archive generator not available at %s: %v", script, err)
 	}
 	outputDir := t.TempDir()
+	// #nosec G204 G702 -- test-only optional local cross-repo fixture generator.
 	cmd := exec.Command("python3", script, "--output-dir", outputDir)
 	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
 	out, err := cmd.CombinedOutput()
@@ -119,6 +121,7 @@ func generatePanopticonCrossRepoArchives(t *testing.T) crossRepoPanopticonArchiv
 		t.Fatalf("generate Panopticon cross-repo archives: %v\n%s", err, out)
 	}
 	manifestPath := filepath.Join(outputDir, "manifest.json")
+	// #nosec G304 -- manifest is read from this test's temporary output directory.
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatalf("read generated Panopticon manifest: %v", err)
@@ -132,6 +135,7 @@ func generatePanopticonCrossRepoArchives(t *testing.T) crossRepoPanopticonArchiv
 
 func readOneCrossRepoPanopticonEvent(t *testing.T, path string) crossRepoPanopticonEvent {
 	t.Helper()
+	// #nosec G304 -- path comes from the generated test manifest.
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read generated Panopticon archive %s: %v", path, err)

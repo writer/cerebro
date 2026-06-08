@@ -238,7 +238,7 @@ func TestReadRejectsInvalidEnvelopesAndFamilyContracts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			src := newTestSource(t, newFakeS3([]fakeObject{{key: "alerts/bad.ndjson", records: []panopticonRecord{tc.record}}}))
 			_, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"family": familyAlert, "bucket": "writer-panopticon-exports", "prefix": "alerts/", "tenant_id": "writer"}), nil)
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
+			if err == nil || !errorContains(err, tc.want) {
 				t.Fatalf("Read() error = %v, want containing %q", err, tc.want)
 			}
 		})
@@ -264,7 +264,7 @@ func TestReadRejectsPayloadSynthesizedRequiredAttributesForAllFamilies(t *testin
 			record := withoutAttribute(tc.record, tc.missing)
 			src := newTestSource(t, newFakeS3([]fakeObject{{key: tc.prefix + "bad.ndjson", records: []panopticonRecord{record}}}))
 			_, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"family": tc.family, "bucket": "writer-panopticon-exports", "prefix": tc.prefix, "tenant_id": "writer"}), nil)
-			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+			if err == nil || !errorContains(err, tc.wantError) {
 				t.Fatalf("Read() error = %v, want containing %q", err, tc.wantError)
 			}
 		})
@@ -281,7 +281,7 @@ func TestFamilyValidationFailureDoesNotAdvanceCheckpoint(t *testing.T) {
 	cfg := sourcecdk.NewConfig(map[string]string{"family": familyAlert, "bucket": "writer-panopticon-exports", "prefix": "alerts/", "tenant_id": "writer"})
 
 	pull, err := src.Read(context.Background(), cfg, nil)
-	if err == nil || !strings.Contains(err.Error(), "status") {
+	if err == nil || !errorContains(err, "status") {
 		t.Fatalf("Read() error = %v, want required status failure", err)
 	}
 	if len(pull.Events) != 0 || pull.Checkpoint != nil || pull.NextCursor != nil {
@@ -289,7 +289,7 @@ func TestFamilyValidationFailureDoesNotAdvanceCheckpoint(t *testing.T) {
 	}
 
 	retry, err := src.Read(context.Background(), cfg, nil)
-	if err == nil || !strings.Contains(err.Error(), "status") {
+	if err == nil || !errorContains(err, "status") {
 		t.Fatalf("Read(retry) error = %v, want same required status failure", err)
 	}
 	if len(retry.Events) != 0 || retry.Checkpoint != nil || retry.NextCursor != nil {
@@ -303,7 +303,7 @@ func TestReadRejectsMalformedArchivesDeterministically(t *testing.T) {
 	cfg := sourcecdk.NewConfig(map[string]string{"family": familyAlert, "bucket": "writer-panopticon-exports", "prefix": "alerts/", "tenant_id": "writer"})
 	for i := 0; i < 2; i++ {
 		_, err := src.Read(context.Background(), cfg, nil)
-		if err == nil || !strings.Contains(err.Error(), "decode line 1") {
+		if err == nil || !errorContains(err, "decode line 1") {
 			t.Fatalf("Read() retry %d error = %v, want decode line 1", i, err)
 		}
 	}
@@ -314,7 +314,7 @@ func TestReadRejectsMalformedArchivesDeterministically(t *testing.T) {
 	badGzip := newFakeS3([]fakeObject{{key: "alerts/bad-gzip.ndjson.gz", rawBody: []byte("not gzip")}})
 	src = newTestSource(t, badGzip)
 	_, err := src.Read(context.Background(), cfg, nil)
-	if err == nil || !strings.Contains(err.Error(), "gunzip") {
+	if err == nil || !errorContains(err, "gunzip") {
 		t.Fatalf("Read() invalid gzip error = %v, want gunzip", err)
 	}
 }
@@ -324,7 +324,7 @@ func TestReadEnforcesRawAndGzipDecompressedObjectSizeLimits(t *testing.T) {
 	src := newTestSource(t, rawTooLarge)
 	cfg := sourcecdk.NewConfig(map[string]string{"family": familyAlert, "bucket": "writer-panopticon-exports", "prefix": "alerts/", "tenant_id": "writer"})
 	_, err := src.Read(context.Background(), cfg, nil)
-	if err == nil || !strings.Contains(err.Error(), "object exceeds") {
+	if err == nil || !errorContains(err, "object exceeds") {
 		t.Fatalf("Read() oversized raw object error = %v, want object exceeds", err)
 	}
 
@@ -347,12 +347,12 @@ func TestReadRejectsNonStringAttributesAndOversizedLines(t *testing.T) {
 	src := newTestSource(t, nonString)
 	cfg := sourcecdk.NewConfig(map[string]string{"family": familyAlert, "bucket": "writer-panopticon-exports", "prefix": "alerts/", "tenant_id": "writer"})
 	_, err := src.Read(context.Background(), cfg, nil)
-	if err == nil || !strings.Contains(err.Error(), "cannot unmarshal") {
+	if err == nil || !errorContains(err, "cannot unmarshal") {
 		t.Fatalf("Read() non-string attributes error = %v, want cannot unmarshal", err)
 	}
 
 	_, err = readArchiveRecords(bytes.NewReader(append(bytes.Repeat([]byte{'a'}, maxLineBytes+1), '\n')), "oversized.ndjson", int64(maxLineBytes+2))
-	if err == nil || !strings.Contains(err.Error(), "token too long") {
+	if err == nil || !errorContains(err, "token too long") {
 		t.Fatalf("readArchiveRecords() oversized line error = %v, want token too long", err)
 	}
 }
@@ -421,7 +421,7 @@ func TestMalformedArchiveDoesNotAdvanceCheckpointPastPriorCursor(t *testing.T) {
 	cfg := sourcecdk.NewConfig(map[string]string{"family": familyAlert, "bucket": "writer-panopticon-exports", "prefix": "alerts/", "tenant_id": "writer"})
 
 	first, err := src.Read(context.Background(), cfg, nil)
-	if err == nil || !strings.Contains(err.Error(), "decode line 1") {
+	if err == nil || !errorContains(err, "decode line 1") {
 		t.Fatalf("Read(first) error = %v, want deterministic malformed JSON failure", err)
 	}
 	if first.Checkpoint != nil || first.NextCursor != nil || len(first.Events) != 0 {
@@ -430,7 +430,7 @@ func TestMalformedArchiveDoesNotAdvanceCheckpointPastPriorCursor(t *testing.T) {
 
 	cursor := &cerebrov1.SourceCursor{Opaque: encodeCursor(panopticonCursor{LastKey: "alerts/001-good.ndjson"})}
 	retry, err := src.Read(context.Background(), cfg, cursor)
-	if err == nil || !strings.Contains(err.Error(), "decode line 1") {
+	if err == nil || !errorContains(err, "decode line 1") {
 		t.Fatalf("Read(retry) error = %v, want same malformed JSON failure", err)
 	}
 	if retry.Checkpoint != nil || retry.NextCursor != nil || len(retry.Events) != 0 {
@@ -450,6 +450,10 @@ func newTestSource(t *testing.T, client *fakeS3) *Source {
 	return src
 }
 
+func errorContains(err error, want string) bool {
+	return strings.Contains(fmt.Sprint(err), want)
+}
+
 type crossRepoPanopticonArchiveManifest struct {
 	Archives []struct {
 		Family string `json:"family"`
@@ -466,17 +470,21 @@ func generateCrossRepoPanopticonArchives(t *testing.T) crossRepoPanopticonArchiv
 		panopticonRepo = filepath.Clean("../../../panopticon")
 	}
 	script := filepath.Join(panopticonRepo, "scripts", "generate_cerebro_contract_archives.py")
+	// #nosec G703 -- test-only optional local cross-repo fixture path.
 	if _, err := os.Stat(script); err != nil {
 		t.Skipf("Panopticon cross-repo archive generator not available at %s: %v", script, err)
 	}
 	outputDir := t.TempDir()
+	// #nosec G204 G702 -- test-only optional local cross-repo fixture generator.
 	cmd := exec.Command("python3", script, "--output-dir", outputDir)
 	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generate Panopticon cross-repo archives: %v\n%s", err, out)
 	}
-	raw, err := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	// #nosec G304 -- manifest is read from this test's temporary output directory.
+	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatalf("read generated Panopticon manifest: %v", err)
 	}

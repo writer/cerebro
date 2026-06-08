@@ -491,7 +491,7 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 			if st.runtimeID != "" && strings.TrimSpace(rec.Attributes["runtime_id"]) != "" && strings.TrimSpace(rec.Attributes["runtime_id"]) != st.runtimeID {
 				continue
 			}
-			event, err := buildEvent(st, rec, kind, schemaRef)
+			event, err := buildEvent(rec, kind, schemaRef)
 			if err != nil {
 				return sourcecdk.Pull{}, fmt.Errorf("convert event in s3://%s/%s: %w", st.bucket, key, err)
 			}
@@ -638,7 +638,7 @@ func (r *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func buildEvent(st settings, rec panopticonRecord, kind, schemaRef string) (*primitives.Event, error) {
+func buildEvent(rec panopticonRecord, kind, schemaRef string) (*primitives.Event, error) {
 	if strings.TrimSpace(rec.ID) == "" {
 		return nil, errors.New("id is required")
 	}
