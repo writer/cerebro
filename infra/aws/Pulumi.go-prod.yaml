@@ -1433,6 +1433,36 @@ config:
         - page_limit=10
         - graph_page_limit=100
         - event_limit=1000
+    - name: panopticon-alerts-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-panopticon-alerts
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: panopticon-cases-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-panopticon-cases
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: panopticon-iocs-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-panopticon-iocs
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
   cerebro:sourceRuntimes:
     - id: writer-security-tooling-map-tools
       sourceId: security_tooling_map
@@ -2657,6 +2687,39 @@ config:
         per_page: "100"
         tenant_id: writer
         token: env:CEREBRO_SOURCE_COSMO_TOKEN
+    - id: writer-panopticon-alerts
+      sourceId: panopticon
+      tenantId: writer
+      config:
+        bucket: panopticon-prod-837279440628-cerebro-export
+        family: alert
+        page_size: "100"
+        prefix: exports/alerts/
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        tenant_id: writer
+    - id: writer-panopticon-cases
+      sourceId: panopticon
+      tenantId: writer
+      config:
+        bucket: panopticon-prod-837279440628-cerebro-export
+        family: case
+        page_size: "100"
+        prefix: exports/cases/
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        tenant_id: writer
+    - id: writer-panopticon-iocs
+      sourceId: panopticon
+      tenantId: writer
+      config:
+        bucket: panopticon-prod-837279440628-cerebro-export
+        family: ioc
+        page_size: "100"
+        prefix: exports/iocs/
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        tenant_id: writer
   cerebro:enableTailscale: true
   cerebro:tailscaleAdvertiseRoutes:
     - "10.20.0.0/18"
@@ -2685,6 +2748,15 @@ config:
       region: us-east-1
       prefixes:
         - "s1/cloud_funnel/"
+    - name: panopticon
+      bucket: panopticon-prod-837279440628-cerebro-export
+      bucketArn: arn:aws:s3:::panopticon-prod-837279440628-cerebro-export
+      region: us-east-1
+      roleArn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+      prefixes:
+        - "exports/alerts/"
+        - "exports/cases/"
+        - "exports/iocs/"
   cerebro:neo4jAuraEnabled: true
   cerebro:neo4jAuraInstanceName: cerebro-go-prod-writer
   cerebro:neo4jAuraMemory: 8GB
