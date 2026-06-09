@@ -15,6 +15,11 @@ from typing import Any
 
 import yaml
 
+try:
+    from scripts import verify_aws_secret_imports as secret_imports
+except ImportError:  # pragma: no cover - used when executed as scripts/verify_source_runtime_ecs.py
+    import verify_aws_secret_imports as secret_imports
+
 
 EXPECTED_STACK_ACCOUNTS = {
     "sec-dev": "944130631940",
@@ -53,6 +58,14 @@ class RuntimeTarget:
     schedule_name: str
     rule_name: str
     target: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class SecretImportPreflightFinding:
+    env_name: str
+    key_path: str
+    category: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -999,6 +1012,86 @@ def _verify_account(stack: str, region: str) -> None:
         raise RuntimeError(f"stack {stack} is using an unexpected AWS account; check AWS_PROFILE")
 
 
+def _secret_import_preflight_findings(
+    config: dict[str, Any],
+    stack: str,
+    region: str,
+) -> list[SecretImportPreflightFinding]:
+    imports = secret_imports.expected_secret_imports(config, stack)
+    by_index = {index: item for index, item in enumerate(imports, start=1)}
+    findings: list[SecretImportPreflightFinding] = []
+    for finding in secret_imports.verify_secret_imports(imports, region):
+        item = by_index.get(finding.index)
+        if item is None:
+            findings.append(
+                SecretImportPreflightFinding(
+                    env_name="unknown",
+                    key_path="unknown",
+                    category=str(finding.category),
+                    reason=str(finding.reason),
+                )
+            )
+            continue
+        findings.append(
+            SecretImportPreflightFinding(
+                env_name=item.env_name,
+                key_path=item.secret_id,
+                category=str(finding.category),
+                reason=str(finding.reason),
+            )
+        )
+
+    declared = {item.env_name for item in imports}
+    for env_name in secret_imports._source_runtime_env_refs(config.get("sourceRuntimes") or []):
+        if env_name not in declared:
+            findings.append(
+                SecretImportPreflightFinding(
+                    env_name=env_name,
+                    key_path="undeclared",
+                    category="runtime-env-ref",
+                    reason="undeclared",
+                )
+            )
+    return findings
+
+
+def _print_secret_import_preflight_failure(
+    stack: str,
+    findings: list[SecretImportPreflightFinding],
+) -> None:
+    print(
+        f"{stack} AWS secret import preflight failed for {len(findings)} import(s); ECS run-task was not started.",
+        file=sys.stderr,
+    )
+    print("key_path\tenv_key\tcategory\treason", file=sys.stderr)
+    for finding in findings:
+        print(
+            "\t".join(
+                [
+                    _sanitize_text(finding.key_path),
+                    _sanitize_text(finding.env_name),
+                    _sanitize_text(finding.category),
+                    _sanitize_text(finding.reason),
+                ]
+            ),
+            file=sys.stderr,
+        )
+    print(
+        "Infisical guidance: use read-only key-presence checks only, never --plain or value-printing output, "
+        "then sync the missing keys into AWS Secrets Manager before rerunning live validation.",
+        file=sys.stderr,
+    )
+
+
+def _verify_secret_import_preflight(config: dict[str, Any], stack: str, region: str) -> None:
+    findings = _secret_import_preflight_findings(config, stack, region)
+    if not findings:
+        print(f"{stack} AWS secret import preflight passed.")
+        return
+    _print_secret_import_preflight_failure(stack, findings)
+    raise RuntimeError("required AWS secret imports are missing; ECS run-task was not started")
+
+
 def _positive_int(value: str) -> int:
     parsed = int(value)
     if parsed < 1:
@@ -1254,6 +1347,8 @@ def main(argv: list[str] | None = None) -> int:
             _disabled_observability_runtime_ids(config, args.source_id, requested, families) if args.observability_targets else [],
         )
         return 0
+    if args.run:
+        _verify_secret_import_preflight(config, stack, args.region)
     results = _verify_runtime_targets(
         targets,
         options,

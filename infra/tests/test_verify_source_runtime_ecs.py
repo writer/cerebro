@@ -16,6 +16,7 @@ from scripts.verify_source_runtime_ecs import (
     RuntimeTaskFailedError,
     RuntimeTarget,
     RuntimeVerificationFailedError,
+    SecretImportPreflightFinding,
     VerificationOptions,
     VerificationResult,
     _declared_runtime_ids,
@@ -30,6 +31,7 @@ from scripts.verify_source_runtime_ecs import (
     _runtime_skip_retryable,
     _schedule_suffix,
     _sanitize_text,
+    _secret_import_preflight_findings,
     _stop_running_tasks,
     _summarize_log_messages,
     _task_family,
@@ -795,6 +797,221 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertIn("mutations\tnone", output)
         self.assertIn("writer-panopticon-alerts", output)
         self.assertIn("wait_timeout_seconds\t300", output)
+
+    def test_run_fails_secret_import_preflight_before_starting_tasks(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimes": [
+                {
+                    "id": "aws-public",
+                    "sourceId": "aws",
+                    "config": {
+                        "family": "public_endpoint",
+                        "base_url": "env:EVIDENCE_CAS_BASE_URL",
+                        "token": "env:EVIDENCE_CAS_TOKEN",
+                    },
+                }
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="aws-public",
+                schedule_name="aws-public-live",
+                rule_name="cerebro-sec-dev-orchestrator-aws-public-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+        findings = [
+            SecretImportPreflightFinding(
+                env_name="EVIDENCE_CAS_BASE_URL",
+                key_path="cerebro-sec-dev/EVIDENCE_CAS_BASE_URL",
+                category="runtime-import",
+                reason="missing",
+            ),
+            SecretImportPreflightFinding(
+                env_name="EVIDENCE_CAS_TOKEN",
+                key_path="cerebro-sec-dev/EVIDENCE_CAS_TOKEN",
+                category="runtime-import",
+                reason="missing",
+            ),
+        ]
+
+        stderr = StringIO()
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings", return_value=findings),
+            patch("scripts.verify_source_runtime_ecs._run_task") as run_task,
+            redirect_stderr(stderr),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "ECS run-task was not started"):
+                main(
+                    [
+                        "--stack-file",
+                        str(stack_file),
+                        "--source-id",
+                        "aws",
+                        "--family",
+                        "public_endpoint",
+                        "--run",
+                    ]
+                )
+
+        run_task.assert_not_called()
+        output = stderr.getvalue()
+        self.assertIn("AWS secret import preflight failed", output)
+        self.assertIn("cerebro-sec-dev/EVIDENCE_CAS_BASE_URL", output)
+        self.assertIn("cerebro-sec-dev/EVIDENCE_CAS_TOKEN", output)
+        self.assertIn("Infisical", output)
+        self.assertNotIn("secret-value", output)
+        self.assertNotIn("arn:aws", output)
+
+    def test_run_secret_import_preflight_success_allows_runtime_verification(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimes": [
+                {"id": "aws-public", "sourceId": "aws", "config": {"family": "public_endpoint"}}
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="aws-public",
+                schedule_name="aws-public-live",
+                rule_name="cerebro-sec-dev-orchestrator-aws-public-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+        result = VerificationResult(
+            runtime_id="aws-public",
+            task_arn="arn:aws:ecs:us-east-1:000000000000:task/cluster/task-1",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="success",
+            graph_ingest_status="success",
+            events_appended=1,
+            pages_read=1,
+            entities_projected=1,
+            links_projected=1,
+        )
+        events: list[str] = []
+
+        def fake_preflight(config_arg, stack_arg, region_arg):
+            events.append("preflight")
+            return []
+
+        def fake_verify(targets_arg, options_arg, concurrency_arg):
+            self.assertEqual(events, ["preflight"])
+            events.append("verify")
+            return [result]
+
+        stdout = StringIO()
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings", side_effect=fake_preflight),
+            patch("scripts.verify_source_runtime_ecs._verify_runtime_targets", side_effect=fake_verify),
+            redirect_stdout(stdout),
+        ):
+            status = main(
+                [
+                    "--stack-file",
+                    str(stack_file),
+                    "--source-id",
+                    "aws",
+                    "--family",
+                    "public_endpoint",
+                    "--run",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(events, ["preflight", "verify"])
+        self.assertIn("runtime_id\texit\tsync", stdout.getvalue())
+
+    def test_recent_task_verification_skips_secret_import_preflight(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimes": [
+                {"id": "aws-public", "sourceId": "aws", "config": {"family": "public_endpoint"}}
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="aws-public",
+                schedule_name="aws-public-live",
+                rule_name="cerebro-sec-dev-orchestrator-aws-public-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+        result = VerificationResult(
+            runtime_id="aws-public",
+            task_arn="task-1",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="success",
+            graph_ingest_status="success",
+            events_appended=1,
+            pages_read=1,
+        )
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings") as preflight,
+            patch("scripts.verify_source_runtime_ecs._verify_runtime_targets", return_value=[result]),
+            redirect_stdout(StringIO()),
+        ):
+            status = main(
+                [
+                    "--stack-file",
+                    str(stack_file),
+                    "--source-id",
+                    "aws",
+                    "--family",
+                    "public_endpoint",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        preflight.assert_not_called()
+
+    def test_secret_import_preflight_maps_findings_to_key_paths(self) -> None:
+        config = {
+            "environment": "sec-dev",
+            "infisicalSecretsPrefix": "cerebro-sec-dev",
+            "sourceSecretKeys": ["EVIDENCE_CAS_BASE_URL", "EVIDENCE_CAS_TOKEN"],
+            "sourceRuntimes": [
+                {
+                    "id": "aws-public",
+                    "sourceId": "aws",
+                    "config": {
+                        "base_url": "env:EVIDENCE_CAS_BASE_URL",
+                        "token": "env:EVIDENCE_CAS_TOKEN",
+                    },
+                }
+            ],
+        }
+
+        def fake_verify(imports, region):
+            return [
+                type("Finding", (), {"index": 5, "category": "runtime-import", "fingerprint": "unused", "reason": "missing"})(),
+                type("Finding", (), {"index": 6, "category": "runtime-import", "fingerprint": "unused", "reason": "missing"})(),
+            ]
+
+        with patch("scripts.verify_source_runtime_ecs.secret_imports.verify_secret_imports", side_effect=fake_verify):
+            findings = _secret_import_preflight_findings(config, "sec-dev", "us-east-1")
+
+        self.assertEqual([finding.env_name for finding in findings], ["EVIDENCE_CAS_BASE_URL", "EVIDENCE_CAS_TOKEN"])
+        self.assertEqual(
+            [finding.key_path for finding in findings],
+            ["cerebro-sec-dev/EVIDENCE_CAS_BASE_URL", "cerebro-sec-dev/EVIDENCE_CAS_TOKEN"],
+        )
 
 
 if __name__ == "__main__":
