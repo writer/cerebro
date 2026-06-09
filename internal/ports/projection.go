@@ -80,6 +80,12 @@ type ProjectionStateStore interface {
 	UpsertProjectedLink(context.Context, *ProjectedLink) error
 }
 
+// ProjectionEntityReader reads normalized current-state entities when a projector
+// needs to compare immutable identity fields before applying an update.
+type ProjectionEntityReader interface {
+	GetProjectedEntity(context.Context, string) (*ProjectedEntity, error)
+}
+
 // ProjectionGraphStore persists normalized entities and links into the graph.
 type ProjectionGraphStore interface {
 	GraphStore

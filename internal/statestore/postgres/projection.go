@@ -90,6 +90,13 @@ DELETE FROM entities
 WHERE urn = $1`
 }
 
+func projectedEntityGetSQL() string {
+	return `
+SELECT urn, tenant_id, source_id, runtime_id, entity_type, label, attributes_json
+FROM entities
+WHERE urn = $1`
+}
+
 func projectedEntityCleanupSQL(request ports.ProjectionCleanupRequest) (string, []any, error) {
 	conditions, args, scoped := projectedEntityCleanupConditions(request)
 	if !scoped {
@@ -371,6 +378,46 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 		return fmt.Errorf("upsert projected entity %q: %w", urn, err)
 	}
 	return nil
+}
+
+// GetProjectedEntity reads one normalized current-state entity by URN.
+func (s *Store) GetProjectedEntity(ctx context.Context, urn string) (*ports.ProjectedEntity, error) {
+	normalizedURN := strings.TrimSpace(urn)
+	if normalizedURN == "" {
+		return nil, errors.New("projected entity urn is required")
+	}
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureProjectionTables(ctx); err != nil {
+		return nil, err
+	}
+	entity := &ports.ProjectedEntity{}
+	var attributesRaw []byte
+	err := s.db.QueryRowContext(ctx, projectedEntityGetSQL(), normalizedURN).Scan(
+		&entity.URN,
+		&entity.TenantID,
+		&entity.SourceID,
+		&entity.RuntimeID,
+		&entity.EntityType,
+		&entity.Label,
+		&attributesRaw,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get projected entity %q: %w", normalizedURN, err)
+	}
+	if len(attributesRaw) != 0 {
+		if err := json.Unmarshal(attributesRaw, &entity.Attributes); err != nil {
+			return nil, fmt.Errorf("decode projected entity attributes %q: %w", normalizedURN, err)
+		}
+	}
+	if entity.Attributes == nil {
+		entity.Attributes = map[string]string{}
+	}
+	return entity, nil
 }
 
 // UpsertProjectedLink persists one normalized link in the current-state store.
