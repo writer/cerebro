@@ -15,15 +15,24 @@ import (
 // not own runtimes (e.g. push-only SDK adapters, infrastructure scanners
 // driven by the orchestrator default command) are exempt by being absent.
 var requireDeployManifest = map[string]struct{}{
+	"anthropic":        {},
 	"azure":            {},
+	"cloudflare":       {},
+	"duo":              {},
 	"gcp":              {},
 	"github":           {},
 	"google_workspace": {},
 	"kandji":           {},
+	"kubernetes":       {},
 	"kolide":           {},
+	"openai":           {},
 	"okta":             {},
+	"pagerduty":        {},
 	"sentinelone":      {},
+	"slack":            {},
+	"tailscale":        {},
 	"trusted_endpoint": {},
+	"trivy":            {},
 }
 
 func TestSourceDeployManifestsAreValid(t *testing.T) {

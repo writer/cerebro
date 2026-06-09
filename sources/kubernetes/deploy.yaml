@@ -1,0 +1,39 @@
+sourceId: kubernetes
+secretKeys:
+  - KUBERNETES_KUBECONFIG_PATH
+runtimes:
+  - localId: cluster
+    config:
+      family: cluster
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: namespace
+    config:
+      family: namespace
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: pod
+    config:
+      family: pod
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: container
+    config:
+      family: container
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: service-account
+    config:
+      family: service_account
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: workload
+    config:
+      family: workload
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: workload-identity-binding
+    config:
+      family: workload_identity_binding
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"

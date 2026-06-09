@@ -1,0 +1,35 @@
+sourceId: cloudflare
+secretKeys:
+  - CLOUDFLARE_API_TOKEN
+  - CLOUDFLARE_DNS_RECORD_PATH
+  - CLOUDFLARE_MEMBER_PATH
+  - CLOUDFLARE_ROLE_PATH
+runtimes:
+  - localId: account
+    config:
+      family: account
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: member
+    config:
+      family: member
+      member_path: env:CLOUDFLARE_MEMBER_PATH
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: role
+    config:
+      family: role
+      per_page: "100"
+      role_path: env:CLOUDFLARE_ROLE_PATH
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: zone
+    config:
+      family: zone
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: dns-record
+    config:
+      dns_record_path: env:CLOUDFLARE_DNS_RECORD_PATH
+      family: dns_record
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN

@@ -1,0 +1,20 @@
+sourceId: trivy
+secretKeys:
+  - TRIVY_REPORT_PATH
+runtimes:
+  - localId: image-scan
+    config:
+      family: image_scan
+      path: env:TRIVY_REPORT_PATH
+  - localId: image-package
+    config:
+      family: image_package
+      path: env:TRIVY_REPORT_PATH
+  - localId: image-vulnerability
+    config:
+      family: image_vulnerability
+      path: env:TRIVY_REPORT_PATH
+  - localId: fix
+    config:
+      family: fix
+      path: env:TRIVY_REPORT_PATH

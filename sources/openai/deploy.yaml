@@ -1,0 +1,33 @@
+sourceId: openai
+secretKeys:
+  - OPENAI_API_KEY
+  - OPENAI_API_KEY_PATH
+  - OPENAI_SERVICE_ACCOUNT_PATH
+runtimes:
+  - localId: user
+    config:
+      family: user
+      per_page: "100"
+      token: env:OPENAI_API_KEY
+  - localId: project
+    config:
+      family: project
+      per_page: "100"
+      token: env:OPENAI_API_KEY
+  - localId: service-account
+    config:
+      family: service_account
+      per_page: "100"
+      service_account_path: env:OPENAI_SERVICE_ACCOUNT_PATH
+      token: env:OPENAI_API_KEY
+  - localId: api-key
+    config:
+      api_key_path: env:OPENAI_API_KEY_PATH
+      family: api_key
+      per_page: "100"
+      token: env:OPENAI_API_KEY
+  - localId: admin-api-key
+    config:
+      family: admin_api_key
+      per_page: "100"
+      token: env:OPENAI_API_KEY

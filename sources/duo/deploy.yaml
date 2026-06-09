@@ -1,0 +1,41 @@
+sourceId: duo
+secretKeys:
+  - DUO_API_TOKEN
+  - DUO_BASE_URL
+runtimes:
+  - localId: user
+    config:
+      base_url: env:DUO_BASE_URL
+      family: user
+      per_page: "100"
+      token: env:DUO_API_TOKEN
+  - localId: group
+    config:
+      base_url: env:DUO_BASE_URL
+      family: group
+      per_page: "100"
+      token: env:DUO_API_TOKEN
+  - localId: endpoint
+    config:
+      base_url: env:DUO_BASE_URL
+      family: endpoint
+      per_page: "100"
+      token: env:DUO_API_TOKEN
+  - localId: phone
+    config:
+      base_url: env:DUO_BASE_URL
+      family: phone
+      per_page: "100"
+      token: env:DUO_API_TOKEN
+  - localId: token
+    config:
+      base_url: env:DUO_BASE_URL
+      family: token
+      per_page: "100"
+      token: env:DUO_API_TOKEN
+  - localId: web-authn-credential
+    config:
+      base_url: env:DUO_BASE_URL
+      family: web_authn_credential
+      per_page: "100"
+      token: env:DUO_API_TOKEN

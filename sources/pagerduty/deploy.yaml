@@ -1,0 +1,41 @@
+sourceId: pagerduty
+secretKeys:
+  - PAGERDUTY_API_TOKEN
+  - PAGERDUTY_INTEGRATION_PATH
+runtimes:
+  - localId: user
+    config:
+      family: user
+      per_page: "100"
+      token: env:PAGERDUTY_API_TOKEN
+  - localId: team
+    config:
+      family: team
+      per_page: "100"
+      token: env:PAGERDUTY_API_TOKEN
+  - localId: service
+    config:
+      family: service
+      per_page: "100"
+      token: env:PAGERDUTY_API_TOKEN
+  - localId: schedule
+    config:
+      family: schedule
+      per_page: "100"
+      token: env:PAGERDUTY_API_TOKEN
+  - localId: escalation-policy
+    config:
+      family: escalation_policy
+      per_page: "100"
+      token: env:PAGERDUTY_API_TOKEN
+  - localId: integration
+    config:
+      family: integration
+      path: env:PAGERDUTY_INTEGRATION_PATH
+      per_page: "100"
+      token: env:PAGERDUTY_API_TOKEN
+  - localId: vendor
+    config:
+      family: vendor
+      per_page: "100"
+      token: env:PAGERDUTY_API_TOKEN

@@ -1,0 +1,24 @@
+sourceId: slack
+secretKeys:
+  - SLACK_TOKEN
+runtimes:
+  - localId: team
+    config:
+      family: team
+      per_page: "100"
+      token: env:SLACK_TOKEN
+  - localId: user
+    config:
+      family: user
+      per_page: "100"
+      token: env:SLACK_TOKEN
+  - localId: channel
+    config:
+      family: channel
+      per_page: "100"
+      token: env:SLACK_TOKEN
+  - localId: user-group
+    config:
+      family: user_group
+      per_page: "100"
+      token: env:SLACK_TOKEN

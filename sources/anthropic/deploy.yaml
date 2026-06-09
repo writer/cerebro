@@ -1,0 +1,19 @@
+sourceId: anthropic
+secretKeys:
+  - ANTHROPIC_API_KEY
+runtimes:
+  - localId: user
+    config:
+      family: user
+      per_page: "100"
+      token: env:ANTHROPIC_API_KEY
+  - localId: workspace
+    config:
+      family: workspace
+      per_page: "100"
+      token: env:ANTHROPIC_API_KEY
+  - localId: api-key
+    config:
+      family: api_key
+      per_page: "100"
+      token: env:ANTHROPIC_API_KEY
