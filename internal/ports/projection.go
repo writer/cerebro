@@ -86,6 +86,12 @@ type ProjectionEntityReader interface {
 	GetProjectedEntity(context.Context, string) (*ProjectedEntity, error)
 }
 
+// ProjectionRuntimeEvidenceReader reads runtime evidence by its stable source
+// event identity before projection assigns or updates evidence-specific URNs.
+type ProjectionRuntimeEvidenceReader interface {
+	GetProjectedRuntimeEvidenceBySourceEvent(context.Context, string, string, string) (*ProjectedEntity, error)
+}
+
 // ProjectionGraphStore persists normalized entities and links into the graph.
 type ProjectionGraphStore interface {
 	GraphStore

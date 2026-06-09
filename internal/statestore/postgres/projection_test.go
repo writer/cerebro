@@ -83,6 +83,34 @@ func TestProjectionEnsureStatementsIndexReverseLinkLookups(t *testing.T) {
 	t.Fatalf("ensureProjectionStatements missing entity_links to_urn index: %#v", ensureProjectionStatements)
 }
 
+func TestProjectionEnsureStatementsIndexRuntimeEvidenceSourceEvents(t *testing.T) {
+	for _, statement := range ensureProjectionStatements {
+		if strings.Contains(statement, "entities_runtime_evidence_source_event_idx") &&
+			strings.Contains(statement, "tenant_id, runtime_id") &&
+			strings.Contains(statement, "source_event_id") &&
+			strings.Contains(statement, "runtime.evidence") {
+			return
+		}
+	}
+	t.Fatalf("ensureProjectionStatements missing runtime evidence source event index: %#v", ensureProjectionStatements)
+}
+
+func TestProjectedRuntimeEvidenceBySourceEventSQLUsesStableSourceTuple(t *testing.T) {
+	query := projectedRuntimeEvidenceBySourceEventSQL()
+	for _, want := range []string{
+		"tenant_id = $1",
+		"entity_type = 'runtime.evidence'",
+		"runtime_id = $2",
+		"attributes_json ->> 'source_runtime_id' = $2",
+		"attributes_json ->> 'source_event_id' = $3",
+		"LIMIT 1",
+	} {
+		if !strings.Contains(query, want) {
+			t.Fatalf("runtime evidence source event SQL missing %q:\n%s", want, query)
+		}
+	}
+}
+
 func TestProjectedEntityCleanupSQLRequiresScope(t *testing.T) {
 	if _, _, err := projectedEntityCleanupSQL(ports.ProjectionCleanupRequest{OnlyIsolated: true}); err == nil {
 		t.Fatal("projectedEntityCleanupSQL() error = nil, want non-nil")
