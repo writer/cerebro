@@ -863,6 +863,7 @@ config:
         bucket: cases
         family: object
         per_page: "100"
+        private_endpoint_allowlist: env:EVIDENCE_CAS_BASE_URL
         token: env:EVIDENCE_CAS_TOKEN
     - id: writer-okta-audit
       sourceId: okta
