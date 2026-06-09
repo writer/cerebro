@@ -1,0 +1,26 @@
+id: anthropic
+name: Anthropic
+description: Anthropic organization user, workspace, and API key source.
+emitted_kinds:
+  - anthropic.user
+  - anthropic.workspace
+  - anthropic.api_key
+event_contracts:
+  - kind: anthropic.user
+    schema_ref: anthropic/user/v1
+    required_attributes:
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: anthropic.workspace
+    schema_ref: anthropic/workspace/v1
+    required_attributes:
+      - workspace_id
+    required_payload_fields:
+      - id
+  - kind: anthropic.api_key
+    schema_ref: anthropic/api_key/v1
+    required_attributes:
+      - api_key_id
+    required_payload_fields:
+      - id

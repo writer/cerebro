@@ -1,0 +1,33 @@
+id: slack
+name: Slack
+description: Slack team, user, channel, and user group source.
+emitted_kinds:
+  - slack.team
+  - slack.user
+  - slack.channel
+  - slack.user_group
+event_contracts:
+  - kind: slack.team
+    schema_ref: slack/team/v1
+    required_attributes:
+      - team_id
+    required_payload_fields:
+      - id
+  - kind: slack.user
+    schema_ref: slack/user/v1
+    required_attributes:
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: slack.channel
+    schema_ref: slack/channel/v1
+    required_attributes:
+      - channel_id
+    required_payload_fields:
+      - id
+  - kind: slack.user_group
+    schema_ref: slack/user_group/v1
+    required_attributes:
+      - group_id
+    required_payload_fields:
+      - id

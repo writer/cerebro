@@ -1,0 +1,78 @@
+id: kubernetes
+name: Kubernetes
+description: Kubernetes cluster, workload, service account, and workload identity source.
+emitted_kinds:
+  - kubernetes.cluster
+  - kubernetes.namespace
+  - kubernetes.pod
+  - kubernetes.container
+  - kubernetes.service_account
+  - kubernetes.workload
+  - kubernetes.workload_identity_binding
+event_contracts:
+  - kind: kubernetes.cluster
+    schema_ref: kubernetes/cluster/v1
+    required_attributes:
+      - cluster_id
+      - cluster_name
+    required_payload_fields:
+      - cluster_id
+      - cluster_name
+  - kind: kubernetes.namespace
+    schema_ref: kubernetes/namespace/v1
+    required_attributes:
+      - cluster_id
+      - namespace
+    required_payload_fields:
+      - name
+      - uid
+  - kind: kubernetes.pod
+    schema_ref: kubernetes/pod/v1
+    required_attributes:
+      - cluster_id
+      - namespace
+      - workload_uid
+    required_payload_fields:
+      - name
+      - uid
+      - namespace
+  - kind: kubernetes.container
+    schema_ref: kubernetes/container/v1
+    required_attributes:
+      - cluster_id
+      - namespace
+      - container_name
+    required_payload_fields:
+      - container_name
+      - pod_uid
+  - kind: kubernetes.service_account
+    schema_ref: kubernetes/service_account/v1
+    required_attributes:
+      - cluster_id
+      - namespace
+      - service_account_name
+    required_payload_fields:
+      - name
+      - namespace
+  - kind: kubernetes.workload
+    schema_ref: kubernetes/workload/v1
+    required_attributes:
+      - cluster_id
+      - namespace
+      - workload_uid
+    required_payload_fields:
+      - workload_uid
+      - workload_kind
+      - workload_name
+  - kind: kubernetes.workload_identity_binding
+    schema_ref: kubernetes/workload_identity_binding/v1
+    required_attributes:
+      - cluster_id
+      - namespace
+      - service_account_name
+      - cloud_provider
+      - target_id
+    required_payload_fields:
+      - service_account_name
+      - cloud_provider
+      - target_id

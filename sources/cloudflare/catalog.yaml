@@ -1,0 +1,40 @@
+id: cloudflare
+name: Cloudflare
+description: Cloudflare account, member, role, zone, and DNS source.
+emitted_kinds:
+  - cloudflare.account
+  - cloudflare.member
+  - cloudflare.role
+  - cloudflare.zone
+  - cloudflare.dns_record
+event_contracts:
+  - kind: cloudflare.account
+    schema_ref: cloudflare/account/v1
+    required_attributes:
+      - account_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.member
+    schema_ref: cloudflare/member/v1
+    required_attributes:
+      - member_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.role
+    schema_ref: cloudflare/role/v1
+    required_attributes:
+      - role_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.zone
+    schema_ref: cloudflare/zone/v1
+    required_attributes:
+      - zone_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.dns_record
+    schema_ref: cloudflare/dns_record/v1
+    required_attributes:
+      - record_id
+    required_payload_fields:
+      - id
