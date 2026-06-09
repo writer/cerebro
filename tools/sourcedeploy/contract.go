@@ -2,6 +2,7 @@ package sourcedeploy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,6 +35,7 @@ type ContractSource struct {
 	SupportedFamilies        []string          `json:"supported_families,omitempty"`
 	RequiredSecrets          []string          `json:"required_secrets,omitempty"`
 	RoleAssumptionConfigKeys []string          `json:"role_assumption_config_keys,omitempty"`
+	SourceHealthReceipt      map[string]any    `json:"source_health_receipt,omitempty"`
 	Runtimes                 []ContractRuntime `json:"runtimes,omitempty"`
 }
 
@@ -89,12 +91,17 @@ func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptio
 	sources := make([]ContractSource, 0, len(catalogs))
 	for _, catalog := range catalogs {
 		manifest := manifestBySource[catalog.ID]
+		receipt, err := sourceHealthReceipt(sourcesRoot, catalog.ID)
+		if err != nil {
+			return Contract{}, err
+		}
 		sources = append(sources, ContractSource{
 			SourceID:                 catalog.ID,
 			EmittedKinds:             sortedStrings(catalog.EmittedKinds),
 			SupportedFamilies:        supportedFamilies(catalog.ID, catalog.EmittedKinds, catalog.RuntimeFamilies, runtimesBySource[catalog.ID]),
 			RequiredSecrets:          sortedStrings(manifest.SecretKeys),
 			RoleAssumptionConfigKeys: roleAssumptionConfigKeys(catalog.ID),
+			SourceHealthReceipt:      receipt,
 			Runtimes:                 runtimesBySource[catalog.ID],
 		})
 	}
@@ -112,6 +119,32 @@ func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptio
 
 func (c Contract) MarshalJSONStable() ([]byte, error) {
 	return json.MarshalIndent(c, "", "  ")
+}
+
+func sourceHealthReceipt(sourcesRoot string, sourceID string) (map[string]any, error) {
+	path := filepath.Join(sourcesRoot, sourceID, "source_health_receipt.json")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read source health receipt %s: %w", path, err)
+	}
+	var receipt map[string]any
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		return nil, fmt.Errorf("decode source health receipt %s: %w", path, err)
+	}
+	if len(receipt) == 0 {
+		return nil, fmt.Errorf("decode source health receipt %s: receipt must be a JSON object", path)
+	}
+	if kind := strings.TrimSpace(fmt.Sprint(receipt["receipt_kind"])); kind != "source_health.receipt" {
+		return nil, fmt.Errorf("decode source health receipt %s: receipt_kind must be source_health.receipt", path)
+	}
+	if rawSourceID, ok := receipt["source_id"].(string); ok && strings.TrimSpace(rawSourceID) != "" && strings.TrimSpace(rawSourceID) != sourceID {
+		return nil, fmt.Errorf("decode source health receipt %s: source_id %q does not match catalog %q", path, rawSourceID, sourceID)
+	}
+	receipt["source_id"] = sourceID
+	return receipt, nil
 }
 
 func discoverCatalogs(sourcesRoot string) ([]contractCatalog, error) {
