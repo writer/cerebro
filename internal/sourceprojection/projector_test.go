@@ -3969,6 +3969,7 @@ func TestProjectEvidenceCASIRISReferenceLinksCaseEvidence(t *testing.T) {
 		Kind:     "evidence_cas.object",
 		Attributes: map[string]string{
 			"case_id":                       "123",
+			"case_link_status":              "linked",
 			"evidence_cas_blocks_count":     "3",
 			"evidence_cas_commit_id":        "commit-1",
 			"evidence_cas_content_type":     "application/x-tar",
@@ -3983,6 +3984,7 @@ func TestProjectEvidenceCASIRISReferenceLinksCaseEvidence(t *testing.T) {
 			"observed_at":                   "2026-06-08T00:00:00Z",
 			"resource_entity_type":          "case",
 			"resource_id":                   "123",
+			"resource_link_status":          "linked",
 			"resource_name":                 "IRIS case 123",
 			"resource_type":                 "case",
 			"resource_urn":                  "urn:cerebro:writer:case:123",
@@ -4031,8 +4033,10 @@ func TestProjectEvidenceCASPreservesRuntimeIdentityAndSourceCorrelation(t *testi
 			"occurred_at":              "2026-06-08T00:00:00Z",
 			"observed_at":              "2026-06-08T00:01:00Z",
 			"request_id":               "request-123",
+			"case_link_status":         "linked",
 			"resource_entity_type":     "aws.bucket",
 			"resource_id":              "bucket-1",
+			"resource_link_status":     "linked",
 			"resource_name":            "bucket-1",
 			"resource_type":            "bucket",
 			"resource_urn":             "urn:cerebro:writer:aws_bucket:bucket-1",
@@ -4103,6 +4107,7 @@ func TestProjectEvidenceCASReplayIsIdempotentAndConflictsAreRejected(t *testing.
 			"evidence_cas_ref_type":  "evidencecas.manifest.v2",
 			"evidence_cas_uri":       "evidencecas://cases/case-123/evidence/evidence-456",
 			"evidence_id":            "evidence-456",
+			"resource_link_status":   "linked",
 			"resource_urn":           "urn:cerebro:writer:case:case-123",
 			"source_event_id":        "iris-event-123",
 			"source_runtime_id":      "iris-runtime",
@@ -4310,6 +4315,7 @@ func TestProjectEvidenceCASMissingLinksAreObservableAndBounded(t *testing.T) {
 			"evidence_cas_uri":        "evidencecas://cases/case-missing-resource-ok/evidence/evidence-resource",
 			"evidence_id":             "evidence-resource",
 			"resource_entity_type":    "aws.bucket",
+			"resource_link_status":    "linked",
 			"resource_urn":            "urn:cerebro:writer:aws_bucket:linked-bucket",
 			"source_event_id":         "iris-event-resource",
 			"source_runtime_id":       "iris-runtime",
@@ -4332,6 +4338,67 @@ func TestProjectEvidenceCASMissingLinksAreObservableAndBounded(t *testing.T) {
 	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:case:case-missing-resource-ok", relationHasEvidence, resourceEvidenceURN)
 }
 
+func TestProjectEvidenceCASRequiresExplicitLinkabilityBeforeCreatingContextEntities(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	stderr := captureSourceProjectionStderr(t, func() {
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       "iris-evidence-implicit-context",
+			TenantId: "writer",
+			SourceId: "evidence_cas",
+			Kind:     "evidence_cas.object",
+			Attributes: map[string]string{
+				"case_id":               "case-implicit",
+				"evidence_cas_digest":   "sha256implicit",
+				"evidence_cas_ref_type": "evidencecas.manifest.v2",
+				"evidence_cas_uri":      "evidencecas://cases/case-implicit/evidence/evidence-implicit",
+				"evidence_id":           "evidence-implicit",
+				"resource_urn":          "urn:cerebro:writer:aws_bucket:implicit-bucket",
+				"source_event_id":       "iris-event-implicit",
+				"source_runtime_id":     "iris-runtime",
+				"source_system":         "iris",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project(implicit context) error = %v", err)
+		}
+	})
+
+	evidenceURN := "urn:cerebro:writer:runtime_evidence:evidence-implicit"
+	evidence := state.entities[evidenceURN]
+	if evidence == nil {
+		t.Fatalf("runtime evidence entity %q missing", evidenceURN)
+	}
+	if got := evidence.Attributes["resource_link_status"]; got != "missing" {
+		t.Fatalf("resource_link_status = %q, want missing when linkability is not explicit", got)
+	}
+	if got := evidence.Attributes["case_link_status"]; got != "missing" {
+		t.Fatalf("case_link_status = %q, want missing when linkability is not explicit", got)
+	}
+	if _, ok := state.entities["urn:cerebro:writer:aws_bucket:implicit-bucket"]; ok {
+		t.Fatalf("unexpected resource entity fabricated from unresolved EvidenceCAS resource_urn")
+	}
+	if _, ok := state.entities["urn:cerebro:writer:case:case-implicit"]; ok {
+		t.Fatalf("unexpected case entity fabricated from unresolved EvidenceCAS case_id")
+	}
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_bucket:implicit-bucket", relationHasEvidence, evidenceURN)
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:case:case-implicit", relationHasEvidence, evidenceURN)
+
+	payload := sourceProjectionTelemetryPayload(t, stderr)
+	if got := payload["resource_link_status"]; got != "missing" {
+		t.Fatalf("resource_link_status telemetry = %v, want missing", got)
+	}
+	if got := payload["case_link_status"]; got != "missing" {
+		t.Fatalf("case_link_status telemetry = %v, want missing", got)
+	}
+	for _, prohibited := range []string{"implicit-bucket", "case-implicit", "evidence-implicit", "iris-event-implicit", "sha256implicit"} {
+		if strings.Contains(stderr, prohibited) {
+			t.Fatalf("telemetry leaked high-cardinality value %q: %s", prohibited, stderr)
+		}
+	}
+}
+
 func TestProjectEvidenceCASTenantScopedLinksForCollidingIdentifiers(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -4347,6 +4414,7 @@ func TestProjectEvidenceCASTenantScopedLinksForCollidingIdentifiers(t *testing.T
 				"evidence_cas_ref_type": "evidencecas.manifest.v2",
 				"evidence_cas_uri":      "evidencecas://cases/case-1/evidence/evidence-1",
 				"evidence_id":           "evidence-1",
+				"resource_link_status":  "linked",
 				"resource_urn":          "urn:cerebro:" + tenantID + ":case:case-1",
 				"source_event_id":       "event-1",
 				"source_runtime_id":     "runtime-1",
