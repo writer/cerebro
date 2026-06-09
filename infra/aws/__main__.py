@@ -26,6 +26,10 @@ import postgres
 import tailscale as ts
 import waf
 import web
+try:
+    from source_rollouts import apply_source_runtime_rollouts
+except ModuleNotFoundError:  # pragma: no cover - used when imported as aws.__main__
+    from aws.source_rollouts import apply_source_runtime_rollouts
 
 config = pulumi.Config()
 
@@ -358,8 +362,15 @@ if device_auth_enabled:
             "cerebro:deviceAuthAttestationRequired=true requires both "
             "cerebro:deviceAuthAppleTeamID and a non-empty cerebro:deviceAuthAppleBundleIDs list."
         )
-source_secret_keys = config.get_object("sourceSecretKeys") or []
-source_runtimes = config.get_object("sourceRuntimes") or []
+source_runtime_config = apply_source_runtime_rollouts({
+    "sourceSecretKeys": config.get_object("sourceSecretKeys") or [],
+    "sourceRuntimes": config.get_object("sourceRuntimes") or [],
+    "orchestratorSchedules": orchestrator_schedules,
+    "sourceRuntimeRollouts": config.get_object("sourceRuntimeRollouts") or [],
+})
+source_secret_keys = source_runtime_config["sourceSecretKeys"]
+source_runtimes = source_runtime_config["sourceRuntimes"]
+orchestrator_schedules = source_runtime_config["orchestratorSchedules"]
 source_runtime_observability = config.get_object("sourceRuntimeObservability") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
 _validate_source_secret_refs(source_secret_keys, source_runtime_env_refs)

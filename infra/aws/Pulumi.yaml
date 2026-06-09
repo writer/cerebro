@@ -410,6 +410,12 @@ config:
       type: object
     default: []
     description: Declarative source runtime definitions bootstrapped before the API container starts
+  cerebro:sourceRuntimeRollouts:
+    type: array
+    items:
+      type: object
+    default: []
+    description: Compact source runtime rollout definitions expanded into sourceSecretKeys, sourceRuntimes, and orchestratorSchedules
   cerebro:shutdownTimeout:
     type: string
     default: 10s

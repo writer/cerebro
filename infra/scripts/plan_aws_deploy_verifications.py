@@ -5,9 +5,16 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any
 
 import yaml
+
+try:
+    from aws.source_rollouts import apply_source_runtime_rollouts
+except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/plan_aws_deploy_verifications.py
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from aws.source_rollouts import apply_source_runtime_rollouts
 
 
 def _repo_root(stack_file: Path) -> Path:
@@ -20,11 +27,12 @@ def _repo_root(stack_file: Path) -> Path:
 def _load_config_text(text: str) -> dict[str, Any]:
     loaded = yaml.safe_load(text) or {}
     config = loaded.get("config") or {}
-    return {
+    config = {
         key.removeprefix("cerebro:"): value
         for key, value in config.items()
         if isinstance(key, str) and key.startswith("cerebro:")
     }
+    return apply_source_runtime_rollouts(config)
 
 
 def _load_current_config(stack_file: Path) -> dict[str, Any]:

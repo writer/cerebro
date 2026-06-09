@@ -17,6 +17,12 @@ from urllib.request import Request, urlopen
 
 import yaml
 
+try:
+    from aws.source_rollouts import apply_source_runtime_rollouts
+except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/source_runtime_coverage_report.py
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from aws.source_rollouts import apply_source_runtime_rollouts
+
 LIVE_RUNTIME_LIMIT = 500
 
 
@@ -78,11 +84,12 @@ def _load_stack_config(path: Path) -> dict[str, Any]:
     config = loaded.get("config") or {}
     if not isinstance(config, dict):
         raise ValueError(f"{path} must contain a top-level config mapping")
-    return {
+    config = {
         key.removeprefix("cerebro:"): value
         for key, value in config.items()
         if isinstance(key, str) and key.startswith("cerebro:")
     }
+    return apply_source_runtime_rollouts(config)
 
 
 def _stack_domain(path: Path) -> str:

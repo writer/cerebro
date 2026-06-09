@@ -20,6 +20,12 @@ import urllib.request
 
 import yaml
 
+try:
+    from aws.source_rollouts import apply_source_runtime_rollouts
+except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/run_aws_deploy_verifications.py
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from aws.source_rollouts import apply_source_runtime_rollouts
+
 
 @dataclass(frozen=True)
 class GraphHealthResult:
@@ -352,8 +358,13 @@ def _graph_health_needs_primary_link_repair(diagnostics: str) -> bool:
 def _source_id_for_runtime(stack_file: Path, runtime_id: str) -> str:
     with stack_file.open("r", encoding="utf-8") as handle:
         loaded = yaml.safe_load(handle) or {}
-    config = loaded.get("config") or {}
-    runtimes = config.get("cerebro:sourceRuntimes") or config.get("sourceRuntimes") or []
+    raw_config = loaded.get("config") or {}
+    config = apply_source_runtime_rollouts({
+        key.removeprefix("cerebro:"): value
+        for key, value in raw_config.items()
+        if isinstance(key, str) and key.startswith("cerebro:")
+    })
+    runtimes = config.get("sourceRuntimes") or []
     if not isinstance(runtimes, list):
         return ""
     for runtime in runtimes:
