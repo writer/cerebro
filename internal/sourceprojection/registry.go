@@ -48,6 +48,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aurelius.finding":                          aureliusFindingProjections,
 	"aurelius.image_scan":                       aureliusImageScanProjections,
 	"aurelius.policy_exception":                 aureliusPolicyExceptionProjections,
+	"cerebro.api_access":                        cerebroAPIAccessProjections,
 	"aurelius.verdict":                          aureliusVerdictProjections,
 	"github.pull_request":                       githubPullRequestProjections,
 	"github.audit":                              githubAuditProjections,

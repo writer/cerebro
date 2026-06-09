@@ -35,6 +35,13 @@ func TestBuiltin(t *testing.T) {
 	if backstage.Spec().Name != "Backstage" {
 		t.Fatalf("backstage Spec().Name = %q, want %q", backstage.Spec().Name, "Backstage")
 	}
+	cerebro, ok := registry.Get("cerebro")
+	if !ok {
+		t.Fatal("Get(cerebro) = false, want true")
+	}
+	if cerebro.Spec().Name != "Cerebro" {
+		t.Fatalf("cerebro Spec().Name = %q, want %q", cerebro.Spec().Name, "Cerebro")
+	}
 	cosmo, ok := registry.Get("cosmo")
 	if !ok {
 		t.Fatal("Get(cosmo) = false, want true")

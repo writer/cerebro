@@ -74,3 +74,84 @@ func TestSourceDeployManifestsRenderForKnownEnvironments(t *testing.T) {
 		}
 	}
 }
+
+func TestGitHubDeployManifestIncludesCerebroSelfRuntimes(t *testing.T) {
+	root := filepath.Join("..", "..", "sources")
+	manifests, err := sourcedeploy.Discover(root)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+
+	var githubManifest *sourcedeploy.Manifest
+	for i := range manifests {
+		if manifests[i].SourceID == "github" {
+			githubManifest = &manifests[i]
+			break
+		}
+	}
+	if githubManifest == nil {
+		t.Fatal("github deploy manifest not found")
+	}
+
+	want := map[string]map[string]string{
+		"cerebro-audit": {
+			"family":   "audit",
+			"include":  "all",
+			"order":    "desc",
+			"owner":    "writer",
+			"per_page": "100",
+			"phrase":   "repo:writer/cerebro",
+			"token":    "env:GITHUB_TOKEN",
+		},
+		"cerebro-dependabot-alert": {
+			"family":   "dependabot_alert",
+			"owner":    "writer",
+			"per_page": "100",
+			"repo":     "cerebro",
+			"state":    "open",
+			"token":    "env:GITHUB_TOKEN",
+		},
+		"cerebro-pull-request": {
+			"family":   "pull_request",
+			"owner":    "writer",
+			"per_page": "100",
+			"repo":     "cerebro",
+			"state":    "all",
+			"token":    "env:GITHUB_TOKEN",
+		},
+		"cerebro-repository": {
+			"family":   "repository",
+			"owner":    "writer",
+			"per_page": "100",
+			"repo":     "cerebro",
+			"token":    "env:GITHUB_TOKEN",
+		},
+	}
+
+	have := map[string]map[string]string{}
+	for _, runtime := range githubManifest.Runtimes {
+		if _, ok := want[runtime.LocalID]; ok {
+			have[runtime.LocalID] = runtime.Config
+		}
+	}
+
+	missing := make([]string, 0)
+	for id := range want {
+		if _, ok := have[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Fatalf("github deploy manifest missing Cerebro self runtimes: %v", missing)
+	}
+
+	for id, wantConfig := range want {
+		gotConfig := have[id]
+		for key, wantValue := range wantConfig {
+			if got := gotConfig[key]; got != wantValue {
+				t.Fatalf("%s config %s = %q, want %q", id, key, got, wantValue)
+			}
+		}
+	}
+}

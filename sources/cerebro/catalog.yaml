@@ -1,0 +1,17 @@
+id: cerebro
+name: Cerebro
+description: Cerebro product telemetry source. Reads structured access audit telemetry exported as NDJSON archives.
+emitted_kinds:
+  - cerebro.api_access
+event_contracts:
+  - kind: cerebro.api_access
+    schema_ref: cerebro/api_access/v1
+    required_attributes:
+      - event_type
+      - outcome_result
+      - route
+      - method
+    required_payload_fields:
+      - name
+      - outcome
+      - route
