@@ -235,6 +235,33 @@ func TestGenerateFindingOnlyScaffold(t *testing.T) {
 			t.Fatalf("projection missing %q:\n%s", want, projection)
 		}
 	}
+	if strings.Contains(projection, "demoSourceAssetProjections") {
+		t.Fatalf("finding-only projection emitted unused asset helper:\n%s", projection)
+	}
+	projectionTest := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source_test.go")
+	if !strings.Contains(projectionTest, "TestDemoSourceFindingProjection") {
+		t.Fatalf("finding-only projection test missing finding dispatcher coverage:\n%s", projectionTest)
+	}
+}
+
+func TestGenerateAssetOnlySkipsUnusedFindingHelper(t *testing.T) {
+	outputDir := t.TempDir()
+	if _, err := Generate(Request{
+		SourceID:     "demo_source",
+		AssetSchemas: []string{"host"},
+		OutputDir:    outputDir,
+	}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source.go")
+	for _, want := range []string{"demoSourceAssetHostProjections", "demoSourceAssetProjections", "relationHasEvidence"} {
+		if !strings.Contains(projection, want) {
+			t.Fatalf("projection missing %q:\n%s", want, projection)
+		}
+	}
+	if strings.Contains(projection, "demoSourceFindingProjections") {
+		t.Fatalf("asset-only projection emitted unused finding helper:\n%s", projection)
+	}
 }
 
 func FuzzGenerateDryRun(f *testing.F) {

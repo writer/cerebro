@@ -140,7 +140,7 @@ func sourceHealthReceipt(sourcesRoot string, sourceID string) (map[string]any, e
 	if kind := strings.TrimSpace(fmt.Sprint(receipt["receipt_kind"])); kind != "source_health.receipt" {
 		return nil, fmt.Errorf("decode source health receipt %s: receipt_kind must be source_health.receipt", path)
 	}
-	if rawSourceID := strings.TrimSpace(fmt.Sprint(receipt["source_id"])); rawSourceID != "" && rawSourceID != sourceID {
+	if rawSourceID, ok := receipt["source_id"].(string); ok && strings.TrimSpace(rawSourceID) != "" && strings.TrimSpace(rawSourceID) != sourceID {
 		return nil, fmt.Errorf("decode source health receipt %s: source_id %q does not match catalog %q", path, rawSourceID, sourceID)
 	}
 	receipt["source_id"] = sourceID

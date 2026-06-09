@@ -150,6 +150,34 @@ runtimes:
 	}
 }
 
+func TestRenderContractStampsMissingSourceHealthReceiptSourceID(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", `
+sourceId: okta
+secretKeys:
+  - OKTA_API_TOKEN
+runtimes:
+  - localId: audit
+    config:
+      family: audit
+      token: env:OKTA_API_TOKEN
+`)
+	mkSourceHealthReceipt(t, root, "okta", `{"receipt_kind":"source_health.receipt","expected_cadence_seconds":3600}`)
+
+	manifests, err := Discover(root)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	contract, err := RenderContract(root, manifests, ContractOptions{Environment: "sec-dev", TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("RenderContract: %v", err)
+	}
+	if got := contract.Sources[0].SourceHealthReceipt["source_id"]; got != "okta" {
+		t.Fatalf("source health receipt source_id = %v", got)
+	}
+}
+
 func TestAWSCatalogDeclaresAssetMetadataSupportedFamily(t *testing.T) {
 	t.Parallel()
 	catalogs, err := discoverCatalogs(filepath.Join("..", "..", "sources"))
@@ -182,6 +210,7 @@ func TestAWSCatalogDeclaresAssetMetadataSupportedFamily(t *testing.T) {
 func FuzzRenderContractSourceHealthReceipt(f *testing.F) {
 	f.Add(`{"receipt_kind":"source_health.receipt","source_id":"fuzz_source","expected_cadence_seconds":3600,"stale_after_seconds":7200}`)
 	f.Add(`{"receipt_kind":"source_health.receipt","source_id":"","adapter_health_path":"/readyz"}`)
+	f.Add(`{"receipt_kind":"source_health.receipt","adapter_health_path":"/readyz"}`)
 	f.Add(`{"receipt_kind":"wrong","source_id":"fuzz_source"}`)
 	f.Add(`null`)
 	f.Add(`not-json`)
