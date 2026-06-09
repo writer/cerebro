@@ -31,6 +31,24 @@ const (
 	redactedValue    = "[redacted]"
 
 	runtimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
+
+	runtimeStatusConfigKey                = "__cerebro_runtime_status"
+	runtimeRecordsScannedConfigKey        = "__cerebro_runtime_records_scanned"
+	runtimeRecordsAcceptedConfigKey       = "__cerebro_runtime_records_accepted"
+	runtimeRecordsRejectedConfigKey       = "__cerebro_runtime_records_rejected"
+	runtimeEntitiesProjectedConfigKey     = "__cerebro_runtime_entities_projected"
+	runtimeLinksProjectedConfigKey        = "__cerebro_runtime_links_projected"
+	runtimeLastFailureCategoryConfigKey   = "__cerebro_runtime_last_failure_category"
+	runtimeLastInvalidEventIDConfigKey    = "__cerebro_runtime_last_invalid_event_id"
+	runtimeLastInvalidFieldConfigKey      = "__cerebro_runtime_last_invalid_field"
+	runtimeLastInvalidStatusConfigKey     = "__cerebro_runtime_last_invalid_status"
+	runtimeLastInvalidObservedAtConfigKey = "__cerebro_runtime_last_invalid_observed_at"
+	runtimeLastInvalidOccurredAtConfigKey = "__cerebro_runtime_last_invalid_occurred_at"
+	runtimeLastInvalidDiagnosticConfigKey = "__cerebro_runtime_last_invalid_diagnostic"
+	runtimeLastInvalidRetryableConfigKey  = "__cerebro_runtime_last_invalid_retryable"
+	runtimeContractProbeStateConfigKey    = "__cerebro_runtime_contract_probe_state"
+	runtimeLastSyncWatermarkConfigKey     = "__cerebro_runtime_last_sync_watermark"
+	runtimeLastSyncCompletedAtConfigKey   = "__cerebro_runtime_last_sync_completed_at"
 )
 
 var (
@@ -255,6 +273,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	var (
 		eventsAppended    uint32
 		pagesRead         uint32
+		recordsScanned    uint32
+		recordsRejected   uint32
 		entitiesProjected uint32
 		linksProjected    uint32
 	)
@@ -269,6 +289,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		pageNumber := i + 1
 		eventsRead := boundedUint32(len(pull.Events))
+		recordsScanned += eventsRead
 		telemetry.Event(ctx, "source_runtime.page_read", telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
@@ -287,7 +308,23 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			if syncedEvent == nil {
 				continue
 			}
+			if err := sourcecdk.ValidateEventEnvelope(syncedEvent); err != nil {
+				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
+			}
 			if err := sourcecdk.ValidateEventEnvelopeWithContracts(syncedEvent, eventContracts); err != nil {
+				if quarantinableContractError(err) {
+					recordsRejected++
+					category := invalidEventFailureCategory(err)
+					recordRuntimeInvalidEvent(runtime, syncedEvent, category, err, time.Now().UTC())
+					telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
+						telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+						telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+						telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+						telemetry.Field{Key: "failure_category", Value: category},
+						telemetry.Field{Key: "retryable", Value: false},
+					))
+					continue
+				}
 				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
 			}
 			if err := s.appendLog.Append(ctx, syncedEvent); err != nil {
@@ -304,6 +341,15 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		runtime.LastSyncedAt = timestamppb.Now()
+		updateRuntimeSyncStatus(runtime, runtimeSyncStatus{
+			Status:            "completed",
+			RecordsScanned:    recordsScanned,
+			RecordsAccepted:   eventsAppended,
+			RecordsRejected:   recordsRejected,
+			EntitiesProjected: entitiesProjected,
+			LinksProjected:    linksProjected,
+			CompletedAt:       runtime.GetLastSyncedAt().AsTime().UTC(),
+		})
 		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 			return nil, err
 		}
@@ -312,6 +358,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
 			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
 			telemetry.Field{Key: "page", Value: pageNumber},
+			telemetry.Field{Key: "records_scanned", Value: recordsScanned},
+			telemetry.Field{Key: "records_accepted", Value: eventsAppended},
+			telemetry.Field{Key: "records_rejected", Value: recordsRejected},
 			telemetry.Field{Key: "events_appended", Value: eventsAppended},
 			telemetry.Field{Key: "entities_projected", Value: entitiesProjected},
 			telemetry.Field{Key: "links_projected", Value: linksProjected},
@@ -324,6 +373,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	status = "completed"
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "pages_read", Value: pagesRead})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_scanned", Value: recordsScanned})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_accepted", Value: eventsAppended})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_rejected", Value: recordsRejected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "events_appended", Value: eventsAppended})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "entities_projected", Value: entitiesProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "links_projected", Value: linksProjected})
@@ -357,6 +409,159 @@ func sourceRuntimeTelemetryErrorKind(err error) string {
 	default:
 		return "sync_failed"
 	}
+}
+
+type runtimeSyncStatus struct {
+	Status            string
+	RecordsScanned    uint32
+	RecordsAccepted   uint32
+	RecordsRejected   uint32
+	EntitiesProjected uint32
+	LinksProjected    uint32
+	CompletedAt       time.Time
+}
+
+func updateRuntimeSyncStatus(runtime *cerebrov1.SourceRuntime, status runtimeSyncStatus) {
+	if runtime == nil {
+		return
+	}
+	if runtime.Config == nil {
+		runtime.Config = map[string]string{}
+	}
+	setRuntimeConfig(runtime.Config, runtimeStatusConfigKey, status.Status)
+	setRuntimeConfig(runtime.Config, runtimeRecordsScannedConfigKey, fmt.Sprint(status.RecordsScanned))
+	setRuntimeConfig(runtime.Config, runtimeRecordsAcceptedConfigKey, fmt.Sprint(status.RecordsAccepted))
+	setRuntimeConfig(runtime.Config, runtimeRecordsRejectedConfigKey, fmt.Sprint(status.RecordsRejected))
+	setRuntimeConfig(runtime.Config, runtimeEntitiesProjectedConfigKey, fmt.Sprint(status.EntitiesProjected))
+	setRuntimeConfig(runtime.Config, runtimeLinksProjectedConfigKey, fmt.Sprint(status.LinksProjected))
+	if !status.CompletedAt.IsZero() {
+		setRuntimeConfig(runtime.Config, runtimeLastSyncCompletedAtConfigKey, status.CompletedAt.UTC().Format(time.RFC3339Nano))
+	}
+	if watermark := timestampValue(runtime.GetCheckpoint().GetWatermark()); !watermark.IsZero() {
+		setRuntimeConfig(runtime.Config, runtimeLastSyncWatermarkConfigKey, watermark.UTC().Format(time.RFC3339Nano))
+	}
+	if status.RecordsRejected == 0 {
+		clearRuntimeInvalidEvent(runtime.Config)
+	}
+	if strings.TrimSpace(runtime.Config[runtimeLastFailureCategoryConfigKey]) == "" {
+		setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, ""))
+		return
+	}
+	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, runtime.Config[runtimeLastFailureCategoryConfigKey]))
+}
+
+func clearRuntimeInvalidEvent(config map[string]string) {
+	for _, key := range []string{
+		runtimeLastFailureCategoryConfigKey,
+		runtimeLastInvalidEventIDConfigKey,
+		runtimeLastInvalidFieldConfigKey,
+		runtimeLastInvalidStatusConfigKey,
+		runtimeLastInvalidObservedAtConfigKey,
+		runtimeLastInvalidOccurredAtConfigKey,
+		runtimeLastInvalidDiagnosticConfigKey,
+		runtimeLastInvalidRetryableConfigKey,
+	} {
+		delete(config, key)
+	}
+}
+
+func quarantinableContractError(err error) bool {
+	message := err.Error()
+	return strings.Contains(message, "missing required attribute") || strings.Contains(message, "missing required payload field")
+}
+
+func invalidEventFailureCategory(err error) string {
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "missing required attribute"):
+		return "missing_required_attribute"
+	case strings.Contains(message, "missing required payload field"):
+		return "missing_required_payload_field"
+	default:
+		return "invalid_event"
+	}
+}
+
+func recordRuntimeInvalidEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, category string, cause error, observedAt time.Time) {
+	if runtime == nil || event == nil {
+		return
+	}
+	if runtime.Config == nil {
+		runtime.Config = map[string]string{}
+	}
+	field := invalidEventFieldName(cause)
+	setRuntimeConfig(runtime.Config, runtimeLastFailureCategoryConfigKey, category)
+	setRuntimeConfig(runtime.Config, runtimeLastInvalidEventIDConfigKey, firstNonEmptyString(event.GetAttributes()["source_event_id"], event.GetId()))
+	setRuntimeConfig(runtime.Config, runtimeLastInvalidFieldConfigKey, field)
+	setRuntimeConfig(runtime.Config, runtimeLastInvalidStatusConfigKey, "terminal")
+	setRuntimeConfig(runtime.Config, runtimeLastInvalidRetryableConfigKey, "false")
+	setRuntimeConfig(runtime.Config, runtimeLastInvalidObservedAtConfigKey, observedAt.UTC().Format(time.RFC3339Nano))
+	if occurred := timestampValue(event.GetOccurredAt()); !occurred.IsZero() {
+		setRuntimeConfig(runtime.Config, runtimeLastInvalidOccurredAtConfigKey, occurred.UTC().Format(time.RFC3339Nano))
+	}
+	if field != "" {
+		setRuntimeConfig(runtime.Config, runtimeLastInvalidDiagnosticConfigKey, "missing required field "+field)
+	} else {
+		setRuntimeConfig(runtime.Config, runtimeLastInvalidDiagnosticConfigKey, "invalid source event")
+	}
+	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, category))
+}
+
+func invalidEventFieldName(err error) string {
+	message := err.Error()
+	for _, marker := range []string{"missing required attribute ", "missing required payload field "} {
+		index := strings.Index(message, marker)
+		if index < 0 {
+			continue
+		}
+		value := strings.TrimSpace(message[index+len(marker):])
+		value = strings.Trim(value, "\"'")
+		if end := strings.IndexAny(value, " :"); end > 0 {
+			value = value[:end]
+		}
+		return strings.Trim(value, "\"'")
+	}
+	return ""
+}
+
+func contractProbeStateForRuntime(runtime *cerebrov1.SourceRuntime, failureCategory string) string {
+	if runtime == nil || strings.TrimSpace(runtime.GetSourceId()) != "evidence_cas" {
+		return "not_configured"
+	}
+	if strings.TrimSpace(failureCategory) != "" {
+		return "failure"
+	}
+	if runtime.GetLastSyncedAt() == nil {
+		return "unknown"
+	}
+	return "passing"
+}
+
+func setRuntimeConfig(config map[string]string, key string, value string) {
+	if config == nil || strings.TrimSpace(key) == "" {
+		return
+	}
+	config[key] = strings.TrimSpace(value)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func timestampValue(value *timestamppb.Timestamp) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	timestamp := value.AsTime()
+	if timestamp.IsZero() {
+		return time.Time{}
+	}
+	return timestamp.UTC()
 }
 
 func runtimeWatermarkLag(runtime *cerebrov1.SourceRuntime, now time.Time) (time.Time, int64, bool) {
@@ -516,7 +721,9 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEn
 		if cloned.Attributes == nil {
 			cloned.Attributes = make(map[string]string)
 		}
-		cloned.Attributes[ports.EventAttributeSourceRuntimeID] = strings.TrimSpace(runtime.GetId())
+		if strings.TrimSpace(cloned.Attributes[ports.EventAttributeSourceRuntimeID]) == "" {
+			cloned.Attributes[ports.EventAttributeSourceRuntimeID] = strings.TrimSpace(runtime.GetId())
+		}
 	}
 	return cloned
 }
@@ -677,7 +884,7 @@ func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 	}
 	redacted := make(map[string]string, len(cloned.GetConfig()))
 	for key, value := range cloned.GetConfig() {
-		if key == runtimeProgressConfigHashKey {
+		if key == runtimeProgressConfigHashKey || sourceconfig.InternalKey(key) {
 			continue
 		}
 		if sensitiveConfigKey(key) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,10 +27,15 @@ type sourceRuntimeHealthRecord struct {
 	SourceID                  string                                `json:"source_id"`
 	TenantID                  string                                `json:"tenant_id"`
 	Family                    string                                `json:"family,omitempty"`
+	EnabledState              string                                `json:"enabled_state"`
+	Status                    string                                `json:"status"`
 	LastSyncedAt              string                                `json:"last_synced_at,omitempty"`
 	SyncLagSeconds            *int64                                `json:"sync_lag_seconds,omitempty"`
 	CheckpointWatermark       string                                `json:"checkpoint_watermark,omitempty"`
 	WatermarkLagSeconds       *int64                                `json:"watermark_lag_seconds,omitempty"`
+	RecentSync                sourceRuntimeHealthSync               `json:"recent_sync"`
+	LastFailureCategory       string                                `json:"last_failure_category,omitempty"`
+	ContractProbeState        string                                `json:"contract_probe_state"`
 	CursorPending             bool                                  `json:"cursor_pending"`
 	CheckpointCursorPresent   bool                                  `json:"checkpoint_cursor_present"`
 	LatestGraphRun            *sourceRuntimeHealthGraphRun          `json:"latest_graph_run,omitempty"`
@@ -39,6 +45,14 @@ type sourceRuntimeHealthRecord struct {
 	StaleAfterSeconds         *int64                                `json:"stale_after_seconds,omitempty"`
 	ScheduleContextConfigured bool                                  `json:"schedule_context_configured"`
 	GeneratedAt               string                                `json:"generated_at"`
+}
+
+type sourceRuntimeHealthSync struct {
+	RecordsScanned    uint32 `json:"records_scanned"`
+	RecordsAccepted   uint32 `json:"records_accepted"`
+	RecordsRejected   uint32 `json:"records_rejected"`
+	EntitiesProjected uint32 `json:"entities_projected"`
+	LinksProjected    uint32 `json:"links_projected"`
 }
 
 type sourceRuntimeHealthGraphRun struct {
@@ -77,6 +91,24 @@ type sourceRuntimeHealthFindingEvaluation struct {
 	GraphRowsRead    uint32 `json:"graph_rows_read,omitempty"`
 	DurationSeconds  *int64 `json:"duration_seconds,omitempty"`
 }
+
+const (
+	runtimeStatusConfigKey                = "__cerebro_runtime_status"
+	runtimeRecordsScannedConfigKey        = "__cerebro_runtime_records_scanned"
+	runtimeRecordsAcceptedConfigKey       = "__cerebro_runtime_records_accepted"
+	runtimeRecordsRejectedConfigKey       = "__cerebro_runtime_records_rejected"
+	runtimeEntitiesProjectedConfigKey     = "__cerebro_runtime_entities_projected"
+	runtimeLinksProjectedConfigKey        = "__cerebro_runtime_links_projected"
+	runtimeLastFailureCategoryConfigKey   = "__cerebro_runtime_last_failure_category"
+	runtimeContractProbeStateConfigKey    = "__cerebro_runtime_contract_probe_state"
+	runtimeLastInvalidEventIDConfigKey    = "__cerebro_runtime_last_invalid_event_id"
+	runtimeLastInvalidFieldConfigKey      = "__cerebro_runtime_last_invalid_field"
+	runtimeLastInvalidStatusConfigKey     = "__cerebro_runtime_last_invalid_status"
+	runtimeLastInvalidObservedAtConfigKey = "__cerebro_runtime_last_invalid_observed_at"
+	runtimeLastInvalidOccurredAtConfigKey = "__cerebro_runtime_last_invalid_occurred_at"
+	runtimeLastInvalidDiagnosticConfigKey = "__cerebro_runtime_last_invalid_diagnostic"
+	runtimeLastInvalidRetryableConfigKey  = "__cerebro_runtime_last_invalid_retryable"
+)
 
 func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Request) {
 	limit, err := uint32QueryParam(r, "limit")
@@ -127,7 +159,20 @@ func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Reque
 		writeSourceRuntimeError(w, err)
 		return
 	}
-	runtimes, err := a.runtimeService().List(r.Context(), filter)
+	store := sourceRuntimeStore(a.deps.StateStore)
+	if store == nil {
+		writeSourceRuntimeError(w, sourceruntime.ErrRuntimeUnavailable)
+		return
+	}
+	lister, ok := store.(ports.SourceRuntimeListStore)
+	if !ok {
+		writeSourceRuntimeError(w, sourceruntime.ErrRuntimeUnavailable)
+		return
+	}
+	if filter.Limit == 0 {
+		filter.Limit = 100
+	}
+	runtimes, err := lister.ListSourceRuntimes(r.Context(), filter)
 	if err != nil {
 		writeSourceRuntimeError(w, err)
 		return
@@ -156,10 +201,21 @@ func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Reque
 
 func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.SourceRuntime, generatedAt time.Time) (sourceRuntimeHealthRecord, error) {
 	record := sourceRuntimeHealthRecord{
-		RuntimeID:               strings.TrimSpace(runtime.GetId()),
-		SourceID:                strings.TrimSpace(runtime.GetSourceId()),
-		TenantID:                strings.TrimSpace(runtime.GetTenantId()),
-		Family:                  strings.TrimSpace(runtime.GetConfig()["family"]),
+		RuntimeID:    strings.TrimSpace(runtime.GetId()),
+		SourceID:     strings.TrimSpace(runtime.GetSourceId()),
+		TenantID:     strings.TrimSpace(runtime.GetTenantId()),
+		Family:       strings.TrimSpace(runtime.GetConfig()["family"]),
+		EnabledState: runtimeEnabledState(runtime),
+		Status:       runtimeHealthStatus(runtime, generatedAt),
+		RecentSync: sourceRuntimeHealthSync{
+			RecordsScanned:    runtimeConfigUint32(runtime, runtimeRecordsScannedConfigKey),
+			RecordsAccepted:   runtimeConfigUint32(runtime, runtimeRecordsAcceptedConfigKey),
+			RecordsRejected:   runtimeConfigUint32(runtime, runtimeRecordsRejectedConfigKey),
+			EntitiesProjected: runtimeConfigUint32(runtime, runtimeEntitiesProjectedConfigKey),
+			LinksProjected:    runtimeConfigUint32(runtime, runtimeLinksProjectedConfigKey),
+		},
+		LastFailureCategory:     strings.TrimSpace(runtime.GetConfig()[runtimeLastFailureCategoryConfigKey]),
+		ContractProbeState:      runtimeContractProbeState(runtime),
 		CursorPending:           strings.TrimSpace(runtime.GetNextCursor().GetOpaque()) != "",
 		CheckpointCursorPresent: strings.TrimSpace(runtime.GetCheckpoint().GetCursorOpaque()) != "",
 		// Schedule cadence/SLA is currently deployment configuration, not runtime state.
@@ -192,6 +248,62 @@ func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.
 		record.LatestFindingEvaluation = sourceRuntimeFindingEvaluationHealth(findingRun)
 	}
 	return record, nil
+}
+
+func runtimeConfigUint32(runtime *cerebrov1.SourceRuntime, key string) uint32 {
+	if runtime == nil {
+		return 0
+	}
+	value, err := strconv.ParseUint(strings.TrimSpace(runtime.GetConfig()[key]), 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(value)
+}
+
+func runtimeEnabledState(runtime *cerebrov1.SourceRuntime) string {
+	if runtime == nil {
+		return "unknown"
+	}
+	switch strings.ToLower(strings.TrimSpace(runtime.GetConfig()["enabled"])) {
+	case "false", "0", "disabled":
+		return "disabled"
+	default:
+		return "enabled"
+	}
+}
+
+func runtimeHealthStatus(runtime *cerebrov1.SourceRuntime, now time.Time) string {
+	if runtime == nil {
+		return "unknown"
+	}
+	if strings.TrimSpace(runtime.GetConfig()[runtimeLastFailureCategoryConfigKey]) != "" {
+		return "failing"
+	}
+	lastSynced := timestampValue(runtime.GetLastSyncedAt())
+	if lastSynced.IsZero() {
+		return "unknown"
+	}
+	if staleAfter := runtimeConfigUint32(runtime, "stale_after_seconds"); staleAfter > 0 && now.UTC().Sub(lastSynced.UTC()) > time.Duration(staleAfter)*time.Second {
+		return "stale"
+	}
+	return "healthy"
+}
+
+func runtimeContractProbeState(runtime *cerebrov1.SourceRuntime) string {
+	if runtime == nil {
+		return "unknown"
+	}
+	if state := strings.TrimSpace(runtime.GetConfig()[runtimeContractProbeStateConfigKey]); state != "" {
+		return state
+	}
+	if strings.TrimSpace(runtime.GetSourceId()) != "evidence_cas" {
+		return "not_configured"
+	}
+	if runtime.GetLastSyncedAt() == nil {
+		return "unknown"
+	}
+	return "passing"
 }
 
 func (a *App) latestGraphIngestRun(ctx context.Context, runtimeID string) (*graphstore.IngestRun, error) {

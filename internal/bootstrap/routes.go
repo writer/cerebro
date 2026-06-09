@@ -144,6 +144,7 @@ func (app *App) registerSourceRuntimeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "PUT /source-runtimes/{runtimeID}", routeSurfacePlatformHTTP, app.handlePutSourceRuntime)
 	registerHTTPRoute(mux, "GET /source-runtimes/{runtimeID}", routeSurfacePlatformHTTP, app.handleGetSourceRuntime)
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/sync", routeSurfacePlatformHTTP, app.handleSyncSourceRuntime)
+	registerHTTPRoute(mux, "GET /source-runtimes/{runtimeID}/invalid-events", routeSurfacePlatformHTTP, app.handleListSourceRuntimeInvalidEvents)
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/graph-ingest-runs", routeSurfacePlatformHTTP, app.handleRunGraphIngestRuntime)
 	registerHTTPRoute(mux, "GET /source-runtimes/{runtimeID}/claims", routeSurfacePlatformHTTP, app.handleListClaims)
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/claims", routeSurfacePlatformHTTP, app.handleWriteClaims)
