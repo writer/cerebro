@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from zipfile import ZipFile
@@ -57,10 +58,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     encoded_name = urllib.parse.quote(args.artifact_name, safe="")
-    artifacts = _request_json(
-        f"https://api.github.com/repos/{repository}/actions/artifacts?name={encoded_name}&per_page=20",
-        token,
-    ).get("artifacts", [])
+    try:
+        artifacts = _request_json(
+            f"https://api.github.com/repos/{repository}/actions/artifacts?name={encoded_name}&per_page=20",
+            token,
+        ).get("artifacts", [])
+    except urllib.error.URLError as exc:
+        print(f"Graph health cache artifact list unavailable: {exc}", file=sys.stderr)
+        return 0
     now = datetime.now(UTC)
     for artifact in artifacts:
         if artifact.get("expired"):
@@ -68,7 +73,11 @@ def main(argv: list[str] | None = None) -> int:
         created_at = _parse_time(str(artifact.get("created_at") or ""))
         if (now - created_at).total_seconds() > args.max_age_seconds:
             continue
-        archive = _request_bytes(str(artifact["archive_download_url"]), token)
+        try:
+            archive = _request_bytes(str(artifact["archive_download_url"]), token)
+        except urllib.error.URLError as exc:
+            print(f"Graph health cache artifact download unavailable: {exc}", file=sys.stderr)
+            continue
         with ZipFile(BytesIO(archive)) as zipped:
             member = next((name for name in zipped.namelist() if name.endswith(".tsv")), None)
             if member is None:
