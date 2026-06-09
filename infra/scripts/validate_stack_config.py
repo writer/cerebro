@@ -11,6 +11,12 @@ from typing import Any
 
 import yaml
 
+try:
+    from aws.source_rollouts import SourceRuntimeRolloutError, apply_source_runtime_rollouts
+except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/validate_stack_config.py
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from aws.source_rollouts import SourceRuntimeRolloutError, apply_source_runtime_rollouts
+
 
 MIN_CROSS_TASK_SYNC_LOCK_VERSION = (2, 1, 25)
 MIN_COSMO_TOKEN_AUTH_VERSION = (2, 1, 36)
@@ -1088,6 +1094,10 @@ def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
     findings: list[Finding] = []
+    try:
+        config = apply_source_runtime_rollouts(config)
+    except SourceRuntimeRolloutError as exc:
+        findings.append(_finding("error", stack, "cerebro:sourceRuntimeRollouts", str(exc)))
 
     image_tag = str(config.get("imageTag", "")).strip()
     if not image_tag:

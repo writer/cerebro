@@ -16,6 +16,12 @@ from typing import Any
 
 import yaml
 
+try:
+    from aws.source_rollouts import apply_source_runtime_rollouts
+except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/verify_graph_health_ecs.py
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from aws.source_rollouts import apply_source_runtime_rollouts
+
 
 EXPECTED_STACK_ACCOUNTS = {
     "sec-dev": "944130631940",
@@ -99,11 +105,12 @@ def _load_config(path: Path) -> dict[str, Any]:
     config = loaded.get("config")
     if not isinstance(config, dict):
         raise ValueError(f"{path} must contain a top-level config mapping")
-    return {
+    config = {
         key.removeprefix("cerebro:"): value
         for key, value in config.items()
         if isinstance(key, str) and key.startswith("cerebro:")
     }
+    return apply_source_runtime_rollouts(config)
 
 
 def _resource_prefix(config: dict[str, Any], stack: str) -> str:

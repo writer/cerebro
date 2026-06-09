@@ -104,6 +104,112 @@ config:
     - OKTA_DOMAIN
     - SENTINELONE_API_TOKEN
     - SENTINELONE_BASE_URL
+  cerebro:sourceRuntimeRollouts:
+    - sourceId: anthropic
+      tokenKey: CEREBRO_SOURCE_ANTHROPIC_TOKEN
+      perPage: "100"
+      families:
+        - user
+        - workspace
+        - api_key
+    - sourceId: cloudflare
+      tokenKey: CEREBRO_SOURCE_CLOUDFLARE_TOKEN
+      perPage: "100"
+      families:
+        - account
+        - name: member
+          config:
+            member_path: env:CEREBRO_SOURCE_CLOUDFLARE_MEMBER_PATH
+        - name: role
+          config:
+            role_path: env:CEREBRO_SOURCE_CLOUDFLARE_ROLE_PATH
+        - zone
+        - name: dns_record
+          config:
+            dns_record_path: env:CEREBRO_SOURCE_CLOUDFLARE_DNS_RECORD_PATH
+    - sourceId: duo
+      tokenKey: CEREBRO_SOURCE_DUO_TOKEN
+      perPage: "100"
+      commonConfig:
+        base_url: env:CEREBRO_SOURCE_DUO_BASE_URL
+      families:
+        - user
+        - group
+        - endpoint
+        - phone
+        - token
+        - web_authn_credential
+    - sourceId: kubernetes
+      perPage: "100"
+      commonConfig:
+        kubeconfig_path: env:CEREBRO_SOURCE_KUBERNETES_KUBECONFIG_PATH
+      families:
+        - cluster
+        - namespace
+        - pod
+        - container
+        - name: service_account
+          schedule:
+            name: kubernetes-service-acct-inventory
+        - workload
+        - name: workload_identity_binding
+          schedule:
+            name: k8s-workload-id-binding-inventory
+    - sourceId: openai
+      tokenKey: CEREBRO_SOURCE_OPENAI_TOKEN
+      perPage: "100"
+      families:
+        - user
+        - project
+        - name: service_account
+          config:
+            service_account_path: env:CEREBRO_SOURCE_OPENAI_SERVICE_ACCOUNT_PATH
+        - name: api_key
+          config:
+            api_key_path: env:CEREBRO_SOURCE_OPENAI_API_KEY_PATH
+        - admin_api_key
+    - sourceId: pagerduty
+      tokenKey: CEREBRO_SOURCE_PAGERDUTY_TOKEN
+      perPage: "100"
+      families:
+        - user
+        - team
+        - service
+        - schedule
+        - name: escalation_policy
+          schedule:
+            name: pagerduty-esc-policy-inventory
+        - name: integration
+          config:
+            path: env:CEREBRO_SOURCE_PAGERDUTY_INTEGRATION_PATH
+        - vendor
+    - sourceId: slack
+      tokenKey: CEREBRO_SOURCE_SLACK_TOKEN
+      perPage: "100"
+      families:
+        - team
+        - user
+        - channel
+        - user_group
+    - sourceId: tailscale
+      tokenKey: CEREBRO_SOURCE_TAILSCALE_TOKEN
+      perPage: "100"
+      families:
+        - tailnet
+        - user
+        - device
+        - group
+        - tag
+        - service
+        - grant
+    - sourceId: trivy
+      commonConfig:
+        path: env:CEREBRO_SOURCE_TRIVY_REPORT_PATH
+      families:
+        - image_scan
+        - image_package
+        - image_vulnerability
+        - fix
   cerebro:sourceRuntimeObservability:
     - environment: sec-dev
       sourceSystem: evidence_cas
