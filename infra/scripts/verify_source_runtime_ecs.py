@@ -984,6 +984,7 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
     task = _describe_tasks(target.target["Arn"], [task_arn], region)[0]
     containers = task.get("containers") or []
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
+    bootstrap_container = next((container for container in containers if container.get("name") == BOOTSTRAP_CONTAINER_NAME), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
     if exit_code != 0:
         stop_summary = _task_stop_summary(task)
@@ -991,6 +992,16 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
             log_summary = _summarize_log_messages(_task_logs(task, region))
         except Exception as exc:
             log_summary = f"unable to fetch task logs: {exc}; ECS task stop: {stop_summary}"
+        if bootstrap_container and bootstrap_container.get("exitCode") not in (None, 0):
+            try:
+                bootstrap_summary = _summarize_log_messages(_task_logs(task, region, container_name=BOOTSTRAP_CONTAINER_NAME))
+                if bootstrap_summary:
+                    bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs:\n{bootstrap_summary}"
+                else:
+                    bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs: no structured bootstrap log events found"
+            except Exception as exc:
+                bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs: unavailable ({exc})"
+            log_summary = f"{log_summary}\n{bootstrap_detail}" if log_summary else bootstrap_detail
         if stop_summary:
             log_summary = f"{log_summary}\nECS task stop: {stop_summary}" if log_summary else f"ECS task stop: {stop_summary}"
         raise RuntimeTaskFailedError(target.runtime_id, task_arn, exit_code, log_summary)
