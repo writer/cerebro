@@ -63,6 +63,9 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             family=["public_endpoint"],
             source_target_concurrency=2,
             stop_running_source_before_run=True,
+            source_runtime_dry_run=False,
+            source_runtime_observability_targets=False,
+            source_runtime_allow_missing_targets=False,
         )
 
         command = run_aws_deploy_verifications._source_runtime_command(args)
@@ -79,6 +82,28 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertEqual(command[command.index("--run-attempt-timeout-seconds") + 1], "300")
         self.assertEqual(command[command.index("--wait-timeout-seconds") + 1], "300")
         self.assertIn("--stop-running-before-run", command)
+
+    def test_source_runtime_command_supports_go_prod_panopticon_readiness_only(self) -> None:
+        args = argparse.Namespace(
+            stack_file=Path("aws/Pulumi.go-prod.yaml"),
+            source_id="panopticon",
+            runtime_id=[],
+            family=[],
+            source_target_concurrency=2,
+            stop_running_source_before_run=False,
+            source_runtime_dry_run=True,
+            source_runtime_observability_targets=True,
+            source_runtime_allow_missing_targets=True,
+        )
+
+        command = run_aws_deploy_verifications._source_runtime_command(args)
+
+        self.assertIn("--dry-run", command)
+        self.assertIn("--observability-targets", command)
+        self.assertIn("--allow-missing-targets", command)
+        self.assertNotIn("--run", command)
+        self.assertEqual(command[command.index("--source-id") + 1], "panopticon")
+        self.assertEqual(command[command.index("--target-concurrency") + 1], "2")
 
     def test_graph_health_command_uses_fast_deploy_retry_defaults(self) -> None:
         args = argparse.Namespace(

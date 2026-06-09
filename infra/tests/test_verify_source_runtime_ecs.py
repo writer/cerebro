@@ -486,6 +486,52 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result.links_projected, 474)
         wait_for_task.assert_not_called()
 
+    def test_run_verify_can_succeed_after_graph_ingest_when_task_stopped_without_runtime_span(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {
+                "kind": "span_end",
+                "name": "source_runtime.sync",
+                "status": "completed",
+                "events_appended": 2,
+                "pages_read": 1,
+            },
+            {
+                "kind": "span_end",
+                "name": "orchestrator.graph_ingest",
+                "status": "completed",
+                "entities_projected": 2,
+                "links_projected": 1,
+            },
+        ]
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._run_task", return_value="task-arn"),
+            patch(
+                "scripts.verify_source_runtime_ecs._describe_tasks",
+                return_value=[{"taskArn": "task-arn", "lastStatus": "STOPPED", "containers": [{"name": "cerebro", "exitCode": 0}]}],
+            ),
+            patch("scripts.verify_source_runtime_ecs._task_logs", return_value=messages),
+            patch("scripts.verify_source_runtime_ecs._verify_task") as verify_task,
+        ):
+            result = _run_and_verify_task_with_retries(
+                target,
+                wait_timeout_seconds=100,
+                poll_seconds=10,
+                region="us-east-1",
+                succeed_after_graph_ingest=True,
+            )
+
+        self.assertEqual(result.runtime_status, "running")
+        self.assertEqual(result.sync_status, "completed")
+        self.assertEqual(result.graph_ingest_status, "completed")
+        verify_task.assert_not_called()
+
     def test_verify_runtime_targets_parallel_preserves_result_order(self) -> None:
         targets = [
             RuntimeTarget(runtime_id=f"runtime-{index}", schedule_name=f"runtime-{index}", rule_name=f"rule-{index}", target={"Arn": "cluster"})
@@ -629,6 +675,23 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         ]
 
         with self.assertRaisesRegex(RuntimeVerificationFailedError, "link status is missing_resource"):
+            _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
+
+    def test_verify_task_fails_closed_for_zero_discovered_runtimes(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {"kind": "span_start", "name": "orchestrator.run", "runtime_id": "writer-panopticon-alerts"},
+            {"kind": "event", "name": "orchestrator.runtimes_listed", "runtime_count": 0},
+            {"kind": "span_end", "name": "orchestrator.iteration", "status": "completed", "runtimes_attempted": 0},
+            {"kind": "span_end", "name": "orchestrator.run", "status": "completed"},
+        ]
+
+        with self.assertRaisesRegex(RuntimeVerificationFailedError, "runtime discovery status is missing"):
             _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
 
     def test_verify_task_includes_ecs_stop_reason_when_logs_missing(self) -> None:
@@ -780,6 +843,12 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
                     "alert",
                     "--observability-targets",
                     "--dry-run",
+                    "--run-page-limit",
+                    "1",
+                    "--run-graph-page-limit",
+                    "2",
+                    "--run-event-limit",
+                    "3",
                     "--wait-timeout-seconds",
                     "300",
                     "--poll-seconds",
@@ -797,6 +866,47 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertIn("mutations\tnone", output)
         self.assertIn("writer-panopticon-alerts", output)
         self.assertIn("wait_timeout_seconds\t300", output)
+        self.assertIn("run_page_limit\t1", output)
+        self.assertIn("run_graph_page_limit\t2", output)
+        self.assertIn("run_event_limit\t3", output)
+        self.assertIn("allow_missing_targets\tfalse", output)
+
+    def test_go_prod_panopticon_observability_cannot_start_live_tasks(self) -> None:
+        stack_file = Path("aws/Pulumi.go-prod.yaml")
+        config = {
+            "environment": "go-production",
+            "sourceRuntimeObservability": [
+                {
+                    "sourceSystem": "panopticon",
+                    "sourceRuntimeId": "writer-panopticon-alerts",
+                    "runtimeClass": "alert",
+                    "enabled": True,
+                    "freshnessSlaMinutes": 30,
+                }
+            ],
+        }
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account") as verify_account,
+            patch("scripts.verify_source_runtime_ecs._runtime_targets") as runtime_targets,
+            patch("scripts.verify_source_runtime_ecs._run_task") as run_task,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "go-prod Panopticon observability validation is dry-run/readiness-only"):
+                main(
+                    [
+                        "--stack-file",
+                        str(stack_file),
+                        "--source-id",
+                        "panopticon",
+                        "--observability-targets",
+                        "--run",
+                    ]
+                )
+
+        verify_account.assert_not_called()
+        runtime_targets.assert_not_called()
+        run_task.assert_not_called()
 
     def test_run_fails_secret_import_preflight_before_starting_tasks(self) -> None:
         stack_file = Path("aws/Pulumi.sec-dev.yaml")

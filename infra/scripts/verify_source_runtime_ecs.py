@@ -764,6 +764,10 @@ def _verification_result_from_logs(
     sync_span = _latest_span(messages, "source_runtime.sync")
     graph_ingest_span = _latest_span(messages, "orchestrator.graph_ingest")
     graph_runtime_span = _latest_span(messages, "graph.ingest_runtime")
+    runtimes_listed_event = _latest_event(messages, "orchestrator.runtimes_listed")
+    orchestrator_iteration_span = _latest_span(messages, "orchestrator.iteration")
+    if (runtimes_listed_event or {}).get("runtime_count") == 0 or (orchestrator_iteration_span or {}).get("runtimes_attempted") == 0:
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "runtime discovery", "missing")
     runtime_status = str((runtime_span or {}).get("status") or "missing")
     sync_status = str((sync_span or {}).get("status") or "missing")
     graph_ingest_status = str((graph_ingest_span or {}).get("status") or "missing")
@@ -1117,6 +1121,7 @@ def _print_dry_run_plan(
     options: VerificationOptions,
     target_concurrency: int,
     observability_targets: bool,
+    allow_missing_targets: bool,
     disabled_runtime_ids: list[str] | None = None,
 ) -> None:
     disabled = set(disabled_runtime_ids or [])
@@ -1133,8 +1138,12 @@ def _print_dry_run_plan(
     print(f"wait_timeout_seconds\t{options.wait_timeout_seconds}")
     print(f"poll_seconds\t{options.poll_seconds}")
     print(f"max_age_minutes\t{options.max_age_minutes}")
+    print(f"run_page_limit\t{options.run_page_limit if options.run_page_limit is not None else '-'}")
+    print(f"run_graph_page_limit\t{options.run_graph_page_limit if options.run_graph_page_limit is not None else '-'}")
+    print(f"run_event_limit\t{options.run_event_limit if options.run_event_limit is not None else '-'}")
     print(f"run_attempt_timeout_seconds\t{options.run_attempt_timeout_seconds}")
     print(f"failed_run_retry_seconds\t{options.failed_run_retry_seconds}")
+    print(f"allow_missing_targets\t{str(allow_missing_targets).lower()}")
     print(f"target_concurrency\t{target_concurrency}")
     print("runtime_id\tschedule\trule\tstatus")
     for runtime_id in runtime_ids:
@@ -1231,6 +1240,17 @@ def main(argv: list[str] | None = None) -> int:
     resource_prefix = f"cerebro-{environment}"
     requested = set(args.runtime_id or [])
     families = set(args.family or [])
+    if (
+        stack == "go-prod"
+        and args.source_id == "panopticon"
+        and args.observability_targets
+        and args.run
+        and not args.dry_run
+    ):
+        raise RuntimeError(
+            "go-prod Panopticon observability validation is dry-run/readiness-only until targets are deployed; "
+            "rerun with --dry-run --allow-missing-targets and without --run"
+        )
     if args.observability_targets:
         runtime_ids = _observability_runtime_ids(config, args.source_id, requested, families)
     else:
@@ -1269,6 +1289,7 @@ def main(argv: list[str] | None = None) -> int:
                 options,
                 args.target_concurrency,
                 args.observability_targets,
+                args.allow_missing_targets,
                 disabled_runtime_ids,
             )
             return 0
@@ -1309,6 +1330,7 @@ def main(argv: list[str] | None = None) -> int:
                 options,
                 args.target_concurrency,
                 args.observability_targets,
+                args.allow_missing_targets,
                 _disabled_observability_runtime_ids(config, args.source_id, requested, families) if args.observability_targets else [],
             )
             return 0
@@ -1344,6 +1366,7 @@ def main(argv: list[str] | None = None) -> int:
             options,
             args.target_concurrency,
             args.observability_targets,
+            args.allow_missing_targets,
             _disabled_observability_runtime_ids(config, args.source_id, requested, families) if args.observability_targets else [],
         )
         return 0
