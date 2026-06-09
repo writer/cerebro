@@ -63,6 +63,71 @@ STACK = {
 }
 
 
+def _contract_with_source_health_receipt() -> dict:
+    return {
+        **CONTRACT,
+        "sources": [
+            *CONTRACT["sources"],
+            {
+                "source_id": "demo_source",
+                "supported_families": ["asset_host", "evidence_cas_reference"],
+                "required_secrets": ["DEMO_SOURCE_TOKEN"],
+                "runtimes": [],
+                "source_health_receipt": {
+                    "receipt_kind": "source_health.receipt",
+                    "source_type": "json_api",
+                    "auth_model": "bearer_token",
+                    "adapter_health_path": "/readyz",
+                    "expected_cadence_seconds": 7200,
+                    "stale_after_seconds": 7200,
+                    "evidence_cas_reference_kind": "demo_source.evidence_cas_reference",
+                },
+            },
+        ],
+    }
+
+
+def _contract_with_generated_deploy_runtime() -> dict:
+    return {
+        **CONTRACT,
+        "sources": [
+            *CONTRACT["sources"],
+            {
+                "source_id": "demo_source",
+                "supported_families": ["asset_host"],
+                "required_secrets": ["DEMO_SOURCE_TOKEN"],
+                "runtimes": [
+                    {
+                        "id": "writer-demo-source-asset-host",
+                        "tenant_id": "writer",
+                        "config": {
+                            "family": "asset_host",
+                            "health_path": "/readyz",
+                            "expected_cadence_seconds": 7200,
+                            "stale_after_seconds": 7200,
+                        },
+                    }
+                ],
+            },
+        ],
+    }
+
+
+def _generated_source_stack_runtime() -> dict:
+    return {
+        "id": "writer-demo-source-asset-host",
+        "sourceId": "demo_source",
+        "tenantId": "writer",
+        "config": {
+            "family": "asset_host",
+            "health_path": "/readyz",
+            "expected_cadence_seconds": "7200",
+            "stale_after_seconds": "7200",
+            "token": "env:DEMO_SOURCE_TOKEN",
+        },
+    }
+
+
 class RuntimeContractTest(unittest.TestCase):
     def test_valid_contract_matches_stack(self) -> None:
         self.assertEqual(verify_runtime_contract.verify_contract(CONTRACT, STACK, require_manifest_runtimes=True), [])
@@ -177,6 +242,86 @@ class RuntimeContractTest(unittest.TestCase):
         warnings = verify_runtime_contract.contract_drift(CONTRACT, stack)
         self.assertTrue(any("missing 1 contract-required sourceSecretKeys" in warning for warning in warnings))
         self.assertFalse(any("GITHUB_TOKEN" in warning for warning in warnings))
+
+    def test_source_health_receipt_matches_generated_runtime_config(self) -> None:
+        contract = _contract_with_source_health_receipt()
+        stack = {
+            **STACK,
+            "sourceSecretKeys": [*STACK["sourceSecretKeys"], "DEMO_SOURCE_TOKEN"],
+            "sourceRuntimes": [_generated_source_stack_runtime()],
+        }
+
+        self.assertEqual(verify_runtime_contract.verify_contract(contract, stack), [])
+
+    def test_matching_runtime_deploy_metadata_rejects_freshness_drift_without_requiring_manifest(self) -> None:
+        contract = _contract_with_generated_deploy_runtime()
+        runtime = _generated_source_stack_runtime()
+        runtime["config"] = {**runtime["config"], "expected_cadence_seconds": "3600"}
+        stack = {
+            **STACK,
+            "sourceSecretKeys": [*STACK["sourceSecretKeys"], "DEMO_SOURCE_TOKEN"],
+            "sourceRuntimes": [runtime],
+        }
+
+        errors = verify_runtime_contract.verify_contract(contract, stack, require_manifest_runtimes=False)
+        self.assertTrue(any("expected_cadence_seconds" in error and "runtime deploy contract value" in error for error in errors))
+
+    def test_source_health_receipt_rejects_freshness_mismatch(self) -> None:
+        contract = _contract_with_source_health_receipt()
+        runtime = _generated_source_stack_runtime()
+        runtime["config"] = {**runtime["config"], "stale_after_seconds": "3600"}
+        stack = {
+            **STACK,
+            "sourceSecretKeys": [*STACK["sourceSecretKeys"], "DEMO_SOURCE_TOKEN"],
+            "sourceRuntimes": [runtime],
+        }
+
+        errors = verify_runtime_contract.verify_contract(contract, stack)
+        self.assertTrue(any("stale_after_seconds" in error and "expected source health receipt value" in error for error in errors))
+
+    def test_source_health_receipt_rejects_health_path_mismatch(self) -> None:
+        contract = _contract_with_source_health_receipt()
+        runtime = _generated_source_stack_runtime()
+        runtime["config"] = {**runtime["config"], "health_path": "/other"}
+        stack = {
+            **STACK,
+            "sourceSecretKeys": [*STACK["sourceSecretKeys"], "DEMO_SOURCE_TOKEN"],
+            "sourceRuntimes": [runtime],
+        }
+
+        errors = verify_runtime_contract.verify_contract(contract, stack)
+        self.assertTrue(any("health_path" in error and "source health receipt" in error for error in errors))
+
+    def test_source_health_receipt_rejects_unknown_source_and_invalid_values(self) -> None:
+        contract = {
+            **CONTRACT,
+            "source_health_receipts": [
+                {
+                    "receipt_kind": "source_health.receipt",
+                    "source_id": "missing_source",
+                    "expected_cadence_seconds": 0,
+                    "stale_after_seconds": "invalid",
+                }
+            ],
+        }
+
+        errors = verify_runtime_contract.verify_contract(contract, STACK)
+        self.assertTrue(any("missing_source" in error and "not present in contract sources" in error for error in errors))
+
+    def test_source_health_receipt_rejects_malformed_receipt(self) -> None:
+        contract = _contract_with_source_health_receipt()
+        source = {**contract["sources"][-1], "source_health_receipt": {"receipt_kind": "wrong", "source_id": "demo_source"}}
+        contract = {**contract, "sources": [*contract["sources"][:-1], source]}
+
+        errors = verify_runtime_contract.verify_contract(contract, STACK)
+        self.assertTrue(any("receipt_kind" in error for error in errors))
+
+    def test_source_health_receipt_drift_warns_when_not_configured(self) -> None:
+        contract = _contract_with_source_health_receipt()
+
+        warnings = verify_runtime_contract.contract_drift(contract, STACK)
+        self.assertTrue(any("source health receipt source_id 'demo_source' is not configured" in warning for warning in warnings))
+        self.assertEqual(verify_runtime_contract.verify_contract(contract, STACK), [])
 
 
 if __name__ == "__main__":

@@ -44,6 +44,15 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("if: steps.latest.outputs.superseded != 'true'", workflow)
         self.assertIn("- name: Report superseded release", workflow)
 
+    def test_release_pr_body_surfaces_runtime_contract_evidence(self) -> None:
+        apply_step = self._apply_step()
+
+        self.assertIn("contract_sources=", apply_step)
+        self.assertIn("contract_runtimes=", apply_step)
+        self.assertIn("contract_receipts=", apply_step)
+        self.assertIn("source_health_receipt", apply_step)
+        self.assertIn("Runtime contract:", apply_step)
+
     def test_go_prod_auto_merge_rechecks_latest_and_sec_dev_success(self) -> None:
         apply_step = self._apply_step()
         auto_merge_block = apply_step.split("auto_merge_trusted_pr() {", 1)[1].split(
