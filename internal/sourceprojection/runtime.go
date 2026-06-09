@@ -13,13 +13,30 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	isEvidenceCAS := runtimeEvidenceIsEvidenceCAS(event)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	evidenceID := firstNonEmpty(attributes["evidence_id"], event.GetId())
 	evidenceURN := projectionURN(tenantID, "runtime_evidence", evidenceID)
 	resourceURN := firstNonEmpty(attributes["resource_urn"], attributes["workload_urn"])
-	if resourceURN == "" {
+	explicitResourceURN := resourceURN != ""
+	if resourceURN == "" && !isEvidenceCAS {
 		resourceURN = projectionURN(tenantID, "runtime_"+normalizeCloudType(firstNonEmpty(attributes["resource_type"], "resource")), firstNonEmpty(attributes["resource_id"], attributes["resource_name"], evidenceID))
+	}
+	resourceLinkStatus := "missing"
+	if resourceURN != "" {
+		resourceLinkStatus = "linked"
+	}
+	caseID := strings.TrimSpace(attributes["case_id"])
+	caseURN := ""
+	caseLinkStatus := "not_supplied"
+	if caseID != "" {
+		caseLinkStatus = "linked"
+		if strings.EqualFold(strings.TrimSpace(attributes["unresolved_case_context"]), "true") || strings.EqualFold(strings.TrimSpace(attributes["case_link_status"]), "missing") {
+			caseLinkStatus = "missing"
+		} else {
+			caseURN = firstNonEmpty(attributes["case_urn"], projectionURN(tenantID, "case", caseID))
+		}
 	}
 	if evidenceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -29,7 +46,8 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 			EntityType: "runtime.evidence",
 			Label:      firstNonEmpty(attributes["evidence_type"], attributes["detector_id"], evidenceID),
 			Attributes: map[string]string{
-				"case_id":                       strings.TrimSpace(attributes["case_id"]),
+				"case_id":                       caseID,
+				"case_link_status":              caseLinkStatus,
 				"confidence":                    strings.TrimSpace(attributes["confidence"]),
 				"detector_id":                   strings.TrimSpace(attributes["detector_id"]),
 				"evidence_cas_blocks_count":     strings.TrimSpace(attributes["evidence_cas_blocks_count"]),
@@ -43,9 +61,18 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 				"evidence_cas_uri":              strings.TrimSpace(attributes["evidence_cas_uri"]),
 				"evidence_id":                   evidenceID,
 				"evidence_type":                 strings.TrimSpace(attributes["evidence_type"]),
+				"occurred_at":                   strings.TrimSpace(attributes["occurred_at"]),
 				"observed_at":                   strings.TrimSpace(attributes["observed_at"]),
 				"process_name":                  strings.TrimSpace(attributes["process_name"]),
+				"request_id":                    strings.TrimSpace(attributes["request_id"]),
+				"resource_link_status":          resourceLinkStatus,
+				"resource_urn":                  strings.TrimSpace(attributes["resource_urn"]),
+				"source_event_id":               strings.TrimSpace(attributes["source_event_id"]),
+				"source_runtime_id":             strings.TrimSpace(attributes["source_runtime_id"]),
 				"source_system":                 strings.TrimSpace(attributes["source_system"]),
+				"tenant_id":                     tenantID,
+				"trace_id":                      strings.TrimSpace(attributes["trace_id"]),
+				"traceparent":                   strings.TrimSpace(attributes["traceparent"]),
 				"verdict":                       strings.TrimSpace(attributes["verdict"]),
 			},
 		})
@@ -64,10 +91,32 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, resourceURN, relationObservedOn, map[string]string{"event_id": event.GetId()}))
 	}
+	if caseURN != "" && evidenceURN != "" && caseURN != resourceURN {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        caseURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "case",
+			Label:      caseID,
+			Attributes: map[string]string{"case_id": caseID},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), caseURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, caseURN, relationAssociatedWith, map[string]string{"event_id": event.GetId()}))
+	}
 	if findingID := strings.TrimSpace(attributes["finding_id"]); findingID != "" && evidenceURN != "" {
 		findingURN := projectionURN(tenantID, "finding", findingID)
 		addEntity(entities, &ports.ProjectedEntity{URN: findingURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "finding", Label: findingID})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, findingURN, relationSupports, map[string]string{"event_id": event.GetId()}))
 	}
+	if isEvidenceCAS && !explicitResourceURN && resourceURN == "" {
+		delete(entities, projectionURN(tenantID, "runtime_resource", evidenceID))
+	}
 	return identityProjectionResult(entities, links)
+}
+
+func runtimeEvidenceIsEvidenceCAS(event *cerebrov1.EventEnvelope) bool {
+	if event == nil {
+		return false
+	}
+	return strings.TrimSpace(event.GetKind()) == "evidence_cas.object" || strings.TrimSpace(event.GetSourceId()) == "evidence_cas"
 }

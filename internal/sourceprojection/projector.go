@@ -121,6 +121,10 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 			telemetry.Field{Key: "links_deleted", Value: retractedLinksDeleted},
 		))
 	}
+	if conflictCategory, err := s.detectRuntimeEvidenceConflict(ctx, event, entities); err != nil {
+		emitRuntimeEvidenceTelemetry(ctx, event, entities, links, "conflict", conflictCategory)
+		return ports.ProjectionResult{}, err
+	}
 	for _, entity := range entities {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedEntity(ctx, entity); err != nil {
@@ -145,6 +149,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 			}
 		}
 	}
+	emitRuntimeEvidenceTelemetry(ctx, event, entities, links, "projected", "")
 	return ports.ProjectionResult{
 		EntitiesProjected: boundedUint32(len(entities)),
 		LinksProjected:    boundedUint32(len(links)),
@@ -161,6 +166,150 @@ func boundedUint32(value int) uint32 {
 		return math.MaxUint32
 	}
 	return uint32(value)
+}
+
+func (s *Service) detectRuntimeEvidenceConflict(ctx context.Context, event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity) (string, error) {
+	if s == nil || s.state == nil || !runtimeEvidenceIsEvidenceCAS(event) {
+		return "", nil
+	}
+	reader, ok := s.state.(ports.ProjectionEntityReader)
+	if !ok {
+		return "", nil
+	}
+	for _, entity := range entities {
+		if entity == nil || entity.EntityType != "runtime.evidence" {
+			continue
+		}
+		existing, err := reader.GetProjectedEntity(ctx, entity.URN)
+		if err != nil {
+			return "", fmt.Errorf("read projected runtime evidence %q: %w", entity.URN, err)
+		}
+		if existing == nil || existing.EntityType != "runtime.evidence" {
+			continue
+		}
+		if !sameRuntimeEvidenceSourceEvent(existing.Attributes, entity.Attributes) {
+			continue
+		}
+		if category := runtimeEvidenceConflictCategory(existing.Attributes, entity.Attributes); category != "" {
+			return category, fmt.Errorf("evidence_cas conflict for runtime evidence: %s", category)
+		}
+	}
+	return "", nil
+}
+
+func sameRuntimeEvidenceSourceEvent(existing map[string]string, incoming map[string]string) bool {
+	if len(existing) == 0 || len(incoming) == 0 {
+		return false
+	}
+	for _, key := range []string{"tenant_id", ports.EventAttributeSourceRuntimeID, "source_event_id"} {
+		left := strings.TrimSpace(existing[key])
+		right := strings.TrimSpace(incoming[key])
+		if left == "" || right == "" || left != right {
+			return false
+		}
+	}
+	return true
+}
+
+func runtimeEvidenceConflictCategory(existing map[string]string, incoming map[string]string) string {
+	for _, key := range []string{
+		"evidence_id",
+		"evidence_cas_uri",
+		"evidence_cas_digest",
+		"evidence_cas_merkle_root",
+		"evidence_cas_commit_id",
+		"evidence_cas_ref_type",
+	} {
+		left := strings.TrimSpace(existing[key])
+		right := strings.TrimSpace(incoming[key])
+		if left != "" && right != "" && left != right {
+			return key
+		}
+	}
+	return ""
+}
+
+func emitRuntimeEvidenceTelemetry(ctx context.Context, event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink, outcome string, conflictCategory string) {
+	if !runtimeEvidenceIsEvidenceCAS(event) {
+		return
+	}
+	evidenceCount := 0
+	orphanCount := 0
+	missingCaseCount := 0
+	resourceLinkStatus := "not_applicable"
+	caseLinkStatus := "not_supplied"
+	for _, entity := range entities {
+		if entity == nil || entity.EntityType != "runtime.evidence" {
+			continue
+		}
+		evidenceCount++
+		resourceLinkStatus = boundedLinkStatus(entity.Attributes["resource_link_status"])
+		caseLinkStatus = boundedLinkStatus(entity.Attributes["case_link_status"])
+		if resourceLinkStatus == "missing" {
+			orphanCount++
+		}
+		if caseLinkStatus == "missing" {
+			missingCaseCount++
+		}
+	}
+	if evidenceCount == 0 && outcome != "conflict" {
+		return
+	}
+	telemetry.Event(ctx, "source_projection.runtime_evidence", telemetry.Attrs(
+		telemetry.Field{Key: "source_id", Value: boundedEvidenceSourceID(event.GetSourceId())},
+		telemetry.Field{Key: "event_kind", Value: boundedEvidenceEventKind(event.GetKind())},
+		telemetry.Field{Key: "outcome", Value: boundedEvidenceOutcome(outcome)},
+		telemetry.Field{Key: "conflict_category", Value: boundedConflictCategory(conflictCategory)},
+		telemetry.Field{Key: "resource_link_status", Value: resourceLinkStatus},
+		telemetry.Field{Key: "case_link_status", Value: caseLinkStatus},
+		telemetry.Field{Key: "orphan_count", Value: orphanCount},
+		telemetry.Field{Key: "missing_case_count", Value: missingCaseCount},
+		telemetry.Field{Key: "entities_projected", Value: len(entities)},
+		telemetry.Field{Key: "links_projected", Value: len(links)},
+	))
+}
+
+func boundedEvidenceSourceID(value string) string {
+	if strings.TrimSpace(value) == "evidence_cas" {
+		return "evidence_cas"
+	}
+	return "other"
+}
+
+func boundedEvidenceEventKind(value string) string {
+	switch strings.TrimSpace(value) {
+	case "evidence_cas.object", "runtime.evidence":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
+func boundedEvidenceOutcome(value string) string {
+	switch strings.TrimSpace(value) {
+	case "projected", "conflict":
+		return strings.TrimSpace(value)
+	default:
+		return "unknown"
+	}
+}
+
+func boundedLinkStatus(value string) string {
+	switch strings.TrimSpace(value) {
+	case "linked", "missing", "not_supplied":
+		return strings.TrimSpace(value)
+	default:
+		return "unknown"
+	}
+}
+
+func boundedConflictCategory(value string) string {
+	switch strings.TrimSpace(value) {
+	case "", "evidence_id", "evidence_cas_uri", "evidence_cas_digest", "evidence_cas_merkle_root", "evidence_cas_commit_id", "evidence_cas_ref_type":
+		return strings.TrimSpace(value)
+	default:
+		return "identity"
+	}
 }
 
 // ProjectRecords converts one event into normalized projection records without
