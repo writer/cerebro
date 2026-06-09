@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -14,11 +15,41 @@ from typing import Any
 
 import yaml
 
+try:
+    from scripts import verify_aws_secret_imports as secret_imports
+except ImportError:  # pragma: no cover - used when executed as scripts/verify_source_runtime_ecs.py
+    import verify_aws_secret_imports as secret_imports
+
 
 EXPECTED_STACK_ACCOUNTS = {
     "sec-dev": "944130631940",
     "go-prod": "837279440628",
 }
+
+SENSITIVE_TEXT_PATTERNS = (
+    (re.compile(r"arn:aws[a-zA-Z-]*:[^\s,;)\]}]+"), "[redacted-arn]"),
+    (re.compile(r"\b\d{12}\b"), "[redacted-account]"),
+    (re.compile(r"https?://([A-Za-z0-9-]+\.)+[A-Za-z]{2,}(:\d+)?(/[^\s,;)\]}]*)?"), "[redacted-url]"),
+    (re.compile(r"\b([A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b"), "[redacted-host]"),
+    (re.compile(r"(?i)(RequestID:\s*)([A-Za-z0-9-]+)"), r"\1[redacted-request-id]"),
+    (re.compile(r"(?i)(request_id[\"'=:\s]+)([A-Za-z0-9_.-]+)"), r"\1[redacted-request-id]"),
+    (re.compile(r"(?i)(secret\s+)([A-Za-z0-9_./:=@+-]+)"), r"\1[redacted-secret]"),
+    (re.compile(r"(?i)(token\s+)([A-Za-z0-9_./:=@+-]+)"), r"\1[redacted-token]"),
+)
+
+FAIL_CLOSED_CONTRACT_PROBE_STATUSES = {"failure", "failed", "stale", "unknown", "not_configured", "missing"}
+FAIL_CLOSED_LINK_STATUSES = {"orphan", "missing_resource", "missing_case"}
+
+
+def _sanitize_text(value: Any) -> str:
+    text = str(value)
+    for pattern, replacement in SENSITIVE_TEXT_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _task_ref(task_arn: str) -> str:
+    return f"task/{_task_id(task_arn)}"
 
 
 @dataclass(frozen=True)
@@ -27,6 +58,14 @@ class RuntimeTarget:
     schedule_name: str
     rule_name: str
     target: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class SecretImportPreflightFinding:
+    env_name: str
+    key_path: str
+    category: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -73,7 +112,7 @@ class RuntimeSkippedError(RuntimeError):
         self.task_arn = task_arn
         self.reason = reason
         detail = f" ({reason})" if reason else ""
-        super().__init__(f"{runtime_id} orchestrator runtime status is skipped{detail}: {task_arn}")
+        super().__init__(f"{runtime_id} orchestrator runtime status is skipped{detail}: {_task_ref(task_arn)}")
 
 
 class RuntimeTaskFailedError(RuntimeError):
@@ -81,8 +120,8 @@ class RuntimeTaskFailedError(RuntimeError):
         self.runtime_id = runtime_id
         self.task_arn = task_arn
         self.exit_code = exit_code
-        detail = f"\nRecent task logs:\n{log_summary}" if log_summary else ""
-        super().__init__(f"{runtime_id} task exited with {exit_code}: {task_arn}{detail}")
+        detail = f"\nRecent task logs:\n{_sanitize_text(log_summary)}" if log_summary else ""
+        super().__init__(f"{runtime_id} task exited with {exit_code}: {_task_ref(task_arn)}{detail}")
 
 
 class RuntimeVerificationFailedError(RuntimeError):
@@ -91,7 +130,7 @@ class RuntimeVerificationFailedError(RuntimeError):
         self.task_arn = task_arn
         self.phase = phase
         self.status = status
-        super().__init__(f"{runtime_id} {phase} status is {status}: {task_arn}")
+        super().__init__(f"{runtime_id} {phase} status is {status}: {_task_ref(task_arn)}")
 
 
 def _stack_name(path: Path) -> str:
@@ -180,8 +219,8 @@ def _aws(args: list[str], region: str) -> Any:
     try:
         completed = subprocess.run(command, check=True, text=True, capture_output=True)
     except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or "").strip()
-        message = f"{' '.join(command)} failed with exit code {exc.returncode}"
+        detail = _sanitize_text((exc.stderr or exc.stdout or "").strip())
+        message = f"{_sanitize_text(' '.join(command))} failed with exit code {exc.returncode}"
         if detail:
             message = f"{message}: {detail}"
         raise RuntimeError(message) from exc
@@ -228,6 +267,74 @@ def _declared_runtime_ids(config: dict[str, Any], source_id: str, requested: set
     return sorted(runtime_ids)
 
 
+def _observability_runtime_ids(
+    config: dict[str, Any],
+    source_id: str,
+    requested: set[str],
+    families: set[str] | None = None,
+) -> list[str]:
+    entries = config.get("sourceRuntimeObservability") or []
+    if not isinstance(entries, list):
+        return []
+    families = families or set()
+    runtime_ids: list[str] = []
+    seen_enabled: set[str] = set()
+    matching_disabled: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        runtime_id = str(entry.get("sourceRuntimeId") or entry.get("source_runtime_id") or "").strip()
+        source_system = str(entry.get("sourceSystem") or entry.get("source_system") or "").strip()
+        runtime_class = str(entry.get("runtimeClass") or entry.get("runtime_class") or "").strip()
+        if not runtime_id or source_system != source_id:
+            continue
+        if requested and runtime_id not in requested:
+            continue
+        if families and runtime_class not in families:
+            continue
+        if not bool(entry.get("enabled", False)):
+            matching_disabled.append(runtime_id)
+            continue
+        if runtime_id in seen_enabled:
+            raise ValueError(f"duplicate enabled sourceRuntimeObservability entry for {runtime_id!r}")
+        seen_enabled.add(runtime_id)
+        runtime_ids.append(runtime_id)
+    if matching_disabled:
+        print(
+            "INFO disabled observability runtimes skipped: " + ", ".join(sorted(matching_disabled)),
+            file=sys.stderr,
+        )
+    return sorted(runtime_ids)
+
+
+def _disabled_observability_runtime_ids(
+    config: dict[str, Any],
+    source_id: str,
+    requested: set[str],
+    families: set[str] | None = None,
+) -> list[str]:
+    entries = config.get("sourceRuntimeObservability") or []
+    if not isinstance(entries, list):
+        return []
+    families = families or set()
+    runtime_ids: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        runtime_id = str(entry.get("sourceRuntimeId") or entry.get("source_runtime_id") or "").strip()
+        source_system = str(entry.get("sourceSystem") or entry.get("source_system") or "").strip()
+        runtime_class = str(entry.get("runtimeClass") or entry.get("runtime_class") or "").strip()
+        if not runtime_id or source_system != source_id:
+            continue
+        if requested and runtime_id not in requested:
+            continue
+        if families and runtime_class not in families:
+            continue
+        if not bool(entry.get("enabled", False)):
+            runtime_ids.append(runtime_id)
+    return sorted(set(runtime_ids))
+
+
 def _runtime_targets(
     config: dict[str, Any],
     runtime_ids: list[str],
@@ -251,7 +358,13 @@ def _runtime_targets(
         schedule_name = str(schedule.get("name") or runtime_id)
         suffix = _schedule_suffix(schedule_name)
         rule_name = f"{resource_prefix}-orchestrator" if suffix == "default" else f"{resource_prefix}-orchestrator-{suffix}"
-        response = _aws(["events", "list-targets-by-rule", "--rule", rule_name], region)
+        try:
+            response = _aws(["events", "list-targets-by-rule", "--rule", rule_name], region)
+        except RuntimeError as exc:
+            if allow_missing_targets and "ResourceNotFoundException" in str(exc):
+                print(f"warning: skipping {runtime_id}; deployed EventBridge rule {rule_name!r} is missing")
+                continue
+            raise
         rule_targets = response.get("Targets") or []
         if len(rule_targets) != 1:
             if allow_missing_targets and not rule_targets:
@@ -293,7 +406,10 @@ def _latest_active_task_definition(task_definition: str, region: str) -> str:
     if not arns:
         raise RuntimeError(f"no active ECS task definitions found for family {family}")
     replacement = str(arns[0])
-    print(f"Using latest active ECS task definition {replacement} instead of inactive {task_definition}", file=sys.stderr)
+    print(
+        f"Using latest active ECS task definition for family {family} instead of inactive configured revision",
+        file=sys.stderr,
+    )
     return replacement
 
 
@@ -345,7 +461,7 @@ def _run_task(target: RuntimeTarget, region: str, command_override: list[str] | 
     response = _aws(args, region)
     failures = response.get("failures") or []
     if failures:
-        raise RuntimeError(f"failed to start {target.runtime_id}: {failures}")
+        raise RuntimeError(f"failed to start {target.runtime_id}: {_sanitize_text(failures)}")
     tasks = response.get("tasks") or []
     if len(tasks) != 1:
         raise RuntimeError(f"expected one task for {target.runtime_id}, got {len(tasks)}")
@@ -387,7 +503,7 @@ def _stop_running_tasks(
     if not task_arns:
         return
     for task_arn in task_arns:
-        print(f"Stopping running {target.runtime_id} task before verification: {task_arn}", file=sys.stderr)
+        print(f"Stopping running {target.runtime_id} task before verification: {_task_ref(task_arn)}", file=sys.stderr)
         _aws(
             [
                 "ecs",
@@ -419,7 +535,7 @@ def _stop_task(
     timeout_seconds: int,
     poll_seconds: int,
 ) -> None:
-    print(f"Stopping timed-out {target.runtime_id} verification task: {task_arn}", file=sys.stderr)
+    print(f"Stopping timed-out {target.runtime_id} verification task: {_task_ref(task_arn)}", file=sys.stderr)
     _aws(
         [
             "ecs",
@@ -496,7 +612,7 @@ def _task_stop_summary(task: dict[str, Any]) -> str:
             parts.append(f"{name}({', '.join(fields)})")
     if not parts:
         return "no ECS stop reason available"
-    return "; ".join(parts)[:2000]
+    return _sanitize_text("; ".join(parts))[:2000]
 
 
 def _wait_for_task(cluster_arn: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
@@ -525,7 +641,7 @@ def _wait_for_task(cluster_arn: str, task_arn: str, timeout_seconds: int, poll_s
             )
             next_progress = now + max(30, poll_seconds)
         time.sleep(poll_seconds)
-    raise TimeoutError(f"task {task_arn} did not stop within {timeout_seconds} seconds")
+    raise TimeoutError(f"task {_task_ref(task_arn)} did not stop within {timeout_seconds} seconds")
 
 
 def _task_id(task_arn: str) -> str:
@@ -598,9 +714,9 @@ def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> 
     for message in messages[-limit:]:
         summary = {key: message[key] for key in keys if key in message}
         if summary:
-            line = json.dumps(summary, sort_keys=True)
+            line = _sanitize_text(json.dumps(summary, sort_keys=True))
         else:
-            line = json.dumps(message, sort_keys=True)
+            line = _sanitize_text(json.dumps(message, sort_keys=True))
         lines.append(line[:2000])
     return "\n".join(lines)
 
@@ -608,6 +724,14 @@ def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> 
 def _latest_span(messages: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
     for message in reversed(messages):
         if message.get("kind") == "span_end" and message.get("name") == name:
+            return message
+    return None
+
+
+def _latest_event(messages: list[dict[str, Any]], *names: str) -> dict[str, Any] | None:
+    wanted = set(names)
+    for message in reversed(messages):
+        if message.get("kind") == "event" and message.get("name") in wanted:
             return message
     return None
 
@@ -659,6 +783,14 @@ def _verification_result_from_logs(
         if require_runtime_completed:
             raise RuntimeError(f"{target.runtime_id} graph ingest status is {graph_ingest_status}")
         return None
+    contract_probe_event = _latest_event(messages, "source_runtime.contract_probe")
+    contract_probe_status = str((contract_probe_event or {}).get("contract_probe_status") or "").strip().lower()
+    if contract_probe_status in FAIL_CLOSED_CONTRACT_PROBE_STATUSES:
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "contract probe", contract_probe_status)
+    link_status_event = _latest_event(messages, "runtime.evidence.link_status", "source_runtime.link_status")
+    link_status = str((link_status_event or {}).get("link_status") or "").strip().lower()
+    if link_status in FAIL_CLOSED_LINK_STATUSES:
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "link", link_status)
 
     return VerificationResult(
         runtime_id=target.runtime_id,
@@ -771,7 +903,7 @@ def _verify_task_until_graph_ingested(
                 return result
         except Exception:
             pass
-    raise TimeoutError(f"task {task_arn} did not complete source sync and graph ingest within {timeout_seconds} seconds")
+    raise TimeoutError(f"task {_task_ref(task_arn)} did not complete source sync and graph ingest within {timeout_seconds} seconds")
 
 
 def _run_and_verify_task_with_retries(
@@ -877,7 +1009,87 @@ def _verify_account(stack: str, region: str) -> None:
     caller = _aws(["sts", "get-caller-identity"], region)
     actual = str(caller.get("Account", ""))
     if actual != expected:
-        raise RuntimeError(f"stack {stack} must run in AWS account {expected}, got {actual}")
+        raise RuntimeError(f"stack {stack} is using an unexpected AWS account; check AWS_PROFILE")
+
+
+def _secret_import_preflight_findings(
+    config: dict[str, Any],
+    stack: str,
+    region: str,
+) -> list[SecretImportPreflightFinding]:
+    imports = secret_imports.expected_secret_imports(config, stack)
+    by_index = {index: item for index, item in enumerate(imports, start=1)}
+    findings: list[SecretImportPreflightFinding] = []
+    for finding in secret_imports.verify_secret_imports(imports, region):
+        item = by_index.get(finding.index)
+        if item is None:
+            findings.append(
+                SecretImportPreflightFinding(
+                    env_name="unknown",
+                    key_path="unknown",
+                    category=str(finding.category),
+                    reason=str(finding.reason),
+                )
+            )
+            continue
+        findings.append(
+            SecretImportPreflightFinding(
+                env_name=item.env_name,
+                key_path=item.secret_id,
+                category=str(finding.category),
+                reason=str(finding.reason),
+            )
+        )
+
+    declared = {item.env_name for item in imports}
+    for env_name in secret_imports._source_runtime_env_refs(config.get("sourceRuntimes") or []):
+        if env_name not in declared:
+            findings.append(
+                SecretImportPreflightFinding(
+                    env_name=env_name,
+                    key_path="undeclared",
+                    category="runtime-env-ref",
+                    reason="undeclared",
+                )
+            )
+    return findings
+
+
+def _print_secret_import_preflight_failure(
+    stack: str,
+    findings: list[SecretImportPreflightFinding],
+) -> None:
+    print(
+        f"{stack} AWS secret import preflight failed for {len(findings)} import(s); ECS run-task was not started.",
+        file=sys.stderr,
+    )
+    print("key_path\tenv_key\tcategory\treason", file=sys.stderr)
+    for finding in findings:
+        print(
+            "\t".join(
+                [
+                    _sanitize_text(finding.key_path),
+                    _sanitize_text(finding.env_name),
+                    _sanitize_text(finding.category),
+                    _sanitize_text(finding.reason),
+                ]
+            ),
+            file=sys.stderr,
+        )
+    print(
+        "Infisical guidance: use read-only key-presence checks only, never --plain or value-printing output, "
+        "then sync the missing keys into AWS Secrets Manager before rerunning live validation.",
+        file=sys.stderr,
+    )
+
+
+def _verify_secret_import_preflight(config: dict[str, Any], stack: str, region: str) -> None:
+    findings = _secret_import_preflight_findings(config, stack, region)
+    if not findings:
+        print(f"{stack} AWS secret import preflight passed.")
+        return
+    _print_secret_import_preflight_failure(stack, findings)
+    raise RuntimeError("required AWS secret imports are missing; ECS run-task was not started")
 
 
 def _positive_int(value: str) -> int:
@@ -885,6 +1097,54 @@ def _positive_int(value: str) -> int:
     if parsed < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
     return parsed
+
+
+def _non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return parsed
+
+
+def _print_dry_run_plan(
+    stack: str,
+    environment: str,
+    source_id: str,
+    families: set[str],
+    requested: set[str],
+    runtime_ids: list[str],
+    targets: list[RuntimeTarget],
+    options: VerificationOptions,
+    target_concurrency: int,
+    observability_targets: bool,
+    disabled_runtime_ids: list[str] | None = None,
+) -> None:
+    disabled = set(disabled_runtime_ids or [])
+    target_by_runtime = {target.runtime_id: target for target in targets}
+    print("mode\tread_only_dry_run")
+    print(f"stack\t{stack}")
+    print(f"environment\t{environment}")
+    print(f"source_id\t{source_id}")
+    print(f"families\t{','.join(sorted(families)) if families else '*'}")
+    print(f"requested_runtime_ids\t{','.join(sorted(requested)) if requested else '*'}")
+    print(f"observability_targets\t{str(observability_targets).lower()}")
+    print(f"mutations\tnone")
+    print(f"run_requested\t{str(options.run).lower()}")
+    print(f"wait_timeout_seconds\t{options.wait_timeout_seconds}")
+    print(f"poll_seconds\t{options.poll_seconds}")
+    print(f"max_age_minutes\t{options.max_age_minutes}")
+    print(f"run_attempt_timeout_seconds\t{options.run_attempt_timeout_seconds}")
+    print(f"failed_run_retry_seconds\t{options.failed_run_retry_seconds}")
+    print(f"target_concurrency\t{target_concurrency}")
+    print("runtime_id\tschedule\trule\tstatus")
+    for runtime_id in runtime_ids:
+        target = target_by_runtime.get(runtime_id)
+        if runtime_id in disabled:
+            print(f"{runtime_id}\t-\t-\tdisabled")
+        elif target is None:
+            print(f"{runtime_id}\t-\t-\tmissing_target")
+        else:
+            print(f"{runtime_id}\t{target.schedule_name}\t{target.rule_name}\tplanned")
 
 
 def _verify_runtime_target(target: RuntimeTarget, options: VerificationOptions) -> VerificationResult:
@@ -938,27 +1198,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-id", default="cosmo")
     parser.add_argument("--runtime-id", action="append", default=[])
     parser.add_argument("--family", action="append", default=[], help="Restrict verification to source runtimes with this config family.")
-    parser.add_argument("--run", action="store_true", help="Start each runtime from its EventBridge target before verifying.")
-    parser.add_argument("--run-page-limit", type=int, help="Override page_limit for tasks started by --run.")
-    parser.add_argument("--run-graph-page-limit", type=int, help="Override graph_page_limit for tasks started by --run.")
-    parser.add_argument("--run-event-limit", type=int, help="Override event_limit for tasks started by --run.")
+    parser.add_argument("--observability-targets", action="store_true", help="Select enabled sourceRuntimeObservability runtimes instead of all sourceRuntimes for the source-id/family scope.")
+    parser.add_argument("--dry-run", action="store_true", help="Read-only discovery mode: report planned targets, bounds, and checks without starting tasks or inspecting task logs.")
+    parser.add_argument("--run", action="store_true", help="Start each runtime from its EventBridge target before verifying. Without --run, verifies recent stopped tasks only.")
+    parser.add_argument("--run-page-limit", type=_positive_int, help="Override page_limit for tasks started by --run.")
+    parser.add_argument("--run-graph-page-limit", type=_positive_int, help="Override graph_page_limit for tasks started by --run.")
+    parser.add_argument("--run-event-limit", type=_positive_int, help="Override event_limit for tasks started by --run.")
     parser.add_argument(
         "--allow-lease-contention-skip",
         action="store_true",
         help="Treat lease_not_acquired skips as non-fatal when another runtime task is already active.",
     )
     parser.add_argument("--stop-running-before-run", action="store_true", help="Stop already-running tasks for the target runtime family before starting --run verification.")
-    parser.add_argument("--stop-timeout-seconds", type=int, default=180)
-    parser.add_argument("--max-age-minutes", type=int, default=180)
-    parser.add_argument("--failed-run-retry-seconds", type=int, default=0, help="Retry failed verification tasks for this many seconds before failing.")
-    parser.add_argument("--run-attempt-timeout-seconds", type=int, default=0, help="Stop and retry a --run verification task if one attempt runs longer than this.")
+    parser.add_argument("--stop-timeout-seconds", type=_positive_int, default=180)
+    parser.add_argument("--max-age-minutes", type=_positive_int, default=180)
+    parser.add_argument("--failed-run-retry-seconds", type=_non_negative_int, default=0, help="Retry failed verification tasks for this many seconds before failing.")
+    parser.add_argument("--run-attempt-timeout-seconds", type=_non_negative_int, default=0, help="Stop and retry a --run verification task if one attempt runs longer than this.")
     parser.add_argument(
         "--succeed-after-graph-ingest",
         action="store_true",
         help="For --run, return after source sync and graph ingest complete instead of waiting for post-ingest work.",
     )
-    parser.add_argument("--wait-timeout-seconds", type=int, default=3600)
-    parser.add_argument("--poll-seconds", type=int, default=10)
+    parser.add_argument("--wait-timeout-seconds", type=_positive_int, default=3600)
+    parser.add_argument("--poll-seconds", type=_positive_int, default=10)
     parser.add_argument("--target-concurrency", type=_positive_int, default=1, help="Verify up to this many source runtime targets concurrently.")
     parser.add_argument("--allow-missing-targets", action="store_true", help="Skip declared runtimes whose EventBridge target is not deployed yet.")
     args = parser.parse_args(argv)
@@ -969,40 +1231,131 @@ def main(argv: list[str] | None = None) -> int:
     resource_prefix = f"cerebro-{environment}"
     requested = set(args.runtime_id or [])
     families = set(args.family or [])
-    runtime_ids = _declared_runtime_ids(config, args.source_id, requested, families)
+    if args.observability_targets:
+        runtime_ids = _observability_runtime_ids(config, args.source_id, requested, families)
+    else:
+        runtime_ids = _declared_runtime_ids(config, args.source_id, requested, families)
     if not runtime_ids:
+        disabled_runtime_ids = (
+            _disabled_observability_runtime_ids(config, args.source_id, requested, families)
+            if args.observability_targets and args.dry_run
+            else []
+        )
+        if disabled_runtime_ids:
+            options = VerificationOptions(
+                run=args.run,
+                wait_timeout_seconds=args.wait_timeout_seconds,
+                poll_seconds=args.poll_seconds,
+                region=args.region,
+                run_page_limit=args.run_page_limit,
+                run_graph_page_limit=args.run_graph_page_limit,
+                run_event_limit=args.run_event_limit,
+                allow_lease_contention_skip=args.allow_lease_contention_skip,
+                stop_running_before_run=args.stop_running_before_run,
+                stop_timeout_seconds=args.stop_timeout_seconds,
+                failed_run_retry_seconds=args.failed_run_retry_seconds,
+                run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
+                succeed_after_graph_ingest=args.succeed_after_graph_ingest,
+                max_age_minutes=args.max_age_minutes,
+            )
+            _print_dry_run_plan(
+                stack,
+                environment,
+                args.source_id,
+                families,
+                requested,
+                disabled_runtime_ids,
+                [],
+                options,
+                args.target_concurrency,
+                args.observability_targets,
+                disabled_runtime_ids,
+            )
+            return 0
         scope = f" source {args.source_id!r}"
         if families:
             scope += f" and family {', '.join(sorted(families))!r}"
-        raise RuntimeError(f"no declared source runtimes found for{scope}")
+        source = "sourceRuntimeObservability runtimes" if args.observability_targets else "source runtimes"
+        raise RuntimeError(f"no enabled declared {source} found for{scope}")
 
     _verify_account(stack, args.region)
     targets = _runtime_targets(config, runtime_ids, resource_prefix, args.region, args.allow_missing_targets)
     if not targets:
-        print("No deployed source runtime targets matched the requested scope.")
+        if args.dry_run and args.allow_missing_targets:
+            options = VerificationOptions(
+                run=args.run,
+                wait_timeout_seconds=args.wait_timeout_seconds,
+                poll_seconds=args.poll_seconds,
+                region=args.region,
+                run_page_limit=args.run_page_limit,
+                run_graph_page_limit=args.run_graph_page_limit,
+                run_event_limit=args.run_event_limit,
+                allow_lease_contention_skip=args.allow_lease_contention_skip,
+                stop_running_before_run=args.stop_running_before_run,
+                stop_timeout_seconds=args.stop_timeout_seconds,
+                failed_run_retry_seconds=args.failed_run_retry_seconds,
+                run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
+                succeed_after_graph_ingest=args.succeed_after_graph_ingest,
+                max_age_minutes=args.max_age_minutes,
+            )
+            _print_dry_run_plan(
+                stack,
+                environment,
+                args.source_id,
+                families,
+                requested,
+                runtime_ids,
+                [],
+                options,
+                args.target_concurrency,
+                args.observability_targets,
+                _disabled_observability_runtime_ids(config, args.source_id, requested, families) if args.observability_targets else [],
+            )
+            return 0
+        if args.allow_missing_targets and not args.observability_targets:
+            print("No deployed source runtime targets matched the requested scope.")
+            return 0
+        raise RuntimeError("no deployed source runtime targets matched the requested scope")
+    options = VerificationOptions(
+        run=args.run,
+        wait_timeout_seconds=args.wait_timeout_seconds,
+        poll_seconds=args.poll_seconds,
+        region=args.region,
+        run_page_limit=args.run_page_limit,
+        run_graph_page_limit=args.run_graph_page_limit,
+        run_event_limit=args.run_event_limit,
+        allow_lease_contention_skip=args.allow_lease_contention_skip,
+        stop_running_before_run=args.stop_running_before_run,
+        stop_timeout_seconds=args.stop_timeout_seconds,
+        failed_run_retry_seconds=args.failed_run_retry_seconds,
+        run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
+        succeed_after_graph_ingest=args.succeed_after_graph_ingest,
+        max_age_minutes=args.max_age_minutes,
+    )
+    if args.dry_run:
+        _print_dry_run_plan(
+            stack,
+            environment,
+            args.source_id,
+            families,
+            requested,
+            runtime_ids,
+            targets,
+            options,
+            args.target_concurrency,
+            args.observability_targets,
+            _disabled_observability_runtime_ids(config, args.source_id, requested, families) if args.observability_targets else [],
+        )
         return 0
+    if args.run:
+        _verify_secret_import_preflight(config, stack, args.region)
     results = _verify_runtime_targets(
         targets,
-        VerificationOptions(
-            run=args.run,
-            wait_timeout_seconds=args.wait_timeout_seconds,
-            poll_seconds=args.poll_seconds,
-            region=args.region,
-            run_page_limit=args.run_page_limit,
-            run_graph_page_limit=args.run_graph_page_limit,
-            run_event_limit=args.run_event_limit,
-            allow_lease_contention_skip=args.allow_lease_contention_skip,
-            stop_running_before_run=args.stop_running_before_run,
-            stop_timeout_seconds=args.stop_timeout_seconds,
-            failed_run_retry_seconds=args.failed_run_retry_seconds,
-            run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
-            succeed_after_graph_ingest=args.succeed_after_graph_ingest,
-            max_age_minutes=args.max_age_minutes,
-        ),
+        options,
         args.target_concurrency,
     )
 
-    print("runtime_id\texit\tsync\tevents_appended\tpages_read\tgraph_ingest\tentities_projected\tlinks_projected\ttask_arn")
+    print("runtime_id\texit\tsync\tevents_appended\tpages_read\tgraph_ingest\tentities_projected\tlinks_projected\ttask_ref")
     for result in results:
         print(
             "\t".join(
@@ -1015,7 +1368,7 @@ def main(argv: list[str] | None = None) -> int:
                     result.graph_ingest_status,
                     str(result.entities_projected),
                     str(result.links_projected),
-                    result.task_arn,
+                    _task_ref(result.task_arn),
                 ]
             )
         )

@@ -4,6 +4,8 @@ import sys
 import threading
 import time
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,11 +16,13 @@ from scripts.verify_source_runtime_ecs import (
     RuntimeTaskFailedError,
     RuntimeTarget,
     RuntimeVerificationFailedError,
+    SecretImportPreflightFinding,
     VerificationOptions,
     VerificationResult,
     _declared_runtime_ids,
     _latest_active_task_definition,
     _latest_task,
+    _observability_runtime_ids,
     _run_and_verify_task_with_retries,
     _run_task,
     _runtime_id_from_command,
@@ -26,13 +30,17 @@ from scripts.verify_source_runtime_ecs import (
     _runtime_skip_reason,
     _runtime_skip_retryable,
     _schedule_suffix,
+    _sanitize_text,
+    _secret_import_preflight_findings,
     _stop_running_tasks,
     _summarize_log_messages,
     _task_family,
     _task_logs,
     _verify_task,
+    _verification_result_from_logs,
     _verify_runtime_targets,
     _verification_command,
+    main,
 )
 
 
@@ -58,6 +66,49 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         }
 
         self.assertEqual(_declared_runtime_ids(config, "aws", set(), {"public_endpoint"}), ["aws-public"])
+
+    def test_observability_runtime_ids_use_enabled_entries_and_filters(self) -> None:
+        config = {
+            "sourceRuntimeObservability": [
+                {
+                    "sourceSystem": "evidence_cas",
+                    "sourceRuntimeId": "writer-evidence-cas-cases",
+                    "runtimeClass": "object",
+                    "enabled": True,
+                    "freshnessSlaMinutes": 90,
+                },
+                {
+                    "sourceSystem": "panopticon",
+                    "sourceRuntimeId": "writer-panopticon-alerts",
+                    "runtimeClass": "alert",
+                    "enabled": True,
+                    "freshnessSlaMinutes": 30,
+                },
+                {
+                    "sourceSystem": "panopticon",
+                    "sourceRuntimeId": "writer-panopticon-disabled",
+                    "runtimeClass": "ioc",
+                    "enabled": False,
+                    "freshnessSlaMinutes": 30,
+                },
+            ]
+        }
+
+        self.assertEqual(
+            _observability_runtime_ids(config, "panopticon", set(), {"alert"}),
+            ["writer-panopticon-alerts"],
+        )
+
+    def test_observability_runtime_ids_reject_duplicate_enabled_entries(self) -> None:
+        config = {
+            "sourceRuntimeObservability": [
+                {"sourceSystem": "panopticon", "sourceRuntimeId": "writer-panopticon-alerts", "runtimeClass": "alert", "enabled": True},
+                {"sourceSystem": "panopticon", "sourceRuntimeId": "writer-panopticon-alerts", "runtimeClass": "alert", "enabled": True},
+            ]
+        }
+
+        with self.assertRaisesRegex(ValueError, "duplicate enabled sourceRuntimeObservability"):
+            _observability_runtime_ids(config, "panopticon", set(), {"alert"})
 
     def test_runtime_id_from_command(self) -> None:
         self.assertEqual(_runtime_id_from_command(["orchestrator", "run", "runtime_id=writer-cosmo-session"]), "writer-cosmo-session")
@@ -113,7 +164,11 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             raise AssertionError(f"unexpected args: {args}")
 
         with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
-            self.assertEqual(_latest_active_task_definition(inactive, "us-east-1"), active)
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                self.assertEqual(_latest_active_task_definition(inactive, "us-east-1"), active)
+            self.assertNotIn("123456789012", stderr.getvalue())
+            self.assertNotIn("arn:aws", stderr.getvalue())
 
     def test_verification_command_overrides_runtime_limits(self) -> None:
         self.assertEqual(
@@ -542,6 +597,40 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result.entities_projected, 5)
         self.assertEqual(result.links_projected, 3)
 
+    def test_verify_task_fails_closed_for_contract_probe_failure(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-evidence-cas-cases",
+            schedule_name="evidence-cas-cases",
+            rule_name="cerebro-sec-dev-orchestrator-evidence-cas-cases",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+            {"kind": "span_end", "name": "source_runtime.sync", "status": "completed", "events_appended": 1, "pages_read": 1},
+            {"kind": "event", "name": "source_runtime.contract_probe", "contract_probe_status": "failure"},
+            {"kind": "span_end", "name": "orchestrator.graph_ingest", "status": "completed"},
+        ]
+
+        with self.assertRaisesRegex(RuntimeVerificationFailedError, "contract probe status is failure"):
+            _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
+
+    def test_verify_task_fails_closed_for_orphan_missing_link_state(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-evidence-cas-cases",
+            schedule_name="evidence-cas-cases",
+            rule_name="cerebro-sec-dev-orchestrator-evidence-cas-cases",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+            {"kind": "span_end", "name": "source_runtime.sync", "status": "completed", "events_appended": 1, "pages_read": 1},
+            {"kind": "event", "name": "runtime.evidence.link_status", "link_status": "missing_resource"},
+            {"kind": "span_end", "name": "orchestrator.graph_ingest", "status": "completed"},
+        ]
+
+        with self.assertRaisesRegex(RuntimeVerificationFailedError, "link status is missing_resource"):
+            _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
+
     def test_verify_task_includes_ecs_stop_reason_when_logs_missing(self) -> None:
         target = RuntimeTarget(
             runtime_id="writer-cosmo-session",
@@ -568,8 +657,14 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             patch("scripts.verify_source_runtime_ecs._describe_tasks", return_value=[task]),
             patch("scripts.verify_source_runtime_ecs._task_logs", side_effect=RuntimeError("log stream missing")),
         ):
-            with self.assertRaisesRegex(RuntimeTaskFailedError, "ResourceInitializationError.*MISSING"):
-                _verify_task(target, "task-arn", "us-east-1")
+            with self.assertRaises(RuntimeTaskFailedError) as context:
+                _verify_task(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-arn", "us-east-1")
+
+        message = str(context.exception)
+        self.assertIn("ResourceInitializationError", message)
+        self.assertNotIn("123456789012", message)
+        self.assertNotIn("arn:aws", message)
+        self.assertNotIn("cerebro-go-production/MISSING", message)
 
     def test_task_logs_caches_log_options_by_task_definition(self) -> None:
         task = {
@@ -623,6 +718,300 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertIn('"message": "', summary)
         self.assertNotIn("secret", summary)
         self.assertLessEqual(len(summary), 2000)
+
+    def test_sanitize_text_redacts_sensitive_cloud_identifiers(self) -> None:
+        sanitized = _sanitize_text(
+            "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1 https://internal.example.com secret CEREBRO_TOKEN was not found RequestID: 2481eecc-b737-4f24-ac03-e450485270a4"
+        )
+
+        self.assertNotIn("arn:aws", sanitized)
+        self.assertNotIn("123456789012", sanitized)
+        self.assertNotIn("internal.example.com", sanitized)
+        self.assertNotIn("CEREBRO_TOKEN", sanitized)
+        self.assertNotIn("2481eecc", sanitized)
+        self.assertIn("[redacted-arn]", sanitized)
+
+    def test_dry_run_reports_planned_observability_checks_without_running_tasks(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimeObservability": [
+                {
+                    "sourceSystem": "panopticon",
+                    "sourceRuntimeId": "writer-panopticon-alerts",
+                    "runtimeClass": "alert",
+                    "enabled": True,
+                    "freshnessSlaMinutes": 30,
+                }
+            ],
+            "orchestratorSchedules": [
+                {
+                    "name": "panopticon-alerts-live",
+                    "command": ["orchestrator", "run", "runtime_id=writer-panopticon-alerts"],
+                }
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="writer-panopticon-alerts",
+                schedule_name="panopticon-alerts-live",
+                rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account") as verify_account,
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._run_task") as run_task,
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            status = main(
+                [
+                    "--stack-file",
+                    str(stack_file),
+                    "--source-id",
+                    "panopticon",
+                    "--family",
+                    "alert",
+                    "--observability-targets",
+                    "--dry-run",
+                    "--wait-timeout-seconds",
+                    "300",
+                    "--poll-seconds",
+                    "5",
+                    "--target-concurrency",
+                    "2",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        verify_account.assert_called_once()
+        run_task.assert_not_called()
+        output = stdout.getvalue()
+        self.assertIn("mode\tread_only_dry_run", output)
+        self.assertIn("mutations\tnone", output)
+        self.assertIn("writer-panopticon-alerts", output)
+        self.assertIn("wait_timeout_seconds\t300", output)
+
+    def test_run_fails_secret_import_preflight_before_starting_tasks(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimes": [
+                {
+                    "id": "aws-public",
+                    "sourceId": "aws",
+                    "config": {
+                        "family": "public_endpoint",
+                        "base_url": "env:EVIDENCE_CAS_BASE_URL",
+                        "token": "env:EVIDENCE_CAS_TOKEN",
+                    },
+                }
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="aws-public",
+                schedule_name="aws-public-live",
+                rule_name="cerebro-sec-dev-orchestrator-aws-public-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+        findings = [
+            SecretImportPreflightFinding(
+                env_name="EVIDENCE_CAS_BASE_URL",
+                key_path="cerebro-sec-dev/EVIDENCE_CAS_BASE_URL",
+                category="runtime-import",
+                reason="missing",
+            ),
+            SecretImportPreflightFinding(
+                env_name="EVIDENCE_CAS_TOKEN",
+                key_path="cerebro-sec-dev/EVIDENCE_CAS_TOKEN",
+                category="runtime-import",
+                reason="missing",
+            ),
+        ]
+
+        stderr = StringIO()
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings", return_value=findings),
+            patch("scripts.verify_source_runtime_ecs._run_task") as run_task,
+            redirect_stderr(stderr),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "ECS run-task was not started"):
+                main(
+                    [
+                        "--stack-file",
+                        str(stack_file),
+                        "--source-id",
+                        "aws",
+                        "--family",
+                        "public_endpoint",
+                        "--run",
+                    ]
+                )
+
+        run_task.assert_not_called()
+        output = stderr.getvalue()
+        self.assertIn("AWS secret import preflight failed", output)
+        self.assertIn("cerebro-sec-dev/EVIDENCE_CAS_BASE_URL", output)
+        self.assertIn("cerebro-sec-dev/EVIDENCE_CAS_TOKEN", output)
+        self.assertIn("Infisical", output)
+        self.assertNotIn("secret-value", output)
+        self.assertNotIn("arn:aws", output)
+
+    def test_run_secret_import_preflight_success_allows_runtime_verification(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimes": [
+                {"id": "aws-public", "sourceId": "aws", "config": {"family": "public_endpoint"}}
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="aws-public",
+                schedule_name="aws-public-live",
+                rule_name="cerebro-sec-dev-orchestrator-aws-public-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+        result = VerificationResult(
+            runtime_id="aws-public",
+            task_arn="arn:aws:ecs:us-east-1:000000000000:task/cluster/task-1",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="success",
+            graph_ingest_status="success",
+            events_appended=1,
+            pages_read=1,
+            entities_projected=1,
+            links_projected=1,
+        )
+        events: list[str] = []
+
+        def fake_preflight(config_arg, stack_arg, region_arg):
+            events.append("preflight")
+            return []
+
+        def fake_verify(targets_arg, options_arg, concurrency_arg):
+            self.assertEqual(events, ["preflight"])
+            events.append("verify")
+            return [result]
+
+        stdout = StringIO()
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings", side_effect=fake_preflight),
+            patch("scripts.verify_source_runtime_ecs._verify_runtime_targets", side_effect=fake_verify),
+            redirect_stdout(stdout),
+        ):
+            status = main(
+                [
+                    "--stack-file",
+                    str(stack_file),
+                    "--source-id",
+                    "aws",
+                    "--family",
+                    "public_endpoint",
+                    "--run",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(events, ["preflight", "verify"])
+        self.assertIn("runtime_id\texit\tsync", stdout.getvalue())
+
+    def test_recent_task_verification_skips_secret_import_preflight(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimes": [
+                {"id": "aws-public", "sourceId": "aws", "config": {"family": "public_endpoint"}}
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="aws-public",
+                schedule_name="aws-public-live",
+                rule_name="cerebro-sec-dev-orchestrator-aws-public-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+        result = VerificationResult(
+            runtime_id="aws-public",
+            task_arn="task-1",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="success",
+            graph_ingest_status="success",
+            events_appended=1,
+            pages_read=1,
+        )
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings") as preflight,
+            patch("scripts.verify_source_runtime_ecs._verify_runtime_targets", return_value=[result]),
+            redirect_stdout(StringIO()),
+        ):
+            status = main(
+                [
+                    "--stack-file",
+                    str(stack_file),
+                    "--source-id",
+                    "aws",
+                    "--family",
+                    "public_endpoint",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        preflight.assert_not_called()
+
+    def test_secret_import_preflight_maps_findings_to_key_paths(self) -> None:
+        config = {
+            "environment": "sec-dev",
+            "infisicalSecretsPrefix": "cerebro-sec-dev",
+            "sourceSecretKeys": ["EVIDENCE_CAS_BASE_URL", "EVIDENCE_CAS_TOKEN"],
+            "sourceRuntimes": [
+                {
+                    "id": "aws-public",
+                    "sourceId": "aws",
+                    "config": {
+                        "base_url": "env:EVIDENCE_CAS_BASE_URL",
+                        "token": "env:EVIDENCE_CAS_TOKEN",
+                    },
+                }
+            ],
+        }
+
+        def fake_verify(imports, region):
+            return [
+                type("Finding", (), {"index": 5, "category": "runtime-import", "fingerprint": "unused", "reason": "missing"})(),
+                type("Finding", (), {"index": 6, "category": "runtime-import", "fingerprint": "unused", "reason": "missing"})(),
+            ]
+
+        with patch("scripts.verify_source_runtime_ecs.secret_imports.verify_secret_imports", side_effect=fake_verify):
+            findings = _secret_import_preflight_findings(config, "sec-dev", "us-east-1")
+
+        self.assertEqual([finding.env_name for finding in findings], ["EVIDENCE_CAS_BASE_URL", "EVIDENCE_CAS_TOKEN"])
+        self.assertEqual(
+            [finding.key_path for finding in findings],
+            ["cerebro-sec-dev/EVIDENCE_CAS_BASE_URL", "cerebro-sec-dev/EVIDENCE_CAS_TOKEN"],
+        )
 
 
 if __name__ == "__main__":
