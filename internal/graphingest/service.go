@@ -491,7 +491,7 @@ func (s *Service) runStore() (RunStore, error) {
 func (s *Service) failRun(ctx context.Context, runStore RunStore, run graphstore.IngestRun, result *RunResult, ingest *IngestResult, runErr error) (*RunResult, error) {
 	failed := finishRun(run, ingest, graphstore.IngestRunStatusFailed, runErr)
 	result.Run = failed
-	log.Printf("graph ingest runtime failed run_id=%q runtime_id=%q error=%v", failed.ID, failed.RuntimeID, runErr)
+	log.Printf("graph ingest runtime failed run_id=%q runtime_id=%q error=%q", sanitizeLogValue(failed.ID), sanitizeLogValue(failed.RuntimeID), sanitizeLogValue(fmt.Sprint(runErr)))
 	return result, errors.Join(runErr, s.putTerminalIngestRun(ctx, runStore, failed))
 }
 
@@ -1209,6 +1209,10 @@ func ingestEvent(event *cerebrov1.EventEnvelope, tenantID string, runtimeID stri
 		cloned.Attributes[ports.EventAttributeSourceRuntimeID] = normalized
 	}
 	return cloned
+}
+
+func sanitizeLogValue(value string) string {
+	return strings.NewReplacer("\n", " ", "\r", " ").Replace(value)
 }
 
 func sanitizeIDPart(value string) string {

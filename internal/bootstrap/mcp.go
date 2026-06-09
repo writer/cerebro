@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -1036,8 +1037,10 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 	assetLimit := 5
 	if rawLimit, err := mcpUint32Arg(args, "asset_limit"); err != nil {
 		return nil, err
+	} else if rawLimit > uint32(maxMCPAssetLimit) {
+		assetLimit = maxMCPAssetLimit
 	} else if rawLimit != 0 {
-		assetLimit = min(int(rawLimit), maxMCPAssetLimit)
+		assetLimit = int(rawLimit)
 	}
 	assets := []mcpAssetSearchResult{}
 	neighborhoods := []any{}
@@ -2043,10 +2046,14 @@ func mcpBoundedLimit(args map[string]any, key string, defaultLimit int, maxLimit
 	if err != nil {
 		return 0, err
 	}
+	bound := uint32(math.MaxInt32)
+	if maxLimit >= 0 && maxLimit < math.MaxInt32 {
+		bound = uint32(maxLimit)
+	}
 	switch {
 	case limit == 0:
 		return defaultLimit, nil
-	case int(limit) > maxLimit:
+	case limit > bound:
 		return maxLimit, nil
 	default:
 		return int(limit), nil
@@ -2409,10 +2416,14 @@ func mcpMetadataLimit(args map[string]any, key string, defaultLimit int, maxLimi
 }
 
 func mcpNormalizeLimitValue(limit uint32, defaultLimit int, maxLimit int) int {
+	bound := uint32(math.MaxInt32)
+	if maxLimit >= 0 && maxLimit < math.MaxInt32 {
+		bound = uint32(maxLimit)
+	}
 	switch {
 	case limit == 0:
 		return defaultLimit
-	case int(limit) > maxLimit:
+	case limit > bound:
 		return maxLimit
 	default:
 		return int(limit)
