@@ -88,6 +88,26 @@ class WorkerTaskRoleTest(unittest.TestCase):
         task_definition_calls: list[dict] = []
         orchestrator_events_role_calls: list[dict] = []
         event_target_calls: list[dict] = []
+        panopticon_source_runtimes = [
+            {
+                "id": "writer-panopticon-alerts",
+                "sourceId": "panopticon",
+                "tenantId": "writer",
+                "config": {"kind": "alerts", "bucket": "env:PANOPTICON_EXPORT_BUCKET"},
+            },
+            {
+                "id": "writer-panopticon-cases",
+                "sourceId": "panopticon",
+                "tenantId": "writer",
+                "config": {"kind": "cases", "bucket": "env:PANOPTICON_EXPORT_BUCKET"},
+            },
+            {
+                "id": "writer-panopticon-iocs",
+                "sourceId": "panopticon",
+                "tenantId": "writer",
+                "config": {"kind": "iocs", "bucket": "env:PANOPTICON_EXPORT_BUCKET"},
+            },
+        ]
 
         def fake_named_resource(*args, **kwargs):
             name = kwargs.get("name") or args[0]
@@ -149,6 +169,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
                         "command": ["orchestrator", "run", "runtime_id=writer-cosmo-fact"],
                     }
                 ],
+                source_runtimes=panopticon_source_runtimes,
             )
 
         self.assertEqual(task_role_names, ["cerebro-sec-dev", "cerebro-sec-dev-worker"])
@@ -172,6 +193,8 @@ class WorkerTaskRoleTest(unittest.TestCase):
             orchestrator_task_definition["task_role_arn"],
             "arn:aws:iam::123456789012:role/cerebro-sec-dev-worker-task-role",
         )
+        self.assertEqual(api_task_definition["source_runtimes"], panopticon_source_runtimes)
+        self.assertEqual(orchestrator_task_definition["source_runtimes"], panopticon_source_runtimes)
         self.assertEqual(
             orchestrator_events_role_calls[0]["task_role_arn"],
             "arn:aws:iam::123456789012:role/cerebro-sec-dev-worker-task-role",
@@ -187,6 +210,70 @@ class WorkerTaskRoleTest(unittest.TestCase):
         self.assertEqual(
             json.loads(event_target_calls[0]["input"]),
             {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-cosmo-fact"]}]},
+        )
+
+    def test_task_definition_bootstraps_panopticon_source_runtimes(self) -> None:
+        task_definition_calls: list[dict] = []
+
+        class FakeOutputAll:
+            def __init__(self, values: tuple):
+                self.values = values
+
+            def apply(self, callback):
+                return callback(self.values)
+
+        def fake_task_definition(*args, **kwargs):
+            task_definition_calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(arn=f"arn:aws:ecs:us-east-1:123456789012:task-definition/{kwargs['family']}:1")
+
+        with (
+            patch.object(compute.aws, "get_region", return_value=SimpleNamespace(region="us-east-1")),
+            patch.object(compute.aws, "get_caller_identity", return_value=SimpleNamespace(account_id="123456789012")),
+            patch.object(compute.aws.ecs, "TaskDefinition", side_effect=fake_task_definition),
+            patch.object(compute.aws.ecs, "TaskDefinitionRuntimePlatformArgs", side_effect=lambda **kwargs: SimpleNamespace(**kwargs)),
+            patch.object(compute.pulumi.Output, "all", side_effect=lambda *values: FakeOutputAll(values)),
+        ):
+            compute._create_task_definition(
+                name="cerebro-sec-dev-orchestrator",
+                container_image="image",
+                cpu=1024,
+                memory=2048,
+                execution_role_arn="exec-role",
+                task_role_arn="task-role",
+                log_group_name="/ecs/cerebro-sec-dev",
+                environment={"CEREBRO_ENVIRONMENT": "sec-dev"},
+                secret_keys=[],
+                external_secrets_prefix="/cerebro/sec-dev",
+                container_command=["orchestrator", "run", "source_id=panopticon"],
+                expose_http=False,
+                enable_health_check=False,
+                log_stream_prefix="orchestrator",
+                source_runtimes=[
+                    {"id": "writer-panopticon-alerts", "sourceId": "panopticon", "tenantId": "writer", "config": {"kind": "alerts"}},
+                    {"id": "writer-panopticon-cases", "sourceId": "panopticon", "tenantId": "writer", "config": {"kind": "cases"}},
+                    {"id": "writer-panopticon-iocs", "sourceId": "panopticon", "tenantId": "writer", "config": {"kind": "iocs"}},
+                ],
+            )
+
+        containers = json.loads(task_definition_calls[0]["container_definitions"])
+        bootstrap_container = next(container for container in containers if container["name"] == "source-runtime-bootstrap")
+        cerebro_container = next(container for container in containers if container["name"] == "cerebro")
+        bootstrap_env = {entry["name"]: entry["value"] for entry in bootstrap_container["environment"]}
+        bootstrap_payload = json.loads(bootstrap_env["CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON"])
+        runtime_ids = [runtime["id"] for runtime in bootstrap_payload["runtimes"]]
+
+        self.assertFalse(bootstrap_container["essential"])
+        self.assertEqual(
+            bootstrap_container["command"],
+            ["source-runtime", "bootstrap", "env=CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON"],
+        )
+        self.assertEqual(
+            runtime_ids,
+            ["writer-panopticon-alerts", "writer-panopticon-cases", "writer-panopticon-iocs"],
+        )
+        self.assertEqual(
+            cerebro_container["dependsOn"],
+            [{"containerName": "source-runtime-bootstrap", "condition": "SUCCESS"}],
         )
 
 

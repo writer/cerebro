@@ -132,6 +132,7 @@ def create_ecs_cluster(
             expose_http=False,
             enable_health_check=False,
             log_stream_prefix="orchestrator",
+            source_runtimes=source_runtimes or [],
         )
         orchestrator_task_definitions.append(task_definition)
         orchestrator_task_definition = orchestrator_task_definitions[0] if orchestrator_task_definitions else None
