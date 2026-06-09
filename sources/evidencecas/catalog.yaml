@@ -7,8 +7,11 @@ event_contracts:
   - kind: evidence_cas.object
     schema_ref: evidence_cas/object/v1
     required_attributes:
+      - tenant_id
+      - source_event_id
       - evidence_id
       - evidence_type
+      - resource_urn
       - evidence_cas_uri
       - evidence_cas_digest
     required_payload_fields:

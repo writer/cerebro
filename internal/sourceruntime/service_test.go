@@ -1290,12 +1290,32 @@ func TestSyncRuntimeRejectsEventsMissingCatalogContractFields(t *testing.T) {
 	log := &appendLog{}
 	service := New(registry, store, log, nil)
 
-	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-contract-event"})
-	if !errors.Is(err, sourcecdk.ErrInvalidEventEnvelope) {
-		t.Fatalf("Sync() error = %v, want ErrInvalidEventEnvelope", err)
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-contract-event"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
 	}
 	if len(log.events) != 0 {
 		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
+	}
+	if resp.GetEventsAppended() != 0 {
+		t.Fatalf("Sync().EventsAppended = %d, want 0", resp.GetEventsAppended())
+	}
+	stored := store.runtimes["example-contract-event"]
+	for key, want := range map[string]string{
+		runtimeStatusConfigKey:              "completed",
+		runtimeRecordsScannedConfigKey:      "1",
+		runtimeRecordsAcceptedConfigKey:     "0",
+		runtimeRecordsRejectedConfigKey:     "1",
+		runtimeLastFailureCategoryConfigKey: "missing_required_attribute",
+		runtimeLastInvalidFieldConfigKey:    "required_attribute",
+		runtimeLastInvalidStatusConfigKey:   "terminal",
+	} {
+		if got := stored.GetConfig()[key]; got != want {
+			t.Fatalf("stored config[%s] = %q, want %q", key, got, want)
+		}
+	}
+	if stored.GetLastSyncedAt() == nil {
+		t.Fatal("LastSyncedAt is nil, want terminal rejection to commit sync status")
 	}
 }
 

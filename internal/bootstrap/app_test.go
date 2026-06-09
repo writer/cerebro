@@ -4328,7 +4328,17 @@ func TestSourceRuntimeHealthEndpointIncludesRuntimeGraphAndFindingState(t *testi
 				Id:       "writer-okta-users",
 				SourceId: "okta",
 				TenantId: "writer",
-				Config:   map[string]string{"family": "user"},
+				Config: map[string]string{
+					"family":                                  "user",
+					"__cerebro_runtime_status":                "completed",
+					"__cerebro_runtime_records_scanned":       "8",
+					"__cerebro_runtime_records_accepted":      "7",
+					"__cerebro_runtime_records_rejected":      "1",
+					"__cerebro_runtime_entities_projected":    "12",
+					"__cerebro_runtime_links_projected":       "16",
+					"__cerebro_runtime_last_failure_category": "missing_required_attribute",
+					"__cerebro_runtime_contract_probe_state":  "failure",
+				},
 				Checkpoint: &cerebrov1.SourceCheckpoint{
 					Watermark:    timestamppb.New(now.Add(-2 * time.Hour)),
 					CursorOpaque: "checkpoint-secret",
@@ -4409,6 +4419,37 @@ func TestSourceRuntimeHealthEndpointIncludesRuntimeGraphAndFindingState(t *testi
 	if got := record["family"]; got != "user" {
 		t.Fatalf("family = %#v, want user", got)
 	}
+	if got := record["enabled_state"]; got != "enabled" {
+		t.Fatalf("enabled_state = %#v, want enabled", got)
+	}
+	if got := record["status"]; got != "failing" {
+		t.Fatalf("status = %#v, want failing", got)
+	}
+	recentSync, ok := record["recent_sync"].(map[string]any)
+	if !ok {
+		t.Fatalf("recent_sync = %#v, want object", record["recent_sync"])
+	}
+	if got := recentSync["records_scanned"]; got != float64(8) {
+		t.Fatalf("records_scanned = %#v, want 8", got)
+	}
+	if got := recentSync["records_accepted"]; got != float64(7) {
+		t.Fatalf("records_accepted = %#v, want 7", got)
+	}
+	if got := recentSync["records_rejected"]; got != float64(1) {
+		t.Fatalf("records_rejected = %#v, want 1", got)
+	}
+	if got := recentSync["entities_projected"]; got != float64(12) {
+		t.Fatalf("entities_projected = %#v, want 12", got)
+	}
+	if got := recentSync["links_projected"]; got != float64(16) {
+		t.Fatalf("links_projected = %#v, want 16", got)
+	}
+	if got := record["last_failure_category"]; got != "missing_required_attribute" {
+		t.Fatalf("last_failure_category = %#v, want missing_required_attribute", got)
+	}
+	if got := record["contract_probe_state"]; got != "failure" {
+		t.Fatalf("contract_probe_state = %#v, want failure", got)
+	}
 	if got := record["cursor_pending"]; got != true {
 		t.Fatalf("cursor_pending = %#v, want true", got)
 	}
@@ -4440,6 +4481,72 @@ func TestSourceRuntimeHealthEndpointIncludesRuntimeGraphAndFindingState(t *testi
 	}
 	if got := findingRun["duration_seconds"]; got != float64(60) {
 		t.Fatalf("finding duration_seconds = %#v, want 60", got)
+	}
+}
+
+func TestSourceRuntimeInvalidEventsEndpointReturnsSafeDiagnostic(t *testing.T) {
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-evidencecas": {
+				Id:       "writer-evidencecas",
+				SourceId: "evidence_cas",
+				TenantId: "writer",
+				Config: map[string]string{
+					"__cerebro_runtime_last_failure_category":    "missing_required_attribute",
+					"__cerebro_runtime_last_invalid_event_id":    "evidence-cas-redacted-event",
+					"__cerebro_runtime_last_invalid_field":       "resource_urn",
+					"__cerebro_runtime_last_invalid_status":      "terminal",
+					"__cerebro_runtime_last_invalid_retryable":   "false",
+					"__cerebro_runtime_last_invalid_observed_at": "2026-06-06T00:05:00Z",
+					"__cerebro_runtime_last_invalid_occurred_at": "2026-06-06T00:00:00Z",
+					"__cerebro_runtime_last_invalid_diagnostic":  "missing required field resource_urn",
+				},
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: runtimeStore}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/source-runtimes/writer-evidencecas/invalid-events")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/{id}/invalid-events error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close invalid events response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET invalid-events status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode invalid events response: %v", err)
+	}
+	events, ok := payload["events"].([]any)
+	if !ok || len(events) != 1 {
+		t.Fatalf("invalid events = %#v, want one event", payload["events"])
+	}
+	record, ok := events[0].(map[string]any)
+	if !ok {
+		t.Fatalf("invalid event = %#v, want object", events[0])
+	}
+	if got := record["failure_category"]; got != "missing_required_attribute" {
+		t.Fatalf("failure_category = %#v, want missing_required_attribute", got)
+	}
+	fields, ok := record["fields"].([]any)
+	if !ok || len(fields) != 1 || fields[0] != "resource_urn" {
+		t.Fatalf("fields = %#v, want resource_urn", record["fields"])
+	}
+	if got := record["status"]; got != "terminal" {
+		t.Fatalf("status = %#v, want terminal", got)
+	}
+	if got := record["retryable"]; got != false {
+		t.Fatalf("retryable = %#v, want false", got)
+	}
+	if _, present := record["payload"]; present {
+		t.Fatalf("invalid event leaked payload: %#v", record["payload"])
 	}
 }
 

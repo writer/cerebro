@@ -100,6 +100,95 @@ func TestReadObjectRefs(t *testing.T) {
 	}
 }
 
+func TestReadObjectRefsPreservesCanonicalCorrelationAndLegacyMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"objects": []map[string]any{
+				{
+					"ref_type":         "evidencecas.manifest.v2",
+					"uri":              "evidencecas://cases/case-123/evidence/evidence-456",
+					"digest":           "sha256canonical",
+					"manifest_version": 2,
+					"merkle_root":      "merkle-root",
+					"commit_id":        "commit-123",
+					"updated_at":       "2026-06-06T00:05:00Z",
+					"metadata": map[string]any{
+						"tenant_id":         "tenant-123",
+						"source_system":     "iris",
+						"source_runtime_id": "iris-evidencecas-runtime",
+						"source_event_id":   "iris-event-123",
+						"case_id":           "case-123",
+						"evidence_id":       "evidence-456",
+						"resource_urn":      "urn:cerebro:tenant-123:case:case-123",
+						"request_id":        "request-123",
+						"trace_id":          "trace-123",
+						"traceparent":       "00-00000000000000000000000000000123-0000000000000123-01",
+						"occurred_at":       "2026-06-06T00:00:00Z",
+						"observed_at":       "2026-06-06T00:03:00Z",
+						"legacy_case_key":   "legacy-case-123",
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant-123",
+		"base_url":  server.URL,
+		"token":     "cache-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	for key, want := range map[string]string{
+		"tenant_id":                "tenant-123",
+		"source_system":            "iris",
+		"source_runtime_id":        "iris-evidencecas-runtime",
+		"source_event_id":          "iris-event-123",
+		"case_id":                  "case-123",
+		"evidence_id":              "evidence-456",
+		"resource_urn":             "urn:cerebro:tenant-123:case:case-123",
+		"evidence_cas_uri":         "evidencecas://cases/case-123/evidence/evidence-456",
+		"evidence_cas_digest":      "sha256canonical",
+		"evidence_cas_merkle_root": "merkle-root",
+		"evidence_cas_commit_id":   "commit-123",
+		"evidence_cas_ref_type":    "evidencecas.manifest.v2",
+		"request_id":               "request-123",
+		"trace_id":                 "trace-123",
+		"traceparent":              "00-00000000000000000000000000000123-0000000000000123-01",
+		"occurred_at":              "2026-06-06T00:00:00Z",
+		"observed_at":              "2026-06-06T00:03:00Z",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("attribute %s = %q, want %q", key, got, want)
+		}
+	}
+	if got := event.GetOccurredAt().AsTime().UTC().Format("2006-01-02T15:04:05Z"); got != "2026-06-06T00:00:00Z" {
+		t.Fatalf("OccurredAt = %q, want source occurred_at", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(event.GetPayload(), &payload); err != nil {
+		t.Fatalf("payload JSON invalid: %v", err)
+	}
+	metadata, ok := payload["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload metadata = %#v, want object", payload["metadata"])
+	}
+	if got := metadata["legacy_case_key"]; got != "legacy-case-123" {
+		t.Fatalf("legacy metadata = %#v, want preserved legacy_case_key", got)
+	}
+}
+
 func TestReadObjectRefsWithBucketAndFilters(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/b/trusted-endpoint/refs" {

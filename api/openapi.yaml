@@ -234,6 +234,20 @@ paths:
       responses:
         '200':
           description: Sync result.
+  /source-runtimes/{runtimeID}/invalid-events:
+    get:
+      summary: List invalid or quarantined events for one source runtime
+      tags:
+        - Sources
+      parameters:
+        - $ref: '#/components/parameters/runtimeID'
+      responses:
+        '200':
+          description: Operator-inspectable invalid event diagnostics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceRuntimeInvalidEventsResponse'
   /source-runtimes/{runtimeID}/graph-ingest-runs:
     post:
       summary: Run graph ingest for one source runtime
@@ -2472,6 +2486,12 @@ components:
           type: string
         family:
           type: string
+        enabled_state:
+          type: string
+          enum: [enabled, disabled, unknown]
+        status:
+          type: string
+          enum: [healthy, stale, failing, unknown]
         last_synced_at:
           type: string
           format: date-time
@@ -2484,6 +2504,13 @@ components:
         watermark_lag_seconds:
           type: integer
           minimum: 0
+        recent_sync:
+          $ref: '#/components/schemas/SourceRuntimeRecentSync'
+        last_failure_category:
+          type: string
+        contract_probe_state:
+          type: string
+          enum: [passing, failure, stale, disabled, unknown, not_configured]
         cursor_pending:
           type: boolean
         checkpoint_cursor_present:
@@ -2506,6 +2533,64 @@ components:
         generated_at:
           type: string
           format: date-time
+    SourceRuntimeRecentSync:
+      type: object
+      properties:
+        records_scanned:
+          type: integer
+          minimum: 0
+        records_accepted:
+          type: integer
+          minimum: 0
+        records_rejected:
+          type: integer
+          minimum: 0
+        entities_projected:
+          type: integer
+          minimum: 0
+        links_projected:
+          type: integer
+          minimum: 0
+    SourceRuntimeInvalidEventsResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceRuntimeInvalidEventRecord'
+    SourceRuntimeInvalidEventRecord:
+      type: object
+      properties:
+        runtime_id:
+          type: string
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        failure_category:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [terminal, retryable]
+        retryable:
+          type: boolean
+        observed_at:
+          type: string
+          format: date-time
+        occurred_at:
+          type: string
+          format: date-time
+        source_event_id:
+          type: string
+        diagnostic:
+          type: string
     SourceRuntimeHealthGraphRun:
       type: object
       properties:
