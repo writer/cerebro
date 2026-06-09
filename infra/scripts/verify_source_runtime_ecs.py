@@ -35,6 +35,8 @@ SENSITIVE_TEXT_PATTERNS = (
     (re.compile(r"\b([A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b"), "[redacted-host]"),
     (re.compile(r"(?i)(RequestID:\s*)([A-Za-z0-9-]+)"), r"\1[redacted-request-id]"),
     (re.compile(r"(?i)(request_id[\"'=:\s]+)([A-Za-z0-9_.-]+)"), r"\1[redacted-request-id]"),
+    (re.compile(r"(?i)(secret[\"'=:\s]+)([A-Za-z0-9_./:=@+-]+)"), r"\1[redacted-secret]"),
+    (re.compile(r"(?i)(token[\"'=:\s]+)([A-Za-z0-9_./:=@+-]+)"), r"\1[redacted-token]"),
     (re.compile(r"(?i)(secret\s+)([A-Za-z0-9_./:=@+-]+)"), r"\1[redacted-secret]"),
     (re.compile(r"(?i)(token\s+)([A-Za-z0-9_./:=@+-]+)"), r"\1[redacted-token]"),
 )
@@ -686,6 +688,22 @@ def _task_logs(
     log_options_cache: dict[tuple[str, str], TaskLogOptions] | None = None,
     container_name: str = "cerebro",
 ) -> list[dict[str, Any]]:
+    raw_messages = _raw_task_log_messages(task, region, log_options_cache, container_name)
+    messages = []
+    for raw_message in raw_messages:
+        try:
+            messages.append(json.loads(raw_message or "{}"))
+        except json.JSONDecodeError:
+            continue
+    return messages
+
+
+def _raw_task_log_messages(
+    task: dict[str, Any],
+    region: str,
+    log_options_cache: dict[tuple[str, str], TaskLogOptions] | None = None,
+    container_name: str = "cerebro",
+) -> list[str]:
     task_definition = task["taskDefinitionArn"]
     options = _container_log_options(task_definition, container_name, region, log_options_cache)
     stream = f"{options.stream_prefix}/{container_name}/{_task_id(task['taskArn'])}"
@@ -702,13 +720,7 @@ def _task_logs(
         ],
         region,
     )
-    messages = []
-    for event in events.get("events") or []:
-        try:
-            messages.append(json.loads(event.get("message") or "{}"))
-        except json.JSONDecodeError:
-            continue
-    return messages
+    return [str(event.get("message") or "") for event in events.get("events") or []]
 
 
 def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> str:
@@ -734,6 +746,15 @@ def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> 
         else:
             line = _sanitize_text(json.dumps(message, sort_keys=True))
         lines.append(line[:2000])
+    return "\n".join(lines)
+
+
+def _summarize_raw_log_messages(messages: list[str], limit: int = 20) -> str:
+    lines = []
+    for message in messages[-limit:]:
+        line = _sanitize_text(message.strip())
+        if line:
+            lines.append(line[:2000])
     return "\n".join(lines)
 
 
@@ -998,7 +1019,13 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
                 if bootstrap_summary:
                     bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs:\n{bootstrap_summary}"
                 else:
-                    bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs: no structured bootstrap log events found"
+                    raw_bootstrap_summary = _summarize_raw_log_messages(
+                        _raw_task_log_messages(task, region, container_name=BOOTSTRAP_CONTAINER_NAME)
+                    )
+                    if raw_bootstrap_summary:
+                        bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} raw logs:\n{raw_bootstrap_summary}"
+                    else:
+                        bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs: no structured bootstrap log events found"
             except Exception as exc:
                 bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs: unavailable ({exc})"
             log_summary = f"{log_summary}\n{bootstrap_detail}" if log_summary else bootstrap_detail
