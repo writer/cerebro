@@ -66,6 +66,203 @@ def _schedule_interval_seconds(expression: str) -> int:
     return 0
 
 
+def _source_runtime_display_name(source_system: str) -> str:
+    if source_system == "evidence_cas":
+        return "EvidenceCAS"
+    return "".join(part.capitalize() for part in source_system.split("_"))
+
+
+def _metric_component(value: str) -> str:
+    words = [word for word in "".join(ch if ch.isalnum() else " " for ch in value).split() if word]
+    return "".join(word[:1].upper() + word[1:] for word in words) or "Unknown"
+
+
+def _observability_metric_prefix(entry: dict) -> str:
+    return (
+        "SourceRuntime"
+        f"{_metric_component(str(entry.get('sourceSystem', '')))}"
+        f"{_metric_component(str(entry.get('runtimeClass', '')))}"
+    )
+
+
+def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> list[dict[str, str]]:
+    specs: list[dict[str, str]] = []
+    for entry in entries or []:
+        if not isinstance(entry, dict) or entry.get("enabled") is not True:
+            continue
+        source_system = str(entry.get("sourceSystem", "")).strip()
+        runtime_id = str(entry.get("sourceRuntimeId", "")).strip()
+        runtime_class = str(entry.get("runtimeClass", "")).strip()
+        if not (source_system and runtime_id and runtime_class):
+            continue
+        prefix = _observability_metric_prefix(entry)
+        runtime_match = f'$.runtime_id = "{runtime_id}"'
+        source_match = f'$.source_system = "{source_system}"'
+        specs.extend(
+            [
+                {
+                    "key": f"{prefix}_ingest_success",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-ingest-success",
+                    "metric_name": f"{prefix}IngestSuccess",
+                    "pattern": f'{{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.status = "completed" && {runtime_match} && {source_match} }}',
+                    "value": "1",
+                },
+                {
+                    "key": f"{prefix}_ingest_failure",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-ingest-failure",
+                    "metric_name": f"{prefix}IngestFailure",
+                    "pattern": f'{{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.status = "failed" && {runtime_match} && {source_match} }}',
+                    "value": "1",
+                },
+                {
+                    "key": f"{prefix}_records_accepted",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-records-accepted",
+                    "metric_name": f"{prefix}RecordsAccepted",
+                    "pattern": f'{{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.status = "completed" && $.records_accepted = * && {runtime_match} && {source_match} }}',
+                    "value": "$.records_accepted",
+                },
+                {
+                    "key": f"{prefix}_records_rejected",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-records-rejected",
+                    "metric_name": f"{prefix}RecordsRejected",
+                    "pattern": f'{{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.records_rejected = * && {runtime_match} && {source_match} }}',
+                    "value": "$.records_rejected",
+                },
+                {
+                    "key": f"{prefix}_projection_success",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-projection-success",
+                    "metric_name": f"{prefix}ProjectionSuccess",
+                    "pattern": f'{{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "completed" && $.entities_projected = * && {runtime_match} }}',
+                    "value": "$.entities_projected",
+                },
+                {
+                    "key": f"{prefix}_projection_failure",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-projection-failure",
+                    "metric_name": f"{prefix}ProjectionFailure",
+                    "pattern": f'{{ $.kind = "span_end" && $.status = "failed" && ($.name = "graph.ingest_runtime" || $.name = "orchestrator.graph_ingest" || $.name = "orchestrator.runtime") && {runtime_match} }}',
+                    "value": "1",
+                },
+                {
+                    "key": f"{prefix}_contract_probe_success",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-contract-probe-success",
+                    "metric_name": f"{prefix}ContractProbeSuccess",
+                    "pattern": f'{{ $.kind = "event" && $.name = "source_runtime.contract_probe" && $.contract_probe_status = "success" && {runtime_match} && {source_match} }}',
+                    "value": "1",
+                },
+                {
+                    "key": f"{prefix}_contract_probe_failure",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-contract-probe-failure",
+                    "metric_name": f"{prefix}ContractProbeFailure",
+                    "pattern": f'{{ $.kind = "event" && $.name = "source_runtime.contract_probe" && ($.contract_probe_status = "failure" || $.contract_probe_status = "stale" || $.contract_probe_status = "unknown") && {runtime_match} && {source_match} }}',
+                    "value": "1",
+                },
+                {
+                    "key": f"{prefix}_missing_canonical_fields",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-missing-canonical-fields",
+                    "metric_name": f"{prefix}MissingCanonicalFields",
+                    "pattern": f'{{ $.kind = "event" && $.name = "source_runtime.validation" && $.missing_canonical_field_class = * && {runtime_match} && {source_match} }}',
+                    "value": "1",
+                },
+                {
+                    "key": f"{prefix}_orphan_missing_link",
+                    "suffix": f"{_safe_resource_suffix(prefix)}-orphan-missing-link",
+                    "metric_name": f"{prefix}OrphanMissingLink",
+                    "pattern": f'{{ $.kind = "event" && ($.name = "runtime.evidence.link_status" || $.name = "source_runtime.link_status") && ($.link_status = "orphan" || $.link_status = "missing_resource" || $.link_status = "missing_case") && {runtime_match} && {source_match} }}',
+                    "value": "1",
+                },
+            ]
+        )
+    return specs
+
+
+def _source_runtime_observability_alarm_specs(name: str, entries: list[dict] | None) -> list[dict]:
+    specs = []
+    for entry in entries or []:
+        if not isinstance(entry, dict) or entry.get("enabled") is not True or entry.get("alarmEnabled") is not True:
+            continue
+        source_system = str(entry.get("sourceSystem", "")).strip()
+        runtime_class = str(entry.get("runtimeClass", "")).strip()
+        if not (source_system and runtime_class):
+            continue
+        source_label = _source_runtime_display_name(source_system)
+        class_label = runtime_class.replace("_", " ")
+        metric_prefix = _observability_metric_prefix(entry)
+        alarm_suffix = _safe_resource_suffix(f"{source_system}-{runtime_class}")
+        freshness_minutes = int(entry.get("freshnessSlaMinutes") or 60)
+        context = f"{source_label} {class_label} source-runtime observability"
+        specs.extend(
+            [
+                {
+                    "resource_name": f"{name}-{alarm_suffix}-ingest-failure-alarm",
+                    "alarm_name": f"{name}-{alarm_suffix}-ingest-failure",
+                    "metric_name": f"{metric_prefix}IngestFailure",
+                    "comparison_operator": "GreaterThanThreshold",
+                    "threshold": 0,
+                    "statistic": "Sum",
+                    "period": 300,
+                    "treat_missing_data": "notBreaching",
+                    "description": f"{context}: sustained ingest failures; inspect structured runtime logs and stack config for the configured runtime.",
+                },
+                {
+                    "resource_name": f"{name}-{alarm_suffix}-projection-failure-alarm",
+                    "alarm_name": f"{name}-{alarm_suffix}-projection-failure",
+                    "metric_name": f"{metric_prefix}ProjectionFailure",
+                    "comparison_operator": "GreaterThanThreshold",
+                    "threshold": 0,
+                    "statistic": "Sum",
+                    "period": 300,
+                    "treat_missing_data": "notBreaching",
+                    "description": f"{context}: graph projection failures detected; inspect structured runtime logs for bounded failure categories.",
+                },
+                {
+                    "resource_name": f"{name}-{alarm_suffix}-contract-probe-failure-alarm",
+                    "alarm_name": f"{name}-{alarm_suffix}-contract-probe-failure",
+                    "metric_name": f"{metric_prefix}ContractProbeFailure",
+                    "comparison_operator": "GreaterThanThreshold",
+                    "threshold": 0,
+                    "statistic": "Sum",
+                    "period": 300,
+                    "treat_missing_data": "notBreaching",
+                    "description": f"{context}: contract probe is failing, stale, or unknown; check source-runtime verification before treating lifecycle joins as healthy.",
+                },
+                {
+                    "resource_name": f"{name}-{alarm_suffix}-missing-fields-alarm",
+                    "alarm_name": f"{name}-{alarm_suffix}-missing-canonical-fields",
+                    "metric_name": f"{metric_prefix}MissingCanonicalFields",
+                    "comparison_operator": "GreaterThanThreshold",
+                    "threshold": 0,
+                    "statistic": "Sum",
+                    "period": 300,
+                    "treat_missing_data": "notBreaching",
+                    "description": f"{context}: required canonical field classes are missing; inspect redacted validation logs, dashboards and notifications intentionally omit raw field values.",
+                },
+                {
+                    "resource_name": f"{name}-{alarm_suffix}-orphan-missing-link-alarm",
+                    "alarm_name": f"{name}-{alarm_suffix}-orphan-missing-link",
+                    "metric_name": f"{metric_prefix}OrphanMissingLink",
+                    "comparison_operator": "GreaterThanThreshold",
+                    "threshold": 0,
+                    "statistic": "Sum",
+                    "period": 300,
+                    "treat_missing_data": "notBreaching",
+                    "description": f"{context}: orphan or missing-link evidence symptoms detected; inspect redacted structured diagnostics for safe correlation keys.",
+                },
+                {
+                    "resource_name": f"{name}-{alarm_suffix}-staleness-alarm",
+                    "alarm_name": f"{name}-{alarm_suffix}-stale",
+                    "metric_name": f"{metric_prefix}IngestSuccess",
+                    "comparison_operator": "LessThanThreshold",
+                    "threshold": 1,
+                    "statistic": "Sum",
+                    "period": max(900, freshness_minutes * 60),
+                    "treat_missing_data": "breaching",
+                    "description": f"{context}: no successful sync observed within the configured freshness SLA; check source-runtime verification.",
+                },
+            ]
+        )
+    return specs
+
+
 def _cron_interval_value(field: str) -> int:
     if "/" not in field:
         return 0
@@ -101,6 +298,7 @@ def create_monitoring(
     orchestrator_rule_names: list[pulumi.Input[str]] = None,
     source_runtimes: list[dict] = None,
     source_runtime_heartbeat_period_seconds: int = 28800,
+    source_runtime_observability: list[dict] = None,
 ) -> dict:
     """
     Create CloudWatch dashboard and alarms.
@@ -467,7 +665,7 @@ def create_monitoring(
     telemetry_filters = {}
     telemetry_namespace = f"Cerebro/{name}"
     if log_group_name is not None:
-        telemetry_filters = _create_telemetry_metric_filters(name, log_group_name)
+        telemetry_filters = _create_telemetry_metric_filters(name, log_group_name, source_runtime_observability)
         _custom_metric_alarm(
             resource_name=f"{name}-source-runtime-failures-alarm",
             alarm_name=f"{name}-source-runtime-sync-failures",
@@ -622,6 +820,23 @@ def create_monitoring(
             alarm_actions=alarm_actions,
         )
 
+    for spec in _source_runtime_observability_alarm_specs(name, source_runtime_observability):
+        aws.cloudwatch.MetricAlarm(
+            spec["resource_name"],
+            name=spec["alarm_name"],
+            comparison_operator=spec["comparison_operator"],
+            evaluation_periods=1,
+            metric_name=spec["metric_name"],
+            namespace=telemetry_namespace,
+            period=spec["period"],
+            statistic=spec["statistic"],
+            threshold=spec["threshold"],
+            treat_missing_data=spec["treat_missing_data"],
+            alarm_description=spec["description"],
+            alarm_actions=alarm_actions,
+            tags={"Name": spec["alarm_name"]},
+        )
+
     for index, rule_name in enumerate(orchestrator_rule_names or []):
         schedule = (orchestrator_schedules or [])[index] if index < len(orchestrator_schedules or []) else None
         aws.cloudwatch.MetricAlarm(
@@ -646,7 +861,7 @@ def create_monitoring(
         dashboard_name=f"{name}-dashboard",
         dashboard_body=pulumi.Output.all(
             alb_arn_suffix, target_group_arn_suffix, ecs_cluster_name, ecs_service_name, postgres_identifier
-        ).apply(lambda args: _dashboard_body(name, *args, jetstream_stream_name)),
+        ).apply(lambda args: _dashboard_body(name, *args, jetstream_stream_name, source_runtime_observability)),
     )
 
     return {
@@ -834,7 +1049,7 @@ def _create_access_audit_metric_filters(name: str, log_group_name: pulumi.Output
     return filters
 
 
-def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[str]) -> dict:
+def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[str], source_runtime_observability: list[dict] = None) -> dict:
     namespace = f"Cerebro/{name}"
     filters = {
         "source_sync_events": aws.cloudwatch.LogMetricFilter(
@@ -1055,6 +1270,19 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
             ),
         ),
     }
+    for spec in _source_runtime_observability_metric_specs(source_runtime_observability):
+        filters[spec["key"]] = aws.cloudwatch.LogMetricFilter(
+            f"{name}-{spec['suffix']}-filter",
+            name=f"{name}-{spec['suffix']}",
+            log_group_name=log_group_name,
+            pattern=spec["pattern"],
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name=spec["metric_name"],
+                namespace=namespace,
+                value=spec["value"],
+                default_value=0,
+            ),
+        )
     return filters
 
 
@@ -1070,6 +1298,7 @@ def _dashboard_body(
     service: str,
     postgres_identifier: str | None,
     jetstream_stream_name: str,
+    source_runtime_observability: list[dict] = None,
 ) -> str:
     import json
     telemetry_namespace = f"Cerebro/{name}"
@@ -1338,4 +1567,114 @@ def _dashboard_body(
                 },
             },
         ])
+    widgets.extend(_source_runtime_observability_widgets(telemetry_namespace, source_runtime_observability))
     return json.dumps({"widgets": widgets})
+
+
+def _source_runtime_observability_widgets(telemetry_namespace: str, entries: list[dict] | None) -> list[dict]:
+    enabled_entries = [
+        entry
+        for entry in entries or []
+        if isinstance(entry, dict) and entry.get("enabled") is True and entry.get("dashboardEnabled") is True
+    ]
+    if not enabled_entries:
+        return []
+
+    widgets = []
+    y = 60
+    for source_system in ("evidence_cas", "panopticon"):
+        source_entries = [entry for entry in enabled_entries if str(entry.get("sourceSystem", "")).strip() == source_system]
+        if not source_entries:
+            continue
+        source_label = _source_runtime_display_name(source_system)
+        throughput_metrics = []
+        probe_metrics = []
+        projection_metrics = []
+        link_metrics = []
+        for entry in source_entries:
+            metric_prefix = _observability_metric_prefix(entry)
+            runtime_label = str(entry.get("runtimeClass", "")).replace("_", " ").title()
+            throughput_metrics.extend(
+                [
+                    [telemetry_namespace, f"{metric_prefix}IngestSuccess", {"stat": "Sum", "label": f"{runtime_label} sync successes"}],
+                    [".", f"{metric_prefix}IngestFailure", {"stat": "Sum", "label": f"{runtime_label} sync failures"}],
+                    [".", f"{metric_prefix}RecordsAccepted", {"stat": "Sum", "label": f"{runtime_label} accepted"}],
+                    [".", f"{metric_prefix}RecordsRejected", {"stat": "Sum", "label": f"{runtime_label} rejected"}],
+                ]
+            )
+            probe_metrics.extend(
+                [
+                    [telemetry_namespace, f"{metric_prefix}ContractProbeSuccess", {"stat": "Sum", "label": f"{runtime_label} probe success"}],
+                    [".", f"{metric_prefix}ContractProbeFailure", {"stat": "Sum", "label": f"{runtime_label} probe failure/stale/unknown"}],
+                ]
+            )
+            projection_metrics.extend(
+                [
+                    [telemetry_namespace, f"{metric_prefix}ProjectionSuccess", {"stat": "Sum", "label": f"{runtime_label} projected"}],
+                    [".", f"{metric_prefix}ProjectionFailure", {"stat": "Sum", "label": f"{runtime_label} projection failures"}],
+                ]
+            )
+            link_metrics.extend(
+                [
+                    [telemetry_namespace, f"{metric_prefix}OrphanMissingLink", {"stat": "Sum", "label": f"{runtime_label} orphan/missing-link"}],
+                    [".", f"{metric_prefix}MissingCanonicalFields", {"stat": "Sum", "label": f"{runtime_label} missing canonical fields"}],
+                ]
+            )
+        widgets.extend(
+            [
+                {
+                    "type": "metric",
+                    "x": 0,
+                    "y": y,
+                    "width": 12,
+                    "height": 6,
+                    "properties": {
+                        "title": f"{source_label} Source Runtime Health",
+                        "metrics": throughput_metrics,
+                        "period": 300,
+                        "region": aws.get_region().region,
+                    },
+                },
+                {
+                    "type": "metric",
+                    "x": 12,
+                    "y": y,
+                    "width": 12,
+                    "height": 6,
+                    "properties": {
+                        "title": f"{source_label} Contract Probe Status",
+                        "metrics": probe_metrics,
+                        "period": 300,
+                        "region": aws.get_region().region,
+                    },
+                },
+                {
+                    "type": "metric",
+                    "x": 0,
+                    "y": y + 6,
+                    "width": 12,
+                    "height": 6,
+                    "properties": {
+                        "title": f"{source_label} Projection Counts",
+                        "metrics": projection_metrics,
+                        "period": 300,
+                        "region": aws.get_region().region,
+                    },
+                },
+                {
+                    "type": "metric",
+                    "x": 12,
+                    "y": y + 6,
+                    "width": 12,
+                    "height": 6,
+                    "properties": {
+                        "title": f"{source_label} Orphan / Missing Link Indicators",
+                        "metrics": link_metrics,
+                        "period": 300,
+                        "region": aws.get_region().region,
+                    },
+                },
+            ]
+        )
+        y += 12
+    return widgets

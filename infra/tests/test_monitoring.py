@@ -188,6 +188,141 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertEqual(grc_call["metric_transformation"].value, "$.duration_ms")
         self.assertEqual(grc_call["metric_transformation"].dimensions, {"Dashboard": "$.dashboard"})
 
+    def test_source_runtime_observability_specs_are_bounded_and_complete(self) -> None:
+        specs = monitoring._source_runtime_observability_metric_specs(
+            [
+                {
+                    "environment": "sec-dev",
+                    "sourceSystem": "evidence_cas",
+                    "sourceRuntimeId": "writer-evidence-cas-cases",
+                    "runtimeClass": "object",
+                    "enabled": True,
+                    "freshnessSlaMinutes": 90,
+                    "dashboardEnabled": True,
+                    "alarmEnabled": True,
+                    "logGroupRef": "runtime",
+                    "alarmRoute": "default",
+                    "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
+                },
+                {
+                    "environment": "sec-dev",
+                    "sourceSystem": "panopticon",
+                    "sourceRuntimeId": "writer-panopticon-alerts",
+                    "runtimeClass": "alert",
+                    "enabled": True,
+                    "freshnessSlaMinutes": 30,
+                    "dashboardEnabled": True,
+                    "alarmEnabled": True,
+                    "logGroupRef": "runtime",
+                    "alarmRoute": "default",
+                    "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
+                },
+            ]
+        )
+
+        metric_names = [spec["metric_name"] for spec in specs]
+        self.assertIn("SourceRuntimeEvidenceCasObjectIngestSuccess", metric_names)
+        self.assertIn("SourceRuntimePanopticonAlertContractProbeFailure", metric_names)
+        self.assertIn("SourceRuntimePanopticonAlertMissingCanonicalFields", metric_names)
+        for spec in specs:
+            self.assertNotIn("dimensions", spec)
+            self.assertNotIn("tenant_id", spec["pattern"])
+            self.assertNotIn("evidence_id", spec["pattern"])
+            self.assertNotIn("resource_urn", spec["pattern"])
+            self.assertNotIn("request_id", spec["pattern"])
+            self.assertNotIn("trace_id", spec["pattern"])
+
+    def test_dashboard_includes_source_runtime_observability_sections(self) -> None:
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
+        try:
+            body = monitoring._dashboard_body(
+                "cerebro-test",
+                "alb",
+                "tg",
+                "cluster",
+                "service",
+                None,
+                "CEREBRO_EVENTS",
+                [
+                    {
+                        "environment": "sec-dev",
+                        "sourceSystem": "evidence_cas",
+                        "sourceRuntimeId": "writer-evidence-cas-cases",
+                        "runtimeClass": "object",
+                        "enabled": True,
+                        "freshnessSlaMinutes": 90,
+                        "dashboardEnabled": True,
+                        "alarmEnabled": True,
+                        "logGroupRef": "runtime",
+                        "alarmRoute": "default",
+                        "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
+                    },
+                    {
+                        "environment": "sec-dev",
+                        "sourceSystem": "panopticon",
+                        "sourceRuntimeId": "writer-panopticon-alerts",
+                        "runtimeClass": "alert",
+                        "enabled": True,
+                        "freshnessSlaMinutes": 30,
+                        "dashboardEnabled": True,
+                        "alarmEnabled": True,
+                        "logGroupRef": "runtime",
+                        "alarmRoute": "default",
+                        "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
+                    },
+                ],
+            )
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        self.assertIn("EvidenceCAS Source Runtime Health", body)
+        self.assertIn("Panopticon Source Runtime Health", body)
+        self.assertIn("Contract Probe Status", body)
+        self.assertIn("Orphan / Missing Link Indicators", body)
+        self.assertNotIn("writer-evidence-cas-cases", body)
+        self.assertNotIn("writer-panopticon-alerts", body)
+
+    def test_source_runtime_observability_alarm_specs_are_actionable_and_redacted(self) -> None:
+        specs = monitoring._source_runtime_observability_alarm_specs(
+            "cerebro-test",
+            [
+                {
+                    "environment": "sec-dev",
+                    "sourceSystem": "panopticon",
+                    "sourceRuntimeId": "writer-panopticon-alerts",
+                    "runtimeClass": "alert",
+                    "enabled": True,
+                    "freshnessSlaMinutes": 30,
+                    "dashboardEnabled": True,
+                    "alarmEnabled": True,
+                    "logGroupRef": "runtime",
+                    "alarmRoute": "default",
+                    "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
+                }
+            ],
+        )
+
+        self.assertEqual(
+            {spec["metric_name"] for spec in specs},
+            {
+                "SourceRuntimePanopticonAlertContractProbeFailure",
+                "SourceRuntimePanopticonAlertIngestFailure",
+                "SourceRuntimePanopticonAlertIngestSuccess",
+                "SourceRuntimePanopticonAlertMissingCanonicalFields",
+                "SourceRuntimePanopticonAlertOrphanMissingLink",
+                "SourceRuntimePanopticonAlertProjectionFailure",
+            },
+        )
+        self.assertTrue(any(spec["comparison_operator"] == "LessThanThreshold" for spec in specs))
+        self.assertTrue(all("inspect" in spec["description"] or "check" in spec["description"] for spec in specs))
+        for spec in specs:
+            self.assertNotIn("writer-panopticon-alerts", spec["description"])
+            self.assertNotIn("tenant_id", spec["description"])
+            self.assertNotIn("resource_urn", spec["description"])
+            self.assertNotIn("evidence_id", spec["description"])
+            self.assertNotIn("arn:", spec["description"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()
