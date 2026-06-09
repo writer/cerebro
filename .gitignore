@@ -34,5 +34,9 @@ cloudquery.log
 
 infra/__pycache__/*
 infra/aws/__pycache__/*
+__pycache__/
+**/__pycache__/
+*.pyc
+tmp/
 
 coverage.out

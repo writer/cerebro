@@ -1,0 +1,25 @@
+rules:
+  - id: cerebro.github-actions.unpinned-action
+    languages: [yaml]
+    severity: WARNING
+    message: GitHub Actions should be pinned to immutable commit SHAs unless the workflow documents an exception.
+    metadata:
+      confidence: high
+      category: supply-chain
+    paths:
+      include:
+        - .github/workflows/*.yml
+    pattern-regex: 'uses:\s+[^@\s]+@(main|master|v[0-9]+(?:\.[0-9]+){0,2})\s*$'
+
+  - id: cerebro.infra.plaintext-secret-like-config
+    languages: [yaml]
+    severity: ERROR
+    message: Secret-like Pulumi config values should use env references or encrypted Pulumi secrets, not plaintext literals.
+    metadata:
+      confidence: medium
+      category: secrets
+    paths:
+      include:
+        - infra/aws/Pulumi.*.yaml
+        - infra/gcp/Pulumi.*.yaml
+    pattern-regex: '(?i)^\s+cerebro:[A-Za-z0-9_-]*(secret|token|password|privateKey|apiKey)[A-Za-z0-9_-]*:\s+["''][^"''$][^"'']+["'']\s*$'
