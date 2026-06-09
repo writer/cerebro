@@ -1,0 +1,314 @@
+name: Droid Auto Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  droid-review-preflight:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: write
+      issues: write
+    outputs:
+      run_droid_review: ${{ steps.preflight.outputs.run_droid_review }}
+      review_model: ${{ steps.preflight.outputs.review_model }}
+      review_reason: ${{ steps.preflight.outputs.review_reason }}
+    steps:
+      - name: Supersede previous Droid comments
+        if: github.event.action == 'synchronize'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+
+          replacements = [
+              ("## Security Review Summary", "## Superseded Security Review Summary"),
+              ("**Droid encountered an error**", "**Superseded Droid error**"),
+              ("Droid is reviewing code and running a security check", "Superseded Droid review in progress"),
+          ]
+
+          def request_json(method, path, payload=None):
+              data = None if payload is None else json.dumps(payload).encode("utf-8")
+              request = urllib.request.Request(
+                  f"https://api.github.com/{path.lstrip('/')}",
+                  data=data,
+                  method=method,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.load(response)
+
+          page = 1
+          while True:
+              comments = request_json(
+                  "GET",
+                  f"/repos/{repository}/issues/{pr_number}/comments?per_page=100&page={page}",
+              )
+              if not comments:
+                  break
+              for comment in comments:
+                  user = comment.get("user") or {}
+                  login = (user.get("login") or "").lower()
+                  if login not in {"factory-droid", "factory-droid[bot]"}:
+                      continue
+                  body = comment.get("body") or ""
+                  updated = body
+                  for marker, replacement in replacements:
+                      if marker in updated:
+                          updated = updated.replace(marker, replacement, 1)
+                  if updated != body and "Superseded by a newer commit." not in updated:
+                      updated = updated.rstrip() + "\n\n_Superseded by a newer commit._"
+                  if updated != body:
+                      request_json(
+                          "PATCH",
+                          f"/repos/{repository}/issues/comments/{comment['id']}",
+                          {"body": updated},
+                      )
+              page += 1
+          PY
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Run fast Droid review preflight
+        id: preflight
+        shell: bash
+        env:
+          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_PREFLIGHT_JSON_OUT: tmp/droid-preflight.json
+        run: |
+          set +e
+          started="$(date +%s)"
+          make droid-review-preflight
+          status="$?"
+          duration="$(( $(date +%s) - started ))"
+          {
+            echo "### Droid Review Preflight"
+            echo
+            echo "- Duration: ${duration}s"
+            echo "- Status: $([ "${status}" -eq 0 ] && echo success || echo failure)"
+            python3 -c 'import json; data=json.load(open("tmp/droid-preflight.json", encoding="utf-8")); print(f"- Run Droid review: {str(bool(data.get(\"review_required\"))).lower()}"); print(f"- Reason: {data.get(\"review_reason\", \"\")}")'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "${status}"
+      - name: Install Semgrep
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user 'semgrep==1.136.0'
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+      - name: Run Droid SAST context
+        id: sast
+        shell: bash
+        env:
+          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_SAST_OUT: tmp/droid-sast-context.md
+          DROID_SAST_JSON_OUT: tmp/droid-sast-context.json
+        run: |
+          set +e
+          make droid-review-sast
+          status="$?"
+          if [ -s "${DROID_SAST_OUT}" ]; then
+            {
+              echo
+              echo "### Droid SAST Context"
+              echo
+              sed 's/^/    /' "${DROID_SAST_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          if [ "${status}" -ne 0 ]; then
+            echo "::warning::Droid SAST context reported blocking findings or failed; keeping Droid review running so findings can be validated."
+          fi
+          exit 0
+      - name: Run Droid CI context
+        id: ci-context
+        if: always() && steps.preflight.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_CI_OUT: tmp/droid-ci-context.md
+          DROID_CI_JSON_OUT: tmp/droid-ci-context.json
+        run: |
+          set -euo pipefail
+          make droid-ci-context
+          if [ -s "${DROID_CI_OUT}" ]; then
+            {
+              echo
+              echo "### Droid CI Context"
+              echo
+              sed 's/^/    /' "${DROID_CI_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      - name: Run Droid feedback context
+        id: feedback-context
+        if: always() && steps.preflight.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DROID_PR: ${{ github.event.pull_request.number }}
+          DROID_FEEDBACK_OUT: tmp/droid-feedback.md
+          DROID_FEEDBACK_JSON_OUT: tmp/droid-feedback.json
+        run: |
+          set -euo pipefail
+          make droid-feedback
+          if [ -s "${DROID_FEEDBACK_OUT}" ]; then
+            {
+              echo
+              echo "### Droid Feedback Context"
+              echo
+              sed 's/^/    /' "${DROID_FEEDBACK_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      - name: Publish consolidated Droid context
+        if: always() && steps.sast.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DROID_PREFLIGHT_JSON_OUT: tmp/droid-preflight.json
+          DROID_SAST_JSON_OUT: tmp/droid-sast-context.json
+          DROID_CI_JSON_OUT: tmp/droid-ci-context.json
+          DROID_FEEDBACK_JSON_OUT: tmp/droid-feedback.json
+          DROID_CONTEXT_OUT: tmp/droid-review-context.md
+          DROID_CONTEXT_JSON_OUT: tmp/droid-review-context.json
+        run: |
+          set -euo pipefail
+          make droid-review-context
+          if [ -s "${DROID_CONTEXT_OUT}" ]; then
+            {
+              echo
+              echo "### Droid Recursive Review Context"
+              echo
+              sed 's/^/    /' "${DROID_CONTEXT_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            python3 scripts/droid_sast_context.py --post-existing "${DROID_CONTEXT_OUT}"
+          else
+            echo "No Droid context report to publish."
+          fi
+      - name: Upload Droid context artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: droid-review-context
+          path: |
+            tmp/droid-preflight.json
+            tmp/droid-sast-context.json
+            tmp/droid-ci-context.json
+            tmp/droid-feedback.json
+            tmp/droid-review-context.json
+            tmp/droid-review-context.md
+
+  droid-review:
+    needs: droid-review-preflight
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' && needs.droid-review-preflight.outputs.run_droid_review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+      - name: Check auth availability
+        id: auth_check
+        env:
+          DIRECT_FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          INFISICAL_IDENTITY_ID: ${{ secrets.INFISICAL_IDENTITY_ID || secrets.INFISICAL_REPO_IDENTITY_UUID || secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          INFISICAL_PROJECT_SLUG: ${{ secrets.INFISICAL_PROJECT_SLUG || secrets.INFISICAL_REPO_PROJECT_SLUG || secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          INFISICAL_ENV_SLUG: ${{ secrets.INFISICAL_ENV_SLUG || 'prod' }}
+        run: |
+          set -euo pipefail
+          has_direct_key=false
+          has_infisical=false
+          if [ -n "${DIRECT_FACTORY_API_KEY}" ]; then
+            has_direct_key=true
+          fi
+          if [ -n "${INFISICAL_IDENTITY_ID}" ] && [ -n "${INFISICAL_PROJECT_SLUG}" ] && [ -n "${INFISICAL_ENV_SLUG}" ]; then
+            has_infisical=true
+          fi
+          should_run=false
+          if [ "${has_direct_key}" = "true" ] || [ "${has_infisical}" = "true" ]; then
+            should_run=true
+          fi
+          if [ "${should_run}" != "true" ]; then
+            echo "::error::Droid Auto Review requires either FACTORY_API_KEY or Infisical OIDC secret config. Supported Infisical secret names: INFISICAL_IDENTITY_ID/INFISICAL_PROJECT_SLUG or INFISICAL_REPO_IDENTITY_UUID/INFISICAL_REPO_PROJECT_SLUG."
+            exit 1
+          fi
+          {
+            echo "has_direct_key=${has_direct_key}"
+            echo "has_infisical=${has_infisical}"
+            echo "should_run=${should_run}"
+          } >> "${GITHUB_OUTPUT}"
+      - name: Fetch secrets from Infisical
+        if: steps.auth_check.outputs.should_run == 'true' && steps.auth_check.outputs.has_direct_key != 'true'
+        uses: Infisical/secrets-action@8802effbe453d0576cd923567dcc2c97a1f54058 # v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID || secrets.INFISICAL_REPO_IDENTITY_UUID || secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          oidc-audience: "https://github.com/WriterInternal"
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG || secrets.INFISICAL_REPO_PROJECT_SLUG || secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG || 'prod' }}
+          export-type: env
+      - name: Resolve Factory API key
+        id: factory_key
+        if: steps.auth_check.outputs.should_run == 'true'
+        env:
+          DIRECT_FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+        run: |
+          set -euo pipefail
+          factory_api_key="${DIRECT_FACTORY_API_KEY:-${FACTORY_API_KEY:-}}"
+          if [ -z "${factory_api_key}" ]; then
+            echo "FACTORY_API_KEY is required from GitHub secrets or Infisical."
+            exit 1
+          fi
+          echo "::add-mask::${factory_api_key}"
+          {
+            echo "factory_api_key<<EOF"
+            echo "${factory_api_key}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+      - name: Run Droid Auto Review
+        if: steps.auth_check.outputs.should_run == 'true'
+        uses: Factory-AI/droid-action@150e8c231191631016a9563bf5d8388e36382de9 # main
+        with:
+          factory_api_key: ${{ steps.factory_key.outputs.factory_api_key }}
+          automatic_review: true
+          automatic_security_review: true
+          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'claude-opus-4-8' }}
+          security_model: gpt-5.4
+          allowed_bots: dependabot

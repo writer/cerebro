@@ -826,6 +826,15 @@ config:
         - "exports/alerts/"
         - "exports/cases/"
         - "exports/iocs/"
+    # Cerebro API access audit archives. This only pre-wires the S3 read scope;
+    # the source runtime should be enabled after the deployed image includes
+    # sourceId=cerebro.
+    - name: cerebro-access-audit
+      bucket: cerebro-sec-dev-audit
+      bucketArn: arn:aws:s3:::cerebro-sec-dev-audit
+      region: us-east-1
+      prefixes:
+        - "access/"
   cerebro:sourceRuntimes:
     - id: writer-security-tooling-map-tools
       sourceId: security_tooling_map
