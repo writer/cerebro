@@ -1457,6 +1457,7 @@ config:
     secure: AAABAJYPgQWhwvOV0VRwp+m2hSRE+J9tc9Pyl44q82UeDvh5nhnaQUrSmHM/3Ds1r0g8Zdwm2vb75IZ9QUFBykUDfrDHA6OxuLIClMtG4QY=
   cerebro:neo4jSecretImportArns:
     CEREBRO_API_KEYS: arn:aws:secretsmanager:us-east-1:944130631940:secret:cerebro-sec-dev/CEREBRO_API_KEYS-PxWpgz
+    CEREBRO_API_CREDENTIALS_JSON: arn:aws:secretsmanager:us-east-1:944130631940:secret:cerebro-sec-dev/CEREBRO_API_CREDENTIALS_JSON-DoBVep
     CEREBRO_NEO4J_PASSWORD: arn:aws:secretsmanager:us-east-1:944130631940:secret:cerebro-sec-dev/CEREBRO_NEO4J_PASSWORD-7kyHSs
     CEREBRO_NEO4J_URI: arn:aws:secretsmanager:us-east-1:944130631940:secret:cerebro-sec-dev/CEREBRO_NEO4J_URI-iH45QD
     CEREBRO_NEO4J_USERNAME: arn:aws:secretsmanager:us-east-1:944130631940:secret:cerebro-sec-dev/CEREBRO_NEO4J_USERNAME-xLjaEE
