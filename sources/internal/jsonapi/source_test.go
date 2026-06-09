@@ -167,6 +167,109 @@ func TestDiscoverReturnsFamilyURNs(t *testing.T) {
 	}
 }
 
+func TestReadUsesConfiguredListKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"members": []map[string]any{{"id": "U1", "name": "alice"}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:       "user",
+		Path:       "/users.list",
+		URNKind:    "test_user",
+		IDKeys:     []string{"id"},
+		ListKeys:   []string{"members"},
+		Attributes: map[string]string{"user_id": "id", "name": "name"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "user",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Attributes["user_id"] != "U1" {
+		t.Fatalf("Events = %#v, want user from members list", pull.Events)
+	}
+}
+
+func TestReadSingletonObject(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"devicesApprovalOn":    true,
+			"networkFlowLoggingOn": false,
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:      "tailnet",
+		Path:      "/tailnet/-/settings",
+		URNKind:   "test_tailnet",
+		IDKeys:    []string{"id"},
+		Singleton: true,
+		Attributes: map[string]string{
+			"tailnet":                 "id",
+			"devices_approval_on":     "devicesApprovalOn",
+			"network_flow_logging_on": "networkFlowLoggingOn",
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "tailnet",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want singleton event", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["tailnet"]; got != "tailnet" {
+		t.Fatalf("tailnet attribute = %q, want fallback singleton id", got)
+	}
+}
+
+func TestReadObjectMapRecords(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"groups": map[string][]string{
+				"group:eng": {"alice@example.com", "bob@example.com"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:       "group",
+		Path:       "/acl",
+		URNKind:    "test_group",
+		IDKeys:     []string{"id"},
+		MapRecords: map[string]string{"groups": "members"},
+		Attributes: map[string]string{"group_id": "id", "members": "members"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "group",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want map-derived record", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["group_id"]; got != "group:eng" {
+		t.Fatalf("group_id = %q, want group:eng", got)
+	}
+	if got := pull.Events[0].Attributes["members"]; got != "alice@example.com,bob@example.com" {
+		t.Fatalf("members = %q, want joined map values", got)
+	}
+}
+
 func TestReadDedupesRecordsByExternalID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -415,6 +518,23 @@ func newTestSource(t *testing.T, baseURL string) *Source {
 			},
 			StaticAttributes: map[string]string{"source_product": "test"},
 		}},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.AllowLoopbackBaseURL = true
+	return source
+}
+
+func newCustomTestSource(t *testing.T, baseURL string, family Family) *Source {
+	t.Helper()
+	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{
+		SourceID:        "test",
+		DefaultBaseURL:  baseURL,
+		DefaultFamily:   family.Name,
+		RequireTenantID: true,
+		TokenScheme:     "Bearer",
+		Families:        []Family{family},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

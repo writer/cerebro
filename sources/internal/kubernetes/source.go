@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -691,6 +692,7 @@ func podImageDigests(pod v1.Pod) []string {
 			values = append(values, digest)
 		}
 	}
+	sort.Strings(values)
 	return values
 }
 
