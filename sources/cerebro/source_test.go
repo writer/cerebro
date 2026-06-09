@@ -56,7 +56,6 @@ func TestParseSettings(t *testing.T) {
 		{name: "missing-tenant", values: map[string]string{"bucket": "example-cerebro-access-logs", "prefix": "access"}, wantErrIs: ErrTenantRequired},
 		{name: "invalid-page-size", values: map[string]string{"bucket": "example-cerebro-access-logs", "prefix": "access", "tenant_id": "writer", "page_size": "0"}, wantErrIs: ErrInvalidPageSize},
 		{name: "role-not-allowlisted", values: map[string]string{"bucket": "example-cerebro-access-logs", "prefix": "access", "tenant_id": "writer", "role_arn": roleARN}, wantErrIs: nil},
-		{name: "role-not-allowlisted", values: map[string]string{"bucket": "writer-cerebro-logs", "prefix": "access", "tenant_id": "writer", "role_arn": roleARN}, wantErrIs: nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

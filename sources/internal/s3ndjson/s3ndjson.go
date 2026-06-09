@@ -47,7 +47,6 @@ type Settings struct {
 	ExternalID       string
 	SessionName      string
 	PerPage          int32
-	ResumableCursor  bool
 	MarshalRawRecord func(json.RawMessage) (*primitives.Event, error)
 }
 
@@ -105,82 +104,86 @@ func Read(ctx context.Context, client API, st Settings, cursor *cerebrov1.Source
 		return sourcecdk.Pull{}, err
 	}
 	events := []*primitives.Event{}
-	lastKey := ""
+	completedLastKey := state.LastKey
 	for _, object := range out.Contents {
 		key := awssdk.ToString(object.Key)
 		if key == "" {
 			continue
 		}
-		lastKey = key
 		if strings.HasSuffix(key, "/") {
+			completedLastKey = key
 			continue
 		}
 		offset := 0
 		if key == state.PartialKey {
 			offset = state.RecordOffset
 		}
-		next, complete, err := readObject(ctx, client, st, key, offset)
+		next, nextOffset, complete, err := readObject(ctx, client, st, key, offset)
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
 		events = append(events, next...)
 		if !complete {
+			state.LastKey = completedLastKey
 			state.PartialKey = key
-			state.RecordOffset = offset + len(next)
+			state.RecordOffset = nextOffset
 			return sourcecdk.Pull{Events: events, NextCursor: encodeCursor(state, st.Source), Checkpoint: checkpoint(state)}, nil
 		}
 		state.PartialKey = ""
 		state.RecordOffset = 0
+		completedLastKey = key
 		if len(events) >= MaxEventsPerPull {
-			state.LastKey = key
+			state.LastKey = completedLastKey
 			return sourcecdk.Pull{Events: events, NextCursor: encodeCursor(state, st.Source), Checkpoint: checkpoint(state)}, nil
 		}
 	}
 	if awssdk.ToBool(out.IsTruncated) {
-		state.LastKey = lastKey
+		state.LastKey = completedLastKey
 		return sourcecdk.Pull{Events: events, NextCursor: encodeCursor(state, st.Source), Checkpoint: checkpoint(state)}, nil
 	}
-	state.LastKey = lastKey
+	state.LastKey = completedLastKey
 	return sourcecdk.Pull{Events: events, Checkpoint: checkpoint(state)}, nil
 }
 
-func readObject(ctx context.Context, client API, st Settings, key string, skip int) ([]*primitives.Event, bool, error) {
+func readObject(ctx context.Context, client API, st Settings, key string, skip int) ([]*primitives.Event, int, bool, error) {
 	out, err := client.GetObject(ctx, &s3.GetObjectInput{Bucket: awssdk.String(st.Bucket), Key: awssdk.String(key)})
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 	defer func() { _ = out.Body.Close() }()
 	reader, err := objectReader(key, io.LimitReader(out.Body, MaxObjectBytes+1))
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), MaxLineBytes)
 	events := []*primitives.Event{}
 	line := 0
+	recordsSeen := 0
 	for scanner.Scan() {
-		if line < skip {
-			line++
+		line++
+		raw := bytes.TrimSpace(scanner.Bytes())
+		if len(raw) == 0 {
 			continue
 		}
-		raw := bytes.TrimSpace(scanner.Bytes())
-		line++
-		if len(raw) == 0 {
+		if recordsSeen < skip {
+			recordsSeen++
 			continue
 		}
 		event, err := decodeEvent(raw, st.MarshalRawRecord)
 		if err != nil {
-			return nil, false, fmt.Errorf("decode %s line %d: %w", key, line, err)
+			return nil, recordsSeen, false, fmt.Errorf("decode %s line %d: %w", key, line, err)
 		}
+		recordsSeen++
 		events = append(events, event)
 		if len(events) >= MaxEventsPerPull {
-			return events, false, nil
+			return events, recordsSeen, false, nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, false, err
+		return nil, recordsSeen, false, err
 	}
-	return events, true, nil
+	return events, recordsSeen, true, nil
 }
 
 func objectReader(key string, reader io.Reader) (io.Reader, error) {

@@ -181,7 +181,6 @@ func ndjsonSettings(st settings) s3ndjson.Settings {
 		ExternalID:       st.externalID,
 		SessionName:      "cerebro-product-source",
 		PerPage:          st.perPage,
-		ResumableCursor:  true,
 		MarshalRawRecord: func(raw json.RawMessage) (*primitives.Event, error) { return accessEvent(st, raw) },
 	}
 }
