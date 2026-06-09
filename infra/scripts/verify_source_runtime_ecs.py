@@ -28,6 +28,8 @@ EXPECTED_STACK_ACCOUNTS = {
 
 SENSITIVE_TEXT_PATTERNS = (
     (re.compile(r"arn:aws[a-zA-Z-]*:[^\s,;)\]}]+"), "[redacted-arn]"),
+    (re.compile(r"\btask/[A-Za-z0-9_.:/-]+"), "[redacted-task]"),
+    (re.compile(r"\b((?:cerebro|source-runtime-bootstrap)/)[A-Za-z0-9_.-]+"), r"\1[redacted-task]"),
     (re.compile(r"\b\d{12}\b"), "[redacted-account]"),
     (re.compile(r"https?://([A-Za-z0-9-]+\.)+[A-Za-z]{2,}(:\d+)?(/[^\s,;)\]}]*)?"), "[redacted-url]"),
     (re.compile(r"\b([A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b"), "[redacted-host]"),
@@ -39,6 +41,8 @@ SENSITIVE_TEXT_PATTERNS = (
 
 FAIL_CLOSED_CONTRACT_PROBE_STATUSES = {"failure", "failed", "stale", "unknown", "not_configured", "missing"}
 FAIL_CLOSED_LINK_STATUSES = {"orphan", "missing_resource", "missing_case"}
+BOOTSTRAP_CONTAINER_NAME = "source-runtime-bootstrap"
+BOOTSTRAP_ENV_NAME = "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON"
 
 
 def _sanitize_text(value: Any) -> str:
@@ -49,7 +53,7 @@ def _sanitize_text(value: Any) -> str:
 
 
 def _task_ref(task_arn: str) -> str:
-    return f"task/{_task_id(task_arn)}"
+    return "task/[redacted-task]"
 
 
 @dataclass(frozen=True)
@@ -125,12 +129,13 @@ class RuntimeTaskFailedError(RuntimeError):
 
 
 class RuntimeVerificationFailedError(RuntimeError):
-    def __init__(self, runtime_id: str, task_arn: str, phase: str, status: str) -> None:
+    def __init__(self, runtime_id: str, task_arn: str, phase: str, status: str, diagnostics: str = "") -> None:
         self.runtime_id = runtime_id
         self.task_arn = task_arn
         self.phase = phase
         self.status = status
-        super().__init__(f"{runtime_id} {phase} status is {status}: {_task_ref(task_arn)}")
+        detail = f"\n{_sanitize_text(diagnostics)}" if diagnostics else ""
+        super().__init__(f"{runtime_id} {phase} status is {status}: {_task_ref(task_arn)}{detail}")
 
 
 def _stack_name(path: Path) -> str:
@@ -616,7 +621,7 @@ def _task_stop_summary(task: dict[str, Any]) -> str:
 
 
 def _wait_for_task(cluster_arn: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
-    task_id = _task_id(task_arn)
+    task_id = "[redacted-task]"
     started = time.time()
     deadline = time.time() + timeout_seconds
     next_progress = 0.0
@@ -648,31 +653,42 @@ def _task_id(task_arn: str) -> str:
     return task_arn.rsplit("/", 1)[-1]
 
 
+def _container_log_options(
+    task_definition: str,
+    container_name: str,
+    region: str,
+    cache: dict[tuple[str, str], TaskLogOptions] | None = None,
+) -> TaskLogOptions:
+    cache_key = (task_definition, container_name)
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
+    container_definitions = response["taskDefinition"]["containerDefinitions"]
+    container = next(container for container in container_definitions if container.get("name") == container_name)
+    options = container["logConfiguration"]["options"]
+    result = TaskLogOptions(options["awslogs-group"], options["awslogs-stream-prefix"])
+    if cache is not None:
+        cache[cache_key] = result
+    return result
+
+
 def _task_log_options(
     task_definition: str,
     region: str,
-    cache: dict[str, TaskLogOptions] | None = None,
+    cache: dict[tuple[str, str], TaskLogOptions] | None = None,
 ) -> TaskLogOptions:
-    if cache is not None and task_definition in cache:
-        return cache[task_definition]
-    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
-    container_definitions = response["taskDefinition"]["containerDefinitions"]
-    cerebro_container = next(container for container in container_definitions if container.get("name") == "cerebro")
-    options = cerebro_container["logConfiguration"]["options"]
-    result = TaskLogOptions(options["awslogs-group"], options["awslogs-stream-prefix"])
-    if cache is not None:
-        cache[task_definition] = result
-    return result
+    return _container_log_options(task_definition, "cerebro", region, cache)
 
 
 def _task_logs(
     task: dict[str, Any],
     region: str,
-    log_options_cache: dict[str, TaskLogOptions] | None = None,
+    log_options_cache: dict[tuple[str, str], TaskLogOptions] | None = None,
+    container_name: str = "cerebro",
 ) -> list[dict[str, Any]]:
     task_definition = task["taskDefinitionArn"]
-    options = _task_log_options(task_definition, region, log_options_cache)
-    stream = f"{options.stream_prefix}/cerebro/{_task_id(task['taskArn'])}"
+    options = _container_log_options(task_definition, container_name, region, log_options_cache)
+    stream = f"{options.stream_prefix}/{container_name}/{_task_id(task['taskArn'])}"
     events = _aws(
         [
             "logs",
@@ -721,6 +737,147 @@ def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> 
     return "\n".join(lines)
 
 
+def _bootstrap_payload_from_task_definition(task_definition: dict[str, Any]) -> str:
+    for container in task_definition.get("containerDefinitions") or []:
+        if container.get("name") != BOOTSTRAP_CONTAINER_NAME:
+            continue
+        for item in container.get("environment") or []:
+            if item.get("name") == BOOTSTRAP_ENV_NAME:
+                return str(item.get("value") or "")
+    return ""
+
+
+def _bootstrap_payload_runtime_ids(payload: str) -> set[str]:
+    if not payload:
+        return set()
+    parsed = json.loads(payload)
+    runtimes = parsed.get("runtimes") if isinstance(parsed, dict) else parsed
+    if not isinstance(runtimes, list):
+        raise ValueError("bootstrap payload must contain a runtimes list")
+    runtime_ids: set[str] = set()
+    for runtime in runtimes:
+        if not isinstance(runtime, dict):
+            continue
+        runtime_id = str(runtime.get("id") or "").strip()
+        if runtime_id:
+            runtime_ids.add(runtime_id)
+    return runtime_ids
+
+
+def _bootstrap_payload_diagnostics(
+    runtime_id: str,
+    task_definition: dict[str, Any],
+    requested_runtime_ids: set[str],
+) -> tuple[set[str], str]:
+    payload = _bootstrap_payload_from_task_definition(task_definition)
+    if not payload:
+        return set(), (
+            "bootstrap diagnostics: task definition is missing "
+            f"{BOOTSTRAP_CONTAINER_NAME} {BOOTSTRAP_ENV_NAME}; deploy or refresh the ECS task definition before live validation"
+        )
+    try:
+        payload_runtime_ids = _bootstrap_payload_runtime_ids(payload)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return set(), (
+            "bootstrap diagnostics: task definition bootstrap payload is invalid "
+            f"({exc}); deploy a task definition with a valid source runtime bootstrap payload"
+        )
+    missing = sorted(requested_runtime_ids - payload_runtime_ids)
+    present = sorted(requested_runtime_ids & payload_runtime_ids)
+    status = "missing" if missing else "present"
+    diagnostics = (
+        "bootstrap diagnostics: "
+        f"runtime={runtime_id} payload_status={status} "
+        f"payload_runtime_count={len(payload_runtime_ids)} "
+        f"requested_runtime_ids={','.join(sorted(requested_runtime_ids)) or '-'} "
+        f"present_runtime_ids={','.join(present) or '-'} "
+        f"missing_runtime_ids={','.join(missing) or '-'}"
+    )
+    if missing:
+        diagnostics += (
+            "; action=deploy or refresh source-runtime-bootstrap task definition/state "
+            "so requested runtimes are bootstrapped before live validation"
+        )
+    return payload_runtime_ids, diagnostics
+
+
+def _bootstrap_task_diagnostics(
+    target: RuntimeTarget,
+    task: dict[str, Any],
+    messages: list[dict[str, Any]],
+    region: str,
+) -> str:
+    lines: list[str] = []
+    runtimes_listed_event = _latest_event(messages, "orchestrator.runtimes_listed")
+    orchestrator_iteration_span = _latest_span(messages, "orchestrator.iteration")
+    if runtimes_listed_event:
+        lines.append(
+            "runtime discovery log: "
+            f"runtime_count={runtimes_listed_event.get('runtime_count', '-')}"
+        )
+    if orchestrator_iteration_span:
+        lines.append(
+            "runtime discovery iteration: "
+            f"runtimes_attempted={orchestrator_iteration_span.get('runtimes_attempted', '-')}"
+        )
+    try:
+        response = _aws(["ecs", "describe-task-definition", "--task-definition", task["taskDefinitionArn"]], region)
+        _payload_ids, diagnostics = _bootstrap_payload_diagnostics(
+            target.runtime_id,
+            response.get("taskDefinition") or {},
+            {target.runtime_id},
+        )
+        lines.append(diagnostics)
+    except Exception as exc:
+        lines.append(f"bootstrap diagnostics: unable to inspect task definition bootstrap payload ({exc})")
+    try:
+        bootstrap_messages = _task_logs(task, region, container_name=BOOTSTRAP_CONTAINER_NAME)
+        summary = _summarize_log_messages(bootstrap_messages, limit=8)
+        if summary:
+            lines.append("source-runtime-bootstrap logs:\n" + summary)
+        else:
+            lines.append("source-runtime-bootstrap logs: no structured bootstrap log events found")
+    except Exception as exc:
+        lines.append(f"source-runtime-bootstrap logs: unavailable ({exc})")
+    return _sanitize_text("\n".join(lines))[:6000]
+
+
+def _verify_bootstrap_payload_targets(targets: list[RuntimeTarget], region: str) -> None:
+    for target in targets:
+        task_definition = _latest_active_task_definition(target.target["EcsParameters"]["TaskDefinitionArn"], region)
+        response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
+        _payload_runtime_ids, diagnostics = _bootstrap_payload_diagnostics(
+            target.runtime_id,
+            response.get("taskDefinition") or {},
+            {target.runtime_id},
+        )
+        if f"missing_runtime_ids={target.runtime_id}" in diagnostics or "payload_status=missing" in diagnostics:
+            raise RuntimeVerificationFailedError(
+                target.runtime_id,
+                "",
+                "bootstrap payload",
+                "missing",
+                diagnostics,
+            )
+        if "bootstrap payload is invalid" in diagnostics:
+            raise RuntimeVerificationFailedError(
+                target.runtime_id,
+                "",
+                "bootstrap payload",
+                "invalid",
+                diagnostics,
+            )
+        if f"missing {BOOTSTRAP_CONTAINER_NAME}" in diagnostics:
+            raise RuntimeVerificationFailedError(
+                target.runtime_id,
+                "",
+                "bootstrap payload",
+                "missing",
+                diagnostics,
+            )
+        print(diagnostics, file=sys.stderr)
+
+
 def _latest_span(messages: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
     for message in reversed(messages):
         if message.get("kind") == "span_end" and message.get("name") == name:
@@ -759,6 +916,8 @@ def _verification_result_from_logs(
     exit_code: int | None,
     messages: list[dict[str, Any]],
     require_runtime_completed: bool,
+    task: dict[str, Any] | None = None,
+    region: str | None = None,
 ) -> VerificationResult | None:
     runtime_span = _latest_span(messages, "orchestrator.runtime")
     sync_span = _latest_span(messages, "source_runtime.sync")
@@ -767,7 +926,10 @@ def _verification_result_from_logs(
     runtimes_listed_event = _latest_event(messages, "orchestrator.runtimes_listed")
     orchestrator_iteration_span = _latest_span(messages, "orchestrator.iteration")
     if (runtimes_listed_event or {}).get("runtime_count") == 0 or (orchestrator_iteration_span or {}).get("runtimes_attempted") == 0:
-        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "runtime discovery", "missing")
+        diagnostics = ""
+        if task is not None and region is not None:
+            diagnostics = _bootstrap_task_diagnostics(target, task, messages, region)
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "runtime discovery", "missing", diagnostics)
     runtime_status = str((runtime_span or {}).get("status") or "missing")
     sync_status = str((sync_span or {}).get("status") or "missing")
     graph_ingest_status = str((graph_ingest_span or {}).get("status") or "missing")
@@ -831,7 +993,7 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
         raise RuntimeTaskFailedError(target.runtime_id, task_arn, exit_code, log_summary)
 
     messages = _task_logs(task, region)
-    result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True)
+    result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True, task=task, region=region)
     if result is None:
         raise RuntimeError(f"{target.runtime_id} verification did not produce source sync and graph ingest spans")
     return result
@@ -844,13 +1006,13 @@ def _verify_task_until_graph_ingested(
     poll_seconds: int,
     region: str,
 ) -> VerificationResult:
-    task_id = _task_id(task_arn)
+    task_id = "[redacted-task]"
     started = time.time()
     deadline = time.time() + timeout_seconds
     next_progress = 0.0
     last_task: dict[str, Any] | None = None
     last_log_error: Exception | None = None
-    log_options_cache: dict[str, TaskLogOptions] = {}
+    log_options_cache: dict[tuple[str, str], TaskLogOptions] = {}
     while time.time() < deadline:
         tasks = _describe_tasks(target.target["Arn"], [task_arn], region)
         task = tasks[0] if tasks else {}
@@ -867,7 +1029,7 @@ def _verify_task_until_graph_ingested(
             except Exception as exc:
                 last_log_error = exc
         if messages:
-            result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=False)
+            result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=False, task=task, region=region)
             if result is not None:
                 print(
                     f"INFO: {target.runtime_id} source sync and graph ingest completed; task may continue finding-rule work",
@@ -876,7 +1038,7 @@ def _verify_task_until_graph_ingested(
                 return result
         if status == "STOPPED":
             if messages:
-                result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True)
+                result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True, task=task, region=region)
                 if result is not None:
                     return result
             if last_log_error is not None:
@@ -902,7 +1064,7 @@ def _verify_task_until_graph_ingested(
     if last_task is not None:
         try:
             messages = _task_logs(last_task, region, log_options_cache)
-            result = _verification_result_from_logs(target, task_arn, None, messages, require_runtime_completed=False)
+            result = _verification_result_from_logs(target, task_arn, None, messages, require_runtime_completed=False, task=last_task, region=region)
             if result is not None:
                 return result
         except Exception:
@@ -1370,6 +1532,7 @@ def main(argv: list[str] | None = None) -> int:
             _disabled_observability_runtime_ids(config, args.source_id, requested, families) if args.observability_targets else [],
         )
         return 0
+    _verify_bootstrap_payload_targets(targets, args.region)
     if args.run:
         _verify_secret_import_preflight(config, stack, args.region)
     results = _verify_runtime_targets(
