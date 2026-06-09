@@ -61,15 +61,6 @@ def _source_runtime_command(args: argparse.Namespace) -> list[str]:
         str(args.stack_file),
         "--source-id",
         args.source_id,
-        "--run",
-        "--run-page-limit",
-        "1",
-        "--run-graph-page-limit",
-        "1",
-        "--run-event-limit",
-        "10",
-        "--succeed-after-graph-ingest",
-        "--allow-lease-contention-skip",
         "--stop-timeout-seconds",
         "600",
         "--failed-run-retry-seconds",
@@ -85,6 +76,26 @@ def _source_runtime_command(args: argparse.Namespace) -> list[str]:
         "--target-concurrency",
         str(args.source_target_concurrency),
     ]
+    if args.source_runtime_dry_run:
+        command.append("--dry-run")
+    else:
+        command.extend(
+            [
+                "--run",
+                "--run-page-limit",
+                "1",
+                "--run-graph-page-limit",
+                "1",
+                "--run-event-limit",
+                "10",
+                "--succeed-after-graph-ingest",
+                "--allow-lease-contention-skip",
+            ]
+        )
+    if args.source_runtime_observability_targets:
+        command.append("--observability-targets")
+    if args.source_runtime_allow_missing_targets:
+        command.append("--allow-missing-targets")
     for runtime_id in args.runtime_id:
         command.extend(["--runtime-id", runtime_id])
     for family in args.family:
@@ -537,6 +548,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-id", default="cosmo", help="Source ID to verify when --source-runtime-verify runs.")
     parser.add_argument("--runtime-id", action="append", default=[], help="Restrict --source-runtime-verify to a declared runtime ID.")
     parser.add_argument("--family", action="append", default=[], help="Restrict --source-runtime-verify to a runtime config family.")
+    parser.add_argument("--source-runtime-dry-run", action="store_true", help="Run source runtime verification in read-only dry-run/readiness mode.")
+    parser.add_argument("--source-runtime-observability-targets", action="store_true", help="Select enabled sourceRuntimeObservability entries.")
+    parser.add_argument("--source-runtime-allow-missing-targets", action="store_true", help="Allow not-yet-deployed EventBridge targets during source runtime readiness checks.")
     parser.add_argument("--graph-health", action="store_true")
     parser.add_argument("--graph-health-output", type=Path, default=Path("graph-health.tsv"))
     parser.add_argument(

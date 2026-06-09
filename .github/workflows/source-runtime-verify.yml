@@ -19,8 +19,14 @@ on:
         options:
           - recent
           - run
+          - dry-run
       runtime_id:
         description: Optional single runtime id. Leave blank to verify all runtimes for the source.
+        required: false
+        default: ''
+        type: string
+      family:
+        description: Optional runtime family filter. Leave blank for all families.
         required: false
         default: ''
         type: string
@@ -29,11 +35,26 @@ on:
         required: false
         default: cosmo
         type: string
+      observability_targets:
+        description: Select enabled sourceRuntimeObservability targets instead of all source runtimes.
+        required: false
+        default: false
+        type: boolean
+      allow_missing_targets:
+        description: Allow readiness checks to report not-yet-deployed EventBridge targets without failing.
+        required: false
+        default: false
+        type: boolean
       succeed_after_graph_ingest:
         description: For run mode, pass once source sync and graph ingest complete.
         required: false
         default: false
         type: boolean
+      target_concurrency:
+        description: Maximum source runtime targets to verify concurrently.
+        required: false
+        default: '1'
+        type: string
       max_age_minutes:
         description: Maximum age for recent-mode stopped tasks
         required: false
@@ -90,15 +111,23 @@ jobs:
         env:
           VERIFY_MODE: ${{ github.event.inputs.mode }}
           RUNTIME_ID: ${{ github.event.inputs.runtime_id }}
+          FAMILY: ${{ github.event.inputs.family }}
           SOURCE_ID: ${{ github.event.inputs.source_id || 'cosmo' }}
+          OBSERVABILITY_TARGETS: ${{ github.event.inputs.observability_targets || 'false' }}
+          ALLOW_MISSING_TARGETS: ${{ github.event.inputs.allow_missing_targets || 'false' }}
           SUCCEED_AFTER_GRAPH_INGEST: ${{ github.event.inputs.succeed_after_graph_ingest || 'false' }}
+          TARGET_CONCURRENCY: ${{ github.event.inputs.target_concurrency }}
           MAX_AGE_MINUTES: ${{ github.event.inputs.max_age_minutes }}
         run: |
           set -euo pipefail
-          args=(--stack-file aws/Pulumi.sec-dev.yaml --source-id "${SOURCE_ID}" --max-age-minutes "${MAX_AGE_MINUTES}")
+          args=(--stack-file aws/Pulumi.sec-dev.yaml --source-id "${SOURCE_ID}" --max-age-minutes "${MAX_AGE_MINUTES}" --target-concurrency "${TARGET_CONCURRENCY}")
           if [ "${VERIFY_MODE}" = "run" ]; then args+=(--run); fi
+          if [ "${VERIFY_MODE}" = "dry-run" ]; then args+=(--dry-run); fi
+          if [ "${OBSERVABILITY_TARGETS}" = "true" ]; then args+=(--observability-targets); fi
+          if [ "${ALLOW_MISSING_TARGETS}" = "true" ]; then args+=(--allow-missing-targets); fi
           if [ "${SUCCEED_AFTER_GRAPH_INGEST}" = "true" ]; then args+=(--succeed-after-graph-ingest); fi
           if [ -n "${RUNTIME_ID}" ]; then args+=(--runtime-id "${RUNTIME_ID}"); fi
+          if [ -n "${FAMILY}" ]; then args+=(--family "${FAMILY}"); fi
           uv run python scripts/verify_source_runtime_ecs.py "${args[@]}"
 
   verify-go-prod:
@@ -143,13 +172,29 @@ jobs:
         env:
           VERIFY_MODE: ${{ github.event.inputs.mode }}
           RUNTIME_ID: ${{ github.event.inputs.runtime_id }}
+          FAMILY: ${{ github.event.inputs.family }}
           SOURCE_ID: ${{ github.event.inputs.source_id || 'cosmo' }}
+          OBSERVABILITY_TARGETS: ${{ github.event.inputs.observability_targets || 'false' }}
+          ALLOW_MISSING_TARGETS: ${{ github.event.inputs.allow_missing_targets || 'false' }}
           SUCCEED_AFTER_GRAPH_INGEST: ${{ github.event.inputs.succeed_after_graph_ingest || 'false' }}
+          TARGET_CONCURRENCY: ${{ github.event.inputs.target_concurrency }}
           MAX_AGE_MINUTES: ${{ github.event.inputs.max_age_minutes }}
         run: |
           set -euo pipefail
-          args=(--stack-file aws/Pulumi.go-prod.yaml --source-id "${SOURCE_ID}" --max-age-minutes "${MAX_AGE_MINUTES}")
-          if [ "${VERIFY_MODE}" = "run" ]; then args+=(--run); fi
+          args=(--stack-file aws/Pulumi.go-prod.yaml --source-id "${SOURCE_ID}" --max-age-minutes "${MAX_AGE_MINUTES}" --target-concurrency "${TARGET_CONCURRENCY}")
+          if [ "${SOURCE_ID}" = "panopticon" ] && [ "${OBSERVABILITY_TARGETS}" = "true" ]; then
+            if [ "${VERIFY_MODE}" = "run" ]; then
+              echo "go-prod Panopticon observability validation is dry-run/readiness-only until targets are deployed; using dry-run."
+            fi
+            args+=(--dry-run --allow-missing-targets)
+          elif [ "${VERIFY_MODE}" = "run" ]; then
+            args+=(--run)
+          elif [ "${VERIFY_MODE}" = "dry-run" ]; then
+            args+=(--dry-run)
+          fi
+          if [ "${OBSERVABILITY_TARGETS}" = "true" ]; then args+=(--observability-targets); fi
+          if [ "${ALLOW_MISSING_TARGETS}" = "true" ]; then args+=(--allow-missing-targets); fi
           if [ "${SUCCEED_AFTER_GRAPH_INGEST}" = "true" ]; then args+=(--succeed-after-graph-ingest); fi
           if [ -n "${RUNTIME_ID}" ]; then args+=(--runtime-id "${RUNTIME_ID}"); fi
+          if [ -n "${FAMILY}" ]; then args+=(--family "${FAMILY}"); fi
           uv run python scripts/verify_source_runtime_ecs.py "${args[@]}"
