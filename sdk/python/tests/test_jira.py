@@ -3,7 +3,6 @@ from unittest.mock import patch
 
 import cerebro_sdk.jira as jira
 from cerebro_sdk.client import Client
-from cerebro_sdk.jira import build_jira_workspace_claims
 
 
 class JiraPostureTests(unittest.TestCase):
@@ -13,13 +12,13 @@ class JiraPostureTests(unittest.TestCase):
 
     def test_build_jira_workspace_claims_rejects_object_coerced_identifiers(self) -> None:
         with self.assertRaisesRegex(ValueError, "workspace_key is required"):
-            build_jira_workspace_claims(self.integration, {"workspace_key": {"id": "writer"}})
+            jira.build_jira_workspace_claims(self.integration, {"workspace_key": {"id": "writer"}})
 
         with self.assertRaisesRegex(ValueError, "workspace_key is required"):
-            build_jira_workspace_claims(self.integration, {"workspace_key": ["writer"]})
+            jira.build_jira_workspace_claims(self.integration, {"workspace_key": ["writer"]})
 
         with self.assertRaisesRegex(ValueError, r"projects\[\]\.key is required"):
-            build_jira_workspace_claims(
+            jira.build_jira_workspace_claims(
                 self.integration,
                 {
                     "workspace_key": "writer",
@@ -28,7 +27,7 @@ class JiraPostureTests(unittest.TestCase):
             )
 
         with self.assertRaisesRegex(ValueError, r"apps\[\]\.key is required"):
-            build_jira_workspace_claims(
+            jira.build_jira_workspace_claims(
                 self.integration,
                 {
                     "workspace_key": "writer",
@@ -38,28 +37,28 @@ class JiraPostureTests(unittest.TestCase):
 
     def test_build_jira_workspace_claims_rejects_boolean_identifiers(self) -> None:
         with self.assertRaisesRegex(ValueError, "workspace_key is required"):
-            build_jira_workspace_claims(self.integration, {"workspace_key": True})
+            jira.build_jira_workspace_claims(self.integration, {"workspace_key": True})
 
     def test_build_jira_workspace_claims_rejects_malformed_array_entries(self) -> None:
         with self.assertRaisesRegex(ValueError, r"admins\[0\] must be an object"):
-            build_jira_workspace_claims(self.integration, {"workspace_key": "writer", "admins": ["alice@writer.com"]})
+            jira.build_jira_workspace_claims(self.integration, {"workspace_key": "writer", "admins": ["alice@writer.com"]})
 
         with self.assertRaisesRegex(ValueError, r"projects\[1\] must be an object"):
-            build_jira_workspace_claims(
+            jira.build_jira_workspace_claims(
                 self.integration,
                 {"workspace_key": "writer", "projects": [{"key": "ENG"}, "SEC"]},
             )
 
     def test_build_jira_workspace_claims_rejects_unknown_boolean_strings(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid boolean string"):
-            build_jira_workspace_claims(
+            jira.build_jira_workspace_claims(
                 self.integration,
                 {"workspace_key": "writer", "public_signup_enabled": "falsee"},
             )
 
     def test_build_jira_workspace_claims_rejects_non_boolean_flag_values(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid boolean value"):
-            build_jira_workspace_claims(
+            jira.build_jira_workspace_claims(
                 self.integration,
                 {"workspace_key": "writer", "public_signup_enabled": {"bad": 1}},
             )
@@ -132,7 +131,7 @@ class JiraPostureTests(unittest.TestCase):
         self.assertFalse(any(finding["id"] == "jira_workspace_admin_sprawl" for finding in findings))
 
     def test_build_jira_workspace_claims_normalizes_admin_email_identity(self) -> None:
-        claims = build_jira_workspace_claims(
+        claims = jira.build_jira_workspace_claims(
             self.integration,
             {"workspace_key": "writer", "admins": [{"email": "ADMIN@writer.com"}, {"email": "admin@writer.com"}]},
         )

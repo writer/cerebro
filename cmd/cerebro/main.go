@@ -34,6 +34,10 @@ func (e usageError) Error() string {
 	return string(e)
 }
 
+func sanitizeLogValue(value string) string {
+	return strings.NewReplacer("\n", " ", "\r", " ").Replace(value)
+}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		var usage usageError
@@ -41,7 +45,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		log.Print(err)
+		log.Print(sanitizeLogValue(fmt.Sprint(err)))
 		os.Exit(1)
 	}
 }

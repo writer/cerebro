@@ -9,6 +9,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import NoReturn
 
 
 def env(name: str, default: str = "") -> str:
@@ -23,7 +24,7 @@ EVENT_LIMIT = env("CEREBRO_CANDIDATE_SMOKE_EVENT_LIMIT", "25")
 ALLOW_EMPTY = env("CEREBRO_CANDIDATE_SMOKE_ALLOW_EMPTY", "false").lower() in {"1", "true", "yes"}
 
 
-def fail(message: str) -> None:
+def fail(message: str) -> NoReturn:
     print(f"candidate-smoke: {message}", file=sys.stderr)
     raise SystemExit(1)
 

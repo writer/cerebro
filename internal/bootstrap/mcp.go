@@ -1037,7 +1037,7 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 	if rawLimit, err := mcpUint32Arg(args, "asset_limit"); err != nil {
 		return nil, err
 	} else if rawLimit != 0 {
-		assetLimit = min(int(rawLimit), maxMCPAssetLimit)
+		assetLimit = int(min(rawLimit, uint32(maxMCPAssetLimit)))
 	}
 	assets := []mcpAssetSearchResult{}
 	neighborhoods := []any{}
@@ -2046,7 +2046,7 @@ func mcpBoundedLimit(args map[string]any, key string, defaultLimit int, maxLimit
 	switch {
 	case limit == 0:
 		return defaultLimit, nil
-	case int(limit) > maxLimit:
+	case limit > uint32(maxLimit):
 		return maxLimit, nil
 	default:
 		return int(limit), nil
@@ -2412,7 +2412,7 @@ func mcpNormalizeLimitValue(limit uint32, defaultLimit int, maxLimit int) int {
 	switch {
 	case limit == 0:
 		return defaultLimit
-	case int(limit) > maxLimit:
+	case limit > uint32(maxLimit):
 		return maxLimit
 	default:
 		return int(limit)
