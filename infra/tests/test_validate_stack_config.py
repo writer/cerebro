@@ -127,6 +127,37 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-okta-audit
+    - name: panopticon-alerts-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-panopticon-alerts
+    - name: panopticon-cases-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-panopticon-cases
+    - name: panopticon-iocs-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-panopticon-iocs
+  cerebro:s3Sources:
+    - name: panopticon
+      bucket: panopticon-prod-837279440628-cerebro-export
+      bucketArn: arn:aws:s3:::panopticon-prod-837279440628-cerebro-export
+      region: us-east-1
+      roleArn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+      prefixes:
+        - "exports/alerts/"
+        - "exports/cases/"
+        - "exports/iocs/"
   cerebro:sourceRuntimes:
 {COSMO_RUNTIMES.rstrip()}
     - id: writer-okta-audit
@@ -134,6 +165,39 @@ config:
       tenantId: writer
       config:
         {API_TOKEN_FIELD}: env:{API_TOKEN_KEY}
+    - id: writer-panopticon-alerts
+      sourceId: panopticon
+      tenantId: writer
+      config:
+        bucket: panopticon-prod-837279440628-cerebro-export
+        family: alert
+        page_size: "100"
+        prefix: exports/alerts/
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        tenant_id: writer
+    - id: writer-panopticon-cases
+      sourceId: panopticon
+      tenantId: writer
+      config:
+        bucket: panopticon-prod-837279440628-cerebro-export
+        family: case
+        page_size: "100"
+        prefix: exports/cases/
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        tenant_id: writer
+    - id: writer-panopticon-iocs
+      sourceId: panopticon
+      tenantId: writer
+      config:
+        bucket: panopticon-prod-837279440628-cerebro-export
+        family: ioc
+        page_size: "100"
+        prefix: exports/iocs/
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        tenant_id: writer
 """
 
 
@@ -153,6 +217,16 @@ class ValidateStackConfigTest(unittest.TestCase):
     def _messages(self, content: str) -> list[str]:
         return [finding.message for finding in self._validate(content)]
 
+    def _repo_stack_content(self, name: str) -> str:
+        return (Path(__file__).resolve().parents[1] / "aws" / name).read_text(encoding="utf-8")
+
+    def _panopticon_error_messages(self, content: str, name: str) -> list[str]:
+        return [
+            finding.message
+            for finding in self._validate(content, name=name)
+            if finding.severity == "error" and "Panopticon" in finding.message
+        ]
+
     def _without_orchestrator_schedules(self, content: str) -> str:
         start = "  cerebro:orchestratorSchedules:\n"
         begin = content.index(start)
@@ -162,6 +236,100 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_valid_stack_has_no_errors(self) -> None:
         findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
+
+    def test_actual_panopticon_wiring_has_no_errors(self) -> None:
+        for stack_file in ("Pulumi.sec-dev.yaml", "Pulumi.go-prod.yaml"):
+            with self.subTest(stack_file=stack_file):
+                content = self._repo_stack_content(stack_file)
+                self.assertEqual(self._panopticon_error_messages(content, stack_file), [])
+
+    def test_panopticon_missing_s3_source_is_error(self) -> None:
+        content = self._repo_stack_content("Pulumi.sec-dev.yaml").replace(
+            "    - name: panopticon\n      bucket: panopticon-dev-944130631940-cerebro-export\n",
+            "    - name: panopticon-disabled\n      bucket: panopticon-dev-944130631940-cerebro-export\n",
+            1,
+        )
+
+        messages = self._panopticon_error_messages(content, "Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any("exactly one s3Sources entry named 'panopticon'" in message for message in messages))
+
+    def test_panopticon_source_runtime_is_required(self) -> None:
+        content = self._repo_stack_content("Pulumi.go-prod.yaml").replace(
+            "    - id: writer-panopticon-alerts\n",
+            "    - id: writer-panopticon-alerts-disabled\n",
+            1,
+        )
+
+        messages = self._panopticon_error_messages(content, "Pulumi.go-prod.yaml")
+
+        self.assertIn("required Panopticon runtime 'writer-panopticon-alerts' is missing", messages)
+
+    def test_panopticon_env_account_isolation_is_exact(self) -> None:
+        content = (
+            self._repo_stack_content("Pulumi.sec-dev.yaml")
+            .replace("panopticon-dev-944130631940-cerebro-export", "panopticon-prod-837279440628-cerebro-export")
+            .replace(
+                "arn:aws:iam::944130631940:role/panopticon-dev-cerebro-export-reader",
+                "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
+            )
+        )
+
+        messages = self._panopticon_error_messages(content, "Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any("Panopticon bucket must be 'panopticon-dev-944130631940-cerebro-export'" in message for message in messages))
+        self.assertTrue(any("Panopticon roleArn must be 'arn:aws:iam::944130631940:role/panopticon-dev-cerebro-export-reader'" in message for message in messages))
+
+    def test_panopticon_runtime_prefix_must_match_family(self) -> None:
+        content = self._repo_stack_content("Pulumi.sec-dev.yaml").replace(
+            "        prefix: exports/alerts/\n",
+            "        prefix: exports/cases/\n",
+            1,
+        )
+
+        messages = self._panopticon_error_messages(content, "Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any("Panopticon alert runtime prefix must be 'exports/alerts/'" in message for message in messages))
+
+    def test_panopticon_schedule_task_count_must_be_one(self) -> None:
+        content = self._repo_stack_content("Pulumi.go-prod.yaml").replace(
+            "    - name: panopticon-alerts-live\n      scheduleExpression: rate(15 minutes)\n      taskCount: 1\n",
+            "    - name: panopticon-alerts-live\n      scheduleExpression: rate(15 minutes)\n      taskCount: 2\n",
+            1,
+        )
+
+        messages = self._panopticon_error_messages(content, "Pulumi.go-prod.yaml")
+
+        self.assertTrue(any("Panopticon schedules must set taskCount: 1" in message for message in messages))
+
+    def test_panopticon_duplicate_schedule_is_error(self) -> None:
+        schedule = """\
+    - name: panopticon-alerts-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-panopticon-alerts
+"""
+        duplicate_schedule = schedule + schedule.replace("panopticon-alerts-live", "panopticon-alerts-shadow", 1)
+        content = self._repo_stack_content("Pulumi.go-prod.yaml").replace(schedule, duplicate_schedule, 1)
+
+        messages = self._panopticon_error_messages(content, "Pulumi.go-prod.yaml")
+
+        self.assertIn("Panopticon runtime 'writer-panopticon-alerts' must have exactly one schedule", messages)
+
+    def test_panopticon_rejects_secrets_and_evidence_bytes_in_runtime_config(self) -> None:
+        content = self._repo_stack_content("Pulumi.sec-dev.yaml").replace(
+            "        tenant_id: writer\n    - id: writer-panopticon-cases\n",
+            "        tenant_id: writer\n        evidence_bytes: inline-forbidden\n    - id: writer-panopticon-cases\n",
+            1,
+        )
+
+        messages = self._panopticon_error_messages(content, "Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any("unsupported keys ['evidence_bytes']" in message for message in messages))
+        self.assertTrue(any("must not include secrets, tokens, or evidence bytes" in message for message in messages))
 
     def test_latency_alarm_thresholds_must_be_non_negative(self) -> None:
         content = BASE_STACK + "  cerebro:dashboardLatencyP95AlarmThresholdMs: -1\n"

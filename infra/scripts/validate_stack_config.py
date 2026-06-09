@@ -95,6 +95,43 @@ GO_PROD_AWS_ACCOUNTS = {
 GO_PROD_AWS_GLOBAL_FAMILIES = SEC_DEV_AWS_GLOBAL_FAMILIES
 GO_PROD_AWS_REGIONAL_FAMILIES = {"asset_metadata", "public_endpoint", "resource_exposure", *AWS_COMPUTE_REGIONAL_FAMILIES}
 GO_PROD_AWS_REGIONS = {"us1": "us-east-1", "us2": "us-west-2"}
+PANOPTICON_RUNTIME_FAMILIES = {
+    "writer-panopticon-alerts": "alert",
+    "writer-panopticon-cases": "case",
+    "writer-panopticon-iocs": "ioc",
+}
+PANOPTICON_FAMILY_PREFIXES = {
+    "alert": "exports/alerts/",
+    "case": "exports/cases/",
+    "ioc": "exports/iocs/",
+}
+PANOPTICON_STACKS = {
+    "sec-dev": {
+        "bucket": "panopticon-dev-944130631940-cerebro-export",
+        "bucketArn": "arn:aws:s3:::panopticon-dev-944130631940-cerebro-export",
+        "region": "us-east-1",
+        "roleArn": "arn:aws:iam::944130631940:role/panopticon-dev-cerebro-export-reader",
+    },
+    "go-prod": {
+        "bucket": "panopticon-prod-837279440628-cerebro-export",
+        "bucketArn": "arn:aws:s3:::panopticon-prod-837279440628-cerebro-export",
+        "region": "us-east-1",
+        "roleArn": "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
+    },
+}
+PANOPTICON_RUNTIME_CONFIG_KEYS = {
+    "bucket",
+    "family",
+    "page_size",
+    "prefix",
+    "region",
+    "role_arn",
+    "tenant_id",
+}
+PANOPTICON_FORBIDDEN_CONFIG_RE = re.compile(
+    r"(evidence_?bytes|evidence_?content|file_?contents?|payload_?bytes|plaintext|secret|token|password|private_?key)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -622,6 +659,197 @@ def _validate_go_prod_aws_coverage(
             findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", f"required go-prod AWS schedule for {runtime_id!r} is missing"))
 
 
+def _normalize_s3_prefix(value: Any) -> str:
+    text = str(value or "").strip().lstrip("/")
+    return text if not text or text.endswith("/") else f"{text}/"
+
+
+def _panopticon_runtime_id_from_schedule(schedule: Any) -> str | None:
+    runtime_id = _runtime_id_from_command(schedule.get("command") if isinstance(schedule, dict) else None)
+    if runtime_id in PANOPTICON_RUNTIME_FAMILIES:
+        return runtime_id
+    return None
+
+
+def _validate_panopticon_wiring(
+    stack: str,
+    config: dict[str, Any],
+    source_runtimes: list[Any],
+    schedules: list[Any],
+    findings: list[Finding],
+) -> None:
+    expected = PANOPTICON_STACKS.get(stack)
+    if expected is None:
+        return
+
+    s3_sources = config.get("s3Sources") or []
+    if not isinstance(s3_sources, list):
+        findings.append(_finding("error", stack, "cerebro:s3Sources", "Panopticon wiring requires s3Sources to be a list"))
+        s3_sources = []
+
+    panopticon_sources = [
+        (index, source)
+        for index, source in enumerate(s3_sources)
+        if isinstance(source, dict) and str(source.get("name", "")).strip() == "panopticon"
+    ]
+    if len(panopticon_sources) != 1:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:s3Sources",
+                f"Panopticon must declare exactly one s3Sources entry named 'panopticon' for {stack}",
+            )
+        )
+        panopticon_source = None
+        source_path = "cerebro:s3Sources"
+    else:
+        source_index, panopticon_source = panopticon_sources[0]
+        source_path = f"cerebro:s3Sources[{source_index}]"
+
+    expected_prefixes = sorted(PANOPTICON_FAMILY_PREFIXES.values())
+    if panopticon_source is not None:
+        for key in ("bucket", "bucketArn", "region", "roleArn"):
+            actual = str(panopticon_source.get(key, "")).strip()
+            if actual != expected[key]:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{source_path}.{key}",
+                        f"Panopticon {key} must be {expected[key]!r} for {stack}",
+                    )
+                )
+        prefixes = panopticon_source.get("prefixes") or []
+        normalized_prefixes = sorted(_normalize_s3_prefix(prefix) for prefix in prefixes) if isinstance(prefixes, list) else []
+        if normalized_prefixes != expected_prefixes:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{source_path}.prefixes",
+                    f"Panopticon prefixes must be exactly {expected_prefixes!r}",
+                )
+            )
+        if any(prefix in ("", "/") or "*" in prefix for prefix in normalized_prefixes):
+            findings.append(_finding("error", stack, f"{source_path}.prefixes", "Panopticon prefixes must be exact family prefixes"))
+
+    runtimes_by_id = {
+        str(runtime.get("id", "")).strip(): (index, runtime)
+        for index, runtime in enumerate(source_runtimes)
+        if isinstance(runtime, dict)
+    }
+    for runtime_id, family in PANOPTICON_RUNTIME_FAMILIES.items():
+        runtime_entry = runtimes_by_id.get(runtime_id)
+        if runtime_entry is None:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:sourceRuntimes",
+                    f"required Panopticon runtime {runtime_id!r} is missing",
+                )
+            )
+            continue
+
+        runtime_index, runtime = runtime_entry
+        runtime_path = f"cerebro:sourceRuntimes[{runtime_index}]"
+        if str(runtime.get("sourceId", "")).strip() != "panopticon":
+            findings.append(_finding("error", stack, f"{runtime_path}.sourceId", "Panopticon runtime sourceId must be 'panopticon'"))
+        if str(runtime.get("tenantId", "")).strip() != "writer":
+            findings.append(_finding("error", stack, f"{runtime_path}.tenantId", "Panopticon runtime tenantId must be 'writer'"))
+
+        runtime_config = runtime.get("config") or {}
+        if not isinstance(runtime_config, dict):
+            findings.append(_finding("error", stack, f"{runtime_path}.config", "Panopticon runtime config must be an object"))
+            continue
+
+        extra_keys = sorted(set(str(key) for key in runtime_config) - PANOPTICON_RUNTIME_CONFIG_KEYS)
+        if extra_keys:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{runtime_path}.config",
+                    f"Panopticon runtime config contains unsupported keys {extra_keys!r}",
+                )
+            )
+        for key, value in runtime_config.items():
+            if PANOPTICON_FORBIDDEN_CONFIG_RE.search(str(key)) or (
+                isinstance(value, str) and PANOPTICON_FORBIDDEN_CONFIG_RE.search(value) and not value.startswith("arn:")
+            ):
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{runtime_path}.config.{key}",
+                        "Panopticon runtime config must not include secrets, tokens, or evidence bytes",
+                    )
+                )
+            if isinstance(value, str) and value.strip().startswith("env:"):
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{runtime_path}.config.{key}",
+                        "Panopticon S3 runtime config must use non-secret stack values, not Infisical env references",
+                    )
+                )
+
+        expected_runtime_config = {
+            "bucket": expected["bucket"],
+            "family": family,
+            "page_size": "100",
+            "prefix": PANOPTICON_FAMILY_PREFIXES[family],
+            "region": expected["region"],
+            "role_arn": expected["roleArn"],
+            "tenant_id": "writer",
+        }
+        for key, expected_value in expected_runtime_config.items():
+            actual = runtime_config.get(key)
+            if key == "prefix":
+                actual_text = _normalize_s3_prefix(actual)
+                expected_text = expected_value
+            else:
+                actual_text = str(actual or "").strip()
+                expected_text = expected_value
+            if actual_text != expected_text:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{runtime_path}.config.{key}",
+                        f"Panopticon {family} runtime {key} must be {expected_text!r}",
+                    )
+                )
+
+    schedules_by_runtime: dict[str, list[tuple[int, dict[str, Any]]]] = {runtime_id: [] for runtime_id in PANOPTICON_RUNTIME_FAMILIES}
+    for index, schedule in enumerate(schedules):
+        runtime_id = _panopticon_runtime_id_from_schedule(schedule)
+        if runtime_id:
+            schedules_by_runtime[runtime_id].append((index, schedule))
+
+    for runtime_id in PANOPTICON_RUNTIME_FAMILIES:
+        runtime_schedules = schedules_by_runtime[runtime_id]
+        if len(runtime_schedules) != 1:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:orchestratorSchedules",
+                    f"Panopticon runtime {runtime_id!r} must have exactly one schedule",
+                )
+            )
+            continue
+        schedule_index, schedule = runtime_schedules[0]
+        schedule_path = f"cerebro:orchestratorSchedules[{schedule_index}]"
+        if schedule.get("taskCount") != 1:
+            findings.append(_finding("error", stack, f"{schedule_path}.taskCount", "Panopticon schedules must set taskCount: 1"))
+        command = schedule.get("command") or []
+        if not isinstance(command, list) or command[:2] != ["orchestrator", "run"]:
+            findings.append(_finding("error", stack, f"{schedule_path}.command", "Panopticon schedule command must run the orchestrator"))
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -959,6 +1187,7 @@ def validate_stack(path: Path) -> list[Finding]:
     _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
     _validate_sec_dev_aws_coverage(stack, config, source_runtimes, schedules, findings)
     _validate_go_prod_aws_coverage(stack, source_runtimes, schedules, findings)
+    _validate_panopticon_wiring(stack, config, source_runtimes, schedules, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment

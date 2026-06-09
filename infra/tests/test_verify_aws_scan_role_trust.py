@@ -1,6 +1,8 @@
 import importlib.util
+import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 
@@ -36,6 +38,39 @@ class AwsScanRoleTrustTest(unittest.TestCase):
                 "arn:aws:iam::837279440628:role/cerebro-go-production-worker-task-role",
             ],
         )
+
+    def test_expected_principals_accept_matching_pulumi_outputs(self) -> None:
+        self.assertEqual(
+            verify_aws_scan_role_trust._expected_stack_principals_from_outputs(
+                "sec-dev",
+                {"environment": "sec-dev"},
+                "944130631940",
+                {
+                    "task_role_arn": "arn:aws:iam::944130631940:role/cerebro-sec-dev-task-role",
+                    "worker_task_role_arn": "arn:aws:iam::944130631940:role/cerebro-sec-dev-worker-task-role",
+                },
+            ),
+            [
+                "arn:aws:iam::944130631940:role/cerebro-sec-dev-task-role",
+                "arn:aws:iam::944130631940:role/cerebro-sec-dev-worker-task-role",
+            ],
+        )
+
+    def test_expected_principals_reject_mismatched_pulumi_outputs(self) -> None:
+        with self.assertRaisesRegex(ValueError, "disagrees with derived fallback"):
+            verify_aws_scan_role_trust._expected_stack_principals_from_outputs(
+                "go-prod",
+                {"environment": "go-production"},
+                "837279440628",
+                {"task_role_arn": "arn:aws:iam::837279440628:role/cerebro-go-prod-task-role"},
+            )
+
+    def test_load_outputs_requires_json_object(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "outputs.json"
+            path.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must contain a JSON object"):
+                verify_aws_scan_role_trust._load_outputs(path)
 
     def test_missing_worker_trust_is_reported(self) -> None:
         target_role = "arn:aws:iam::381491964434:role/cerebro-org-scan-role"
