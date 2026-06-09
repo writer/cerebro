@@ -179,6 +179,61 @@ func TestAWSCatalogDeclaresAssetMetadataSupportedFamily(t *testing.T) {
 	}
 }
 
+func FuzzRenderContractSourceHealthReceipt(f *testing.F) {
+	f.Add(`{"receipt_kind":"source_health.receipt","source_id":"fuzz_source","expected_cadence_seconds":3600,"stale_after_seconds":7200}`)
+	f.Add(`{"receipt_kind":"source_health.receipt","source_id":"","adapter_health_path":"/readyz"}`)
+	f.Add(`{"receipt_kind":"wrong","source_id":"fuzz_source"}`)
+	f.Add(`null`)
+	f.Add(`not-json`)
+
+	f.Fuzz(func(t *testing.T, receipt string) {
+		if len(receipt) > 4096 {
+			return
+		}
+		root := t.TempDir()
+		mkSource(t, root, "fuzz_source", "id: fuzz_source\nemitted_kinds:\n  - fuzz_source.audit\n", `
+sourceId: fuzz_source
+secretKeys:
+  - FUZZ_SOURCE_TOKEN
+runtimes:
+  - localId: audit
+    config:
+      family: audit
+      token: env:FUZZ_SOURCE_TOKEN
+`)
+		if receipt != "" {
+			mkSourceHealthReceipt(t, root, "fuzz_source", receipt)
+		}
+
+		manifests, err := Discover(root)
+		if err != nil {
+			t.Fatalf("Discover: %v", err)
+		}
+		contract, err := RenderContract(root, manifests, ContractOptions{Environment: "sec-dev", TenantID: "writer"})
+		if err != nil {
+			return
+		}
+		if len(contract.Sources) != 1 {
+			t.Fatalf("sources = %d, want 1", len(contract.Sources))
+		}
+		source := contract.Sources[0]
+		if source.SourceID != "fuzz_source" {
+			t.Fatalf("source_id = %q", source.SourceID)
+		}
+		if source.SourceHealthReceipt != nil {
+			if got := source.SourceHealthReceipt["receipt_kind"]; got != "source_health.receipt" {
+				t.Fatalf("receipt_kind = %v", got)
+			}
+			if got := source.SourceHealthReceipt["source_id"]; got != "fuzz_source" {
+				t.Fatalf("receipt source_id = %v", got)
+			}
+		}
+		if _, err := contract.MarshalJSONStable(); err != nil {
+			t.Fatalf("MarshalJSONStable: %v", err)
+		}
+	})
+}
+
 func mkSourceHealthReceipt(t *testing.T, root string, name string, receipt string) {
 	t.Helper()
 	path := filepath.Join(root, name, "source_health_receipt.json")

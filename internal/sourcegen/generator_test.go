@@ -237,6 +237,55 @@ func TestGenerateFindingOnlyScaffold(t *testing.T) {
 	}
 }
 
+func FuzzGenerateDryRun(f *testing.F) {
+	f.Add("demo_source", AuthModelBearerToken, "host", "vulnerability", "2h", "/readyz", "auth_error")
+	f.Add("demo-source", AuthModelAPIToken, "asset", "", "24h", "/healthz", "rate_limit")
+	f.Add("bad source", "oauth", "Host", "Finding", "30s", "/bad path", "schema_drift")
+
+	f.Fuzz(func(t *testing.T, sourceID string, authModel string, assetSchema string, findingSchema string, freshness string, healthPath string, failureMode string) {
+		if len(sourceID) > 64 || len(authModel) > 32 || len(assetSchema) > 64 || len(findingSchema) > 64 || len(freshness) > 32 || len(healthPath) > 128 || len(failureMode) > 64 {
+			return
+		}
+
+		result, err := Generate(Request{
+			SourceID:             sourceID,
+			SourceType:           SourceTypeJSONAPI,
+			AuthModel:            authModel,
+			AssetSchemas:         []string{assetSchema},
+			FindingSchemas:       []string{findingSchema},
+			FreshnessExpectation: freshness,
+			FailureModes:         []string{failureMode},
+			HealthPath:           healthPath,
+			OutputDir:            "out",
+			DryRun:               true,
+		})
+		if err != nil {
+			return
+		}
+		if result == nil {
+			t.Fatal("Generate() returned nil result with nil error")
+		}
+		if !result.DryRun {
+			t.Fatal("DryRun = false, want true")
+		}
+		if result.SourceID == "" || result.SourceType != SourceTypeJSONAPI || result.AuthModel == "" {
+			t.Fatalf("incomplete result = %#v", result)
+		}
+		if len(result.Files) == 0 {
+			t.Fatal("successful dry run reported no files")
+		}
+		for _, path := range result.Files {
+			clean := filepath.Clean(path)
+			if filepath.IsAbs(clean) || !strings.HasPrefix(clean, "out"+string(os.PathSeparator)) {
+				t.Fatalf("generated path escaped output dir: %q", path)
+			}
+		}
+		if !strings.Contains(result.SourceHealthReceipt, result.SourceID) || !strings.Contains(result.PRBody, result.SourceID) {
+			t.Fatalf("receipt/PR paths do not include source id: %#v", result)
+		}
+	})
+}
+
 func readGeneratedFile(t *testing.T, root string, path string) string {
 	t.Helper()
 	cleanRoot, err := filepath.Abs(root)
