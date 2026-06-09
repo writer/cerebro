@@ -4,12 +4,15 @@ import (
 	"fmt"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
 	backstagesource "github.com/writer/cerebro/sources/backstage"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
+	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
+	duosource "github.com/writer/cerebro/sources/duo"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
@@ -17,11 +20,17 @@ import (
 	grcsource "github.com/writer/cerebro/sources/grc"
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
+	kubernetessource "github.com/writer/cerebro/sources/kubernetes"
 	oktasource "github.com/writer/cerebro/sources/okta"
+	openaisource "github.com/writer/cerebro/sources/openai"
+	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
 	panopticonsource "github.com/writer/cerebro/sources/panopticon"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
+	slacksource "github.com/writer/cerebro/sources/slack"
+	tailscalesource "github.com/writer/cerebro/sources/tailscale"
+	trivysource "github.com/writer/cerebro/sources/trivy"
 	trustedendpointsource "github.com/writer/cerebro/sources/trustedendpoint"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 )
@@ -42,6 +51,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "aurelius",
 		load: func() (sourcecdk.Source, error) {
 			return aureliussource.New()
+		},
+	},
+	{
+		name: "anthropic",
+		load: func() (sourcecdk.Source, error) {
+			return anthropicsource.New()
 		},
 	},
 	{
@@ -69,9 +84,21 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
+		name: "cloudflare",
+		load: func() (sourcecdk.Source, error) {
+			return cloudflaresource.New()
+		},
+	},
+	{
 		name: "cosmo",
 		load: func() (sourcecdk.Source, error) {
 			return cosmosource.New()
+		},
+	},
+	{
+		name: "duo",
+		load: func() (sourcecdk.Source, error) {
+			return duosource.New()
 		},
 	},
 	{
@@ -105,6 +132,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
+		name: "kubernetes",
+		load: func() (sourcecdk.Source, error) {
+			return kubernetessource.New()
+		},
+	},
+	{
 		name: "kolide",
 		load: func() (sourcecdk.Source, error) {
 			return kolidesource.New()
@@ -117,9 +150,21 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
+		name: "openai",
+		load: func() (sourcecdk.Source, error) {
+			return openaisource.New()
+		},
+	},
+	{
 		name: "panopticon",
 		load: func() (sourcecdk.Source, error) {
 			return panopticonsource.New()
+		},
+	},
+	{
+		name: "pagerduty",
+		load: func() (sourcecdk.Source, error) {
+			return pagerdutysource.New()
 		},
 	},
 	{
@@ -135,6 +180,18 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
+		name: "slack",
+		load: func() (sourcecdk.Source, error) {
+			return slacksource.New()
+		},
+	},
+	{
+		name: "tailscale",
+		load: func() (sourcecdk.Source, error) {
+			return tailscalesource.New()
+		},
+	},
+	{
 		name: "security_tooling_map",
 		load: func() (sourcecdk.Source, error) {
 			return securitytoolingmapsource.New()
@@ -144,6 +201,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "trusted_endpoint",
 		load: func() (sourcecdk.Source, error) {
 			return trustedendpointsource.New()
+		},
+	},
+	{
+		name: "trivy",
+		load: func() (sourcecdk.Source, error) {
+			return trivysource.New()
 		},
 	},
 	{

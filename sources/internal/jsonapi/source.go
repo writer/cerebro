@@ -50,6 +50,8 @@ type Options struct {
 	DefaultFamily    string
 	RequireTenantID  bool
 	TokenScheme      string
+	TokenHeader      string
+	StaticHeaders    map[string]string
 	DiscoverURNScope string
 	Families         []Family
 }
@@ -295,8 +297,25 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 	if tokenScheme == "" {
 		tokenScheme = "Bearer"
 	}
+	tokenHeader := strings.TrimSpace(s.options.TokenHeader)
+	if tokenHeader == "" {
+		tokenHeader = "Authorization"
+	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", tokenScheme+" "+settings.token)
+	if strings.EqualFold(tokenHeader, "Authorization") {
+		separator := " "
+		if strings.HasSuffix(tokenScheme, "=") {
+			separator = ""
+		}
+		req.Header.Set(tokenHeader, tokenScheme+separator+settings.token)
+	} else {
+		req.Header.Set(tokenHeader, settings.token)
+	}
+	for key, value := range s.options.StaticHeaders {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			req.Header.Set(strings.TrimSpace(key), strings.TrimSpace(value))
+		}
+	}
 	client := s.client
 	if client == nil {
 		client = sourcehttp.NewClient(sourcehttp.ClientOptions{

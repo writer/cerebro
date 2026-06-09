@@ -1,0 +1,48 @@
+id: duo
+name: Duo
+description: Duo user, group, endpoint, and MFA factor source.
+emitted_kinds:
+  - duo.user
+  - duo.group
+  - duo.endpoint
+  - duo.phone
+  - duo.token
+  - duo.web_authn_credential
+event_contracts:
+  - kind: duo.user
+    schema_ref: duo/user/v1
+    required_attributes:
+      - user_id
+      - username
+    required_payload_fields:
+      - user_id
+  - kind: duo.group
+    schema_ref: duo/group/v1
+    required_attributes:
+      - group_id
+    required_payload_fields:
+      - group_id
+  - kind: duo.endpoint
+    schema_ref: duo/endpoint/v1
+    required_attributes:
+      - endpoint_id
+    required_payload_fields:
+      - endpoint_id
+  - kind: duo.phone
+    schema_ref: duo/phone/v1
+    required_attributes:
+      - phone_id
+    required_payload_fields:
+      - phone_id
+  - kind: duo.token
+    schema_ref: duo/token/v1
+    required_attributes:
+      - token_id
+    required_payload_fields:
+      - token_id
+  - kind: duo.web_authn_credential
+    schema_ref: duo/web_authn_credential/v1
+    required_attributes:
+      - credential_id
+    required_payload_fields:
+      - credential_id
