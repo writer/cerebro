@@ -2046,18 +2046,17 @@ func mcpBoundedLimit(args map[string]any, key string, defaultLimit int, maxLimit
 	if err != nil {
 		return 0, err
 	}
-	bound := uint32(math.MaxInt32)
-	if maxLimit >= 0 && maxLimit < math.MaxInt32 {
-		bound = uint32(maxLimit)
-	}
-	switch {
-	case limit == 0:
+	if limit == 0 {
 		return defaultLimit, nil
-	case limit > bound:
-		return maxLimit, nil
-	default:
-		return int(limit), nil
 	}
+	if limit > math.MaxInt32 {
+		return maxLimit, nil
+	}
+	value := int(limit)
+	if value > maxLimit {
+		return maxLimit, nil
+	}
+	return value, nil
 }
 
 func mcpAssetSearchResultFromRow(row ports.CypherRow) (mcpAssetSearchResult, error) {
@@ -2416,18 +2415,17 @@ func mcpMetadataLimit(args map[string]any, key string, defaultLimit int, maxLimi
 }
 
 func mcpNormalizeLimitValue(limit uint32, defaultLimit int, maxLimit int) int {
-	bound := uint32(math.MaxInt32)
-	if maxLimit >= 0 && maxLimit < math.MaxInt32 {
-		bound = uint32(maxLimit)
-	}
-	switch {
-	case limit == 0:
+	if limit == 0 {
 		return defaultLimit
-	case limit > bound:
-		return maxLimit
-	default:
-		return int(limit)
 	}
+	if limit > math.MaxInt32 {
+		return maxLimit
+	}
+	value := int(limit)
+	if value > maxLimit {
+		return maxLimit
+	}
+	return value
 }
 
 func mcpNeighborhoodResultCount(neighborhood *ports.EntityNeighborhood) int {
