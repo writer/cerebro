@@ -173,16 +173,23 @@ func (s *Service) detectRuntimeEvidenceConflict(ctx context.Context, event *cere
 		return "", nil
 	}
 	reader, ok := s.state.(ports.ProjectionEntityReader)
-	if !ok {
+	sourceEventReader, hasSourceEventReader := s.state.(ports.ProjectionRuntimeEvidenceReader)
+	if !ok && !hasSourceEventReader {
 		return "", nil
 	}
 	for _, entity := range entities {
 		if entity == nil || entity.EntityType != "runtime.evidence" {
 			continue
 		}
-		existing, err := reader.GetProjectedEntity(ctx, entity.URN)
+		existing, err := projectedRuntimeEvidenceBySourceEvent(ctx, sourceEventReader, entity)
 		if err != nil {
-			return "", fmt.Errorf("read projected runtime evidence %q: %w", entity.URN, err)
+			return "", err
+		}
+		if existing == nil && ok {
+			existing, err = reader.GetProjectedEntity(ctx, entity.URN)
+			if err != nil {
+				return "", fmt.Errorf("read projected runtime evidence %q: %w", entity.URN, err)
+			}
 		}
 		if existing == nil || existing.EntityType != "runtime.evidence" {
 			continue
@@ -195,6 +202,26 @@ func (s *Service) detectRuntimeEvidenceConflict(ctx context.Context, event *cere
 		}
 	}
 	return "", nil
+}
+
+func projectedRuntimeEvidenceBySourceEvent(ctx context.Context, reader ports.ProjectionRuntimeEvidenceReader, entity *ports.ProjectedEntity) (*ports.ProjectedEntity, error) {
+	if reader == nil || entity == nil {
+		return nil, nil
+	}
+	tenantID := strings.TrimSpace(entity.Attributes["tenant_id"])
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(entity.TenantID)
+	}
+	sourceRuntimeID := strings.TrimSpace(entity.Attributes[ports.EventAttributeSourceRuntimeID])
+	sourceEventID := strings.TrimSpace(entity.Attributes["source_event_id"])
+	if tenantID == "" || sourceRuntimeID == "" || sourceEventID == "" {
+		return nil, nil
+	}
+	existing, err := reader.GetProjectedRuntimeEvidenceBySourceEvent(ctx, tenantID, sourceRuntimeID, sourceEventID)
+	if err != nil {
+		return nil, fmt.Errorf("read projected runtime evidence by source event: %w", err)
+	}
+	return existing, nil
 }
 
 func sameRuntimeEvidenceSourceEvent(existing map[string]string, incoming map[string]string) bool {

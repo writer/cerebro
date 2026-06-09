@@ -27,6 +27,7 @@ var ensureProjectionStatements = []string{
 	`CREATE INDEX IF NOT EXISTS entities_tenant_type_idx ON entities (tenant_id, entity_type)`,
 	`ALTER TABLE entities ADD COLUMN IF NOT EXISTS runtime_id TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS entities_tenant_runtime_idx ON entities (tenant_id, runtime_id)`,
+	`CREATE INDEX IF NOT EXISTS entities_runtime_evidence_source_event_idx ON entities (tenant_id, runtime_id, (attributes_json ->> 'source_event_id')) WHERE entity_type = 'runtime.evidence'`,
 	`CREATE TABLE IF NOT EXISTS entity_links (
   from_urn TEXT NOT NULL,
   relation TEXT NOT NULL,
@@ -95,6 +96,18 @@ func projectedEntityGetSQL() string {
 SELECT urn, tenant_id, source_id, runtime_id, entity_type, label, attributes_json
 FROM entities
 WHERE urn = $1`
+}
+
+func projectedRuntimeEvidenceBySourceEventSQL() string {
+	return `
+SELECT urn, tenant_id, source_id, runtime_id, entity_type, label, attributes_json
+FROM entities
+WHERE tenant_id = $1
+  AND entity_type = 'runtime.evidence'
+  AND (runtime_id = $2 OR attributes_json ->> 'source_runtime_id' = $2)
+  AND attributes_json ->> 'source_event_id' = $3
+ORDER BY updated_at DESC, urn
+LIMIT 1`
 }
 
 func projectedEntityCleanupSQL(request ports.ProjectionCleanupRequest) (string, []any, error) {
@@ -412,6 +425,55 @@ func (s *Store) GetProjectedEntity(ctx context.Context, urn string) (*ports.Proj
 	if len(attributesRaw) != 0 {
 		if err := json.Unmarshal(attributesRaw, &entity.Attributes); err != nil {
 			return nil, fmt.Errorf("decode projected entity attributes %q: %w", normalizedURN, err)
+		}
+	}
+	if entity.Attributes == nil {
+		entity.Attributes = map[string]string{}
+	}
+	return entity, nil
+}
+
+// GetProjectedRuntimeEvidenceBySourceEvent reads a runtime evidence entity by
+// the stable source event identity used for EvidenceCAS idempotency checks.
+func (s *Store) GetProjectedRuntimeEvidenceBySourceEvent(ctx context.Context, tenantID string, sourceRuntimeID string, sourceEventID string) (*ports.ProjectedEntity, error) {
+	normalizedTenantID := strings.TrimSpace(tenantID)
+	if normalizedTenantID == "" {
+		return nil, errors.New("projected runtime evidence tenant_id is required")
+	}
+	normalizedSourceRuntimeID := strings.TrimSpace(sourceRuntimeID)
+	if normalizedSourceRuntimeID == "" {
+		return nil, errors.New("projected runtime evidence source_runtime_id is required")
+	}
+	normalizedSourceEventID := strings.TrimSpace(sourceEventID)
+	if normalizedSourceEventID == "" {
+		return nil, errors.New("projected runtime evidence source_event_id is required")
+	}
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureProjectionTables(ctx); err != nil {
+		return nil, err
+	}
+	entity := &ports.ProjectedEntity{}
+	var attributesRaw []byte
+	err := s.db.QueryRowContext(ctx, projectedRuntimeEvidenceBySourceEventSQL(), normalizedTenantID, normalizedSourceRuntimeID, normalizedSourceEventID).Scan(
+		&entity.URN,
+		&entity.TenantID,
+		&entity.SourceID,
+		&entity.RuntimeID,
+		&entity.EntityType,
+		&entity.Label,
+		&attributesRaw,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get projected runtime evidence by source event: %w", err)
+	}
+	if len(attributesRaw) != 0 {
+		if err := json.Unmarshal(attributesRaw, &entity.Attributes); err != nil {
+			return nil, fmt.Errorf("decode projected runtime evidence attributes: %w", err)
 		}
 	}
 	if entity.Attributes == nil {

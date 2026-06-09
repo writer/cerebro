@@ -46,6 +46,28 @@ func (r *projectionRecorder) GetProjectedEntity(_ context.Context, urn string) (
 	return cloneProjectedEntity(r.entities[urn]), nil
 }
 
+func (r *projectionRecorder) GetProjectedRuntimeEvidenceBySourceEvent(_ context.Context, tenantID string, sourceRuntimeID string, sourceEventID string) (*ports.ProjectedEntity, error) {
+	if r == nil || r.entities == nil {
+		return nil, nil
+	}
+	for _, entity := range r.entities {
+		if entity == nil || entity.EntityType != "runtime.evidence" {
+			continue
+		}
+		if entity.TenantID != tenantID {
+			continue
+		}
+		if entity.Attributes[ports.EventAttributeSourceRuntimeID] != sourceRuntimeID {
+			continue
+		}
+		if entity.Attributes["source_event_id"] != sourceEventID {
+			continue
+		}
+		return cloneProjectedEntity(entity), nil
+	}
+	return nil, nil
+}
+
 func (r *projectionRecorder) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
 	if link == nil {
 		return nil
@@ -3947,6 +3969,7 @@ func TestProjectEvidenceCASIRISReferenceLinksCaseEvidence(t *testing.T) {
 		Kind:     "evidence_cas.object",
 		Attributes: map[string]string{
 			"case_id":                       "123",
+			"case_link_status":              "linked",
 			"evidence_cas_blocks_count":     "3",
 			"evidence_cas_commit_id":        "commit-1",
 			"evidence_cas_content_type":     "application/x-tar",
@@ -3961,6 +3984,7 @@ func TestProjectEvidenceCASIRISReferenceLinksCaseEvidence(t *testing.T) {
 			"observed_at":                   "2026-06-08T00:00:00Z",
 			"resource_entity_type":          "case",
 			"resource_id":                   "123",
+			"resource_link_status":          "linked",
 			"resource_name":                 "IRIS case 123",
 			"resource_type":                 "case",
 			"resource_urn":                  "urn:cerebro:writer:case:123",
@@ -4009,8 +4033,10 @@ func TestProjectEvidenceCASPreservesRuntimeIdentityAndSourceCorrelation(t *testi
 			"occurred_at":              "2026-06-08T00:00:00Z",
 			"observed_at":              "2026-06-08T00:01:00Z",
 			"request_id":               "request-123",
+			"case_link_status":         "linked",
 			"resource_entity_type":     "aws.bucket",
 			"resource_id":              "bucket-1",
+			"resource_link_status":     "linked",
 			"resource_name":            "bucket-1",
 			"resource_type":            "bucket",
 			"resource_urn":             "urn:cerebro:writer:aws_bucket:bucket-1",
@@ -4081,6 +4107,7 @@ func TestProjectEvidenceCASReplayIsIdempotentAndConflictsAreRejected(t *testing.
 			"evidence_cas_ref_type":  "evidencecas.manifest.v2",
 			"evidence_cas_uri":       "evidencecas://cases/case-123/evidence/evidence-456",
 			"evidence_id":            "evidence-456",
+			"resource_link_status":   "linked",
 			"resource_urn":           "urn:cerebro:writer:case:case-123",
 			"source_event_id":        "iris-event-123",
 			"source_runtime_id":      "iris-runtime",
@@ -4113,7 +4140,7 @@ func TestProjectEvidenceCASReplayIsIdempotentAndConflictsAreRejected(t *testing.
 			t.Fatalf("Project(conflict) error = nil, want conflict")
 		}
 	})
-	payload := sourceProjectionTelemetryPayload(t, stderr, "source_projection.runtime_evidence")
+	payload := sourceProjectionTelemetryPayload(t, stderr)
 	if got := payload["outcome"]; got != "conflict" {
 		t.Fatalf("conflict telemetry outcome = %v, want conflict", got)
 	}
@@ -4125,6 +4152,39 @@ func TestProjectEvidenceCASReplayIsIdempotentAndConflictsAreRejected(t *testing.
 	}
 	if got := state.entities["urn:cerebro:writer:runtime_evidence:evidence-456"].Attributes["evidence_cas_digest"]; got != "sha256abc" {
 		t.Fatalf("digest after conflict = %q, want original sha256abc", got)
+	}
+
+	conflictingID := &cerebrov1.EventEnvelope{
+		Id:       event.GetId(),
+		TenantId: event.GetTenantId(),
+		SourceId: event.GetSourceId(),
+		Kind:     event.GetKind(),
+		Attributes: map[string]string{
+			"evidence_cas_commit_id": "commit-1",
+			"evidence_cas_digest":    "sha256abc",
+			"evidence_cas_ref_type":  "evidencecas.manifest.v2",
+			"evidence_cas_uri":       "evidencecas://cases/case-123/evidence/evidence-789",
+			"evidence_id":            "evidence-789",
+			"resource_urn":           "urn:cerebro:writer:case:case-123",
+			"source_event_id":        "iris-event-123",
+			"source_runtime_id":      "iris-runtime",
+		},
+	}
+	stderr = captureSourceProjectionStderr(t, func() {
+		_, err := service.Project(context.Background(), conflictingID)
+		if err == nil {
+			t.Fatalf("Project(conflicting evidence_id) error = nil, want conflict")
+		}
+	})
+	payload = sourceProjectionTelemetryPayload(t, stderr)
+	if got := payload["outcome"]; got != "conflict" {
+		t.Fatalf("conflicting evidence_id telemetry outcome = %v, want conflict", got)
+	}
+	if got := payload["conflict_category"]; got != "evidence_id" {
+		t.Fatalf("conflicting evidence_id conflict_category = %v, want evidence_id", got)
+	}
+	if _, ok := state.entities["urn:cerebro:writer:runtime_evidence:evidence-789"]; ok {
+		t.Fatalf("conflicting duplicate source_event_id created second runtime evidence")
 	}
 }
 
@@ -4172,7 +4232,7 @@ func TestProjectEvidenceCASMissingLinksAreObservableAndBounded(t *testing.T) {
 		t.Fatalf("len(links) = %d, want 0 for unresolved resource/case", len(state.links))
 	}
 
-	payload := sourceProjectionTelemetryPayload(t, stderr, "source_projection.runtime_evidence")
+	payload := sourceProjectionTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
 		"outcome":              "projected",
 		"resource_link_status": "missing",
@@ -4187,6 +4247,152 @@ func TestProjectEvidenceCASMissingLinksAreObservableAndBounded(t *testing.T) {
 		}
 	}
 	for _, prohibited := range []string{"evidence-orphan", "iris-event-orphan", "sha256orphan", "evidencecas://", "case-missing"} {
+		if strings.Contains(stderr, prohibited) {
+			t.Fatalf("telemetry leaked high-cardinality value %q: %s", prohibited, stderr)
+		}
+	}
+
+	stderr = captureSourceProjectionStderr(t, func() {
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       "iris-evidence-unresolved-resource",
+			TenantId: "writer",
+			SourceId: "evidence_cas",
+			Kind:     "evidence_cas.object",
+			Attributes: map[string]string{
+				"case_id":               "case-unresolved",
+				"case_link_status":      "missing",
+				"evidence_cas_digest":   "sha256unresolved",
+				"evidence_cas_ref_type": "evidencecas.manifest.v2",
+				"evidence_cas_uri":      "evidencecas://cases/case-unresolved/evidence/evidence-unresolved",
+				"evidence_id":           "evidence-unresolved",
+				"resource_link_status":  "missing",
+				"resource_urn":          "urn:cerebro:writer:aws_bucket:missing-bucket",
+				"source_event_id":       "iris-event-unresolved",
+				"source_runtime_id":     "iris-runtime",
+				"source_system":         "iris",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project(unresolved resource) error = %v", err)
+		}
+	})
+	unresolvedEvidenceURN := "urn:cerebro:writer:runtime_evidence:evidence-unresolved"
+	unresolvedEvidence := state.entities[unresolvedEvidenceURN]
+	if unresolvedEvidence == nil {
+		t.Fatalf("runtime evidence entity %q missing", unresolvedEvidenceURN)
+	}
+	if got := unresolvedEvidence.Attributes["resource_link_status"]; got != "missing" {
+		t.Fatalf("unresolved resource_link_status = %q, want missing", got)
+	}
+	if got := unresolvedEvidence.Attributes["case_link_status"]; got != "missing" {
+		t.Fatalf("unresolved case_link_status = %q, want missing", got)
+	}
+	if _, ok := state.entities["urn:cerebro:writer:aws_bucket:missing-bucket"]; ok {
+		t.Fatalf("unexpected fabricated resource entity for unresolved resource_urn")
+	}
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_bucket:missing-bucket", relationHasEvidence, unresolvedEvidenceURN)
+	assertProjectedLinkMissing(t, state, unresolvedEvidenceURN, relationObservedOn, "urn:cerebro:writer:aws_bucket:missing-bucket")
+	if _, ok := state.entities["urn:cerebro:writer:case:case-unresolved"]; ok {
+		t.Fatalf("unexpected fabricated case entity for unresolved case_id")
+	}
+	payload = sourceProjectionTelemetryPayload(t, stderr)
+	if got := payload["resource_link_status"]; got != "missing" {
+		t.Fatalf("unresolved resource telemetry status = %v, want missing", got)
+	}
+	if got := payload["case_link_status"]; got != "missing" {
+		t.Fatalf("unresolved case telemetry status = %v, want missing", got)
+	}
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "iris-evidence-resource-only",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"case_id":                 "case-missing-resource-ok",
+			"evidence_cas_digest":     "sha256resource",
+			"evidence_cas_ref_type":   "evidencecas.manifest.v2",
+			"evidence_cas_uri":        "evidencecas://cases/case-missing-resource-ok/evidence/evidence-resource",
+			"evidence_id":             "evidence-resource",
+			"resource_entity_type":    "aws.bucket",
+			"resource_link_status":    "linked",
+			"resource_urn":            "urn:cerebro:writer:aws_bucket:linked-bucket",
+			"source_event_id":         "iris-event-resource",
+			"source_runtime_id":       "iris-runtime",
+			"source_system":           "iris",
+			"unresolved_case_context": "true",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project(resource only) error = %v", err)
+	}
+	resourceEvidenceURN := "urn:cerebro:writer:runtime_evidence:evidence-resource"
+	if got := state.entities[resourceEvidenceURN].Attributes["resource_link_status"]; got != "linked" {
+		t.Fatalf("resource-only resource_link_status = %q, want linked", got)
+	}
+	if got := state.entities[resourceEvidenceURN].Attributes["case_link_status"]; got != "missing" {
+		t.Fatalf("resource-only case_link_status = %q, want missing", got)
+	}
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_bucket:linked-bucket", relationHasEvidence, resourceEvidenceURN)
+	assertProjectedLink(t, state, resourceEvidenceURN, relationObservedOn, "urn:cerebro:writer:aws_bucket:linked-bucket")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:case:case-missing-resource-ok", relationHasEvidence, resourceEvidenceURN)
+}
+
+func TestProjectEvidenceCASRequiresExplicitLinkabilityBeforeCreatingContextEntities(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	stderr := captureSourceProjectionStderr(t, func() {
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       "iris-evidence-implicit-context",
+			TenantId: "writer",
+			SourceId: "evidence_cas",
+			Kind:     "evidence_cas.object",
+			Attributes: map[string]string{
+				"case_id":               "case-implicit",
+				"evidence_cas_digest":   "sha256implicit",
+				"evidence_cas_ref_type": "evidencecas.manifest.v2",
+				"evidence_cas_uri":      "evidencecas://cases/case-implicit/evidence/evidence-implicit",
+				"evidence_id":           "evidence-implicit",
+				"resource_urn":          "urn:cerebro:writer:aws_bucket:implicit-bucket",
+				"source_event_id":       "iris-event-implicit",
+				"source_runtime_id":     "iris-runtime",
+				"source_system":         "iris",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project(implicit context) error = %v", err)
+		}
+	})
+
+	evidenceURN := "urn:cerebro:writer:runtime_evidence:evidence-implicit"
+	evidence := state.entities[evidenceURN]
+	if evidence == nil {
+		t.Fatalf("runtime evidence entity %q missing", evidenceURN)
+	}
+	if got := evidence.Attributes["resource_link_status"]; got != "missing" {
+		t.Fatalf("resource_link_status = %q, want missing when linkability is not explicit", got)
+	}
+	if got := evidence.Attributes["case_link_status"]; got != "missing" {
+		t.Fatalf("case_link_status = %q, want missing when linkability is not explicit", got)
+	}
+	if _, ok := state.entities["urn:cerebro:writer:aws_bucket:implicit-bucket"]; ok {
+		t.Fatalf("unexpected resource entity fabricated from unresolved EvidenceCAS resource_urn")
+	}
+	if _, ok := state.entities["urn:cerebro:writer:case:case-implicit"]; ok {
+		t.Fatalf("unexpected case entity fabricated from unresolved EvidenceCAS case_id")
+	}
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_bucket:implicit-bucket", relationHasEvidence, evidenceURN)
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:case:case-implicit", relationHasEvidence, evidenceURN)
+
+	payload := sourceProjectionTelemetryPayload(t, stderr)
+	if got := payload["resource_link_status"]; got != "missing" {
+		t.Fatalf("resource_link_status telemetry = %v, want missing", got)
+	}
+	if got := payload["case_link_status"]; got != "missing" {
+		t.Fatalf("case_link_status telemetry = %v, want missing", got)
+	}
+	for _, prohibited := range []string{"implicit-bucket", "case-implicit", "evidence-implicit", "iris-event-implicit", "sha256implicit"} {
 		if strings.Contains(stderr, prohibited) {
 			t.Fatalf("telemetry leaked high-cardinality value %q: %s", prohibited, stderr)
 		}
@@ -4208,6 +4414,7 @@ func TestProjectEvidenceCASTenantScopedLinksForCollidingIdentifiers(t *testing.T
 				"evidence_cas_ref_type": "evidencecas.manifest.v2",
 				"evidence_cas_uri":      "evidencecas://cases/case-1/evidence/evidence-1",
 				"evidence_id":           "evidence-1",
+				"resource_link_status":  "linked",
 				"resource_urn":          "urn:cerebro:" + tenantID + ":case:case-1",
 				"source_event_id":       "event-1",
 				"source_runtime_id":     "runtime-1",
@@ -4645,8 +4852,9 @@ func captureSourceProjectionStderr(t *testing.T, fn func()) string {
 	return string(payload)
 }
 
-func sourceProjectionTelemetryPayload(t *testing.T, stderr string, name string) map[string]any {
+func sourceProjectionTelemetryPayload(t *testing.T, stderr string) map[string]any {
 	t.Helper()
+	const name = "source_projection.runtime_evidence"
 	lines := strings.Split(strings.TrimSpace(stderr), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		if strings.TrimSpace(lines[i]) == "" {
