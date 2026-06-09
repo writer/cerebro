@@ -279,7 +279,7 @@ func (s *Source) fixEvents(st settings, report report) ([]*primitives.Event, err
 			}
 			attrs := vulnerabilityAttrs(report, scan, vuln)
 			attrs["fixed_version"] = vuln.FixedVersion
-			event, err := s.event(st, "trivy-fix-"+stableID(vuln.VulnerabilityID+"|"+vuln.PkgName+"|"+vuln.FixedVersion), "trivy.fix", "trivy/fix/v1", attrs, attrs, s.now())
+			event, err := s.event(st, "trivy-fix-"+stableID(imageDigest(report)+"|"+vuln.VulnerabilityID+"|"+vuln.PkgName+"|"+vuln.FixedVersion), "trivy.fix", "trivy/fix/v1", attrs, attrs, s.now())
 			if err != nil {
 				return nil, err
 			}

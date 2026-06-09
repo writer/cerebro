@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,9 @@ type Family struct {
 	StaticQuery      map[string]string
 	ConfigQuery      map[string]string
 	PageSizeParams   []string
+	ListKeys         []string
+	MapRecords       map[string]string
+	Singleton        bool
 	RequireID        bool
 }
 
@@ -248,7 +252,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	if err := s.getJSON(ctx, settings, query, &body); err != nil {
 		return nil, "", err
 	}
-	items, next, err := parseListResponse(settings.family, body)
+	items, next, err := parseListResponse(family, body)
 	if err != nil {
 		return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
 	}
@@ -353,7 +357,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 	return nil
 }
 
-func parseListResponse(family string, raw json.RawMessage) ([]json.RawMessage, string, error) {
+func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, string, error) {
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err == nil {
 		return items, "", nil
@@ -362,20 +366,83 @@ func parseListResponse(family string, raw json.RawMessage) ([]json.RawMessage, s
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return nil, "", err
 	}
-	for _, key := range listKeys(family) {
+	if family.Singleton {
+		item, err := singletonRecord(raw, family.Name)
+		if err != nil {
+			return nil, "", err
+		}
+		return []json.RawMessage{item}, responseCursor(object), nil
+	}
+	for _, key := range responseListKeys(family) {
 		if value, ok := object[key]; ok {
 			if err := json.Unmarshal(value, &items); err == nil {
 				return items, responseCursor(object), nil
 			}
 		}
 	}
+	for objectKey, valueKey := range family.MapRecords {
+		if value, ok := object[objectKey]; ok {
+			items, err := recordsFromObjectMap(value, valueKey)
+			if err != nil {
+				return nil, "", err
+			}
+			return items, responseCursor(object), nil
+		}
+	}
 	return nil, "", fmt.Errorf("response did not contain a record list")
 }
 
-func listKeys(family string) []string {
-	normalized := strings.TrimSpace(family)
+func responseListKeys(family Family) []string {
+	keys := make([]string, 0, len(family.ListKeys)+8)
+	for _, key := range family.ListKeys {
+		if key = strings.TrimSpace(key); key != "" {
+			keys = append(keys, key)
+		}
+	}
+	normalized := strings.TrimSpace(family.Name)
 	compact := strings.ReplaceAll(normalized, "_", "")
-	return []string{"data", "items", "results", "records", normalized, normalized + "s", compact, compact + "s"}
+	keys = append(keys, "data", "items", "results", "records", normalized, normalized+"s", compact, compact+"s")
+	return keys
+}
+
+func recordsFromObjectMap(raw json.RawMessage, valueKey string) ([]json.RawMessage, error) {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(valueKey) == "" {
+		valueKey = "value"
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	items := make([]json.RawMessage, 0, len(keys))
+	for _, key := range keys {
+		record := map[string]json.RawMessage{
+			"id":   json.RawMessage(strconv.Quote(key)),
+			"name": json.RawMessage(strconv.Quote(key)),
+		}
+		record[valueKey] = values[key]
+		rawRecord, err := json.Marshal(record)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, rawRecord)
+	}
+	return items, nil
+}
+
+func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, err
+	}
+	if _, ok := object["id"]; !ok && strings.TrimSpace(fallbackID) != "" {
+		object["id"] = json.RawMessage(strconv.Quote(strings.TrimSpace(fallbackID)))
+	}
+	return json.Marshal(object)
 }
 
 func responseCursor(object map[string]json.RawMessage) string {

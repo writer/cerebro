@@ -20,7 +20,7 @@ func genericInventoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	if family == "" {
 		family = strings.TrimPrefix(strings.TrimSpace(event.GetKind()), sourceID+".")
 	}
-	entityID := firstProjectionValue(attrs, "external_id", family+"_id", "id", "name", "email", "username", "package", "vulnerability_id")
+	entityID := inventoryEntityID(event.GetKind(), family, attrs)
 	if entityID == "" {
 		entityID = strings.TrimSpace(event.GetId())
 	}
@@ -39,6 +39,75 @@ func genericInventoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	}
 	stampProjectionRuntime(event, []*ports.ProjectedEntity{entity}, nil)
 	return []*ports.ProjectedEntity{entity}, nil, nil
+}
+
+func inventoryEntityID(kind string, family string, attrs map[string]string) string {
+	switch strings.TrimSpace(kind) {
+	case "kubernetes.cluster":
+		return joinProjectionIdentity(attrs, "cluster_id")
+	case "kubernetes.namespace":
+		return joinProjectionIdentity(attrs, "cluster_id", "resource_id", "namespace")
+	case "kubernetes.pod":
+		return joinProjectionIdentity(attrs, "cluster_id", "namespace", "resource_id", "name")
+	case "kubernetes.container":
+		return joinProjectionIdentity(attrs, "cluster_id", "namespace", "resource_id", "container_name")
+	case "trivy.image_scan":
+		return joinProjectionIdentity(attrs, "image_digest")
+	case "trivy.image_package":
+		return joinProjectionIdentity(attrs, "image_digest", "package", "version")
+	case "trivy.image_vulnerability":
+		return joinProjectionIdentity(attrs, "image_digest", "vulnerability_id", "package", "installed_version")
+	case "trivy.fix":
+		return joinProjectionIdentity(attrs, "image_digest", "vulnerability_id", "package", "fixed_version")
+	}
+	return firstProjectionValue(attrs,
+		family+"_id",
+		"record_id",
+		"api_key_id",
+		"service_account_id",
+		"project_id",
+		"workspace_id",
+		"account_id",
+		"member_id",
+		"role_id",
+		"zone_id",
+		"endpoint_id",
+		"group_id",
+		"phone_id",
+		"token_id",
+		"credential_id",
+		"team_id",
+		"channel_id",
+		"user_id",
+		"device_id",
+		"tailnet",
+		"tag_id",
+		"service_id",
+		"grant_id",
+		"schedule_id",
+		"escalation_policy_id",
+		"integration_id",
+		"vendor_id",
+		"resource_id",
+		"uid",
+		"id",
+		"name",
+		"email",
+		"username",
+		"vulnerability_id",
+		"package",
+		"external_id",
+	)
+}
+
+func joinProjectionIdentity(attrs map[string]string, keys ...string) string {
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if value := strings.TrimSpace(attrs[key]); value != "" {
+			values = append(values, value)
+		}
+	}
+	return strings.Join(values, "|")
 }
 
 func inventoryLabel(attrs map[string]string, fallback string) string {
