@@ -262,6 +262,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `backstage` | Backstage catalog source | components |
+| `cerebro` | Cerebro product access telemetry source backed by structured NDJSON archives | API access audit events |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
 | `evidence_cas` | EvidenceCAS content-addressed evidence reference source | object manifests |
 | `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | audit, groups, IAM role assignments, service accounts, resource exposure |

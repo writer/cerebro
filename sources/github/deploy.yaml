@@ -14,6 +14,38 @@ runtimes:
       owner: writer
       per_page: "100"
       token: env:GITHUB_TOKEN
+  - localId: cerebro-repository
+    config:
+      family: repository
+      owner: writer
+      per_page: "100"
+      repo: cerebro
+      token: env:GITHUB_TOKEN
+  - localId: cerebro-pull-request
+    config:
+      family: pull_request
+      owner: writer
+      per_page: "100"
+      repo: cerebro
+      state: all
+      token: env:GITHUB_TOKEN
+  - localId: cerebro-dependabot-alert
+    config:
+      family: dependabot_alert
+      owner: writer
+      per_page: "100"
+      repo: cerebro
+      state: open
+      token: env:GITHUB_TOKEN
+  - localId: cerebro-audit
+    config:
+      family: audit
+      include: all
+      order: desc
+      owner: writer
+      per_page: "100"
+      phrase: repo:writer/cerebro
+      token: env:GITHUB_TOKEN
   - localId: org-inventory
     config:
       family: org_inventory

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "cerebro-api-access-audit-request-1",
+    "tenant_id": "writer",
+    "source_id": "cerebro",
+    "kind": "cerebro.api_access",
+    "occurred_at": "2026-06-09T12:00:00Z",
+    "schema_ref": "cerebro/api_access/v1",
+    "payload": {
+      "kind": "event",
+      "name": "cerebro.api.access",
+      "ts": "2026-06-09T12:00:00Z",
+      "outcome": "allowed",
+      "route": "GET /sources",
+      "method": "GET"
+    },
+    "attributes": {
+      "event_type": "GET /sources",
+      "outcome_result": "allowed",
+      "route": "GET /sources",
+      "method": "GET"
+    }
+  }
+]

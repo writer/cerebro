@@ -21,6 +21,9 @@ vendor/
 go.work
 tmp/
 
+# Node
+node_modules/
+
 # Environment
 .env
 .env.local

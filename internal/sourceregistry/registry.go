@@ -8,6 +8,7 @@ import (
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
 	backstagesource "github.com/writer/cerebro/sources/backstage"
+	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
@@ -59,6 +60,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "backstage",
 		load: func() (sourcecdk.Source, error) {
 			return backstagesource.New()
+		},
+	},
+	{
+		name: "cerebro",
+		load: func() (sourcecdk.Source, error) {
+			return cerebrosource.New()
 		},
 	},
 	{
