@@ -15,6 +15,28 @@ Before you start, confirm the following:
 3. **You have the credentials path planned.** Cerebro never reads plaintext secrets from stack config. Each secret must be reachable through one of the two supported paths in [Wire credentials](#wire-credentials).
 4. **You have decided on a `runtime_id`.** Runtime ids are stable identifiers used by the orchestrator, the postgres cursor table, and downstream graph projections. Pick a slug you will not need to rename: `{tenant}-{source}-{family}` is the established pattern (`writer-okta-audit`, `writer-github-audit-writerinternal`, …). Renaming a runtime_id after it has advanced means rewinding the cursor and reingesting; do not do it casually.
 
+## New source authoring
+
+If the `sourceId` does not exist yet, start in the upstream `writer/cerebro` repo with the Source Runtime SDK generator instead of hand-writing the adapter surface:
+
+```bash
+./bin/cerebro source-runtime sdk new <source-id> \
+  source_type=json_api \
+  auth_model=bearer_token \
+  asset_schemas=<schema[,schema]> \
+  finding_schemas=<schema[,schema]> \
+  freshness_expectation=24h \
+  dry_run=true
+```
+
+The generator emits the source adapter, event contracts, deploy manifest, EvidenceCAS reference mapping, graph projection scaffolds, tests, `SOURCE_RUNTIME.md`, `PR_BODY.md`, and `source_health_receipt.json`. Treat those generated artifacts as upstream review evidence:
+
+- `deploy.yaml` is the source-owned runtime contract that release tooling turns into `cerebro-runtime-contract.json`.
+- `source_health_receipt.json` records generated freshness, failure-mode, and health-path expectations that this repo verifies when a stack declares the generated source runtime.
+- `SOURCE_RUNTIME.md` and `PR_BODY.md` summarize the source authoring choices for upstream review and downstream release notes.
+
+Do not add `cerebro:sourceRuntimes` or schedules here until a promoted `cerebro:imageTag` includes the generated source. Until then, this repo can only track the planned deployment and credentials path.
+
 ## Configuration surface
 
 A source onboarding PR touches at most three keys in the stack file plus, optionally, one IAM scope key.
@@ -117,6 +139,7 @@ Run these before requesting review. They are cheap and catch the most common mis
    ```
    The preview should show: a new/updated EventBridge schedule, no IAM diff outside `cerebro:s3Sources` (if you touched it), and no diff on RDS, NATS, Neo4j, or the ALB. If you see a diff on a resource you did not intend to change, stop and reconcile before opening the PR.
 3. **Env-reference sanity:** confirm every `env:<NAME>` in your new runtime entry appears in `cerebro:sourceSecretKeys` (or is already in the existing list). The Pulumi program will fail preview if a reference is unresolved, but it is faster to check by eye first.
+4. **Generated source receipt sanity:** for generated sources, confirm the stack runtime config preserves the generated `health_path`, `expected_cadence_seconds`, and `stale_after_seconds` values from `source_health_receipt.json` unless the upstream source PR intentionally changed them. Runtime contract verification fails if a stack-declared generated source drifts from the signed receipt.
 
 ## Rollout
 
@@ -136,8 +159,9 @@ Run these before requesting review. They are cheap and catch the most common mis
 
 This runbook covers onboarding an *instance* of an existing source. If you need a new `sourceId` (a new kind of source the runtime does not yet know how to talk to):
 
-1. The runtime implementation lands in the upstream Cerebro repo and reaches a tagged image.
-2. That tag is promoted into `cerebro:imageTag` here, either as a normal bump or alongside the new `cerebro:sourceRuntimes` entry.
-3. Then follow this runbook for the new instance.
+1. Generate the upstream source scaffold with `source-runtime sdk new` and land the reviewed runtime implementation in `writer/cerebro`.
+2. The upstream source reaches a tagged image with a signed runtime deploy contract.
+3. That tag is promoted into `cerebro:imageTag` here, either as a normal bump or alongside the new `cerebro:sourceRuntimes` entry.
+4. Then follow this runbook for the new instance.
 
 Until those three steps are complete, the new `sourceId` will fail bootstrap and the orchestrator schedule will error every tick.

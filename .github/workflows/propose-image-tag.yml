@@ -523,6 +523,18 @@ jobs:
             if [ -n "${RELEASE_URL}" ]; then
               echo "- Release: ${RELEASE_URL}"
             fi
+            if [ -n "${CONTRACT_PATH}" ] && [ -s "${CONTRACT_PATH}" ]; then
+              contract_sources="$(jq '[.sources[]?] | length' "${CONTRACT_PATH}")"
+              contract_runtimes="$(jq '[.sources[]?.runtimes[]?] | length' "${CONTRACT_PATH}")"
+              contract_receipts="$(
+                jq '[
+                  (.source_health_receipts[]? // empty),
+                  (.sources[]?.source_health_receipts[]? // empty),
+                  (.sources[]?.source_health_receipt? // empty)
+                ] | map(select(type == "object")) | length' "${CONTRACT_PATH}"
+              )"
+              echo "- Runtime contract: ${contract_sources} sources, ${contract_runtimes} manifest runtimes, ${contract_receipts} source-health receipts"
+            fi
             echo
             echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
           } > "${body}"
