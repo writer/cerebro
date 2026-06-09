@@ -1036,8 +1036,10 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 	assetLimit := 5
 	if rawLimit, err := mcpUint32Arg(args, "asset_limit"); err != nil {
 		return nil, err
+	} else if rawLimit > uint32(maxMCPAssetLimit) {
+		assetLimit = maxMCPAssetLimit
 	} else if rawLimit != 0 {
-		assetLimit = int(min(rawLimit, uint32(maxMCPAssetLimit)))
+		assetLimit = int(rawLimit)
 	}
 	assets := []mcpAssetSearchResult{}
 	neighborhoods := []any{}
