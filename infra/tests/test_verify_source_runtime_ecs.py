@@ -763,6 +763,52 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertNotIn("123456789012", message)
         self.assertNotIn("arn:aws", message)
 
+    def test_verify_task_includes_bootstrap_logs_when_bootstrap_fails(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+            target={"Arn": "cluster"},
+        )
+        task = {
+            "taskArn": "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-arn",
+            "taskDefinitionArn": "task-def",
+            "stopCode": "TaskFailedToStart",
+            "stoppedReason": "Task failed to start",
+            "containers": [
+                {"name": "source-runtime-bootstrap", "lastStatus": "STOPPED", "exitCode": 1},
+                {"name": "cerebro", "lastStatus": "STOPPED"},
+            ],
+        }
+
+        def fake_task_logs(_task, _region, cache=None, container_name="cerebro"):
+            if container_name == "source-runtime-bootstrap":
+                return [
+                    {
+                        "kind": "event",
+                        "name": "source_runtime.bootstrap",
+                        "status": "failed",
+                        "reason": "runtime state bootstrap failed",
+                        "secret": "do-not-print",
+                    }
+                ]
+            return []
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._describe_tasks", return_value=[task]),
+            patch("scripts.verify_source_runtime_ecs._task_logs", side_effect=fake_task_logs),
+        ):
+            with self.assertRaises(RuntimeTaskFailedError) as context:
+                _verify_task(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-arn", "us-east-1")
+
+        message = str(context.exception)
+        self.assertIn("source-runtime-bootstrap logs", message)
+        self.assertIn("source_runtime.bootstrap", message)
+        self.assertIn("runtime state bootstrap failed", message)
+        self.assertNotIn("do-not-print", message)
+        self.assertNotIn("123456789012", message)
+        self.assertNotIn("arn:aws", message)
+
     def test_task_logs_caches_log_options_by_task_definition(self) -> None:
         task = {
             "taskArn": "arn:aws:ecs:us-east-1:123:task/cluster/task-1",
