@@ -911,6 +911,37 @@ class ValidateStackConfigTest(unittest.TestCase):
             "env:EVIDENCE_CAS_BASE_URL",
         )
 
+    def test_partial_neo4j_secret_import_map_requires_runtime_credentials_import(self) -> None:
+        content = BASE_STACK + """
+  cerebro:neo4jSecretImportArns:
+    CEREBRO_API_KEYS: arn:aws:secretsmanager:us-east-1:123456789012:secret:example/api-keys
+    CEREBRO_NEO4J_PASSWORD: arn:aws:secretsmanager:us-east-1:123456789012:secret:example/password
+    CEREBRO_NEO4J_URI: arn:aws:secretsmanager:us-east-1:123456789012:secret:example/uri
+    CEREBRO_NEO4J_USERNAME: arn:aws:secretsmanager:us-east-1:123456789012:secret:example/username
+"""
+
+        findings = self._validate(content)
+
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and "CEREBRO_API_CREDENTIALS_JSON" in finding.path
+                and "Pulumi-managed runtime credential secret" in finding.message
+                for finding in findings
+            )
+        )
+
+    def test_actual_sec_dev_imports_all_pulumi_managed_runtime_credentials(self) -> None:
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
+
+        self.assertFalse(
+            any(
+                finding.severity == "error"
+                and finding.path.startswith("cerebro:neo4jSecretImportArns")
+                for finding in findings
+            )
+        )
+
     def test_cosmo_requires_token_auth_release(self) -> None:
         content = BASE_STACK.replace("  cerebro:imageTag: v2.1.36", "  cerebro:imageTag: v2.1.35")
         findings = self._validate(content)

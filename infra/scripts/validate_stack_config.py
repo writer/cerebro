@@ -133,6 +133,13 @@ PANOPTICON_FORBIDDEN_CONFIG_RE = re.compile(
     re.IGNORECASE,
 )
 OBSERVABILITY_STATUS_MODEL = ["success", "failure", "stale", "disabled", "unknown", "not_configured"]
+NEO4J_GENERATED_RUNTIME_SECRET_KEYS = {
+    "CEREBRO_NEO4J_URI",
+    "CEREBRO_NEO4J_USERNAME",
+    "CEREBRO_NEO4J_PASSWORD",
+    "CEREBRO_API_KEYS",
+    "CEREBRO_API_CREDENTIALS_JSON",
+}
 OBSERVABILITY_REQUIRED_KEYS = {
     "environment",
     "sourceSystem",
@@ -1050,6 +1057,33 @@ def _validate_source_runtime_observability(
             )
 
 
+def _validate_neo4j_secret_import_coverage(stack: str, config: dict[str, Any], findings: list[Finding]) -> None:
+    import_arns = config.get("neo4jSecretImportArns") or {}
+    if not import_arns:
+        return
+    if not isinstance(import_arns, dict):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:neo4jSecretImportArns",
+                "must be a mapping from generated runtime secret key to imported secret ARN",
+            )
+        )
+        return
+
+    missing = sorted(NEO4J_GENERATED_RUNTIME_SECRET_KEYS - set(import_arns))
+    for key in missing:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                f"cerebro:neo4jSecretImportArns.{key}",
+                "generated runtime secret imports must include every Pulumi-managed runtime credential secret",
+            )
+        )
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -1389,6 +1423,7 @@ def validate_stack(path: Path) -> list[Finding]:
     _validate_go_prod_aws_coverage(stack, source_runtimes, schedules, findings)
     _validate_panopticon_wiring(stack, config, source_runtimes, schedules, findings)
     _validate_source_runtime_observability(stack, config, source_runtimes, findings)
+    _validate_neo4j_secret_import_coverage(stack, config, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment
