@@ -303,7 +303,10 @@ func runSource(args []string) error {
 
 func runSourceRuntime(args []string) error {
 	if len(args) == 0 {
-		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync|bootstrap] ...", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync|bootstrap|sdk] ...", os.Args[0]))
+	}
+	if args[0] == "sdk" {
+		return runSourceRuntimeSDK(args[1:])
 	}
 	cfg, err := appconfig.Load()
 	if err != nil {
@@ -407,7 +410,7 @@ func runSourceRuntime(args []string) error {
 		}
 		return printProto(response)
 	default:
-		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync|bootstrap] ...", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync|bootstrap|sdk] ...", os.Args[0]))
 	}
 }
 

@@ -247,6 +247,14 @@ func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.
 	if findingRun != nil {
 		record.LatestFindingEvaluation = sourceRuntimeFindingEvaluationHealth(findingRun)
 	}
+	if expectedCadence := runtimeConfigInt64(runtime, "expected_cadence_seconds"); expectedCadence > 0 {
+		record.ExpectedCadenceSeconds = &expectedCadence
+		record.ScheduleContextConfigured = true
+	}
+	if staleAfter := runtimeConfigInt64(runtime, "stale_after_seconds"); staleAfter > 0 {
+		record.StaleAfterSeconds = &staleAfter
+		record.ScheduleContextConfigured = true
+	}
 	return record, nil
 }
 
@@ -259,6 +267,17 @@ func runtimeConfigUint32(runtime *cerebrov1.SourceRuntime, key string) uint32 {
 		return 0
 	}
 	return uint32(value)
+}
+
+func runtimeConfigInt64(runtime *cerebrov1.SourceRuntime, key string) int64 {
+	if runtime == nil {
+		return 0
+	}
+	value, err := strconv.ParseInt(strings.TrimSpace(runtime.GetConfig()[key]), 10, 64)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
 }
 
 func runtimeEnabledState(runtime *cerebrov1.SourceRuntime) string {
@@ -284,7 +303,7 @@ func runtimeHealthStatus(runtime *cerebrov1.SourceRuntime, now time.Time) string
 	if lastSynced.IsZero() {
 		return "unknown"
 	}
-	if staleAfter := runtimeConfigUint32(runtime, "stale_after_seconds"); staleAfter > 0 && now.UTC().Sub(lastSynced.UTC()) > time.Duration(staleAfter)*time.Second {
+	if staleAfter := runtimeConfigInt64(runtime, "stale_after_seconds"); staleAfter > 0 && now.UTC().Sub(lastSynced.UTC()) > time.Duration(staleAfter)*time.Second {
 		return "stale"
 	}
 	return "healthy"
