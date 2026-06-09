@@ -896,6 +896,21 @@ class ValidateStackConfigTest(unittest.TestCase):
             any(finding.severity == "error" and "go-prod AWS coverage" in finding.message for finding in findings)
         )
 
+    def test_sec_dev_evidencecas_runtime_wires_private_endpoint_allowlist(self) -> None:
+        config = validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
+        secret_keys = set(config["sourceSecretKeys"])
+        runtime = next(
+            runtime
+            for runtime in config["sourceRuntimes"]
+            if runtime.get("id") == "writer-evidence-cas-cases"
+        )
+
+        self.assertIn("EVIDENCE_CAS_BASE_URL", secret_keys)
+        self.assertEqual(
+            runtime["config"].get("private_endpoint_allowlist"),
+            "env:EVIDENCE_CAS_BASE_URL",
+        )
+
     def test_cosmo_requires_token_auth_release(self) -> None:
         content = BASE_STACK.replace("  cerebro:imageTag: v2.1.36", "  cerebro:imageTag: v2.1.35")
         findings = self._validate(content)
