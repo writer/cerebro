@@ -1,12 +1,12 @@
 """
-S3 audit bucket for Cerebro bulk-closeout summaries.
+S3 audit bucket for Cerebro audit artifacts.
 
-The bucket stores per-run JSON summaries under the ``closeout/`` prefix and is
+The bucket stores per-run JSON closeout summaries under the ``closeout/`` prefix
+and access-audit telemetry archives under the ``access/`` prefix. It is
 KMS-encrypted via the stack's existing runtime KMS key. Public access is fully
-blocked. The task role receives a narrowly-scoped inline policy granting only
-``s3:PutObject`` on the ``closeout/*`` prefix plus the KMS encrypt permissions
-required to write objects to the bucket; no decrypt or delete permissions are
-granted.
+blocked. The task role receives narrow closeout write permissions plus read and
+decrypt permissions for the access-audit archive prefix used by source runtime
+dogfooding.
 """
 
 import json
@@ -21,13 +21,13 @@ def create_audit_bucket(
     kms_key_arn: pulumi.Input[str],
     task_role: aws.iam.Role,
 ) -> dict:
-    """Provision the closeout audit bucket plus its task-role grant.
+    """Provision the audit bucket plus task-role grants.
 
     Args:
         name: Logical Pulumi resource-name prefix (e.g. ``cerebro-sec-dev``).
         bucket_name: Concrete S3 bucket name (e.g. ``cerebro-sec-dev-audit``).
         kms_key_arn: ARN of the existing stack KMS key to use for SSE.
-        task_role: IAM role that will receive the inline closeout-writer policy.
+        task_role: IAM role that will receive the inline audit-bucket policy.
 
     Returns dict with the created Pulumi resources and the KMS key ARN.
     """
@@ -62,12 +62,13 @@ def create_audit_bucket(
     )
 
     closeout_object_arn = bucket.arn.apply(lambda arn: f"{arn}/closeout/*")
+    access_audit_object_arn = bucket.arn.apply(lambda arn: f"{arn}/access/*")
 
     role_policy = aws.iam.RolePolicy(
         f"{name}-audit-bucket-writer",
         name=f"{name}-audit-bucket-writer",
         role=task_role.name,
-        policy=pulumi.Output.all(closeout_object_arn, kms_key_arn).apply(
+        policy=pulumi.Output.all(closeout_object_arn, access_audit_object_arn, bucket.arn, kms_key_arn).apply(
             lambda args: json.dumps(
                 {
                     "Version": "2012-10-17",
@@ -79,6 +80,26 @@ def create_audit_bucket(
                             "Resource": args[0],
                         },
                         {
+                            "Sid": "ListAccessAuditArchives",
+                            "Effect": "Allow",
+                            "Action": ["s3:ListBucket"],
+                            "Resource": args[2],
+                            "Condition": {
+                                "StringLike": {
+                                    "s3:prefix": [
+                                        "access/",
+                                        "access/*",
+                                    ],
+                                },
+                            },
+                        },
+                        {
+                            "Sid": "ReadAccessAuditArchives",
+                            "Effect": "Allow",
+                            "Action": ["s3:GetObject"],
+                            "Resource": args[1],
+                        },
+                        {
                             "Sid": "EncryptCloseoutAuditWithKms",
                             "Effect": "Allow",
                             "Action": [
@@ -86,7 +107,16 @@ def create_audit_bucket(
                                 "kms:GenerateDataKey",
                                 "kms:DescribeKey",
                             ],
-                            "Resource": args[1],
+                            "Resource": args[3],
+                        },
+                        {
+                            "Sid": "DecryptAccessAuditArchivesWithKms",
+                            "Effect": "Allow",
+                            "Action": [
+                                "kms:Decrypt",
+                                "kms:DescribeKey",
+                            ],
+                            "Resource": args[3],
                         },
                     ],
                 }
