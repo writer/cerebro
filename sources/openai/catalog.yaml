@@ -1,0 +1,40 @@
+id: openai
+name: OpenAI
+description: OpenAI organization, project, user, service account, and API key source.
+emitted_kinds:
+  - openai.user
+  - openai.project
+  - openai.service_account
+  - openai.api_key
+  - openai.admin_api_key
+event_contracts:
+  - kind: openai.user
+    schema_ref: openai/user/v1
+    required_attributes:
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: openai.project
+    schema_ref: openai/project/v1
+    required_attributes:
+      - project_id
+    required_payload_fields:
+      - id
+  - kind: openai.service_account
+    schema_ref: openai/service_account/v1
+    required_attributes:
+      - service_account_id
+    required_payload_fields:
+      - id
+  - kind: openai.api_key
+    schema_ref: openai/api_key/v1
+    required_attributes:
+      - api_key_id
+    required_payload_fields:
+      - id
+  - kind: openai.admin_api_key
+    schema_ref: openai/admin_api_key/v1
+    required_attributes:
+      - api_key_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,54 @@
+id: pagerduty
+name: PagerDuty
+description: PagerDuty user, team, service, schedule, escalation policy, integration, and vendor source.
+emitted_kinds:
+  - pagerduty.user
+  - pagerduty.team
+  - pagerduty.service
+  - pagerduty.schedule
+  - pagerduty.escalation_policy
+  - pagerduty.integration
+  - pagerduty.vendor
+event_contracts:
+  - kind: pagerduty.user
+    schema_ref: pagerduty/user/v1
+    required_attributes:
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: pagerduty.team
+    schema_ref: pagerduty/team/v1
+    required_attributes:
+      - team_id
+    required_payload_fields:
+      - id
+  - kind: pagerduty.service
+    schema_ref: pagerduty/service/v1
+    required_attributes:
+      - service_id
+    required_payload_fields:
+      - id
+  - kind: pagerduty.schedule
+    schema_ref: pagerduty/schedule/v1
+    required_attributes:
+      - schedule_id
+    required_payload_fields:
+      - id
+  - kind: pagerduty.escalation_policy
+    schema_ref: pagerduty/escalation_policy/v1
+    required_attributes:
+      - escalation_policy_id
+    required_payload_fields:
+      - id
+  - kind: pagerduty.integration
+    schema_ref: pagerduty/integration/v1
+    required_attributes:
+      - integration_id
+    required_payload_fields:
+      - id
+  - kind: pagerduty.vendor
+    schema_ref: pagerduty/vendor/v1
+    required_attributes:
+      - vendor_id
+    required_payload_fields:
+      - id

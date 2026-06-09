@@ -1,0 +1,43 @@
+id: trivy
+name: Trivy
+description: Offline Trivy JSON report source for container image packages, vulnerabilities, and fixes.
+emitted_kinds:
+  - trivy.image_scan
+  - trivy.image_package
+  - trivy.image_vulnerability
+  - trivy.fix
+event_contracts:
+  - kind: trivy.image_scan
+    schema_ref: trivy/image_scan/v1
+    required_attributes:
+      - image_digest
+    required_payload_fields:
+      - image_digest
+  - kind: trivy.image_package
+    schema_ref: trivy/image_package/v1
+    required_attributes:
+      - image_digest
+      - package
+    required_payload_fields:
+      - image_digest
+      - package
+  - kind: trivy.image_vulnerability
+    schema_ref: trivy/image_vulnerability/v1
+    required_attributes:
+      - image_digest
+      - vulnerability_id
+      - package
+    required_payload_fields:
+      - image_digest
+      - vulnerability_id
+      - package
+  - kind: trivy.fix
+    schema_ref: trivy/fix/v1
+    required_attributes:
+      - vulnerability_id
+      - package
+      - fixed_version
+    required_payload_fields:
+      - vulnerability_id
+      - package
+      - fixed_version

@@ -1,0 +1,55 @@
+id: tailscale
+name: Tailscale
+description: Tailscale tailnet, user, device, group, tag, service, and grant source.
+emitted_kinds:
+  - tailscale.tailnet
+  - tailscale.user
+  - tailscale.device
+  - tailscale.group
+  - tailscale.tag
+  - tailscale.service
+  - tailscale.grant
+event_contracts:
+  - kind: tailscale.tailnet
+    schema_ref: tailscale/tailnet/v1
+    required_attributes:
+      - tailnet
+    required_payload_fields:
+      - id
+  - kind: tailscale.user
+    schema_ref: tailscale/user/v1
+    required_attributes:
+      - user_id
+      - login_name
+    required_payload_fields:
+      - id
+  - kind: tailscale.device
+    schema_ref: tailscale/device/v1
+    required_attributes:
+      - device_id
+    required_payload_fields:
+      - id
+  - kind: tailscale.group
+    schema_ref: tailscale/group/v1
+    required_attributes:
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: tailscale.tag
+    schema_ref: tailscale/tag/v1
+    required_attributes:
+      - tag_id
+    required_payload_fields:
+      - id
+  - kind: tailscale.service
+    schema_ref: tailscale/service/v1
+    required_attributes:
+      - service_id
+    required_payload_fields:
+      - id
+  - kind: tailscale.grant
+    schema_ref: tailscale/grant/v1
+    required_attributes:
+      - grant_id
+    required_payload_fields:
+      - id
