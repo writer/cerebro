@@ -564,16 +564,33 @@ jobs:
             local changed_files=""
             local check_count=""
 
-            if [ "${EVENT_NAME}" != "repository_dispatch" ] || [ "${STACK_NAME}" != "go-prod" ] || [ "${APPLY_MODE}" != "pull_request" ]; then
+            trusted_auto_merge_source() {
+              if [ "${EVENT_NAME}" = "repository_dispatch" ]; then
+                if [ "${DISPATCH_SOURCE_REPOSITORY}" != "writer/cerebro" ] || [ "${DISPATCH_SOURCE_REF}" != "refs/tags/${IMAGE_TAG}" ]; then
+                  echo "Refusing to auto-merge untrusted dispatch source ${DISPATCH_SOURCE_REPOSITORY} ${DISPATCH_SOURCE_REF}" >&2
+                  exit 1
+                fi
+                return 0
+              fi
+
+              if [ "${EVENT_NAME}" = "schedule" ]; then
+                echo "Scheduled release promotion resolved ${IMAGE_TAG}; treating latest stable release scan as trusted."
+                return 0
+              fi
+
+              echo "::notice::Auto-merge is limited to signed release dispatches and scheduled latest-stable scans; leaving ${pr_url} open."
+              return 1
+            }
+
+            if [ "${STACK_NAME}" != "go-prod" ] || [ "${APPLY_MODE}" != "pull_request" ]; then
               return 0
             fi
             if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
               echo "::notice::CEREBRO_AUTORELEASE_TOKEN is not configured; leaving ${pr_url} for manual merge."
               return 0
             fi
-            if [ "${DISPATCH_SOURCE_REPOSITORY}" != "writer/cerebro" ] || [ "${DISPATCH_SOURCE_REF}" != "refs/tags/${IMAGE_TAG}" ]; then
-              echo "Refusing to auto-merge untrusted dispatch source ${DISPATCH_SOURCE_REPOSITORY} ${DISPATCH_SOURCE_REF}" >&2
-              exit 1
+            if ! trusted_auto_merge_source; then
+              return 0
             fi
             if ! release_is_still_latest "${pr_url}"; then
               return 0
