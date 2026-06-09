@@ -15,6 +15,7 @@ In practical terms, Cerebro ingests source and runtime signals, turns them into 
 
 - **Bootstrap API service** — `net/http` plus Connect RPC handlers for health, source, runtime, claim, finding, candidate, report, workflow, MCP, device, and graph routes.
 - **Source previews and runtime sync** — built-in sources can be checked, discovered, read, bootstrapped from config, persisted as source runtimes, synced through an append log, and projected into state/graph stores when configured.
+- **Panopticon S3 ingest** — first-class `panopticon` source runtimes read canonical alert, case, and IOC event archives from S3 NDJSON or NDJSON-gzip prefixes and emit validated `panopticon.*` events for projections and findings.
 - **Finding workflows** — built-in finding rules can evaluate source runtime events, produce candidates, persist evidence/evaluation runs, promote or reject candidates, and drive finding lifecycle actions.
 - **Report runs** — report definitions can be listed and executed with durable run retrieval when a state store is configured.
 - **Workflow event replay** — knowledge decisions, actions, and outcomes can be written and replayed through append-log-backed projections.
@@ -40,6 +41,8 @@ The handoff to deployment repositories is the release payload: container images 
 Volatile details should stay in their source-of-truth files and be linked from here: configuration variables in `docs/CONFIG_ENV_VARS.md`, API shape in `api/openapi.yaml`, source capabilities in `sources/*/catalog.yaml`, and release/deploy handoff data in `cerebro-runtime-contract.json`.
 
 See [Non-goals](docs/NON_GOALS.md) before changing storage shape, Source CDK boundaries, graph/Cypher behavior, findings workflow contracts, action/runtime response semantics, platform/security namespace boundaries, or public product language.
+
+Panopticon integration uses canonical event archives and supported SDK claim writes. EvidenceCAS data stays pointer-only (`evidencecas://` URI plus digest/Merkle metadata) and Cerebro does not provide a legacy claims-NDJSON importer.
 
 ---
 
@@ -121,6 +124,7 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using 
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
 | Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |
 | Use SDK helpers | `sdk/python/README.md`, `sdk/typescript/README.md`, and `sources/sdk` | Maintained helpers target current bootstrap routes; the historical Agent SDK gateway is retired. |
+| Ingest Panopticon exports | `sources/panopticon`, source runtime config, and `sdk/python/examples/panopticon_push_claims.py` | S3 runtimes read canonical `alerts/`, `cases/`, and `iocs/` event archives; SDK helper writes supported claim payloads only. |
 | Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
 | Persist and sync a runtime | `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
 | Work on graph behavior | `graph counts`, `graph health`, `graph ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
@@ -267,6 +271,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `kandji` | Kandji device/application/vulnerability source | devices, applications, vulnerabilities |
 | `kolide` | Kolide device posture source | configured catalog families |
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
+| `panopticon` | Panopticon security operations source backed by canonical S3 event archives | alerts, cases, IOCs |
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
 | `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
@@ -298,7 +303,7 @@ When auth is enabled, only health/OpenAPI and OAuth/device metadata-style routes
 
 ## SDK helpers
 
-Maintained SDK helpers live directly under `sdk/python` and `sdk/typescript`. They target the current bootstrap API surface for source runtime setup, claim writes, graph neighborhoods, and integration examples such as Jira posture onboarding.
+Maintained SDK helpers live directly under `sdk/python` and `sdk/typescript`. They target the current bootstrap API surface for source runtime setup, claim writes, graph neighborhoods, and integration examples such as Jira posture onboarding and Panopticon push-claim onboarding.
 
 These helpers are separate from the retired historical Agent SDK gateway. Future SDK methods should start from the current HTTP/OpenAPI or Connect contracts, then add generated or hand-maintained helpers after the runtime route exists.
 
@@ -410,7 +415,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | Append log | NATS JetStream |
 | State store | Postgres |
 | Graph store | Neo4j/Aura |
-| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, EvidenceCAS, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, SDK, SentinelOne, Security Tooling Map, Trusted Endpoint, VulnView |
+| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, EvidenceCAS, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, Panopticon, SDK, SentinelOne, Security Tooling Map, Trusted Endpoint, VulnView |
 | Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, OSS audit, custom structural linters, arch tests |
 
 ---

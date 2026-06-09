@@ -17,6 +17,7 @@ import (
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	oktasource "github.com/writer/cerebro/sources/okta"
+	panopticonsource "github.com/writer/cerebro/sources/panopticon"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
@@ -106,6 +107,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "okta",
 		load: func() (sourcecdk.Source, error) {
 			return oktasource.New()
+		},
+	},
+	{
+		name: "panopticon",
+		load: func() (sourcecdk.Source, error) {
+			return panopticonsource.New()
 		},
 	},
 	{
