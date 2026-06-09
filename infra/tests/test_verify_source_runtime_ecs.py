@@ -732,6 +732,37 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertNotIn("arn:aws", message)
         self.assertNotIn("cerebro-go-production/MISSING", message)
 
+    def test_verify_task_includes_ecs_stop_reason_when_logs_empty(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-cases",
+            schedule_name="panopticon-cases-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-cases-live",
+            target={"Arn": "cluster"},
+        )
+        task = {
+            "taskArn": "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-arn",
+            "taskDefinitionArn": "task-def",
+            "stopCode": "TaskFailedToStart",
+            "stoppedReason": "CannotStartContainerError: bootstrap dependency did not complete",
+            "containers": [
+                {"name": "source-runtime-bootstrap", "lastStatus": "STOPPED", "exitCode": 1},
+                {"name": "cerebro", "lastStatus": "STOPPED"},
+            ],
+        }
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._describe_tasks", return_value=[task]),
+            patch("scripts.verify_source_runtime_ecs._task_logs", return_value=[]),
+        ):
+            with self.assertRaises(RuntimeTaskFailedError) as context:
+                _verify_task(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-arn", "us-east-1")
+
+        message = str(context.exception)
+        self.assertIn("CannotStartContainerError", message)
+        self.assertIn("source-runtime-bootstrap", message)
+        self.assertNotIn("123456789012", message)
+        self.assertNotIn("arn:aws", message)
+
     def test_task_logs_caches_log_options_by_task_definition(self) -> None:
         task = {
             "taskArn": "arn:aws:ecs:us-east-1:123:task/cluster/task-1",

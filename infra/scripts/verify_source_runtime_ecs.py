@@ -986,10 +986,13 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
     if exit_code != 0:
+        stop_summary = _task_stop_summary(task)
         try:
             log_summary = _summarize_log_messages(_task_logs(task, region))
         except Exception as exc:
-            log_summary = f"unable to fetch task logs: {exc}; ECS task stop: {_task_stop_summary(task)}"
+            log_summary = f"unable to fetch task logs: {exc}; ECS task stop: {stop_summary}"
+        if stop_summary:
+            log_summary = f"{log_summary}\nECS task stop: {stop_summary}" if log_summary else f"ECS task stop: {stop_summary}"
         raise RuntimeTaskFailedError(target.runtime_id, task_arn, exit_code, log_summary)
 
     messages = _task_logs(task, region)
