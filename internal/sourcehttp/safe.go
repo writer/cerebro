@@ -21,17 +21,29 @@ const DefaultRetryBackoff = 250 * time.Millisecond
 const MaxRetryAfter = 5 * time.Second
 
 type ClientOptions struct {
-	SourceID      string
-	Timeout       time.Duration
-	BaseTransport http.RoundTripper
-	AllowLoopback bool
-	LookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+	SourceID                 string
+	Timeout                  time.Duration
+	BaseTransport            http.RoundTripper
+	AllowLoopback            bool
+	PrivateEndpointAllowlist []string
+	LookupIPAddrs            func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type RetryOptions struct {
 	MaxAttempts  int
 	Backoff      time.Duration
 	MaxBodyBytes int
+}
+
+type URLValidationOptions struct {
+	AllowLoopback            bool
+	PrivateEndpointAllowlist []string
+}
+
+type HostResolutionOptions struct {
+	AllowLoopback            bool
+	PrivateEndpointAllowlist []string
+	LookupIPAddrs            func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type ResponseBody struct {
@@ -63,10 +75,11 @@ func HardenClient(client *http.Client, options ClientOptions) *http.Client {
 		transport = http.DefaultTransport
 	}
 	cloned.Transport = SafeRoundTripper{
-		Base:          transport,
-		SourceID:      strings.TrimSpace(options.SourceID),
-		AllowLoopback: options.AllowLoopback,
-		LookupIPAddrs: options.LookupIPAddrs,
+		Base:                     transport,
+		SourceID:                 strings.TrimSpace(options.SourceID),
+		AllowLoopback:            options.AllowLoopback,
+		PrivateEndpointAllowlist: options.PrivateEndpointAllowlist,
+		LookupIPAddrs:            options.LookupIPAddrs,
 	}
 	return &cloned
 }
@@ -83,25 +96,42 @@ func firstDuration(values ...time.Duration) time.Duration {
 // NormalizeBaseURL validates source-configured API origins before credentials are
 // attached to requests.
 func NormalizeBaseURL(sourceID string, raw string, allowLoopback bool) (string, string, error) {
+	return NormalizeBaseURLWithOptions(sourceID, raw, URLValidationOptions{AllowLoopback: allowLoopback})
+}
+
+func NormalizeBaseURLWithOptions(sourceID string, raw string, options URLValidationOptions) (string, string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return "", "", fmt.Errorf("parse %s base_url: %w", sourceID, err)
 	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && IsLoopbackHost(host)
+	allowInsecureLoopback := options.AllowLoopback && parsed.Scheme == "http" && IsLoopbackHost(host)
 	if parsed.Scheme != "https" && !allowInsecureLoopback {
 		return "", "", fmt.Errorf("%s base_url must use https", sourceID)
 	}
 	if host == "" {
 		return "", "", fmt.Errorf("%s base_url must include a host", sourceID)
 	}
+	privateEndpointAllowed := privateEndpointHostAllowed(host, options.PrivateEndpointAllowlist)
+	if len(options.PrivateEndpointAllowlist) > 0 && !privateEndpointAllowed {
+		return "", "", fmt.Errorf("%s private endpoint host must exactly match the configured allowlist", sourceID)
+	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return "", "", fmt.Errorf("%s base_url must not include user info, query, or fragment", sourceID)
 	}
-	if strings.TrimSpace(parsed.Port()) != "" && parsed.Port() != "443" && (!allowLoopback || !IsLoopbackHost(host)) {
+	if privateEndpointAllowed && strings.Trim(strings.TrimSpace(host), "[]") != host {
+		return "", "", fmt.Errorf("%s private endpoint allowlist must use DNS hostnames, not IP literals", sourceID)
+	}
+	if privateEndpointAllowed && net.ParseIP(strings.Trim(host, "[]")) != nil {
+		return "", "", fmt.Errorf("%s private endpoint allowlist must use DNS hostnames, not IP literals", sourceID)
+	}
+	if privateEndpointAllowed && strings.Trim(parsed.EscapedPath(), "/") != "" {
+		return "", "", fmt.Errorf("%s private endpoint base_url must be an HTTPS origin without a path", sourceID)
+	}
+	if strings.TrimSpace(parsed.Port()) != "" && parsed.Port() != "443" && (!options.AllowLoopback || !IsLoopbackHost(host)) {
 		return "", "", fmt.Errorf("%s base_url must not include a custom port", sourceID)
 	}
-	if IsUnsafeHost(host) && (!allowLoopback || !IsLoopbackHost(host)) {
+	if IsUnsafeHost(host) && (!options.AllowLoopback || !IsLoopbackHost(host)) {
 		return "", "", fmt.Errorf("%s base_url must not target loopback, private, or link-local hosts", sourceID)
 	}
 	return strings.TrimRight(parsed.String(), "/"), host, nil
@@ -147,10 +177,11 @@ func SameOriginAbsoluteURL(sourceID string, baseURL string, raw string) (string,
 }
 
 type SafeRoundTripper struct {
-	Base          http.RoundTripper
-	SourceID      string
-	AllowLoopback bool
-	LookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+	Base                     http.RoundTripper
+	SourceID                 string
+	AllowLoopback            bool
+	PrivateEndpointAllowlist []string
+	LookupIPAddrs            func(context.Context, string) ([]net.IPAddr, error)
 }
 
 func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -165,7 +196,19 @@ func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 	}
 	if req != nil && req.URL != nil {
-		addrs, err := SafeResolvedHostAddrs(req.Context(), rt.SourceID, req.URL.Hostname(), rt.AllowLoopback, rt.LookupIPAddrs)
+		if privateEndpointHostAllowed(req.URL.Hostname(), rt.PrivateEndpointAllowlist) {
+			if req.URL.Scheme != "https" {
+				return nil, fmt.Errorf("%s private endpoint requests must use https", rt.SourceID)
+			}
+			if port := strings.TrimSpace(req.URL.Port()); port != "" && port != "443" {
+				return nil, fmt.Errorf("%s private endpoint requests must not use a custom port", rt.SourceID)
+			}
+		}
+		addrs, err := SafeResolvedHostAddrsWithOptions(req.Context(), rt.SourceID, req.URL.Hostname(), HostResolutionOptions{
+			AllowLoopback:            rt.AllowLoopback,
+			PrivateEndpointAllowlist: rt.PrivateEndpointAllowlist,
+			LookupIPAddrs:            rt.LookupIPAddrs,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -214,16 +257,21 @@ func pinnedHostTransport(base http.RoundTripper, host string, ip net.IP) (http.R
 }
 
 func SafeResolvedHostAddrs(ctx context.Context, sourceID string, host string, allowLoopback bool, lookup func(context.Context, string) ([]net.IPAddr, error)) ([]net.IPAddr, error) {
+	return SafeResolvedHostAddrsWithOptions(ctx, sourceID, host, HostResolutionOptions{AllowLoopback: allowLoopback, LookupIPAddrs: lookup})
+}
+
+func SafeResolvedHostAddrsWithOptions(ctx context.Context, sourceID string, host string, options HostResolutionOptions) ([]net.IPAddr, error) {
 	normalized := strings.ToLower(strings.TrimSpace(host))
 	if normalized == "" {
 		return nil, fmt.Errorf("%s host is required", sourceID)
 	}
 	if ip := net.ParseIP(strings.Trim(normalized, "[]")); ip != nil {
-		if unsafeIP(ip, allowLoopback) {
+		if unsafeIP(ip, options.AllowLoopback) {
 			return nil, fmt.Errorf("%s host must not target loopback, private, or link-local addresses", sourceID)
 		}
 		return nil, nil
 	}
+	lookup := options.LookupIPAddrs
 	if lookup == nil {
 		lookup = net.DefaultResolver.LookupIPAddr
 	}
@@ -234,12 +282,67 @@ func SafeResolvedHostAddrs(ctx context.Context, sourceID string, host string, al
 	if len(addrs) == 0 {
 		return nil, fmt.Errorf("resolve %s host %q: no addresses", sourceID, normalized)
 	}
+	allowPrivate := privateEndpointHostAllowed(normalized, options.PrivateEndpointAllowlist)
 	for _, addr := range addrs {
-		if unsafeIP(addr.IP, allowLoopback) {
+		if unsafeResolvedIP(addr.IP, options.AllowLoopback, allowPrivate) {
 			return nil, fmt.Errorf("%s host must not resolve to loopback, private, or link-local addresses", sourceID)
 		}
 	}
 	return addrs, nil
+}
+
+func ParsePrivateEndpointAllowlist(sourceID string, raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	seen := map[string]struct{}{}
+	hosts := []string{}
+	for _, entry := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+	}) {
+		host := strings.ToLower(strings.TrimSpace(entry))
+		if host == "" {
+			continue
+		}
+		if strings.Contains(host, "://") {
+			parsed, err := url.Parse(host)
+			if err != nil {
+				return nil, fmt.Errorf("parse %s private endpoint allowlist entry: %w", sourceID, err)
+			}
+			if parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.Trim(parsed.EscapedPath(), "/") != "" {
+				return nil, fmt.Errorf("%s private endpoint allowlist URL entries must be HTTPS origins", sourceID)
+			}
+			if port := strings.TrimSpace(parsed.Port()); port != "" && port != "443" {
+				return nil, fmt.Errorf("%s private endpoint allowlist URL entries must not include a custom port", sourceID)
+			}
+			host = strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+		}
+		if strings.Contains(host, "://") || strings.Contains(host, "/") || strings.Contains(host, "?") || strings.Contains(host, "#") || strings.Contains(host, ":") {
+			return nil, fmt.Errorf("%s private endpoint allowlist entries must be exact DNS hostnames", sourceID)
+		}
+		if net.ParseIP(strings.Trim(host, "[]")) != nil || IsUnsafeHost(host) {
+			return nil, fmt.Errorf("%s private endpoint allowlist entries must be non-loopback DNS hostnames", sourceID)
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	return hosts, nil
+}
+
+func privateEndpointHostAllowed(host string, allowlist []string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	if normalized == "" {
+		return false
+	}
+	for _, allowed := range allowlist {
+		if normalized == strings.ToLower(strings.TrimSpace(allowed)) {
+			return true
+		}
+	}
+	return false
 }
 
 func IsUnsafeHost(host string) bool {
@@ -259,6 +362,22 @@ func unsafeIP(ip net.IP, allowLoopback bool) bool {
 		return false
 	}
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
+}
+
+func unsafeResolvedIP(ip net.IP, allowLoopback bool, allowPrivate bool) bool {
+	if ip == nil {
+		return true
+	}
+	if allowLoopback && ip.IsLoopback() {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	if ip.IsPrivate() && !allowPrivate {
+		return true
+	}
+	return false
 }
 
 func IsLoopbackHost(host string) bool {

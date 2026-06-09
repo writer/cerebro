@@ -26,6 +26,58 @@ func TestNormalizeBaseURLRejectsUnsafeHosts(t *testing.T) {
 	}
 }
 
+func TestNormalizeBaseURLAllowsExactPrivateEndpointHostsOnly(t *testing.T) {
+	allowlist, err := ParsePrivateEndpointAllowlist("evidence_cas", "cas.internal.example")
+	if err != nil {
+		t.Fatalf("ParsePrivateEndpointAllowlist() error = %v", err)
+	}
+	if got, host, err := NormalizeBaseURLWithOptions("evidence_cas", "https://cas.internal.example", URLValidationOptions{PrivateEndpointAllowlist: allowlist}); err != nil || got != "https://cas.internal.example" || host != "cas.internal.example" {
+		t.Fatalf("NormalizeBaseURLWithOptions() = %q, %q, %v; want exact origin", got, host, err)
+	}
+	for name, raw := range map[string]string{
+		"http scheme":     "http://cas.internal.example",
+		"custom port":     "https://cas.internal.example:8443",
+		"path":            "https://cas.internal.example/v1",
+		"allowlist miss":  "https://other.internal.example",
+		"private literal": "https://10.0.0.10",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := NormalizeBaseURLWithOptions("evidence_cas", raw, URLValidationOptions{PrivateEndpointAllowlist: allowlist})
+			if err == nil {
+				t.Fatal("NormalizeBaseURLWithOptions() error = nil, want rejection")
+			}
+		})
+	}
+}
+
+func TestParsePrivateEndpointAllowlistAcceptsHttpsOrigins(t *testing.T) {
+	hosts, err := ParsePrivateEndpointAllowlist("evidence_cas", "https://cas.internal.example/")
+	if err != nil {
+		t.Fatalf("ParsePrivateEndpointAllowlist() error = %v", err)
+	}
+	if len(hosts) != 1 || hosts[0] != "cas.internal.example" {
+		t.Fatalf("hosts = %#v, want extracted origin host", hosts)
+	}
+}
+
+func TestParsePrivateEndpointAllowlistRejectsUnsafeOrAmbiguousEntries(t *testing.T) {
+	for _, raw := range []string{
+		"http://cas.internal.example",
+		"https://cas.internal.example/path",
+		"https://cas.internal.example:8443",
+		"cas.internal.example:443",
+		"localhost",
+		"127.0.0.1",
+		"10.0.0.10",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := ParsePrivateEndpointAllowlist("evidence_cas", raw); err == nil {
+				t.Fatal("ParsePrivateEndpointAllowlist() error = nil, want invalid allowlist entry")
+			}
+		})
+	}
+}
+
 func TestSameOriginAbsoluteURLRejectsHostChanges(t *testing.T) {
 	if _, err := SameOriginAbsoluteURL("test_source", "https://api.example.com", "https://metadata.google.internal/latest"); err == nil {
 		t.Fatal("SameOriginAbsoluteURL() error = nil, want host mismatch")
@@ -156,5 +208,38 @@ func TestPinnedHostTransportDisablesKeepAlives(t *testing.T) {
 	}
 	if !transport.DisableKeepAlives {
 		t.Fatal("pinned transport must disable keep-alives")
+	}
+}
+
+func TestSafeResolvedHostAddrsAllowsPrivateOnlyForExactAllowlistedHost(t *testing.T) {
+	lookup := func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("10.0.0.10")}}, nil
+	}
+	allowlist := []string{"cas.internal.example"}
+	if _, err := SafeResolvedHostAddrsWithOptions(context.Background(), "evidence_cas", "cas.internal.example", HostResolutionOptions{PrivateEndpointAllowlist: allowlist, LookupIPAddrs: lookup}); err != nil {
+		t.Fatalf("SafeResolvedHostAddrsWithOptions() allowlisted private error = %v", err)
+	}
+	if _, err := SafeResolvedHostAddrsWithOptions(context.Background(), "evidence_cas", "other.internal.example", HostResolutionOptions{PrivateEndpointAllowlist: allowlist, LookupIPAddrs: lookup}); err == nil {
+		t.Fatal("SafeResolvedHostAddrsWithOptions() unallowlisted private error = nil, want rejection")
+	}
+}
+
+func TestSafeResolvedHostAddrsRejectsLoopbackAndLinkLocalEvenWhenAllowlisted(t *testing.T) {
+	for name, ip := range map[string]string{
+		"loopback":    "127.0.0.1",
+		"link local":  "169.254.169.254",
+		"metadata":    "169.254.169.254",
+		"unspecified": "0.0.0.0",
+		"multicast":   "224.0.0.1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			lookup := func(context.Context, string) ([]net.IPAddr, error) {
+				return []net.IPAddr{{IP: net.ParseIP(ip)}}, nil
+			}
+			_, err := SafeResolvedHostAddrsWithOptions(context.Background(), "evidence_cas", "cas.internal.example", HostResolutionOptions{PrivateEndpointAllowlist: []string{"cas.internal.example"}, LookupIPAddrs: lookup})
+			if err == nil {
+				t.Fatal("SafeResolvedHostAddrsWithOptions() error = nil, want unsafe address rejection")
+			}
+		})
 	}
 }
