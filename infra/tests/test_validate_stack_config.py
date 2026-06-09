@@ -118,6 +118,75 @@ config:
   cerebro:sourceSecretKeys:
 {COSMO_SECRET_KEYS.rstrip()}
     - {API_TOKEN_KEY}
+  cerebro:sourceRuntimeObservability:
+    - environment: go-production
+      sourceSystem: evidence_cas
+      sourceRuntimeId: writer-evidence-cas-cases
+      runtimeClass: object
+      enabled: false
+      freshnessSlaMinutes: 120
+      logGroupRef: runtime
+      dashboardEnabled: false
+      alarmEnabled: false
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: go-production
+      sourceSystem: panopticon
+      sourceRuntimeId: writer-panopticon-alerts
+      runtimeClass: alert
+      enabled: true
+      freshnessSlaMinutes: 30
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: go-production
+      sourceSystem: panopticon
+      sourceRuntimeId: writer-panopticon-cases
+      runtimeClass: case
+      enabled: true
+      freshnessSlaMinutes: 30
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: go-production
+      sourceSystem: panopticon
+      sourceRuntimeId: writer-panopticon-iocs
+      runtimeClass: ioc
+      enabled: true
+      freshnessSlaMinutes: 30
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
   cerebro:orchestratorSchedules:
 {COSMO_SCHEDULES.rstrip()}
     - name: okta-audit
@@ -236,6 +305,54 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_valid_stack_has_no_errors(self) -> None:
         findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
+
+    def test_actual_source_runtime_observability_has_no_errors(self) -> None:
+        for stack_file in ("Pulumi.sec-dev.yaml", "Pulumi.go-prod.yaml"):
+            with self.subTest(stack_file=stack_file):
+                findings = validate_stack(Path(__file__).resolve().parents[1] / "aws" / stack_file)
+                self.assertFalse(
+                    any(
+                        finding.severity == "error" and "observability" in finding.message.lower()
+                        for finding in findings
+                    )
+                )
+
+    def test_source_runtime_observability_missing_required_field_is_error(self) -> None:
+        content = BASE_STACK.replace("      logGroupRef: runtime\n", "", 1)
+        findings = self._validate(content, name="Pulumi.go-prod.yaml")
+
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and finding.path.endswith(".logGroupRef")
+                and "source runtime observability" in finding.message
+                for finding in findings
+            )
+        )
+
+    def test_source_runtime_observability_enabled_runtime_must_exist(self) -> None:
+        content = BASE_STACK.replace("sourceRuntimeId: writer-panopticon-alerts", "sourceRuntimeId: writer-panopticon-missing", 1)
+        findings = self._validate(content, name="Pulumi.go-prod.yaml")
+
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and "must reference a configured source runtime when enabled" in finding.message
+                for finding in findings
+            )
+        )
+
+    def test_source_runtime_observability_state_model_is_consistent(self) -> None:
+        content = BASE_STACK.replace("        - not_configured\n", "        - unexpected\n", 1)
+        findings = self._validate(content, name="Pulumi.go-prod.yaml")
+
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and "must use the shared contract probe status model" in finding.message
+                for finding in findings
+            )
+        )
 
     def test_actual_panopticon_wiring_has_no_errors(self) -> None:
         for stack_file in ("Pulumi.sec-dev.yaml", "Pulumi.go-prod.yaml"):

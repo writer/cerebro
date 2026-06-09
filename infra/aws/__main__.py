@@ -360,6 +360,7 @@ if device_auth_enabled:
         )
 source_secret_keys = config.get_object("sourceSecretKeys") or []
 source_runtimes = config.get_object("sourceRuntimes") or []
+source_runtime_observability = config.get_object("sourceRuntimeObservability") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
 _validate_source_secret_refs(source_secret_keys, source_runtime_env_refs)
 
@@ -868,6 +869,7 @@ monitoring_stack = monitoring.create_monitoring(
     orchestrator_schedules=orchestrator_schedules,
     orchestrator_rule_names=[rule.name for rule in ecs_stack.get("orchestrator_rules", [])],
     source_runtimes=source_runtimes,
+    source_runtime_observability=source_runtime_observability,
 )
 
 waf_stack = None

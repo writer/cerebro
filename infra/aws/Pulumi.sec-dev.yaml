@@ -104,6 +104,75 @@ config:
     - OKTA_DOMAIN
     - SENTINELONE_API_TOKEN
     - SENTINELONE_BASE_URL
+  cerebro:sourceRuntimeObservability:
+    - environment: sec-dev
+      sourceSystem: evidence_cas
+      sourceRuntimeId: writer-evidence-cas-cases
+      runtimeClass: object
+      enabled: true
+      freshnessSlaMinutes: 90
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: sec-dev
+      sourceSystem: panopticon
+      sourceRuntimeId: writer-panopticon-alerts
+      runtimeClass: alert
+      enabled: true
+      freshnessSlaMinutes: 30
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: sec-dev
+      sourceSystem: panopticon
+      sourceRuntimeId: writer-panopticon-cases
+      runtimeClass: case
+      enabled: true
+      freshnessSlaMinutes: 30
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: sec-dev
+      sourceSystem: panopticon
+      sourceRuntimeId: writer-panopticon-iocs
+      runtimeClass: ioc
+      enabled: true
+      freshnessSlaMinutes: 30
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
   cerebro:orchestratorEnabled: true
   cerebro:orchestratorScheduleExpression: "rate(6 hours)"
   cerebro:orchestratorCommand:

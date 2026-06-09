@@ -132,6 +132,34 @@ PANOPTICON_FORBIDDEN_CONFIG_RE = re.compile(
     r"(evidence_?bytes|evidence_?content|file_?contents?|payload_?bytes|plaintext|secret|token|password|private_?key)",
     re.IGNORECASE,
 )
+OBSERVABILITY_STATUS_MODEL = ["success", "failure", "stale", "disabled", "unknown", "not_configured"]
+OBSERVABILITY_REQUIRED_KEYS = {
+    "environment",
+    "sourceSystem",
+    "sourceRuntimeId",
+    "runtimeClass",
+    "enabled",
+    "freshnessSlaMinutes",
+    "logGroupRef",
+    "dashboardEnabled",
+    "alarmEnabled",
+    "alarmRoute",
+    "observabilityStates",
+}
+OBSERVABILITY_REQUIRED_RUNTIME_KEYS = {
+    "sec-dev": {
+        ("evidence_cas", "writer-evidence-cas-cases", "object"): True,
+        ("panopticon", "writer-panopticon-alerts", "alert"): True,
+        ("panopticon", "writer-panopticon-cases", "case"): True,
+        ("panopticon", "writer-panopticon-iocs", "ioc"): True,
+    },
+    "go-prod": {
+        ("evidence_cas", "writer-evidence-cas-cases", "object"): False,
+        ("panopticon", "writer-panopticon-alerts", "alert"): True,
+        ("panopticon", "writer-panopticon-cases", "case"): True,
+        ("panopticon", "writer-panopticon-iocs", "ioc"): True,
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -850,6 +878,178 @@ def _validate_panopticon_wiring(
             findings.append(_finding("error", stack, f"{schedule_path}.command", "Panopticon schedule command must run the orchestrator"))
 
 
+def _validate_source_runtime_observability(
+    stack: str,
+    config: dict[str, Any],
+    source_runtimes: list[Any],
+    findings: list[Finding],
+) -> None:
+    expected_entries = OBSERVABILITY_REQUIRED_RUNTIME_KEYS.get(stack)
+    if expected_entries is None:
+        return
+
+    observability_entries = config.get("sourceRuntimeObservability")
+    if not isinstance(observability_entries, list) or not observability_entries:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:sourceRuntimeObservability",
+                "source runtime observability must explicitly declare EvidenceCAS and Panopticon monitoring entries",
+            )
+        )
+        return
+
+    runtimes_by_id = {
+        str(runtime.get("id", "")).strip(): runtime
+        for runtime in source_runtimes
+        if isinstance(runtime, dict) and str(runtime.get("id", "")).strip()
+    }
+    seen: set[tuple[str, str, str]] = set()
+    expected_environment = str(config.get("environment", stack)).strip()
+
+    for index, entry in enumerate(observability_entries):
+        path = f"cerebro:sourceRuntimeObservability[{index}]"
+        if not isinstance(entry, dict):
+            findings.append(_finding("error", stack, path, "source runtime observability entry must be an object"))
+            continue
+
+        for key in sorted(OBSERVABILITY_REQUIRED_KEYS):
+            if key not in entry:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{path}.{key}",
+                        "source runtime observability entry is missing a required field",
+                    )
+                )
+
+        environment = str(entry.get("environment", "")).strip()
+        source_system = str(entry.get("sourceSystem", "")).strip()
+        runtime_id = str(entry.get("sourceRuntimeId", "")).strip()
+        runtime_class = str(entry.get("runtimeClass", "")).strip()
+        key = (source_system, runtime_id, runtime_class)
+        if all(key):
+            if key in seen:
+                findings.append(_finding("error", stack, f"{path}.sourceRuntimeId", "duplicate source runtime observability entry"))
+            seen.add(key)
+
+        if environment != expected_environment:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.environment",
+                    f"source runtime observability environment must match stack environment {expected_environment!r}",
+                )
+            )
+        if source_system not in {"evidence_cas", "panopticon"}:
+            findings.append(
+                _finding("error", stack, f"{path}.sourceSystem", "source runtime observability sourceSystem must be evidence_cas or panopticon")
+            )
+        enabled = entry.get("enabled")
+        if not isinstance(enabled, bool):
+            findings.append(_finding("error", stack, f"{path}.enabled", "source runtime observability enabled state must be boolean"))
+            enabled = False
+        if not isinstance(entry.get("dashboardEnabled"), bool):
+            findings.append(_finding("error", stack, f"{path}.dashboardEnabled", "dashboard participation must be boolean"))
+        if not isinstance(entry.get("alarmEnabled"), bool):
+            findings.append(_finding("error", stack, f"{path}.alarmEnabled", "alarm participation must be boolean"))
+        if str(entry.get("logGroupRef", "")).strip() != "runtime":
+            findings.append(_finding("error", stack, f"{path}.logGroupRef", "source runtime observability log group reference must be 'runtime'"))
+        if str(entry.get("alarmRoute", "")).strip() != "default":
+            findings.append(_finding("error", stack, f"{path}.alarmRoute", "source runtime observability alarmRoute must use the default stack route"))
+
+        freshness_sla_minutes = entry.get("freshnessSlaMinutes")
+        if not isinstance(freshness_sla_minutes, int) or freshness_sla_minutes < 15 or freshness_sla_minutes > 1440:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.freshnessSlaMinutes",
+                    "source runtime observability freshnessSlaMinutes must be between 15 and 1440",
+                )
+            )
+
+        if entry.get("observabilityStates") != OBSERVABILITY_STATUS_MODEL:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.observabilityStates",
+                    "source runtime observability must use the shared contract probe status model",
+                )
+            )
+
+        runtime = runtimes_by_id.get(runtime_id)
+        if enabled and runtime is None:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.sourceRuntimeId",
+                    "source runtime observability must reference a configured source runtime when enabled",
+                )
+            )
+        if enabled and runtime is not None:
+            actual_source = str(runtime.get("sourceId", "")).strip()
+            if actual_source != source_system:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{path}.sourceSystem",
+                        f"source runtime observability sourceSystem must match source runtime sourceId {actual_source!r}",
+                    )
+                )
+            runtime_config = runtime.get("config") or {}
+            actual_family = str(runtime_config.get("family", "")).strip() if isinstance(runtime_config, dict) else ""
+            if actual_family and actual_family != runtime_class:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{path}.runtimeClass",
+                        f"source runtime observability runtimeClass must match runtime family {actual_family!r}",
+                    )
+                )
+
+    for key, expected_enabled in sorted(expected_entries.items()):
+        if key not in seen:
+            source_system, runtime_id, runtime_class = key
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:sourceRuntimeObservability",
+                    f"source runtime observability entry for {source_system}/{runtime_class} ({runtime_id}) is missing",
+                )
+            )
+            continue
+        matching = [
+            entry
+            for entry in observability_entries
+            if isinstance(entry, dict)
+            and (
+                str(entry.get("sourceSystem", "")).strip(),
+                str(entry.get("sourceRuntimeId", "")).strip(),
+                str(entry.get("runtimeClass", "")).strip(),
+            )
+            == key
+        ]
+        if matching and matching[0].get("enabled") is not expected_enabled:
+            source_system, _, runtime_class = key
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:sourceRuntimeObservability",
+                    f"source runtime observability entry for {source_system}/{runtime_class} must set enabled={expected_enabled}",
+                )
+            )
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -1188,6 +1388,7 @@ def validate_stack(path: Path) -> list[Finding]:
     _validate_sec_dev_aws_coverage(stack, config, source_runtimes, schedules, findings)
     _validate_go_prod_aws_coverage(stack, source_runtimes, schedules, findings)
     _validate_panopticon_wiring(stack, config, source_runtimes, schedules, findings)
+    _validate_source_runtime_observability(stack, config, source_runtimes, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment
@@ -1298,6 +1499,32 @@ def validate_cross_stack(paths: list[Path]) -> list[Finding]:
     return findings
 
 
+def _source_runtime_observability_summaries(path: Path) -> list[str]:
+    stack = _stack_name(path)
+    config = _load_config(path)
+    entries = config.get("sourceRuntimeObservability") or []
+    if not isinstance(entries, list):
+        return []
+    summaries = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        source_system = str(entry.get("sourceSystem", "")).strip()
+        runtime_id = str(entry.get("sourceRuntimeId", "")).strip()
+        runtime_class = str(entry.get("runtimeClass", "")).strip()
+        enabled = entry.get("enabled")
+        freshness = entry.get("freshnessSlaMinutes")
+        dashboard = entry.get("dashboardEnabled")
+        alarm = entry.get("alarmEnabled")
+        if source_system and runtime_id and runtime_class:
+            summaries.append(
+                f"OK: {stack} sourceRuntimeObservability {source_system}/{runtime_class} "
+                f"runtime={runtime_id} enabled={enabled} freshnessSlaMinutes={freshness} "
+                f"dashboard={dashboard} alarm={alarm}"
+            )
+    return summaries
+
+
 def _default_stack_paths(repo_root: Path) -> list[Path]:
     return sorted((repo_root / "infra" / "aws").glob("Pulumi.*.yaml"))
 
@@ -1320,6 +1547,10 @@ def main(argv: list[str] | None = None) -> int:
 
     has_error = any(finding.severity == "error" for finding in findings)
     has_warning = any(finding.severity == "warning" for finding in findings)
+    if not has_error:
+        for path in paths:
+            for summary in _source_runtime_observability_summaries(path):
+                print(summary)
     return 1 if has_error or (args.strict_warnings and has_warning) else 0
 
 
