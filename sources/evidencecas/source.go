@@ -37,10 +37,11 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
-		RequireTenantID: true,
-		TokenScheme:     "Bearer",
+		SourceID:                          sourceID,
+		DefaultFamily:                     defaultFamily,
+		RequireTenantID:                   true,
+		TokenScheme:                       "Bearer",
+		PrivateEndpointAllowlistConfigKey: "private_endpoint_allowlist",
 		Families: []jsonapi.Family{
 			{
 				Name:    familyObject,
@@ -209,7 +210,14 @@ func (s *Source) checkContract(ctx context.Context, cfg sourcecdk.Config) error 
 
 func (s *Source) getControlJSON(ctx context.Context, cfg sourcecdk.Config, path string, target any) error {
 	baseURL := strings.TrimSpace(configValue(cfg, "base_url"))
-	normalizedBaseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, baseURL, s != nil && s.allowLoopback)
+	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, configValue(cfg, "private_endpoint_allowlist"))
+	if err != nil {
+		return err
+	}
+	normalizedBaseURL, _, err := sourcehttp.NormalizeBaseURLWithOptions(sourceID, baseURL, sourcehttp.URLValidationOptions{
+		AllowLoopback:            s != nil && s.allowLoopback,
+		PrivateEndpointAllowlist: privateEndpointAllowlist,
+	})
 	if err != nil {
 		return err
 	}
@@ -219,9 +227,10 @@ func (s *Source) getControlJSON(ctx context.Context, cfg sourcecdk.Config, path 
 	}
 	req.Header.Set("Accept", "application/json")
 	client := sourcehttp.NewClient(sourcehttp.ClientOptions{
-		SourceID:      sourceID,
-		AllowLoopback: s != nil && s.allowLoopback,
-		Timeout:       10 * time.Second,
+		SourceID:                 sourceID,
+		AllowLoopback:            s != nil && s.allowLoopback,
+		PrivateEndpointAllowlist: privateEndpointAllowlist,
+		Timeout:                  10 * time.Second,
 	})
 	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {

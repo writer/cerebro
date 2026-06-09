@@ -45,13 +45,14 @@ type Family struct {
 
 // Options configures a JSON API-backed source adapter.
 type Options struct {
-	SourceID         string
-	DefaultBaseURL   string
-	DefaultFamily    string
-	RequireTenantID  bool
-	TokenScheme      string
-	DiscoverURNScope string
-	Families         []Family
+	SourceID                          string
+	DefaultBaseURL                    string
+	DefaultFamily                     string
+	RequireTenantID                   bool
+	TokenScheme                       string
+	DiscoverURNScope                  string
+	PrivateEndpointAllowlistConfigKey string
+	Families                          []Family
 }
 
 // Source is a small, safe JSON API source implementation used by endpoint
@@ -66,14 +67,15 @@ type Source struct {
 }
 
 type settings struct {
-	tenantID string
-	family   string
-	baseURL  string
-	host     string
-	token    string
-	path     string
-	query    url.Values
-	perPage  int
+	tenantID                 string
+	family                   string
+	baseURL                  string
+	host                     string
+	token                    string
+	path                     string
+	query                    url.Values
+	perPage                  int
+	privateEndpointAllowlist []string
 }
 
 type record struct {
@@ -181,7 +183,17 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if resolved.baseURL == "" {
 		return resolved, fmt.Errorf("%s base_url is required", s.options.SourceID)
 	}
-	baseURL, host, err := sourcehttp.NormalizeBaseURL(s.options.SourceID, resolved.baseURL, s.AllowLoopbackBaseURL)
+	if key := strings.TrimSpace(s.options.PrivateEndpointAllowlistConfigKey); key != "" {
+		allowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(s.options.SourceID, configValue(cfg, key))
+		if err != nil {
+			return resolved, err
+		}
+		resolved.privateEndpointAllowlist = allowlist
+	}
+	baseURL, host, err := sourcehttp.NormalizeBaseURLWithOptions(s.options.SourceID, resolved.baseURL, sourcehttp.URLValidationOptions{
+		AllowLoopback:            s.AllowLoopbackBaseURL,
+		PrivateEndpointAllowlist: resolved.privateEndpointAllowlist,
+	})
 	if err != nil {
 		return resolved, err
 	}
@@ -300,9 +312,10 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 	client := s.client
 	if client == nil {
 		client = sourcehttp.NewClient(sourcehttp.ClientOptions{
-			SourceID:      s.options.SourceID,
-			AllowLoopback: s.AllowLoopbackBaseURL,
-			LookupIPAddrs: lookupIPAddrs(s),
+			SourceID:                 s.options.SourceID,
+			AllowLoopback:            s.AllowLoopbackBaseURL,
+			PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
+			LookupIPAddrs:            lookupIPAddrs(s),
 		})
 	}
 	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})

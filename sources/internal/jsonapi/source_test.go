@@ -298,6 +298,44 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 	}
 }
 
+func TestPrivateEndpointAllowlistIsOptInPerSource(t *testing.T) {
+	source := newTestSource(t, "https://example.com")
+	source.AllowLoopbackBaseURL = false
+	source.lookupIPAddrs = func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("10.0.0.10")}}, nil
+	}
+	err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":                  "writer",
+		"token":                      "token-1",
+		"base_url":                   "https://cas.internal.example",
+		"private_endpoint_allowlist": "cas.internal.example",
+	}))
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want non-EvidenceCAS source to ignore private_endpoint_allowlist and keep default SSRF protection")
+	}
+}
+
+func TestPrivateEndpointAllowlistAllowsConfiguredJSONAPISource(t *testing.T) {
+	source := newTestSource(t, "https://example.com")
+	source.options.PrivateEndpointAllowlistConfigKey = "private_endpoint_allowlist"
+	source.AllowLoopbackBaseURL = false
+	source.lookupIPAddrs = func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("10.0.0.10")}}, nil
+	}
+	settings, err := source.parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id":                  "writer",
+		"token":                      "token-1",
+		"base_url":                   "https://cas.internal.example",
+		"private_endpoint_allowlist": "cas.internal.example",
+	}))
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v, want allowlisted private endpoint accepted", err)
+	}
+	if settings.host != "cas.internal.example" {
+		t.Fatalf("host = %q, want cas.internal.example", settings.host)
+	}
+}
+
 func TestSafeRoundTripperPinsValidatedHostnameAddress(t *testing.T) {
 	var dialed string
 	rt := sourcehttp.SafeRoundTripper{
