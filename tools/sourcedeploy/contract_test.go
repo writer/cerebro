@@ -23,6 +23,16 @@ runtimes:
       family: audit
       token: env:OKTA_API_TOKEN
 `)
+	mkSourceHealthReceipt(t, root, "okta", `{
+  "receipt_kind": "source_health.receipt",
+  "source_id": "okta",
+  "source_type": "json_api",
+  "auth_model": "bearer_token",
+  "adapter_health_path": "/healthz",
+  "expected_cadence_seconds": 3600,
+  "stale_after_seconds": 7200,
+  "evidence_cas_reference_kind": "okta.evidence_cas_reference"
+}`)
 
 	manifests, err := Discover(root)
 	if err != nil {
@@ -62,6 +72,15 @@ runtimes:
 	}
 	if !equalStrings(okta.Runtimes[0].RequiredSecrets, []string{"OKTA_API_TOKEN", "OKTA_DOMAIN"}) {
 		t.Fatalf("runtime secrets = %v", okta.Runtimes[0].RequiredSecrets)
+	}
+	if got := okta.SourceHealthReceipt["receipt_kind"]; got != "source_health.receipt" {
+		t.Fatalf("source health receipt kind = %v", got)
+	}
+	if got := okta.SourceHealthReceipt["source_id"]; got != "okta" {
+		t.Fatalf("source health receipt source_id = %v", got)
+	}
+	if got := okta.SourceHealthReceipt["expected_cadence_seconds"]; got != float64(3600) {
+		t.Fatalf("source health receipt cadence = %v", got)
 	}
 }
 
@@ -107,6 +126,30 @@ func TestRenderContractUsesRuntimeFamilyCatalogOverrides(t *testing.T) {
 	}
 }
 
+func TestRenderContractRejectsInvalidSourceHealthReceipt(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", `
+sourceId: okta
+secretKeys:
+  - OKTA_API_TOKEN
+runtimes:
+  - localId: audit
+    config:
+      family: audit
+      token: env:OKTA_API_TOKEN
+`)
+	mkSourceHealthReceipt(t, root, "okta", `{"receipt_kind":"wrong","source_id":"okta"}`)
+
+	manifests, err := Discover(root)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if _, err := RenderContract(root, manifests, ContractOptions{Environment: "sec-dev", TenantID: "writer"}); err == nil {
+		t.Fatal("RenderContract error = nil, want invalid source health receipt error")
+	}
+}
+
 func TestAWSCatalogDeclaresAssetMetadataSupportedFamily(t *testing.T) {
 	t.Parallel()
 	catalogs, err := discoverCatalogs(filepath.Join("..", "..", "sources"))
@@ -133,6 +176,14 @@ func TestAWSCatalogDeclaresAssetMetadataSupportedFamily(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("aws supported families %v missing asset_metadata", families)
+	}
+}
+
+func mkSourceHealthReceipt(t *testing.T, root string, name string, receipt string) {
+	t.Helper()
+	path := filepath.Join(root, name, "source_health_receipt.json")
+	if err := os.WriteFile(path, []byte(receipt), 0o644); err != nil {
+		t.Fatalf("WriteFile(source_health_receipt): %v", err)
 	}
 }
 
