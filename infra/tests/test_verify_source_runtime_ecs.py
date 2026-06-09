@@ -19,6 +19,8 @@ from scripts.verify_source_runtime_ecs import (
     SecretImportPreflightFinding,
     VerificationOptions,
     VerificationResult,
+    _bootstrap_payload_runtime_ids,
+    _bootstrap_task_diagnostics,
     _declared_runtime_ids,
     _latest_active_task_definition,
     _latest_task,
@@ -36,6 +38,7 @@ from scripts.verify_source_runtime_ecs import (
     _summarize_log_messages,
     _task_family,
     _task_logs,
+    _verify_bootstrap_payload_targets,
     _verify_task,
     _verification_result_from_logs,
     _verify_runtime_targets,
@@ -952,6 +955,7 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
             patch("scripts.verify_source_runtime_ecs._verify_account"),
             patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._verify_bootstrap_payload_targets"),
             patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings", return_value=findings),
             patch("scripts.verify_source_runtime_ecs._run_task") as run_task,
             redirect_stderr(stderr),
@@ -1022,6 +1026,7 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
             patch("scripts.verify_source_runtime_ecs._verify_account"),
             patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._verify_bootstrap_payload_targets"),
             patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings", side_effect=fake_preflight),
             patch("scripts.verify_source_runtime_ecs._verify_runtime_targets", side_effect=fake_verify),
             redirect_stdout(stdout),
@@ -1073,6 +1078,7 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
             patch("scripts.verify_source_runtime_ecs._verify_account"),
             patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._verify_bootstrap_payload_targets"),
             patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings") as preflight,
             patch("scripts.verify_source_runtime_ecs._verify_runtime_targets", return_value=[result]),
             redirect_stdout(StringIO()),
@@ -1122,6 +1128,160 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             [finding.key_path for finding in findings],
             ["cerebro-sec-dev/EVIDENCE_CAS_BASE_URL", "cerebro-sec-dev/EVIDENCE_CAS_TOKEN"],
         )
+
+    def test_bootstrap_payload_runtime_ids_parse_object_and_list_shapes(self) -> None:
+        object_payload = '{"runtimes":[{"id":"writer-panopticon-alerts","source_id":"panopticon","config":{"token":"env:TOKEN"}}]}'
+        list_payload = '[{"id":"writer-panopticon-cases","source_id":"panopticon"}]'
+
+        self.assertEqual(_bootstrap_payload_runtime_ids(object_payload), {"writer-panopticon-alerts"})
+        self.assertEqual(_bootstrap_payload_runtime_ids(list_payload), {"writer-panopticon-cases"})
+
+    def test_verify_bootstrap_payload_targets_fails_closed_for_missing_runtime_id(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+            target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+        )
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                return {
+                    "taskDefinition": {
+                        "status": "ACTIVE",
+                        "taskDefinitionArn": "task-def",
+                        "containerDefinitions": [
+                            {
+                                "name": "source-runtime-bootstrap",
+                                "environment": [
+                                    {
+                                        "name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
+                                        "value": '{"runtimes":[{"id":"writer-panopticon-cases","source_id":"panopticon"}]}',
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            raise AssertionError(f"unexpected args: {args}")
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            with self.assertRaisesRegex(RuntimeVerificationFailedError, "bootstrap payload status is missing"):
+                _verify_bootstrap_payload_targets([target], "us-east-1")
+
+    def test_run_validates_bootstrap_payload_before_secret_preflight_and_run_task(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimeObservability": [
+                {
+                    "sourceSystem": "panopticon",
+                    "sourceRuntimeId": "writer-panopticon-alerts",
+                    "runtimeClass": "alert",
+                    "enabled": True,
+                }
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="writer-panopticon-alerts",
+                schedule_name="panopticon-alerts-live",
+                rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+        events: list[str] = []
+
+        def fake_bootstrap(targets_arg, region_arg):
+            events.append("bootstrap")
+            raise RuntimeVerificationFailedError("writer-panopticon-alerts", "task-def", "bootstrap payload", "missing")
+
+        def fake_preflight(config_arg, stack_arg, region_arg):
+            events.append("preflight")
+            return []
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets),
+            patch("scripts.verify_source_runtime_ecs._verify_bootstrap_payload_targets", side_effect=fake_bootstrap),
+            patch("scripts.verify_source_runtime_ecs._secret_import_preflight_findings", side_effect=fake_preflight),
+            patch("scripts.verify_source_runtime_ecs._run_task") as run_task,
+        ):
+            with self.assertRaisesRegex(RuntimeVerificationFailedError, "bootstrap payload status is missing"):
+                main(
+                    [
+                        "--stack-file",
+                        str(stack_file),
+                        "--source-id",
+                        "panopticon",
+                        "--observability-targets",
+                        "--run",
+                    ]
+                )
+
+        self.assertEqual(events, ["bootstrap"])
+        run_task.assert_not_called()
+
+    def test_runtime_discovery_failure_includes_redacted_bootstrap_diagnostics(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+            target={"Arn": "cluster"},
+        )
+        task = {
+            "taskArn": "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1",
+            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/runtime:4",
+        }
+        messages = [
+            {"kind": "event", "name": "orchestrator.runtimes_listed", "runtime_count": 0},
+            {"kind": "span_end", "name": "orchestrator.iteration", "status": "completed", "runtimes_attempted": 0},
+        ]
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                return {
+                    "taskDefinition": {
+                        "containerDefinitions": [
+                            {
+                                "name": "source-runtime-bootstrap",
+                                "environment": [
+                                    {
+                                        "name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
+                                        "value": '{"runtimes":[{"id":"writer-panopticon-alerts","source_id":"panopticon","config":{"token":"env:TOKEN"}}]}',
+                                    }
+                                ],
+                                "logConfiguration": {
+                                    "options": {
+                                        "awslogs-group": "/ecs/cerebro-sec-dev",
+                                        "awslogs-stream-prefix": "source-runtime-bootstrap",
+                                    }
+                                },
+                            }
+                        ]
+                    }
+                }
+            if args[:2] == ["logs", "get-log-events"]:
+                return {
+                    "events": [
+                        {
+                            "message": '{"kind":"event","name":"source_runtime.bootstrap","status":"completed","runtime_id":"writer-panopticon-alerts","secret":"do-not-print"}'
+                        }
+                    ]
+                }
+            raise AssertionError(f"unexpected args: {args}")
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            with self.assertRaises(RuntimeVerificationFailedError) as context:
+                _verification_result_from_logs(target, task["taskArn"], 0, messages, True, task=task, region="us-east-1")
+
+        output = str(context.exception)
+        self.assertIn("bootstrap diagnostics", output)
+        self.assertIn("writer-panopticon-alerts", output)
+        self.assertNotIn("123456789012", output)
+        self.assertNotIn("arn:aws", output)
+        self.assertNotIn("do-not-print", output)
 
 
 if __name__ == "__main__":
