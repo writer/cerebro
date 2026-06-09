@@ -294,6 +294,46 @@ func (contractEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.So
 	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{event}}, nil
 }
 
+type evidenceCASMissingSourceSystemSource struct{}
+
+func (evidenceCASMissingSourceSystemSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "evidence_cas"}
+}
+
+func (evidenceCASMissingSourceSystemSource) EventContracts() []sourcecdk.EventContract {
+	return []sourcecdk.EventContract{{
+		Kind:                  "evidence_cas.object",
+		SchemaRef:             "evidence_cas/object/v1",
+		RequiredAttributes:    []string{"tenant_id", "source_system", "source_event_id", "evidence_id", "evidence_type", "resource_urn", "evidence_cas_uri", "evidence_cas_digest"},
+		RequiredPayloadFields: []string{"uri", "digest", "manifest_version"},
+	}}
+}
+
+func (evidenceCASMissingSourceSystemSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (evidenceCASMissingSourceSystemSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (evidenceCASMissingSourceSystemSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	event := runtimeTestEvent("evidence-cas-missing-source-system", "evidence_cas", "evidence_cas.object")
+	event.SchemaRef = "evidence_cas/object/v1"
+	event.Payload = []byte(`{"uri":"evidencecas://cases/case-123/evidence/evidence-456","digest":"sha256canonical","manifest_version":2}`)
+	event.Attributes = map[string]string{
+		"tenant_id":             "tenant-123",
+		"source_event_id":       "iris-event-123",
+		"evidence_id":           "evidence-456",
+		"evidence_type":         "evidence_cas.artifact",
+		"resource_urn":          "urn:cerebro:tenant-123:case:case-123",
+		"evidence_cas_uri":      "evidencecas://cases/case-123/evidence/evidence-456",
+		"evidence_cas_digest":   "sha256canonical",
+		"evidence_cas_ref_type": "evidencecas.manifest.v2",
+	}
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{event}}, nil
+}
+
 type unmatchedContractEventSource struct{}
 
 func (unmatchedContractEventSource) Spec() *cerebrov1.SourceSpec {
@@ -1316,6 +1356,62 @@ func TestSyncRuntimeRejectsEventsMissingCatalogContractFields(t *testing.T) {
 	}
 	if stored.GetLastSyncedAt() == nil {
 		t.Fatal("LastSyncedAt is nil, want terminal rejection to commit sync status")
+	}
+}
+
+func TestSyncRuntimeQuarantinesEvidenceCASMissingSourceSystem(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(evidenceCASMissingSourceSystemSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-evidence-cas": {
+				Id:       "example-evidence-cas",
+				SourceId: "evidence_cas",
+				TenantId: "tenant-123",
+			},
+		},
+	}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-evidence-cas"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if len(log.events) != 0 {
+		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
+	}
+	if resp.GetEventsAppended() != 0 {
+		t.Fatalf("Sync().EventsAppended = %d, want 0", resp.GetEventsAppended())
+	}
+	stored := store.runtimes["example-evidence-cas"]
+	for key, want := range map[string]string{
+		runtimeStatusConfigKey:                "completed",
+		runtimeRecordsScannedConfigKey:        "1",
+		runtimeRecordsAcceptedConfigKey:       "0",
+		runtimeRecordsRejectedConfigKey:       "1",
+		runtimeLastFailureCategoryConfigKey:   "missing_required_attribute",
+		runtimeLastInvalidEventIDConfigKey:    "iris-event-123",
+		runtimeLastInvalidFieldConfigKey:      "source_system",
+		runtimeLastInvalidStatusConfigKey:     "terminal",
+		runtimeLastInvalidDiagnosticConfigKey: "missing required field source_system",
+		runtimeLastInvalidRetryableConfigKey:  "false",
+		runtimeContractProbeStateConfigKey:    "failure",
+	} {
+		if got := stored.GetConfig()[key]; got != want {
+			t.Fatalf("stored config[%s] = %q, want %q", key, got, want)
+		}
+	}
+	if stored.GetConfig()[runtimeLastInvalidObservedAtConfigKey] == "" {
+		t.Fatal("stored invalid observed_at is empty")
+	}
+	if stored.GetConfig()[runtimeLastInvalidOccurredAtConfigKey] == "" {
+		t.Fatal("stored invalid occurred_at is empty")
+	}
+	if stored.GetLastSyncedAt() == nil {
+		t.Fatal("LastSyncedAt is nil, want terminal quarantine to commit sync status")
 	}
 }
 

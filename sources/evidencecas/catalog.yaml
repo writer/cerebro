@@ -8,6 +8,7 @@ event_contracts:
     schema_ref: evidence_cas/object/v1
     required_attributes:
       - tenant_id
+      - source_system
       - source_event_id
       - evidence_id
       - evidence_type

@@ -3,11 +3,15 @@ package evidencecas
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestSourceSpec(t *testing.T) {
@@ -186,6 +190,47 @@ func TestReadObjectRefsPreservesCanonicalCorrelationAndLegacyMetadata(t *testing
 	}
 	if got := metadata["legacy_case_key"]; got != "legacy-case-123" {
 		t.Fatalf("legacy metadata = %#v, want preserved legacy_case_key", got)
+	}
+}
+
+func TestSourceCatalogRequiresSourceSystem(t *testing.T) {
+	specBytes, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog.yaml error = %v", err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(specBytes)
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	event := &cerebrov1.EventEnvelope{
+		Id:         "evidence-cas-missing-source-system",
+		TenantId:   "tenant-123",
+		SourceId:   "evidence_cas",
+		Kind:       "evidence_cas.object",
+		SchemaRef:  "evidence_cas/object/v1",
+		OccurredAt: timestamppb.Now(),
+		Payload:    []byte(`{"uri":"evidencecas://cases/case-123/evidence/evidence-456","digest":"sha256canonical","manifest_version":2}`),
+		Attributes: map[string]string{
+			"tenant_id":             "tenant-123",
+			"source_event_id":       "iris-event-123",
+			"evidence_id":           "evidence-456",
+			"evidence_type":         "evidence_cas.artifact",
+			"resource_urn":          "urn:cerebro:tenant-123:case:case-123",
+			"evidence_cas_uri":      "evidencecas://cases/case-123/evidence/evidence-456",
+			"evidence_cas_digest":   "sha256canonical",
+			"evidence_cas_ref_type": "evidencecas.manifest.v2",
+		},
+	}
+	err = sourcecdk.ValidateEventEnvelopeWithContracts(event, catalog.EventContracts)
+	if !errors.Is(err, sourcecdk.ErrInvalidEventEnvelope) {
+		t.Fatalf("ValidateEventEnvelopeWithContracts() error = %v, want ErrInvalidEventEnvelope", err)
+	}
+	if got, want := err.Error(), `missing required attribute "source_system"`; !strings.Contains(got, want) {
+		t.Fatalf("validation error = %q, want %q", got, want)
+	}
+	event.Attributes["source_system"] = "iris"
+	if err := sourcecdk.ValidateEventEnvelopeWithContracts(event, catalog.EventContracts); err != nil {
+		t.Fatalf("valid EvidenceCAS event failed contract validation: %v", err)
 	}
 }
 
