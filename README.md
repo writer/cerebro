@@ -258,12 +258,15 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 
 | Source ID | Description | Emitted kinds / families |
 | --- | --- | --- |
+| `anthropic` | Anthropic organization source | users, workspaces, API keys |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
 | `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `backstage` | Backstage catalog source | components |
 | `cerebro` | Cerebro product access telemetry source backed by structured NDJSON archives | API access audit events |
+| `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
+| `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |
 | `evidence_cas` | EvidenceCAS content-addressed evidence reference source | object manifests |
 | `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | audit, groups, IAM role assignments, service accounts, resource exposure |
 | `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests |
@@ -271,11 +274,17 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `grc` | Governance/risk/compliance source | configured GRC families |
 | `kandji` | Kandji device/application/vulnerability source | devices, applications, vulnerabilities |
 | `kolide` | Kolide device posture source | configured catalog families |
+| `kubernetes` | Kubernetes inventory source | clusters, namespaces, pods, containers, service accounts, workloads, workload identity bindings |
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
+| `openai` | OpenAI organization source | users, projects, service accounts, API keys, admin API keys |
+| `pagerduty` | PagerDuty incident management source | users, teams, services, schedules, escalation policies, integrations, vendors |
 | `panopticon` | Panopticon security operations source backed by canonical S3 event archives | alerts, cases, IOCs |
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
 | `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
+| `slack` | Slack workspace source | teams, users, channels, user groups |
+| `tailscale` | Tailscale network source | tailnets, users, devices, groups, tags, services, grants |
+| `trivy` | Trivy report source | image scans, image packages, image vulnerabilities, fixes |
 | `trusted_endpoint` | Trusted Endpoint posture, AI trust, GRC evidence, and trust-gate source | metadata-only endpoint posture, AI risk, evidence, findings, and action outcomes |
 | `vulnview` | Vulnerability and attack-surface source | sites, scans, vulnerabilities, assets, DNS alerts |
 
