@@ -46,9 +46,14 @@ def create_ecs_cluster(
     orchestrator_task_count: int = 1,
     orchestrator_schedules: list[dict] = None,
     source_runtimes: list[dict] = None,
+    source_runtime_service_bootstrap_ids: list[str] = None,
 ) -> dict:
     """Create ECS cluster with an API service."""
     runtime_environment = _source_runtime_environment(environment or {}, source_runtimes or [])
+    service_bootstrap_runtimes = _source_runtime_service_bootstrap_runtimes(
+        source_runtimes or [],
+        source_runtime_service_bootstrap_ids,
+    )
     secret_prefixes = _secret_prefixes(secret_keys or [], external_secrets_prefix)
     cluster = aws.ecs.Cluster(
         f"{name}-cluster",
@@ -96,7 +101,7 @@ def create_ecs_cluster(
         efs_file_system_id=efs_file_system_id,
         efs_access_point_id=efs_access_point_id,
         efs_container_path=efs_container_path,
-        source_runtimes=source_runtimes or [],
+        source_runtimes=service_bootstrap_runtimes,
     )
 
     orchestrator_task_definition = None
@@ -344,6 +349,32 @@ def _source_runtime_aws_role_arns(source_runtimes: list[dict]) -> list[str]:
         if role_arn:
             role_arns.add(role_arn)
     return sorted(role_arns)
+
+
+def _source_runtime_service_bootstrap_runtimes(
+    source_runtimes: list[dict],
+    bootstrap_ids: list[str] | None,
+) -> list[dict]:
+    if not bootstrap_ids:
+        return list(source_runtimes or [])
+    if not isinstance(bootstrap_ids, list):
+        raise ValueError("sourceRuntimeServiceBootstrapIds must be a list")
+    requested_ids = [str(runtime_id).strip() for runtime_id in bootstrap_ids]
+    if any(not runtime_id for runtime_id in requested_ids):
+        raise ValueError("sourceRuntimeServiceBootstrapIds entries must be non-empty strings")
+    requested = set(requested_ids)
+    available = {_runtime_field(runtime, "id") for runtime in source_runtimes or []}
+    missing = sorted(requested - available)
+    if missing:
+        raise ValueError(
+            "sourceRuntimeServiceBootstrapIds references unknown source runtime(s): "
+            + ", ".join(missing)
+        )
+    return [
+        runtime
+        for runtime in source_runtimes or []
+        if _runtime_field(runtime, "id") in requested
+    ]
 
 
 def _secret_prefix(secret_key, default_prefix: str) -> str:

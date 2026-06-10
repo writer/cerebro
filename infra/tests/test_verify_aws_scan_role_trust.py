@@ -1,9 +1,11 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 spec = importlib.util.spec_from_file_location("verify_aws_scan_role_trust", Path(__file__).resolve().parents[1] / "scripts" / "verify_aws_scan_role_trust.py")
@@ -85,6 +87,24 @@ class AwsScanRoleTrustTest(unittest.TestCase):
             path.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "must contain a JSON object"):
                 verify_aws_scan_role_trust._load_outputs(path)
+
+    def test_aws_parses_stdout_when_success_emits_stderr_warning(self) -> None:
+        with patch.object(verify_aws_scan_role_trust.subprocess, "run") as run:
+            run.return_value = subprocess.CompletedProcess(
+                ["aws"],
+                0,
+                stdout=json.dumps({"Role": {"RoleName": "present"}}),
+                stderr="WARNING: non-fatal AWS CLI warning\n",
+            )
+
+            self.assertEqual(
+                verify_aws_scan_role_trust._aws(["iam", "get-role", "--role-name", "present"], "us-east-1"),
+                {"Role": {"RoleName": "present"}},
+            )
+
+        _, kwargs = run.call_args
+        self.assertTrue(kwargs["capture_output"])
+        self.assertTrue(kwargs["check"])
 
     def test_missing_worker_trust_is_reported(self) -> None:
         target_role = "arn:aws:iam::381491964434:role/cerebro-org-scan-role"
@@ -177,6 +197,45 @@ class AwsScanRoleTrustTest(unittest.TestCase):
             ),
             ["arn:aws:iam::837279440628:role/cerebro-org-scan-role"],
         )
+
+    def test_go_prod_config_checks_panopticon_export_reader_role(self) -> None:
+        config = verify_aws_scan_role_trust._load_config(Path(__file__).resolve().parents[1] / "aws" / "Pulumi.go-prod.yaml")
+
+        role_arns = verify_aws_scan_role_trust._same_account_role_arns(
+            verify_aws_scan_role_trust._source_runtime_role_arns(config),
+            "837279440628",
+        )
+
+        self.assertIn(
+            "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
+            role_arns,
+        )
+
+    def test_missing_role_preflight_reports_role_arn(self) -> None:
+        role_arn = "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader"
+        original_aws = verify_aws_scan_role_trust._aws
+
+        def fail_get_role(*_args, **_kwargs):
+            raise subprocess.CalledProcessError(
+                254,
+                ["aws", "iam", "get-role"],
+                stderr="An error occurred (NoSuchEntity) when calling the GetRole operation: role missing",
+            )
+
+        verify_aws_scan_role_trust._aws = fail_get_role
+        try:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "panopticon-prod-cerebro-export-reader.*producer-owned role",
+            ):
+                verify_aws_scan_role_trust._load_role_policies(
+                    [role_arn],
+                    "837279440628",
+                    "us-east-1",
+                    {},
+                )
+        finally:
+            verify_aws_scan_role_trust._aws = original_aws
 
 
 if __name__ == "__main__":

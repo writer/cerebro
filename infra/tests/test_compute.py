@@ -54,6 +54,29 @@ class SourceRuntimeEnvironmentTest(unittest.TestCase):
             ],
         )
 
+    def test_filters_service_bootstrap_runtimes_by_id(self) -> None:
+        source_runtimes = [
+            {"id": "writer-evidence-cas-cases", "sourceId": "evidence_cas"},
+            {"id": "writer-cosmo-session", "sourceId": "cosmo"},
+        ]
+
+        self.assertEqual(
+            compute._source_runtime_service_bootstrap_runtimes(
+                source_runtimes,
+                ["writer-evidence-cas-cases"],
+            ),
+            [source_runtimes[0]],
+        )
+        self.assertEqual(
+            compute._source_runtime_service_bootstrap_runtimes(source_runtimes, []),
+            source_runtimes,
+        )
+        with self.assertRaisesRegex(ValueError, "unknown source runtime"):
+            compute._source_runtime_service_bootstrap_runtimes(
+                source_runtimes,
+                ["writer-missing-runtime"],
+            )
+
 
 class WorkerTaskRoleTest(unittest.TestCase):
     def test_task_role_assume_policy_uses_declared_role_arns_only(self) -> None:
@@ -170,6 +193,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
                     }
                 ],
                 source_runtimes=panopticon_source_runtimes,
+                source_runtime_service_bootstrap_ids=["writer-panopticon-cases"],
             )
 
         self.assertEqual(task_role_names, ["cerebro-sec-dev", "cerebro-sec-dev-worker"])
@@ -193,7 +217,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
             orchestrator_task_definition["task_role_arn"],
             "arn:aws:iam::123456789012:role/cerebro-sec-dev-worker-task-role",
         )
-        self.assertEqual(api_task_definition["source_runtimes"], panopticon_source_runtimes)
+        self.assertEqual(api_task_definition["source_runtimes"], [panopticon_source_runtimes[1]])
         self.assertEqual(orchestrator_task_definition["source_runtimes"], panopticon_source_runtimes)
         self.assertEqual(
             orchestrator_events_role_calls[0]["task_role_arn"],

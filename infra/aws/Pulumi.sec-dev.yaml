@@ -104,6 +104,8 @@ config:
     - OKTA_DOMAIN
     - SENTINELONE_API_TOKEN
     - SENTINELONE_BASE_URL
+  cerebro:sourceRuntimeServiceBootstrapIds:
+    - writer-evidence-cas-cases
   cerebro:sourceRuntimeRollouts:
     - sourceId: anthropic
       enabled: false

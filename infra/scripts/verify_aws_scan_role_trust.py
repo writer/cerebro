@@ -56,7 +56,14 @@ def _aws(args: list[str], region: str, profile: str | None = None) -> dict[str, 
     env = os.environ.copy()
     if profile:
         env["AWS_PROFILE"] = profile
-    output = subprocess.check_output(command, env=env, text=True)
+    completed = subprocess.run(
+        command,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    output = completed.stdout
     return json.loads(output) if output.strip() else {}
 
 
@@ -202,6 +209,42 @@ def _load_outputs(path: Path | None) -> dict[str, Any] | None:
     return loaded
 
 
+def _called_process_error_detail(exc: subprocess.CalledProcessError) -> str:
+    output = str(
+        getattr(exc, "stderr", None)
+        or getattr(exc, "output", None)
+        or getattr(exc, "stdout", None)
+        or ""
+    ).strip()
+    if not output:
+        return ""
+    return f": {output.splitlines()[-1]}"
+
+
+def _load_role_policies(role_arns: list[str], stack_account: str, region: str, profiles: dict[str, str]) -> dict[str, dict[str, Any]]:
+    role_policies: dict[str, dict[str, Any]] = {}
+    for role_arn in role_arns:
+        match = ROLE_ARN_RE.fullmatch(role_arn)
+        if not match:
+            raise RuntimeError(f"invalid AWS role ARN: {role_arn}")
+        account_id = match.group("account")
+        profile = profiles.get(account_id)
+        if not profile and account_id != stack_account:
+            raise RuntimeError(f"missing --profile-by-account {account_id}=PROFILE for {role_arn}")
+        try:
+            role = _aws(["iam", "get-role", "--role-name", match.group("name")], region, profile).get("Role") or {}
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"AWS role preflight failed for {role_arn}; deploy the producer-owned role before the Cerebro stack"
+                f"{_called_process_error_detail(exc)}"
+            ) from exc
+        policy = role.get("AssumeRolePolicyDocument")
+        if not isinstance(policy, dict):
+            raise RuntimeError(f"AWS role preflight failed for {role_arn}; missing AssumeRolePolicyDocument")
+        role_policies[role_arn] = policy
+    return role_policies
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify AWS source scan roles trust the ECS task roles declared by a Cerebro stack.")
     parser.add_argument("--stack-file", type=Path, required=True)
@@ -234,17 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     expected_principals = _expected_stack_principals_from_outputs(stack, config, stack_account, _load_outputs(args.pulumi_outputs_json))
     profiles = _parse_profile_map(args.profile_by_account)
 
-    role_policies: dict[str, dict[str, Any]] = {}
-    for role_arn in role_arns:
-        match = ROLE_ARN_RE.fullmatch(role_arn)
-        if not match:
-            raise RuntimeError(f"invalid AWS role ARN: {role_arn}")
-        account_id = match.group("account")
-        profile = profiles.get(account_id)
-        if not profile and account_id != stack_account:
-            raise RuntimeError(f"missing --profile-by-account {account_id}=PROFILE for {role_arn}")
-        role = _aws(["iam", "get-role", "--role-name", match.group("name")], args.region, profile).get("Role") or {}
-        role_policies[role_arn] = role.get("AssumeRolePolicyDocument") or {}
+    role_policies = _load_role_policies(role_arns, stack_account, args.region, profiles)
 
     findings = _find_missing_trust(role_arns, expected_principals, role_policies)
     _write_github_summary(stack, role_arns, expected_principals, findings)
