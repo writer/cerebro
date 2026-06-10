@@ -1212,6 +1212,84 @@ def _validate_neo4j_secret_import_coverage(stack: str, config: dict[str, Any], f
         )
 
 
+def _validate_mcp_oauth_contract(stack: str, config: dict[str, Any], findings: list[Finding]) -> None:
+    if config.get("mcpOauthEnabled") is not True:
+        return
+
+    if config.get("apiAuthEnabled") is not True:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:apiAuthEnabled",
+                "MCP OAuth requires API auth to remain enabled",
+            )
+        )
+    issuer = str(config.get("mcpOauthUpstreamIssuer") or "").strip()
+    if not issuer.startswith("https://"):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthUpstreamIssuer",
+                "MCP OAuth upstream issuer must be an HTTPS URL",
+            )
+        )
+    redirect_uri = str(config.get("mcpOauthUpstreamRedirectUri") or "").strip()
+    if not redirect_uri.startswith("https://") or not redirect_uri.endswith("/oauth/callback"):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthUpstreamRedirectUri",
+                "MCP OAuth redirect URI must be HTTPS and end with /oauth/callback",
+            )
+        )
+    for key in ("mcpOauthUpstreamClientIdSecretName", "mcpOauthUpstreamClientSecretName", "mcpOauthTenantId"):
+        if not str(config.get(key) or "").strip():
+            findings.append(_finding("error", stack, f"cerebro:{key}", "MCP OAuth configuration must be non-empty"))
+    security_groups = config.get("mcpOauthSecurityGroups") or []
+    if not isinstance(security_groups, list) or not security_groups or any(not str(group).strip() for group in security_groups):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthSecurityGroups",
+                "MCP OAuth must declare at least one upstream security group",
+            )
+        )
+    allowed_tenants = {str(tenant).strip() for tenant in config.get("allowedTenants") or [] if str(tenant).strip()}
+    mcp_tenant = str(config.get("mcpOauthTenantId") or "").strip()
+    if mcp_tenant and mcp_tenant not in allowed_tenants:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthTenantId",
+                "MCP OAuth tenant must be included in allowedTenants",
+            )
+        )
+    mcp_allowed_tenants = {str(tenant).strip() for tenant in config.get("mcpOauthAllowedTenants") or [] if str(tenant).strip()}
+    if not mcp_allowed_tenants:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthAllowedTenants",
+                "MCP OAuth must declare an explicit tenant allowlist",
+            )
+        )
+    elif not mcp_allowed_tenants.issubset(allowed_tenants):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthAllowedTenants",
+                "MCP OAuth allowed tenants must be a subset of allowedTenants",
+            )
+        )
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -1584,6 +1662,7 @@ def validate_stack(path: Path) -> list[Finding]:
     _validate_panopticon_wiring(stack, config, source_runtimes, schedules, findings)
     _validate_source_runtime_observability(stack, config, source_runtimes, findings)
     _validate_neo4j_secret_import_coverage(stack, config, findings)
+    _validate_mcp_oauth_contract(stack, config, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment

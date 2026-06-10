@@ -1090,6 +1090,36 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and WEBHOOK_SECRET_FIELD in finding.path for finding in findings))
 
+    def test_mcp_oauth_requires_api_auth_and_tenant_subset(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiAuthEnabled: true\n",
+            "  cerebro:apiAuthEnabled: false\n"
+            "  cerebro:mcpOauthEnabled: true\n"
+            "  cerebro:mcpOauthUpstreamIssuer: https://writer.okta.com\n"
+            "  cerebro:mcpOauthUpstreamRedirectUri: https://cerebro.example.com/oauth/callback\n"
+            "  cerebro:mcpOauthUpstreamClientIdSecretName: CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID_GO_PROD\n"
+            "  cerebro:mcpOauthUpstreamClientSecretName: CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET_GO_PROD\n"
+            "  cerebro:mcpOauthSecurityGroups:\n"
+            "    - DEPT - SECURITY\n"
+            "  cerebro:mcpOauthTenantId: unknown\n"
+            "  cerebro:mcpOauthAllowedTenants:\n"
+            "    - unknown\n",
+        )
+        findings = self._validate(content)
+
+        self.assertTrue(any(finding.severity == "error" and "MCP OAuth requires API auth" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "subset of allowedTenants" in finding.message for finding in findings))
+
+    def test_actual_go_prod_mcp_oauth_contract_is_valid(self) -> None:
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+        self.assertFalse(
+            any(
+                finding.severity == "error"
+                and (finding.path.startswith("cerebro:mcpOauth") or finding.path == "cerebro:apiAuthEnabled")
+                for finding in findings
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

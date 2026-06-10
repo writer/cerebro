@@ -60,6 +60,7 @@ SENSITIVE_PATTERNS = (
     re.compile(r"https?://([A-Za-z0-9-]+\.)+[A-Za-z]{2,}(:\d+)?(/[^\s,;)\]}]*)?"),
     re.compile(r"(?i)(secret|token|private[_-]?key)[\"'=:\s]+[A-Za-z0-9_./:=@+-]+"),
 )
+CAS_DIGEST_RE = re.compile(r"^sha256:[A-Za-z0-9._-]{16,}$")
 FIRST_VISIT_VISIBLE_STATUSES = {"linked", "setup_needed", "orphan", "missing_resource", "missing_case"}
 
 
@@ -150,6 +151,10 @@ def _require_integrity_consistency(stages: dict[str, dict[str, Any]], run_index:
                 raise LifecycleProbeError(
                     f"runs[{run_index}].{stage_name}.{field} does not match EvidenceCAS identity"
                 )
+            if field == "evidence_cas_uri" and not value.startswith("evidencecas://"):
+                raise LifecycleProbeError(f"runs[{run_index}].{stage_name}.{field} must use evidencecas:// URI")
+            if field in {"evidence_cas_digest", "evidence_cas_merkle_root"} and not CAS_DIGEST_RE.match(value):
+                raise LifecycleProbeError(f"runs[{run_index}].{stage_name}.{field} must use sha256 integrity identity")
     return tuple(expected[field] for field in CAS_IDENTITY_FIELDS)
 
 

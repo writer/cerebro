@@ -50,6 +50,24 @@ class SyntheticLifecycleProbeTest(unittest.TestCase):
         with self.assertRaisesRegex(LifecycleProbeError, "evidence_cas_digest"):
             validate_transcript(transcript)
 
+    def test_integrity_identity_shape_fails_closed(self) -> None:
+        transcript = emit_synthetic_transcript(run_ids=["synthetic-run-alpha"])
+        for stage in transcript["runs"][0]["stages"]:
+            if stage["stage"] != "source_origin":
+                stage["evidence_cas_uri"] = "cas://synthetic/evidence"
+
+        with self.assertRaisesRegex(LifecycleProbeError, "evidence_cas_uri"):
+            validate_transcript(transcript)
+
+    def test_integrity_digest_shape_fails_closed(self) -> None:
+        transcript = emit_synthetic_transcript(run_ids=["synthetic-run-alpha"])
+        for stage in transcript["runs"][0]["stages"]:
+            if stage["stage"] != "source_origin":
+                stage["evidence_cas_merkle_root"] = "md5:synthetic"
+
+        with self.assertRaisesRegex(LifecycleProbeError, "evidence_cas_merkle_root"):
+            validate_transcript(transcript)
+
     def test_first_visit_orphan_is_valid_only_when_explicit_and_visible(self) -> None:
         transcript = emit_synthetic_transcript(run_ids=["synthetic-run-alpha"], first_visit_status="orphan")
 
