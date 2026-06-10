@@ -1368,6 +1368,81 @@ func TestMCPRiskSummaryAggregatesScopedRuntimeFindings(t *testing.T) {
 	}
 }
 
+func TestMCPRiskSummaryCountsAllMatchingFindingsBeyondReturnedLimit(t *testing.T) {
+	now := time.Now().UTC()
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws":    {Id: "writer-aws", SourceId: "aws", TenantId: "writer"},
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				RuntimeID:      "writer-aws",
+				TenantID:       "writer",
+				RuleID:         "rule-1",
+				Title:          "First",
+				Severity:       "high",
+				Status:         "open",
+				FindingRisk:    ports.FindingRisk{RiskScore: 90, RiskReasons: []string{"active"}},
+				LastObservedAt: now,
+			},
+			"finding-2": {
+				ID:             "finding-2",
+				RuntimeID:      "writer-aws",
+				TenantID:       "writer",
+				RuleID:         "rule-2",
+				Title:          "Second",
+				Severity:       "medium",
+				Status:         "open",
+				FindingRisk:    ports.FindingRisk{RiskScore: 80, RiskReasons: []string{"active"}},
+				LastObservedAt: now.Add(-time.Minute),
+			},
+			"finding-3": {
+				ID:             "finding-3",
+				RuntimeID:      "writer-github",
+				TenantID:       "writer",
+				RuleID:         "rule-3",
+				Title:          "Third",
+				Severity:       "low",
+				Status:         "open",
+				FindingRisk:    ports.FindingRisk{RiskScore: 70, RiskReasons: []string{"active"}},
+				LastObservedAt: now.Add(-2 * time.Minute),
+			},
+		},
+	}
+	server := newMCPTestServer(t, store)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.risk.summary",
+			"arguments": map[string]any{
+				"limit":  2,
+				"status": "open",
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("tools/call error = %#v", response["error"])
+	}
+	summary := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if summary["total_findings"] != float64(3) || summary["open_findings"] != float64(3) || summary["returned_findings"] != float64(2) {
+		t.Fatalf("summary counts = %#v", summary)
+	}
+	bySeverity := summary["by_severity"].(map[string]any)
+	if bySeverity["high"] != float64(1) || bySeverity["medium"] != float64(1) || bySeverity["low"] != float64(1) {
+		t.Fatalf("by_severity = %#v", bySeverity)
+	}
+	metadata := summary["metadata"].(map[string]any)
+	if metadata["total_matching_findings"] != float64(3) || metadata["more_results_possible"] != true {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
 func TestMCPGraphNeighborhood(t *testing.T) {
 	store := &stubRuntimeStore{}
 	graph := &stubGraphStore{neighborhood: &ports.EntityNeighborhood{

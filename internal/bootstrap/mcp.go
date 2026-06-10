@@ -165,6 +165,7 @@ type mcpRiskSummary struct {
 	TenantID             string               `json:"tenant_id,omitempty"`
 	RuntimeID            string               `json:"runtime_id,omitempty"`
 	TotalFindings        int                  `json:"total_findings"`
+	ReturnedFindings     int                  `json:"returned_findings"`
 	OpenFindings         int                  `json:"open_findings"`
 	CriticalOpenFindings int                  `json:"critical_open_findings"`
 	HighOpenFindings     int                  `json:"high_open_findings"`
@@ -176,6 +177,10 @@ type mcpRiskSummary struct {
 	RecentHighRisk       []any                `json:"recent_high_risk"`
 	LimitApplied         int                  `json:"limit_applied"`
 	Metadata             map[string]any       `json:"metadata,omitempty"`
+}
+
+type mcpFindingSummaryStore interface {
+	SummarizeFindings(context.Context, ports.ListFindingsRequest) (ports.FindingSummary, error)
 }
 
 type mcpRiskReasonCount struct {
@@ -678,9 +683,18 @@ func (app *App) mcpRuntimeStatus(r *http.Request, args map[string]any) (any, err
 	if err != nil {
 		return nil, err
 	}
+	summary, err := app.mcpBuildRiskSummaryForRequest(r, ports.ListFindingsRequest{
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+		RuntimeID: runtimeID,
+		Limit:     uint32(defaultMCPRiskLimit),
+		Order:     ports.FindingOrderRiskScore,
+	}, defaultMCPRiskLimit, findings)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"runtime":      runtimeValue,
-		"risk_summary": mcpBuildRiskSummary(strings.TrimSpace(runtime.GetTenantId()), runtimeID, defaultMCPRiskLimit, findings),
+		"risk_summary": summary,
 		"metadata":     mcpResponseMetadata(defaultMCPRiskLimit, len(findings), nil),
 	}, nil
 }
@@ -886,8 +900,16 @@ func (app *App) mcpRiskSummary(r *http.Request, args map[string]any) (any, error
 	if err != nil {
 		return nil, err
 	}
-	summary := mcpBuildRiskSummary(tenantID, runtimeID, limit, findings)
-	summary.Metadata = mcpResponseMetadata(limit, len(findings), nil)
+	summary, err := app.mcpBuildRiskSummaryForRequest(r, ports.ListFindingsRequest{
+		TenantID:  tenantID,
+		RuntimeID: runtimeID,
+		Status:    mcpStringArg(args, "status"),
+		Limit:     boundedUint32(limit),
+		Order:     ports.FindingOrderRiskScore,
+	}, limit, findings)
+	if err != nil {
+		return nil, err
+	}
 	return summary, nil
 }
 
@@ -2126,6 +2148,102 @@ func (app *App) mcpListRiskFindings(r *http.Request, request ports.ListFindingsR
 	return findings, nil
 }
 
+func (app *App) mcpBuildRiskSummaryForRequest(r *http.Request, request ports.ListFindingsRequest, limit int, findings []*ports.FindingRecord) (mcpRiskSummary, error) {
+	summaryStore, ok := findingStore(app.deps.StateStore).(mcpFindingSummaryStore)
+	if !ok {
+		summary := mcpBuildRiskSummary(request.TenantID, request.RuntimeID, limit, findings)
+		summary.Metadata = mcpRiskSummaryMetadata(limit, len(findings), summary.TotalFindings)
+		return summary, nil
+	}
+	request.Limit = 0
+	if strings.TrimSpace(request.Status) != "" {
+		parsed, err := parseFindingStatus(request.Status)
+		if err != nil {
+			return mcpRiskSummary{}, err
+		}
+		request.Status = findingStatusString(parsed)
+	}
+	summary := mcpRiskSummary{
+		TenantID:         request.TenantID,
+		RuntimeID:        request.RuntimeID,
+		BySeverity:       map[string]int{},
+		ByStatus:         map[string]int{},
+		LimitApplied:     limit,
+		RecentHighRisk:   []any{},
+		ReturnedFindings: len(findings),
+	}
+	reasonCounts := map[string]int{}
+	riskScoreTotal := 0
+	merge := func(item ports.FindingSummary) {
+		summary.TotalFindings += item.TotalFindings
+		summary.OpenFindings += item.OpenFindings
+		summary.CriticalOpenFindings += item.CriticalFindings
+		summary.HighOpenFindings += item.HighFindings
+		if item.MaxRiskScore > summary.MaxRiskScore {
+			summary.MaxRiskScore = item.MaxRiskScore
+		}
+		riskScoreTotal += item.RiskScoreTotal
+		for severity, count := range item.BySeverity {
+			severity = strings.TrimSpace(severity)
+			if severity == "" {
+				severity = "unknown"
+			}
+			summary.BySeverity[severity] += count
+		}
+		for status, count := range item.ByStatus {
+			status = strings.TrimSpace(status)
+			if status == "" {
+				status = "unknown"
+			}
+			summary.ByStatus[status] += count
+		}
+		for reason, count := range item.RiskReasonCounts {
+			reason = strings.TrimSpace(reason)
+			if reason != "" {
+				reasonCounts[reason] += count
+			}
+		}
+	}
+	if strings.TrimSpace(request.RuntimeID) != "" {
+		item, err := summaryStore.SummarizeFindings(r.Context(), request)
+		if err != nil {
+			return mcpRiskSummary{}, err
+		}
+		merge(item)
+	} else {
+		runtimes, err := app.runtimeService().List(r.Context(), ports.SourceRuntimeFilter{
+			TenantID: request.TenantID,
+			Limit:    uint32(maxMCPRiskLimit),
+		})
+		if err != nil {
+			return mcpRiskSummary{}, err
+		}
+		for _, runtime := range runtimes {
+			if runtime == nil || strings.TrimSpace(runtime.GetId()) == "" {
+				continue
+			}
+			if !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
+				continue
+			}
+			scoped := request
+			scoped.TenantID = strings.TrimSpace(runtime.GetTenantId())
+			scoped.RuntimeID = strings.TrimSpace(runtime.GetId())
+			item, err := summaryStore.SummarizeFindings(r.Context(), scoped)
+			if err != nil {
+				return mcpRiskSummary{}, err
+			}
+			merge(item)
+		}
+	}
+	if summary.TotalFindings != 0 {
+		summary.AverageRiskScore = float64(riskScoreTotal) / float64(summary.TotalFindings)
+	}
+	summary.TopRiskReasons = mcpTopRiskReasons(reasonCounts, 10)
+	mcpAttachRecentHighRisk(&summary, findings)
+	summary.Metadata = mcpRiskSummaryMetadata(limit, len(findings), summary.TotalFindings)
+	return summary, nil
+}
+
 func mcpBuildRiskSummary(tenantID string, runtimeID string, limit int, findings []*ports.FindingRecord) mcpRiskSummary {
 	summary := mcpRiskSummary{
 		TenantID:       tenantID,
@@ -2142,6 +2260,7 @@ func mcpBuildRiskSummary(tenantID string, runtimeID string, limit int, findings 
 			continue
 		}
 		summary.TotalFindings++
+		summary.ReturnedFindings++
 		status := strings.ToLower(strings.TrimSpace(finding.Status))
 		if status == "" {
 			status = "unknown"
@@ -2176,6 +2295,11 @@ func mcpBuildRiskSummary(tenantID string, runtimeID string, limit int, findings 
 		summary.AverageRiskScore = float64(riskScoreTotal) / float64(summary.TotalFindings)
 	}
 	summary.TopRiskReasons = mcpTopRiskReasons(reasonCounts, 10)
+	mcpAttachRecentHighRisk(&summary, findings)
+	return summary
+}
+
+func mcpAttachRecentHighRisk(summary *mcpRiskSummary, findings []*ports.FindingRecord) {
 	recent := make([]*ports.FindingRecord, 0, len(findings))
 	for _, finding := range findings {
 		if finding != nil {
@@ -2202,7 +2326,6 @@ func mcpBuildRiskSummary(tenantID string, runtimeID string, limit int, findings 
 			summary.RecentHighRisk = append(summary.RecentHighRisk, value)
 		}
 	}
-	return summary
 }
 
 func mcpTopRiskReasons(counts map[string]int, limit int) []mcpRiskReasonCount {
@@ -2389,6 +2512,15 @@ func mcpResponseMetadata(limit int, returned int, partialErrors []string) map[st
 	}
 	if len(partialErrors) != 0 {
 		metadata["partial_errors"] = append([]string(nil), partialErrors...)
+	}
+	return metadata
+}
+
+func mcpRiskSummaryMetadata(limit int, returned int, total int) map[string]any {
+	metadata := mcpResponseMetadata(limit, returned, nil)
+	if total > returned {
+		metadata["more_results_possible"] = true
+		metadata["total_matching_findings"] = total
 	}
 	return metadata
 }

@@ -632,23 +632,57 @@ func (s *Store) SummarizeFindings(ctx context.Context, request ports.ListFinding
 	effectiveSeverity := findingEffectiveSeveritySQL()
 	query := `
 SELECT
+  COUNT(*),
   COUNT(*) FILTER (WHERE LOWER(status) = 'open'),
   COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND ` + effectiveSeverity + ` = 'CRITICAL'),
   COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND ` + effectiveSeverity + ` = 'HIGH'),
   COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND due_at IS NOT NULL AND due_at < NOW()),
-  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND TRIM(assignee) = '')
+  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND TRIM(assignee) = ''),
+  COALESCE(MAX(risk_score), 0),
+  COALESCE(SUM(risk_score), 0)
 FROM findings
 WHERE ` + where
 	var summary ports.FindingSummary
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(
+		&summary.TotalFindings,
 		&summary.OpenFindings,
 		&summary.CriticalFindings,
 		&summary.HighFindings,
 		&summary.OverdueFindings,
 		&summary.Unassigned,
+		&summary.MaxRiskScore,
+		&summary.RiskScoreTotal,
 	); err != nil {
 		return ports.FindingSummary{}, fmt.Errorf("summarize findings: %w", err)
 	}
+	severityCounts, err := s.findingSummaryCountMap(ctx, `
+SELECT COALESCE(NULLIF(LOWER(TRIM(`+effectiveSeverity+`)), ''), 'unknown') AS key, COUNT(*) AS count
+FROM findings
+WHERE `+where+`
+GROUP BY key`, args)
+	if err != nil {
+		return ports.FindingSummary{}, fmt.Errorf("summarize finding severities: %w", err)
+	}
+	summary.BySeverity = severityCounts
+	statusCounts, err := s.findingSummaryCountMap(ctx, `
+SELECT COALESCE(NULLIF(LOWER(TRIM(status)), ''), 'unknown') AS key, COUNT(*) AS count
+FROM findings
+WHERE `+where+`
+GROUP BY key`, args)
+	if err != nil {
+		return ports.FindingSummary{}, fmt.Errorf("summarize finding statuses: %w", err)
+	}
+	summary.ByStatus = statusCounts
+	reasonCounts, err := s.findingSummaryCountMap(ctx, `
+SELECT TRIM(reason.value) AS key, COUNT(*) AS count
+FROM findings
+CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(risk_reasons_json, '[]'::jsonb)) AS reason(value)
+WHERE `+where+` AND TRIM(reason.value) <> ''
+GROUP BY key`, args)
+	if err != nil {
+		return ports.FindingSummary{}, fmt.Errorf("summarize finding risk reasons: %w", err)
+	}
+	summary.RiskReasonCounts = reasonCounts
 	// #nosec G202 -- where is assembled from fixed predicates with parameterized values.
 	controlQuery := `
 SELECT framework_name, control_id
@@ -690,6 +724,31 @@ FROM (
 	sort.Strings(summary.FailingControlKeys)
 	summary.ControlsFailing = len(summary.FailingControlKeys)
 	return summary, nil
+}
+
+func (s *Store) findingSummaryCountMap(ctx context.Context, query string, args []any) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	counts := map[string]int{}
+	for rows.Next() {
+		var key string
+		var count int
+		if err := rows.Scan(&key, &count); err != nil {
+			return nil, err
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			key = "unknown"
+		}
+		counts[key] += count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return counts, nil
 }
 
 // GetFinding loads one persisted finding by durable identifier.
