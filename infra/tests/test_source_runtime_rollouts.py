@@ -54,6 +54,20 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
         self.assertEqual(expansion.source_runtimes[0]["id"], "writer-example-very-long-family-name")
         self.assertEqual(expansion.orchestrator_schedules[0]["name"], "short-family-inventory")
 
+    def test_disabled_rollout_does_not_expand_secrets_runtimes_or_schedules(self) -> None:
+        expansion = expand_source_runtime_rollouts([
+            {
+                "sourceId": "example",
+                "enabled": False,
+                "tokenKey": "EXAMPLE_TOKEN",
+                "families": ["user"],
+            }
+        ])
+
+        self.assertEqual(expansion.source_secret_keys, [])
+        self.assertEqual(expansion.source_runtimes, [])
+        self.assertEqual(expansion.orchestrator_schedules, [])
+
 
 if __name__ == "__main__":
     unittest.main()

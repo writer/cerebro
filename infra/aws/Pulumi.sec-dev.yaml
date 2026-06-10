@@ -106,6 +106,7 @@ config:
     - SENTINELONE_BASE_URL
   cerebro:sourceRuntimeRollouts:
     - sourceId: anthropic
+      enabled: false
       tokenKey: CEREBRO_SOURCE_ANTHROPIC_TOKEN
       perPage: "100"
       families:
@@ -113,6 +114,7 @@ config:
         - workspace
         - api_key
     - sourceId: cloudflare
+      enabled: false
       tokenKey: CEREBRO_SOURCE_CLOUDFLARE_TOKEN
       perPage: "100"
       families:
@@ -128,6 +130,7 @@ config:
           config:
             dns_record_path: env:CEREBRO_SOURCE_CLOUDFLARE_DNS_RECORD_PATH
     - sourceId: duo
+      enabled: false
       tokenKey: CEREBRO_SOURCE_DUO_TOKEN
       perPage: "100"
       commonConfig:
@@ -140,6 +143,7 @@ config:
         - token
         - web_authn_credential
     - sourceId: kubernetes
+      enabled: false
       perPage: "100"
       commonConfig:
         kubeconfig_path: env:CEREBRO_SOURCE_KUBERNETES_KUBECONFIG_PATH
@@ -156,6 +160,7 @@ config:
           schedule:
             name: k8s-workload-id-binding-inventory
     - sourceId: openai
+      enabled: false
       tokenKey: CEREBRO_SOURCE_OPENAI_TOKEN
       perPage: "100"
       families:
@@ -169,6 +174,7 @@ config:
             api_key_path: env:CEREBRO_SOURCE_OPENAI_API_KEY_PATH
         - admin_api_key
     - sourceId: pagerduty
+      enabled: false
       tokenKey: CEREBRO_SOURCE_PAGERDUTY_TOKEN
       perPage: "100"
       families:
@@ -184,6 +190,7 @@ config:
             path: env:CEREBRO_SOURCE_PAGERDUTY_INTEGRATION_PATH
         - vendor
     - sourceId: slack
+      enabled: false
       tokenKey: CEREBRO_SOURCE_SLACK_TOKEN
       perPage: "100"
       families:
@@ -192,6 +199,7 @@ config:
         - channel
         - user_group
     - sourceId: tailscale
+      enabled: false
       tokenKey: CEREBRO_SOURCE_TAILSCALE_TOKEN
       perPage: "100"
       families:
@@ -203,6 +211,7 @@ config:
         - service
         - grant
     - sourceId: trivy
+      enabled: false
       commonConfig:
         path: env:CEREBRO_SOURCE_TRIVY_REPORT_PATH
       families:

@@ -29,6 +29,8 @@ def expand_source_runtime_rollouts(rollouts: Any) -> SourceRuntimeRolloutExpansi
     for rollout_index, rollout in enumerate(rollouts):
         if not isinstance(rollout, dict):
             raise SourceRuntimeRolloutError(f"sourceRuntimeRollouts[{rollout_index}] must be an object")
+        if rollout.get("enabled", True) is False:
+            continue
         source_id = _required_string(rollout, "sourceId", f"sourceRuntimeRollouts[{rollout_index}]")
         runtime_prefix = _string(rollout.get("runtimePrefix")) or f"writer-{_slug(source_id)}"
         tenant_id = _string(rollout.get("tenantId")) or "writer"
