@@ -198,7 +198,7 @@ class AwsScanRoleTrustTest(unittest.TestCase):
             ["arn:aws:iam::837279440628:role/cerebro-org-scan-role"],
         )
 
-    def test_go_prod_config_checks_panopticon_export_reader_role(self) -> None:
+    def test_go_prod_config_no_longer_checks_panopticon_export_reader_role(self) -> None:
         config = verify_aws_scan_role_trust._load_config(Path(__file__).resolve().parents[1] / "aws" / "Pulumi.go-prod.yaml")
 
         role_arns = verify_aws_scan_role_trust._same_account_role_arns(
@@ -206,7 +206,7 @@ class AwsScanRoleTrustTest(unittest.TestCase):
             "837279440628",
         )
 
-        self.assertIn(
+        self.assertNotIn(
             "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
             role_arns,
         )
