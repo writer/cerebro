@@ -146,7 +146,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 			principal.RiskScore = decision.Score
 			principal.RiskLevel = decision.Level
 		}
-		if err := authorizeMCPTokenResource(cfg, principal, r); err != nil {
+		if err := authorizeTokenResource(cfg, principal, r); err != nil {
 			denialReason = "resource_forbidden"
 			writeAuthErrorForRequest(recorder, r, cfg, http.StatusUnauthorized, "unauthorized")
 			return
@@ -255,6 +255,9 @@ func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVe
 		return authPrincipal{}, "", "", false
 	}
 	for _, credential := range cfg.APICredentials {
+		if !apiCredentialAcceptsBearer(credential) {
+			continue
+		}
 		if apiCredentialMatches(token, credential) {
 			return authPrincipal{
 				Name:           credential.Principal,
@@ -279,6 +282,15 @@ func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVe
 		return principal, jkt, token, true
 	}
 	return authPrincipal{}, "", "", false
+}
+
+func apiCredentialAcceptsBearer(credential config.APICredential) bool {
+	switch strings.TrimSpace(credential.Kind) {
+	case "oauth_client", "client_credentials":
+		return false
+	default:
+		return true
+	}
 }
 
 // authenticateDeviceToken verifies an EdDSA device JWT issued by the
@@ -580,29 +592,6 @@ const (
 	scopeRuntimeResponseWrite    = "cerebro.runtime_response.write"
 )
 
-func scopeForDeviceRoute(method string, path string) string {
-	switch {
-	case method == http.MethodPost && path == "/platform/devices/enroll":
-		return deviceauth.ScopeDevicesEnroll
-	case method == http.MethodPost && path == "/platform/devices/token":
-		return deviceauth.ScopeDevicesToken
-	case method == http.MethodPost && path == "/platform/devices/bootstrap-tokens":
-		return deviceauth.ScopeDevicesBootstrapWrite
-	case method == http.MethodPost && strings.HasPrefix(path, "/platform/devices/") && strings.HasSuffix(path, "/revoke"):
-		return deviceauth.ScopeDevicesRevoke
-	case method == http.MethodGet && path == "/platform/devices":
-		return deviceauth.ScopeDevicesRead
-	case method == http.MethodGet && strings.HasPrefix(path, "/platform/devices/") && !strings.HasSuffix(path, "/revoke"):
-		return deviceauth.ScopeDevicesRead
-	case method == http.MethodPost && path == "/platform/telemetry/ingest":
-		return deviceauth.ScopeTelemetryIngest
-	case method == http.MethodGet && path == "/.well-known/device-jwks.json":
-		return ""
-	default:
-		return ""
-	}
-}
-
 func authorizeHTTPRequestScope(auth authContext, r *http.Request) error {
 	if !principalScopeRestricted(auth.principal) || isConnectProcedurePath(r.URL.Path) {
 		return nil
@@ -611,17 +600,11 @@ func authorizeHTTPRequestScope(auth authContext, r *http.Request) error {
 	return authorizePrincipalScope(auth.principal, scope)
 }
 
-func authorizeMCPTokenResource(cfg config.AuthConfig, principal authPrincipal, r *http.Request) error {
-	if principal.CredentialID != "mcp-oauth" {
+func authorizeTokenResource(cfg config.AuthConfig, principal authPrincipal, r *http.Request) error {
+	if strings.TrimSpace(principal.TokenResource) == "" {
 		return nil
 	}
-	if !cfg.MCPOAuth.Enabled {
-		return errScopeForbidden
-	}
-	if strings.TrimSpace(principal.TokenResource) != strings.TrimSpace(cfg.MCPOAuth.Resource) {
-		return errScopeForbidden
-	}
-	if r == nil || r.URL == nil || r.URL.Path != mcpEndpointPath {
+	if !tokenResourceAllowedForRequest(cfg, r, principal.TokenResource) {
 		return errScopeForbidden
 	}
 	return nil
@@ -662,62 +645,7 @@ func isConnectProcedurePath(path string) bool {
 }
 
 func scopeForHTTPRequest(r *http.Request) string {
-	path := strings.TrimSpace(r.URL.Path)
-	if path == "/api/v1/mcp" {
-		return scopeCosmoSecurityRead
-	}
-	if r.Method == http.MethodPost && path == "/grc/ask" {
-		return scopeCosmoSecurityRead
-	}
-	if scope := scopeForDeviceRoute(r.Method, path); scope != "" {
-		return scope
-	}
-	if r.Method != http.MethodGet {
-		if r.Method == http.MethodPost && strings.HasPrefix(path, "/finding-candidates/") && (strings.HasSuffix(path, "/promote") || strings.HasSuffix(path, "/reject")) {
-			return scopeFindingCandidatePromote
-		}
-		if r.Method == http.MethodPost && (path == "/platform/runtime-response/actions" || (strings.HasPrefix(path, "/platform/runtime-response/blocklist/") && strings.HasSuffix(path, "/revoke"))) {
-			return scopeRuntimeResponseWrite
-		}
-		return ""
-	}
-	switch {
-	case path == "/sources", path == "/reports", path == "/finding-rules", path == "/endpoint-vulnerability-findings":
-		return scopeCosmoSecurityRead
-	case path == "/source-runtimes" || strings.HasPrefix(path, "/source-runtimes/"):
-		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/findings/"):
-		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/finding-candidates/"):
-		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/finding-evaluation-runs/"), strings.HasPrefix(path, "/finding-evidence/"):
-		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/grc/"):
-		return scopeCosmoSecurityRead
-	case path == "/platform/graph/neighborhood":
-		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/platform/graph/impact/"):
-		return scopeCosmoSecurityRead
-	case path == "/platform/graph/attack-paths",
-		path == "/platform/graph/person-access-paths",
-		path == "/platform/graph/aws-public-endpoint-insights",
-		path == "/platform/graph/crown-jewel-rankings":
-		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/platform/endpoints/") && strings.HasSuffix(path, "/vulnerability-findings"):
-		return scopeCosmoSecurityRead
-	case path == "/platform/graph/ingest-health":
-		return scopeCosmoSecurityRead
-	case path == "/platform/graph/ingest-runs", strings.HasPrefix(path, "/platform/graph/ingest-runs/"):
-		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/report-runs/"):
-		return scopeCosmoSecurityRead
-	case path == "/platform/jobs", strings.HasPrefix(path, "/platform/jobs/"):
-		return scopeCosmoSecurityRead
-	case path == "/platform/runtime-response/capabilities", path == "/platform/runtime-response/blocklist":
-		return scopeCosmoSecurityRead
-	default:
-		return ""
-	}
+	return httpRoutePolicyForRequest(r).Scope
 }
 
 func scopeForConnectProcedure(procedure string) string {
@@ -1585,31 +1513,7 @@ func fallbackFindingCandidateRoute(path string) string {
 }
 
 func isKnownStaticAccessPath(path string) bool {
-	switch path {
-	case "/platform/knowledge/decisions",
-		"/platform/knowledge/actions",
-		"/platform/knowledge/actions/recommendation",
-		"/platform/knowledge/outcomes",
-		"/platform/workflow/replay",
-		"/platform/graph/neighborhood",
-		"/platform/graph/impact/package",
-		"/platform/graph/impact/asset",
-		"/platform/graph/attack-paths",
-		"/platform/graph/person-access-paths",
-		"/platform/graph/aws-public-endpoint-insights",
-		"/platform/graph/crown-jewel-rankings",
-		"/platform/graph/ingest-health",
-		"/platform/graph/ingest-runs",
-		"/platform/devices",
-		"/platform/devices/enroll",
-		"/platform/devices/token",
-		"/platform/devices/bootstrap-tokens",
-		"/platform/telemetry/ingest",
-		"/.well-known/device-jwks.json":
-		return true
-	default:
-		return false
-	}
+	return httpRouteStaticAccessPathKnown(path)
 }
 
 func firstNonEmpty(values ...string) string {
