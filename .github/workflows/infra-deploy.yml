@@ -393,7 +393,7 @@ jobs:
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only --exclude-source-id panopticon
 
       - name: Pulumi Up (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'

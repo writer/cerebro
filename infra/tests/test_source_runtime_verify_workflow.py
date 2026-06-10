@@ -6,6 +6,7 @@ import unittest
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "source-runtime-verify.yml"
 INFRA_DEPLOY_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "infra-deploy.yml"
+DRIFT_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "source-runtime-drift.yml"
 
 
 class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
@@ -44,6 +45,22 @@ class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
             "--source-runtime-dry-run --source-runtime-observability-targets --source-runtime-allow-missing-targets --source-id panopticon --source-target-concurrency 2",
             workflow,
         )
+
+    def test_sec_dev_scan_role_guard_excludes_panopticon_until_producer_role_exists(self) -> None:
+        manual_workflow = WORKFLOW.read_text(encoding="utf-8")
+        infra_workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        drift_workflow = DRIFT_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only --exclude-source-id panopticon",
+            manual_workflow,
+        )
+        self.assertIn(
+            "scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only --exclude-source-id panopticon",
+            infra_workflow,
+        )
+        self.assertIn('if [ "${STACK_NAME}" = "sec-dev" ]; then', drift_workflow)
+        self.assertIn("args+=(--exclude-source-id panopticon)", drift_workflow)
 
 
 if __name__ == "__main__":
