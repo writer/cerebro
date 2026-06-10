@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
+from enum import Enum
 import json
 from pathlib import Path
 import re
@@ -62,6 +63,28 @@ SENSITIVE_PATTERNS = (
 )
 CAS_DIGEST_RE = re.compile(r"^sha256:[A-Za-z0-9._-]{16,}$")
 FIRST_VISIT_VISIBLE_STATUSES = {"linked", "setup_needed", "orphan", "missing_resource", "missing_case"}
+
+
+class LifecycleState(str, Enum):
+    SOURCE_OBSERVED = "source_observed"
+    EVIDENCE_WRITTEN = "evidence_written"
+    EVIDENCE_AUDITED = "evidence_audited"
+    SOURCE_INGESTED = "source_ingested"
+    PROJECTED = "projected"
+    SIEM_SIGNALED = "siem_signaled"
+    OBSERVABILITY_RECORDED = "observability_recorded"
+
+
+STAGE_LIFECYCLE_STATES = {
+    "source_origin": LifecycleState.SOURCE_OBSERVED,
+    "evidencecas_write": LifecycleState.EVIDENCE_WRITTEN,
+    "evidencecas_audit": LifecycleState.EVIDENCE_AUDITED,
+    "cerebro_source_ingest": LifecycleState.SOURCE_INGESTED,
+    "cerebro_projection": LifecycleState.PROJECTED,
+    "siem_signal": LifecycleState.SIEM_SIGNALED,
+    "infra_observability": LifecycleState.OBSERVABILITY_RECORDED,
+}
+LIFECYCLE_STATE_ORDER = {state.value: index for index, state in enumerate(STAGE_LIFECYCLE_STATES.values())}
 
 
 class LifecycleProbeError(ValueError):
@@ -176,6 +199,24 @@ def _require_timeline(stages: dict[str, dict[str, Any]], run_index: int) -> None
         last_observed = observed
 
 
+def _require_lifecycle_states(stages: dict[str, dict[str, Any]], run_index: int) -> None:
+    last_order = -1
+    for stage_name in REQUIRED_STAGES:
+        stage = stages[stage_name]
+        state = str(stage.get("lifecycle_state") or "").strip()
+        expected = STAGE_LIFECYCLE_STATES[stage_name].value
+        if not state:
+            raise LifecycleProbeError(f"runs[{run_index}].{stage_name} is missing lifecycle_state")
+        if state not in LIFECYCLE_STATE_ORDER:
+            raise LifecycleProbeError(f"runs[{run_index}].{stage_name} lifecycle_state {state!r} is unsupported")
+        if state != expected:
+            raise LifecycleProbeError(f"runs[{run_index}].{stage_name} lifecycle_state must be {expected!r}")
+        order = LIFECYCLE_STATE_ORDER[state]
+        if order < last_order:
+            raise LifecycleProbeError(f"runs[{run_index}].{stage_name} lifecycle_state moves backward")
+        last_order = order
+
+
 def _require_reconstruction(stages: dict[str, dict[str, Any]], run_index: int) -> None:
     for key in ("resource_urn", "case_id", "evidence_id"):
         index: dict[str, set[str]] = defaultdict(set)
@@ -266,6 +307,7 @@ def validate_transcript(transcript: dict[str, Any]) -> dict[str, Any]:
         _require_join_fields(run, stages, run_index)
         cas_identity = _require_integrity_consistency(stages, run_index)
         _require_timeline(stages, run_index)
+        _require_lifecycle_states(stages, run_index)
         _require_reconstruction(stages, run_index)
         first_visit_status = _require_first_visit_visibility(stages, run_index)
         first_visit_statuses.append(first_visit_status)
@@ -317,6 +359,7 @@ def _synthetic_stage(
         "evidence_cas_commit_id": f"synthetic-commit-{run_id}",
         "evidence_cas_ref_type": "iris.panopticon.synthetic.v1",
         "event_source": "synthetic_probe",
+        "lifecycle_state": STAGE_LIFECYCLE_STATES[stage].value,
     }
     if stage == "source_origin":
         common["registration_status"] = "pending_evidencecas_registration"

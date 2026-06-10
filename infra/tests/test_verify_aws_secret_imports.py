@@ -53,6 +53,16 @@ class AwsSecretImportsTest(unittest.TestCase):
         self.assertEqual(findings[0].reason, "undeclared")
         self.assertNotEqual(findings[0].fingerprint, "MISSING_SOURCE_TOKEN")
 
+    def test_missing_nested_env_refs_are_reported_without_names(self) -> None:
+        findings = verify_aws_secret_imports.missing_env_ref_findings(
+            {"sourceRuntimes": [{"config": {"auth": {"headers": [{"value": "env:MISSING_NESTED_TOKEN"}]}}}]},
+            [],
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].reason, "undeclared")
+        self.assertNotEqual(findings[0].fingerprint, "MISSING_NESTED_TOKEN")
+
     def test_verifier_uses_describe_secret_only(self) -> None:
         commands: list[list[str]] = []
 

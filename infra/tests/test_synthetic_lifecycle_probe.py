@@ -35,6 +35,7 @@ class SyntheticLifecycleProbeTest(unittest.TestCase):
         self.assertIn("VAL-CROSS-002", report["assertions"])
         self.assertIn("VAL-CROSS-017", report["assertions"])
         self.assertIn("VAL-CROSS-018", report["assertions"])
+        self.assertTrue(all("lifecycle_state" in stage for run in transcript["runs"] for stage in run["stages"]))
 
     def test_missing_required_canonical_field_fails_with_field_name(self) -> None:
         transcript = emit_synthetic_transcript(run_ids=["synthetic-run-alpha"])
@@ -82,6 +83,20 @@ class SyntheticLifecycleProbeTest(unittest.TestCase):
         observability["first_visit_status"] = "linked"
         observability["link_status"] = "linked"
         with self.assertRaisesRegex(LifecycleProbeError, "does not expose first-visit"):
+            validate_transcript(transcript)
+
+    def test_unsupported_lifecycle_state_fails_closed(self) -> None:
+        transcript = emit_synthetic_transcript(run_ids=["synthetic-run-alpha"])
+        transcript["runs"][0]["stages"][3]["lifecycle_state"] = "paused"
+
+        with self.assertRaisesRegex(LifecycleProbeError, "unsupported"):
+            validate_transcript(transcript)
+
+    def test_inconsistent_lifecycle_transition_fails_closed(self) -> None:
+        transcript = emit_synthetic_transcript(run_ids=["synthetic-run-alpha"])
+        transcript["runs"][0]["stages"][5]["lifecycle_state"] = "projected"
+
+        with self.assertRaisesRegex(LifecycleProbeError, "lifecycle_state must be"):
             validate_transcript(transcript)
 
     def test_legacy_compatible_record_allows_optional_trace_gap(self) -> None:

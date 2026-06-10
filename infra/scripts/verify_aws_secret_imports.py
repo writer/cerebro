@@ -9,13 +9,11 @@ import subprocess
 import sys
 from typing import Any
 
-import yaml
-
 try:
-    from aws.source_rollouts import apply_source_runtime_rollouts
+    from aws import source_runtime_scope
 except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/verify_aws_secret_imports.py
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from aws.source_rollouts import apply_source_runtime_rollouts
+    from aws import source_runtime_scope
 
 
 EXPECTED_STACK_ACCOUNTS = {
@@ -58,17 +56,7 @@ def _stack_name(path: Path) -> str:
 
 
 def _load_config(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
-    config = loaded.get("config")
-    if not isinstance(config, dict):
-        raise ValueError(f"{path} must contain a top-level config mapping")
-    config = {
-        key.removeprefix("cerebro:"): value
-        for key, value in config.items()
-        if isinstance(key, str) and key.startswith("cerebro:")
-    }
-    return apply_source_runtime_rollouts(config)
+    return source_runtime_scope.load_cerebro_config(path)
 
 
 def _bool_value(value: Any, default: bool = False) -> bool:
@@ -80,25 +68,11 @@ def _bool_value(value: Any, default: bool = False) -> bool:
 
 
 def _env_ref(value: Any) -> str:
-    text = str(value).strip()
-    if not text.startswith("env:"):
-        return ""
-    return text.removeprefix("env:").strip()
+    return source_runtime_scope.env_ref(value)
 
 
 def _source_runtime_env_refs(source_runtimes: list[Any]) -> list[str]:
-    refs: set[str] = set()
-    for runtime in source_runtimes:
-        if not isinstance(runtime, dict):
-            continue
-        runtime_config = runtime.get("config") or {}
-        if not isinstance(runtime_config, dict):
-            continue
-        for value in runtime_config.values():
-            env_name = _env_ref(value)
-            if env_name:
-                refs.add(env_name)
-    return sorted(refs)
+    return source_runtime_scope.source_runtime_env_refs(source_runtimes)
 
 
 def _secret_import(env_name: str, source: str | None, prefix: str, category: str) -> SecretImport:

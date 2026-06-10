@@ -552,6 +552,49 @@ def _create_graph_health_issue(stack: str, status: int, category: str, artifact_
     print(f"::notice::Created graph-health follow-up issue: {created.get('html_url')}")
 
 
+def _close_graph_health_issue(repository: str, token: str, issue_number: int, body: str) -> None:
+    updated = _github_api_json(
+        repository,
+        token,
+        f"/issues/{issue_number}/comments",
+        method="POST",
+        payload={"body": body},
+    )
+    _github_api_json(repository, token, f"/issues/{issue_number}", method="PATCH", payload={"state": "closed"})
+    if isinstance(updated, dict):
+        print(f"::notice::Closed recovered graph-health issue: {updated.get('html_url')}")
+
+
+def _close_recovered_graph_health_issues(stack: str, artifact_name: str) -> None:
+    token = os.environ.get("GITHUB_TOKEN")
+    repository = os.environ.get("GITHUB_REPOSITORY")
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    if not token or not repository or not run_id:
+        print("WARNING: cannot close recovered graph-health issue without GITHUB_TOKEN, GITHUB_REPOSITORY, and GITHUB_RUN_ID", file=sys.stderr)
+        return
+    run_url = f"https://github.com/{repository}/actions/runs/{run_id}"
+    body = "\n".join(
+        [
+            f"Graph health recovered for `{stack}`.",
+            "",
+            f"- Workflow run: {run_url}",
+            f"- Artifact: `{artifact_name}`",
+            "",
+            "Closing because the latest graph-health verification passed.",
+        ]
+    )
+    try:
+        for title in (f"Graph health degraded for {stack}", f"Graph health blocked deployment for {stack}"):
+            existing = _find_open_graph_health_issue(repository, token, title)
+            if not existing:
+                continue
+            issue_number = existing.get("number")
+            if isinstance(issue_number, int):
+                _close_graph_health_issue(repository, token, issue_number, body)
+    except urllib.error.URLError as exc:
+        print(f"WARNING: failed to close recovered graph-health issue: {exc}", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run AWS deployment verifications, overlapping non-blocking source checks with graph health.")
     parser.add_argument("--stack-file", type=Path, required=True)
@@ -629,6 +672,8 @@ def main(argv: list[str] | None = None) -> int:
         category = _graph_health_degradation_category(graph_status, graph_diagnostics)
         if graph_status == 0:
             _write_github_output(args.github_output, graph_health_degraded="false", graph_health_degradation_category="")
+            if args.graph_health and args.graph_health_issue:
+                _close_recovered_graph_health_issues(stack, args.graph_health_artifact_name)
             return 0
         if args.allow_graph_health_degradation and category:
             _write_github_output(args.github_output, graph_health_degraded="true", graph_health_degradation_category=category)
@@ -641,6 +686,8 @@ def main(argv: list[str] | None = None) -> int:
             _create_graph_health_issue(stack, graph_status, category or "blocking_graph_health_failure", args.graph_health_artifact_name, degraded=False)
         return graph_status
     _write_github_output(args.github_output, graph_health_degraded="false", graph_health_degradation_category="")
+    if args.graph_health and args.graph_health_issue:
+        _close_recovered_graph_health_issues(stack, args.graph_health_artifact_name)
     return 0
 
 

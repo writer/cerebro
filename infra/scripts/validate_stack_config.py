@@ -13,9 +13,11 @@ from typing import Any
 import yaml
 
 try:
+    from aws import source_runtime_scope
     from aws.source_rollouts import SourceRuntimeRolloutError, apply_source_runtime_rollouts
 except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/validate_stack_config.py
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from aws import source_runtime_scope
     from aws.source_rollouts import SourceRuntimeRolloutError, apply_source_runtime_rollouts
 
 
@@ -53,8 +55,16 @@ class QuarantineReason(str, Enum):
     MANUAL_OPERATOR_ACTION = "manual_operator_action"
 
 
+class SourceRuntimeLifecycleState(str, Enum):
+    ACTIVE = "active"
+    READINESS_ONLY = "readiness_only"
+    QUARANTINED = "quarantined"
+    DEPRECATED = "deprecated"
+
+
 QUARANTINE_REASONS = {reason.value for reason in QuarantineReason}
 QUARANTINE_REQUIRED_FIELDS = {"runtimeId", "owner", "reason", "disabledDate", "reviewDeadline", "reenableCriteria"}
+SOURCE_RUNTIME_LIFECYCLE_STATES = {state.value for state in SourceRuntimeLifecycleState}
 COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT = 500
@@ -235,19 +245,7 @@ def _supports_cross_task_sync_lock(image_tag: str) -> bool:
 
 
 def _env_refs(value: Any, path: str = "") -> list[tuple[str, str]]:
-    refs: list[tuple[str, str]] = []
-    if isinstance(value, str):
-        stripped = value.strip()
-        if stripped.startswith("env:"):
-            env_name = stripped.removeprefix("env:").strip()
-            refs.append((env_name, path))
-    elif isinstance(value, dict):
-        for key, child in value.items():
-            refs.extend(_env_refs(child, f"{path}.{key}" if path else str(key)))
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            refs.extend(_env_refs(child, f"{path}[{index}]"))
-    return refs
+    return source_runtime_scope.env_refs(value, path)
 
 
 def _source_secret_names(source_secret_keys: Any) -> set[str]:
@@ -346,6 +344,19 @@ def _quarantined_source_runtime_ids(stack: str, config: dict[str, Any], findings
         else:
             findings.append(_finding("error", stack, f"{path}.reenableCriteria", "reenableCriteria must be a string or a list of strings"))
 
+        lifecycle_state = str(entry.get("lifecycleState") or SourceRuntimeLifecycleState.QUARANTINED.value).strip()
+        if lifecycle_state not in SOURCE_RUNTIME_LIFECYCLE_STATES:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.lifecycleState",
+                    f"lifecycleState must be one of: {', '.join(sorted(SOURCE_RUNTIME_LIFECYCLE_STATES))}",
+                )
+            )
+        elif lifecycle_state != SourceRuntimeLifecycleState.QUARANTINED.value:
+            findings.append(_finding("error", stack, f"{path}.lifecycleState", "temporary runtime metadata must use lifecycleState quarantined"))
+
     return runtime_ids
 
 
@@ -405,6 +416,20 @@ def _is_plain_secret(key: str, value: Any) -> bool:
         return False
     stripped = value.strip()
     return bool(stripped) and not stripped.startswith("env:") and not stripped.startswith("${")
+
+
+def _plain_secret_paths(value: Any, path: str) -> list[str]:
+    findings: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if _is_plain_secret(str(key), child):
+                findings.append(child_path)
+            findings.extend(_plain_secret_paths(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            findings.extend(_plain_secret_paths(child, f"{path}[{index}]"))
+    return findings
 
 
 def _parse_retirement_date(value: Any) -> datetime | None:
@@ -1492,6 +1517,26 @@ def validate_stack(path: Path) -> list[Finding]:
         else:
             runtime_ids.add(runtime_id)
 
+        lifecycle_state = str(runtime.get("lifecycleState") or SourceRuntimeLifecycleState.ACTIVE.value).strip()
+        if lifecycle_state not in SOURCE_RUNTIME_LIFECYCLE_STATES:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{runtime_path}.lifecycleState",
+                    f"lifecycleState must be one of: {', '.join(sorted(SOURCE_RUNTIME_LIFECYCLE_STATES))}",
+                )
+            )
+        elif lifecycle_state == SourceRuntimeLifecycleState.QUARANTINED.value:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{runtime_path}.lifecycleState",
+                    "quarantined runtimes must be removed from active sourceRuntimes and declared in temporarilyDisabledSourceRuntimes",
+                )
+            )
+
         for required_key in ("sourceId", "tenantId", "config"):
             if required_key not in runtime:
                 findings.append(_finding("error", stack, f"{runtime_path}.{required_key}", "required key is missing"))
@@ -1513,7 +1558,7 @@ def validate_stack(path: Path) -> list[Finding]:
         runtime_bucket = str(runtime_config.get("bucket", "")).strip()
         runtime_prefix = str(runtime_config.get("prefix", "")).strip()
         for bucket, prefix, required_role_arn in s3_role_requirements:
-            if runtime_bucket != bucket or runtime_prefix != prefix:
+            if runtime_bucket != bucket or not source_runtime_scope.s3_prefix_covers(prefix, runtime_prefix):
                 continue
             if role_arn != required_role_arn:
                 findings.append(
@@ -1538,16 +1583,15 @@ def validate_stack(path: Path) -> list[Finding]:
                     )
                 )
 
-        for key, value in runtime_config.items():
-            if _is_plain_secret(str(key), value):
-                findings.append(
-                    _finding(
-                        "error",
-                        stack,
-                        f"{runtime_path}.config.{key}",
-                        "secret-like runtime config values must use env: references",
-                    )
+        for secret_path in _plain_secret_paths(runtime_config, f"{runtime_path}.config"):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    secret_path,
+                    "secret-like runtime config values must use env: references",
                 )
+            )
 
     schedules = config.get("orchestratorSchedules") or []
     if schedules and not isinstance(schedules, list):
