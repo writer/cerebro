@@ -332,3 +332,161 @@ func TestProjectPanopticonAlertAndIOCLinkToCasesAssetsAndEvidence(t *testing.T) 
 	assertProjectedLink(t, state, iocURN, relationBelongsTo, caseURN)
 	assertProjectedLink(t, state, alertURN, relationHasEvidence, iocURN)
 }
+
+func TestProjectPanopticonAlertEnrichesSSHBruteForceAnchors(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-alert-event-ssh",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.alert",
+		Attributes: map[string]string{
+			"alert_id": "alert-ssh",
+			"title":    "203.0.113.20 is performing SSH brute force attacks against i-0123456789abcdef0.",
+			"severity": "high",
+			"status":   "open",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"alert_id": "alert-ssh",
+			"title":    "203.0.113.20 is performing SSH brute force attacks against i-0123456789abcdef0.",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(alert) error = %v", err)
+	}
+
+	alertURN := "urn:cerebro:writer:panopticon_alert:alert-ssh"
+	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.20"
+	instanceURN := "urn:cerebro:writer:aws_ec2_instance:i-0123456789abcdef0"
+
+	assertProjectedEntityType(t, state, ipURN, "internet.ip")
+	assertProjectedEntityType(t, state, instanceURN, "aws.ec2.instance")
+	assertProjectedLink(t, state, alertURN, relationAssociatedWith, ipURN)
+	assertProjectedLink(t, state, alertURN, relationAssociatedWith, instanceURN)
+}
+
+func TestProjectPanopticonCaseEnrichesGitHubGCPAndIdentityAnchors(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-enrichment",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-enrich",
+			"title":   "GitHub secret scanning in repo ExampleOrg/example-service for GCP project example-dev",
+			"status":  "open",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id":        "case-enrich",
+			"title":          "GitHub secret scanning in repo ExampleOrg/example-service for GCP project example-dev",
+			"github_repo":    "https://github.com/ExampleOrg/example-service.git",
+			"gcp_project_id": "example-dev",
+			"assignee_email": "analyst@example.com",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	caseURN := "urn:cerebro:writer:panopticon_case:case-enrich"
+	repoURN := "urn:cerebro:writer:github_repo:ExampleOrg/example-service"
+	orgURN := "urn:cerebro:writer:github_org:ExampleOrg"
+	accountURN := "urn:cerebro:writer:cloud_account:example-dev"
+	identityURN := "urn:cerebro:writer:identity:email:analyst@example.com"
+	identifierURN := "urn:cerebro:writer:identifier:email:analyst@example.com"
+
+	assertProjectedEntityType(t, state, repoURN, "github.repo")
+	assertProjectedEntityType(t, state, accountURN, "cloud.account")
+	assertProjectedEntityType(t, state, identityURN, "identity.email")
+	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, caseURN, relationAssociatedWith, repoURN)
+	assertProjectedLink(t, state, caseURN, relationAssociatedWith, accountURN)
+	assertProjectedLink(t, state, caseURN, relationOwnedBy, identityURN)
+	assertProjectedLink(t, state, caseURN, relationHasIdentifier, identifierURN)
+}
+
+func TestProjectPanopticonCaseEnrichesKubernetesAnchors(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-kubernetes",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-k8s",
+			"title":   "Tetragon: nc execution in wait-for-db init container (example-namespace/example-api-123)",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id":              "case-k8s",
+			"title":                "Tetragon: nc execution in wait-for-db init container (example-namespace/example-api-123)",
+			"service_account_name": "example-api",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	caseURN := "urn:cerebro:writer:panopticon_case:case-k8s"
+	workloadURN := "urn:cerebro:writer:kubernetes_workload:panopticon-inferred:example-namespace:Deployment/example-api-123"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:panopticon-inferred:example-namespace"
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:panopticon-inferred"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:panopticon-inferred:example-namespace:example-api"
+
+	assertProjectedEntityType(t, state, workloadURN, "kubernetes.workload")
+	assertProjectedEntityType(t, state, namespaceURN, "kubernetes.namespace")
+	assertProjectedEntityType(t, state, clusterURN, "kubernetes.cluster")
+	assertProjectedEntityType(t, state, serviceAccountURN, "kubernetes.service_account")
+	assertProjectedLink(t, state, caseURN, relationAssociatedWith, workloadURN)
+	assertProjectedLink(t, state, workloadURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, workloadURN, relationRunsAs, serviceAccountURN)
+}
+
+func TestProjectPanopticonIOCEnrichesInternetAnchors(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-ioc-event-anchor",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.ioc",
+		Attributes: map[string]string{
+			"ioc_id":   "ioc-ip",
+			"ioc_type": "ip",
+			"value":    "203.0.113.10",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"ioc_id":   "ioc-ip",
+			"ioc_type": "ip",
+			"value":    "203.0.113.10",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(ioc) error = %v", err)
+	}
+
+	iocURN := "urn:cerebro:writer:panopticon_ioc:ioc-ip"
+	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.10"
+
+	assertProjectedEntityType(t, state, ipURN, "internet.ip")
+	assertProjectedLink(t, state, iocURN, relationRepresents, ipURN)
+}
+
+func assertProjectedEntityType(t *testing.T, recorder *projectionRecorder, urn string, entityType string) {
+	t.Helper()
+	entity := recorder.entities[urn]
+	if entity == nil {
+		t.Fatalf("projected entity %q missing", urn)
+	}
+	if entity.EntityType != entityType {
+		t.Fatalf("projected entity %q type = %q, want %q", urn, entity.EntityType, entityType)
+	}
+}
