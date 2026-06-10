@@ -351,6 +351,8 @@ func runGraph(args []string) error {
 		return runGraphInspect(args)
 	case "cve-impact", "package-exposure", "asset-vulns":
 		return runGraphImpact(args)
+	case "investigation-brief":
+		return runInvestigationBrief(args[1:])
 	case "inspect":
 		if len(args) < 2 {
 			return usageError(graphInspectUsage())
@@ -402,7 +404,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [health|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|repair-open-finding-primary-links|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [health|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|investigation-brief|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|repair-open-finding-primary-links|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {

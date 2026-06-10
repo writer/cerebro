@@ -241,6 +241,8 @@ func dynamicRouteLabel(parts []string) (string, bool) {
 		return "/grc/entities/{entityID}/impact", true
 	case match(parts, "grc", "audit-packets", "*"):
 		return "/grc/audit-packets/{packetID}", true
+	case match(parts, "findings", "*", "investigation-brief"):
+		return "/findings/{findingID}/investigation-brief", true
 	case match(parts, "findings", "*"):
 		return "/findings/{findingID}", true
 	case match(parts, "findings", "*", "resolve"):

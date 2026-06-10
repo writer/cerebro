@@ -863,6 +863,31 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	if packet.RecommendedAction == "" {
 		t.Fatalf("packet recommended action is empty")
 	}
+
+	briefResp, err := server.Client().Get(server.URL + "/findings/finding-high/investigation-brief?limit=10")
+	if err != nil {
+		t.Fatalf("GET /findings investigation-brief error = %v", err)
+	}
+	defer func() { _ = briefResp.Body.Close() }()
+	if briefResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /findings investigation-brief status = %d, want %d", briefResp.StatusCode, http.StatusOK)
+	}
+	var brief investigationBriefResponse
+	if err := json.NewDecoder(briefResp.Body).Decode(&brief); err != nil {
+		t.Fatalf("decode investigation brief: %v", err)
+	}
+	if brief.ID != "finding-high" || brief.Kind != "finding" {
+		t.Fatalf("brief identity = %#v, want finding-high finding", brief)
+	}
+	if brief.Trust.GraphStatus != "available" || brief.Trust.EvidenceCount != 1 {
+		t.Fatalf("brief trust = %#v", brief.Trust)
+	}
+	if !strings.Contains(brief.Markdown, "Investigation Brief") {
+		t.Fatalf("brief markdown = %q", brief.Markdown)
+	}
+	if len(brief.NextPivots) < 3 {
+		t.Fatalf("brief pivots = %#v, want operator pivots", brief.NextPivots)
+	}
 }
 
 type stubGRCAggregateStore struct {

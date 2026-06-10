@@ -11,9 +11,11 @@ import (
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestGRCAskStreamsSSE(t *testing.T) {
@@ -145,6 +147,48 @@ func TestGRCAskMissingTenantReturnsBadRequest(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestGRCAskInvestigationBriefFastPath(t *testing.T) {
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-1": {Id: "runtime-1", SourceId: "okta", TenantId: "writer"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				TenantID:       "writer",
+				RuntimeID:      "runtime-1",
+				Title:          "Privileged identity drift",
+				Severity:       "HIGH",
+				Status:         "open",
+				Summary:        "A privileged identity needs review.",
+				FindingRisk:    ports.FindingRisk{RiskReasons: []string{"privileged access"}},
+				LastObservedAt: now,
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: "runtime-1", FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"writer","question":"Brief this investigation","scope_urn":"finding-1"}`))
+	if err != nil {
+		t.Fatalf("POST /grc/ask error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /grc/ask status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	events := readSSEEvents(t, resp)
+	assertSSEEventNames(t, events, []string{"progress", "summary", "done"})
+	if !strings.Contains(string(events[1].Data), "Investigation Brief") {
+		t.Fatalf("summary event = %s, want investigation brief markdown", events[1].Data)
 	}
 }
 

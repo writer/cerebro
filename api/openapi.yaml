@@ -561,6 +561,49 @@ paths:
                 properties:
                   finding:
                     $ref: '#/components/schemas/Finding'
+  /findings/{findingID}/investigation-brief:
+    get:
+      summary: Get an operator investigation brief for one finding
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/findingID'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: skip_graph
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Deterministic finding brief with evidence, trust gaps, graph context, next pivots, and Markdown handoff.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  kind:
+                    type: string
+                  finding:
+                    type: object
+                  evidence:
+                    type: array
+                    items:
+                      type: object
+                  trust:
+                    type: object
+                  next_pivots:
+                    type: array
+                    items:
+                      type: object
+                  recommended_action:
+                    type: string
+                  markdown:
+                    type: string
+                  generated_at:
+                    type: string
+                    format: date-time
   /finding-candidates/{candidateID}:
     get:
       summary: Get candidate finding

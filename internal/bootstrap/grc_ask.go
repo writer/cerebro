@@ -50,6 +50,10 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
+	if findingID, ok := askInvestigationBriefFindingID(request); ok {
+		a.handleGRCAskInvestigationBrief(w, r, findingID, started, &evt)
+		return
+	}
 	graphStore := graphQueryStore(a.deps.GraphStore)
 	if graphStore == nil {
 		evt.failureStage = "graph_store_nil"
@@ -133,6 +137,72 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		evt.finish(r, started, http.StatusOK, err)
 		return
 	}
+	evt.sseEvents = eventCount
+	evt.finish(r, started, http.StatusOK, nil)
+}
+
+func (a *App) handleGRCAskInvestigationBrief(w http.ResponseWriter, r *http.Request, findingID string, started time.Time, evt *askWideEvent) {
+	clearStreamingWriteDeadline(w)
+	flusher, _ := w.(http.Flusher)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	eventCount := 0
+	emit := func(event graphagent.Event) error {
+		eventCount++
+		if err := graphagent.WriteSSEEvent(w, event); err != nil {
+			return err
+		}
+		evt.observe(event)
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return nil
+	}
+	if err := emit(graphagent.Event{Name: graphagent.EventProgress, Data: graphagent.ProgressEvent{
+		Stage:     "assembling_investigation_brief",
+		Message:   "Assembling a deterministic Cerebro investigation brief.",
+		ElapsedMS: time.Since(started).Milliseconds(),
+	}}); err != nil {
+		evt.failureStage = "brief_stream"
+		evt.sseEvents = eventCount
+		evt.finish(r, started, http.StatusOK, err)
+		return
+	}
+	brief, err := a.buildInvestigationBrief(r, findingID, investigationBriefDefaultLimit, false)
+	if err != nil {
+		errorEvent := graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
+			Code:    "investigation_brief_failed",
+			Message: err.Error(),
+		}}
+		_ = emit(errorEvent)
+		evt.failureStage = "investigation_brief"
+		evt.sseEvents = eventCount
+		evt.finish(r, started, http.StatusOK, err)
+		return
+	}
+	if err := emit(graphagent.Event{Name: graphagent.EventSummary, Data: graphagent.SummaryEvent{
+		Markdown: brief.Markdown,
+	}}); err != nil {
+		evt.failureStage = "brief_stream"
+		evt.sseEvents = eventCount
+		evt.finish(r, started, http.StatusOK, err)
+		return
+	}
+	if err := emit(graphagent.Event{Name: graphagent.EventDone, Data: graphagent.DoneEvent{
+		TraceID: "investigation-brief:" + brief.ID,
+		TotalMS: time.Since(started).Milliseconds(),
+	}}); err != nil {
+		evt.failureStage = "brief_stream"
+		evt.sseEvents = eventCount
+		evt.finish(r, started, http.StatusOK, err)
+		return
+	}
+	evt.queryPlan.intent = "investigation_brief"
+	evt.queryPlan.source = "deterministic"
+	evt.queryPlan.deterministic = true
 	evt.sseEvents = eventCount
 	evt.finish(r, started, http.StatusOK, nil)
 }

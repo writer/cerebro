@@ -131,6 +131,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.impact",
 		"cerebro.graph.paths",
 		"cerebro.investigation.context",
+		"cerebro.investigation.brief",
 		"cerebro.findings.action.propose",
 		"cerebro.source_runtimes.refresh.propose",
 	} {
@@ -885,6 +886,29 @@ func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
 	}
 	if context["metadata"].(map[string]any)["stateless"] != true {
 		t.Fatalf("investigation metadata = %#v", context["metadata"])
+	}
+
+	briefResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      8,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.investigation.brief",
+			"arguments": map[string]any{
+				"finding_id": "finding-1",
+				"skip_graph": true,
+			},
+		},
+	})
+	if briefResp["error"] != nil {
+		t.Fatalf("investigation.brief error = %#v", briefResp["error"])
+	}
+	brief := briefResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if brief["id"] != "finding-1" || !strings.Contains(brief["markdown"].(string), "Investigation Brief") {
+		t.Fatalf("investigation brief = %#v", brief)
+	}
+	if brief["metadata"].(map[string]any)["stateless"] != true {
+		t.Fatalf("investigation brief metadata = %#v", brief["metadata"])
 	}
 
 	resourceResp, _ := postMCP(t, server, "", map[string]any{

@@ -452,6 +452,8 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGraphPaths(r, args)
 	case "cerebro.investigation.context":
 		return app.mcpInvestigationContext(r, args)
+	case "cerebro.investigation.brief":
+		return app.mcpInvestigationBrief(r, args)
 	case "cerebro.findings.action.propose":
 		return app.mcpProposeFindingAction(r, args)
 	case "cerebro.source_runtimes.refresh.propose":
@@ -1403,6 +1405,18 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Investigation Context"),
 		},
 		{
+			Name:        "cerebro.investigation.brief",
+			Title:       "Investigation Brief",
+			Description: "Return a deterministic operator brief for one finding with risk narrative, trust gaps, evidence, graph context, and next pivots.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"finding_id": map[string]any{"type": "string"},
+				"limit":      mcpLimitSchema(int(grcMaxLimit), "evidence and graph rows"),
+				"skip_graph": map[string]any{"type": "boolean"},
+			}, []string{"finding_id"}),
+			OutputSchema: mcpOutputSchema(nil),
+			Annotations:  mcpReadOnlyAnnotations("Investigation Brief"),
+		},
+		{
 			Name:        "cerebro.findings.action.propose",
 			Title:       "Propose Finding Action",
 			Description: "Validate and describe a finding workflow action without applying it. Requires dry_run=true and never mutates state.",
@@ -1827,6 +1841,7 @@ func mcpResourceTemplates() []mcpResourceTemplate {
 		{URITemplate: "cerebro://asset/{asset_urn}", Name: "asset", Title: "Asset", Description: "Read one graph asset by URL-encoded Cerebro URN.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URITemplate: "cerebro://runtime/{runtime_id}", Name: "runtime", Title: "Runtime", Description: "Read one source runtime status bundle.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URITemplate: "cerebro://investigation/finding/{finding_id}", Name: "finding_investigation", Title: "Finding Investigation", Description: "Read a bounded investigation context bundle for one finding.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URITemplate: "cerebro://investigation/brief/finding/{finding_id}", Name: "finding_investigation_brief", Title: "Finding Investigation Brief", Description: "Read a deterministic operator brief for one finding.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 	}
 }
 
@@ -1918,12 +1933,22 @@ func (app *App) mcpReadResource(r *http.Request, rawParams json.RawMessage) (mcp
 		value, err = app.mcpRuntimeStatus(r, map[string]any{"runtime_id": pathValue})
 	case "investigation":
 		parts := strings.SplitN(pathValue, "/", 2)
-		if len(parts) != 2 || parts[0] != "finding" {
-			err = ports.ErrGraphEntityNotFound
+		if len(parts) == 2 && parts[0] == "finding" {
+			args["finding_id"] = parts[1]
+			value, err = app.mcpInvestigationContext(r, args)
 			break
 		}
-		args["finding_id"] = parts[1]
-		value, err = app.mcpInvestigationContext(r, args)
+		if len(parts) == 2 && parts[0] == "brief" {
+			briefParts := strings.SplitN(parts[1], "/", 2)
+			if len(briefParts) == 2 && briefParts[0] == "finding" {
+				args["finding_id"] = briefParts[1]
+				value, err = app.mcpInvestigationBrief(r, args)
+				break
+			}
+		}
+		if value == nil && err == nil {
+			err = ports.ErrGraphEntityNotFound
+		}
 	default:
 		err = ports.ErrGraphEntityNotFound
 	}
@@ -1960,7 +1985,7 @@ func (app *App) mcpGetPrompt(_ *http.Request, rawParams json.RawMessage) (map[st
 		if findingID == "" {
 			return nil, fmt.Errorf("%w: finding_id is required", errInvalidHTTPRequest)
 		}
-		text = "Investigate Cerebro finding " + findingID + ". First read cerebro://investigation/finding/" + url.PathEscape(findingID) + ", then use cerebro.evidence.list, cerebro.assets.get, cerebro.graph.neighborhood, cerebro.graph.impact, and cerebro.findings.action.propose with dry_run=true for recommended next steps. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+		text = "Investigate Cerebro finding " + findingID + ". First read cerebro://investigation/brief/finding/" + url.PathEscape(findingID) + " for the operator brief, then use cerebro://investigation/finding/" + url.PathEscape(findingID) + ", cerebro.evidence.list, cerebro.assets.get, cerebro.graph.neighborhood, cerebro.graph.impact, and cerebro.findings.action.propose with dry_run=true for deeper next steps. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 	case "investigate_asset":
 		assetURN := mcpStringArg(args, "asset_urn")
 		if assetURN == "" {

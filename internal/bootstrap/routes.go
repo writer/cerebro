@@ -79,6 +79,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 func (app *App) registerFindingRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /finding-rules", routeSurfacePlatformHTTP, app.handleListFindingRules)
 	registerHTTPRoute(mux, "GET /findings/{findingID}", routeSurfacePlatformHTTP, app.handleGetFinding)
+	registerHTTPRoute(mux, "GET /findings/{findingID}/investigation-brief", routeSurfacePlatformHTTP, app.handleGetInvestigationBrief)
 	registerHTTPRoute(mux, "POST /findings/{findingID}/resolve", routeSurfacePlatformHTTP, app.handleResolveFinding)
 	registerHTTPRoute(mux, "POST /findings/{findingID}/suppress", routeSurfacePlatformHTTP, app.handleSuppressFinding)
 	registerHTTPRoute(mux, "PUT /findings/{findingID}/assign", routeSurfacePlatformHTTP, app.handleAssignFinding)

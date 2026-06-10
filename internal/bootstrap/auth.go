@@ -1563,7 +1563,7 @@ func fallbackFindingRoute(path string) string {
 	}
 	parts := strings.SplitN(suffix, "/", 2)
 	switch parts[1] {
-	case "resolve", "suppress", "assign", "due", "notes", "tickets":
+	case "resolve", "suppress", "assign", "due", "notes", "tickets", "investigation-brief":
 		return "/findings/{findingID}/" + parts[1]
 	default:
 		return "/findings/{findingID}/{subresource}"
