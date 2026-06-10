@@ -922,43 +922,67 @@ func (s *stubRuntimeStore) SummarizeFindings(_ context.Context, request ports.Li
 	if s.err != nil {
 		return ports.FindingSummary{}, s.err
 	}
-	var summary ports.FindingSummary
+	summary := ports.FindingSummary{
+		BySeverity:       map[string]int{},
+		ByStatus:         map[string]int{},
+		RiskReasonCounts: map[string]int{},
+	}
 	controls := map[string]struct{}{}
 	now := time.Now().UTC()
 	for _, finding := range s.findings {
 		if !findingMatches(request, finding) {
 			continue
 		}
-		if !strings.EqualFold(strings.TrimSpace(finding.Status), "open") {
-			continue
+		summary.TotalFindings++
+		status := strings.ToLower(strings.TrimSpace(finding.Status))
+		if status == "" {
+			status = "unknown"
 		}
-		summary.OpenFindings++
-		if strings.EqualFold(strings.TrimSpace(finding.Severity), "critical") {
-			summary.CriticalFindings++
+		severity := strings.ToLower(strings.TrimSpace(finding.Severity))
+		if severity == "" {
+			severity = "unknown"
 		}
-		if strings.EqualFold(strings.TrimSpace(finding.Severity), "high") {
-			summary.HighFindings++
+		summary.ByStatus[status]++
+		summary.BySeverity[severity]++
+		if finding.RiskScore > summary.MaxRiskScore {
+			summary.MaxRiskScore = finding.RiskScore
 		}
-		if !finding.DueAt.IsZero() && now.After(finding.DueAt.UTC()) {
-			summary.OverdueFindings++
-		}
-		if strings.TrimSpace(finding.Assignee) == "" {
-			summary.Unassigned++
-		}
-		if len(finding.ControlRefs) == 0 {
-			controls["Unmapped\x00Needs mapping"] = struct{}{}
-			continue
-		}
-		for _, ref := range finding.ControlRefs {
-			framework := strings.TrimSpace(ref.FrameworkName)
-			controlID := strings.TrimSpace(ref.ControlID)
-			if framework == "" {
-				framework = "Unmapped"
+		summary.RiskScoreTotal += finding.RiskScore
+		for _, reason := range finding.RiskReasons {
+			reason = strings.TrimSpace(reason)
+			if reason != "" {
+				summary.RiskReasonCounts[reason]++
 			}
-			if controlID == "" {
-				controlID = "Needs mapping"
+		}
+		if status == "open" {
+			summary.OpenFindings++
+			if severity == "critical" {
+				summary.CriticalFindings++
 			}
-			controls[framework+"\x00"+controlID] = struct{}{}
+			if severity == "high" {
+				summary.HighFindings++
+			}
+			if !finding.DueAt.IsZero() && now.After(finding.DueAt.UTC()) {
+				summary.OverdueFindings++
+			}
+			if strings.TrimSpace(finding.Assignee) == "" {
+				summary.Unassigned++
+			}
+			if len(finding.ControlRefs) == 0 {
+				controls["Unmapped\x00Needs mapping"] = struct{}{}
+				continue
+			}
+			for _, ref := range finding.ControlRefs {
+				framework := strings.TrimSpace(ref.FrameworkName)
+				controlID := strings.TrimSpace(ref.ControlID)
+				if framework == "" {
+					framework = "Unmapped"
+				}
+				if controlID == "" {
+					controlID = "Needs mapping"
+				}
+				controls[framework+"\x00"+controlID] = struct{}{}
+			}
 		}
 	}
 	summary.ControlsFailing = len(controls)

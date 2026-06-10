@@ -119,11 +119,17 @@ const (
 // FindingSummary captures aggregate counts for one finding query without applying
 // pagination limits intended for UI rows.
 type FindingSummary struct {
+	TotalFindings      int
 	OpenFindings       int
 	CriticalFindings   int
 	HighFindings       int
 	OverdueFindings    int
 	Unassigned         int
+	MaxRiskScore       int
+	RiskScoreTotal     int
+	BySeverity         map[string]int
+	ByStatus           map[string]int
+	RiskReasonCounts   map[string]int
 	ControlsFailing    int
 	FailingControlKeys []string
 }
