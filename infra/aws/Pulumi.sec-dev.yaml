@@ -105,9 +105,24 @@ config:
     - SENTINELONE_API_TOKEN
     - SENTINELONE_BASE_URL
   cerebro:temporarilyDisabledSourceRuntimes:
-    - writer-cosmo-session
-    - writer-cosmo-fact
-    - writer-cosmo-survey-feedback
+    - runtimeId: writer-cosmo-session
+      owner: cerebro-platform
+      reason: manual_operator_action
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
+    - runtimeId: writer-cosmo-fact
+      owner: cerebro-platform
+      reason: manual_operator_action
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
+    - runtimeId: writer-cosmo-survey-feedback
+      owner: cerebro-platform
+      reason: manual_operator_action
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
   cerebro:sourceRuntimeServiceBootstrapIds:
     - writer-evidence-cas-cases
   cerebro:sourceRuntimeRollouts:

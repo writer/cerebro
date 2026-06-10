@@ -84,10 +84,30 @@ config:
     - CEREBRO_SOURCE_COSMO_TOKEN
     - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
   cerebro:temporarilyDisabledSourceRuntimes:
-    - writer-cosmo-session
-    - writer-cosmo-fact
-    - writer-cosmo-message
-    - writer-cosmo-survey-feedback
+    - runtimeId: writer-cosmo-session
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after CEREBRO_SOURCE_COSMO_TOKEN is rotated and live go-prod source runtime verification passes."
+    - runtimeId: writer-cosmo-fact
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after CEREBRO_SOURCE_COSMO_TOKEN is rotated and live go-prod source runtime verification passes."
+    - runtimeId: writer-cosmo-message
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after CEREBRO_SOURCE_COSMO_TOKEN is rotated and live go-prod source runtime verification passes."
+    - runtimeId: writer-cosmo-survey-feedback
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after CEREBRO_SOURCE_COSMO_TOKEN is rotated and live go-prod source runtime verification passes."
   cerebro:sourceRuntimeObservability:
     - environment: go-production
       sourceSystem: evidence_cas

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import re
 import sys
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,23 @@ COSMO_OPTIONAL_RUNTIME_FAMILIES = {
 }
 COSMO_GRAPH_BUDGETED_RUNTIMES = {"writer-cosmo-session", "writer-cosmo-fact"}
 TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES = set(COSMO_RUNTIME_FAMILIES) | set(COSMO_OPTIONAL_RUNTIME_FAMILIES)
+
+
+class QuarantineReason(str, Enum):
+    INVALID_CREDENTIALS = "invalid_credentials"
+    MISSING_SECRET = "missing_secret"
+    UPSTREAM_AUTH_FAILURE = "upstream_auth_failure"
+    UPSTREAM_RATE_LIMIT = "upstream_rate_limit"
+    UPSTREAM_SCHEMA_DRIFT = "upstream_schema_drift"
+    RUNTIME_CONTRACT_MISMATCH = "runtime_contract_mismatch"
+    BOOTSTRAP_PAYLOAD_STALE = "bootstrap_payload_stale"
+    TASK_FAILURE = "task_failure"
+    GRAPH_INGEST_FAILURE = "graph_ingest_failure"
+    MANUAL_OPERATOR_ACTION = "manual_operator_action"
+
+
+QUARANTINE_REASONS = {reason.value for reason in QuarantineReason}
+QUARANTINE_REQUIRED_FIELDS = {"runtimeId", "owner", "reason", "disabledDate", "reviewDeadline", "reenableCriteria"}
 COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT = 500
@@ -252,6 +270,85 @@ def _string_set(values: Any) -> set[str]:
     return {str(value).strip() for value in values if str(value).strip()}
 
 
+def _parse_date(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00") if len(text) != 10 else f"{text}T00:00:00+00:00")
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed
+    except ValueError:
+        return None
+
+
+def _quarantined_source_runtime_ids(stack: str, config: dict[str, Any], findings: list[Finding]) -> set[str]:
+    entries = config.get("temporarilyDisabledSourceRuntimes") or []
+    if not isinstance(entries, list):
+        findings.append(_finding("error", stack, "cerebro:temporarilyDisabledSourceRuntimes", "must be a list"))
+        return set()
+
+    runtime_ids: set[str] = set()
+    for index, entry in enumerate(entries):
+        path = f"cerebro:temporarilyDisabledSourceRuntimes[{index}]"
+        if not isinstance(entry, dict):
+            findings.append(_finding("error", stack, path, "quarantined runtime entry must be an object with metadata"))
+            continue
+
+        missing = sorted(field for field in QUARANTINE_REQUIRED_FIELDS if field not in entry)
+        if missing:
+            findings.append(_finding("error", stack, path, f"quarantined runtime entry is missing required field(s): {', '.join(missing)}"))
+
+        runtime_id = str(entry.get("runtimeId", "")).strip()
+        if not runtime_id:
+            findings.append(_finding("error", stack, f"{path}.runtimeId", "runtimeId is required"))
+        else:
+            runtime_ids.add(runtime_id)
+
+        owner = str(entry.get("owner", "")).strip()
+        if not owner:
+            findings.append(_finding("error", stack, f"{path}.owner", "owner is required"))
+
+        reason = str(entry.get("reason", "")).strip()
+        if not reason:
+            findings.append(_finding("error", stack, f"{path}.reason", "reason is required"))
+        elif reason not in QUARANTINE_REASONS:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.reason",
+                    f"reason must be one of: {', '.join(sorted(QUARANTINE_REASONS))}",
+                )
+            )
+
+        disabled_date = _parse_date(entry.get("disabledDate"))
+        if disabled_date is None:
+            findings.append(_finding("error", stack, f"{path}.disabledDate", "disabledDate must be an ISO date"))
+
+        review_deadline = _parse_date(entry.get("reviewDeadline"))
+        if review_deadline is None:
+            findings.append(_finding("error", stack, f"{path}.reviewDeadline", "reviewDeadline must be an ISO date"))
+        elif review_deadline < datetime.now(UTC):
+            findings.append(_finding("warning", stack, f"{path}.reviewDeadline", "reviewDeadline has passed; review the runtime quarantine"))
+
+        if disabled_date is not None and review_deadline is not None and review_deadline < disabled_date:
+            findings.append(_finding("error", stack, f"{path}.reviewDeadline", "reviewDeadline must be on or after disabledDate"))
+
+        reenable_criteria = entry.get("reenableCriteria")
+        if isinstance(reenable_criteria, str):
+            if not reenable_criteria.strip():
+                findings.append(_finding("error", stack, f"{path}.reenableCriteria", "reenableCriteria must be non-empty"))
+        elif isinstance(reenable_criteria, list):
+            if not reenable_criteria or not all(isinstance(value, str) and value.strip() for value in reenable_criteria):
+                findings.append(_finding("error", stack, f"{path}.reenableCriteria", "reenableCriteria list items must be non-empty strings"))
+        else:
+            findings.append(_finding("error", stack, f"{path}.reenableCriteria", "reenableCriteria must be a string or a list of strings"))
+
+    return runtime_ids
+
+
 def _s3_source_role_requirements(s3_sources: Any) -> list[tuple[str, str, str]]:
     requirements: list[tuple[str, str, str]] = []
     if not isinstance(s3_sources, list):
@@ -372,9 +469,9 @@ def _validate_cosmo_gitops(
     source_runtimes: list[Any],
     schedules: list[Any],
     source_secret_names: set[str],
+    disabled_runtime_ids: set[str],
     findings: list[Finding],
 ) -> None:
-    disabled_runtime_ids = _string_set(config.get("temporarilyDisabledSourceRuntimes") or [])
     unknown_disabled_runtime_ids = disabled_runtime_ids - TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES
     if unknown_disabled_runtime_ids:
         findings.append(
@@ -1290,6 +1387,7 @@ def validate_stack(path: Path) -> list[Finding]:
         findings.append(_finding("error", stack, "cerebro:sourceRuntimes", "must be a list"))
         source_runtimes = []
 
+    disabled_runtime_ids = _quarantined_source_runtime_ids(stack, config, findings)
     runtime_ids: set[str] = set()
     source_secret_names = _source_secret_names(config.get("sourceSecretKeys") or [])
     s3_role_requirements = _s3_source_role_requirements(config.get("s3Sources") or [])
@@ -1302,6 +1400,15 @@ def validate_stack(path: Path) -> list[Finding]:
         runtime_id = str(runtime.get("id", "")).strip()
         if not runtime_id:
             findings.append(_finding("error", stack, f"{runtime_path}.id", "runtime id is required"))
+        elif runtime_id in disabled_runtime_ids:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{runtime_path}.id",
+                    f"quarantined runtime {runtime_id!r} must not be declared in active sourceRuntimes",
+                )
+            )
         elif runtime_id in runtime_ids:
             findings.append(_finding("error", stack, f"{runtime_path}.id", f"duplicate runtime id {runtime_id!r}"))
         else:
@@ -1376,6 +1483,15 @@ def validate_stack(path: Path) -> list[Finding]:
         if top_level_runtime_id is None:
             if not schedules:
                 scheduled_runtime_ids.update(runtime_ids)
+        elif top_level_runtime_id in disabled_runtime_ids:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:orchestratorCommand",
+                    f"quarantined runtime {top_level_runtime_id!r} must not be referenced by cerebro:orchestratorCommand",
+                )
+            )
         elif top_level_runtime_id not in runtime_ids:
             findings.append(
                 _finding(
@@ -1418,6 +1534,15 @@ def validate_stack(path: Path) -> list[Finding]:
         runtime_id = _runtime_id_from_command(schedule.get("command"))
         if runtime_id is None:
             findings.append(_finding("error", stack, f"{schedule_path}.command", "command must include runtime_id=<id>"))
+        elif runtime_id in disabled_runtime_ids:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{schedule_path}.command",
+                    f"quarantined runtime {runtime_id!r} must not be referenced by cerebro:orchestratorSchedules",
+                )
+            )
         elif runtime_id not in runtime_ids:
             findings.append(_finding("error", stack, f"{schedule_path}.command", f"unknown runtime id {runtime_id!r}"))
         else:
@@ -1453,7 +1578,7 @@ def validate_stack(path: Path) -> list[Finding]:
                 )
             )
 
-    _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
+    _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, disabled_runtime_ids, findings)
     _validate_sec_dev_aws_coverage(stack, config, source_runtimes, schedules, findings)
     _validate_go_prod_aws_coverage(stack, source_runtimes, schedules, findings)
     _validate_panopticon_wiring(stack, config, source_runtimes, schedules, findings)
