@@ -44,10 +44,56 @@ var panopticonAssetAttributeKeys = []string{
 	"resource_type",
 	"resource_urn",
 	"serial_number",
+	"self_link",
 	"source_product",
 	"source_provider",
+	"target_id",
 	"type",
 	"urn",
+	"uri",
+	"aws_account_id",
+	"business_critical",
+	"crown_jewel",
+	"data_classification",
+	"data_sensitivity",
+	"domain",
+	"endpoint",
+	"external_exposure",
+	"gcp_project_id",
+	"identity_principal_id",
+	"internet_exposed",
+	"network_interface_ids",
+	"network_security_group_ids",
+	"network_subnet_ids",
+	"owner",
+	"project_id",
+	"public",
+	"public_endpoint",
+	"public_host",
+	"public_ip",
+	"public_network_access",
+	"region",
+	"resource_group",
+	"resource_group_name",
+	"role_arn",
+	"role_name",
+	"runtime_identity",
+	"runtime_role_arn",
+	"runtime_role_name",
+	"runtime_service_account",
+	"scope",
+	"security_group_ids",
+	"sensitivity",
+	"service_account_email",
+	"subnet_id",
+	"subnet_ids",
+	"subscription_id",
+	"team",
+	"tier0",
+	"user_assigned_principal_ids",
+	"vpc",
+	"vpc_id",
+	"zone",
 }
 
 type panopticonAssetStitchTarget struct {
@@ -512,6 +558,7 @@ func panopticonAddAssetStitching(entities map[string]*ports.ProjectedEntity, lin
 			Attributes: target.attrs,
 		})
 		addLink(links, projectedLink(tenantID, sourceID, assetURN, target.urn, relationRepresents, panopticonAssetStitchAttributes(event, target)))
+		panopticonAddCloudAssetEnrichment(entities, links, tenantID, sourceID, event, target, attrs)
 	}
 }
 
@@ -532,13 +579,10 @@ func panopticonAssetStitchTargets(tenantID string, sourceID string, attrs map[st
 func panopticonExplicitAssetURNTarget(tenantID string, attrs map[string]string) panopticonAssetStitchTarget {
 	urn := firstAttribute(attrs, "urn", "resource_urn")
 	parts := strings.Split(strings.TrimSpace(urn), ":")
-	if len(parts) < 4 || parts[0] != "urn" || parts[1] != "cerebro" || parts[2] != tenantID {
+	if !panopticonAllowedCanonicalAssetURN(tenantID, urn) {
 		return panopticonAssetStitchTarget{}
 	}
 	kind := parts[3]
-	if !panopticonAllowedCanonicalAssetKind(kind) {
-		return panopticonAssetStitchTarget{}
-	}
 	matchValue := strings.Join(parts[4:], ":")
 	return panopticonAssetStitchTarget{
 		urn:        urn,
@@ -621,33 +665,80 @@ func panopticonCloudAssetTarget(tenantID string, sourceID string, attrs map[stri
 	if provider != "aws" && provider != "azure" && provider != "gcp" {
 		return panopticonAssetStitchTarget{}
 	}
-	resourceID := firstAttribute(attrs, "resource_urn", "resource_arn", "resource_id", "cloud_resource_id")
+	resourceID, matchKey := panopticonCloudResourceID(provider, attrs)
 	if resourceID == "" {
+		return panopticonAssetStitchTarget{}
+	}
+	if strings.HasPrefix(resourceID, "urn:cerebro:") && !panopticonAllowedCanonicalAssetURN(tenantID, resourceID) {
 		return panopticonAssetStitchTarget{}
 	}
 	resourceType := panopticonCloudResourceType(provider, attrs, resourceID)
 	if resourceType == "" {
 		return panopticonAssetStitchTarget{}
 	}
+	resourceURN := firstAttribute(attrs, "resource_urn")
+	targetURN := resourceURN
+	if targetURN == "" {
+		targetURN = projectionURN(tenantID, provider+"_"+resourceType, resourceID)
+	}
 	return panopticonAssetStitchTarget{
-		urn:        projectionURN(tenantID, provider+"_"+resourceType, resourceID),
+		urn:        targetURN,
 		sourceID:   provider,
 		entityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
 		label:      firstAttribute(attrs, "resource_name", "name", "asset_name", "hostname", "resource_id"),
-		attrs: compactAttributes(map[string]string{
-			"account_id":          firstAttribute(attrs, "account_id"),
-			"resource_arn":        firstAttribute(attrs, "resource_arn"),
-			"resource_id":         resourceID,
-			"resource_provider":   provider,
-			"resource_type":       resourceType,
-			"resource_urn":        firstAttribute(attrs, "resource_urn"),
-			"source_product":      firstNonEmpty(provider, sourceID),
-			"panopticon_stitched": "true",
-		}),
+		attrs:      panopticonCloudAssetEntityAttributes(provider, sourceID, attrs, resourceID, resourceType, targetURN),
 		matchType:  "panopticon_asset_" + provider + "_resource_id",
-		matchKey:   "resource_id",
+		matchKey:   matchKey,
 		matchValue: resourceID,
 	}
+}
+
+func panopticonAddCloudAssetEnrichment(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, target panopticonAssetStitchTarget, attrs map[string]string) {
+	provider := target.sourceID
+	if provider != "aws" && provider != "azure" && provider != "gcp" {
+		return
+	}
+	cloudAttrs := panopticonCloudAssetEntityAttributes(provider, sourceID, attrs, target.attrs["resource_id"], target.attrs["resource_type"], target.urn)
+	accountID := cloudResourceAccountID(provider, cloudAttrs, cloudAttrs["resource_id"], target.urn)
+	if accountID != "" {
+		cloudAttrs["domain"] = firstNonEmpty(cloudAttrs["domain"], accountID)
+		addCloudAccountLink(entities, links, tenantID, sourceID, event, target.urn, accountID, provider)
+	}
+	addAzureResourceGroupLinks(entities, links, tenantID, sourceID, event, identityProjectionProfile{Provider: provider}, cloudAttrs, target.urn)
+	addCloudResourceOwnerLink(entities, links, tenantID, event, target.urn, firstNonEmpty(cloudAttrs["owner"], cloudAttrs["team"]))
+	addCloudResourceClassificationLinks(entities, links, tenantID, event, target.urn, cloudAttrs, cloudResourceProjectionOptions{})
+	addCloudResourcePublicReachability(entities, links, tenantID, event, target.urn, provider, cloudAttrs)
+	addCloudResourceRuntimeIdentityLinks(entities, links, tenantID, event, target.urn, provider, cloudAttrs)
+	if provider == "aws" {
+		addAWSNetworkContextLinks(entities, links, tenantID, sourceID, event, target.urn, cloudAttrs)
+	}
+}
+
+func panopticonCloudAssetEntityAttributes(provider string, sourceID string, attrs map[string]string, resourceID string, resourceType string, targetURN string) map[string]string {
+	out := compactAttributes(cloneStringMap(attrs))
+	out["resource_id"] = firstNonEmpty(resourceID, out["resource_id"], out["cloud_resource_id"])
+	out["resource_provider"] = provider
+	out["resource_type"] = resourceType
+	out["resource_urn"] = firstNonEmpty(out["resource_urn"], targetURN)
+	out["source_product"] = firstNonEmpty(provider, sourceID)
+	out["panopticon_stitched"] = "true"
+	switch provider {
+	case "aws":
+		if accountID := cloudResourceAccountID(provider, out, out["resource_id"], targetURN); accountID != "" {
+			out["account_id"] = firstNonEmpty(out["account_id"], accountID)
+			out["domain"] = firstNonEmpty(out["domain"], accountID)
+		}
+	case "azure":
+		if subscriptionID := cloudResourceAccountID(provider, out, out["resource_id"], targetURN); subscriptionID != "" {
+			out["subscription_id"] = firstNonEmpty(out["subscription_id"], subscriptionID)
+		}
+	case "gcp":
+		if projectID := cloudResourceAccountID(provider, out, out["resource_id"], targetURN); projectID != "" {
+			out["project_id"] = firstNonEmpty(out["project_id"], projectID)
+			out["gcp_project_id"] = firstNonEmpty(out["gcp_project_id"], projectID)
+		}
+	}
+	return out
 }
 
 func panopticonAssetProvider(attrs map[string]string) string {
@@ -684,15 +775,78 @@ func panopticonAssetProvider(attrs map[string]string) string {
 }
 
 func panopticonCloudResourceType(provider string, attrs map[string]string, resourceID string) string {
-	resourceType := normalizeCloudType(firstAttribute(attrs, "resource_type", "asset_type", "type"))
+	rawType := firstAttribute(attrs, "resource_type", "asset_type", "type")
+	resourceType := panopticonCloudResourceTypeAlias(provider, rawType)
 	resourceType = strings.TrimPrefix(resourceType, provider+"_")
 	if resourceType != "" {
 		return resourceType
 	}
-	if provider == "aws" {
+	switch provider {
+	case "aws":
 		return panopticonAWSResourceTypeFromARN(resourceID)
+	case "azure":
+		return panopticonAzureResourceTypeFromID(resourceID)
+	case "gcp":
+		rawResourceID := firstAttribute(attrs, "resource_id", "cloud_resource_id", "self_link", "uri")
+		return panopticonGCPResourceTypeFromID(firstNonEmpty(rawResourceID, resourceID))
 	}
 	return ""
+}
+
+func panopticonCloudResourceID(provider string, attrs map[string]string) (string, string) {
+	if resourceURN := firstAttribute(attrs, "resource_urn"); resourceURN != "" {
+		return resourceURN, "resource_urn"
+	}
+	for _, key := range []string{"resource_arn", "resource_id", "cloud_resource_id", "self_link", "uri"} {
+		value := firstAttribute(attrs, key)
+		if value == "" {
+			continue
+		}
+		if provider == "gcp" {
+			value = panopticonNormalizeGCPResourceID(value)
+		}
+		return value, key
+	}
+	return "", ""
+}
+
+func panopticonCloudResourceTypeAlias(provider string, value string) string {
+	normalized := normalizeCloudType(value)
+	normalized = strings.ReplaceAll(normalized, ":", "_")
+	switch provider {
+	case "aws":
+		switch normalized {
+		case "aws_ec2_instance", "aws__ec2__instance", "server":
+			return "ec2_instance"
+		case "aws_s3_bucket":
+			return "s3_bucket"
+		case "aws_lambda_function":
+			return "lambda_function"
+		}
+	case "azure":
+		switch normalized {
+		case "microsoft_compute_virtualmachines", "azure_virtual_machine":
+			return "virtual_machine"
+		case "microsoft_storage_storageaccounts":
+			return "storage_account"
+		case "microsoft_keyvault_vaults":
+			return "key_vault"
+		case "microsoft_keyvault_vaults_secrets":
+			return "key_vault_secret"
+		case "microsoft_sql_servers_databases":
+			return "sql_database"
+		}
+	case "gcp":
+		switch normalized {
+		case "run_googleapis_com_service", "cloud_run_service", "cloudrun_service":
+			return "cloud_run_service"
+		case "compute_googleapis_com_instance", "compute_instance":
+			return "compute_instance"
+		case "storage_googleapis_com_bucket", "storage_bucket", "bucket", "gcs_bucket":
+			return "gcs_bucket"
+		}
+	}
+	return normalized
 }
 
 func panopticonAWSResourceTypeFromARN(value string) string {
@@ -710,6 +864,9 @@ func panopticonAWSResourceTypeFromARN(value string) string {
 		resourceKind = before
 	}
 	resourceKind = normalizeCloudType(resourceKind)
+	if alias := panopticonAWSARNResourceTypeAlias(service, resourceKind); alias != "" {
+		return alias
+	}
 	if service == "s3" && resourceKind != "" {
 		resourceKind = "bucket"
 	}
@@ -717,6 +874,111 @@ func panopticonAWSResourceTypeFromARN(value string) string {
 		return ""
 	}
 	return service + "_" + resourceKind
+}
+
+func panopticonAWSARNResourceTypeAlias(service string, resourceKind string) string {
+	switch service + ":" + resourceKind {
+	case "apprunner:service":
+		return "apprunner_service"
+	case "ec2:instance":
+		return "ec2_instance"
+	case "ec2:volume":
+		return "ebs_volume"
+	case "ec2:snapshot":
+		return "ebs_snapshot"
+	case "ec2:security_group":
+		return "security_group"
+	case "ec2:subnet":
+		return "subnet"
+	case "ec2:vpc":
+		return "vpc"
+	case "ec2:network_interface":
+		return "network_interface"
+	case "ecs:service":
+		return "ecs_service"
+	case "ecs:task":
+		return "ecs_task"
+	case "ecs:task_definition":
+		return "ecs_task_definition"
+	case "elasticache:cluster":
+		return "elasticache_cluster"
+	case "kinesis:stream":
+		return "kinesis_stream"
+	case "lambda:function":
+		return "lambda_function"
+	case "rds:db":
+		return "rds_instance"
+	case "s3:bucket":
+		return "s3_bucket"
+	}
+	return ""
+}
+
+func panopticonAzureResourceTypeFromID(value string) string {
+	namespace, typeName := panopticonAzureProviderType(value)
+	if namespace == "" || typeName == "" {
+		return ""
+	}
+	return panopticonCloudResourceTypeAlias("azure", namespace+"/"+typeName)
+}
+
+func panopticonAzureProviderType(value string) (string, string) {
+	parts := strings.Split(strings.TrimSpace(value), "/")
+	for index := 0; index+2 < len(parts); index++ {
+		if strings.EqualFold(parts[index], "providers") {
+			namespace := strings.TrimSpace(parts[index+1])
+			typeName := strings.TrimSpace(parts[index+2])
+			if index+4 < len(parts) && strings.EqualFold(namespace, "Microsoft.KeyVault") && strings.EqualFold(typeName, "vaults") && strings.EqualFold(parts[index+4], "secrets") {
+				typeName += "/secrets"
+			}
+			if index+4 < len(parts) && strings.EqualFold(namespace, "Microsoft.Sql") && strings.EqualFold(typeName, "servers") && strings.EqualFold(parts[index+4], "databases") {
+				typeName += "/databases"
+			}
+			return namespace, typeName
+		}
+	}
+	return "", ""
+}
+
+func panopticonGCPResourceTypeFromID(value string) string {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.Contains(lower, "storage.googleapis.com/") && strings.Contains(lower, "/buckets/"):
+		return "gcs_bucket"
+	case strings.Contains(lower, "run.googleapis.com/") && strings.Contains(lower, "/services/"):
+		return "cloud_run_service"
+	case strings.Contains(lower, "/locations/") && strings.Contains(lower, "/services/"):
+		return "cloud_run_service"
+	case strings.Contains(lower, "compute.googleapis.com/") && strings.Contains(lower, "/instances/"):
+		return "compute_instance"
+	case strings.Contains(lower, "/zones/") && strings.Contains(lower, "/instances/"):
+		return "compute_instance"
+	default:
+		return ""
+	}
+}
+
+func panopticonNormalizeGCPResourceID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	lower := strings.ToLower(value)
+	if strings.Contains(lower, "storage.googleapis.com/") && strings.Contains(lower, "/buckets/") {
+		parts := strings.Split(value, "/")
+		for index := 0; index+1 < len(parts); index++ {
+			if parts[index] == "buckets" && strings.TrimSpace(parts[index+1]) != "" {
+				return strings.TrimSpace(parts[index+1])
+			}
+		}
+	}
+	if index := strings.Index(value, "/projects/"); index >= 0 {
+		return strings.TrimPrefix(value[index:], "/")
+	}
+	if strings.HasPrefix(value, "projects/") {
+		return value
+	}
+	return value
 }
 
 func panopticonFirstAssetAttribute(attrs map[string]string, keys ...string) (string, string) {
@@ -735,6 +997,11 @@ func panopticonAllowedCanonicalAssetKind(kind string) bool {
 	default:
 		return strings.HasPrefix(kind, "aws_") || strings.HasPrefix(kind, "azure_") || strings.HasPrefix(kind, "gcp_")
 	}
+}
+
+func panopticonAllowedCanonicalAssetURN(tenantID string, urn string) bool {
+	parts := strings.Split(strings.TrimSpace(urn), ":")
+	return len(parts) >= 4 && parts[0] == "urn" && parts[1] == "cerebro" && parts[2] == tenantID && panopticonAllowedCanonicalAssetKind(parts[3])
 }
 
 func panopticonCanonicalAssetSourceID(kind string) string {
