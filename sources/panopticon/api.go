@@ -180,7 +180,7 @@ func (s *Source) readNativeAPIPage(ctx context.Context, st settings, path string
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+st.token)
 
-	resp, err := sourceHTTPClient(s).Do(req)
+	resp, err := sourceHTTPClient(s, st.privateEndpointAllowlist).Do(req)
 	if err != nil {
 		return nativeAPIPage{}, fmt.Errorf("request panopticon api: %w", err)
 	}
@@ -297,14 +297,18 @@ func canonicalRecord(st settings, item map[string]interface{}, kind, schemaRef, 
 	return panopticonRecord{ID: id, TenantID: st.tenantID, SourceID: sourceID, Kind: kind, OccurredAt: occurredAt, SchemaRef: schemaRef, Attributes: attributes, Payload: payload}, nil
 }
 
-func sourceHTTPClient(s *Source) *http.Client {
+func sourceHTTPClient(s *Source, privateEndpointAllowlist []string) *http.Client {
 	if s == nil {
-		return sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID})
+		return sourcehttp.NewClient(sourcehttp.ClientOptions{
+			SourceID:                 sourceID,
+			PrivateEndpointAllowlist: privateEndpointAllowlist,
+		})
 	}
 	return sourcehttp.HardenClient(s.client, sourcehttp.ClientOptions{
-		SourceID:      sourceID,
-		AllowLoopback: s.allowLoopbackBaseURL,
-		LookupIPAddrs: lookupIPAddrs(s),
+		SourceID:                 sourceID,
+		AllowLoopback:            s.allowLoopbackBaseURL,
+		PrivateEndpointAllowlist: privateEndpointAllowlist,
+		LookupIPAddrs:            lookupIPAddrs(s),
 	})
 }
 

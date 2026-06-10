@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -73,6 +75,19 @@ func TestParseSettings(t *testing.T) {
 			loopback: true,
 			want:     settings{family: familyAlert, baseURL: "http://127.0.0.1", apiPath: "/api/v2/alerts", token: "token", tenantID: "writer", perPage: defaultPageSize},
 		},
+		{
+			name:   "private-endpoint-allowlist",
+			values: map[string]string{"base_url": "https://panopticon.internal.example", "token": "token", "tenant_id": "writer", "private_endpoint_allowlist": "panopticon.internal.example"},
+			want: settings{
+				family:                   familyAlert,
+				baseURL:                  "https://panopticon.internal.example",
+				apiPath:                  "/api/v2/alerts",
+				token:                    "token",
+				tenantID:                 "writer",
+				privateEndpointAllowlist: []string{"panopticon.internal.example"},
+				perPage:                  defaultPageSize,
+			},
+		},
 		{name: "missing-base-url", values: map[string]string{"token": "token", "tenant_id": "writer"}, wantErrIs: ErrBaseURLRequired},
 		{name: "missing-token", values: map[string]string{"base_url": "https://panopticon.example.com", "tenant_id": "writer"}, wantErrIs: ErrTokenRequired},
 		{name: "missing-tenant", values: map[string]string{"base_url": "https://panopticon.example.com", "token": "token"}, wantErrIs: ErrTenantIDRequired},
@@ -96,10 +111,38 @@ func TestParseSettings(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseSettingsWithLoopback() error = %v", err)
 			}
-			if got != tc.want {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("parseSettingsWithLoopback() = %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestPrivateEndpointAllowlistPermitsResolvedPrivatePanopticonHost(t *testing.T) {
+	src := &Source{
+		lookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("10.20.0.10")}}, nil
+		},
+		client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Hostname() != "panopticon.internal.example" {
+				t.Fatalf("host = %q, want panopticon.internal.example", req.URL.Hostname())
+			}
+			return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: req}, nil
+		})},
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://panopticon.internal.example/api/v2/alerts", nil)
+	resp, err := sourceHTTPClient(src, []string{"panopticon.internal.example"}).Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v, want private endpoint allowed", err)
+	}
+	_ = resp.Body.Close()
+	req, _ = http.NewRequest(http.MethodGet, "https://panopticon.internal.example/api/v2/alerts", nil)
+	resp, err = sourceHTTPClient(src, nil).Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	if err == nil || !errorContains(err, "must not resolve to loopback, private, or link-local") {
+		t.Fatalf("Do() error = %v, want private endpoint rejection without allowlist", err)
 	}
 }
 
@@ -314,4 +357,10 @@ func eventIDs(events []*cerebrov1.EventEnvelope) []string {
 		ids = append(ids, ev.GetId())
 	}
 	return ids
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
