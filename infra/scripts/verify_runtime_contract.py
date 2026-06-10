@@ -7,30 +7,18 @@ from pathlib import Path
 import sys
 from typing import Any
 
-import yaml
-
 try:
-    from aws.source_rollouts import apply_source_runtime_rollouts
+    from aws import source_runtime_scope
 except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/verify_runtime_contract.py
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from aws.source_rollouts import apply_source_runtime_rollouts
+    from aws import source_runtime_scope
 
 
 SCHEMA_VERSION = "cerebro.runtime-deploy-contract/v1"
 
 
 def _load_stack(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
-    config = loaded.get("config")
-    if not isinstance(config, dict):
-        raise ValueError(f"{path} must contain a top-level config mapping")
-    config = {
-        key.removeprefix("cerebro:"): value
-        for key, value in config.items()
-        if isinstance(key, str) and key.startswith("cerebro:")
-    }
-    return apply_source_runtime_rollouts(config)
+    return source_runtime_scope.load_cerebro_config(path)
 
 
 def _load_contract(path: Path) -> dict[str, Any]:
@@ -45,26 +33,15 @@ def _runtime_env_refs(runtime: dict[str, Any]) -> set[str]:
     config = runtime.get("config") or {}
     if not isinstance(config, dict):
         return set()
-    refs: set[str] = set()
-    for value in config.values():
-        if isinstance(value, str) and value.strip().startswith("env:"):
-            refs.add(value.strip().removeprefix("env:").strip())
-    return refs
+    return {env_name for env_name, _path in source_runtime_scope.env_refs(config) if env_name}
 
 
 def _runtime_family(runtime: dict[str, Any]) -> str:
-    config = runtime.get("config") or {}
-    if not isinstance(config, dict):
-        return ""
-    return str(config.get("family") or "").strip()
+    return source_runtime_scope.runtime_family(runtime)
 
 
 def _runtime_value(runtime: dict[str, Any], *keys: str) -> str:
-    for key in keys:
-        value = runtime.get(key)
-        if value is not None:
-            return str(value).strip()
-    return ""
+    return source_runtime_scope.runtime_value(runtime, *keys)
 
 
 def _contract_sources(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -220,6 +197,33 @@ def _verify_matching_runtime_deploy_metadata(
     return errors
 
 
+def _verify_manifest_config(runtime_id: str, stack_config: dict[str, Any], contract_config: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+
+    def walk(expected: Any, actual: Any, path: str, present: bool) -> None:
+        key_name = path.rsplit(".", 1)[-1]
+        if isinstance(expected, dict):
+            if not present or not isinstance(actual, dict):
+                errors.append(f"runtime {runtime_id!r} is missing contract config key {path!r}")
+                return
+            for child_key, child_expected in sorted(expected.items()):
+                child_present = child_key in actual
+                walk(child_expected, actual.get(child_key), f"{path}.{child_key}" if path else str(child_key), child_present)
+            return
+        if str(expected).startswith("env:") or key_name == "family":
+            if str(actual) != str(expected):
+                if str(expected).startswith("env:"):
+                    errors.append(f"runtime {runtime_id!r} config {path!r} does not match contract env reference")
+                else:
+                    errors.append(f"runtime {runtime_id!r} config {path!r} is {actual!r}, expected {expected!r}")
+        elif not present:
+            errors.append(f"runtime {runtime_id!r} is missing contract config key {path!r}")
+
+    for key, expected in sorted(contract_config.items()):
+        walk(expected, stack_config.get(key), str(key), key in stack_config)
+    return errors
+
+
 def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_manifest_runtimes: bool = False) -> list[str]:
     errors: list[str] = []
     if contract.get("schema_version") != SCHEMA_VERSION:
@@ -299,16 +303,7 @@ def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_man
             if not isinstance(stack_config, dict) or not isinstance(contract_config, dict):
                 errors.append(f"runtime {runtime_id!r} config must be an object")
                 continue
-            for key, expected in sorted(contract_config.items()):
-                actual = stack_config.get(key)
-                if str(expected).startswith("env:") or key == "family":
-                    if str(actual) != str(expected):
-                        if str(expected).startswith("env:"):
-                            errors.append(f"runtime {runtime_id!r} config {key!r} does not match contract env reference")
-                        else:
-                            errors.append(f"runtime {runtime_id!r} config {key!r} is {actual!r}, expected {expected!r}")
-                elif key not in stack_config:
-                    errors.append(f"runtime {runtime_id!r} is missing contract config key {key!r}")
+            errors.extend(_verify_manifest_config(runtime_id, stack_config, contract_config))
 
     errors.extend(_verify_source_health_receipts(contract, sources, stack))
 

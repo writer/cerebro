@@ -548,6 +548,121 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         payload = json.loads(requests[1].data.decode("utf-8"))
         self.assertIn("ecs_secret_initialization_failed", payload["body"])
 
+    def test_passing_graph_health_closes_existing_degraded_issue(self) -> None:
+        requests = []
+
+        def fake_urlopen(request, timeout: int):  # noqa: ANN001
+            requests.append(request)
+            if request.get_method() == "GET":
+                if "page=1" in request.full_url:
+                    return FakeHTTPResponse(
+                        [
+                            {
+                                "number": 956,
+                                "title": "Graph health degraded for go-prod",
+                                "html_url": "https://github.com/WriterInternal/cerebro/issues/956",
+                            }
+                        ]
+                    )
+                return FakeHTTPResponse([])
+            return FakeHTTPResponse({"html_url": "https://github.com/WriterInternal/cerebro/issues/956#issuecomment-2"})
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "GITHUB_TOKEN": "token",
+                        "GITHUB_REPOSITORY": "WriterInternal/cerebro",
+                        "GITHUB_RUN_ID": "27284692112",
+                    },
+                ),
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", return_value=run_aws_deploy_verifications.GraphHealthResult(0, "")),
+                patch("scripts.run_aws_deploy_verifications.urllib.request.urlopen", side_effect=fake_urlopen),
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--graph-health-issue",
+                        "--graph-health-artifact-name",
+                        "graph-health-go-prod",
+                    ]
+                )
+
+        self.assertEqual(status, 0)
+        methods = [request.get_method() for request in requests]
+        self.assertIn("POST", methods)
+        self.assertIn("PATCH", methods)
+        patch_payload = json.loads(next(request.data.decode("utf-8") for request in requests if request.get_method() == "PATCH"))
+        self.assertEqual(patch_payload["state"], "closed")
+
+    def test_healed_graph_health_closes_existing_issue(self) -> None:
+        requests = []
+        results = iter(
+            [
+                run_aws_deploy_verifications.GraphHealthResult(
+                    23,
+                    "ERROR: latest graph ingest run failed for 1 runtime(s): writer-runtime:graph-ingest:writer-runtime:20260601T000000Z:status=failed",
+                ),
+                run_aws_deploy_verifications.GraphHealthResult(0, ""),
+            ]
+        )
+
+        def fake_urlopen(request, timeout: int):  # noqa: ANN001
+            requests.append(request)
+            if request.get_method() == "GET":
+                return FakeHTTPResponse(
+                    [
+                        {
+                            "number": 956,
+                            "title": "Graph health degraded for go-prod",
+                            "html_url": "https://github.com/WriterInternal/cerebro/issues/956",
+                        }
+                    ]
+                )
+            return FakeHTTPResponse({"html_url": "https://github.com/WriterInternal/cerebro/issues/956#issuecomment-3"})
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "GITHUB_TOKEN": "token",
+                        "GITHUB_REPOSITORY": "WriterInternal/cerebro",
+                        "GITHUB_RUN_ID": "27284692112",
+                    },
+                ),
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args: next(results)),
+                patch("scripts.run_aws_deploy_verifications._attempt_graph_health_heal", return_value=True),
+                patch("scripts.run_aws_deploy_verifications.urllib.request.urlopen", side_effect=fake_urlopen),
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--graph-health-heal",
+                        "--graph-health-issue",
+                    ]
+                )
+
+        self.assertEqual(status, 0)
+        self.assertTrue(any(request.get_method() == "PATCH" for request in requests))
+
+    def test_recovered_issue_close_is_noop_without_github_env(self) -> None:
+        stderr = io.StringIO()
+        with patch.dict(os.environ, {}, clear=True), contextlib.redirect_stderr(stderr):
+            run_aws_deploy_verifications._close_recovered_graph_health_issues("go-prod", "graph-health-go-prod")
+
+        self.assertIn("cannot close recovered graph-health issue", stderr.getvalue())
+
     def test_graph_health_runtime_ids_parse_ingest_summaries(self) -> None:
         diagnostics = (
             "latest graph ingest run failed for 1 runtime(s): "

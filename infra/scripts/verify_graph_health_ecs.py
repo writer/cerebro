@@ -14,13 +14,11 @@ import sys
 import time
 from typing import Any
 
-import yaml
-
 try:
-    from aws.source_rollouts import apply_source_runtime_rollouts
+    from aws import source_runtime_scope
 except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/verify_graph_health_ecs.py
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from aws.source_rollouts import apply_source_runtime_rollouts
+    from aws import source_runtime_scope
 
 
 EXPECTED_STACK_ACCOUNTS = {
@@ -100,17 +98,7 @@ def _stack_name(path: Path) -> str:
 
 
 def _load_config(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
-    config = loaded.get("config")
-    if not isinstance(config, dict):
-        raise ValueError(f"{path} must contain a top-level config mapping")
-    config = {
-        key.removeprefix("cerebro:"): value
-        for key, value in config.items()
-        if isinstance(key, str) and key.startswith("cerebro:")
-    }
-    return apply_source_runtime_rollouts(config)
+    return source_runtime_scope.load_cerebro_config(path)
 
 
 def _resource_prefix(config: dict[str, Any], stack: str) -> str:
@@ -121,26 +109,11 @@ def _resource_prefix(config: dict[str, Any], stack: str) -> str:
 
 
 def _declared_runtime_ids(config: dict[str, Any]) -> set[str]:
-    runtimes = config.get("sourceRuntimes") or []
-    if not isinstance(runtimes, list):
-        return set()
-    return {str(runtime.get("id") or "").strip() for runtime in runtimes if isinstance(runtime, dict) and str(runtime.get("id") or "").strip()}
+    return set(source_runtime_scope.declared_runtime_ids(config))
 
 
 def _declared_aws_families(config: dict[str, Any]) -> set[str]:
-    runtimes = config.get("sourceRuntimes") or []
-    if not isinstance(runtimes, list):
-        return set()
-    families: set[str] = set()
-    for runtime in runtimes:
-        if not isinstance(runtime, dict) or str(runtime.get("sourceId", "")).strip() != "aws":
-            continue
-        runtime_config = runtime.get("config") or {}
-        if isinstance(runtime_config, dict):
-            family = str(runtime_config.get("family", "")).strip()
-            if family:
-                families.add(family)
-    return families
+    return source_runtime_scope.declared_aws_families(config)
 
 
 def _ingest_run_limit(declared_runtime_ids: set[str]) -> int:

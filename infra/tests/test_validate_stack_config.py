@@ -474,6 +474,67 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace(f"    - {API_TOKEN_KEY}\n", "")
         self.assertTrue(any("not listed in cerebro:sourceSecretKeys" in message for message in self._messages(content)))
 
+    def test_nested_source_secret_ref_must_be_declared(self) -> None:
+        content = BASE_STACK.replace(
+            f"        {API_TOKEN_FIELD}: env:{API_TOKEN_KEY}",
+            "        auth:\n          token: env:MISSING_NESTED_TOKEN",
+        )
+
+        self.assertTrue(any("not listed in cerebro:sourceSecretKeys" in message for message in self._messages(content)))
+
+    def test_nested_plaintext_secret_like_runtime_config_is_error(self) -> None:
+        content = BASE_STACK.replace(
+            f"        {API_TOKEN_FIELD}: env:{API_TOKEN_KEY}",
+            "        auth:\n          token: inline-private-value",
+        )
+
+        findings = self._validate(content)
+
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and finding.path.endswith(".config.auth.token")
+                and "secret-like runtime config values" in finding.message
+                for finding in findings
+            )
+        )
+
+    def test_s3_source_child_prefix_requires_configured_role(self) -> None:
+        content = BASE_STACK.replace("        prefix: exports/alerts/", "        prefix: exports/alerts/daily/", 1).replace(
+            "        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
+            "        role_arn: arn:aws:iam::837279440628:role/other-reader",
+            1,
+        )
+
+        self.assertTrue(any("must set role_arn to the configured s3Sources roleArn" in message for message in self._messages(content)))
+
+    def test_source_runtime_lifecycle_state_is_typed(self) -> None:
+        content = BASE_STACK.replace("      sourceId: okta", "      lifecycleState: paused\n      sourceId: okta", 1)
+
+        self.assertTrue(any("lifecycleState must be one of" in message for message in self._messages(content)))
+
+    def test_quarantined_lifecycle_state_cannot_be_active_runtime(self) -> None:
+        content = BASE_STACK.replace("      sourceId: okta", "      lifecycleState: quarantined\n      sourceId: okta", 1)
+
+        self.assertTrue(any("quarantined runtimes must be removed" in message for message in self._messages(content)))
+
+    def test_temporary_runtime_metadata_lifecycle_state_must_be_quarantined(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            """  cerebro:temporarilyDisabledSourceRuntimes:
+    - runtimeId: writer-cosmo-session
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Rotate token and pass live verification."
+      lifecycleState: active
+  cerebro:sourceRuntimeObservability:""",
+            1,
+        )
+
+        self.assertTrue(any("temporary runtime metadata must use lifecycleState quarantined" in message for message in self._messages(content)))
+
     def test_aws_role_arn_account_must_match_runtime_account(self) -> None:
         aws_stack = BASE_STACK.replace("sourceId: okta", "sourceId: aws").replace(
             f"        {API_TOKEN_FIELD}: env:{API_TOKEN_KEY}",

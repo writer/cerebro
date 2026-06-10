@@ -13,13 +13,11 @@ import sys
 import time
 from typing import Any
 
-import yaml
-
 try:
-    from aws.source_rollouts import apply_source_runtime_rollouts
+    from aws import source_runtime_scope
 except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/verify_source_runtime_ecs.py
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from aws.source_rollouts import apply_source_runtime_rollouts
+    from aws import source_runtime_scope
 
 try:
     from scripts import verify_aws_secret_imports as secret_imports
@@ -155,27 +153,11 @@ def _stack_name(path: Path) -> str:
 
 
 def _load_config(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
-    config = loaded.get("config")
-    if not isinstance(config, dict):
-        raise ValueError(f"{path} must contain a top-level config mapping")
-    config = {
-        key.removeprefix("cerebro:"): value
-        for key, value in config.items()
-        if isinstance(key, str) and key.startswith("cerebro:")
-    }
-    return apply_source_runtime_rollouts(config)
+    return source_runtime_scope.load_cerebro_config(path)
 
 
 def _runtime_id_from_command(command: Any) -> str:
-    if not isinstance(command, list):
-        return ""
-    for arg in command:
-        text = str(arg).strip()
-        if text.startswith("runtime_id="):
-            return text.split("=", 1)[1].strip()
-    return ""
+    return source_runtime_scope.runtime_id_from_command(command)
 
 
 def _container_override_command(value: Any) -> list[str]:
@@ -260,26 +242,7 @@ def _parse_aws_datetime(value: Any) -> datetime | None:
 
 
 def _declared_runtime_ids(config: dict[str, Any], source_id: str, requested: set[str], families: set[str] | None = None) -> list[str]:
-    runtimes = config.get("sourceRuntimes") or []
-    if not isinstance(runtimes, list):
-        return []
-    runtime_ids = []
-    families = families or set()
-    for runtime in runtimes:
-        if not isinstance(runtime, dict):
-            continue
-        runtime_id = str(runtime.get("id", "")).strip()
-        runtime_source_id = str(runtime.get("sourceId") or runtime.get("source_id") or "").strip()
-        runtime_config = runtime.get("config") or {}
-        family = str(runtime_config.get("family") or "").strip() if isinstance(runtime_config, dict) else ""
-        if (
-            runtime_id
-            and runtime_source_id == source_id
-            and (not requested or runtime_id in requested)
-            and (not families or family in families)
-        ):
-            runtime_ids.append(runtime_id)
-    return sorted(runtime_ids)
+    return source_runtime_scope.declared_runtime_ids(config, source_id, requested, families)
 
 
 def _observability_runtime_ids(
@@ -288,38 +251,26 @@ def _observability_runtime_ids(
     requested: set[str],
     families: set[str] | None = None,
 ) -> list[str]:
-    entries = config.get("sourceRuntimeObservability") or []
-    if not isinstance(entries, list):
-        return []
-    families = families or set()
-    runtime_ids: list[str] = []
-    seen_enabled: set[str] = set()
-    matching_disabled: list[str] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        runtime_id = str(entry.get("sourceRuntimeId") or entry.get("source_runtime_id") or "").strip()
-        source_system = str(entry.get("sourceSystem") or entry.get("source_system") or "").strip()
-        runtime_class = str(entry.get("runtimeClass") or entry.get("runtime_class") or "").strip()
-        if not runtime_id or source_system != source_id:
-            continue
-        if requested and runtime_id not in requested:
-            continue
-        if families and runtime_class not in families:
-            continue
-        if not bool(entry.get("enabled", False)):
-            matching_disabled.append(runtime_id)
-            continue
-        if runtime_id in seen_enabled:
-            raise ValueError(f"duplicate enabled sourceRuntimeObservability entry for {runtime_id!r}")
-        seen_enabled.add(runtime_id)
-        runtime_ids.append(runtime_id)
+    runtime_ids = source_runtime_scope.observability_runtime_ids(
+        config,
+        source_id,
+        requested,
+        families,
+        enabled=True,
+    )
+    matching_disabled = source_runtime_scope.observability_runtime_ids(
+        config,
+        source_id,
+        requested,
+        families,
+        enabled=False,
+    )
     if matching_disabled:
         print(
             "INFO disabled observability runtimes skipped: " + ", ".join(sorted(matching_disabled)),
             file=sys.stderr,
         )
-    return sorted(runtime_ids)
+    return runtime_ids
 
 
 def _disabled_observability_runtime_ids(
@@ -328,26 +279,13 @@ def _disabled_observability_runtime_ids(
     requested: set[str],
     families: set[str] | None = None,
 ) -> list[str]:
-    entries = config.get("sourceRuntimeObservability") or []
-    if not isinstance(entries, list):
-        return []
-    families = families or set()
-    runtime_ids: list[str] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        runtime_id = str(entry.get("sourceRuntimeId") or entry.get("source_runtime_id") or "").strip()
-        source_system = str(entry.get("sourceSystem") or entry.get("source_system") or "").strip()
-        runtime_class = str(entry.get("runtimeClass") or entry.get("runtime_class") or "").strip()
-        if not runtime_id or source_system != source_id:
-            continue
-        if requested and runtime_id not in requested:
-            continue
-        if families and runtime_class not in families:
-            continue
-        if not bool(entry.get("enabled", False)):
-            runtime_ids.append(runtime_id)
-    return sorted(set(runtime_ids))
+    return source_runtime_scope.observability_runtime_ids(
+        config,
+        source_id,
+        requested,
+        families,
+        enabled=False,
+    )
 
 
 def _runtime_targets(
@@ -1320,28 +1258,11 @@ def _secret_import_preflight_findings(
 
 
 def _source_secret_key_env_name(secret_key: Any) -> str:
-    if isinstance(secret_key, dict):
-        return str(secret_key.get("name") or "").strip()
-    return str(secret_key or "").strip()
+    return source_runtime_scope.source_secret_key_env_name(secret_key)
 
 
 def _config_for_runtime_scope(config: dict[str, Any], runtime_ids: set[str]) -> dict[str, Any]:
-    if not runtime_ids:
-        return dict(config)
-    scoped = dict(config)
-    source_runtimes = [
-        runtime
-        for runtime in (config.get("sourceRuntimes") or [])
-        if isinstance(runtime, dict) and str(runtime.get("id") or "").strip() in runtime_ids
-    ]
-    scoped["sourceRuntimes"] = source_runtimes
-    env_refs = set(secret_imports._source_runtime_env_refs(source_runtimes))
-    scoped["sourceSecretKeys"] = [
-        secret_key
-        for secret_key in (config.get("sourceSecretKeys") or [])
-        if _source_secret_key_env_name(secret_key) in env_refs
-    ]
-    return scoped
+    return source_runtime_scope.config_for_runtime_scope(config, runtime_ids)
 
 
 def _print_secret_import_preflight_failure(
