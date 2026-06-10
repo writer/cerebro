@@ -570,12 +570,6 @@ jobs:
         working-directory: infra
         run: uv run python scripts/verify_aws_secret_imports.py --stack-file aws/Pulumi.go-prod.yaml
 
-      - name: Verify Cosmo source canary (go-prod)
-        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
-        shell: bash
-        working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 20 --succeed-after-graph-ingest --allow-lease-contention-skip --allow-missing-targets --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 300 --wait-timeout-seconds 900 --poll-seconds 5 --target-concurrency 1
-
       - name: Pulumi Up (go-prod)
         if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -584,6 +578,12 @@ jobs:
           stack-name: go-prod
           work-dir: infra/aws
           diff: true
+
+      - name: Verify Cosmo source canary (go-prod)
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 20 --succeed-after-graph-ingest --allow-lease-contention-skip --allow-missing-targets --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 300 --wait-timeout-seconds 900 --poll-seconds 5 --target-concurrency 1
 
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-prod)
         if: needs.changes.outputs.aws_go_prod_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
@@ -932,14 +932,6 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: uv run python scripts/verify_aws_secret_imports.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml"
 
-      - name: Verify Cosmo source canary (AWS)
-        if: github.event.inputs.environment == 'go-prod'
-        shell: bash
-        working-directory: infra
-        env:
-          STACK_NAME: ${{ github.event.inputs.environment }}
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 20 --succeed-after-graph-ingest --allow-lease-contention-skip --allow-missing-targets --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 300 --wait-timeout-seconds 900 --poll-seconds 5 --target-concurrency 2
-
       - name: Pulumi Up (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -949,6 +941,14 @@ jobs:
           work-dir: infra/aws
           diff: true
           refresh: true
+
+      - name: Verify Cosmo source canary (AWS)
+        if: github.event.inputs.environment == 'go-prod'
+        shell: bash
+        working-directory: infra
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 20 --succeed-after-graph-ingest --allow-lease-contention-skip --allow-missing-targets --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 300 --wait-timeout-seconds 900 --poll-seconds 5 --target-concurrency 2
 
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
         if: github.event.inputs.environment == 'sec-dev' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
