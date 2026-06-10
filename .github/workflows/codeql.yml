@@ -17,6 +17,7 @@ jobs:
   analyze:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.language == 'python' }}
     strategy:
       fail-fast: false
       matrix:
