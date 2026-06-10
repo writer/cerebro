@@ -416,6 +416,12 @@ config:
       type: object
     default: []
     description: Compact source runtime rollout definitions expanded into sourceSecretKeys, sourceRuntimes, and orchestratorSchedules
+  cerebro:temporarilyDisabledSourceRuntimes:
+    type: array
+    items:
+      type: string
+    default: []
+    description: Temporary explicit source runtime IDs excluded from bootstrap and schedules while upstream credentials are repaired
   cerebro:shutdownTimeout:
     type: string
     default: 10s

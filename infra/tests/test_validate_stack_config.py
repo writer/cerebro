@@ -957,6 +957,26 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "required Cosmo schedule for 'writer-cosmo-fact' is missing" in finding.message for finding in findings))
 
+    def test_temporarily_disabled_cosmo_runtime_bypasses_requirement(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - writer-cosmo-survey-feedback\n"
+            "  cerebro:sourceRuntimeObservability:",
+        ).replace("    - id: writer-cosmo-survey-feedback", "    - id: writer-cosmo-survey-feedback-disabled", 1)
+        findings = self._validate(content)
+        self.assertFalse(any("required Cosmo runtime 'writer-cosmo-survey-feedback' is missing" in finding.message for finding in findings))
+
+    def test_unknown_temporary_runtime_bypass_is_rejected(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - writer-unknown-runtime\n"
+            "  cerebro:sourceRuntimeObservability:",
+        )
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and "unsupported temporary runtime bypasses: writer-unknown-runtime" in finding.message for finding in findings))
+
     def test_sec_dev_cosmo_graph_budgets_are_bounded(self) -> None:
         content = BASE_STACK.replace(
             "        - runtime_id=writer-cosmo-session\n",

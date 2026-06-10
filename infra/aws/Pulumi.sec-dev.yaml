@@ -104,6 +104,10 @@ config:
     - OKTA_DOMAIN
     - SENTINELONE_API_TOKEN
     - SENTINELONE_BASE_URL
+  cerebro:temporarilyDisabledSourceRuntimes:
+    - writer-cosmo-session
+    - writer-cosmo-fact
+    - writer-cosmo-survey-feedback
   cerebro:sourceRuntimeServiceBootstrapIds:
     - writer-evidence-cas-cases
   cerebro:sourceRuntimeRollouts:
@@ -801,36 +805,6 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: cosmo-session
-      scheduleExpression: cron(6,36 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-cosmo-session
-        - page_limit=5
-        - graph_page_limit=5
-        - event_limit=500
-    - name: cosmo-fact
-      scheduleExpression: cron(16,46 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-cosmo-fact
-        - page_limit=5
-        - graph_page_limit=5
-        - event_limit=500
-    - name: cosmo-survey-feedback
-      scheduleExpression: cron(7,37 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-cosmo-survey-feedback
-        - page_limit=10
-        - graph_page_limit=100
-        - event_limit=1000
     - name: aurelius-verdicts-live
       scheduleExpression: rate(15 minutes)
       taskCount: 1
@@ -1429,33 +1403,6 @@ config:
         include_global: "true"
         region: us-east-1
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
-    - id: writer-cosmo-session
-      sourceId: cosmo
-      tenantId: writer
-      config:
-        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
-        family: session
-        per_page: "100"
-        tenant_id: writer
-        token: env:CEREBRO_SOURCE_COSMO_TOKEN
-    - id: writer-cosmo-fact
-      sourceId: cosmo
-      tenantId: writer
-      config:
-        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
-        family: fact
-        per_page: "100"
-        tenant_id: writer
-        token: env:CEREBRO_SOURCE_COSMO_TOKEN
-    - id: writer-cosmo-survey-feedback
-      sourceId: cosmo
-      tenantId: writer
-      config:
-        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
-        family: survey_feedback
-        per_page: "100"
-        tenant_id: writer
-        token: env:CEREBRO_SOURCE_COSMO_TOKEN
     - id: writer-aurelius-verdicts
       sourceId: aurelius
       tenantId: writer
