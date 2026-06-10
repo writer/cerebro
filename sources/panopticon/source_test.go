@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,6 +97,131 @@ func TestParseSettings(t *testing.T) {
 				t.Fatalf("parseSettings() = %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestParseSettingsAPIMode(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"mode":      modeAPI,
+		"tenant_id": "writer",
+		"base_url":  "http://169.254.169.254",
+		"token":     "token",
+	}))
+	if err == nil {
+		t.Fatal("parseSettings() unsafe api base_url error = nil, want non-nil")
+	}
+
+	got, err := parseSettingsWithLoopback(sourcecdk.NewConfig(map[string]string{
+		"mode":      modeAPI,
+		"family":    familyCase,
+		"tenant_id": "writer",
+		"base_url":  "http://127.0.0.1",
+		"token":     "token",
+	}), true)
+	if err != nil {
+		t.Fatalf("parseSettingsWithLoopback() error = %v", err)
+	}
+	if got.mode != modeAPI || got.apiPath != "/api/cerebro/cases" || got.baseURL != "http://127.0.0.1" {
+		t.Fatalf("api settings = %+v, want api mode with default cases path", got)
+	}
+}
+
+func TestReadAPIModePaginatesAndValidatesEvents(t *testing.T) {
+	fixed := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/cerebro/alerts" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		if got := r.Header.Get("Authorization"); got != "Bearer api-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		if got := r.URL.Query().Get("tenant_id"); got != "writer" {
+			t.Fatalf("tenant_id = %q, want writer", got)
+		}
+		if got := r.URL.Query().Get("family"); got != familyAlert {
+			t.Fatalf("family = %q, want %q", got, familyAlert)
+		}
+		if got := r.URL.Query().Get("limit"); got != "1" {
+			t.Fatalf("limit = %q, want 1", got)
+		}
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			_ = json.NewEncoder(w).Encode(panopticonAPIResponse{
+				Records:    []panopticonRecord{validAlert("alert-1", fixed)},
+				NextCursor: "page-2",
+				Watermark:  fixed.Format(time.RFC3339Nano),
+			})
+		case "page-2":
+			_ = json.NewEncoder(w).Encode(panopticonAPIResponse{
+				Records:   []panopticonRecord{validAlert("alert-2", fixed.Add(time.Minute))},
+				Watermark: fixed.Add(time.Minute).Format(time.RFC3339Nano),
+			})
+		default:
+			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+		}
+	}))
+	defer server.Close()
+
+	src := newTestSource(t, nil)
+	src.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"mode":      modeAPI,
+		"family":    familyAlert,
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"token":     "api-token",
+		"per_page":  "1",
+	})
+
+	first, err := src.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if got := eventIDs(first.Events); len(got) != 1 || got[0] != "alert-1" || first.NextCursor == nil {
+		t.Fatalf("first events/cursor = %v/%v, want alert-1 and cursor", got, first.NextCursor)
+	}
+	firstCursor := decodeAPICursor(first.NextCursor)
+	if firstCursor.Source != cursorSourceAPI || firstCursor.Cursor != "page-2" {
+		t.Fatalf("first cursor = %+v, want api cursor page-2", firstCursor)
+	}
+
+	second, err := src.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if got := eventIDs(second.Events); len(got) != 1 || got[0] != "alert-2" || second.NextCursor != nil {
+		t.Fatalf("second events/cursor = %v/%v, want alert-2 without cursor", got, second.NextCursor)
+	}
+	if second.Checkpoint == nil || second.Checkpoint.GetWatermark().AsTime() != fixed.Add(time.Minute) {
+		t.Fatalf("second checkpoint = %+v, want watermark", second.Checkpoint)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestReadAPIModeRejectsCrossTenantEvents(t *testing.T) {
+	fixed := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(panopticonAPIResponse{
+			Records: []panopticonRecord{withTenant(validAlert("alert-1", fixed), "other")},
+		})
+	}))
+	defer server.Close()
+
+	src := newTestSource(t, nil)
+	src.allowLoopbackBaseURL = true
+	_, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"mode":      modeAPI,
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"token":     "api-token",
+	}), nil)
+	if err == nil || !errorContains(err, "does not match runtime tenant") {
+		t.Fatalf("Read() error = %v, want cross-tenant rejection", err)
 	}
 }
 

@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -32,6 +34,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -50,6 +53,8 @@ const (
 	maxLineBytes          = 1 << 20
 	maxEventsPerPull      = 1000
 	cursorSource          = "panopticon/s3-ndjson/v1"
+	cursorSourceAPI       = "panopticon/api/v1"
+	modeAPI               = "api"
 
 	familyAlert = "alert"
 	familyCase  = "case"
@@ -83,6 +88,12 @@ var (
 	ErrUnsupportedFamily = errors.New("unsupported family")
 	// ErrInvalidBucket is returned when the bucket name contains illegal characters.
 	ErrInvalidBucket = errors.New("invalid bucket")
+	// ErrBaseURLRequired is returned when API mode has no configured base URL.
+	ErrBaseURLRequired = errors.New("base_url is required")
+	// ErrTokenRequired is returned when API mode has no bearer token.
+	ErrTokenRequired = errors.New("token is required")
+	// ErrUnsupportedMode is returned when mode is not one of the known transports.
+	ErrUnsupportedMode = errors.New("unsupported mode")
 )
 
 // s3API is the narrow surface of *s3.Client this source uses, exposed for testing.
@@ -93,16 +104,23 @@ type s3API interface {
 
 // Source emits panopticon.* events from NDJSON archives stored in S3.
 type Source struct {
-	spec      *cerebrov1.SourceSpec
-	families  *sourcecdk.FamilyEngine[settings]
-	newClient func(context.Context, settings) (s3API, error)
+	spec                 *cerebrov1.SourceSpec
+	client               *http.Client
+	families             *sourcecdk.FamilyEngine[settings]
+	newClient            func(context.Context, settings) (s3API, error)
+	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type settings struct {
+	mode           string
 	family         string
 	bucket         string
 	prefix         string
 	region         string
+	baseURL        string
+	apiPath        string
+	token          string
 	tenantID       string
 	runtimeID      string
 	roleARN        string
@@ -138,8 +156,9 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	source := &Source{
-		spec:      spec,
-		newClient: defaultClientFactory,
+		spec:          spec,
+		newClient:     defaultClientFactory,
+		lookupIPAddrs: net.DefaultResolver.LookupIPAddr,
 	}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -205,34 +224,69 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		s.familyFor(familyCase, kindCase, schemaRefCase, urnPrefixCase),
 		s.familyFor(familyIOC, kindIOC, schemaRefIOC, urnPrefixIOC),
 	}
-	return sourcecdk.NewFamilyEngine[settings](parseSettings, func(st settings) string { return st.family }, families...)
+	return sourcecdk.NewFamilyEngine[settings](
+		func(cfg sourcecdk.Config) (settings, error) {
+			return parseSettingsWithLoopback(cfg, s != nil && s.allowLoopbackBaseURL)
+		},
+		func(st settings) string { return st.family },
+		families...,
+	)
 }
 
 func (s *Source) familyFor(family, kind, schemaRef, urnPrefix string) sourcecdk.Family[settings] {
 	return sourcecdk.Family[settings]{
 		Name: family,
 		Check: func(ctx context.Context, st settings) error {
+			if st.mode == modeAPI {
+				return s.checkAPI(ctx, st)
+			}
 			return s.check(ctx, st)
 		},
 		Discover: func(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
+			if st.mode == modeAPI {
+				return discoverAPIFamily(st, urnPrefix)
+			}
 			return discoverFamily(st, urnPrefix)
 		},
 		Read: func(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+			if st.mode == modeAPI {
+				return s.readAPIFamily(ctx, st, cursor, kind, schemaRef)
+			}
 			return s.readFamily(ctx, st, cursor, kind, schemaRef)
 		},
 	}
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
+	return parseSettingsWithLoopback(cfg, false)
+}
+
+func parseSettingsWithLoopback(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	tenantID := strings.TrimSpace(configValue(cfg, "tenant_id"))
 	if runtimeTenantID := strings.TrimSpace(configValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenantID != "" {
 		tenantID = runtimeTenantID
 	}
+	mode := strings.ToLower(strings.TrimSpace(configValue(cfg, "mode")))
+	baseURL := strings.TrimSpace(configValue(cfg, "base_url"))
+	token := strings.TrimSpace(firstConfigValue(cfg, "token", "api_key"))
+	if mode == "" && (baseURL != "" || token != "") {
+		mode = modeAPI
+	}
+	if mode == "s3" {
+		mode = ""
+	}
+	if mode != "" && mode != modeAPI {
+		return settings{}, fmt.Errorf("%w: %q", ErrUnsupportedMode, mode)
+	}
 	st := settings{
+		mode:           mode,
 		family:         strings.TrimSpace(configValue(cfg, "family")),
 		bucket:         strings.TrimSpace(configValue(cfg, "bucket")),
 		prefix:         strings.TrimSpace(configValue(cfg, "prefix")),
 		region:         strings.TrimSpace(configValue(cfg, "region")),
+		baseURL:        baseURL,
+		apiPath:        strings.TrimSpace(configValue(cfg, "path")),
+		token:          token,
 		tenantID:       tenantID,
 		runtimeID:      strings.TrimSpace(firstConfigValue(cfg, "runtime_id", "source_runtime_id")),
 		roleARN:        strings.TrimSpace(configValue(cfg, "role_arn")),
@@ -243,27 +297,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if st.family == "" {
 		st.family = familyAlert
 	}
-	if st.bucket == "" {
-		return settings{}, ErrBucketRequired
-	}
-	if st.prefix == "" {
-		return settings{}, ErrPrefixRequired
-	}
-	if !strings.HasSuffix(st.prefix, "/") {
-		st.prefix += "/"
-	}
-	if st.region == "" {
-		st.region = defaultRegion
-	}
 	if st.tenantID == "" {
 		return settings{}, ErrTenantIDRequired
-	}
-	if st.roleARN != "" {
-		if err := validateAssumeRoleConfig(st); err != nil {
-			return settings{}, err
-		}
-	} else if st.externalID != "" {
-		return settings{}, fmt.Errorf("panopticon external_id requires role_arn")
 	}
 	rawPageSize, ok := cfg.Lookup("per_page")
 	if !ok || strings.TrimSpace(rawPageSize) == "" {
@@ -284,6 +319,47 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	if !isKnownFamily(st.family) {
 		return settings{}, fmt.Errorf("%w: %q", ErrUnsupportedFamily, st.family)
+	}
+	if st.mode == modeAPI {
+		if st.baseURL == "" {
+			return settings{}, ErrBaseURLRequired
+		}
+		if st.token == "" {
+			return settings{}, ErrTokenRequired
+		}
+		baseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, st.baseURL, allowLoopback)
+		if err != nil {
+			return settings{}, err
+		}
+		st.baseURL = baseURL
+		if st.apiPath == "" {
+			st.apiPath = apiPathForFamily(st.family)
+		}
+		apiPath, err := sourcehttp.NormalizeRequestPath(sourceID, st.apiPath)
+		if err != nil {
+			return settings{}, err
+		}
+		st.apiPath = apiPath
+		return st, nil
+	}
+	if st.bucket == "" {
+		return settings{}, ErrBucketRequired
+	}
+	if st.prefix == "" {
+		return settings{}, ErrPrefixRequired
+	}
+	if !strings.HasSuffix(st.prefix, "/") {
+		st.prefix += "/"
+	}
+	if st.region == "" {
+		st.region = defaultRegion
+	}
+	if st.roleARN != "" {
+		if err := validateAssumeRoleConfig(st); err != nil {
+			return settings{}, err
+		}
+	} else if st.externalID != "" {
+		return settings{}, fmt.Errorf("panopticon external_id requires role_arn")
 	}
 	if strings.ContainsRune(st.bucket, '/') {
 		return settings{}, fmt.Errorf("%w: %q must not contain slashes", ErrInvalidBucket, st.bucket)
