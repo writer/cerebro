@@ -441,7 +441,16 @@ func writeGitHubMetadata(result preflightResult, duration time.Duration, runErr 
 }
 
 func appendFile(path string, body []byte) (err error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := root.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+	file, err := root.OpenFile(filepath.Base(path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
