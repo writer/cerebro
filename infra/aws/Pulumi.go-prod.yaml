@@ -84,42 +84,30 @@ config:
     - CEREBRO_SOURCE_COSMO_TOKEN
     - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
   cerebro:temporarilyDisabledSourceRuntimes:
-    - writer-cosmo-session
-    - writer-cosmo-fact
-    - writer-cosmo-message
-    - writer-cosmo-survey-feedback
-  cerebro:sourceRuntimeQuarantines:
-    writer-cosmo-session: &go_prod_cosmo_invalid_token_quarantine
-      owner: security-platform
-      reason: go-prod Cosmo API returned 401 Invalid token during live source canary
-      disabledAt: "2026-06-10"
-      reviewBy: "2026-07-10"
-      impactedContracts:
-        - source_health
-        - evidence_lifecycle
-        - graph_quality
-        - finding_lifecycle
-        - risk_semantics
-        - operational_dashboard
-      reenableCriteria:
-        - Rotate or repair the go-prod Cosmo token through approved secret tooling.
-        - Prove a bounded go-prod Cosmo source run succeeds after graph ingest.
-        - Restore schedules and blocking canary in the same reviewed change.
-    writer-cosmo-fact: *go_prod_cosmo_invalid_token_quarantine
-    writer-cosmo-message: *go_prod_cosmo_invalid_token_quarantine
-    writer-cosmo-survey-feedback: *go_prod_cosmo_invalid_token_quarantine
-    writer-evidence-cas-cases:
-      owner: security-platform
-      reason: EvidenceCAS cases observability is not yet enabled for go-prod dashboards
-      disabledAt: "2026-06-10"
-      reviewBy: "2026-07-10"
-      impactedContracts:
-        - source_health
-        - evidence_lifecycle
-        - operational_dashboard
-      reenableCriteria:
-        - Enable go-prod EvidenceCAS cases observability when the cases lifecycle signal is available.
-        - Confirm the runtime dashboard and alarm use the shared source health status model.
+    - runtimeId: writer-cosmo-session
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after CEREBRO_SOURCE_COSMO_TOKEN is rotated and live go-prod source runtime verification passes."
+    - runtimeId: writer-cosmo-fact
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after CEREBRO_SOURCE_COSMO_TOKEN is rotated and live go-prod source runtime verification passes."
+    - runtimeId: writer-cosmo-message
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after CEREBRO_SOURCE_COSMO_TOKEN is rotated and live go-prod source runtime verification passes."
+    - runtimeId: writer-cosmo-survey-feedback
+      owner: cerebro-platform
+      reason: invalid_credentials
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after CEREBRO_SOURCE_COSMO_TOKEN is rotated and live go-prod source runtime verification passes."
   cerebro:sourceRuntimeObservability:
     - environment: go-production
       sourceSystem: evidence_cas

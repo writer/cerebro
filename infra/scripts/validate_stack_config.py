@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import re
 import sys
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -37,16 +38,23 @@ COSMO_OPTIONAL_RUNTIME_FAMILIES = {
 }
 COSMO_GRAPH_BUDGETED_RUNTIMES = {"writer-cosmo-session", "writer-cosmo-fact"}
 TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES = set(COSMO_RUNTIME_FAMILIES) | set(COSMO_OPTIONAL_RUNTIME_FAMILIES)
-QUARANTINE_REQUIRED_KEYS = {"owner", "reason", "disabledAt", "reviewBy", "reenableCriteria", "impactedContracts"}
-QUARANTINE_IMPACTED_CONTRACTS = {
-    "source_health",
-    "evidence_lifecycle",
-    "graph_quality",
-    "finding_lifecycle",
-    "risk_semantics",
-    "mcp_contract",
-    "operational_dashboard",
-}
+
+
+class QuarantineReason(str, Enum):
+    INVALID_CREDENTIALS = "invalid_credentials"
+    MISSING_SECRET = "missing_secret"
+    UPSTREAM_AUTH_FAILURE = "upstream_auth_failure"
+    UPSTREAM_RATE_LIMIT = "upstream_rate_limit"
+    UPSTREAM_SCHEMA_DRIFT = "upstream_schema_drift"
+    RUNTIME_CONTRACT_MISMATCH = "runtime_contract_mismatch"
+    BOOTSTRAP_PAYLOAD_STALE = "bootstrap_payload_stale"
+    TASK_FAILURE = "task_failure"
+    GRAPH_INGEST_FAILURE = "graph_ingest_failure"
+    MANUAL_OPERATOR_ACTION = "manual_operator_action"
+
+
+QUARANTINE_REASONS = {reason.value for reason in QuarantineReason}
+QUARANTINE_REQUIRED_FIELDS = {"runtimeId", "owner", "reason", "disabledDate", "reviewDeadline", "reenableCriteria"}
 COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT = 500
@@ -262,6 +270,85 @@ def _string_set(values: Any) -> set[str]:
     return {str(value).strip() for value in values if str(value).strip()}
 
 
+def _parse_date(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00") if len(text) != 10 else f"{text}T00:00:00+00:00")
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed
+    except ValueError:
+        return None
+
+
+def _quarantined_source_runtime_ids(stack: str, config: dict[str, Any], findings: list[Finding]) -> set[str]:
+    entries = config.get("temporarilyDisabledSourceRuntimes") or []
+    if not isinstance(entries, list):
+        findings.append(_finding("error", stack, "cerebro:temporarilyDisabledSourceRuntimes", "must be a list"))
+        return set()
+
+    runtime_ids: set[str] = set()
+    for index, entry in enumerate(entries):
+        path = f"cerebro:temporarilyDisabledSourceRuntimes[{index}]"
+        if not isinstance(entry, dict):
+            findings.append(_finding("error", stack, path, "quarantined runtime entry must be an object with metadata"))
+            continue
+
+        missing = sorted(field for field in QUARANTINE_REQUIRED_FIELDS if field not in entry)
+        if missing:
+            findings.append(_finding("error", stack, path, f"quarantined runtime entry is missing required field(s): {', '.join(missing)}"))
+
+        runtime_id = str(entry.get("runtimeId", "")).strip()
+        if not runtime_id:
+            findings.append(_finding("error", stack, f"{path}.runtimeId", "runtimeId is required"))
+        else:
+            runtime_ids.add(runtime_id)
+
+        owner = str(entry.get("owner", "")).strip()
+        if not owner:
+            findings.append(_finding("error", stack, f"{path}.owner", "owner is required"))
+
+        reason = str(entry.get("reason", "")).strip()
+        if not reason:
+            findings.append(_finding("error", stack, f"{path}.reason", "reason is required"))
+        elif reason not in QUARANTINE_REASONS:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.reason",
+                    f"reason must be one of: {', '.join(sorted(QUARANTINE_REASONS))}",
+                )
+            )
+
+        disabled_date = _parse_date(entry.get("disabledDate"))
+        if disabled_date is None:
+            findings.append(_finding("error", stack, f"{path}.disabledDate", "disabledDate must be an ISO date"))
+
+        review_deadline = _parse_date(entry.get("reviewDeadline"))
+        if review_deadline is None:
+            findings.append(_finding("error", stack, f"{path}.reviewDeadline", "reviewDeadline must be an ISO date"))
+        elif review_deadline < datetime.now(UTC):
+            findings.append(_finding("warning", stack, f"{path}.reviewDeadline", "reviewDeadline has passed; review the runtime quarantine"))
+
+        if disabled_date is not None and review_deadline is not None and review_deadline < disabled_date:
+            findings.append(_finding("error", stack, f"{path}.reviewDeadline", "reviewDeadline must be on or after disabledDate"))
+
+        reenable_criteria = entry.get("reenableCriteria")
+        if isinstance(reenable_criteria, str):
+            if not reenable_criteria.strip():
+                findings.append(_finding("error", stack, f"{path}.reenableCriteria", "reenableCriteria must be non-empty"))
+        elif isinstance(reenable_criteria, list):
+            if not reenable_criteria or not all(isinstance(value, str) and value.strip() for value in reenable_criteria):
+                findings.append(_finding("error", stack, f"{path}.reenableCriteria", "reenableCriteria list items must be non-empty strings"))
+        else:
+            findings.append(_finding("error", stack, f"{path}.reenableCriteria", "reenableCriteria must be a string or a list of strings"))
+
+    return runtime_ids
+
+
 def _s3_source_role_requirements(s3_sources: Any) -> list[tuple[str, str, str]]:
     requirements: list[tuple[str, str, str]] = []
     if not isinstance(s3_sources, list):
@@ -337,31 +424,6 @@ def _parse_retirement_date(value: Any) -> datetime | None:
     return parsed
 
 
-def _quarantine_entries(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    entries = config.get("sourceRuntimeQuarantines") or {}
-    if not isinstance(entries, dict):
-        return {}
-    return {
-        str(runtime_id).strip(): metadata
-        for runtime_id, metadata in entries.items()
-        if str(runtime_id).strip() and isinstance(metadata, dict)
-    }
-
-
-def _disabled_observability_runtime_ids(config: dict[str, Any]) -> set[str]:
-    entries = config.get("sourceRuntimeObservability") or []
-    if not isinstance(entries, list):
-        return set()
-    runtime_ids: set[str] = set()
-    for entry in entries:
-        if not isinstance(entry, dict) or entry.get("enabled") is not False:
-            continue
-        runtime_id = str(entry.get("sourceRuntimeId") or "").strip()
-        if runtime_id:
-            runtime_ids.add(runtime_id)
-    return runtime_ids
-
-
 def _finding(severity: str, stack: str, path: str, message: str) -> Finding:
     return Finding(severity=severity, stack=stack, path=path, message=message)
 
@@ -401,194 +463,15 @@ def _validate_graph_page_budget(stack: str, runtime_id: str, command: Any, path:
         )
 
 
-def _validate_source_runtime_quarantines(
-    stack: str,
-    config: dict[str, Any],
-    runtime_ids: set[str],
-    findings: list[Finding],
-) -> None:
-    raw_entries = config.get("sourceRuntimeQuarantines") or {}
-    if raw_entries and not isinstance(raw_entries, dict):
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:sourceRuntimeQuarantines",
-                "source runtime quarantines must be a mapping from runtime id to metadata",
-            )
-        )
-        return
-
-    disabled_runtime_ids = _string_set(config.get("temporarilyDisabledSourceRuntimes") or [])
-    disabled_observability_ids = _disabled_observability_runtime_ids(config)
-    required_quarantines = disabled_runtime_ids | disabled_observability_ids
-    quarantines = _quarantine_entries(config)
-
-    for runtime_id in sorted(required_quarantines - set(quarantines)):
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:sourceRuntimeQuarantines",
-                f"disabled source runtime {runtime_id!r} must include quarantine metadata",
-            )
-        )
-
-    active_quarantines = set(quarantines) - required_quarantines
-    for runtime_id in sorted(active_quarantines & runtime_ids):
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                f"cerebro:sourceRuntimeQuarantines.{runtime_id}",
-                "active source runtimes must not retain quarantine metadata",
-            )
-        )
-
-    now = datetime.now(UTC)
-    for runtime_id, metadata in sorted(quarantines.items()):
-        path = f"cerebro:sourceRuntimeQuarantines.{runtime_id}"
-        missing = sorted(QUARANTINE_REQUIRED_KEYS - set(metadata))
-        if missing:
-            findings.append(
-                _finding(
-                    "error",
-                    stack,
-                    path,
-                    f"source runtime quarantine metadata is missing required keys: {', '.join(missing)}",
-                )
-            )
-        for key in ("owner", "reason"):
-            if not str(metadata.get(key) or "").strip():
-                findings.append(_finding("error", stack, f"{path}.{key}", "quarantine metadata must be non-empty"))
-        disabled_at = _parse_retirement_date(metadata.get("disabledAt"))
-        if disabled_at is None:
-            findings.append(_finding("error", stack, f"{path}.disabledAt", "quarantine disabledAt must be an ISO date"))
-        elif disabled_at > now:
-            findings.append(_finding("error", stack, f"{path}.disabledAt", "quarantine disabledAt must not be in the future"))
-        review_by = _parse_retirement_date(metadata.get("reviewBy"))
-        if review_by is None:
-            findings.append(_finding("error", stack, f"{path}.reviewBy", "quarantine reviewBy must be an ISO date"))
-        elif review_by < now:
-            findings.append(_finding("error", stack, f"{path}.reviewBy", "quarantine reviewBy is in the past"))
-
-        reenable_criteria = metadata.get("reenableCriteria")
-        if (
-            not isinstance(reenable_criteria, list)
-            or not reenable_criteria
-            or any(not str(item).strip() for item in reenable_criteria)
-        ):
-            findings.append(
-                _finding(
-                    "error",
-                    stack,
-                    f"{path}.reenableCriteria",
-                    "quarantine metadata must list explicit re-enable criteria",
-                )
-            )
-        impacted_contracts = metadata.get("impactedContracts")
-        if (
-            not isinstance(impacted_contracts, list)
-            or not impacted_contracts
-            or any(str(item).strip() not in QUARANTINE_IMPACTED_CONTRACTS for item in impacted_contracts)
-        ):
-            findings.append(
-                _finding(
-                    "error",
-                    stack,
-                    f"{path}.impactedContracts",
-                    "quarantine metadata must list known impacted Cerebro contracts",
-                )
-            )
-
-
-def _validate_mcp_oauth_contract(stack: str, config: dict[str, Any], findings: list[Finding]) -> None:
-    if config.get("mcpOauthEnabled") is not True:
-        return
-
-    if config.get("apiAuthEnabled") is not True:
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:apiAuthEnabled",
-                "MCP OAuth requires API auth to remain enabled",
-            )
-        )
-    issuer = str(config.get("mcpOauthUpstreamIssuer") or "").strip()
-    if not issuer.startswith("https://"):
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:mcpOauthUpstreamIssuer",
-                "MCP OAuth upstream issuer must be an HTTPS URL",
-            )
-        )
-    redirect_uri = str(config.get("mcpOauthUpstreamRedirectUri") or "").strip()
-    if not redirect_uri.startswith("https://") or not redirect_uri.endswith("/oauth/callback"):
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:mcpOauthUpstreamRedirectUri",
-                "MCP OAuth redirect URI must be HTTPS and end with /oauth/callback",
-            )
-        )
-    for key in ("mcpOauthUpstreamClientIdSecretName", "mcpOauthUpstreamClientSecretName", "mcpOauthTenantId"):
-        if not str(config.get(key) or "").strip():
-            findings.append(_finding("error", stack, f"cerebro:{key}", "MCP OAuth configuration must be non-empty"))
-    security_groups = config.get("mcpOauthSecurityGroups") or []
-    if not isinstance(security_groups, list) or not security_groups or any(not str(group).strip() for group in security_groups):
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:mcpOauthSecurityGroups",
-                "MCP OAuth must declare at least one upstream security group",
-            )
-        )
-    allowed_tenants = {str(tenant).strip() for tenant in config.get("allowedTenants") or [] if str(tenant).strip()}
-    mcp_tenant = str(config.get("mcpOauthTenantId") or "").strip()
-    if mcp_tenant and mcp_tenant not in allowed_tenants:
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:mcpOauthTenantId",
-                "MCP OAuth tenant must be included in allowedTenants",
-            )
-        )
-    mcp_allowed_tenants = {str(tenant).strip() for tenant in config.get("mcpOauthAllowedTenants") or [] if str(tenant).strip()}
-    if not mcp_allowed_tenants:
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:mcpOauthAllowedTenants",
-                "MCP OAuth must declare an explicit tenant allowlist",
-            )
-        )
-    elif not mcp_allowed_tenants.issubset(allowed_tenants):
-        findings.append(
-            _finding(
-                "error",
-                stack,
-                "cerebro:mcpOauthAllowedTenants",
-                "MCP OAuth allowed tenants must be a subset of allowedTenants",
-            )
-        )
-
-
 def _validate_cosmo_gitops(
     stack: str,
     config: dict[str, Any],
     source_runtimes: list[Any],
     schedules: list[Any],
     source_secret_names: set[str],
+    disabled_runtime_ids: set[str],
     findings: list[Finding],
 ) -> None:
-    disabled_runtime_ids = _string_set(config.get("temporarilyDisabledSourceRuntimes") or [])
     unknown_disabled_runtime_ids = disabled_runtime_ids - TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES
     if unknown_disabled_runtime_ids:
         findings.append(
@@ -1329,6 +1212,84 @@ def _validate_neo4j_secret_import_coverage(stack: str, config: dict[str, Any], f
         )
 
 
+def _validate_mcp_oauth_contract(stack: str, config: dict[str, Any], findings: list[Finding]) -> None:
+    if config.get("mcpOauthEnabled") is not True:
+        return
+
+    if config.get("apiAuthEnabled") is not True:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:apiAuthEnabled",
+                "MCP OAuth requires API auth to remain enabled",
+            )
+        )
+    issuer = str(config.get("mcpOauthUpstreamIssuer") or "").strip()
+    if not issuer.startswith("https://"):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthUpstreamIssuer",
+                "MCP OAuth upstream issuer must be an HTTPS URL",
+            )
+        )
+    redirect_uri = str(config.get("mcpOauthUpstreamRedirectUri") or "").strip()
+    if not redirect_uri.startswith("https://") or not redirect_uri.endswith("/oauth/callback"):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthUpstreamRedirectUri",
+                "MCP OAuth redirect URI must be HTTPS and end with /oauth/callback",
+            )
+        )
+    for key in ("mcpOauthUpstreamClientIdSecretName", "mcpOauthUpstreamClientSecretName", "mcpOauthTenantId"):
+        if not str(config.get(key) or "").strip():
+            findings.append(_finding("error", stack, f"cerebro:{key}", "MCP OAuth configuration must be non-empty"))
+    security_groups = config.get("mcpOauthSecurityGroups") or []
+    if not isinstance(security_groups, list) or not security_groups or any(not str(group).strip() for group in security_groups):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthSecurityGroups",
+                "MCP OAuth must declare at least one upstream security group",
+            )
+        )
+    allowed_tenants = {str(tenant).strip() for tenant in config.get("allowedTenants") or [] if str(tenant).strip()}
+    mcp_tenant = str(config.get("mcpOauthTenantId") or "").strip()
+    if mcp_tenant and mcp_tenant not in allowed_tenants:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthTenantId",
+                "MCP OAuth tenant must be included in allowedTenants",
+            )
+        )
+    mcp_allowed_tenants = {str(tenant).strip() for tenant in config.get("mcpOauthAllowedTenants") or [] if str(tenant).strip()}
+    if not mcp_allowed_tenants:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthAllowedTenants",
+                "MCP OAuth must declare an explicit tenant allowlist",
+            )
+        )
+    elif not mcp_allowed_tenants.issubset(allowed_tenants):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthAllowedTenants",
+                "MCP OAuth allowed tenants must be a subset of allowedTenants",
+            )
+        )
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -1504,6 +1465,7 @@ def validate_stack(path: Path) -> list[Finding]:
         findings.append(_finding("error", stack, "cerebro:sourceRuntimes", "must be a list"))
         source_runtimes = []
 
+    disabled_runtime_ids = _quarantined_source_runtime_ids(stack, config, findings)
     runtime_ids: set[str] = set()
     source_secret_names = _source_secret_names(config.get("sourceSecretKeys") or [])
     s3_role_requirements = _s3_source_role_requirements(config.get("s3Sources") or [])
@@ -1516,6 +1478,15 @@ def validate_stack(path: Path) -> list[Finding]:
         runtime_id = str(runtime.get("id", "")).strip()
         if not runtime_id:
             findings.append(_finding("error", stack, f"{runtime_path}.id", "runtime id is required"))
+        elif runtime_id in disabled_runtime_ids:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{runtime_path}.id",
+                    f"quarantined runtime {runtime_id!r} must not be declared in active sourceRuntimes",
+                )
+            )
         elif runtime_id in runtime_ids:
             findings.append(_finding("error", stack, f"{runtime_path}.id", f"duplicate runtime id {runtime_id!r}"))
         else:
@@ -1590,6 +1561,15 @@ def validate_stack(path: Path) -> list[Finding]:
         if top_level_runtime_id is None:
             if not schedules:
                 scheduled_runtime_ids.update(runtime_ids)
+        elif top_level_runtime_id in disabled_runtime_ids:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:orchestratorCommand",
+                    f"quarantined runtime {top_level_runtime_id!r} must not be referenced by cerebro:orchestratorCommand",
+                )
+            )
         elif top_level_runtime_id not in runtime_ids:
             findings.append(
                 _finding(
@@ -1632,6 +1612,15 @@ def validate_stack(path: Path) -> list[Finding]:
         runtime_id = _runtime_id_from_command(schedule.get("command"))
         if runtime_id is None:
             findings.append(_finding("error", stack, f"{schedule_path}.command", "command must include runtime_id=<id>"))
+        elif runtime_id in disabled_runtime_ids:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{schedule_path}.command",
+                    f"quarantined runtime {runtime_id!r} must not be referenced by cerebro:orchestratorSchedules",
+                )
+            )
         elif runtime_id not in runtime_ids:
             findings.append(_finding("error", stack, f"{schedule_path}.command", f"unknown runtime id {runtime_id!r}"))
         else:
@@ -1667,8 +1656,7 @@ def validate_stack(path: Path) -> list[Finding]:
                 )
             )
 
-    _validate_source_runtime_quarantines(stack, config, runtime_ids, findings)
-    _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
+    _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, disabled_runtime_ids, findings)
     _validate_sec_dev_aws_coverage(stack, config, source_runtimes, schedules, findings)
     _validate_go_prod_aws_coverage(stack, source_runtimes, schedules, findings)
     _validate_panopticon_wiring(stack, config, source_runtimes, schedules, findings)

@@ -105,28 +105,24 @@ config:
     - SENTINELONE_API_TOKEN
     - SENTINELONE_BASE_URL
   cerebro:temporarilyDisabledSourceRuntimes:
-    - writer-cosmo-session
-    - writer-cosmo-fact
-    - writer-cosmo-survey-feedback
-  cerebro:sourceRuntimeQuarantines:
-    writer-cosmo-session: &sec_dev_cosmo_bootstrap_quarantine
-      owner: security-platform
-      reason: sec-dev Cosmo runtime is quarantined while source bootstrap coverage is narrowed
-      disabledAt: "2026-06-10"
-      reviewBy: "2026-07-10"
-      impactedContracts:
-        - source_health
-        - evidence_lifecycle
-        - graph_quality
-        - finding_lifecycle
-        - risk_semantics
-        - operational_dashboard
-      reenableCriteria:
-        - Restore sec-dev Cosmo runtime bootstrap coverage.
-        - Prove bounded source sync and graph ingest for the runtime.
-        - Re-enable schedules in a reviewed stack change.
-    writer-cosmo-fact: *sec_dev_cosmo_bootstrap_quarantine
-    writer-cosmo-survey-feedback: *sec_dev_cosmo_bootstrap_quarantine
+    - runtimeId: writer-cosmo-session
+      owner: cerebro-platform
+      reason: manual_operator_action
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
+    - runtimeId: writer-cosmo-fact
+      owner: cerebro-platform
+      reason: manual_operator_action
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
+    - runtimeId: writer-cosmo-survey-feedback
+      owner: cerebro-platform
+      reason: manual_operator_action
+      disabledDate: "2026-06-10"
+      reviewDeadline: "2026-07-10"
+      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
   cerebro:sourceRuntimeServiceBootstrapIds:
     - writer-evidence-cas-cases
   cerebro:sourceRuntimeRollouts:

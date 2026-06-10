@@ -102,24 +102,6 @@ COSMO_RUNTIMES = f"""\
         {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
 """
 
-SURVEY_FEEDBACK_QUARANTINE_ENTRY = """\
-    writer-cosmo-survey-feedback:
-      owner: security-platform
-      reason: upstream credential repair
-      disabledAt: "2026-06-10"
-      reviewBy: "2099-01-01"
-      impactedContracts:
-        - source_health
-        - evidence_lifecycle
-        - graph_quality
-        - finding_lifecycle
-        - risk_semantics
-        - operational_dashboard
-      reenableCriteria:
-        - Repair source credential.
-        - Prove bounded source sync and graph ingest.
-"""
-
 BASE_STACK = f"""
 config:
   cerebro:environment: go-production
@@ -136,19 +118,6 @@ config:
   cerebro:sourceSecretKeys:
 {COSMO_SECRET_KEYS.rstrip()}
     - {API_TOKEN_KEY}
-  cerebro:sourceRuntimeQuarantines:
-    writer-evidence-cas-cases:
-      owner: security-platform
-      reason: EvidenceCAS cases observability is not yet enabled for go-prod dashboards
-      disabledAt: "2026-06-10"
-      reviewBy: "2099-01-01"
-      impactedContracts:
-        - source_health
-        - evidence_lifecycle
-        - operational_dashboard
-      reenableCriteria:
-        - Enable the cases lifecycle signal.
-        - Confirm dashboard and alarm wiring.
   cerebro:sourceRuntimeObservability:
     - environment: go-production
       sourceSystem: evidence_cas
@@ -990,58 +959,88 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_temporarily_disabled_cosmo_runtime_bypasses_requirement(self) -> None:
         content = BASE_STACK.replace(
-            "    writer-evidence-cas-cases:\n",
-            f"{SURVEY_FEEDBACK_QUARANTINE_ENTRY}    writer-evidence-cas-cases:\n",
-            1,
-        ).replace(
             "  cerebro:sourceRuntimeObservability:",
             "  cerebro:temporarilyDisabledSourceRuntimes:\n"
-            "    - writer-cosmo-survey-feedback\n"
+            "    - runtimeId: writer-cosmo-survey-feedback\n"
+            "      owner: cerebro-platform\n"
+            "      reason: invalid_credentials\n"
+            "      disabledDate: \"2026-06-10\"\n"
+            "      reviewDeadline: \"2999-01-01\"\n"
+            "      reenableCriteria: \"Rotate token and pass live source runtime verification.\"\n"
             "  cerebro:sourceRuntimeObservability:",
         ).replace("    - id: writer-cosmo-survey-feedback", "    - id: writer-cosmo-survey-feedback-disabled", 1)
         findings = self._validate(content)
         self.assertFalse(any("required Cosmo runtime 'writer-cosmo-survey-feedback' is missing" in finding.message for finding in findings))
 
-    def test_disabled_runtime_requires_quarantine_metadata(self) -> None:
-        content = BASE_STACK.replace(
-            "  cerebro:sourceRuntimeObservability:",
-            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
-            "    - writer-cosmo-survey-feedback\n"
-            "  cerebro:sourceRuntimeObservability:",
-        ).replace("    - id: writer-cosmo-survey-feedback", "    - id: writer-cosmo-survey-feedback-disabled", 1)
-        findings = self._validate(content)
-        self.assertTrue(
-            any(
-                finding.severity == "error"
-                and "writer-cosmo-survey-feedback" in finding.message
-                and "quarantine metadata" in finding.message
-                for finding in findings
-            )
-        )
-
-    def test_expired_quarantine_metadata_is_rejected(self) -> None:
-        content = BASE_STACK.replace(
-            "    writer-evidence-cas-cases:\n",
-            f"{SURVEY_FEEDBACK_QUARANTINE_ENTRY.replace('2099-01-01', '2026-01-01')}    writer-evidence-cas-cases:\n",
-            1,
-        ).replace(
-            "  cerebro:sourceRuntimeObservability:",
-            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
-            "    - writer-cosmo-survey-feedback\n"
-            "  cerebro:sourceRuntimeObservability:",
-        ).replace("    - id: writer-cosmo-survey-feedback", "    - id: writer-cosmo-survey-feedback-disabled", 1)
-        findings = self._validate(content)
-        self.assertTrue(any(finding.severity == "error" and "reviewBy is in the past" in finding.message for finding in findings))
-
     def test_unknown_temporary_runtime_bypass_is_rejected(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:sourceRuntimeObservability:",
             "  cerebro:temporarilyDisabledSourceRuntimes:\n"
-            "    - writer-unknown-runtime\n"
+            "    - runtimeId: writer-unknown-runtime\n"
+            "      owner: cerebro-platform\n"
+            "      reason: invalid_credentials\n"
+            "      disabledDate: \"2026-06-10\"\n"
+            "      reviewDeadline: \"2999-01-01\"\n"
+            "      reenableCriteria: \"Rotate token and pass live source runtime verification.\"\n"
             "  cerebro:sourceRuntimeObservability:",
         )
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "unsupported temporary runtime bypasses: writer-unknown-runtime" in finding.message for finding in findings))
+
+    def test_temporary_runtime_bypass_requires_structured_metadata(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - writer-cosmo-survey-feedback\n"
+            "  cerebro:sourceRuntimeObservability:",
+        )
+        findings = self._validate(content)
+        self.assertTrue(
+            any(finding.severity == "error" and "quarantined runtime entry must be an object with metadata" in finding.message for finding in findings)
+        )
+
+    def test_temporary_runtime_bypass_reason_is_enum_checked(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - runtimeId: writer-cosmo-survey-feedback\n"
+            "      owner: cerebro-platform\n"
+            "      reason: typo_reason\n"
+            "      disabledDate: \"2026-06-10\"\n"
+            "      reviewDeadline: \"2999-01-01\"\n"
+            "      reenableCriteria: \"Rotate token and pass live source runtime verification.\"\n"
+            "  cerebro:sourceRuntimeObservability:",
+        )
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and "reason must be one of" in finding.message for finding in findings))
+
+    def test_quarantined_runtime_cannot_remain_active_or_scheduled(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            "  cerebro:temporarilyDisabledSourceRuntimes:\n"
+            "    - runtimeId: writer-cosmo-survey-feedback\n"
+            "      owner: cerebro-platform\n"
+            "      reason: invalid_credentials\n"
+            "      disabledDate: \"2026-06-10\"\n"
+            "      reviewDeadline: \"2999-01-01\"\n"
+            "      reenableCriteria: \"Rotate token and pass live source runtime verification.\"\n"
+            "  cerebro:sourceRuntimeObservability:",
+        )
+        findings = self._validate(content)
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and "quarantined runtime 'writer-cosmo-survey-feedback' must not be declared in active sourceRuntimes" in finding.message
+                for finding in findings
+            )
+        )
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and "quarantined runtime 'writer-cosmo-survey-feedback' must not be referenced by cerebro:orchestratorSchedules" in finding.message
+                for finding in findings
+            )
+        )
 
     def test_sec_dev_cosmo_graph_budgets_are_bounded(self) -> None:
         content = BASE_STACK.replace(

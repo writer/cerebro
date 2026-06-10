@@ -419,13 +419,40 @@ config:
   cerebro:temporarilyDisabledSourceRuntimes:
     type: array
     items:
-      type: string
+      type: object
+      required:
+        - runtimeId
+        - owner
+        - reason
+        - disabledDate
+        - reviewDeadline
+        - reenableCriteria
+      properties:
+        runtimeId:
+          type: string
+        owner:
+          type: string
+        reason:
+          type: string
+          enum:
+            - invalid_credentials
+            - missing_secret
+            - upstream_auth_failure
+            - upstream_rate_limit
+            - upstream_schema_drift
+            - runtime_contract_mismatch
+            - bootstrap_payload_stale
+            - task_failure
+            - graph_ingest_failure
+            - manual_operator_action
+        disabledDate:
+          type: string
+        reviewDeadline:
+          type: string
+        reenableCriteria:
+          type: string
     default: []
-    description: Temporary explicit source runtime IDs excluded from bootstrap and schedules while upstream credentials are repaired
-  cerebro:sourceRuntimeQuarantines:
-    type: object
-    default: {}
-    description: Owner, reason, review deadline, and re-enable criteria for disabled or degraded source runtimes
+    description: Structured runtime quarantine metadata for source runtime IDs excluded from bootstrap and schedules while upstream credentials or runtime health are repaired
   cerebro:shutdownTimeout:
     type: string
     default: 10s
