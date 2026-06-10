@@ -422,6 +422,10 @@ config:
       type: string
     default: []
     description: Temporary explicit source runtime IDs excluded from bootstrap and schedules while upstream credentials are repaired
+  cerebro:sourceRuntimeQuarantines:
+    type: object
+    default: {}
+    description: Owner, reason, review deadline, and re-enable criteria for disabled or degraded source runtimes
   cerebro:shutdownTimeout:
     type: string
     default: 10s

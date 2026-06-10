@@ -37,6 +37,16 @@ COSMO_OPTIONAL_RUNTIME_FAMILIES = {
 }
 COSMO_GRAPH_BUDGETED_RUNTIMES = {"writer-cosmo-session", "writer-cosmo-fact"}
 TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES = set(COSMO_RUNTIME_FAMILIES) | set(COSMO_OPTIONAL_RUNTIME_FAMILIES)
+QUARANTINE_REQUIRED_KEYS = {"owner", "reason", "disabledAt", "reviewBy", "reenableCriteria", "impactedContracts"}
+QUARANTINE_IMPACTED_CONTRACTS = {
+    "source_health",
+    "evidence_lifecycle",
+    "graph_quality",
+    "finding_lifecycle",
+    "risk_semantics",
+    "mcp_contract",
+    "operational_dashboard",
+}
 COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT = 500
@@ -327,6 +337,31 @@ def _parse_retirement_date(value: Any) -> datetime | None:
     return parsed
 
 
+def _quarantine_entries(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    entries = config.get("sourceRuntimeQuarantines") or {}
+    if not isinstance(entries, dict):
+        return {}
+    return {
+        str(runtime_id).strip(): metadata
+        for runtime_id, metadata in entries.items()
+        if str(runtime_id).strip() and isinstance(metadata, dict)
+    }
+
+
+def _disabled_observability_runtime_ids(config: dict[str, Any]) -> set[str]:
+    entries = config.get("sourceRuntimeObservability") or []
+    if not isinstance(entries, list):
+        return set()
+    runtime_ids: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("enabled") is not False:
+            continue
+        runtime_id = str(entry.get("sourceRuntimeId") or "").strip()
+        if runtime_id:
+            runtime_ids.add(runtime_id)
+    return runtime_ids
+
+
 def _finding(severity: str, stack: str, path: str, message: str) -> Finding:
     return Finding(severity=severity, stack=stack, path=path, message=message)
 
@@ -362,6 +397,185 @@ def _validate_graph_page_budget(stack: str, runtime_id: str, command: Any, path:
                 stack,
                 path,
                 f"high-contention graph ingest for {runtime_id} must set graph_page_limit <= {max_graph_page_limit}",
+            )
+        )
+
+
+def _validate_source_runtime_quarantines(
+    stack: str,
+    config: dict[str, Any],
+    runtime_ids: set[str],
+    findings: list[Finding],
+) -> None:
+    raw_entries = config.get("sourceRuntimeQuarantines") or {}
+    if raw_entries and not isinstance(raw_entries, dict):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:sourceRuntimeQuarantines",
+                "source runtime quarantines must be a mapping from runtime id to metadata",
+            )
+        )
+        return
+
+    disabled_runtime_ids = _string_set(config.get("temporarilyDisabledSourceRuntimes") or [])
+    disabled_observability_ids = _disabled_observability_runtime_ids(config)
+    required_quarantines = disabled_runtime_ids | disabled_observability_ids
+    quarantines = _quarantine_entries(config)
+
+    for runtime_id in sorted(required_quarantines - set(quarantines)):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:sourceRuntimeQuarantines",
+                f"disabled source runtime {runtime_id!r} must include quarantine metadata",
+            )
+        )
+
+    active_quarantines = set(quarantines) - required_quarantines
+    for runtime_id in sorted(active_quarantines & runtime_ids):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                f"cerebro:sourceRuntimeQuarantines.{runtime_id}",
+                "active source runtimes must not retain quarantine metadata",
+            )
+        )
+
+    now = datetime.now(UTC)
+    for runtime_id, metadata in sorted(quarantines.items()):
+        path = f"cerebro:sourceRuntimeQuarantines.{runtime_id}"
+        missing = sorted(QUARANTINE_REQUIRED_KEYS - set(metadata))
+        if missing:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    path,
+                    f"source runtime quarantine metadata is missing required keys: {', '.join(missing)}",
+                )
+            )
+        for key in ("owner", "reason"):
+            if not str(metadata.get(key) or "").strip():
+                findings.append(_finding("error", stack, f"{path}.{key}", "quarantine metadata must be non-empty"))
+        disabled_at = _parse_retirement_date(metadata.get("disabledAt"))
+        if disabled_at is None:
+            findings.append(_finding("error", stack, f"{path}.disabledAt", "quarantine disabledAt must be an ISO date"))
+        elif disabled_at > now:
+            findings.append(_finding("error", stack, f"{path}.disabledAt", "quarantine disabledAt must not be in the future"))
+        review_by = _parse_retirement_date(metadata.get("reviewBy"))
+        if review_by is None:
+            findings.append(_finding("error", stack, f"{path}.reviewBy", "quarantine reviewBy must be an ISO date"))
+        elif review_by < now:
+            findings.append(_finding("error", stack, f"{path}.reviewBy", "quarantine reviewBy is in the past"))
+
+        reenable_criteria = metadata.get("reenableCriteria")
+        if (
+            not isinstance(reenable_criteria, list)
+            or not reenable_criteria
+            or any(not str(item).strip() for item in reenable_criteria)
+        ):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.reenableCriteria",
+                    "quarantine metadata must list explicit re-enable criteria",
+                )
+            )
+        impacted_contracts = metadata.get("impactedContracts")
+        if (
+            not isinstance(impacted_contracts, list)
+            or not impacted_contracts
+            or any(str(item).strip() not in QUARANTINE_IMPACTED_CONTRACTS for item in impacted_contracts)
+        ):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.impactedContracts",
+                    "quarantine metadata must list known impacted Cerebro contracts",
+                )
+            )
+
+
+def _validate_mcp_oauth_contract(stack: str, config: dict[str, Any], findings: list[Finding]) -> None:
+    if config.get("mcpOauthEnabled") is not True:
+        return
+
+    if config.get("apiAuthEnabled") is not True:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:apiAuthEnabled",
+                "MCP OAuth requires API auth to remain enabled",
+            )
+        )
+    issuer = str(config.get("mcpOauthUpstreamIssuer") or "").strip()
+    if not issuer.startswith("https://"):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthUpstreamIssuer",
+                "MCP OAuth upstream issuer must be an HTTPS URL",
+            )
+        )
+    redirect_uri = str(config.get("mcpOauthUpstreamRedirectUri") or "").strip()
+    if not redirect_uri.startswith("https://") or not redirect_uri.endswith("/oauth/callback"):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthUpstreamRedirectUri",
+                "MCP OAuth redirect URI must be HTTPS and end with /oauth/callback",
+            )
+        )
+    for key in ("mcpOauthUpstreamClientIdSecretName", "mcpOauthUpstreamClientSecretName", "mcpOauthTenantId"):
+        if not str(config.get(key) or "").strip():
+            findings.append(_finding("error", stack, f"cerebro:{key}", "MCP OAuth configuration must be non-empty"))
+    security_groups = config.get("mcpOauthSecurityGroups") or []
+    if not isinstance(security_groups, list) or not security_groups or any(not str(group).strip() for group in security_groups):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthSecurityGroups",
+                "MCP OAuth must declare at least one upstream security group",
+            )
+        )
+    allowed_tenants = {str(tenant).strip() for tenant in config.get("allowedTenants") or [] if str(tenant).strip()}
+    mcp_tenant = str(config.get("mcpOauthTenantId") or "").strip()
+    if mcp_tenant and mcp_tenant not in allowed_tenants:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthTenantId",
+                "MCP OAuth tenant must be included in allowedTenants",
+            )
+        )
+    mcp_allowed_tenants = {str(tenant).strip() for tenant in config.get("mcpOauthAllowedTenants") or [] if str(tenant).strip()}
+    if not mcp_allowed_tenants:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthAllowedTenants",
+                "MCP OAuth must declare an explicit tenant allowlist",
+            )
+        )
+    elif not mcp_allowed_tenants.issubset(allowed_tenants):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:mcpOauthAllowedTenants",
+                "MCP OAuth allowed tenants must be a subset of allowedTenants",
             )
         )
 
@@ -1453,12 +1667,14 @@ def validate_stack(path: Path) -> list[Finding]:
                 )
             )
 
+    _validate_source_runtime_quarantines(stack, config, runtime_ids, findings)
     _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
     _validate_sec_dev_aws_coverage(stack, config, source_runtimes, schedules, findings)
     _validate_go_prod_aws_coverage(stack, source_runtimes, schedules, findings)
     _validate_panopticon_wiring(stack, config, source_runtimes, schedules, findings)
     _validate_source_runtime_observability(stack, config, source_runtimes, findings)
     _validate_neo4j_secret_import_coverage(stack, config, findings)
+    _validate_mcp_oauth_contract(stack, config, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment
