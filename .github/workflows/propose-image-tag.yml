@@ -104,7 +104,6 @@ jobs:
         id: release
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           DISPATCH_RELEASE_URL: ${{ github.event.client_payload.release_url || '' }}
           DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository || '' }}
@@ -112,7 +111,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          release_json="$(gh release view "${IMAGE_TAG}" --repo writer/cerebro --json isDraft,isPrerelease,url,tagName)"
+          release_json="$(env -u GH_TOKEN -u GITHUB_TOKEN gh release view "${IMAGE_TAG}" --repo writer/cerebro --json isDraft,isPrerelease,url,tagName)"
           release_url="$(jq -r '.url // empty' <<<"${release_json}")"
           if [ "$(jq -r '.isDraft' <<<"${release_json}")" = "true" ]; then
             echo "Release ${IMAGE_TAG} is still a draft" >&2
@@ -140,13 +139,12 @@ jobs:
         id: latest
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           latest_tag="$(
-            gh release list --repo writer/cerebro --limit 100 --json tagName,isDraft,isPrerelease \
+            env -u GH_TOKEN -u GITHUB_TOKEN gh release list --repo writer/cerebro --limit 100 --json tagName,isDraft,isPrerelease \
               --jq '.[] | select(.isDraft == false and .isPrerelease == false and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tagName' \
               | sort -V \
               | tail -n 1
@@ -196,7 +194,6 @@ jobs:
         id: contract
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
           COSIGN_EXPERIMENTAL: "true"
@@ -209,7 +206,7 @@ jobs:
             exit 0
           fi
           mkdir -p runtime-contract
-          gh release download "${IMAGE_TAG}" --repo writer/cerebro --dir runtime-contract \
+          env -u GH_TOKEN -u GITHUB_TOKEN gh release download "${IMAGE_TAG}" --repo writer/cerebro --dir runtime-contract \
             --pattern cerebro-runtime-contract.json \
             --pattern cerebro-runtime-contract.json.sig \
             --pattern cerebro-runtime-contract.json.pem
@@ -328,7 +325,7 @@ jobs:
           }
 
           resolve_latest_stable_tag() {
-            gh release list --repo writer/cerebro --limit 100 --json tagName,isDraft,isPrerelease \
+            env -u GH_TOKEN -u GITHUB_TOKEN gh release list --repo writer/cerebro --limit 100 --json tagName,isDraft,isPrerelease \
               --jq '.[] | select(.isDraft == false and .isPrerelease == false and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tagName' \
               | sort -V \
               | tail -n 1
