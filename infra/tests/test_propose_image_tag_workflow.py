@@ -44,6 +44,21 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("if: steps.latest.outputs.superseded != 'true'", workflow)
         self.assertIn("- name: Report superseded release", workflow)
 
+    def test_public_release_reads_do_not_use_repo_scoped_token(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        for step_name in (
+            "Verify release metadata",
+            "Resolve latest stable release",
+            "Download and verify runtime deploy contract",
+        ):
+            with self.subTest(step_name=step_name):
+                step = workflow.split(f"- name: {step_name}", 1)[1].split("\n      - name:", 1)[0]
+                self.assertNotIn("GH_TOKEN: ${{ github.token }}", step)
+                self.assertIn("env -u GH_TOKEN -u GITHUB_TOKEN gh release", step)
+
+        apply_step = self._apply_step()
+        self.assertIn("env -u GH_TOKEN -u GITHUB_TOKEN gh release list --repo writer/cerebro", apply_step)
+
     def test_release_pr_body_surfaces_runtime_contract_evidence(self) -> None:
         apply_step = self._apply_step()
 
