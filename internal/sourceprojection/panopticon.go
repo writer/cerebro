@@ -1,10 +1,21 @@
 package sourceprojection
 
 import (
+	"regexp"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+)
+
+var (
+	panopticonAWSInstancePattern      = regexp.MustCompile(`\bi-[0-9a-fA-F]{8,17}\b`)
+	panopticonGCPProjectFieldPattern  = regexp.MustCompile(`(?i)\b(?:gcp|google)\s*project(?:\s+id)?\s*[:=]?\s*([a-z][a-z0-9-]{4,28}[a-z0-9])\b`)
+	panopticonGitHubRepositoryPattern = regexp.MustCompile(`\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b`)
+	panopticonGitHubURLPattern        = regexp.MustCompile(`(?i)(?:https?://github\.com/|git@github\.com:)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:\.git)?\b`)
+	panopticonIPv4Pattern             = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	panopticonKubernetesPairPattern   = regexp.MustCompile(`\(([a-z0-9][a-z0-9.-]*)/([a-z0-9][a-z0-9.-]*)\)`)
+	panopticonURLPattern              = regexp.MustCompile(`https?://[^\s)"']+`)
 )
 
 func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -36,6 +47,9 @@ func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	for _, evidenceURN := range panopticonAddEvidencePointers(entities, tenantID, event.GetSourceId(), event.GetId(), payload) {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, evidenceURN, relationHasEvidence, panopticonLinkAttributes(event, "panopticon_alert_evidence_cas")))
 	}
+	panopticonAddContextAnchors(entities, links, tenantID, event.GetSourceId(), event, alertURN, relationAssociatedWith, attrs, payload, "panopticon_alert_context")
+	panopticonAddIOCContextAnchors(entities, links, tenantID, event.GetSourceId(), event, attrs, payload)
+	panopticonAddAssetContextAnchors(entities, links, tenantID, event.GetSourceId(), event, attrs, payload)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -72,6 +86,9 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), caseURN, evidenceURN, relationHasEvidence, panopticonLinkAttributes(event, "panopticon_case_evidence_cas")))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, caseURN, relationBelongsTo, panopticonLinkAttributes(event, "panopticon_evidence_cas_case")))
 	}
+	panopticonAddContextAnchors(entities, links, tenantID, event.GetSourceId(), event, caseURN, relationAssociatedWith, attrs, payload, "panopticon_case_context")
+	panopticonAddIOCContextAnchors(entities, links, tenantID, event.GetSourceId(), event, nil, payload)
+	panopticonAddAssetContextAnchors(entities, links, tenantID, event.GetSourceId(), event, nil, payload)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -103,6 +120,7 @@ func panopticonIOCProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	if alertURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, iocURN, relationHasEvidence, panopticonLinkAttributes(event, "panopticon_alert_ioc")))
 	}
+	panopticonAddContextAnchors(entities, links, tenantID, event.GetSourceId(), event, iocURN, relationRepresents, attrs, payload, "panopticon_ioc_context")
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -355,6 +373,521 @@ func panopticonEvidenceDigest(evidence map[string]any) string {
 		}
 	}
 	return ""
+}
+
+type panopticonContextSample struct {
+	key   string
+	value string
+}
+
+func panopticonAddIOCContextAnchors(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, attrs map[string]string, payload map[string]any) {
+	if len(attrs) != 0 && (firstAttribute(attrs, "ioc_id", "value") != "") {
+		iocURN := panopticonAddIOCEntity(entities, tenantID, sourceID, event.GetId(), attrs)
+		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, iocURN, relationRepresents, attrs, nil, "panopticon_ioc_context")
+	}
+	for _, ioc := range panopticonObjects(payload, "iocs", "indicators", "observables") {
+		iocAttrs := panopticonAttributesFromObject(ioc, "ioc_id", "id", "ioc_type", "type", "value")
+		iocURN := panopticonAddIOCEntity(entities, tenantID, sourceID, event.GetId(), iocAttrs)
+		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, iocURN, relationRepresents, iocAttrs, ioc, "panopticon_ioc_context")
+	}
+}
+
+func panopticonAddAssetContextAnchors(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, attrs map[string]string, payload map[string]any) {
+	if len(attrs) != 0 && firstAttribute(attrs, "asset_id", "asset_name") != "" {
+		assetAttrs := map[string]string{
+			"asset_id":   firstAttribute(attrs, "asset_id"),
+			"asset_type": firstAttribute(attrs, "asset_type"),
+			"name":       firstAttribute(attrs, "asset_name"),
+			"hostname":   firstAttribute(attrs, "hostname"),
+		}
+		assetURN := panopticonAddAssetEntity(entities, tenantID, sourceID, event.GetId(), assetAttrs)
+		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, assetURN, relationRepresents, assetAttrs, nil, "panopticon_asset_context")
+	}
+	for _, asset := range panopticonObjects(payload, "assets", "affected_assets", "hosts", "endpoints") {
+		assetAttrs := panopticonAttributesFromObject(asset, "asset_id", "id", "asset_type", "type", "hostname", "name", "urn")
+		assetURN := panopticonAddAssetEntity(entities, tenantID, sourceID, event.GetId(), assetAttrs)
+		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, assetURN, relationRepresents, assetAttrs, asset, "panopticon_asset_context")
+	}
+}
+
+func panopticonAddContextAnchors(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, attrs map[string]string, payload map[string]any, matchPrefix string) {
+	if strings.TrimSpace(fromURN) == "" {
+		return
+	}
+	samples := panopticonContextSamples(attrs, payload)
+	for _, ip := range panopticonContextIPs(samples) {
+		panopticonAddInternetIPAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, ip, matchPrefix+"_ip")
+	}
+	for _, host := range panopticonContextHosts(samples) {
+		panopticonAddInternetHostAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, host, matchPrefix+"_host")
+	}
+	for _, instanceID := range panopticonContextAWSInstances(samples) {
+		panopticonAddAWSInstanceAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, instanceID, matchPrefix+"_aws_instance")
+	}
+	for _, repository := range panopticonContextGitHubRepositories(samples) {
+		panopticonAddGitHubRepositoryAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, repository, matchPrefix+"_github_repo")
+	}
+	for _, projectID := range panopticonContextGCPProjects(samples) {
+		panopticonAddCloudAccountAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, "gcp", projectID, matchPrefix+"_gcp_project")
+	}
+	panopticonAddKubernetesContextAnchors(entities, links, tenantID, sourceID, event, fromURN, relation, samples, matchPrefix)
+	for _, sample := range samples {
+		for _, email := range emailIdentifierPattern.FindAllString(sample.value, -1) {
+			addIdentifierLink(entities, links, tenantID, sourceID, event.GetId(), fromURN, email, event.GetOccurredAt())
+			if panopticonOwnerField(sample.key) {
+				identityURN, _ := canonicalIdentityURN(tenantID, email)
+				if identityURN != "" {
+					addLink(links, projectedLink(tenantID, sourceID, fromURN, identityURN, relationOwnedBy, panopticonAnchorAttributes(event, matchPrefix+"_owner_email", "email", strings.ToLower(email))))
+				}
+			}
+		}
+	}
+}
+
+func panopticonAddInternetIPAnchor(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, rawIP string, matchType string) {
+	ipURN, ip := internetIPURN(tenantID, rawIP)
+	if ipURN == "" {
+		return
+	}
+	addInternetIPEntity(entities, tenantID, sourceID, ipURN, ip)
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, ipURN, relation, panopticonAnchorAttributes(event, matchType, "ip", ip)))
+}
+
+func panopticonAddInternetHostAnchor(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, rawHost string, matchType string) {
+	hostURN, host := internetHostURN(tenantID, rawHost)
+	if hostURN == "" {
+		return
+	}
+	addInternetHostEntity(entities, tenantID, sourceID, hostURN, host)
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, hostURN, relation, panopticonAnchorAttributes(event, matchType, "host", host)))
+	if domainURN, domain := internetDomainURN(tenantID, host); domainURN != "" && domainURN != hostURN {
+		addInternetDomainEntity(entities, tenantID, sourceID, domainURN, domain)
+		addLink(links, projectedLink(tenantID, sourceID, hostURN, domainURN, relationBelongsTo, panopticonAnchorAttributes(event, matchType+"_domain", "domain", domain)))
+	}
+}
+
+func panopticonAddAWSInstanceAnchor(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, instanceID string, matchType string) {
+	instanceID = strings.ToLower(strings.TrimSpace(instanceID))
+	instanceURN := projectionURN(tenantID, "aws_ec2_instance", instanceID)
+	if instanceURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        instanceURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "aws.ec2.instance",
+		Label:      instanceID,
+		Attributes: compactAttributes(map[string]string{
+			"instance_id":       instanceID,
+			"resource_id":       instanceID,
+			"resource_provider": "aws",
+			"resource_type":     "ec2_instance",
+		}),
+	})
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, instanceURN, relation, panopticonAnchorAttributes(event, matchType, "instance_id", instanceID)))
+}
+
+func panopticonAddGitHubRepositoryAnchor(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, repository string, matchType string) {
+	repository = normalizeGitHubRepository(repository)
+	if repository == "" {
+		return
+	}
+	repoURN := projectionURN(tenantID, "github_repo", repository)
+	if repoURN == "" {
+		return
+	}
+	owner, _, _ := strings.Cut(repository, "/")
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        repoURN,
+		TenantID:   tenantID,
+		SourceID:   "github",
+		EntityType: "github.repo",
+		Label:      repository,
+		Attributes: compactAttributes(map[string]string{"owner_login": owner, "repository": repository}),
+	})
+	if orgURN := projectionURN(tenantID, "github_org", owner); orgURN != "" && owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        orgURN,
+			TenantID:   tenantID,
+			SourceID:   "github",
+			EntityType: "github.org",
+			Label:      owner,
+			Attributes: map[string]string{"org": owner, "owner_login": owner},
+		})
+		addLink(links, projectedLink(tenantID, sourceID, repoURN, orgURN, relationBelongsTo, panopticonAnchorAttributes(event, matchType+"_owner", "owner_login", owner)))
+	}
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, repoURN, relation, panopticonAnchorAttributes(event, matchType, "repository", repository)))
+}
+
+func panopticonAddCloudAccountAnchor(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, provider string, accountID string, matchType string) {
+	accountID = strings.TrimSpace(accountID)
+	if accountID == "" {
+		return
+	}
+	accountURN := cloudAccountURN(tenantID, accountID)
+	if accountURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        accountURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "cloud.account",
+		Label:      accountID,
+		Attributes: compactAttributes(map[string]string{"account_id": accountID, "provider": provider}),
+	})
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, accountURN, relation, panopticonAnchorAttributes(event, matchType, "account_id", accountID)))
+}
+
+func panopticonAddKubernetesContextAnchors(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, samples []panopticonContextSample, matchPrefix string) {
+	attrs := panopticonKubernetesAttributes(samples)
+	if len(attrs) == 0 {
+		return
+	}
+	clusterURN := kubernetesClusterURN(tenantID, attrs)
+	namespaceURN := kubernetesNamespaceURN(tenantID, attrs)
+	workloadURN := kubernetesWorkloadURN(tenantID, attrs)
+	serviceAccountURN := kubernetesServiceAccountURN(tenantID, attrs)
+	addKubernetesCluster(entities, tenantID, sourceID, attrs, clusterURN)
+	addKubernetesNamespace(entities, tenantID, sourceID, attrs, namespaceURN)
+	if workloadURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        workloadURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: "kubernetes.workload",
+			Label:      firstNonEmpty(attrs["workload_name"], attrs["name"]),
+			Attributes: compactAttributes(attrs),
+		})
+		addLink(links, projectedLink(tenantID, sourceID, fromURN, workloadURN, relation, panopticonAnchorAttributes(event, matchPrefix+"_kubernetes_workload", "workload_name", attrs["workload_name"])))
+		if namespaceURN != "" {
+			addLink(links, projectedLink(tenantID, sourceID, workloadURN, namespaceURN, relationBelongsTo, panopticonAnchorAttributes(event, matchPrefix+"_kubernetes_namespace", "namespace", attrs["namespace"])))
+		}
+		if serviceAccountURN != "" && strings.TrimSpace(attrs["service_account_name"]) != "" {
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        serviceAccountURN,
+				TenantID:   tenantID,
+				SourceID:   sourceID,
+				EntityType: "kubernetes.service_account",
+				Label:      attrs["service_account_name"],
+				Attributes: compactAttributes(attrs),
+			})
+			addLink(links, projectedLink(tenantID, sourceID, workloadURN, serviceAccountURN, relationRunsAs, panopticonAnchorAttributes(event, matchPrefix+"_kubernetes_service_account", "service_account_name", attrs["service_account_name"])))
+			addLink(links, projectedLink(tenantID, sourceID, serviceAccountURN, namespaceURN, relationBelongsTo, panopticonAnchorAttributes(event, matchPrefix+"_kubernetes_service_account_namespace", "namespace", attrs["namespace"])))
+		}
+	}
+	addKubernetesClusterLinks(entities, links, tenantID, sourceID, event, attrs, namespaceURN, clusterURN)
+}
+
+func panopticonContextSamples(attrs map[string]string, payload map[string]any) []panopticonContextSample {
+	samples := make([]panopticonContextSample, 0, len(attrs))
+	for key, value := range attrs {
+		value = strings.TrimSpace(value)
+		if strings.TrimSpace(key) == "" || value == "" {
+			continue
+		}
+		samples = append(samples, panopticonContextSample{key: strings.ToLower(strings.TrimSpace(key)), value: value})
+	}
+	panopticonCollectPayloadSamples(&samples, "", payload, 0)
+	return samples
+}
+
+func panopticonCollectPayloadSamples(samples *[]panopticonContextSample, keyPath string, value any, depth int) {
+	if len(*samples) >= 256 || depth > 5 || panopticonSkippedContextKey(keyPath) {
+		return
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			childKey := strings.ToLower(strings.Trim(strings.TrimSpace(keyPath+"."+key), "."))
+			panopticonCollectPayloadSamples(samples, childKey, child, depth+1)
+		}
+	case []any:
+		for _, child := range typed {
+			panopticonCollectPayloadSamples(samples, keyPath, child, depth+1)
+		}
+	case []map[string]any:
+		for _, child := range typed {
+			panopticonCollectPayloadSamples(samples, keyPath, child, depth+1)
+		}
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed != "" && len(trimmed) <= 8192 {
+			*samples = append(*samples, panopticonContextSample{key: strings.ToLower(strings.Trim(keyPath, ".")), value: trimmed})
+		}
+	}
+}
+
+func panopticonSkippedContextKey(key string) bool {
+	key = strings.ToLower(key)
+	for _, marker := range []string{
+		"api_key",
+		"apikey",
+		"authorization",
+		"bearer",
+		"body",
+		"bytes",
+		"content",
+		"cookie",
+		"credential",
+		"key",
+		"password",
+		"passwd",
+		"private",
+		"pwd",
+		"raw",
+		"secret",
+		"signature",
+		"token",
+	} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func panopticonContextIPs(samples []panopticonContextSample) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, sample := range samples {
+		if !panopticonIPContextSample(sample) {
+			continue
+		}
+		for _, candidate := range panopticonIPv4Pattern.FindAllString(sample.value, -1) {
+			ip := internetIP(candidate)
+			if ip == "" {
+				continue
+			}
+			if _, ok := seen[ip]; ok {
+				continue
+			}
+			seen[ip] = struct{}{}
+			out = append(out, ip)
+		}
+	}
+	return out
+}
+
+func panopticonContextHosts(samples []panopticonContextSample) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, sample := range samples {
+		if panopticonHostField(sample.key) {
+			panopticonAppendHostCandidate(&out, seen, sample.value)
+		}
+		for _, rawURL := range panopticonURLPattern.FindAllString(sample.value, -1) {
+			panopticonAppendHostCandidate(&out, seen, rawURL)
+		}
+	}
+	return out
+}
+
+func panopticonAppendHostCandidate(out *[]string, seen map[string]struct{}, raw string) {
+	host := internetHostIfLikely(raw)
+	if host == "" || internetIP(host) != "" {
+		return
+	}
+	if _, ok := seen[host]; ok {
+		return
+	}
+	seen[host] = struct{}{}
+	*out = append(*out, host)
+}
+
+func panopticonContextAWSInstances(samples []panopticonContextSample) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, sample := range samples {
+		for _, match := range panopticonAWSInstancePattern.FindAllString(sample.value, -1) {
+			instanceID := strings.ToLower(match)
+			if _, ok := seen[instanceID]; ok {
+				continue
+			}
+			seen[instanceID] = struct{}{}
+			out = append(out, instanceID)
+		}
+	}
+	return out
+}
+
+func panopticonContextGitHubRepositories(samples []panopticonContextSample) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, sample := range samples {
+		for _, match := range panopticonGitHubURLPattern.FindAllStringSubmatch(sample.value, -1) {
+			if len(match) > 1 {
+				panopticonAppendGitHubRepository(&out, seen, match[1])
+			}
+		}
+		if !panopticonGitHubContext(sample) {
+			continue
+		}
+		bareValue := panopticonGitHubURLPattern.ReplaceAllString(sample.value, " ")
+		for _, match := range panopticonGitHubRepositoryPattern.FindAllString(bareValue, -1) {
+			panopticonAppendGitHubRepository(&out, seen, match)
+		}
+	}
+	return out
+}
+
+func panopticonAppendGitHubRepository(out *[]string, seen map[string]struct{}, raw string) {
+	repository := normalizeGitHubRepository(strings.Trim(raw, ".,;:()[]{}<>\"'"))
+	if repository == "" {
+		return
+	}
+	if _, ok := seen[repository]; ok {
+		return
+	}
+	seen[repository] = struct{}{}
+	*out = append(*out, repository)
+}
+
+func panopticonContextGCPProjects(samples []panopticonContextSample) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, sample := range samples {
+		if panopticonGCPProjectField(sample.key) {
+			panopticonAppendGCPProject(&out, seen, sample.value)
+		}
+		for _, match := range panopticonGCPProjectFieldPattern.FindAllStringSubmatch(sample.value, -1) {
+			if len(match) > 1 {
+				panopticonAppendGCPProject(&out, seen, match[1])
+			}
+		}
+	}
+	return out
+}
+
+func panopticonAppendGCPProject(out *[]string, seen map[string]struct{}, raw string) {
+	projectID := strings.Trim(strings.ToLower(strings.TrimSpace(raw)), ".,;:()[]{}<>\"'")
+	if projectID == "" || !strings.Contains(projectID, "-") {
+		return
+	}
+	if _, ok := seen[projectID]; ok {
+		return
+	}
+	seen[projectID] = struct{}{}
+	*out = append(*out, projectID)
+}
+
+func panopticonKubernetesAttributes(samples []panopticonContextSample) map[string]string {
+	attrs := map[string]string{}
+	for _, sample := range samples {
+		key := sample.key
+		value := strings.TrimSpace(sample.value)
+		switch {
+		case strings.HasSuffix(key, "cluster_id") || strings.HasSuffix(key, "kubernetes_cluster_id"):
+			attrs["cluster_id"] = firstNonEmpty(attrs["cluster_id"], value)
+		case strings.HasSuffix(key, "cluster_name") || strings.HasSuffix(key, "kubernetes_cluster_name"):
+			attrs["cluster_name"] = firstNonEmpty(attrs["cluster_name"], value)
+		case strings.HasSuffix(key, "namespace") || strings.HasSuffix(key, "kubernetes_namespace"):
+			attrs["namespace"] = firstNonEmpty(attrs["namespace"], value)
+		case strings.HasSuffix(key, "workload_name") || strings.HasSuffix(key, "kubernetes_workload_name"):
+			attrs["workload_name"] = firstNonEmpty(attrs["workload_name"], value)
+		case strings.HasSuffix(key, "workload_kind") || strings.HasSuffix(key, "kubernetes_workload_kind"):
+			attrs["workload_kind"] = firstNonEmpty(attrs["workload_kind"], value)
+		case strings.HasSuffix(key, "service_account") || strings.HasSuffix(key, "service_account_name"):
+			attrs["service_account_name"] = firstNonEmpty(attrs["service_account_name"], value)
+		case strings.HasSuffix(key, "cloud_provider") || strings.HasSuffix(key, "provider"):
+			attrs["cloud_provider"] = firstNonEmpty(attrs["cloud_provider"], value)
+		case strings.HasSuffix(key, "cloud_account_id") || strings.HasSuffix(key, "account_id"):
+			attrs["cloud_account_id"] = firstNonEmpty(attrs["cloud_account_id"], value)
+		case strings.HasSuffix(key, "gcp_project_id") || strings.HasSuffix(key, "project_id"):
+			attrs["gcp_project_id"] = firstNonEmpty(attrs["gcp_project_id"], value)
+		}
+		if strings.Contains(strings.ToLower(sample.value), "tetragon") || strings.Contains(key, "kubernetes") {
+			for _, match := range panopticonKubernetesPairPattern.FindAllStringSubmatch(sample.value, -1) {
+				if len(match) > 2 {
+					attrs["namespace"] = firstNonEmpty(attrs["namespace"], match[1])
+					attrs["workload_name"] = firstNonEmpty(attrs["workload_name"], match[2])
+				}
+			}
+		}
+	}
+	if firstNonEmpty(attrs["namespace"], attrs["workload_name"], attrs["service_account_name"]) == "" {
+		return nil
+	}
+	if firstNonEmpty(attrs["cluster_id"], attrs["cluster_name"]) == "" {
+		attrs["cluster_id"] = "panopticon-inferred"
+		attrs["cluster_inferred"] = "true"
+	}
+	if attrs["workload_name"] != "" && attrs["workload_kind"] == "" {
+		attrs["workload_kind"] = "Deployment"
+	}
+	return attrs
+}
+
+func panopticonHostField(key string) bool {
+	key = strings.ToLower(key)
+	for _, marker := range []string{"host", "hostname", "domain", "fqdn", "url", "uri", "website"} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func panopticonGitHubContext(sample panopticonContextSample) bool {
+	key := strings.ToLower(sample.key)
+	value := strings.ToLower(sample.value)
+	return strings.Contains(key, "github") || panopticonRepositoryField(key) || strings.Contains(value, "github")
+}
+
+func panopticonGCPProjectField(key string) bool {
+	key = strings.ToLower(key)
+	return strings.Contains(key, "gcp_project") || strings.Contains(key, "project_id") || strings.Contains(key, "projectid")
+}
+
+func panopticonRepositoryField(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	if key == "repo" || key == "repository" {
+		return true
+	}
+	if strings.HasPrefix(key, "repo_") || strings.HasPrefix(key, "repository_") || strings.HasPrefix(key, "repo.") || strings.HasPrefix(key, "repository.") {
+		return true
+	}
+	for _, marker := range []string{"_repo", "_repository", ".repo", ".repository", "-repo", "-repository"} {
+		if strings.HasSuffix(key, marker) || strings.Contains(key, marker+"_") || strings.Contains(key, marker+".") {
+			return true
+		}
+	}
+	return false
+}
+
+func panopticonIPContextSample(sample panopticonContextSample) bool {
+	key := strings.ToLower(sample.key)
+	for _, marker := range []string{"version", "build", "release", "semver"} {
+		if strings.Contains(key, marker) {
+			return false
+		}
+	}
+	if key == "" || panopticonHostField(key) {
+		return true
+	}
+	for _, marker := range []string{"ip", "address", "title", "description", "summary", "value", "ioc", "indicator", "observable"} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func panopticonOwnerField(key string) bool {
+	key = strings.ToLower(key)
+	for _, marker := range []string{"owner", "assignee", "assigned_to", "assigned", "user_email"} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func panopticonAnchorAttributes(event *cerebrov1.EventEnvelope, matchType string, key string, value string) map[string]string {
+	attrs := panopticonLinkAttributes(event, matchType)
+	addProjectedAttribute(attrs, key, value)
+	return attrs
 }
 
 func panopticonObjects(payload map[string]any, keys ...string) []map[string]any {

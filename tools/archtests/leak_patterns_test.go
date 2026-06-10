@@ -58,6 +58,33 @@ func TestLeakCheckExcludesRootCertificateFiles(t *testing.T) {
 	}
 }
 
+func TestLeakCheckRejectsConcretePRMetadata(t *testing.T) {
+	cases := []string{
+		"Overlay test: alert `123` linked to `internet.ip:198.51.100.24` and `aws.ec2.instance:i-0123456789abcdef0`.",
+		"Validation linked case `456` to `urn:cerebro:example:kubernetes_workload:cluster:namespace:Deployment/service`.",
+		"Runtime validation touched cloud account 123456789012.",
+	}
+	for _, body := range cases {
+		if output, err := runLeakCheckPRBody(t, "feat(source): enrich graph context", body); err == nil {
+			t.Fatalf("expected PR metadata leak check to reject %q\n%s", body, output)
+		}
+	}
+}
+
+func TestLeakCheckAllowsHighLevelPRMetadata(t *testing.T) {
+	body := strings.Join([]string{
+		"Adds projection enrichment for extracted infrastructure and identity context.",
+		"Test Plan:",
+		"- go test ./internal/sourceprojection -run 'TestProjectPanopticon' -count=1 -v",
+		"- make lint",
+		"- go test ./...",
+		"Live-shaped samples were reconstructed locally without publishing tenant or resource identifiers.",
+	}, "\n")
+	if output, err := runLeakCheckPRBody(t, "feat(source): enrich graph context", body); err != nil {
+		t.Fatalf("expected high-level PR metadata to pass leak check: %v\n%s", err, output)
+	}
+}
+
 func loadLeakPatterns(t *testing.T) []string {
 	t.Helper()
 	path := filepath.Join(repoRoot(t), "scripts", "leak_patterns.txt")
@@ -77,6 +104,15 @@ func loadLeakPatterns(t *testing.T) []string {
 		t.Fatal("no leak patterns loaded")
 	}
 	return patterns
+}
+
+func runLeakCheckPRBody(t *testing.T, title string, body string) (string, error) {
+	t.Helper()
+	cmd := exec.Command("./scripts/leak_check.sh", "pr-body", title, body)
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(), "CEREBRO_LEAK_USER_PATTERNS="+filepath.Join(t.TempDir(), "missing-patterns.txt"))
+	output, err := cmd.CombinedOutput()
+	return string(output), err
 }
 
 func matchesAnyLeakPattern(t *testing.T, patterns []string, candidate string) bool {
