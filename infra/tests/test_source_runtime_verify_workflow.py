@@ -22,13 +22,23 @@ class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         go_prod_block = workflow.split("verify-go-prod:", 1)[1]
 
-        self.assertIn('if [ "${SOURCE_ID}" = "panopticon" ] && [ "${OBSERVABILITY_TARGETS}" = "true" ]; then', go_prod_block)
+        self.assertIn('GO_PROD_PANOPTICON_READINESS_ONLY: "true"', go_prod_block)
+        self.assertIn("State: **not_configured/dry_run**", go_prod_block)
+        self.assertIn("--exclude-source-id panopticon", go_prod_block)
+        self.assertIn(
+            'if [ "${GO_PROD_PANOPTICON_READINESS_ONLY}" = "true" ] && [ "${SOURCE_ID}" = "panopticon" ] && [ "${OBSERVABILITY_TARGETS}" = "true" ]; then',
+            go_prod_block,
+        )
         self.assertIn('if [ "${VERIFY_MODE}" = "run" ]; then', go_prod_block)
         self.assertIn("args+=(--dry-run --allow-missing-targets)", go_prod_block)
 
     def test_infra_deploy_wires_panopticon_live_and_readiness_modes(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
 
+        self.assertIn('GO_PROD_PANOPTICON_READINESS_ONLY: "true"', workflow)
+        self.assertIn("State: **not_configured/dry_run**", workflow)
+        self.assertIn("--exclude-source-id panopticon", workflow)
+        self.assertIn("scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only", workflow)
         self.assertIn("--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 4", workflow)
         self.assertIn(
             "--source-runtime-dry-run --source-runtime-observability-targets --source-runtime-allow-missing-targets --source-id panopticon --source-target-concurrency 2",

@@ -60,10 +60,14 @@ def _aws(args: list[str], region: str, profile: str | None = None) -> dict[str, 
     return json.loads(output) if output.strip() else {}
 
 
-def _source_runtime_role_arns(config: dict[str, Any]) -> list[str]:
+def _source_runtime_role_arns(config: dict[str, Any], *, excluded_source_ids: set[str] | None = None) -> list[str]:
+    excluded_source_ids = excluded_source_ids or set()
     role_arns: set[str] = set()
     for runtime in config.get("sourceRuntimes") or []:
         if not isinstance(runtime, dict):
+            continue
+        source_id = str(runtime.get("sourceId") or "").strip()
+        if source_id in excluded_source_ids:
             continue
         runtime_config = runtime.get("config") or {}
         if not isinstance(runtime_config, dict):
@@ -209,6 +213,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--profile-by-account", action="append", default=[], help="AWS profile to read a target role account, as ACCOUNT_ID=PROFILE.")
     parser.add_argument("--same-account-only", action="store_true", help="Verify only source roles in the stack account.")
+    parser.add_argument(
+        "--exclude-source-id",
+        action="append",
+        default=[],
+        help="Exclude source runtime roles for a source id that is intentionally readiness-only for this check.",
+    )
     args = parser.parse_args(argv)
 
     stack = _stack_name(args.stack_file)
@@ -217,7 +227,8 @@ def main(argv: list[str] | None = None) -> int:
     if not stack_account:
         raise RuntimeError(f"no expected AWS account is registered for stack {stack!r}")
 
-    role_arns = _source_runtime_role_arns(config)
+    excluded_source_ids = {source_id.strip() for source_id in args.exclude_source_id if source_id.strip()}
+    role_arns = _source_runtime_role_arns(config, excluded_source_ids=excluded_source_ids)
     if args.same_account_only:
         role_arns = _same_account_role_arns(role_arns, stack_account)
     expected_principals = _expected_stack_principals_from_outputs(stack, config, stack_account, _load_outputs(args.pulumi_outputs_json))

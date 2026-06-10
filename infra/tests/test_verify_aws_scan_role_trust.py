@@ -30,6 +30,20 @@ class AwsScanRoleTrustTest(unittest.TestCase):
             ],
         )
 
+    def test_source_runtime_role_arns_can_exclude_dry_run_only_sources(self) -> None:
+        self.assertEqual(
+            verify_aws_scan_role_trust._source_runtime_role_arns(
+                {
+                    "sourceRuntimes": [
+                        {"sourceId": "panopticon", "config": {"role_arn": "arn:aws:iam::222222222222:role/panopticon-export-reader"}},
+                        {"sourceId": "cosmo", "config": {"role_arn": "arn:aws:iam::222222222222:role/cerebro-org-scan-role"}},
+                    ]
+                },
+                excluded_source_ids={"panopticon"},
+            ),
+            ["arn:aws:iam::222222222222:role/cerebro-org-scan-role"],
+        )
+
     def test_expected_principals_include_worker_role_for_scheduled_stack(self) -> None:
         self.assertEqual(
             verify_aws_scan_role_trust._expected_stack_principals("go-prod", {"environment": "go-production"}, "837279440628"),
