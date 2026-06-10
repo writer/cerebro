@@ -314,6 +314,24 @@ class ValidateStackConfigTest(unittest.TestCase):
                     )
                 )
 
+    def test_actual_okta_source_runtime_observability_is_required(self) -> None:
+        for stack_file in ("Pulumi.sec-dev.yaml", "Pulumi.go-prod.yaml"):
+            with self.subTest(stack_file=stack_file):
+                content = self._repo_stack_content(stack_file).replace(
+                    "      sourceRuntimeId: writer-okta-user\n",
+                    "      sourceRuntimeId: writer-okta-user-missing\n",
+                    1,
+                )
+                findings = self._validate(content, name=stack_file)
+
+                self.assertTrue(
+                    any(
+                        finding.severity == "error"
+                        and "source runtime observability entry for okta/user (writer-okta-user) is missing" in finding.message
+                        for finding in findings
+                    )
+                )
+
     def test_source_runtime_observability_missing_required_field_is_error(self) -> None:
         content = BASE_STACK.replace("      logGroupRef: runtime\n", "", 1)
         findings = self._validate(content, name="Pulumi.go-prod.yaml")

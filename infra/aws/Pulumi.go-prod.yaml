@@ -182,6 +182,91 @@ config:
         - disabled
         - unknown
         - not_configured
+    - environment: go-production
+      sourceSystem: okta
+      sourceRuntimeId: writer-okta-audit
+      runtimeClass: audit
+      enabled: true
+      freshnessSlaMinutes: 30
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: go-production
+      sourceSystem: okta
+      sourceRuntimeId: writer-okta-user
+      runtimeClass: user
+      enabled: true
+      freshnessSlaMinutes: 90
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: go-production
+      sourceSystem: okta
+      sourceRuntimeId: writer-okta-group
+      runtimeClass: group
+      enabled: true
+      freshnessSlaMinutes: 90
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: go-production
+      sourceSystem: okta
+      sourceRuntimeId: writer-okta-application
+      runtimeClass: application
+      enabled: true
+      freshnessSlaMinutes: 90
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
+    - environment: go-production
+      sourceSystem: okta
+      sourceRuntimeId: writer-okta-dept-security-group-membership
+      runtimeClass: group_membership
+      enabled: true
+      freshnessSlaMinutes: 90
+      logGroupRef: runtime
+      dashboardEnabled: true
+      alarmEnabled: true
+      alarmRoute: default
+      observabilityStates:
+        - success
+        - failure
+        - stale
+        - disabled
+        - unknown
+        - not_configured
   cerebro:orchestratorEnabled: true
   cerebro:orchestratorScheduleExpression: "rate(30 minutes)"
   cerebro:orchestratorCommand:
