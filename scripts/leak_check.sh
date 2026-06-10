@@ -100,6 +100,7 @@ redact_matches() {
 scan_input() {
   local label="$1"
   local input="$2"
+  local scan_patterns="${3:-$patterns}"
   local matched=0
   local scan_lines="$input"
   if [ "$allow_inline" = "1" ]; then
@@ -116,8 +117,19 @@ scan_input() {
       redacted="$(redact_matches "$hits" "$pattern")"
       printf '%s\n' "$redacted" | sed 's/^/  /' >&2
     fi
-  done <<<"$patterns"
+  done <<<"$scan_patterns"
   [ "$matched" -eq 0 ]
+}
+
+pr_metadata_patterns() {
+  cat <<'EOF'
+(^|[^[:alnum:]_])urn:cerebro:[^[:space:]`"')]+
+(^|[^[:alnum:]_])(internet\.ip|internet\.host|internet\.domain|aws\.ec2\.instance|kubernetes\.workload|kubernetes\.namespace|kubernetes\.cluster|cloud\.account|github\.repo):[^[:space:]`"')]+
+(^|[^[:alnum:]_.-])([0-9]{1,3}\.){3}[0-9]{1,3}([^[:alnum:]_.-]|$)
+(^|[^[:alnum:]_])i-[0-9a-fA-F]{8,17}([^[:alnum:]_]|$)
+(^|[^[:alnum:]_])[0-9]{12}([^[:alnum:]_]|$)
+(^|[^[:alnum:]_])(alert|case|finding)[[:space:]]+[`"']?#?[0-9][0-9A-Za-z_.:-]*[`"']?([^[:alnum:]_]|$)
+EOF
 }
 
 ignored_path_re='^(vendor/|scripts/leak_patterns\.txt$|go\.sum$|.*\.pem$|.*\.crt$)'
@@ -280,6 +292,18 @@ leak-check: tenant data pattern matched in PR title or body.
 
   - Review the matches above.
   - Rewrite the PR description to remove tenant-specific data.
+  - See AGENTS.md "Public PR Data Safety" for guidance.
+EOF
+      exit 1
+    fi
+    if ! scan_input "<pr-body-public-safety>" "$pr_content" "$(pr_metadata_patterns)"; then
+      cat >&2 <<'EOF'
+
+leak-check: public PR metadata contains concrete operational details.
+
+  - Remove tenant/environment/resource identifiers from the PR title/body.
+  - Keep validation summaries high-level and put sensitive live-data notes in
+    internal channels or local notes.
   - See AGENTS.md "Public PR Data Safety" for guidance.
 EOF
       exit 1
