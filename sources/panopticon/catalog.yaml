@@ -1,6 +1,6 @@
 id: panopticon
 name: Panopticon
-description: Panopticon security operations source. Reads canonical alert, case, and IOC event NDJSON archives written to S3 by the Panopticon export pipeline.
+description: Panopticon security operations source. Reads canonical alert, case, and IOC events from the Panopticon API.
 emitted_kinds:
   - panopticon.alert
   - panopticon.case
