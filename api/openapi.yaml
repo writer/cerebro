@@ -1584,8 +1584,8 @@ paths:
           description: Authenticated human is not authorized for MCP access.
   /oauth/token:
     post:
-      summary: Exchange MCP OAuth token grants
-      description: Issues a resource-bound bearer capability token for MCP after PKCE verification, refresh-token rotation, or confidential client_credentials authentication.
+      summary: Exchange OAuth token grants
+      description: Issues a resource-bound bearer capability token for MCP after PKCE verification, refresh-token rotation, confidential MCP client_credentials authentication, or hashed Cerebro API client_credentials authentication.
       tags:
         - OAuth
       security: []

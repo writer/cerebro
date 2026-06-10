@@ -69,7 +69,7 @@ type App struct {
 	observationStore      risk.ObservationStore
 	mcpOAuthService       *mcpoauth.Service
 	mcpOAuthRegisterLimit *deviceauth.TokenBucket
-	mcpOAuthEndpointLimit *deviceauth.TokenBucket
+	oauthEndpointLimit    *deviceauth.TokenBucket
 }
 
 type bootstrapService struct {
@@ -156,9 +156,14 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin)
 		}
 	}
+	if cfg.Auth.Enabled && len(cfg.Auth.APICredentials) > 0 && len(cfg.Auth.CapabilityTokenSecrets) > 0 {
+		app.oauthEndpointLimit = deviceauth.NewTokenBucket(oauthEndpointRatePerSecond, oauthEndpointBurst)
+	}
 	if cfg.Auth.MCPOAuth.Enabled {
 		app.mcpOAuthRegisterLimit = deviceauth.NewTokenBucket(oauthRegisterRatePerSecond, oauthRegisterBurst)
-		app.mcpOAuthEndpointLimit = deviceauth.NewTokenBucket(oauthEndpointRatePerSecond, oauthEndpointBurst)
+		if app.oauthEndpointLimit == nil {
+			app.oauthEndpointLimit = deviceauth.NewTokenBucket(oauthEndpointRatePerSecond, oauthEndpointBurst)
+		}
 		service, err := mcpoauth.NewService(cfg.Auth.MCPOAuth, oauthStore, func(ctx context.Context, grant mcpoauth.AccessGrant, ttl time.Duration, now time.Time) (string, error) {
 			return issueCapabilityToken(cfg.Auth, capabilityClaims{
 				Audience:       cfg.Auth.CapabilityTokenAudience,

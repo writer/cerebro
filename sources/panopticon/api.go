@@ -19,36 +19,43 @@ import (
 )
 
 const maxAPIResponseBytes = 8 << 20
+const panopticonUserAgent = "cerebro-panopticon-source/1.0"
 
 type panopticonAPICursor struct {
 	Source              string `json:"source,omitempty"`
 	ResumableCheckpoint bool   `json:"resumable_checkpoint,omitempty"`
-	Cursor              string `json:"cursor,omitempty"`
+	Page                int    `json:"page,omitempty"`
+	CasePage            int    `json:"case_page,omitempty"`
+	CaseIndex           int    `json:"case_index,omitempty"`
+	IOCPage             int    `json:"ioc_page,omitempty"`
 	Watermark           string `json:"watermark,omitempty"`
 }
 
-type panopticonAPIResponse struct {
-	Records    []panopticonRecord `json:"records"`
-	Events     []panopticonRecord `json:"events"`
-	NextCursor string             `json:"next_cursor"`
-	Watermark  string             `json:"watermark"`
+type nativeAPIPage struct {
+	Total       int                      `json:"total"`
+	Data        []map[string]interface{} `json:"data"`
+	LastPage    int                      `json:"last_page"`
+	CurrentPage int                      `json:"current_page"`
+	NextPage    json.RawMessage          `json:"next_page"`
 }
 
 func apiPathForFamily(family string) string {
 	switch family {
 	case familyAlert:
-		return "/api/cerebro/alerts"
-	case familyCase:
-		return "/api/cerebro/cases"
-	case familyIOC:
-		return "/api/cerebro/iocs"
+		return "/api/v2/alerts"
+	case familyCase, familyIOC:
+		return "/api/v2/cases"
 	default:
-		return "/api/cerebro/events"
+		return "/api/v2/alerts"
 	}
 }
 
 func discoverAPIFamily(st settings, urnPrefix string) ([]sourcecdk.URN, error) {
-	urnRaw := urnPrefix + url.PathEscape(st.baseURL+st.apiPath)
+	path := st.apiPath
+	if st.family == familyIOC {
+		path = strings.TrimRight(path, "/") + "/*/iocs"
+	}
+	urnRaw := urnPrefix + url.PathEscape(st.baseURL+path)
 	urn, err := sourcecdk.ParseURN(urnRaw)
 	if err != nil {
 		return nil, fmt.Errorf("build panopticon api urn: %w", err)
@@ -57,37 +64,149 @@ func discoverAPIFamily(st settings, urnPrefix string) ([]sourcecdk.URN, error) {
 }
 
 func (s *Source) checkAPI(ctx context.Context, st settings) error {
-	_, err := s.readAPIPage(ctx, st, "")
+	st.perPage = 1
+	_, err := s.readNativeAPIPage(ctx, st, st.apiPath, 1)
 	return err
 }
 
 func (s *Source) readAPIFamily(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor, kind, schemaRef string) (sourcecdk.Pull, error) {
+	if st.family == familyIOC {
+		return s.readNativeIOCFamily(ctx, st, cursor)
+	}
 	cursorState := decodeAPICursor(cursor)
-	response, err := s.readAPIPage(ctx, st, cursorState.Cursor)
+	page := cursorState.Page
+	if page < 1 {
+		page = 1
+	}
+	response, err := s.readNativeAPIPage(ctx, st, st.apiPath, page)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	records := response.apiRecords()
+	records, err := nativeRecords(st, response.Data, kind, schemaRef, time.Time{})
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	next := cursorState
+	if nextPage := response.nextPage(); nextPage > 0 {
+		next.Page = nextPage
+	} else {
+		next.Page = 0
+	}
+	return recordsPull(records, cursorState, next, cursor != nil)
+}
+
+func (s *Source) readNativeIOCFamily(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	state := decodeAPICursor(cursor)
+	if state.CasePage < 1 {
+		state.CasePage = 1
+	}
+	if state.IOCPage < 1 {
+		state.IOCPage = 1
+	}
+	current := state
+	for scanned := 0; scanned < int(st.perPage)+1; scanned++ {
+		cases, err := s.readNativeAPIPage(ctx, st, st.apiPath, current.CasePage)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		for current.CaseIndex < len(cases.Data) {
+			caseItem := cases.Data[current.CaseIndex]
+			caseID := nativeString(caseItem, "case_id")
+			if caseID == "" {
+				return sourcecdk.Pull{}, fmt.Errorf("panopticon case missing case_id")
+			}
+			caseOccurred := firstNativeTime(caseItem, "initial_date", "open_date", "close_date")
+			iocPath := strings.TrimRight(st.apiPath, "/") + "/" + url.PathEscape(caseID) + "/iocs"
+			iocs, err := s.readNativeAPIPage(ctx, st, iocPath, current.IOCPage)
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			records, err := nativeRecords(st, iocs.Data, kindIOC, schemaRefIOC, caseOccurred)
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			next := current
+			if nextIOCPage := iocs.nextPage(); nextIOCPage > 0 {
+				next.IOCPage = nextIOCPage
+				return recordsPull(records, state, next, cursor != nil)
+			}
+			next.CaseIndex++
+			next.IOCPage = 1
+			if len(records) > 0 {
+				if next.CaseIndex >= len(cases.Data) {
+					if nextCasePage := cases.nextPage(); nextCasePage > 0 {
+						next.CasePage = nextCasePage
+						next.CaseIndex = 0
+					} else {
+						next.CasePage = 0
+						next.IOCPage = 0
+					}
+				}
+				return recordsPull(records, state, next, cursor != nil)
+			}
+			current = next
+		}
+		if nextCasePage := cases.nextPage(); nextCasePage > 0 {
+			current.CasePage = nextCasePage
+			current.CaseIndex = 0
+			current.IOCPage = 1
+			continue
+		}
+		return recordsPull(nil, state, panopticonAPICursor{}, cursor != nil)
+	}
+	return sourcecdk.Pull{}, fmt.Errorf("panopticon ioc pagination did not make progress")
+}
+
+func (s *Source) readNativeAPIPage(ctx context.Context, st settings, path string, page int) (nativeAPIPage, error) {
+	if page < 1 {
+		page = 1
+	}
+	query := url.Values{}
+	query.Set("page", strconv.Itoa(page))
+	query.Set("per_page", strconv.Itoa(int(st.perPage)))
+	if st.family == familyAlert {
+		query.Set("sort", "asc")
+	} else {
+		query.Set("order_by", "case_id")
+		query.Set("sort_dir", "asc")
+	}
+	endpoint := st.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nativeAPIPage{}, fmt.Errorf("build panopticon api request: %w", err)
+	}
+	req.Header = http.Header{"Accept": {"application/json"}, "User-Agent": {panopticonUserAgent}, "Authorization": {"Bearer " + st.token}}
+
+	resp, err := sourceHTTPClient(s, st.privateEndpointAllowlist).Do(req)
+	if err != nil {
+		return nativeAPIPage{}, fmt.Errorf("request panopticon api: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	payload, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxAPIResponseBytes)
+	if err != nil {
+		return nativeAPIPage{}, fmt.Errorf("read panopticon api response: %w", err)
+	}
+	if resp.StatusCode >= http.StatusMultipleChoices {
+		return nativeAPIPage{}, apiResponseError(resp.StatusCode, payload)
+	}
+	var response nativeAPIPage
+	if err := json.Unmarshal(payload, &response); err != nil {
+		return nativeAPIPage{}, fmt.Errorf("decode panopticon api response: %w", err)
+	}
+	return response, nil
+}
+
+func recordsPull(records []panopticonRecord, cursorState, next panopticonAPICursor, hadCursor bool) (sourcecdk.Pull, error) {
 	if len(records) > maxEventsPerPull {
 		return sourcecdk.Pull{}, fmt.Errorf("panopticon api returned %d records, max %d", len(records), maxEventsPerPull)
 	}
 	events := make([]*cerebrov1.EventEnvelope, 0, len(records))
 	var watermark time.Time
 	for _, rec := range records {
-		recordTenant := strings.TrimSpace(rec.TenantID)
-		if recordTenant == "" {
-			return sourcecdk.Pull{}, fmt.Errorf("invalid panopticon api event: tenant_id is required")
-		}
-		if recordTenant != rec.TenantID {
-			return sourcecdk.Pull{}, fmt.Errorf("invalid panopticon api event: tenant_id must not have leading or trailing whitespace")
-		}
-		if recordTenant != st.tenantID {
-			return sourcecdk.Pull{}, fmt.Errorf("invalid panopticon api event: tenant_id %q does not match runtime tenant", recordTenant)
-		}
-		if st.runtimeID != "" && strings.TrimSpace(rec.Attributes["runtime_id"]) != "" && strings.TrimSpace(rec.Attributes["runtime_id"]) != st.runtimeID {
-			continue
-		}
-		event, err := buildEvent(rec, kind, schemaRef)
+		event, err := buildEvent(rec, rec.Kind, rec.SchemaRef)
 		if err != nil {
 			return sourcecdk.Pull{}, fmt.Errorf("convert panopticon api event: %w", err)
 		}
@@ -102,24 +221,20 @@ func (s *Source) readAPIFamily(ctx context.Context, st settings, cursor *cerebro
 			watermark = rec.OccurredAt
 		}
 	}
-	if parsed := parseAPIWatermark(response.Watermark); parsed.After(watermark) {
-		watermark = parsed
-	}
-
 	pull := sourcecdk.Pull{Events: events}
-	nextCursor := strings.TrimSpace(response.NextCursor)
-	if nextCursor != "" {
-		opaque := encodeAPICursor(panopticonAPICursor{
-			Cursor:    nextCursor,
-			Watermark: watermarkString(watermark, parseAPIWatermark(cursorState.Watermark)),
-		})
+	watermarkValue := watermarkString(watermark, parseAPIWatermark(cursorState.Watermark))
+	if next.hasMore() {
+		next.Watermark = watermarkValue
+		opaque := encodeAPICursor(next)
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: opaque}
 		pull.Checkpoint = &cerebrov1.SourceCheckpoint{CursorOpaque: opaque}
-	} else if !watermark.IsZero() || cursor != nil {
-		opaque := encodeAPICursor(panopticonAPICursor{
-			Cursor:    cursorState.Cursor,
-			Watermark: watermarkString(watermark, parseAPIWatermark(cursorState.Watermark)),
-		})
+	} else if watermarkValue != "" || hadCursor {
+		cursorState.Watermark = watermarkValue
+		cursorState.Page = 0
+		cursorState.CasePage = 0
+		cursorState.CaseIndex = 0
+		cursorState.IOCPage = 0
+		opaque := encodeAPICursor(cursorState)
 		pull.Checkpoint = &cerebrov1.SourceCheckpoint{CursorOpaque: opaque}
 	}
 	if pull.Checkpoint != nil {
@@ -130,55 +245,70 @@ func (s *Source) readAPIFamily(ctx context.Context, st settings, cursor *cerebro
 	return pull, nil
 }
 
-func (s *Source) readAPIPage(ctx context.Context, st settings, cursor string) (panopticonAPIResponse, error) {
-	query := url.Values{}
-	query.Set("tenant_id", st.tenantID)
-	query.Set("family", st.family)
-	query.Set("limit", strconv.Itoa(int(st.perPage)))
-	if st.runtimeID != "" {
-		query.Set("runtime_id", st.runtimeID)
+func nativeRecords(st settings, items []map[string]interface{}, kind, schemaRef string, fallbackOccurredAt time.Time) ([]panopticonRecord, error) {
+	records := make([]panopticonRecord, 0, len(items))
+	for _, item := range items {
+		record, err := nativeRecord(st, item, kind, schemaRef, fallbackOccurredAt)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
 	}
-	if cursor = strings.TrimSpace(cursor); cursor != "" {
-		query.Set("cursor", cursor)
-	}
-	endpoint := st.baseURL + st.apiPath
-	if encoded := query.Encode(); encoded != "" {
-		endpoint += "?" + encoded
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return panopticonAPIResponse{}, fmt.Errorf("build panopticon api request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+st.token)
-
-	resp, err := sourceHTTPClient(s).Do(req)
-	if err != nil {
-		return panopticonAPIResponse{}, fmt.Errorf("request panopticon api: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	payload, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxAPIResponseBytes)
-	if err != nil {
-		return panopticonAPIResponse{}, fmt.Errorf("read panopticon api response: %w", err)
-	}
-	if resp.StatusCode >= http.StatusMultipleChoices {
-		return panopticonAPIResponse{}, apiResponseError(resp.StatusCode, payload)
-	}
-	var response panopticonAPIResponse
-	if err := json.Unmarshal(payload, &response); err != nil {
-		return panopticonAPIResponse{}, fmt.Errorf("decode panopticon api response: %w", err)
-	}
-	return response, nil
+	return records, nil
 }
 
-func sourceHTTPClient(s *Source) *http.Client {
+func nativeRecord(st settings, item map[string]interface{}, kind, schemaRef string, fallbackOccurredAt time.Time) (panopticonRecord, error) {
+	switch kind {
+	case kindAlert:
+		alertID := nativeString(item, "alert_id")
+		severity := firstString(nestedString(item, "severity", "severity_name"), nativeString(item, "severity"), nativeString(item, "alert_severity_id"))
+		status := firstString(nestedString(item, "status", "status_name"), nativeString(item, "status"), nativeString(item, "alert_status_id"))
+		title := firstString(nativeString(item, "alert_title"), nativeString(item, "title"))
+		occurredAt := firstNativeTime(item, "alert_source_event_time", "alert_creation_time")
+		return canonicalRecord(st, item, kind, schemaRef, "alert-"+alertID, occurredAt, map[string]string{"alert_id": alertID, "severity": severity, "status": status}, map[string]interface{}{"alert_id": alertID, "severity": severity, "status": status, "title": title})
+	case kindCase:
+		caseID := nativeString(item, "case_id")
+		status := firstString(nestedString(item, "state", "state_name"), nativeString(item, "status"), nativeString(item, "status_id"))
+		title := firstString(nativeString(item, "case_name"), nativeString(item, "name"))
+		occurredAt := firstNativeTime(item, "initial_date", "open_date", "close_date")
+		return canonicalRecord(st, item, kind, schemaRef, "case-"+caseID, occurredAt, map[string]string{"case_id": caseID, "status": status}, map[string]interface{}{"case_id": caseID, "status": status, "title": title})
+	case kindIOC:
+		iocID := nativeString(item, "ioc_id")
+		iocType := firstString(nestedString(item, "ioc_type", "type_name"), nativeString(item, "ioc_type"), nativeString(item, "ioc_type_id"))
+		value := firstString(nativeString(item, "ioc_value"), nativeString(item, "value"))
+		occurredAt := fallbackOccurredAt
+		return canonicalRecord(st, item, kind, schemaRef, "ioc-"+iocID, occurredAt, map[string]string{"ioc_id": iocID, "ioc_type": iocType, "value": value}, map[string]interface{}{"ioc_id": iocID, "ioc_type": iocType, "value": value})
+	default:
+		return panopticonRecord{}, fmt.Errorf("unsupported kind %q", kind)
+	}
+}
+
+func canonicalRecord(st settings, item map[string]interface{}, kind, schemaRef, id string, occurredAt time.Time, attributes map[string]string, canonicalPayload map[string]interface{}) (panopticonRecord, error) {
+	payload := make(map[string]interface{}, len(item)+len(canonicalPayload))
+	for key, value := range item {
+		payload[key] = value
+	}
+	for key, value := range canonicalPayload {
+		payload[key] = value
+	}
+	if st.runtimeID != "" {
+		attributes["runtime_id"] = st.runtimeID
+	}
+	return panopticonRecord{ID: id, TenantID: st.tenantID, SourceID: sourceID, Kind: kind, OccurredAt: occurredAt, SchemaRef: schemaRef, Attributes: attributes, Payload: payload}, nil
+}
+
+func sourceHTTPClient(s *Source, privateEndpointAllowlist []string) *http.Client {
 	if s == nil {
-		return sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID})
+		return sourcehttp.NewClient(sourcehttp.ClientOptions{
+			SourceID:                 sourceID,
+			PrivateEndpointAllowlist: privateEndpointAllowlist,
+		})
 	}
 	return sourcehttp.HardenClient(s.client, sourcehttp.ClientOptions{
-		SourceID:      sourceID,
-		AllowLoopback: s.allowLoopbackBaseURL,
-		LookupIPAddrs: lookupIPAddrs(s),
+		SourceID:                 sourceID,
+		AllowLoopback:            s.allowLoopbackBaseURL,
+		PrivateEndpointAllowlist: privateEndpointAllowlist,
+		LookupIPAddrs:            lookupIPAddrs(s),
 	})
 }
 
@@ -189,13 +319,6 @@ func lookupIPAddrs(s *Source) func(context.Context, string) ([]net.IPAddr, error
 	return s.lookupIPAddrs
 }
 
-func (r panopticonAPIResponse) apiRecords() []panopticonRecord {
-	if r.Records != nil {
-		return r.Records
-	}
-	return r.Events
-}
-
 func decodeAPICursor(cursor *cerebrov1.SourceCursor) panopticonAPICursor {
 	opaque := strings.TrimSpace(cursor.GetOpaque())
 	if opaque == "" {
@@ -203,21 +326,22 @@ func decodeAPICursor(cursor *cerebrov1.SourceCursor) panopticonAPICursor {
 	}
 	var decoded panopticonAPICursor
 	if err := json.Unmarshal([]byte(opaque), &decoded); err == nil && decoded.Source == cursorSourceAPI {
-		decoded.Cursor = strings.TrimSpace(decoded.Cursor)
 		decoded.Watermark = strings.TrimSpace(decoded.Watermark)
 		return decoded
 	}
-	return panopticonAPICursor{Cursor: opaque}
+	if page, err := strconv.Atoi(opaque); err == nil {
+		return panopticonAPICursor{Page: page}
+	}
+	return panopticonAPICursor{}
 }
 
 func encodeAPICursor(cursor panopticonAPICursor) string {
 	cursor.Source = cursorSourceAPI
 	cursor.ResumableCheckpoint = true
-	cursor.Cursor = strings.TrimSpace(cursor.Cursor)
 	cursor.Watermark = strings.TrimSpace(cursor.Watermark)
 	raw, err := json.Marshal(cursor)
 	if err != nil {
-		return cursor.Cursor
+		return ""
 	}
 	return string(raw)
 }
@@ -232,6 +356,83 @@ func parseAPIWatermark(raw string) time.Time {
 		return time.Time{}
 	}
 	return parsed.UTC()
+}
+
+func (c panopticonAPICursor) hasMore() bool {
+	return c.Page > 0 || c.CasePage > 0 || c.IOCPage > 0
+}
+
+func (p nativeAPIPage) nextPage() int {
+	raw := strings.TrimSpace(string(p.NextPage))
+	if raw == "" || raw == "null" || raw == "false" || raw == "0" {
+		return 0
+	}
+	if raw == "true" {
+		return p.CurrentPage + 1
+	}
+	var page int
+	if err := json.Unmarshal(p.NextPage, &page); err == nil && page > 0 {
+		return page
+	}
+	return 0
+}
+
+func firstNativeTime(item map[string]interface{}, keys ...string) time.Time {
+	for _, key := range keys {
+		if parsed := parseNativeTime(item[key]); !parsed.IsZero() {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func parseNativeTime(value interface{}) time.Time {
+	raw := strings.TrimSpace(nativeValueString(value))
+	if raw == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999", "2006-01-02T15:04:05", "2006-01-02"} {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Time{}
+}
+
+func nativeString(item map[string]interface{}, key string) string {
+	return nativeValueString(item[key])
+}
+
+func nestedString(item map[string]interface{}, key, nestedKey string) string {
+	nested, ok := item[key].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	return nativeValueString(nested[nestedKey])
+}
+
+func firstString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func nativeValueString(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case json.Number:
+		return strings.TrimSpace(typed.String())
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(typed)
+	default:
+		return ""
+	}
 }
 
 func apiResponseError(statusCode int, payload []byte) error {

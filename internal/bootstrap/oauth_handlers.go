@@ -131,11 +131,6 @@ func (app *App) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 		app.emitOAuthAuditEvent(r, "token", http.StatusMethodNotAllowed, "rejected", "method_not_allowed", "", started)
 		return
 	}
-	if app.mcpOAuthService == nil {
-		writeOAuthError(w, mcpoauthOAuthError("server_error", "MCP OAuth is not configured", http.StatusServiceUnavailable))
-		app.emitOAuthAuditEvent(r, "token", http.StatusServiceUnavailable, "error", "not_configured", "", started)
-		return
-	}
 	if !app.allowOAuthEndpoint(w, r, "token", "", started) {
 		return
 	}
@@ -146,6 +141,22 @@ func (app *App) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientID := r.Form.Get("client_id")
+	if app.shouldHandleAPIClientCredentialsToken(r) {
+		response, err := app.exchangeAPIClientCredentialsToken(r.Context(), r)
+		if err != nil {
+			writeOAuthError(w, err)
+			app.emitOAuthAuditEvent(r, "token", oauthErrorStatus(err), oauthAuditOutcome(err), oauthErrorCode(err), clientID, started)
+			return
+		}
+		app.emitOAuthAuditEvent(r, "token", http.StatusOK, "success", "", clientID, started)
+		writeOAuthJSON(w, http.StatusOK, response)
+		return
+	}
+	if app.mcpOAuthService == nil {
+		writeOAuthError(w, mcpoauthOAuthError("server_error", "OAuth token service is not configured", http.StatusServiceUnavailable))
+		app.emitOAuthAuditEvent(r, "token", http.StatusServiceUnavailable, "error", "not_configured", clientID, started)
+		return
+	}
 	response, err := app.mcpOAuthService.Token(r.Context(), r.Header.Get("Authorization"), r.Form)
 	if err != nil {
 		writeOAuthError(w, err)
@@ -251,12 +262,12 @@ func writeOAuthError(w http.ResponseWriter, err error) {
 }
 
 func (app *App) allowOAuthEndpoint(w http.ResponseWriter, r *http.Request, operation string, clientID string, started time.Time) bool {
-	if app.mcpOAuthEndpointLimit == nil {
+	if app.oauthEndpointLimit == nil {
 		return true
 	}
 	origin := resolveRequestOrigin(r, app.cfg.Auth.RequestOrigin)
 	key := operation + ":" + firstNonEmpty(origin.ClientIP, "unknown")
-	if !app.mcpOAuthEndpointLimit.Allow(key) {
+	if !app.oauthEndpointLimit.Allow(key) {
 		writeOAuthError(w, mcpoauthOAuthError("rate_limited", "too many OAuth requests", http.StatusTooManyRequests))
 		app.emitOAuthAuditEvent(r, operation, http.StatusTooManyRequests, "rejected", "rate_limited", clientID, started)
 		return false

@@ -1,5 +1,4 @@
-// Package panopticon implements the Cerebro source for Panopticon security
-// operations events exposed by the Panopticon API.
+// Package panopticon implements the Cerebro source for Panopticon events.
 package panopticon
 
 import (
@@ -53,21 +52,14 @@ const (
 )
 
 var (
-	// ErrInvalidPageSize is returned when page_size is not a positive integer.
-	ErrInvalidPageSize = errors.New("invalid page_size")
-	// ErrTenantIDRequired is returned when no explicit tenant scope is configured.
-	ErrTenantIDRequired = errors.New("tenant_id is required")
-	// ErrUnsupportedFamily is returned when the family is not one of the known kinds.
+	ErrInvalidPageSize   = errors.New("invalid page_size")
+	ErrTenantIDRequired  = errors.New("tenant_id is required")
 	ErrUnsupportedFamily = errors.New("unsupported family")
-	// ErrBaseURLRequired is returned when no API base URL is configured.
-	ErrBaseURLRequired = errors.New("base_url is required")
-	// ErrTokenRequired is returned when no API bearer token is configured.
-	ErrTokenRequired = errors.New("token is required")
-	// ErrUnsupportedMode is returned when mode is not the API transport.
-	ErrUnsupportedMode = errors.New("unsupported mode")
+	ErrBaseURLRequired   = errors.New("base_url is required")
+	ErrTokenRequired     = errors.New("token is required")
+	ErrUnsupportedMode   = errors.New("unsupported mode")
 )
 
-// Source emits panopticon.* events from the Panopticon API.
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
@@ -77,13 +69,14 @@ type Source struct {
 }
 
 type settings struct {
-	family    string
-	baseURL   string
-	apiPath   string
-	token     string
-	tenantID  string
-	runtimeID string
-	perPage   int32
+	family                   string
+	baseURL                  string
+	apiPath                  string
+	token                    string
+	tenantID                 string
+	runtimeID                string
+	privateEndpointAllowlist []string
+	perPage                  int32
 }
 
 type panopticonRecord struct {
@@ -97,7 +90,6 @@ type panopticonRecord struct {
 	Attributes map[string]string      `json:"attributes"`
 }
 
-// New constructs the Panopticon API source.
 func New() (*Source, error) {
 	spec, err := loadSpec()
 	if err != nil {
@@ -114,20 +106,16 @@ func New() (*Source, error) {
 	return source, nil
 }
 
-// Spec returns the static metadata for the Panopticon source.
 func (s *Source) Spec() *cerebrov1.SourceSpec { return s.spec }
 
-// Check verifies that the configured Panopticon API family is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	return s.families.Check(ctx, cfg)
 }
 
-// Discover returns the URN for the configured family runtime instance.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return s.families.Discover(ctx, cfg)
 }
 
-// Read pages Panopticon API events since the cursor.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return s.families.Read(ctx, cfg, cursor)
 }
@@ -227,11 +215,19 @@ func parseSettingsWithLoopback(cfg sourcecdk.Config, allowLoopback bool) (settin
 	if st.token == "" {
 		return settings{}, ErrTokenRequired
 	}
-	baseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, st.baseURL, allowLoopback)
+	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, configValue(cfg, "private_endpoint_allowlist"))
+	if err != nil {
+		return settings{}, err
+	}
+	baseURL, _, err := sourcehttp.NormalizeBaseURLWithOptions(sourceID, st.baseURL, sourcehttp.URLValidationOptions{
+		AllowLoopback:            allowLoopback,
+		PrivateEndpointAllowlist: privateEndpointAllowlist,
+	})
 	if err != nil {
 		return settings{}, err
 	}
 	st.baseURL = baseURL
+	st.privateEndpointAllowlist = privateEndpointAllowlist
 	if st.apiPath == "" {
 		st.apiPath = apiPathForFamily(st.family)
 	}
