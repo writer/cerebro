@@ -192,6 +192,24 @@ func TestGRCAskInvestigationBriefFastPath(t *testing.T) {
 	}
 }
 
+func TestGRCAskInvestigationBriefFastPathReturnsLookupStatusBeforeStreaming(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"writer","question":"Brief investigation finding-missing"}`))
+	if err != nil {
+		t.Fatalf("POST /grc/ask error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("POST /grc/ask missing finding status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+	if got := resp.Header.Get("Content-Type"); strings.Contains(got, "text/event-stream") {
+		t.Fatalf("content-type = %q, want non-SSE error response", got)
+	}
+}
+
 func TestGRCAskMissingStartupLLMReturnsUnavailable(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: &stubGraphStore{}}, nil)
 	server := httptest.NewServer(app.Handler())

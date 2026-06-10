@@ -142,6 +142,13 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleGRCAskInvestigationBrief(w http.ResponseWriter, r *http.Request, findingID string, started time.Time, evt *askWideEvent) {
+	brief, err := a.buildInvestigationBrief(r, findingID, investigationBriefDefaultLimit, false)
+	if err != nil {
+		evt.failureStage = "investigation_brief"
+		evt.finish(r, started, grcHTTPStatusCode(err), err)
+		writeGRCError(w, err)
+		return
+	}
 	clearStreamingWriteDeadline(w)
 	flusher, _ := w.(http.Flusher)
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -167,18 +174,6 @@ func (a *App) handleGRCAskInvestigationBrief(w http.ResponseWriter, r *http.Requ
 		ElapsedMS: time.Since(started).Milliseconds(),
 	}}); err != nil {
 		evt.failureStage = "brief_stream"
-		evt.sseEvents = eventCount
-		evt.finish(r, started, http.StatusOK, err)
-		return
-	}
-	brief, err := a.buildInvestigationBrief(r, findingID, investigationBriefDefaultLimit, false)
-	if err != nil {
-		errorEvent := graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
-			Code:    "investigation_brief_failed",
-			Message: err.Error(),
-		}}
-		_ = emit(errorEvent)
-		evt.failureStage = "investigation_brief"
 		evt.sseEvents = eventCount
 		evt.finish(r, started, http.StatusOK, err)
 		return
