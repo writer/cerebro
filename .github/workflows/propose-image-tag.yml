@@ -111,13 +111,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          release_json="$(env -u GH_TOKEN -u GITHUB_TOKEN gh release view "${IMAGE_TAG}" --repo writer/cerebro --json isDraft,isPrerelease,url,tagName)"
-          release_url="$(jq -r '.url // empty' <<<"${release_json}")"
-          if [ "$(jq -r '.isDraft' <<<"${release_json}")" = "true" ]; then
+          release_json="$(curl -fsSL "https://api.github.com/repos/writer/cerebro/releases/tags/${IMAGE_TAG}")"
+          release_url="$(jq -r '.html_url // empty' <<<"${release_json}")"
+          if [ "$(jq -r '.draft' <<<"${release_json}")" = "true" ]; then
             echo "Release ${IMAGE_TAG} is still a draft" >&2
             exit 1
           fi
-          if [ "${EVENT_NAME}" = "repository_dispatch" ] && [ "$(jq -r '.isPrerelease' <<<"${release_json}")" = "true" ]; then
+          if [ "${EVENT_NAME}" = "repository_dispatch" ] && [ "$(jq -r '.prerelease' <<<"${release_json}")" = "true" ]; then
             echo "Repository-dispatch auto deploys only accept stable releases; ${IMAGE_TAG} is a prerelease" >&2
             exit 1
           fi
@@ -144,8 +144,8 @@ jobs:
         run: |
           set -euo pipefail
           latest_tag="$(
-            env -u GH_TOKEN -u GITHUB_TOKEN gh release list --repo writer/cerebro --limit 100 --json tagName,isDraft,isPrerelease \
-              --jq '.[] | select(.isDraft == false and .isPrerelease == false and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tagName' \
+            curl -fsSL "https://api.github.com/repos/writer/cerebro/releases?per_page=100" \
+              | jq -r '.[] | select(.draft == false and .prerelease == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tag_name' \
               | sort -V \
               | tail -n 1
           )"
@@ -206,10 +206,15 @@ jobs:
             exit 0
           fi
           mkdir -p runtime-contract
-          env -u GH_TOKEN -u GITHUB_TOKEN gh release download "${IMAGE_TAG}" --repo writer/cerebro --dir runtime-contract \
-            --pattern cerebro-runtime-contract.json \
-            --pattern cerebro-runtime-contract.json.sig \
-            --pattern cerebro-runtime-contract.json.pem
+          release_json="$(curl -fsSL "https://api.github.com/repos/writer/cerebro/releases/tags/${IMAGE_TAG}")"
+          for asset in cerebro-runtime-contract.json cerebro-runtime-contract.json.sig cerebro-runtime-contract.json.pem; do
+            url="$(jq -r --arg name "${asset}" '.assets[]? | select(.name == $name) | .browser_download_url' <<<"${release_json}" | head -n 1)"
+            if [ -z "${url}" ]; then
+              echo "Release ${IMAGE_TAG} is missing ${asset}" >&2
+              exit 1
+            fi
+            curl -fsSL "${url}" -o "runtime-contract/${asset}"
+          done
 
           cosign verify-blob \
             --certificate runtime-contract/cerebro-runtime-contract.json.pem \
@@ -325,8 +330,8 @@ jobs:
           }
 
           resolve_latest_stable_tag() {
-            env -u GH_TOKEN -u GITHUB_TOKEN gh release list --repo writer/cerebro --limit 100 --json tagName,isDraft,isPrerelease \
-              --jq '.[] | select(.isDraft == false and .isPrerelease == false and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tagName' \
+            curl -fsSL "https://api.github.com/repos/writer/cerebro/releases?per_page=100" \
+              | jq -r '.[] | select(.draft == false and .prerelease == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tag_name' \
               | sort -V \
               | tail -n 1
           }
