@@ -111,19 +111,19 @@ func (s *Source) readAPIFamily(ctx context.Context, st settings, cursor *cerebro
 	if nextCursor != "" {
 		opaque := encodeAPICursor(panopticonAPICursor{
 			Cursor:    nextCursor,
-			Watermark: watermarkString(watermark, cursorWatermark(panopticonCursor{Watermark: cursorState.Watermark})),
+			Watermark: watermarkString(watermark, parseAPIWatermark(cursorState.Watermark)),
 		})
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: opaque}
 		pull.Checkpoint = &cerebrov1.SourceCheckpoint{CursorOpaque: opaque}
 	} else if !watermark.IsZero() || cursor != nil {
 		opaque := encodeAPICursor(panopticonAPICursor{
 			Cursor:    cursorState.Cursor,
-			Watermark: watermarkString(watermark, cursorWatermark(panopticonCursor{Watermark: cursorState.Watermark})),
+			Watermark: watermarkString(watermark, parseAPIWatermark(cursorState.Watermark)),
 		})
 		pull.Checkpoint = &cerebrov1.SourceCheckpoint{CursorOpaque: opaque}
 	}
 	if pull.Checkpoint != nil {
-		if checkpointWatermark := cursorWatermark(panopticonCursor{Watermark: decodeAPICursor(&cerebrov1.SourceCursor{Opaque: pull.Checkpoint.CursorOpaque}).Watermark}); !checkpointWatermark.IsZero() {
+		if checkpointWatermark := parseAPIWatermark(decodeAPICursor(&cerebrov1.SourceCursor{Opaque: pull.Checkpoint.CursorOpaque}).Watermark); !checkpointWatermark.IsZero() {
 			pull.Checkpoint.Watermark = timestamppb.New(checkpointWatermark.UTC())
 		}
 	}
