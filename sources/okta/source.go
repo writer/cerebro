@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/oktaevent"
 )
 
 //go:embed catalog.yaml
@@ -95,17 +96,21 @@ type settings struct {
 }
 
 type auditRecord struct {
-	UUID           string           `json:"uuid"`
-	Published      time.Time        `json:"published"`
-	EventType      string           `json:"eventType"`
-	DisplayMessage string           `json:"displayMessage"`
-	Severity       string           `json:"severity"`
-	Actor          map[string]any   `json:"actor"`
-	Outcome        map[string]any   `json:"outcome"`
-	Client         map[string]any   `json:"client"`
-	Transaction    map[string]any   `json:"transaction"`
-	Target         []map[string]any `json:"target"`
-	raw            json.RawMessage
+	UUID                  string           `json:"uuid"`
+	Published             time.Time        `json:"published"`
+	EventType             string           `json:"eventType"`
+	DisplayMessage        string           `json:"displayMessage"`
+	Severity              string           `json:"severity"`
+	Actor                 map[string]any   `json:"actor"`
+	Outcome               map[string]any   `json:"outcome"`
+	Client                map[string]any   `json:"client"`
+	Request               map[string]any   `json:"request"`
+	SecurityContext       map[string]any   `json:"securityContext"`
+	AuthenticationContext map[string]any   `json:"authenticationContext"`
+	DebugContext          map[string]any   `json:"debugContext"`
+	Transaction           map[string]any   `json:"transaction"`
+	Target                []map[string]any `json:"target"`
+	raw                   json.RawMessage
 }
 
 type userRecord struct {
@@ -169,6 +174,8 @@ type appAssignmentRecord struct {
 	LastUpdated *time.Time     `json:"lastUpdated"`
 	Credentials map[string]any `json:"credentials"`
 	Profile     map[string]any `json:"profile"`
+	AppID       string         `json:"-"`
+	SubjectType string         `json:"-"`
 	raw         json.RawMessage
 }
 
@@ -184,20 +191,24 @@ type adminRoleRecord struct {
 }
 
 type auditPayload struct {
-	UUID           string            `json:"uuid"`
-	Domain         string            `json:"domain"`
-	Published      time.Time         `json:"published"`
-	EventType      string            `json:"event_type"`
-	DisplayMessage string            `json:"display_message,omitempty"`
-	Severity       string            `json:"severity,omitempty"`
-	Actor          identityPayload   `json:"actor,omitempty"`
-	Outcome        outcomePayload    `json:"outcome,omitempty"`
-	Client         clientPayload     `json:"client,omitempty"`
-	Transaction    eventPayload      `json:"transaction,omitempty"`
-	Targets        []identityPayload `json:"targets,omitempty"`
-	ResourceID     string            `json:"resource_id,omitempty"`
-	ResourceType   string            `json:"resource_type,omitempty"`
-	Raw            map[string]any    `json:"raw,omitempty"`
+	UUID                  string            `json:"uuid"`
+	Domain                string            `json:"domain"`
+	Published             time.Time         `json:"published"`
+	EventType             string            `json:"event_type"`
+	DisplayMessage        string            `json:"display_message,omitempty"`
+	Severity              string            `json:"severity,omitempty"`
+	Actor                 identityPayload   `json:"actor,omitempty"`
+	Outcome               outcomePayload    `json:"outcome,omitempty"`
+	Client                clientPayload     `json:"client,omitempty"`
+	Transaction           eventPayload      `json:"transaction,omitempty"`
+	Targets               []identityPayload `json:"targets,omitempty"`
+	ResourceID            string            `json:"resource_id,omitempty"`
+	ResourceType          string            `json:"resource_type,omitempty"`
+	AuthenticationContext map[string]any    `json:"authentication_context,omitempty"`
+	SecurityContext       map[string]any    `json:"security_context,omitempty"`
+	DebugData             map[string]any    `json:"debug_data,omitempty"`
+	Request               map[string]any    `json:"request,omitempty"`
+	Raw                   map[string]any    `json:"raw,omitempty"`
 }
 
 type userPayload struct {
@@ -244,12 +255,7 @@ type userEmploymentPayload struct {
 	UserType       string `json:"user_type,omitempty"`
 }
 
-type identityPayload struct {
-	ID          string `json:"id,omitempty"`
-	Type        string `json:"type,omitempty"`
-	AlternateID string `json:"alternate_id,omitempty"`
-	DisplayName string `json:"display_name,omitempty"`
-}
+type identityPayload = oktaevent.Identity
 
 type outcomePayload struct {
 	Result string `json:"result,omitempty"`
@@ -892,11 +898,52 @@ func (s *Source) listApplications(ctx context.Context, settings settings, after 
 }
 
 func (s *Source) listAppAssignments(ctx context.Context, settings settings, after string, limit int) ([]appAssignmentRecord, string, error) {
+	phase, cursor := oktaAssignmentCursor(after)
+	if phase == "groups" {
+		return s.listAppGroupAssignments(ctx, settings, cursor, limit)
+	}
+
+	users, next, err := s.listAppUserAssignments(ctx, settings, cursor, limit)
+	if err != nil || next != "" || len(users) >= limit {
+		if next != "" {
+			next = "users:" + next
+		} else if len(users) >= limit {
+			next = "groups:"
+		}
+		return users, next, err
+	}
+
+	groups, groupNext, err := s.listAppGroupAssignments(ctx, settings, "", limit-len(users))
+	if err != nil {
+		return nil, "", err
+	}
+	records := append(users, groups...)
+	if groupNext != "" {
+		groupNext = "groups:" + groupNext
+	}
+	return records, groupNext, nil
+}
+
+func (s *Source) listAppUserAssignments(ctx context.Context, settings settings, after string, limit int) ([]appAssignmentRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
 	addQuery(query, "after", after)
 
-	return listJSONRecords(ctx, s, settings, "/api/v1/apps/"+url.PathEscape(settings.appID)+"/users", query, "okta app assignment", func(record *appAssignmentRecord, raw json.RawMessage) {
+	return listJSONRecords(ctx, s, settings, "/api/v1/apps/"+url.PathEscape(settings.appID)+"/users", query, "okta app user assignment", func(record *appAssignmentRecord, raw json.RawMessage) {
+		record.AppID = settings.appID
+		record.SubjectType = "user"
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func (s *Source) listAppGroupAssignments(ctx context.Context, settings settings, after string, limit int) ([]appAssignmentRecord, string, error) {
+	query := url.Values{}
+	query.Set("limit", strconv.Itoa(limit))
+	addQuery(query, "after", after)
+
+	return listJSONRecords(ctx, s, settings, "/api/v1/apps/"+url.PathEscape(settings.appID)+"/groups", query, "okta app group assignment", func(record *appAssignmentRecord, raw json.RawMessage) {
+		record.AppID = settings.appID
+		record.SubjectType = "group"
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 }
@@ -1065,10 +1112,14 @@ func auditEvent(settings settings, record auditRecord) (*primitives.Event, error
 			ID:   stringMap(record.Transaction, "id"),
 			Type: stringMap(record.Transaction, "type"),
 		},
-		Targets:      targets,
-		ResourceID:   resourceID,
-		ResourceType: resourceType,
-		Raw:          raw,
+		Targets:               targets,
+		ResourceID:            resourceID,
+		ResourceType:          resourceType,
+		AuthenticationContext: record.AuthenticationContext,
+		SecurityContext:       record.SecurityContext,
+		DebugData:             nestedMap(record.DebugContext, "debugData"),
+		Request:               record.Request,
+		Raw:                   raw,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal okta audit payload: %w", err)
@@ -1220,21 +1271,24 @@ func appAssignmentEvent(settings settings, record appAssignmentRecord) (*primiti
 	if err != nil {
 		return nil, err
 	}
+	appID := firstNonEmpty(record.AppID, settings.appID)
+	subjectType := firstNonEmpty(record.SubjectType, "user")
 	payload, err := json.Marshal(map[string]any{
-		"domain":      settings.domain,
-		"app_id":      settings.appID,
-		"subject_id":  record.ID,
-		"status":      record.Status,
-		"scope":       record.Scope,
-		"credentials": record.Credentials,
-		"profile":     record.Profile,
-		"raw":         raw,
+		"domain":       settings.domain,
+		"app_id":       appID,
+		"subject_id":   record.ID,
+		"subject_type": subjectType,
+		"status":       record.Status,
+		"scope":        record.Scope,
+		"credentials":  record.Credentials,
+		"profile":      record.Profile,
+		"raw":          raw,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal okta app assignment payload: %w", err)
 	}
 	return &primitives.Event{
-		Id:         fmt.Sprintf("okta-app-assignment-%s-%s-%d", settings.appID, record.ID, occurredAt.UnixMilli()),
+		Id:         fmt.Sprintf("okta-app-assignment-%s-%s-%s-%d", appID, subjectType, record.ID, occurredAt.UnixMilli()),
 		TenantId:   settings.domain,
 		SourceId:   "okta",
 		Kind:       "okta.app_assignment",
@@ -1318,14 +1372,28 @@ func auditAttributes(settings settings, record auditRecord, actor identityPayloa
 	addAttribute(attributes, "actor_id", actor.ID)
 	addAttribute(attributes, "actor_type", actor.Type)
 	addAttribute(attributes, "actor_alternate_id", actor.AlternateID)
+	addAttribute(attributes, "actor_email", actor.AlternateID)
 	addAttribute(attributes, "actor_display_name", actor.DisplayName)
 	addAttribute(attributes, "client_ip", stringMap(record.Client, "ipAddress"))
 	addAttribute(attributes, "client_user_agent", stringMap(nestedMap(record.Client, "userAgent"), "rawUserAgent"))
 	addAttribute(attributes, "client_zone", stringMap(record.Client, "zone"))
+	addAttribute(attributes, "client_device", stringMap(record.Client, "device"))
+	addAttribute(attributes, "client_city", stringMap(nestedMap(record.Client, "geographicalContext"), "city"))
+	addAttribute(attributes, "client_state", stringMap(nestedMap(record.Client, "geographicalContext"), "state"))
+	addAttribute(attributes, "client_country", stringMap(nestedMap(record.Client, "geographicalContext"), "country"))
 	addAttribute(attributes, "outcome_reason", stringMap(record.Outcome, "reason"))
 	addAttribute(attributes, "outcome_result", stringMap(record.Outcome, "result"))
 	addAttribute(attributes, "severity", record.Severity)
 	addAttribute(attributes, "transaction_id", stringMap(record.Transaction, "id"))
+	oktaevent.AddSystemLogAttributes(attributes, oktaevent.SystemLogContext{
+		Client:                record.Client,
+		Request:               record.Request,
+		SecurityContext:       record.SecurityContext,
+		AuthenticationContext: record.AuthenticationContext,
+		DebugContext:          record.DebugContext,
+		Transaction:           record.Transaction,
+	})
+	oktaevent.AddTargetAttributes(attributes, targets)
 	if len(targets) != 0 {
 		target := targets[0]
 		addAttribute(attributes, "target_id", target.ID)
@@ -1333,10 +1401,10 @@ func auditAttributes(settings settings, record auditRecord, actor identityPayloa
 		addAttribute(attributes, "target_alternate_id", target.AlternateID)
 		addAttribute(attributes, "target_display_name", target.DisplayName)
 	}
-	if category := oktaOAuthEventCategory(record.EventType); category != "" {
+	if category := oktaevent.OAuthEventCategory(record.EventType); category != "" {
 		attributes["oauth_event_category"] = category
-		addAttribute(attributes, "grant_type", oktaOAuthGrantType(record.EventType))
-		if client := oktaOAuthClientIdentity(actor, targets); client != (identityPayload{}) {
+		addAttribute(attributes, "grant_type", oktaevent.OAuthGrantType(record.EventType))
+		if client := oktaevent.OAuthClientIdentity(actor, targets); client != (identityPayload{}) {
 			addAttribute(attributes, "oauth_client_id", client.ID)
 			addAttribute(attributes, "oauth_client_type", client.Type)
 			addAttribute(attributes, "oauth_client_label", firstNonEmpty(client.DisplayName, client.AlternateID, client.ID))
@@ -1480,18 +1548,24 @@ func oktaOAuthWildcardRedirect(oauthClient map[string]any) bool {
 
 func appAssignmentAttributes(settings settings, record appAssignmentRecord) map[string]string {
 	subjectEmail := assignmentEmail(record)
+	subjectType := firstNonEmpty(record.SubjectType, "user")
+	appID := firstNonEmpty(record.AppID, settings.appID)
 	attributes := map[string]string{
 		"domain":         settings.domain,
 		"family":         familyAppAssign,
-		"app_id":         settings.appID,
+		"app_id":         appID,
 		"subject_id":     record.ID,
-		"subject_type":   "user",
-		"principal_type": "user",
+		"subject_type":   subjectType,
+		"principal_type": subjectType,
 		"status":         record.Status,
 	}
 	addAttribute(attributes, "subject_email", subjectEmail)
 	addAttribute(attributes, "email", subjectEmail)
-	addAttribute(attributes, "subject_name", firstNonEmpty(stringMap(record.Profile, "displayName"), stringMap(record.Profile, "name"), subjectEmail))
+	addAttribute(attributes, "subject_name", firstNonEmpty(stringMap(record.Profile, "displayName"), stringMap(record.Profile, "name"), subjectEmail, record.ID))
+	if subjectType == "group" {
+		addAttribute(attributes, "group_id", record.ID)
+		addAttribute(attributes, "group_name", firstNonEmpty(stringMap(record.Profile, "name"), stringMap(record.Profile, "displayName")))
+	}
 	addAttribute(attributes, "scope", record.Scope)
 	return attributes
 }
@@ -1517,98 +1591,6 @@ func adminRoleAttributes(settings settings, record adminRoleRecord) map[string]s
 	addAttribute(attributes, "status", record.Status)
 	addAttribute(attributes, "assignment_type", record.AssignmentType)
 	return attributes
-}
-
-func oktaOAuthEventCategory(eventType string) string {
-	action := strings.ToLower(strings.TrimSpace(eventType))
-	if routineOktaIdentityAssignmentAction(action) {
-		return ""
-	}
-	switch action {
-	case "app.oauth2.authorize.code", "app.oauth2.as.authorize.code":
-		return "runtime_grant"
-	}
-	if strings.HasPrefix(action, "app.oauth2.token.grant.") ||
-		strings.HasPrefix(action, "app.oauth2.as.token.grant.") {
-		return "runtime_grant"
-	}
-	if containsAny(action, "api_token", "client_secret", "client.secret", "domain_wide", "domain-wide") &&
-		containsAny(action, "create", "authorize", "grant", "add", "rotate", "generate") {
-		return "credential_change"
-	}
-	if containsAny(action, "oauth", "api_client", "client_access", "application") &&
-		containsAny(action, "create", "add") {
-		return "credential_change"
-	}
-	return ""
-}
-
-func routineOktaIdentityAssignmentAction(action string) bool {
-	switch action {
-	case "application.user_membership.add",
-		"application.user_membership.remove",
-		"application.user_membership.update",
-		"application.group_membership.add",
-		"application.group_membership.remove",
-		"application.group_membership.update",
-		"group.application_assignment.add",
-		"group.application_assignment.remove",
-		"group.application_assignment.update",
-		"group.user_membership.add",
-		"group.user_membership.remove",
-		"group.user_membership.update",
-		"application.provision.group_push.mapping.created",
-		"application.provision.group_push.mapping.deleted",
-		"application.provision.group_push.mapping.updated":
-		return true
-	}
-	return strings.Contains(action, "user_membership") ||
-		strings.Contains(action, "group_membership") ||
-		strings.Contains(action, "application_assignment") ||
-		strings.Contains(action, "group_push.mapping")
-}
-
-func oktaOAuthGrantType(eventType string) string {
-	action := strings.ToLower(strings.TrimSpace(eventType))
-	switch {
-	case strings.Contains(action, "authorize.code"):
-		return "authorization_code"
-	case strings.HasSuffix(action, ".access_token"):
-		return "access_token"
-	case strings.HasSuffix(action, ".refresh_token"):
-		return "refresh_token"
-	case strings.HasSuffix(action, ".id_token"):
-		return "id_token"
-	default:
-		return ""
-	}
-}
-
-func oktaOAuthClientIdentity(actor identityPayload, targets []identityPayload) identityPayload {
-	if oktaOAuthClientLike(actor) {
-		return actor
-	}
-	for _, target := range targets {
-		if oktaOAuthClientLike(target) {
-			return target
-		}
-	}
-	return identityPayload{}
-}
-
-func oktaOAuthClientLike(identity identityPayload) bool {
-	id := strings.TrimSpace(identity.ID)
-	kind := strings.ToLower(strings.TrimSpace(identity.Type))
-	return id != "" && (strings.Contains(kind, "clientapp") || strings.Contains(kind, "application") || strings.HasSuffix(kind, "app") || strings.HasPrefix(id, "0oa"))
-}
-
-func containsAny(value string, needles ...string) bool {
-	for _, needle := range needles {
-		if strings.Contains(value, needle) {
-			return true
-		}
-	}
-	return false
 }
 
 func userTimestamps(record userRecord) *userTimestampsPayload {
@@ -1760,6 +1742,17 @@ func assignmentEmail(record appAssignmentRecord) string {
 		stringMap(record.Profile, "userName"),
 		stringMap(record.Credentials, "userName"),
 	)
+}
+
+func oktaAssignmentCursor(raw string) (string, string) {
+	value := strings.TrimSpace(raw)
+	if phase, cursor, ok := strings.Cut(value, ":"); ok {
+		switch strings.TrimSpace(phase) {
+		case "users", "groups":
+			return strings.TrimSpace(phase), strings.TrimSpace(cursor)
+		}
+	}
+	return "users", value
 }
 
 func decodeRawPayload(raw json.RawMessage, label string) (map[string]any, error) {
