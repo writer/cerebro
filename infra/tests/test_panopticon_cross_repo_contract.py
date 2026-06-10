@@ -35,47 +35,23 @@ class PanopticonCrossRepoContractTest(unittest.TestCase):
     def _ops_repo(self) -> Path:
         return Path(__file__).resolve().parents[2]
 
-    def test_ops_config_matches_panopticon_export_outputs(self) -> None:
-        panopticon_repo = self._panopticon_repo()
-        export_constants = self._python_constants(
-            panopticon_repo / "infra" / "aws" / "cerebro_export.py",
-            {"EXPORT_PREFIX", "EXPORT_FAMILY_PREFIXES"},
-        )
-
-        self.assertEqual(export_constants["EXPORT_PREFIX"], "exports/")
-        self.assertEqual(
-            validator.PANOPTICON_FAMILY_PREFIXES,
-            {
-                "alert": export_constants["EXPORT_FAMILY_PREFIXES"]["alerts"],
-                "case": export_constants["EXPORT_FAMILY_PREFIXES"]["cases"],
-                "ioc": export_constants["EXPORT_FAMILY_PREFIXES"]["iocs"],
-            },
-        )
-
-        for ops_stack, panopticon_stack, env_name in (
-            ("Pulumi.sec-dev.yaml", "Pulumi.dev.yaml", "dev"),
-            ("Pulumi.go-prod.yaml", "Pulumi.prod.yaml", "prod"),
-        ):
+    def test_ops_config_uses_panopticon_api_mode(self) -> None:
+        for ops_stack in ("Pulumi.sec-dev.yaml", "Pulumi.go-prod.yaml"):
             with self.subTest(stack=ops_stack):
-                panopticon_config = self._pulumi_config(panopticon_repo / "infra" / panopticon_stack, "panopticon:")
-                account_id = self._account_id_from_admin_role(panopticon_config["eksAdminRoleArns"][0])
-                expected_bucket = f"panopticon-{env_name}-{account_id}-cerebro-export"
-                expected_role = f"arn:aws:iam::{account_id}:role/panopticon-{env_name}-cerebro-export-reader"
-
                 ops_config = self._pulumi_config(self._ops_repo() / "infra" / "aws" / ops_stack, "cerebro:")
                 panopticon_s3 = [source for source in ops_config["s3Sources"] if source.get("name") == "panopticon"]
-                self.assertEqual(len(panopticon_s3), 1)
-                self.assertEqual(panopticon_s3[0]["bucket"], expected_bucket)
-                self.assertEqual(panopticon_s3[0]["bucketArn"], f"arn:aws:s3:::{expected_bucket}")
-                self.assertEqual(panopticon_s3[0]["roleArn"], expected_role)
-                self.assertEqual(sorted(panopticon_s3[0]["prefixes"]), sorted(validator.PANOPTICON_FAMILY_PREFIXES.values()))
+                self.assertEqual(panopticon_s3, [])
 
                 runtimes = {runtime["id"]: runtime for runtime in ops_config["sourceRuntimes"]}
                 for runtime_id, family in validator.PANOPTICON_RUNTIME_FAMILIES.items():
                     runtime_config = runtimes[runtime_id]["config"]
-                    self.assertEqual(runtime_config["bucket"], expected_bucket)
-                    self.assertEqual(runtime_config["role_arn"], expected_role)
-                    self.assertEqual(runtime_config["prefix"], validator.PANOPTICON_FAMILY_PREFIXES[family])
+                    self.assertEqual(runtime_config["mode"], "api")
+                    self.assertEqual(runtime_config["family"], family)
+                    self.assertEqual(runtime_config["base_url"], "env:CEREBRO_SOURCE_PANOPTICON_BASE_URL")
+                    self.assertEqual(runtime_config["private_endpoint_allowlist"], "env:CEREBRO_SOURCE_PANOPTICON_PRIVATE_ENDPOINT_ALLOWLIST")
+                    self.assertEqual(runtime_config["runtime_id"], runtime_id)
+                    self.assertEqual(runtime_config["tenant_id"], "writer")
+                    self.assertEqual(runtime_config["token"], "env:CEREBRO_SOURCE_PANOPTICON_TOKEN")
 
     def test_unsupported_claims_ndjson_paths_are_absent_across_repos(self) -> None:
         repos = {

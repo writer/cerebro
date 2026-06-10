@@ -135,33 +135,21 @@ PANOPTICON_RUNTIME_FAMILIES = {
     "writer-panopticon-cases": "case",
     "writer-panopticon-iocs": "ioc",
 }
-PANOPTICON_FAMILY_PREFIXES = {
-    "alert": "exports/alerts/",
-    "case": "exports/cases/",
-    "ioc": "exports/iocs/",
-}
-PANOPTICON_STACKS = {
-    "sec-dev": {
-        "bucket": "panopticon-dev-944130631940-cerebro-export",
-        "bucketArn": "arn:aws:s3:::panopticon-dev-944130631940-cerebro-export",
-        "region": "us-east-1",
-        "roleArn": "arn:aws:iam::944130631940:role/panopticon-dev-cerebro-export-reader",
-    },
-    "go-prod": {
-        "bucket": "panopticon-prod-837279440628-cerebro-export",
-        "bucketArn": "arn:aws:s3:::panopticon-prod-837279440628-cerebro-export",
-        "region": "us-east-1",
-        "roleArn": "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
-    },
+PANOPTICON_STACKS = {"sec-dev", "go-prod"}
+PANOPTICON_SOURCE_SECRET_KEYS = {
+    "base_url": "env:CEREBRO_SOURCE_PANOPTICON_BASE_URL",
+    "private_endpoint_allowlist": "env:CEREBRO_SOURCE_PANOPTICON_PRIVATE_ENDPOINT_ALLOWLIST",
+    "token": "env:CEREBRO_SOURCE_PANOPTICON_TOKEN",
 }
 PANOPTICON_RUNTIME_CONFIG_KEYS = {
-    "bucket",
+    "base_url",
     "family",
+    "mode",
     "page_size",
-    "prefix",
-    "region",
-    "role_arn",
+    "private_endpoint_allowlist",
+    "runtime_id",
     "tenant_id",
+    "token",
 }
 PANOPTICON_FORBIDDEN_CONFIG_RE = re.compile(
     r"(evidence_?bytes|evidence_?content|file_?contents?|payload_?bytes|plaintext|secret|token|password|private_?key)",
@@ -866,13 +854,12 @@ def _validate_panopticon_wiring(
     schedules: list[Any],
     findings: list[Finding],
 ) -> None:
-    expected = PANOPTICON_STACKS.get(stack)
-    if expected is None:
+    if stack not in PANOPTICON_STACKS:
         return
 
     s3_sources = config.get("s3Sources") or []
     if not isinstance(s3_sources, list):
-        findings.append(_finding("error", stack, "cerebro:s3Sources", "Panopticon wiring requires s3Sources to be a list"))
+        findings.append(_finding("error", stack, "cerebro:s3Sources", "s3Sources must be a list"))
         s3_sources = []
 
     panopticon_sources = [
@@ -880,47 +867,15 @@ def _validate_panopticon_wiring(
         for index, source in enumerate(s3_sources)
         if isinstance(source, dict) and str(source.get("name", "")).strip() == "panopticon"
     ]
-    if len(panopticon_sources) != 1:
+    if panopticon_sources:
         findings.append(
             _finding(
                 "error",
                 stack,
-                "cerebro:s3Sources",
-                f"Panopticon must declare exactly one s3Sources entry named 'panopticon' for {stack}",
+                f"cerebro:s3Sources[{panopticon_sources[0][0]}]",
+                "Panopticon API mode must not declare an s3Sources entry named 'panopticon'",
             )
         )
-        panopticon_source = None
-        source_path = "cerebro:s3Sources"
-    else:
-        source_index, panopticon_source = panopticon_sources[0]
-        source_path = f"cerebro:s3Sources[{source_index}]"
-
-    expected_prefixes = sorted(PANOPTICON_FAMILY_PREFIXES.values())
-    if panopticon_source is not None:
-        for key in ("bucket", "bucketArn", "region", "roleArn"):
-            actual = str(panopticon_source.get(key, "")).strip()
-            if actual != expected[key]:
-                findings.append(
-                    _finding(
-                        "error",
-                        stack,
-                        f"{source_path}.{key}",
-                        f"Panopticon {key} must be {expected[key]!r} for {stack}",
-                    )
-                )
-        prefixes = panopticon_source.get("prefixes") or []
-        normalized_prefixes = sorted(_normalize_s3_prefix(prefix) for prefix in prefixes) if isinstance(prefixes, list) else []
-        if normalized_prefixes != expected_prefixes:
-            findings.append(
-                _finding(
-                    "error",
-                    stack,
-                    f"{source_path}.prefixes",
-                    f"Panopticon prefixes must be exactly {expected_prefixes!r}",
-                )
-            )
-        if any(prefix in ("", "/") or "*" in prefix for prefix in normalized_prefixes):
-            findings.append(_finding("error", stack, f"{source_path}.prefixes", "Panopticon prefixes must be exact family prefixes"))
 
     runtimes_by_id = {
         str(runtime.get("id", "")).strip(): (index, runtime)
@@ -963,8 +918,20 @@ def _validate_panopticon_wiring(
                 )
             )
         for key, value in runtime_config.items():
+            if key in PANOPTICON_SOURCE_SECRET_KEYS:
+                expected_ref = PANOPTICON_SOURCE_SECRET_KEYS[key]
+                if str(value or "").strip() != expected_ref:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{runtime_path}.config.{key}",
+                            f"Panopticon API runtime {key} must be {expected_ref!r}",
+                        )
+                    )
+                continue
             if PANOPTICON_FORBIDDEN_CONFIG_RE.search(str(key)) or (
-                isinstance(value, str) and PANOPTICON_FORBIDDEN_CONFIG_RE.search(value) and not value.startswith("arn:")
+                isinstance(value, str) and PANOPTICON_FORBIDDEN_CONFIG_RE.search(value)
             ):
                 findings.append(
                     _finding(
@@ -980,34 +947,30 @@ def _validate_panopticon_wiring(
                         "error",
                         stack,
                         f"{runtime_path}.config.{key}",
-                        "Panopticon S3 runtime config must use non-secret stack values, not Infisical env references",
+                        "Panopticon API runtime config must only use env references for base_url, private_endpoint_allowlist, and token",
                     )
                 )
 
         expected_runtime_config = {
-            "bucket": expected["bucket"],
+            "base_url": PANOPTICON_SOURCE_SECRET_KEYS["base_url"],
             "family": family,
+            "mode": "api",
             "page_size": "100",
-            "prefix": PANOPTICON_FAMILY_PREFIXES[family],
-            "region": expected["region"],
-            "role_arn": expected["roleArn"],
+            "private_endpoint_allowlist": PANOPTICON_SOURCE_SECRET_KEYS["private_endpoint_allowlist"],
+            "runtime_id": runtime_id,
             "tenant_id": "writer",
+            "token": PANOPTICON_SOURCE_SECRET_KEYS["token"],
         }
         for key, expected_value in expected_runtime_config.items():
-            actual = runtime_config.get(key)
-            if key == "prefix":
-                actual_text = _normalize_s3_prefix(actual)
-                expected_text = expected_value
-            else:
-                actual_text = str(actual or "").strip()
-                expected_text = expected_value
+            actual_text = str(runtime_config.get(key) or "").strip()
+            expected_text = expected_value
             if actual_text != expected_text:
                 findings.append(
                     _finding(
                         "error",
                         stack,
                         f"{runtime_path}.config.{key}",
-                        f"Panopticon {family} runtime {key} must be {expected_text!r}",
+                        f"Panopticon {family} API runtime {key} must be {expected_text!r}",
                     )
                 )
 

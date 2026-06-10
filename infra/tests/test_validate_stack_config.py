@@ -118,6 +118,9 @@ config:
   cerebro:sourceSecretKeys:
 {COSMO_SECRET_KEYS.rstrip()}
     - {API_TOKEN_KEY}
+    - CEREBRO_SOURCE_PANOPTICON_BASE_URL
+    - CEREBRO_SOURCE_PANOPTICON_PRIVATE_ENDPOINT_ALLOWLIST
+    - CEREBRO_SOURCE_PANOPTICON_TOKEN
   cerebro:sourceRuntimeObservability:
     - environment: go-production
       sourceSystem: evidence_cas
@@ -217,16 +220,7 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-panopticon-iocs
-  cerebro:s3Sources:
-    - name: panopticon
-      bucket: panopticon-prod-837279440628-cerebro-export
-      bucketArn: arn:aws:s3:::panopticon-prod-837279440628-cerebro-export
-      region: us-east-1
-      roleArn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
-      prefixes:
-        - "exports/alerts/"
-        - "exports/cases/"
-        - "exports/iocs/"
+  cerebro:s3Sources: []
   cerebro:sourceRuntimes:
 {COSMO_RUNTIMES.rstrip()}
     - id: writer-okta-audit
@@ -238,35 +232,38 @@ config:
       sourceId: panopticon
       tenantId: writer
       config:
-        bucket: panopticon-prod-837279440628-cerebro-export
+        base_url: env:CEREBRO_SOURCE_PANOPTICON_BASE_URL
         family: alert
+        mode: api
         page_size: "100"
-        prefix: exports/alerts/
-        region: us-east-1
-        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        private_endpoint_allowlist: env:CEREBRO_SOURCE_PANOPTICON_PRIVATE_ENDPOINT_ALLOWLIST
+        runtime_id: writer-panopticon-alerts
         tenant_id: writer
+        token: env:CEREBRO_SOURCE_PANOPTICON_TOKEN
     - id: writer-panopticon-cases
       sourceId: panopticon
       tenantId: writer
       config:
-        bucket: panopticon-prod-837279440628-cerebro-export
+        base_url: env:CEREBRO_SOURCE_PANOPTICON_BASE_URL
         family: case
+        mode: api
         page_size: "100"
-        prefix: exports/cases/
-        region: us-east-1
-        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        private_endpoint_allowlist: env:CEREBRO_SOURCE_PANOPTICON_PRIVATE_ENDPOINT_ALLOWLIST
+        runtime_id: writer-panopticon-cases
         tenant_id: writer
+        token: env:CEREBRO_SOURCE_PANOPTICON_TOKEN
     - id: writer-panopticon-iocs
       sourceId: panopticon
       tenantId: writer
       config:
-        bucket: panopticon-prod-837279440628-cerebro-export
+        base_url: env:CEREBRO_SOURCE_PANOPTICON_BASE_URL
         family: ioc
+        mode: api
         page_size: "100"
-        prefix: exports/iocs/
-        region: us-east-1
-        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader
+        private_endpoint_allowlist: env:CEREBRO_SOURCE_PANOPTICON_PRIVATE_ENDPOINT_ALLOWLIST
+        runtime_id: writer-panopticon-iocs
         tenant_id: writer
+        token: env:CEREBRO_SOURCE_PANOPTICON_TOKEN
 """
 
 
@@ -360,16 +357,21 @@ class ValidateStackConfigTest(unittest.TestCase):
                 content = self._repo_stack_content(stack_file)
                 self.assertEqual(self._panopticon_error_messages(content, stack_file), [])
 
-    def test_panopticon_missing_s3_source_is_error(self) -> None:
+    def test_panopticon_s3_source_is_error(self) -> None:
         content = self._repo_stack_content("Pulumi.sec-dev.yaml").replace(
-            "    - name: panopticon\n      bucket: panopticon-dev-944130631940-cerebro-export\n",
-            "    - name: panopticon-disabled\n      bucket: panopticon-dev-944130631940-cerebro-export\n",
+            "  cerebro:s3Sources:\n",
+            "  cerebro:s3Sources:\n"
+            "    - name: panopticon\n"
+            "      bucket: panopticon-dev-944130631940-cerebro-export\n"
+            "      region: us-east-1\n"
+            "      prefixes:\n"
+            "        - exports/alerts/\n",
             1,
         )
 
         messages = self._panopticon_error_messages(content, "Pulumi.sec-dev.yaml")
 
-        self.assertTrue(any("exactly one s3Sources entry named 'panopticon'" in message for message in messages))
+        self.assertTrue(any("must not declare an s3Sources entry named 'panopticon'" in message for message in messages))
 
     def test_panopticon_source_runtime_is_required(self) -> None:
         content = self._repo_stack_content("Pulumi.go-prod.yaml").replace(
@@ -382,31 +384,27 @@ class ValidateStackConfigTest(unittest.TestCase):
 
         self.assertIn("required Panopticon runtime 'writer-panopticon-alerts' is missing", messages)
 
-    def test_panopticon_env_account_isolation_is_exact(self) -> None:
-        content = (
-            self._repo_stack_content("Pulumi.sec-dev.yaml")
-            .replace("panopticon-dev-944130631940-cerebro-export", "panopticon-prod-837279440628-cerebro-export")
-            .replace(
-                "arn:aws:iam::944130631940:role/panopticon-dev-cerebro-export-reader",
-                "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
-            )
-        )
-
-        messages = self._panopticon_error_messages(content, "Pulumi.sec-dev.yaml")
-
-        self.assertTrue(any("Panopticon bucket must be 'panopticon-dev-944130631940-cerebro-export'" in message for message in messages))
-        self.assertTrue(any("Panopticon roleArn must be 'arn:aws:iam::944130631940:role/panopticon-dev-cerebro-export-reader'" in message for message in messages))
-
-    def test_panopticon_runtime_prefix_must_match_family(self) -> None:
+    def test_panopticon_api_env_refs_are_exact(self) -> None:
         content = self._repo_stack_content("Pulumi.sec-dev.yaml").replace(
-            "        prefix: exports/alerts/\n",
-            "        prefix: exports/cases/\n",
+            "        base_url: env:CEREBRO_SOURCE_PANOPTICON_BASE_URL\n",
+            "        base_url: https://panopticon.example.com\n",
             1,
         )
 
         messages = self._panopticon_error_messages(content, "Pulumi.sec-dev.yaml")
 
-        self.assertTrue(any("Panopticon alert runtime prefix must be 'exports/alerts/'" in message for message in messages))
+        self.assertTrue(any("base_url must be 'env:CEREBRO_SOURCE_PANOPTICON_BASE_URL'" in message for message in messages))
+
+    def test_panopticon_runtime_family_must_match_id(self) -> None:
+        content = self._repo_stack_content("Pulumi.sec-dev.yaml").replace(
+            "        family: alert\n",
+            "        family: case\n",
+            1,
+        )
+
+        messages = self._panopticon_error_messages(content, "Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any("Panopticon alert API runtime family must be 'alert'" in message for message in messages))
 
     def test_panopticon_schedule_task_count_must_be_one(self) -> None:
         content = self._repo_stack_content("Pulumi.go-prod.yaml").replace(
@@ -438,8 +436,8 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_panopticon_rejects_secrets_and_evidence_bytes_in_runtime_config(self) -> None:
         content = self._repo_stack_content("Pulumi.sec-dev.yaml").replace(
-            "        tenant_id: writer\n    - id: writer-panopticon-cases\n",
-            "        tenant_id: writer\n        evidence_bytes: inline-forbidden\n    - id: writer-panopticon-cases\n",
+            "        tenant_id: writer\n        token: env:CEREBRO_SOURCE_PANOPTICON_TOKEN\n    - id: writer-panopticon-cases\n",
+            "        tenant_id: writer\n        evidence_bytes: inline-forbidden\n        token: env:CEREBRO_SOURCE_PANOPTICON_TOKEN\n    - id: writer-panopticon-cases\n",
             1,
         )
 
@@ -500,9 +498,28 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
 
     def test_s3_source_child_prefix_requires_configured_role(self) -> None:
-        content = BASE_STACK.replace("        prefix: exports/alerts/", "        prefix: exports/alerts/daily/", 1).replace(
-            "        role_arn: arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
-            "        role_arn: arn:aws:iam::837279440628:role/other-reader",
+        content = BASE_STACK.replace(
+            "  cerebro:s3Sources: []",
+            """  cerebro:s3Sources:
+    - name: objectlogs
+      bucket: writer-object-logs
+      region: us-east-1
+      roleArn: arn:aws:iam::837279440628:role/objectlogs-reader
+      prefixes:
+        - logs/""",
+            1,
+        ).replace(
+            "  cerebro:sourceRuntimes:\n",
+            """  cerebro:sourceRuntimes:
+    - id: writer-objectlogs
+      sourceId: s3ndjson
+      tenantId: writer
+      config:
+        bucket: writer-object-logs
+        prefix: logs/daily/
+        role_arn: arn:aws:iam::837279440628:role/other-reader
+        tenant_id: writer
+""",
             1,
         )
 
