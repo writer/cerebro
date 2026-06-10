@@ -393,7 +393,7 @@ jobs:
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only --exclude-source-id panopticon
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
 
       - name: Pulumi Up (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
@@ -544,25 +544,7 @@ jobs:
         if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         shell: bash
         working-directory: infra
-        env:
-          GO_PROD_PANOPTICON_READINESS_ONLY: "true"
-        run: |
-          set -euo pipefail
-          if [ "${GO_PROD_PANOPTICON_READINESS_ONLY}" = "true" ]; then
-            echo "go-prod Panopticon observability validation is dry-run/readiness-only; reporting prod export reader scan-role trust as not_configured/dry_run for this readiness gate."
-            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-              {
-                echo "## go-prod Panopticon readiness"
-                echo ""
-                echo "State: **not_configured/dry_run**"
-                echo ""
-                echo "Prod export reader scan-role trust is not required for dry-run/readiness-only validation. Live go-prod validation remains blocked by the full scan-role trust check."
-              } >> "${GITHUB_STEP_SUMMARY}"
-            fi
-            uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only --exclude-source-id panopticon
-          else
-            uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only
-          fi
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only
 
       - name: Verify AWS secret imports (go-prod)
         if: needs.changes.outputs.aws_go_prod_deploy == 'true'
@@ -624,7 +606,7 @@ jobs:
         run: |
           args=()
           if [ "${{ needs.changes.outputs.aws_go_prod_runtime_verify }}" = "true" ]; then
-            args+=(--source-runtime-verify --source-runtime-dry-run --source-runtime-observability-targets --source-runtime-allow-missing-targets --source-id panopticon --source-target-concurrency 2)
+            args+=(--source-runtime-verify --source-runtime-observability-targets --source-id panopticon --source-target-concurrency 2)
           fi
           if [ "${{ needs.changes.outputs.aws_go_prod_graph_health }}" = "true" ]; then
             args+=(--graph-health --graph-health-output graph-health-go-prod.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-go-prod --github-output "$GITHUB_OUTPUT")
@@ -898,25 +880,8 @@ jobs:
         shell: bash
         working-directory: infra
         env:
-          GO_PROD_PANOPTICON_READINESS_ONLY: "true"
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: |
-          set -euo pipefail
-          if [ "${STACK_NAME}" = "go-prod" ] && [ "${GO_PROD_PANOPTICON_READINESS_ONLY}" = "true" ]; then
-            echo "go-prod Panopticon observability validation is dry-run/readiness-only; reporting prod export reader scan-role trust as not_configured/dry_run for this readiness gate."
-            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-              {
-                echo "## go-prod Panopticon readiness"
-                echo ""
-                echo "State: **not_configured/dry_run**"
-                echo ""
-                echo "Prod export reader scan-role trust is not required for dry-run/readiness-only validation. Live go-prod validation remains blocked by the full scan-role trust check."
-              } >> "${GITHUB_STEP_SUMMARY}"
-            fi
-            uv run python scripts/verify_aws_scan_role_trust.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --same-account-only --exclude-source-id panopticon
-          else
-            uv run python scripts/verify_aws_scan_role_trust.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --same-account-only
-          fi
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --same-account-only
 
       - name: Verify AWS secret imports (AWS)
         if: github.event.inputs.environment == 'go-prod'
@@ -981,7 +946,7 @@ jobs:
           if [ "${STACK_NAME}" = "sec-dev" ]; then
             args+=(--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 4 --stop-running-source-before-run)
           elif [ "${STACK_NAME}" = "go-prod" ]; then
-            args+=(--source-runtime-dry-run --source-runtime-observability-targets --source-runtime-allow-missing-targets --source-id panopticon --source-target-concurrency 2)
+            args+=(--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 2)
           fi
           uv run python scripts/run_aws_deploy_verifications.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" "${args[@]}"
 

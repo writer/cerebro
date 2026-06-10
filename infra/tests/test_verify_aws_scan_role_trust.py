@@ -198,7 +198,7 @@ class AwsScanRoleTrustTest(unittest.TestCase):
             ["arn:aws:iam::837279440628:role/cerebro-org-scan-role"],
         )
 
-    def test_go_prod_config_no_longer_checks_panopticon_export_reader_role(self) -> None:
+    def test_go_prod_api_panopticon_config_has_no_scan_role_to_check(self) -> None:
         config = verify_aws_scan_role_trust._load_config(Path(__file__).resolve().parents[1] / "aws" / "Pulumi.go-prod.yaml")
 
         role_arns = verify_aws_scan_role_trust._same_account_role_arns(
@@ -206,13 +206,10 @@ class AwsScanRoleTrustTest(unittest.TestCase):
             "837279440628",
         )
 
-        self.assertNotIn(
-            "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader",
-            role_arns,
-        )
+        self.assertFalse([role_arn for role_arn in role_arns if ":role/panopticon-" in role_arn])
 
     def test_missing_role_preflight_reports_role_arn(self) -> None:
-        role_arn = "arn:aws:iam::837279440628:role/panopticon-prod-cerebro-export-reader"
+        role_arn = "arn:aws:iam::837279440628:role/cerebro-org-scan-role"
         original_aws = verify_aws_scan_role_trust._aws
 
         def fail_get_role(*_args, **_kwargs):
@@ -226,7 +223,7 @@ class AwsScanRoleTrustTest(unittest.TestCase):
         try:
             with self.assertRaisesRegex(
                 RuntimeError,
-                "panopticon-prod-cerebro-export-reader.*producer-owned role",
+                "cerebro-org-scan-role.*producer-owned role",
             ):
                 verify_aws_scan_role_trust._load_role_policies(
                     [role_arn],

@@ -1447,17 +1447,6 @@ def main(argv: list[str] | None = None) -> int:
     resource_prefix = f"cerebro-{environment}"
     requested = set(args.runtime_id or [])
     families = set(args.family or [])
-    if (
-        stack == "go-prod"
-        and args.source_id == "panopticon"
-        and args.observability_targets
-        and args.run
-        and not args.dry_run
-    ):
-        raise RuntimeError(
-            "go-prod Panopticon observability validation is dry-run/readiness-only until targets are deployed; "
-            "rerun with --dry-run --allow-missing-targets and without --run"
-        )
     if args.observability_targets:
         runtime_ids = _observability_runtime_ids(config, args.source_id, requested, families)
     else:

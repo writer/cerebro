@@ -19,48 +19,47 @@ class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
         self.assertIn("family:", workflow)
         self.assertIn("target_concurrency:", workflow)
 
-    def test_manual_source_runtime_workflow_keeps_go_prod_panopticon_readiness_only(self) -> None:
+    def test_manual_source_runtime_workflow_uses_live_go_prod_panopticon_api_verification(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         go_prod_block = workflow.split("verify-go-prod:", 1)[1]
 
-        self.assertIn('GO_PROD_PANOPTICON_READINESS_ONLY: "true"', go_prod_block)
-        self.assertIn("State: **not_configured/dry_run**", go_prod_block)
-        self.assertIn("--exclude-source-id panopticon", go_prod_block)
-        self.assertIn(
-            'if [ "${GO_PROD_PANOPTICON_READINESS_ONLY}" = "true" ] && [ "${SOURCE_ID}" = "panopticon" ] && [ "${OBSERVABILITY_TARGETS}" = "true" ]; then',
-            go_prod_block,
-        )
+        self.assertNotIn("GO_PROD_PANOPTICON_READINESS_ONLY", go_prod_block)
+        self.assertNotIn("not_configured/dry_run", go_prod_block)
+        self.assertNotIn("--exclude-source-id panopticon", go_prod_block)
         self.assertIn('if [ "${VERIFY_MODE}" = "run" ]; then', go_prod_block)
-        self.assertIn("args+=(--dry-run --allow-missing-targets)", go_prod_block)
+        self.assertIn("args+=(--run)", go_prod_block)
 
-    def test_infra_deploy_wires_panopticon_live_and_readiness_modes(self) -> None:
+    def test_infra_deploy_wires_panopticon_api_live_modes(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn('GO_PROD_PANOPTICON_READINESS_ONLY: "true"', workflow)
-        self.assertIn("State: **not_configured/dry_run**", workflow)
-        self.assertIn("--exclude-source-id panopticon", workflow)
+        self.assertNotIn("GO_PROD_PANOPTICON_READINESS_ONLY", workflow)
+        self.assertNotIn("not_configured/dry_run", workflow)
+        self.assertNotIn("--exclude-source-id panopticon", workflow)
         self.assertIn("scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only", workflow)
         self.assertIn("--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 4", workflow)
         self.assertIn(
-            "--source-runtime-dry-run --source-runtime-observability-targets --source-runtime-allow-missing-targets --source-id panopticon --source-target-concurrency 2",
+            "--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 2",
             workflow,
         )
+        self.assertNotIn("--source-runtime-dry-run", workflow)
+        self.assertNotIn("--source-runtime-allow-missing-targets --source-id panopticon", workflow)
 
-    def test_sec_dev_scan_role_guard_excludes_panopticon_until_producer_role_exists(self) -> None:
+    def test_scan_role_guards_do_not_special_case_panopticon_api_runtimes(self) -> None:
         manual_workflow = WORKFLOW.read_text(encoding="utf-8")
         infra_workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         drift_workflow = DRIFT_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn(
-            "scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only --exclude-source-id panopticon",
+            "scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only",
             manual_workflow,
         )
         self.assertIn(
-            "scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only --exclude-source-id panopticon",
+            "scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only",
             infra_workflow,
         )
-        self.assertIn('if [ "${STACK_NAME}" = "sec-dev" ]; then', drift_workflow)
-        self.assertIn("args+=(--exclude-source-id panopticon)", drift_workflow)
+        self.assertNotIn("--exclude-source-id panopticon", manual_workflow)
+        self.assertNotIn("--exclude-source-id panopticon", infra_workflow)
+        self.assertNotIn("--exclude-source-id panopticon", drift_workflow)
 
 
 if __name__ == "__main__":

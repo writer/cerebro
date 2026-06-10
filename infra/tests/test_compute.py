@@ -116,19 +116,34 @@ class WorkerTaskRoleTest(unittest.TestCase):
                 "id": "writer-panopticon-alerts",
                 "sourceId": "panopticon",
                 "tenantId": "writer",
-                "config": {"kind": "alerts", "bucket": "env:PANOPTICON_EXPORT_BUCKET"},
+                "config": {
+                    "base_url": "env:CEREBRO_SOURCE_PANOPTICON_BASE_URL",
+                    "family": "alert",
+                    "mode": "api",
+                    "token": "env:CEREBRO_SOURCE_PANOPTICON_TOKEN",
+                },
             },
             {
                 "id": "writer-panopticon-cases",
                 "sourceId": "panopticon",
                 "tenantId": "writer",
-                "config": {"kind": "cases", "bucket": "env:PANOPTICON_EXPORT_BUCKET"},
+                "config": {
+                    "base_url": "env:CEREBRO_SOURCE_PANOPTICON_BASE_URL",
+                    "family": "case",
+                    "mode": "api",
+                    "token": "env:CEREBRO_SOURCE_PANOPTICON_TOKEN",
+                },
             },
             {
                 "id": "writer-panopticon-iocs",
                 "sourceId": "panopticon",
                 "tenantId": "writer",
-                "config": {"kind": "iocs", "bucket": "env:PANOPTICON_EXPORT_BUCKET"},
+                "config": {
+                    "base_url": "env:CEREBRO_SOURCE_PANOPTICON_BASE_URL",
+                    "family": "ioc",
+                    "mode": "api",
+                    "token": "env:CEREBRO_SOURCE_PANOPTICON_TOKEN",
+                },
             },
         ]
 

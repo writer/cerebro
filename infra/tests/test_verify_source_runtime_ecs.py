@@ -1051,7 +1051,7 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertIn("run_event_limit\t3", output)
         self.assertIn("allow_missing_targets\tfalse", output)
 
-    def test_go_prod_panopticon_observability_cannot_start_live_tasks(self) -> None:
+    def test_go_prod_panopticon_observability_can_run_live_api_tasks(self) -> None:
         stack_file = Path("aws/Pulumi.go-prod.yaml")
         config = {
             "environment": "go-production",
@@ -1064,29 +1064,64 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
                     "freshnessSlaMinutes": 30,
                 }
             ],
+            "sourceRuntimes": [
+                {
+                    "id": "writer-panopticon-alerts",
+                    "sourceId": "panopticon",
+                    "config": {
+                        "base_url": "env:CEREBRO_SOURCE_PANOPTICON_BASE_URL",
+                        "family": "alert",
+                        "mode": "api",
+                        "token": "env:CEREBRO_SOURCE_PANOPTICON_TOKEN",
+                    },
+                }
+            ],
         }
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-go-production-orchestrator-panopticon-alerts-live",
+            target={"Arn": "arn:aws:ecs:us-east-1:123456789012:cluster/cerebro"},
+        )
+        result = VerificationResult(
+            runtime_id="writer-panopticon-alerts",
+            task_arn="task-arn",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="completed",
+            graph_ingest_status="completed",
+            events_appended=1,
+            pages_read=1,
+            entities_projected=1,
+            links_projected=1,
+        )
 
         with (
             patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
             patch("scripts.verify_source_runtime_ecs._verify_account") as verify_account,
-            patch("scripts.verify_source_runtime_ecs._runtime_targets") as runtime_targets,
-            patch("scripts.verify_source_runtime_ecs._run_task") as run_task,
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=[target]) as runtime_targets,
+            patch("scripts.verify_source_runtime_ecs._verify_bootstrap_payload_targets") as verify_bootstrap,
+            patch("scripts.verify_source_runtime_ecs._verify_secret_import_preflight") as verify_secrets,
+            patch("scripts.verify_source_runtime_ecs._verify_runtime_targets", return_value=[result]) as verify_targets,
         ):
-            with self.assertRaisesRegex(RuntimeError, "go-prod Panopticon observability validation is dry-run/readiness-only"):
-                main(
-                    [
-                        "--stack-file",
-                        str(stack_file),
-                        "--source-id",
-                        "panopticon",
-                        "--observability-targets",
-                        "--run",
-                    ]
-                )
+            status = main(
+                [
+                    "--stack-file",
+                    str(stack_file),
+                    "--source-id",
+                    "panopticon",
+                    "--observability-targets",
+                    "--run",
+                ]
+            )
 
-        verify_account.assert_not_called()
-        runtime_targets.assert_not_called()
-        run_task.assert_not_called()
+        self.assertEqual(status, 0)
+        verify_account.assert_called_once()
+        runtime_targets.assert_called_once()
+        verify_bootstrap.assert_called_once_with([target], "us-east-1")
+        verify_secrets.assert_called_once()
+        verify_targets.assert_called_once()
+        self.assertTrue(verify_targets.call_args.args[1].run)
 
     def test_run_fails_secret_import_preflight_before_starting_tasks(self) -> None:
         stack_file = Path("aws/Pulumi.sec-dev.yaml")
