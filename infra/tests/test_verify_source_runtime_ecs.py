@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
@@ -11,6 +12,7 @@ from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import verify_aws_secret_imports as secret_imports
 from scripts.verify_source_runtime_ecs import (
     RuntimeSkippedError,
     RuntimeTaskFailedError,
@@ -20,6 +22,7 @@ from scripts.verify_source_runtime_ecs import (
     VerificationOptions,
     VerificationResult,
     _bootstrap_payload_runtime_ids,
+    _config_for_runtime_scope,
     _bootstrap_task_diagnostics,
     _declared_runtime_ids,
     _latest_active_task_definition,
@@ -33,6 +36,7 @@ from scripts.verify_source_runtime_ecs import (
     _runtime_skip_retryable,
     _schedule_suffix,
     _sanitize_text,
+    _scoped_bootstrap_payload,
     _secret_import_preflight_findings,
     _stop_running_tasks,
     _summarize_log_messages,
@@ -223,6 +227,64 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
             self.assertEqual(_run_task(target, "us-east-1", command), "task-arn")
+
+    def test_run_task_can_scope_bootstrap_payload_to_observability_runtimes(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+            target={
+                "Arn": "cluster",
+                "EcsParameters": {
+                    "TaskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/runtime:3",
+                    "LaunchType": "FARGATE",
+                    "NetworkConfiguration": {
+                        "awsvpcConfiguration": {
+                            "Subnets": ["subnet-1"],
+                            "SecurityGroups": ["sg-1"],
+                            "AssignPublicIp": "DISABLED",
+                        }
+                    },
+                },
+            },
+        )
+        full_payload = json.dumps(
+            {
+                "runtimes": [
+                    {"id": "writer-panopticon-alerts", "source_id": "panopticon", "config": {"token": "env:PANOPTICON_TOKEN"}},
+                    {"id": "writer-cosmo-session", "source_id": "cosmo", "config": {"token": "env:COSMO_TOKEN"}},
+                ]
+            }
+        )
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                return {
+                    "taskDefinition": {
+                        "status": "ACTIVE",
+                        "taskDefinitionArn": target.target["EcsParameters"]["TaskDefinitionArn"],
+                        "containerDefinitions": [
+                            {
+                                "name": "source-runtime-bootstrap",
+                                "environment": [{"name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", "value": full_payload}],
+                            }
+                        ],
+                    }
+                }
+            if args[:2] == ["ecs", "run-task"]:
+                override = json.loads(args[args.index("--overrides") + 1])
+                bootstrap_override = next(item for item in override["containerOverrides"] if item["name"] == "source-runtime-bootstrap")
+                scoped_payload = json.loads(bootstrap_override["environment"][0]["value"])
+                self.assertEqual([runtime["id"] for runtime in scoped_payload["runtimes"]], ["writer-panopticon-alerts"])
+                self.assertNotIn("COSMO_TOKEN", json.dumps(scoped_payload))
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            self.assertEqual(
+                _run_task(target, "us-east-1", bootstrap_runtime_ids=("writer-panopticon-alerts",)),
+                "task-arn",
+            )
 
     def test_stop_running_tasks_stops_and_waits_for_runtime_family(self) -> None:
         target = RuntimeTarget(
@@ -1250,6 +1312,48 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         self.assertEqual(_bootstrap_payload_runtime_ids(object_payload), {"writer-panopticon-alerts"})
         self.assertEqual(_bootstrap_payload_runtime_ids(list_payload), {"writer-panopticon-cases"})
+
+    def test_scoped_bootstrap_payload_keeps_requested_runtimes_only(self) -> None:
+        payload = json.dumps(
+            {
+                "runtimes": [
+                    {"id": "writer-panopticon-alerts", "source_id": "panopticon", "config": {"token": "env:PANOPTICON_TOKEN"}},
+                    {"id": "writer-cosmo-session", "source_id": "cosmo", "config": {"token": "env:COSMO_TOKEN"}},
+                ]
+            }
+        )
+
+        scoped = json.loads(_scoped_bootstrap_payload(payload, {"writer-panopticon-alerts"}))
+
+        self.assertEqual([runtime["id"] for runtime in scoped["runtimes"]], ["writer-panopticon-alerts"])
+        self.assertNotIn("COSMO_TOKEN", json.dumps(scoped))
+
+    def test_observability_scope_preflight_excludes_unrelated_source_secrets(self) -> None:
+        config = {
+            "environment": "sec-dev",
+            "infisicalSecretsPrefix": "cerebro-sec-dev",
+            "sourceSecretKeys": ["PANOPTICON_TOKEN", "COSMO_TOKEN"],
+            "sourceRuntimes": [
+                {
+                    "id": "writer-panopticon-alerts",
+                    "sourceId": "panopticon",
+                    "config": {"token": "env:PANOPTICON_TOKEN"},
+                },
+                {
+                    "id": "writer-cosmo-session",
+                    "sourceId": "cosmo",
+                    "config": {"token": "env:COSMO_TOKEN"},
+                },
+            ],
+        }
+
+        scoped = _config_for_runtime_scope(config, {"writer-panopticon-alerts"})
+        imports = [item.env_name for item in secret_imports.expected_secret_imports(scoped, "sec-dev")]
+        full_imports = [item.env_name for item in secret_imports.expected_secret_imports(config, "sec-dev")]
+
+        self.assertIn("PANOPTICON_TOKEN", imports)
+        self.assertNotIn("COSMO_TOKEN", imports)
+        self.assertIn("COSMO_TOKEN", full_imports)
 
     def test_verify_bootstrap_payload_targets_fails_closed_for_missing_runtime_id(self) -> None:
         target = RuntimeTarget(

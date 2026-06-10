@@ -116,6 +116,7 @@ class VerificationOptions:
     run_attempt_timeout_seconds: int = 0
     succeed_after_graph_ingest: bool = False
     max_age_minutes: int = 180
+    bootstrap_runtime_ids: tuple[str, ...] = ()
 
 
 class RuntimeSkippedError(RuntimeError):
@@ -445,7 +446,12 @@ def _verification_command(
     return command
 
 
-def _run_task(target: RuntimeTarget, region: str, command_override: list[str] | None = None) -> str:
+def _run_task(
+    target: RuntimeTarget,
+    region: str,
+    command_override: list[str] | None = None,
+    bootstrap_runtime_ids: tuple[str, ...] = (),
+) -> str:
     ecs_params = target.target["EcsParameters"]
     network = ecs_params["NetworkConfiguration"]["awsvpcConfiguration"]
     subnets = ",".join(network["Subnets"])
@@ -465,13 +471,23 @@ def _run_task(target: RuntimeTarget, region: str, command_override: list[str] | 
         f"awsvpcConfiguration={{subnets=[{subnets}],securityGroups=[{security_groups}],assignPublicIp={assign_public_ip}}}",
     ]
     effective_command = command_override if command_override is not None else _target_command(target)
+    container_overrides = []
     if effective_command:
-        args.extend(
-            [
-                "--overrides",
-                json.dumps({"containerOverrides": [{"name": "cerebro", "command": effective_command}]}),
-            ]
+        container_overrides.append({"name": "cerebro", "command": effective_command})
+    if bootstrap_runtime_ids:
+        scoped_payload = _scoped_bootstrap_payload_from_task_definition(
+            task_definition,
+            set(bootstrap_runtime_ids),
+            region,
         )
+        container_overrides.append(
+            {
+                "name": BOOTSTRAP_CONTAINER_NAME,
+                "environment": [{"name": BOOTSTRAP_ENV_NAME, "value": scoped_payload}],
+            }
+        )
+    if container_overrides:
+        args.extend(["--overrides", json.dumps({"containerOverrides": container_overrides})])
     response = _aws(args, region)
     failures = response.get("failures") or []
     if failures:
@@ -790,6 +806,39 @@ def _bootstrap_payload_runtime_ids(payload: str) -> set[str]:
         if runtime_id:
             runtime_ids.add(runtime_id)
     return runtime_ids
+
+
+def _scoped_bootstrap_payload(payload: str, runtime_ids: set[str]) -> str:
+    if not runtime_ids:
+        return payload
+    parsed = json.loads(payload)
+    runtimes = parsed.get("runtimes") if isinstance(parsed, dict) else parsed
+    if not isinstance(runtimes, list):
+        raise ValueError("bootstrap payload must contain a runtimes list")
+    scoped = [
+        runtime
+        for runtime in runtimes
+        if isinstance(runtime, dict) and str(runtime.get("id") or "").strip() in runtime_ids
+    ]
+    present = {str(runtime.get("id") or "").strip() for runtime in scoped if isinstance(runtime, dict)}
+    missing = sorted(runtime_ids - present)
+    if missing:
+        raise ValueError(f"bootstrap payload missing requested runtime IDs: {','.join(missing)}")
+    return json.dumps({"runtimes": scoped}, sort_keys=True, separators=(",", ":"))
+
+
+def _scoped_bootstrap_payload_from_task_definition(
+    task_definition_arn: str,
+    runtime_ids: set[str],
+    region: str,
+) -> str:
+    if not runtime_ids:
+        return ""
+    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition_arn], region)
+    payload = _bootstrap_payload_from_task_definition(response.get("taskDefinition") or {})
+    if not payload:
+        raise ValueError("bootstrap payload is missing from task definition")
+    return _scoped_bootstrap_payload(payload, runtime_ids)
 
 
 def _bootstrap_payload_diagnostics(
@@ -1132,6 +1181,7 @@ def _run_and_verify_task_with_retries(
     failed_run_retry_seconds: int = 0,
     run_attempt_timeout_seconds: int = 0,
     succeed_after_graph_ingest: bool = False,
+    bootstrap_runtime_ids: tuple[str, ...] = (),
 ) -> VerificationResult:
     if stop_running_before_run:
         _stop_running_tasks(
@@ -1146,7 +1196,7 @@ def _run_and_verify_task_with_retries(
     failed_run_retry_deadline = start + failed_run_retry_seconds if failed_run_retry_seconds > 0 else None
     while True:
         remaining = max(1, int(deadline - time.time()))
-        task_arn = _run_task(target, region, command_override)
+        task_arn = _run_task(target, region, command_override, bootstrap_runtime_ids)
         attempt_timeout = min(remaining, run_attempt_timeout_seconds) if run_attempt_timeout_seconds > 0 else remaining
         try:
             if succeed_after_graph_ingest:
@@ -1269,6 +1319,31 @@ def _secret_import_preflight_findings(
     return findings
 
 
+def _source_secret_key_env_name(secret_key: Any) -> str:
+    if isinstance(secret_key, dict):
+        return str(secret_key.get("name") or "").strip()
+    return str(secret_key or "").strip()
+
+
+def _config_for_runtime_scope(config: dict[str, Any], runtime_ids: set[str]) -> dict[str, Any]:
+    if not runtime_ids:
+        return dict(config)
+    scoped = dict(config)
+    source_runtimes = [
+        runtime
+        for runtime in (config.get("sourceRuntimes") or [])
+        if isinstance(runtime, dict) and str(runtime.get("id") or "").strip() in runtime_ids
+    ]
+    scoped["sourceRuntimes"] = source_runtimes
+    env_refs = set(secret_imports._source_runtime_env_refs(source_runtimes))
+    scoped["sourceSecretKeys"] = [
+        secret_key
+        for secret_key in (config.get("sourceSecretKeys") or [])
+        if _source_secret_key_env_name(secret_key) in env_refs
+    ]
+    return scoped
+
+
 def _print_secret_import_preflight_failure(
     stack: str,
     findings: list[SecretImportPreflightFinding],
@@ -1386,6 +1461,7 @@ def _verify_runtime_target(target: RuntimeTarget, options: VerificationOptions) 
             options.failed_run_retry_seconds,
             options.run_attempt_timeout_seconds,
             options.succeed_after_graph_ingest,
+            options.bootstrap_runtime_ids,
         )
     task_arn = _latest_task(target, options.max_age_minutes, options.region)
     return _verify_task(target, task_arn, options.region)
@@ -1563,6 +1639,7 @@ def main(argv: list[str] | None = None) -> int:
         run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
         succeed_after_graph_ingest=args.succeed_after_graph_ingest,
         max_age_minutes=args.max_age_minutes,
+        bootstrap_runtime_ids=tuple(runtime_ids) if args.observability_targets else (),
     )
     if args.dry_run:
         _print_dry_run_plan(
@@ -1582,7 +1659,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     _verify_bootstrap_payload_targets(targets, args.region)
     if args.run:
-        _verify_secret_import_preflight(config, stack, args.region)
+        preflight_config = _config_for_runtime_scope(config, set(runtime_ids)) if args.observability_targets else config
+        _verify_secret_import_preflight(preflight_config, stack, args.region)
     results = _verify_runtime_targets(
         targets,
         options,
