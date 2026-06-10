@@ -1163,8 +1163,10 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         stack_file = Path("aws/Pulumi.sec-dev.yaml")
         config = {
             "environment": "sec-dev",
+            "sourceSecretKeys": ["AWS_TOKEN", "PANOPTICON_TOKEN"],
             "sourceRuntimes": [
-                {"id": "aws-public", "sourceId": "aws", "config": {"family": "public_endpoint"}}
+                {"id": "aws-public", "sourceId": "aws", "config": {"family": "public_endpoint", "token": "env:AWS_TOKEN"}},
+                {"id": "panopticon-alerts", "sourceId": "panopticon", "config": {"token": "env:PANOPTICON_TOKEN"}},
             ],
         }
         targets = [
@@ -1190,11 +1192,14 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         events: list[str] = []
 
         def fake_preflight(config_arg, stack_arg, region_arg):
+            self.assertEqual([runtime["id"] for runtime in config_arg["sourceRuntimes"]], ["aws-public"])
+            self.assertEqual(config_arg["sourceSecretKeys"], ["AWS_TOKEN"])
             events.append("preflight")
             return []
 
         def fake_verify(targets_arg, options_arg, concurrency_arg):
             self.assertEqual(events, ["preflight"])
+            self.assertEqual(options_arg.bootstrap_runtime_ids, ("aws-public",))
             events.append("verify")
             return [result]
 
