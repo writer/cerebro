@@ -36,6 +36,7 @@ COSMO_OPTIONAL_RUNTIME_FAMILIES = {
     "writer-cosmo-message": "message",
 }
 COSMO_GRAPH_BUDGETED_RUNTIMES = {"writer-cosmo-session", "writer-cosmo-fact"}
+TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES = set(COSMO_RUNTIME_FAMILIES) | set(COSMO_OPTIONAL_RUNTIME_FAMILIES)
 COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT = 500
@@ -245,6 +246,12 @@ def _source_secret_names(source_secret_keys: Any) -> set[str]:
     return names
 
 
+def _string_set(values: Any) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    return {str(value).strip() for value in values if str(value).strip()}
+
+
 def _s3_source_role_requirements(s3_sources: Any) -> list[tuple[str, str, str]]:
     requirements: list[tuple[str, str, str]] = []
     if not isinstance(s3_sources, list):
@@ -367,6 +374,18 @@ def _validate_cosmo_gitops(
     source_secret_names: set[str],
     findings: list[Finding],
 ) -> None:
+    disabled_runtime_ids = _string_set(config.get("temporarilyDisabledSourceRuntimes") or [])
+    unknown_disabled_runtime_ids = disabled_runtime_ids - TEMPORARILY_DISABLEABLE_SOURCE_RUNTIMES
+    if unknown_disabled_runtime_ids:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:temporarilyDisabledSourceRuntimes",
+                f"unsupported temporary runtime bypasses: {', '.join(sorted(unknown_disabled_runtime_ids))}",
+            )
+        )
+
     runtimes_by_id: dict[str, tuple[int, dict[str, Any]]] = {}
     for index, runtime in enumerate(source_runtimes):
         if isinstance(runtime, dict):
@@ -376,10 +395,16 @@ def _validate_cosmo_gitops(
 
     managed_stack = stack in COSMO_REQUIRED_STACKS or any(runtime_id in runtimes_by_id for runtime_id in COSMO_RUNTIME_FAMILIES)
     cosmo_runtime_families = dict(COSMO_RUNTIME_FAMILIES) if managed_stack else {}
+    for runtime_id in disabled_runtime_ids:
+        cosmo_runtime_families.pop(runtime_id, None)
     if COSMO_MESSAGE_EXPORT_SECRET in source_secret_names or any(
         runtime_id in runtimes_by_id for runtime_id in COSMO_OPTIONAL_RUNTIME_FAMILIES
     ):
-        cosmo_runtime_families.update(COSMO_OPTIONAL_RUNTIME_FAMILIES)
+        cosmo_runtime_families.update({
+            runtime_id: family
+            for runtime_id, family in COSMO_OPTIONAL_RUNTIME_FAMILIES.items()
+            if runtime_id not in disabled_runtime_ids
+        })
         if COSMO_MESSAGE_EXPORT_SECRET not in source_secret_names:
             findings.append(
                 _finding(
