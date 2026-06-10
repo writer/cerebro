@@ -480,6 +480,67 @@ func TestProjectPanopticonIOCEnrichesInternetAnchors(t *testing.T) {
 	assertProjectedLink(t, state, iocURN, relationRepresents, ipURN)
 }
 
+func TestProjectPanopticonDoesNotOvermatchOrdinaryProse(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-prose",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-prose",
+			"title":   "EDR reported lateral movement via cmd/powershell; security project roll-out delayed",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id":       "case-prose",
+			"title":         "EDR reported lateral movement via cmd/powershell; security project roll-out delayed",
+			"agent_version": "1.2.3.4",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_repo:cmd/powershell")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_org:cmd")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:cloud_account:roll-out")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:internet_ip:1.2.3.4")
+}
+
+func TestProjectPanopticonSkipsSensitivePayloadContext(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-sensitive",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-sensitive",
+			"title":   "Sensitive payload context should stay unprojected",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id": "case-sensitive",
+			"client_secret": map[string]any{
+				"note": "owner@example.com https://github.com/ExampleOrg/private-repo 203.0.113.55",
+			},
+			"api_key": "another-owner@example.com ExampleOrg/another-repo",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:identity:email:owner@example.com")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:identity:email:another-owner@example.com")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_repo:ExampleOrg/private-repo")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_repo:ExampleOrg/another-repo")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:internet_ip:203.0.113.55")
+}
+
 func assertProjectedEntityType(t *testing.T, recorder *projectionRecorder, urn string, entityType string) {
 	t.Helper()
 	entity := recorder.entities[urn]
@@ -488,5 +549,12 @@ func assertProjectedEntityType(t *testing.T, recorder *projectionRecorder, urn s
 	}
 	if entity.EntityType != entityType {
 		t.Fatalf("projected entity %q type = %q, want %q", urn, entity.EntityType, entityType)
+	}
+}
+
+func assertProjectedEntityMissing(t *testing.T, recorder *projectionRecorder, urn string) {
+	t.Helper()
+	if entity := recorder.entities[urn]; entity != nil {
+		t.Fatalf("projected entity %q should be missing: %#v", urn, entity)
 	}
 }

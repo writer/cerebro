@@ -10,7 +10,7 @@ import (
 
 var (
 	panopticonAWSInstancePattern      = regexp.MustCompile(`\bi-[0-9a-fA-F]{8,17}\b`)
-	panopticonGCPProjectFieldPattern  = regexp.MustCompile(`(?i)\b(?:gcp|google)?\s*project(?:\s+id)?\s*[:=]?\s*([a-z][a-z0-9-]{4,28}[a-z0-9])\b`)
+	panopticonGCPProjectFieldPattern  = regexp.MustCompile(`(?i)\b(?:gcp|google)\s*project(?:\s+id)?\s*[:=]?\s*([a-z][a-z0-9-]{4,28}[a-z0-9])\b`)
 	panopticonGitHubRepositoryPattern = regexp.MustCompile(`\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b`)
 	panopticonGitHubURLPattern        = regexp.MustCompile(`(?i)(?:https?://github\.com/|git@github\.com:)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:\.git)?\b`)
 	panopticonIPv4Pattern             = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
@@ -621,7 +621,26 @@ func panopticonCollectPayloadSamples(samples *[]panopticonContextSample, keyPath
 
 func panopticonSkippedContextKey(key string) bool {
 	key = strings.ToLower(key)
-	for _, marker := range []string{"bytes", "content", "raw", "body", "password", "secret_value", "token", "authorization", "cookie"} {
+	for _, marker := range []string{
+		"api_key",
+		"apikey",
+		"authorization",
+		"bearer",
+		"body",
+		"bytes",
+		"content",
+		"cookie",
+		"credential",
+		"key",
+		"password",
+		"passwd",
+		"private",
+		"pwd",
+		"raw",
+		"secret",
+		"signature",
+		"token",
+	} {
 		if strings.Contains(key, marker) {
 			return true
 		}
@@ -633,6 +652,9 @@ func panopticonContextIPs(samples []panopticonContextSample) []string {
 	seen := map[string]struct{}{}
 	var out []string
 	for _, sample := range samples {
+		if !panopticonIPContextSample(sample) {
+			continue
+		}
 		for _, candidate := range panopticonIPv4Pattern.FindAllString(sample.value, -1) {
 			ip := internetIP(candidate)
 			if ip == "" {
@@ -810,12 +832,46 @@ func panopticonHostField(key string) bool {
 func panopticonGitHubContext(sample panopticonContextSample) bool {
 	key := strings.ToLower(sample.key)
 	value := strings.ToLower(sample.value)
-	return strings.Contains(key, "github") || strings.Contains(key, "repo") || strings.Contains(value, "github") || strings.Contains(value, "repository") || strings.Contains(value, "repo")
+	return strings.Contains(key, "github") || panopticonRepositoryField(key) || strings.Contains(value, "github")
 }
 
 func panopticonGCPProjectField(key string) bool {
 	key = strings.ToLower(key)
 	return strings.Contains(key, "gcp_project") || strings.Contains(key, "project_id") || strings.Contains(key, "projectid")
+}
+
+func panopticonRepositoryField(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	if key == "repo" || key == "repository" {
+		return true
+	}
+	if strings.HasPrefix(key, "repo_") || strings.HasPrefix(key, "repository_") || strings.HasPrefix(key, "repo.") || strings.HasPrefix(key, "repository.") {
+		return true
+	}
+	for _, marker := range []string{"_repo", "_repository", ".repo", ".repository", "-repo", "-repository"} {
+		if strings.HasSuffix(key, marker) || strings.Contains(key, marker+"_") || strings.Contains(key, marker+".") {
+			return true
+		}
+	}
+	return false
+}
+
+func panopticonIPContextSample(sample panopticonContextSample) bool {
+	key := strings.ToLower(sample.key)
+	for _, marker := range []string{"version", "build", "release", "semver"} {
+		if strings.Contains(key, marker) {
+			return false
+		}
+	}
+	if key == "" || panopticonHostField(key) {
+		return true
+	}
+	for _, marker := range []string{"ip", "address", "title", "description", "summary", "value", "ioc", "indicator", "observable"} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func panopticonOwnerField(key string) bool {
