@@ -1934,6 +1934,8 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	resourceType := strings.TrimSpace(attributes["resource_type"])
 	targetType := strings.TrimSpace(attributes["target_type"])
 	targetAlternateID := strings.TrimSpace(attributes["target_alternate_id"])
+	targetAppID := firstNonEmpty(attributes["target_app_id"], attributes["app_id"])
+	targetAppLabel := firstNonEmpty(attributes["target_app_label"], attributes["target_display_name"], targetAppID)
 	oauthClientID := firstNonEmpty(attributes["oauth_client_id"], attributes["client_id"])
 	oauthClientLabel := firstNonEmpty(attributes["oauth_client_label"], attributes["actor_display_name"], oauthClientID)
 
@@ -1981,6 +1983,24 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		}
 	}
 
+	targetAppURN := oktaApplicationURN(tenantID, targetAppID)
+	if targetAppURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        targetAppURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "okta.application",
+			Label:      targetAppLabel,
+			Attributes: map[string]string{
+				"app_id":    targetAppID,
+				"app_label": targetAppLabel,
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetAppURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
 	oauthClientURN := oktaApplicationURN(tenantID, oauthClientID)
 	if oauthClientURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -2024,6 +2044,12 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		}
 		if resourceURN != "" && resourceURN != actorURN {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, oktaAuditRelationAttributes(event, attributes, nil)))
+		}
+		if targetAppURN != "" && targetAppURN != actorURN && targetAppURN != resourceURN {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, targetAppURN, relationActedOn, oktaAuditRelationAttributes(event, attributes, map[string]string{
+				"target_app_id":    targetAppID,
+				"target_app_label": targetAppLabel,
+			})))
 		}
 		if suppressResource && oauthClientURN != "" && oauthClientURN != actorURN {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, oauthClientURN, relationActedOn, oktaOAuthRelationAttributes(event, attributes)))

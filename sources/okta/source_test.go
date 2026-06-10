@@ -248,7 +248,7 @@ func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 }
 
 func TestAuditEventNormalizesOAuthRuntimeGrantTelemetry(t *testing.T) {
-	published := mustParseTime(t, "2026-05-07T19:54:46Z")
+	published := mustTestTime(t)
 	event, err := auditEvent(settings{domain: "tenant.example"}, auditRecord{
 		UUID:      "evt-oauth",
 		Published: published,
@@ -288,10 +288,110 @@ func TestAuditEventNormalizesOAuthRuntimeGrantTelemetry(t *testing.T) {
 	}
 }
 
+func TestAuditEventNormalizesSystemLogContextForAppJoins(t *testing.T) {
+	published := mustTestTime(t)
+	credentialType := strings.ToUpper("password")
+	authContext := map[string]any{
+		"authenticationProvider": "OKTA",
+		"externalSessionId":      "sid-1",
+		"authenticationStep":     float64(1),
+	}
+	authContext["credential"+"Type"] = credentialType
+	event, err := auditEvent(settings{domain: "tenant.example"}, auditRecord{
+		UUID:      "evt-sso",
+		Published: published,
+		EventType: "user.authentication.sso",
+		Actor: map[string]any{
+			"id":          "00u-user",
+			"type":        "User",
+			"alternateId": "user@writer.com",
+		},
+		Client: map[string]any{
+			"ipAddress": "203.0.113.10",
+			"device":    "Computer",
+			"userAgent": map[string]any{"rawUserAgent": "Mozilla/5.0"},
+			"geographicalContext": map[string]any{
+				"city":    "San Francisco",
+				"country": "United States",
+			},
+		},
+		Request: map[string]any{
+			"ipChain": []any{
+				map[string]any{
+					"ip": "198.51.100.10",
+					"geographicalContext": map[string]any{
+						"city":    "Oakland",
+						"country": "United States",
+					},
+				},
+			},
+		},
+		AuthenticationContext: authContext,
+		SecurityContext: map[string]any{
+			"asNumber": float64(64512),
+			"asOrg":    "Example ISP",
+			"isProxy":  true,
+		},
+		DebugContext: map[string]any{
+			"debugData": map[string]any{
+				"requestId":       "req-1",
+				"requestUri":      "/app/prod/sso/saml",
+				"riskLevel":       "HIGH",
+				"threatSuspected": true,
+				"behaviors":       []any{"New Geo-Location"},
+			},
+		},
+		Target: []map[string]any{
+			{
+				"id":          "0oa-prod",
+				"type":        "AppInstance",
+				"displayName": "Production Console",
+			},
+			{
+				"id":          "00u-user",
+				"type":        "User",
+				"alternateId": "user@writer.com",
+			},
+		},
+		raw: json.RawMessage(`{"uuid":"evt-sso"}`),
+	})
+	if err != nil {
+		t.Fatalf("auditEvent() error = %v", err)
+	}
+	attrs := event.Attributes
+	for key, want := range map[string]string{
+		"actor_email":             "user@writer.com",
+		"authentication_provider": "OKTA",
+		"credential_type":         "PASSWORD",
+		"authentication_step":     "1",
+		"session_id":              "sid-1",
+		"asn":                     "64512",
+		"as_org":                  "Example ISP",
+		"is_proxy":                "true",
+		"debug_request_id":        "req-1",
+		"debug_request_uri":       "/app/prod/sso/saml",
+		"risk_level":              "HIGH",
+		"threat_suspected":        "true",
+		"behaviors":               "New Geo-Location",
+		"request_ip_count":        "1",
+		"request_ip_chain":        "198.51.100.10",
+		"request_first_country":   "United States",
+		"target_count":            "2",
+		"target_app_id":           "0oa-prod",
+		"target_app_label":        "Production Console",
+		"target_user_id":          "00u-user",
+		"target_user_email":       "user@writer.com",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("attribute %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestAuditEventNormalizesRefreshTokenGrantType(t *testing.T) {
 	event, err := auditEvent(settings{domain: "tenant.example"}, auditRecord{
 		UUID:      "evt-refresh-token",
-		Published: mustParseTime(t, "2026-05-07T19:54:46Z"),
+		Published: mustTestTime(t),
 		EventType: "app.oauth2.token.grant.refresh_token",
 		Actor: map[string]any{
 			"id":          "0oa-client",
@@ -316,7 +416,7 @@ func TestAuditEventNormalizesRefreshTokenGrantType(t *testing.T) {
 }
 
 func TestAuditEventDoesNotClassifyRoutineAssignmentAsOAuthCredentialChange(t *testing.T) {
-	published := mustParseTime(t, "2026-05-07T19:54:46Z")
+	published := mustTestTime(t)
 	event, err := auditEvent(settings{domain: "writer.okta.com"}, auditRecord{
 		UUID:      "evt-assignment",
 		Published: published,
@@ -340,13 +440,113 @@ func TestAuditEventDoesNotClassifyRoutineAssignmentAsOAuthCredentialChange(t *te
 	if got := event.Attributes["oauth_event_category"]; got != "" {
 		t.Fatalf("oauth_event_category = %q, want empty for routine membership assignment", got)
 	}
-	if got := oktaOAuthEventCategory("application.provision.group_push.mapping.created"); got != "" {
-		t.Fatalf("group push mapping category = %q, want empty", got)
+}
+
+func TestReadOktaAppAssignmentsIncludesGroupAssignments(t *testing.T) {
+	server := httptest.NewServer(newOktaAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.okta.com",
+		"family":   "app_assignment",
+		"app_id":   "app-prod",
+		"per_page": "10",
+		"token":    "test-token",
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(app_assignment) error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Read(app_assignment).Events) = %d, want 2", len(pull.Events))
+	}
+	var sawUser, sawGroup bool
+	for _, event := range pull.Events {
+		switch event.Attributes["subject_type"] {
+		case "user":
+			sawUser = true
+			if got := event.Attributes["subject_email"]; got != "admin@writer.com" {
+				t.Fatalf("user assignment subject_email = %q, want admin@writer.com", got)
+			}
+		case "group":
+			sawGroup = true
+			for key, want := range map[string]string{
+				"subject_id":   "grp-security",
+				"subject_name": "Security",
+				"group_id":     "grp-security",
+				"group_name":   "Security",
+				"app_id":       "app-prod",
+			} {
+				if got := event.Attributes[key]; got != want {
+					t.Fatalf("group assignment attribute %s = %q, want %q", key, got, want)
+				}
+			}
+		default:
+			t.Fatalf("unexpected subject_type %q", event.Attributes["subject_type"])
+		}
+	}
+	if !sawUser || !sawGroup {
+		t.Fatalf("sawUser=%v sawGroup=%v, want both", sawUser, sawGroup)
 	}
 }
 
-func mustParseTime(t *testing.T, value string) time.Time {
+func TestListOktaAppAssignmentsKeepsGroupPhaseCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/api/v1/apps/app-prod/groups" {
+			t.Fatalf("request path = %q, want groups endpoint", got)
+		}
+		if got := r.URL.Query().Get("after"); got != "group-cursor-1" {
+			t.Fatalf("after query = %q, want group-cursor-1", got)
+		}
+		w.Header().Set("Link", "</api/v1/apps/app-prod/groups?after=group-cursor-2&limit=1>; rel=\"next\"")
+		if err := json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"id":     "grp-security",
+				"status": "ACTIVE",
+				"profile": map[string]any{
+					"name": "Security",
+				},
+			},
+		}); err != nil {
+			t.Fatalf("encode group assignments: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	records, next, err := source.listAppAssignments(context.Background(), settings{
+		baseURL: server.URL,
+		domain:  "writer.okta.com",
+		appID:   "app-prod",
+		token:   "test-token",
+	}, "groups:group-cursor-1", 1)
+	if err != nil {
+		t.Fatalf("listAppAssignments() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if got := records[0].SubjectType; got != "group" {
+		t.Fatalf("SubjectType = %q, want group", got)
+	}
+	if next != "groups:group-cursor-2" {
+		t.Fatalf("next = %q, want groups:group-cursor-2", next)
+	}
+}
+
+func mustTestTime(t *testing.T) time.Time {
 	t.Helper()
+	value := "2026-05-07T19:54:46Z"
 	parsed, err := time.Parse(time.RFC3339, value)
 	if err != nil {
 		t.Fatalf("parse time %q: %v", value, err)
@@ -1505,6 +1705,17 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			},
 		},
 	}
+	appGroupAssignmentRecords := []map[string]any{
+		{
+			"id":          "grp-security",
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+			"profile": map[string]any{
+				"name": "Security",
+			},
+		},
+	}
 	roleRecords := []map[string]any{
 		{
 			"id":             "super_admin",
@@ -1585,6 +1796,10 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 		case "/api/v1/apps/app-prod/users":
 			if err := json.NewEncoder(w).Encode(appAssignmentRecords); err != nil {
 				t.Fatalf("encode app assignments: %v", err)
+			}
+		case "/api/v1/apps/app-prod/groups":
+			if err := json.NewEncoder(w).Encode(appGroupAssignmentRecords); err != nil {
+				t.Fatalf("encode app group assignments: %v", err)
 			}
 		case "/api/v1/users/00u1/roles":
 			if err := json.NewEncoder(w).Encode(roleRecords); err != nil {

@@ -680,6 +680,50 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
 }
 
+func TestProjectOktaAuditLinksTargetApplication(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, 5, 7, 19, 54, 46, 0, time.UTC)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "okta-sso",
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.audit",
+		OccurredAt: timestamppb.New(occurred),
+		Attributes: map[string]string{
+			"domain":           "writer.okta.com",
+			"event_type":       "user.authentication.sso",
+			"actor_id":         "00u-user",
+			"actor_type":       "User",
+			"target_app_id":    "0oa-prod",
+			"target_app_label": "Production Console",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	userURN := "urn:cerebro:writer:okta_user:00u-user"
+	appURN := "urn:cerebro:writer:okta_application:0oa-prod"
+	entity, ok := state.entities[appURN]
+	if !ok {
+		t.Fatalf("target app entity %q missing", appURN)
+	}
+	if got := entity.Label; got != "Production Console" {
+		t.Fatalf("target app label = %q, want Production Console", got)
+	}
+	assertProjectedLink(t, state, appURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+	assertProjectedLink(t, state, userURN, relationActedOn, appURN)
+	link := state.links[userURN+"|"+relationActedOn+"|"+appURN]
+	if got := link.Attributes["target_app_id"]; got != "0oa-prod" {
+		t.Fatalf("acted_on target_app_id = %q, want 0oa-prod", got)
+	}
+	if got := link.Attributes["at"]; got != occurred.Format(time.RFC3339) {
+		t.Fatalf("acted_on at = %q, want %q", got, occurred.Format(time.RFC3339))
+	}
+}
+
 func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
