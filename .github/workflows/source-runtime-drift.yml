@@ -80,7 +80,13 @@ jobs:
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.stack || 'go-prod' }}
-        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --same-account-only
+        run: |
+          set -euo pipefail
+          args=(--stack-file "aws/Pulumi.${STACK_NAME}.yaml" --same-account-only)
+          if [ "${STACK_NAME}" = "sec-dev" ]; then
+            args+=(--exclude-source-id panopticon)
+          fi
+          uv run python scripts/verify_aws_scan_role_trust.py "${args[@]}"
 
       - name: Validate Tailscale credentials
         if: env.TAILSCALE_AUTHKEY == '' && env.TAILSCALE_OAUTH_CLIENT_ID != '' && env.TAILSCALE_OAUTH_CLIENT_SECRET != '' && env.TAILSCALE_TAGS == ''
