@@ -19,6 +19,7 @@ import (
 )
 
 const maxAPIResponseBytes = 8 << 20
+const panopticonUserAgent = "cerebro-panopticon-source/1.0"
 
 type panopticonAPICursor struct {
 	Source              string `json:"source,omitempty"`
@@ -177,8 +178,7 @@ func (s *Source) readNativeAPIPage(ctx context.Context, st settings, path string
 	if err != nil {
 		return nativeAPIPage{}, fmt.Errorf("build panopticon api request: %w", err)
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+st.token)
+	req.Header = http.Header{"Accept": {"application/json"}, "User-Agent": {panopticonUserAgent}, "Authorization": {"Bearer " + st.token}}
 
 	resp, err := sourceHTTPClient(s, st.privateEndpointAllowlist).Do(req)
 	if err != nil {

@@ -185,6 +185,9 @@ func TestReadExistingAlertsAPIPaginatesAndMapsNativeFields(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer api-token" {
 			t.Fatalf("Authorization = %q, want bearer token", got)
 		}
+		if got := r.Header.Get("User-Agent"); got != panopticonUserAgent {
+			t.Fatalf("User-Agent = %q, want %q", got, panopticonUserAgent)
+		}
 		if got := r.URL.Query().Get("per_page"); got != "1" {
 			t.Fatalf("per_page = %q, want 1", got)
 		}
