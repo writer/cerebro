@@ -1639,7 +1639,7 @@ def main(argv: list[str] | None = None) -> int:
         run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
         succeed_after_graph_ingest=args.succeed_after_graph_ingest,
         max_age_minutes=args.max_age_minutes,
-        bootstrap_runtime_ids=tuple(runtime_ids) if args.observability_targets else (),
+        bootstrap_runtime_ids=tuple(runtime_ids),
     )
     if args.dry_run:
         _print_dry_run_plan(
@@ -1659,7 +1659,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     _verify_bootstrap_payload_targets(targets, args.region)
     if args.run:
-        preflight_config = _config_for_runtime_scope(config, set(runtime_ids)) if args.observability_targets else config
+        preflight_config = _config_for_runtime_scope(config, set(runtime_ids))
         _verify_secret_import_preflight(preflight_config, stack, args.region)
     results = _verify_runtime_targets(
         targets,
