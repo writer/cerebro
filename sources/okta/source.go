@@ -898,9 +898,13 @@ func (s *Source) listApplications(ctx context.Context, settings settings, after 
 }
 
 func (s *Source) listAppAssignments(ctx context.Context, settings settings, after string, limit int) ([]appAssignmentRecord, string, error) {
-	phase, cursor := oktaAssignmentCursor(after)
 	if phase == "groups" {
-		return s.listAppGroupAssignments(ctx, settings, cursor, limit)
+		groups, next, err := s.listAppGroupAssignments(ctx, settings, cursor, limit)
+		if next != "" {
+			next = "groups:" + next
+		}
+		return groups, next, err
+	}
 	}
 
 	users, next, err := s.listAppUserAssignments(ctx, settings, cursor, limit)
