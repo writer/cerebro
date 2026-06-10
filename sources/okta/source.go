@@ -898,19 +898,19 @@ func (s *Source) listApplications(ctx context.Context, settings settings, after 
 }
 
 func (s *Source) listAppAssignments(ctx context.Context, settings settings, after string, limit int) ([]appAssignmentRecord, string, error) {
+	phase, cursor := oktaevent.AssignmentCursor(after)
 	if phase == "groups" {
 		groups, next, err := s.listAppGroupAssignments(ctx, settings, cursor, limit)
 		if next != "" {
-			next = "groups:" + next
+			next = oktaevent.PhasedCursor("groups", next)
 		}
 		return groups, next, err
-	}
 	}
 
 	users, next, err := s.listAppUserAssignments(ctx, settings, cursor, limit)
 	if err != nil || next != "" || len(users) >= limit {
 		if next != "" {
-			next = "users:" + next
+			next = oktaevent.PhasedCursor("users", next)
 		} else if len(users) >= limit {
 			next = "groups:"
 		}
@@ -923,7 +923,7 @@ func (s *Source) listAppAssignments(ctx context.Context, settings settings, afte
 	}
 	records := append(users, groups...)
 	if groupNext != "" {
-		groupNext = "groups:" + groupNext
+		groupNext = oktaevent.PhasedCursor("groups", groupNext)
 	}
 	return records, groupNext, nil
 }
@@ -1746,17 +1746,6 @@ func assignmentEmail(record appAssignmentRecord) string {
 		stringMap(record.Profile, "userName"),
 		stringMap(record.Credentials, "userName"),
 	)
-}
-
-func oktaAssignmentCursor(raw string) (string, string) {
-	value := strings.TrimSpace(raw)
-	if phase, cursor, ok := strings.Cut(value, ":"); ok {
-		switch strings.TrimSpace(phase) {
-		case "users", "groups":
-			return strings.TrimSpace(phase), strings.TrimSpace(cursor)
-		}
-	}
-	return "users", value
 }
 
 func decodeRawPayload(raw json.RawMessage, label string) (map[string]any, error) {

@@ -496,6 +496,54 @@ func TestReadOktaAppAssignmentsIncludesGroupAssignments(t *testing.T) {
 	}
 }
 
+func TestListOktaAppAssignmentsKeepsGroupPhaseCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/api/v1/apps/app-prod/groups" {
+			t.Fatalf("request path = %q, want groups endpoint", got)
+		}
+		if got := r.URL.Query().Get("after"); got != "group-cursor-1" {
+			t.Fatalf("after query = %q, want group-cursor-1", got)
+		}
+		w.Header().Set("Link", "</api/v1/apps/app-prod/groups?after=group-cursor-2&limit=1>; rel=\"next\"")
+		if err := json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"id":     "grp-security",
+				"status": "ACTIVE",
+				"profile": map[string]any{
+					"name": "Security",
+				},
+			},
+		}); err != nil {
+			t.Fatalf("encode group assignments: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	records, next, err := source.listAppAssignments(context.Background(), settings{
+		baseURL: server.URL,
+		domain:  "writer.okta.com",
+		appID:   "app-prod",
+		token:   "test-token",
+	}, "groups:group-cursor-1", 1)
+	if err != nil {
+		t.Fatalf("listAppAssignments() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if got := records[0].SubjectType; got != "group" {
+		t.Fatalf("SubjectType = %q, want group", got)
+	}
+	if next != "groups:group-cursor-2" {
+		t.Fatalf("next = %q, want groups:group-cursor-2", next)
+	}
+}
+
 func mustTestTime(t *testing.T) time.Time {
 	t.Helper()
 	value := "2026-05-07T19:54:46Z"
