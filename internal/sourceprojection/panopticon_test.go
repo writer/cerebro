@@ -480,6 +480,123 @@ func TestProjectPanopticonIOCEnrichesInternetAnchors(t *testing.T) {
 	assertProjectedLink(t, state, iocURN, relationRepresents, ipURN)
 }
 
+func TestProjectPanopticonAssetsStitchToCanonicalProviderAssets(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-asset-stitch",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-asset-stitch",
+			"title":   "Provider-backed assets",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id": "case-asset-stitch",
+			"assets": []map[string]any{
+				{
+					"asset_id":      "asset-sentinelone",
+					"provider":      "sentinelone",
+					"agent_id":      "agent-123",
+					"computer_name": "writer-mac-1",
+				},
+				{
+					"asset_id":  "asset-kolide",
+					"provider":  "kolide",
+					"device_id": "kolide-device-1",
+					"hostname":  "kolide-host-1",
+				},
+				{
+					"asset_id":          "asset-aws",
+					"resource_provider": "aws",
+					"resource_type":     "ec2_instance",
+					"resource_id":       "i-0123456789abcdef0",
+					"resource_name":     "prod-api-1",
+				},
+				{
+					"asset_id":          "asset-azure",
+					"resource_provider": "azure",
+					"resource_type":     "virtual_machine",
+					"resource_id":       "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1",
+					"resource_name":     "vm-1",
+				},
+				{
+					"asset_id":          "asset-gcp",
+					"resource_provider": "gcp",
+					"resource_type":     "compute_instance",
+					"resource_id":       "projects/prod-project/zones/us-central1-a/instances/instance-1",
+					"resource_name":     "instance-1",
+				},
+				{
+					"asset_id": "asset-kandji-explicit",
+					"urn":      "urn:cerebro:writer:kandji_device:kandji-device-1",
+					"name":     "kandji-mac-1",
+				},
+			},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:sentinelone_agent:agent-123", "sentinelone.agent")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:kolide_device:kolide-device-1", "kolide.device")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:aws_ec2_instance:i-0123456789abcdef0", "aws.ec2.instance")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1", "azure.virtual.machine")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_compute_instance:projects/prod-project/zones/us-central1-a/instances/instance-1", "gcp.compute.instance")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:kandji_device:kandji-device-1", "kandji.device")
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-sentinelone", relationRepresents, "urn:cerebro:writer:sentinelone_agent:agent-123")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-kolide", relationRepresents, "urn:cerebro:writer:kolide_device:kolide-device-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws", relationRepresents, "urn:cerebro:writer:aws_ec2_instance:i-0123456789abcdef0")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-azure", relationRepresents, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp", relationRepresents, "urn:cerebro:writer:gcp_compute_instance:projects/prod-project/zones/us-central1-a/instances/instance-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-kandji-explicit", relationRepresents, "urn:cerebro:writer:kandji_device:kandji-device-1")
+}
+
+func TestProjectPanopticonAssetStitchingRejectsWeakAndCrossTenantMatches(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-asset-stitch-negative",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-asset-stitch-negative",
+			"title":   "Weak assets should remain Panopticon context",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id": "case-asset-stitch-negative",
+			"assets": []map[string]any{
+				{
+					"asset_id": "asset-host-only",
+					"hostname": "prod-host-1.example.com",
+					"ip":       "203.0.113.22",
+				},
+				{
+					"asset_id": "asset-cross-tenant",
+					"urn":      "urn:cerebro:other:sentinelone_agent:agent-999",
+				},
+				{
+					"asset_id": "asset-disallowed-urn",
+					"urn":      "urn:cerebro:writer:identity:email:owner@example.com",
+				},
+			},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	assertPanopticonAssetHasNoCanonicalAssetLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-host-only")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-cross-tenant", relationRepresents, "urn:cerebro:other:sentinelone_agent:agent-999")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-urn", relationRepresents, "urn:cerebro:writer:identity:email:owner@example.com")
+}
+
 func TestProjectPanopticonDoesNotOvermatchOrdinaryProse(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -556,5 +673,18 @@ func assertProjectedEntityMissing(t *testing.T, recorder *projectionRecorder, ur
 	t.Helper()
 	if entity := recorder.entities[urn]; entity != nil {
 		t.Fatalf("projected entity %q should be missing: %#v", urn, entity)
+	}
+}
+
+func assertPanopticonAssetHasNoCanonicalAssetLink(t *testing.T, recorder *projectionRecorder, assetURN string) {
+	t.Helper()
+	for _, link := range recorder.links {
+		if link.FromURN != assetURN || link.Relation != relationRepresents {
+			continue
+		}
+		parts := strings.Split(link.ToURN, ":")
+		if len(parts) >= 4 && parts[0] == "urn" && parts[1] == "cerebro" && panopticonAllowedCanonicalAssetKind(parts[3]) {
+			t.Fatalf("asset %q should not directly stitch to canonical asset %q; link=%#v", assetURN, link.ToURN, link)
+		}
 	}
 }
