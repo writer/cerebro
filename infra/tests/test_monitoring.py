@@ -188,6 +188,72 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertEqual(grc_call["metric_transformation"].value, "$.duration_ms")
         self.assertEqual(grc_call["metric_transformation"].dimensions, {"Dashboard": "$.dashboard"})
 
+    def test_source_runtime_observability_filters_use_bounded_runtime_dimensions(self) -> None:
+        calls: list[dict] = []
+
+        def fake_filter(*args, **kwargs):
+            calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs.get("name"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        original_filter = monitoring.aws.cloudwatch.LogMetricFilter
+        original_args = monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs
+        monitoring.aws.cloudwatch.LogMetricFilter = fake_filter
+        monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = fake_args
+        try:
+            monitoring._create_telemetry_metric_filters(
+                "cerebro-test",
+                "logs",
+                [
+                    {
+                        "environment": "sec-dev",
+                        "sourceSystem": "panopticon",
+                        "sourceRuntimeId": "writer-panopticon-alerts",
+                        "runtimeClass": "alert",
+                        "enabled": True,
+                        "freshnessSlaMinutes": 30,
+                        "dashboardEnabled": True,
+                        "alarmEnabled": True,
+                        "logGroupRef": "runtime",
+                        "alarmRoute": "default",
+                        "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
+                    }
+                ],
+            )
+        finally:
+            monitoring.aws.cloudwatch.LogMetricFilter = original_filter
+            monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
+
+        runtime_calls = [
+            call
+            for call in calls
+            if getattr(call["metric_transformation"], "dimensions", None) == {"RuntimeId": "$.runtime_id"}
+            and call["metric_transformation"].name.startswith("SourceRuntime")
+            and call["metric_transformation"].name
+            not in {"SourceRuntimeEventsAppended", "SourceRuntimePagesRead", "SourceRuntimeWatermarkLagSeconds"}
+        ]
+        self.assertEqual(len(runtime_calls), 10)
+        self.assertEqual(
+            {call["metric_transformation"].name for call in runtime_calls},
+            {
+                "SourceRuntimeContractProbeFailure",
+                "SourceRuntimeContractProbeSuccess",
+                "SourceRuntimeIngestFailure",
+                "SourceRuntimeIngestSuccess",
+                "SourceRuntimeMissingCanonicalFields",
+                "SourceRuntimeOrphanMissingLink",
+                "SourceRuntimeProjectionFailure",
+                "SourceRuntimeProjectionSuccess",
+                "SourceRuntimeRecordsAccepted",
+                "SourceRuntimeRecordsRejected",
+            },
+        )
+        for call in runtime_calls:
+            self.assertEqual(call["metric_transformation"].dimensions, {"RuntimeId": "$.runtime_id"})
+            self.assertFalse(hasattr(call["metric_transformation"], "default_value"))
+
     def test_source_runtime_observability_specs_are_bounded_and_complete(self) -> None:
         specs = monitoring._source_runtime_observability_metric_specs(
             [
@@ -234,13 +300,23 @@ class MonitoringRuntimeTest(unittest.TestCase):
         )
 
         metric_names = [spec["metric_name"] for spec in specs]
-        self.assertIn("SourceRuntimeEvidenceCasObjectIngestSuccess", metric_names)
-        self.assertIn("SourceRuntimePanopticonAlertContractProbeFailure", metric_names)
-        self.assertIn("SourceRuntimePanopticonAlertMissingCanonicalFields", metric_names)
-        self.assertIn("SourceRuntimeOktaUserIngestSuccess", metric_names)
-        self.assertIn("SourceRuntimeOktaUserContractProbeFailure", metric_names)
+        self.assertEqual(
+            metric_names,
+            [
+                "SourceRuntimeIngestSuccess",
+                "SourceRuntimeIngestFailure",
+                "SourceRuntimeRecordsAccepted",
+                "SourceRuntimeRecordsRejected",
+                "SourceRuntimeProjectionSuccess",
+                "SourceRuntimeProjectionFailure",
+                "SourceRuntimeContractProbeSuccess",
+                "SourceRuntimeContractProbeFailure",
+                "SourceRuntimeMissingCanonicalFields",
+                "SourceRuntimeOrphanMissingLink",
+            ],
+        )
         for spec in specs:
-            self.assertNotIn("dimensions", spec)
+            self.assertEqual(spec["dimensions"], {"RuntimeId": "$.runtime_id"})
             self.assertNotIn("tenant_id", spec["pattern"])
             self.assertNotIn("evidence_id", spec["pattern"])
             self.assertNotIn("resource_urn", spec["pattern"])
@@ -310,9 +386,9 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("User sync successes", body)
         self.assertIn("Contract Probe Status", body)
         self.assertIn("Orphan / Missing Link Indicators", body)
-        self.assertNotIn("writer-evidence-cas-cases", body)
-        self.assertNotIn("writer-panopticon-alerts", body)
-        self.assertNotIn("writer-okta-user", body)
+        self.assertIn("writer-evidence-cas-cases", body)
+        self.assertIn("writer-panopticon-alerts", body)
+        self.assertIn("writer-okta-user", body)
 
     def test_source_runtime_observability_alarm_specs_are_actionable_and_redacted(self) -> None:
         specs = monitoring._source_runtime_observability_alarm_specs(
@@ -337,17 +413,18 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertEqual(
             {spec["metric_name"] for spec in specs},
             {
-                "SourceRuntimePanopticonAlertContractProbeFailure",
-                "SourceRuntimePanopticonAlertIngestFailure",
-                "SourceRuntimePanopticonAlertIngestSuccess",
-                "SourceRuntimePanopticonAlertMissingCanonicalFields",
-                "SourceRuntimePanopticonAlertOrphanMissingLink",
-                "SourceRuntimePanopticonAlertProjectionFailure",
+                "SourceRuntimeContractProbeFailure",
+                "SourceRuntimeIngestFailure",
+                "SourceRuntimeIngestSuccess",
+                "SourceRuntimeMissingCanonicalFields",
+                "SourceRuntimeOrphanMissingLink",
+                "SourceRuntimeProjectionFailure",
             },
         )
         self.assertTrue(any(spec["comparison_operator"] == "LessThanThreshold" for spec in specs))
         self.assertTrue(all("inspect" in spec["description"] or "check" in spec["description"] for spec in specs))
         for spec in specs:
+            self.assertEqual(spec["dimensions"], {"RuntimeId": "writer-panopticon-alerts"})
             self.assertNotIn("writer-panopticon-alerts", spec["description"])
             self.assertNotIn("tenant_id", spec["description"])
             self.assertNotIn("resource_urn", spec["description"])
