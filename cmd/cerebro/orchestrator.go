@@ -35,15 +35,16 @@ const (
 )
 
 type orchestratorOptions struct {
-	Filter         ports.SourceRuntimeFilter `json:"filter"`
-	PageLimit      uint32                    `json:"page_limit,omitempty"`
-	EventLimit     uint32                    `json:"event_limit,omitempty"`
-	GraphPageLimit uint32                    `json:"graph_page_limit,omitempty"`
-	PhaseTimeout   time.Duration             `json:"-"`
-	GraphTimeout   time.Duration             `json:"-"`
-	Interval       time.Duration             `json:"-"`
-	Iterations     uint32                    `json:"iterations"`
-	RunForever     bool                      `json:"run_forever,omitempty"`
+	Filter          ports.SourceRuntimeFilter `json:"filter"`
+	PageLimit       uint32                    `json:"page_limit,omitempty"`
+	EventLimit      uint32                    `json:"event_limit,omitempty"`
+	GraphPageLimit  uint32                    `json:"graph_page_limit,omitempty"`
+	PhaseTimeout    time.Duration             `json:"-"`
+	GraphTimeout    time.Duration             `json:"-"`
+	Interval        time.Duration             `json:"-"`
+	ShutdownContext context.Context           `json:"-"`
+	Iterations      uint32                    `json:"iterations"`
+	RunForever      bool                      `json:"run_forever,omitempty"`
 }
 
 type orchestratorResult struct {
@@ -87,6 +88,7 @@ func runOrchestrator(args []string) error {
 	if err != nil {
 		return err
 	}
+	options.ShutdownContext = context.Background()
 	ctx, stop := signal.NotifyContext(context.Background(), orchestratorShutdownSignals()...)
 	defer stop()
 	result, runErr := runOrchestratorLoop(ctx, options)
@@ -210,6 +212,15 @@ func parsePositiveDurationArg(name string, value string) (time.Duration, error) 
 }
 
 func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (result *orchestratorResult, err error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	closeTelemetry, err := configureOpenTelemetry(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("configure telemetry: %w", err)
+	}
+	defer shutdownTelemetry(orchestratorShutdownContext(options, ctx), closeTelemetry, cfg.ShutdownTimeout)
 	ctx, span := telemetry.Start(ctx, "orchestrator.run", telemetry.Attrs(
 		telemetryField("runtime_id", options.Filter.RuntimeID),
 		telemetryField("tenant_id", options.Filter.TenantID),
@@ -232,10 +243,6 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		}
 		telemetry.End(span, status, spanAttributes)
 	}()
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
-	}
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open dependencies: %w", err)
@@ -370,6 +377,13 @@ func appendOrchestratorRun(runs []*orchestratorIterationResult, run *orchestrato
 		return append(runs, run)
 	}
 	return []*orchestratorIterationResult{run}
+}
+
+func orchestratorShutdownContext(options orchestratorOptions, fallback context.Context) context.Context {
+	if options.ShutdownContext != nil {
+		return options.ShutdownContext
+	}
+	return fallback
 }
 
 func runOrchestratorIteration(

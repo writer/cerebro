@@ -35,6 +35,7 @@ type Config struct {
 	GraphStore      GraphStoreConfig
 	GraphAgentLLM   GraphAgentLLMConfig
 	Auth            AuthConfig
+	OTEL            OpenTelemetryConfig
 }
 
 // AppendLogConfig selects and configures the append-log driver.
@@ -75,6 +76,20 @@ type GraphAgentLLMConfig struct {
 	MaxTokens        int
 	Temperature      float64
 	OpenRouterAPIKey string
+}
+
+// OpenTelemetryConfig controls OTLP trace and metric export.
+type OpenTelemetryConfig struct {
+	Enabled         bool
+	ServiceName     string
+	Protocol        string
+	Endpoint        string
+	TracesEndpoint  string
+	MetricsEndpoint string
+	Headers         map[string]string
+	Insecure        bool
+	TraceSampleRate float64
+	MetricInterval  time.Duration
 }
 
 // APIKey grants one bearer token access to the bootstrap API.
@@ -275,6 +290,13 @@ func Load() (Config, error) {
 			OpusModel:   strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_OPUS")),
 			HaikuModel:  strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU")),
 		},
+		OTEL: OpenTelemetryConfig{
+			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),
+			Protocol:        strings.TrimSpace(os.Getenv("CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL")),
+			Endpoint:        strings.TrimSpace(os.Getenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT")),
+			TracesEndpoint:  strings.TrimSpace(os.Getenv("CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")),
+			MetricsEndpoint: strings.TrimSpace(os.Getenv("CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")),
+		},
 		Auth: AuthConfig{
 			APIKeys:                 parseAPIKeys(os.Getenv("CEREBRO_API_KEYS")),
 			APICredentials:          apiCredentials,
@@ -292,6 +314,37 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.Auth.Enabled = authEnabled
+	otelEnabled, err := parseBoolEnv("CEREBRO_OTEL_ENABLED")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.OTEL.Enabled = otelEnabled || (!envHasValue("CEREBRO_OTEL_ENABLED") && cfg.OTEL.hasExporterConfig())
+	if cfg.OTEL.Insecure, err = parseBoolEnv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE"); err != nil {
+		return Config{}, err
+	}
+	if cfg.OTEL.TraceSampleRate, err = parseFloatEnv("CEREBRO_OTEL_TRACES_SAMPLE_RATE", 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.OTEL.TraceSampleRate < 0 || cfg.OTEL.TraceSampleRate > 1 {
+		return Config{}, fmt.Errorf("CEREBRO_OTEL_TRACES_SAMPLE_RATE must be between 0 and 1")
+	}
+	if cfg.OTEL.MetricInterval, err = parseDurationEnv("CEREBRO_OTEL_METRICS_EXPORT_INTERVAL", time.Minute); err != nil {
+		return Config{}, err
+	}
+	if cfg.OTEL.MetricInterval <= 0 {
+		return Config{}, fmt.Errorf("CEREBRO_OTEL_METRICS_EXPORT_INTERVAL must be greater than zero")
+	}
+	if cfg.OTEL.Headers, err = parseKeyValueHeaderEnv("CEREBRO_OTEL_EXPORTER_OTLP_HEADERS"); err != nil {
+		return Config{}, err
+	}
+	if cfg.OTEL.Protocol == "" {
+		cfg.OTEL.Protocol = "http/protobuf"
+	}
+	switch cfg.OTEL.Protocol {
+	case "grpc", "http/protobuf":
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL %q", cfg.OTEL.Protocol)
+	}
 	if cfg.Auth.RequestOrigin.TrustedProxyCount, err = parseIntEnv("CEREBRO_TRUSTED_PROXY_COUNT", 0); err != nil {
 		return Config{}, err
 	}
@@ -438,6 +491,15 @@ func validateRequestOriginConfig(cfg RequestOriginConfig) error {
 	return nil
 }
 
+func (cfg OpenTelemetryConfig) hasExporterConfig() bool {
+	return strings.TrimSpace(cfg.Endpoint) != "" || strings.TrimSpace(cfg.TracesEndpoint) != "" || strings.TrimSpace(cfg.MetricsEndpoint) != ""
+}
+
+func envHasValue(name string) bool {
+	raw, ok := os.LookupEnv(name)
+	return ok && strings.TrimSpace(raw) != ""
+}
+
 func parseBoolEnv(name string) (bool, error) {
 	raw, ok := os.LookupEnv(name)
 	if !ok || strings.TrimSpace(raw) == "" {
@@ -481,6 +543,28 @@ func parseFloatEnv(name string, defaultValue float64) (float64, error) {
 		return 0, fmt.Errorf("%s must be greater than or equal to zero", name)
 	}
 	return value, nil
+}
+
+func parseKeyValueHeaderEnv(name string) (map[string]string, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return nil, nil
+	}
+	headers := map[string]string{}
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(entry, "=")
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if !ok || key == "" {
+			return nil, fmt.Errorf("%s must contain comma-separated key=value entries", name)
+		}
+		headers[key] = value
+	}
+	return headers, nil
 }
 
 func parseCSV(raw string) []string {

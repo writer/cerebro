@@ -29,6 +29,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", "")
 	clearGraphAgentEnv(t)
+	clearOpenTelemetryEnv(t)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
 	t.Setenv("CEREBRO_API_KEYS", "")
@@ -63,6 +64,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.GraphAgentLLM.Provider != "" || cfg.GraphAgentLLM.MaxTokens != 0 {
 		t.Fatalf("GraphAgentLLM = %#v, want empty/default", cfg.GraphAgentLLM)
+	}
+	if cfg.OTEL.Enabled || cfg.OTEL.Protocol != "http/protobuf" || cfg.OTEL.TraceSampleRate != 1 || cfg.OTEL.MetricInterval != time.Minute {
+		t.Fatalf("OTEL defaults = %#v", cfg.OTEL)
 	}
 	if cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = true, want false")
@@ -102,6 +106,16 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU", "anthropic.claude-haiku-example")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "900")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "0.25")
+	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
+	t.Setenv("CEREBRO_OTEL_SERVICE_NAME", "cerebro-test")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "https://otel-collector.example.com:4317")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "https://otel-collector.example.com:4317/v1/traces")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "https://otel-collector.example.com:4317/v1/metrics")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_HEADERS", "x-scope=security,tenant=writer")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "true")
+	t.Setenv("CEREBRO_OTEL_TRACES_SAMPLE_RATE", "0.25")
+	t.Setenv("CEREBRO_OTEL_METRICS_EXPORT_INTERVAL", "15s")
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
 	t.Setenv("CEREBRO_API_KEYS", "token-1:ci:writer,token-2:ops:security")
@@ -155,6 +169,18 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.GraphAgentLLM.SonnetModel != "anthropic.claude-sonnet-example" || cfg.GraphAgentLLM.OpusModel == "" || cfg.GraphAgentLLM.HaikuModel == "" {
 		t.Fatalf("GraphAgentLLM model mapping = %#v", cfg.GraphAgentLLM)
 	}
+	if !cfg.OTEL.Enabled || cfg.OTEL.Protocol != "grpc" || cfg.OTEL.ServiceName != "cerebro-test" {
+		t.Fatalf("OTEL = %#v, want enabled grpc config", cfg.OTEL)
+	}
+	if cfg.OTEL.Endpoint != "https://otel-collector.example.com:4317" || cfg.OTEL.TracesEndpoint == "" || cfg.OTEL.MetricsEndpoint == "" {
+		t.Fatalf("OTEL endpoints = %#v", cfg.OTEL)
+	}
+	if cfg.OTEL.Headers["x-scope"] != "security" || cfg.OTEL.Headers["tenant"] != "writer" {
+		t.Fatalf("OTEL headers = %#v", cfg.OTEL.Headers)
+	}
+	if !cfg.OTEL.Insecure || cfg.OTEL.TraceSampleRate != 0.25 || cfg.OTEL.MetricInterval != 15*time.Second {
+		t.Fatalf("OTEL exporter options = %#v", cfg.OTEL)
+	}
 	if !cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = false, want true")
 	}
@@ -175,6 +201,19 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if got := cfg.Auth.AllowedTenants; len(got) != 2 || got[0] != "security" || got[1] != "writer" {
 		t.Fatalf("Auth.AllowedTenants = %#v, want [security writer]", got)
+	}
+}
+
+func TestLoadEnablesOTELWhenEndpointConfigured(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.OTEL.Enabled {
+		t.Fatal("OTEL.Enabled = false, want true when endpoint is configured")
 	}
 }
 
@@ -200,6 +239,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", "")
 	clearGraphAgentEnv(t)
+	clearOpenTelemetryEnv(t)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
 	t.Setenv("CEREBRO_API_KEYS", "")
@@ -223,6 +263,20 @@ func clearGraphAgentEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU", "")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "")
+}
+
+func clearOpenTelemetryEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("CEREBRO_OTEL_ENABLED", "")
+	t.Setenv("CEREBRO_OTEL_SERVICE_NAME", "")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL", "")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_HEADERS", "")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "")
+	t.Setenv("CEREBRO_OTEL_TRACES_SAMPLE_RATE", "")
+	t.Setenv("CEREBRO_OTEL_METRICS_EXPORT_INTERVAL", "")
 }
 
 func clearDeviceAuthEnv(t *testing.T) {

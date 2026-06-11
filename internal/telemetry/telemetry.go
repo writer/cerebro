@@ -5,10 +5,18 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 type spanContextKey struct{}
@@ -24,6 +32,7 @@ type Span struct {
 	spanID   string
 	parentID string
 	started  time.Time
+	otelSpan oteltrace.Span
 }
 
 type Attributes struct {
@@ -66,14 +75,22 @@ func Start(ctx context.Context, name string, attributes Attributes) (context.Con
 	if traceID == "" {
 		traceID = randomHex(16)
 	}
+	otelCtx, otelSpan := otel.Tracer("github.com/writer/cerebro/internal/telemetry").Start(ctx, name, oteltrace.WithAttributes(attributes.OTELAttributes()...))
+	if spanContext := otelSpan.SpanContext(); spanContext.IsValid() {
+		traceID = spanContext.TraceID().String()
+	}
 	span := &Span{
 		name:     name,
 		traceID:  traceID,
 		spanID:   randomHex(8),
 		parentID: parent.SpanID,
 		started:  time.Now().UTC(),
+		otelSpan: otelSpan,
 	}
-	next := context.WithValue(ctx, spanContextKey{}, spanContext{TraceID: span.traceID, SpanID: span.spanID})
+	if spanContext := otelSpan.SpanContext(); spanContext.IsValid() {
+		span.spanID = spanContext.SpanID().String()
+	}
+	next := context.WithValue(otelCtx, spanContextKey{}, spanContext{TraceID: span.traceID, SpanID: span.spanID})
 	emit("span_start", span, attributes)
 	return next, span
 }
@@ -84,11 +101,17 @@ func WithTraceParent(ctx context.Context, header string) context.Context {
 	if !ok {
 		return ctx
 	}
+	ctx = propagation.TraceContext{}.Extract(ctx, propagation.MapCarrier{"traceparent": strings.TrimSpace(header)})
 	return context.WithValue(ctx, spanContextKey{}, spanContext{TraceID: traceID, SpanID: spanID})
 }
 
 // TraceParent returns a W3C traceparent header for the current telemetry span.
 func TraceParent(ctx context.Context) string {
+	carrier := propagation.MapCarrier{}
+	propagation.TraceContext{}.Inject(ctx, carrier)
+	if value := carrier.Get("traceparent"); value != "" {
+		return value
+	}
 	current, _ := ctx.Value(spanContextKey{}).(spanContext)
 	if current.TraceID == "" || current.SpanID == "" {
 		return ""
@@ -112,6 +135,9 @@ func ParseTraceParent(header string) (string, string, bool) {
 
 func Event(ctx context.Context, name string, attributes Attributes) {
 	current, _ := ctx.Value(spanContextKey{}).(spanContext)
+	if span := oteltrace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+		span.AddEvent(name, oteltrace.WithAttributes(attributes.OTELAttributes()...))
+	}
 	emit("event", &Span{name: name, traceID: current.TraceID, spanID: current.SpanID}, attributes)
 }
 
@@ -123,7 +149,29 @@ func End(span *Span, status string, attributes Attributes) {
 		attributes = attributes.with("status", status)
 	}
 	attributes = attributes.with("duration_ms", time.Since(span.started).Milliseconds())
+	if span.otelSpan != nil && span.otelSpan.SpanContext().IsValid() {
+		span.otelSpan.SetAttributes(attributes.OTELAttributes()...)
+		switch telemetryStatus(strings.TrimSpace(status)) {
+		case codes.Error:
+			span.otelSpan.SetStatus(codes.Error, status)
+		case codes.Unset:
+		default:
+			span.otelSpan.SetStatus(codes.Ok, status)
+		}
+		span.otelSpan.End()
+	}
 	emit("span_end", span, attributes)
+}
+
+func telemetryStatus(status string) codes.Code {
+	switch strings.ToLower(status) {
+	case "", "canceled", "cancelled":
+		return codes.Unset
+	case "failed", "error":
+		return codes.Error
+	default:
+		return codes.Ok
+	}
 }
 
 func InjectEventAttributes(ctx context.Context, attributes map[string]string) {
@@ -131,11 +179,55 @@ func InjectEventAttributes(ctx context.Context, attributes map[string]string) {
 		return
 	}
 	current, _ := ctx.Value(spanContextKey{}).(spanContext)
+	if current.TraceID == "" || current.SpanID == "" {
+		if spanContext := oteltrace.SpanContextFromContext(ctx); spanContext.IsValid() {
+			current.TraceID = spanContext.TraceID().String()
+			current.SpanID = spanContext.SpanID().String()
+		}
+	}
 	if current.TraceID != "" {
 		attributes["trace_id"] = current.TraceID
 	}
 	if current.SpanID != "" {
 		attributes["span_id"] = current.SpanID
+	}
+}
+
+func (a Attributes) OTELAttributes() []attribute.KeyValue {
+	if len(a.values) == 0 {
+		return nil
+	}
+	attrs := make([]attribute.KeyValue, 0, len(a.values))
+	for key, value := range a.values {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		attrs = append(attrs, otelAttribute(key, value))
+	}
+	return attrs
+}
+
+func otelAttribute(key string, value any) attribute.KeyValue {
+	switch v := value.(type) {
+	case bool:
+		return attribute.Bool(key, v)
+	case int:
+		return attribute.Int(key, v)
+	case int64:
+		return attribute.Int64(key, v)
+	case uint32:
+		return attribute.Int64(key, int64(v))
+	case uint64:
+		if v <= uint64(^uint(0)>>1) {
+			return attribute.Int64(key, int64(v))
+		}
+		return attribute.String(key, strconv.FormatUint(v, 10))
+	case float64:
+		return attribute.Float64(key, v)
+	case string:
+		return attribute.String(key, v)
+	default:
+		return attribute.String(key, strings.TrimSpace(fmt.Sprint(v)))
 	}
 }
 
