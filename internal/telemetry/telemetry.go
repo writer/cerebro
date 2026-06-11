@@ -151,16 +151,27 @@ func End(span *Span, status string, attributes Attributes) {
 	attributes = attributes.with("duration_ms", time.Since(span.started).Milliseconds())
 	if span.otelSpan != nil && span.otelSpan.SpanContext().IsValid() {
 		span.otelSpan.SetAttributes(attributes.OTELAttributes()...)
-		switch status {
-		case "failed":
+		switch telemetryStatus(strings.TrimSpace(status)) {
+		case codes.Error:
 			span.otelSpan.SetStatus(codes.Error, status)
-		case "":
+		case codes.Unset:
 		default:
 			span.otelSpan.SetStatus(codes.Ok, status)
 		}
 		span.otelSpan.End()
 	}
 	emit("span_end", span, attributes)
+}
+
+func telemetryStatus(status string) codes.Code {
+	switch strings.ToLower(status) {
+	case "", "canceled", "cancelled":
+		return codes.Unset
+	case "failed", "error":
+		return codes.Error
+	default:
+		return codes.Ok
+	}
 }
 
 func InjectEventAttributes(ctx context.Context, attributes map[string]string) {

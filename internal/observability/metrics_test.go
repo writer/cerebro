@@ -2,8 +2,11 @@ package observability
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 func TestNormalizeRouteLabelBoundsUnknownPaths(t *testing.T) {
@@ -30,6 +33,22 @@ func TestNormalizeMethodLabelBoundsUnknownMethods(t *testing.T) {
 	}
 	if got := normalizeMethodLabel("BREW-COFFEE-" + strings.Repeat("x", 128)); got != "OTHER" {
 		t.Fatalf("unknown method label = %q, want OTHER", got)
+	}
+}
+
+func TestMiddlewareDoesNotTrustInboundTraceParentBeforeAuth(t *testing.T) {
+	attackerTraceID := "4bf92f3577b34da6a3ce929d0e0e4736"
+	var propagated string
+	handler := Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		propagated = telemetry.TraceParent(r.Context())
+	}))
+	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	request.Header.Set("Traceparent", "00-"+attackerTraceID+"-00f067aa0ba902b7-01")
+
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+
+	if strings.Contains(propagated, attackerTraceID) {
+		t.Fatalf("inbound traceparent was trusted before auth: %q", propagated)
 	}
 }
 

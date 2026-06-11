@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -126,6 +127,32 @@ func TestStartAndEventBridgeToOpenTelemetry(t *testing.T) {
 	}
 	if len(ended[0].Events()) != 1 || ended[0].Events()[0].Name != "test.event" {
 		t.Fatalf("span events = %#v, want test.event", ended[0].Events())
+	}
+}
+
+func TestEndMapsErrorStatusesToOpenTelemetryErrors(t *testing.T) {
+	for _, status := range []string{"failed", "error"} {
+		t.Run(status, func(t *testing.T) {
+			recorder := tracetest.NewSpanRecorder()
+			provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+			oldProvider := otel.GetTracerProvider()
+			otel.SetTracerProvider(provider)
+			t.Cleanup(func() {
+				otel.SetTracerProvider(oldProvider)
+				_ = provider.Shutdown(context.Background())
+			})
+
+			_, span := Start(context.Background(), "test.span", Attrs())
+			End(span, status, Attrs())
+
+			ended := recorder.Ended()
+			if len(ended) != 1 {
+				t.Fatalf("ended spans = %d, want 1", len(ended))
+			}
+			if got := ended[0].Status().Code; got != codes.Error {
+				t.Fatalf("span status code = %v, want Error", got)
+			}
+		})
 	}
 }
 

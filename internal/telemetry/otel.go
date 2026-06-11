@@ -65,7 +65,7 @@ func ConfigureOpenTelemetry(ctx context.Context, options OpenTelemetryOptions) (
 	}
 	traceProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(options.TraceSampleRate)),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(options.TraceSampleRate))),
 		sdktrace.WithBatcher(traceExporter),
 	)
 	meterProvider := metric.NewMeterProvider(

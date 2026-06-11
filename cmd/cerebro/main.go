@@ -364,7 +364,7 @@ func runSourceRuntime(args []string) error {
 	if err != nil {
 		return fmt.Errorf("configure telemetry: %w", err)
 	}
-	defer shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
+	defer shutdownTelemetry(context.Background(), closeTelemetry, cfg.ShutdownTimeout)
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("open dependencies: %w", err)

@@ -14,8 +14,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	oteltrace "go.opentelemetry.io/otel/trace"
-
-	"github.com/writer/cerebro/internal/telemetry"
 )
 
 var Default = NewRegistry()
@@ -85,10 +83,9 @@ func (r *Registry) Render() string {
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := telemetry.WithTraceParent(r.Context(), r.Header.Get("Traceparent"))
 		route := normalizeRouteLabel(r.URL.Path)
 		method := normalizeMethodLabel(r.Method)
-		ctx, span := otel.Tracer("github.com/writer/cerebro/internal/observability").Start(ctx, "http.server",
+		ctx, span := otel.Tracer("github.com/writer/cerebro/internal/observability").Start(r.Context(), "http.server",
 			oteltrace.WithSpanKind(oteltrace.SpanKindServer),
 			oteltrace.WithAttributes(
 				attribute.String("http.request.method", method),
