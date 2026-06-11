@@ -325,7 +325,7 @@ config:
         wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
       schedule:
         cadenceHours: 6
-        nameMaxLength: 36
+        nameMaxLength: 35
       families: &gcp_dev_wif_families
         - asset_metadata
         - audit
@@ -353,7 +353,7 @@ config:
         wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
       schedule:
         cadenceHours: 6
-        nameMaxLength: 36
+        nameMaxLength: 35
       families: *gcp_dev_wif_families
     - sourceId: gcp
       runtimePrefix: writer-gcp-dev-networking
@@ -364,7 +364,7 @@ config:
         wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
       schedule:
         cadenceHours: 6
-        nameMaxLength: 36
+        nameMaxLength: 35
       families: *gcp_dev_wif_families
     - sourceId: gcp
       runtimePrefix: writer-gcp-dev-devops
@@ -375,7 +375,7 @@ config:
         wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
       schedule:
         cadenceHours: 6
-        nameMaxLength: 36
+        nameMaxLength: 35
       families: *gcp_dev_wif_families
   cerebro:sourceRuntimeObservability:
     - environment: sec-dev
