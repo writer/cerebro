@@ -711,8 +711,6 @@ func panopticonAddCloudAssetEnrichment(entities map[string]*ports.ProjectedEntit
 	addAzureResourceGroupLinks(entities, links, tenantID, sourceID, event, identityProjectionProfile{Provider: provider}, cloudAttrs, target.urn)
 	addCloudResourceOwnerLink(entities, links, tenantID, event, target.urn, firstNonEmpty(cloudAttrs["owner"], cloudAttrs["team"]))
 	addCloudResourceClassificationLinks(entities, links, tenantID, event, target.urn, cloudAttrs, cloudResourceProjectionOptions{})
-	addCloudResourcePublicReachability(entities, links, tenantID, event, target.urn, provider, cloudAttrs)
-	addCloudResourceRuntimeIdentityLinks(entities, links, tenantID, event, target.urn, provider, cloudAttrs)
 	if provider == "aws" {
 		addAWSNetworkContextLinks(entities, links, tenantID, sourceID, event, target.urn, cloudAttrs)
 	}
@@ -787,7 +785,7 @@ func panopticonCloudResourceType(provider string, attrs map[string]string, resou
 	}
 	switch provider {
 	case "aws":
-		return panopticonAWSResourceTypeFromARN(resourceID)
+		return panopticonAWSResourceTypeFromARN(firstNonEmpty(firstAttribute(attrs, "resource_arn"), resourceID))
 	case "azure":
 		return panopticonAzureResourceTypeFromID(resourceID)
 	case "gcp":
@@ -806,12 +804,52 @@ func panopticonCloudResourceID(provider string, attrs map[string]string) (string
 		if value == "" {
 			continue
 		}
+		if provider == "aws" {
+			value = panopticonNormalizeAWSResourceID(attrs, value)
+		}
 		if provider == "gcp" {
 			value = panopticonNormalizeGCPResourceID(attrs, key, value)
 		}
 		return value, key
 	}
 	return "", ""
+}
+
+func panopticonNormalizeAWSResourceID(attrs map[string]string, value string) string {
+	resourceType := panopticonCloudResourceTypeAlias("aws", firstAttribute(attrs, "resource_type", "asset_type", "type"))
+	if resourceType == "" {
+		resourceType = panopticonAWSResourceTypeFromARN(value)
+	}
+	parts := strings.SplitN(strings.TrimSpace(value), ":", 6)
+	if len(parts) != 6 || parts[0] != "arn" || parts[5] == "" {
+		return value
+	}
+	resource := parts[5]
+	for _, prefix := range panopticonAWSBareIDResourcePrefixes(resourceType) {
+		for _, separator := range []string{"/", ":"} {
+			if after, ok := strings.CutPrefix(resource, prefix+separator); ok && strings.TrimSpace(after) != "" {
+				return strings.TrimSpace(after)
+			}
+		}
+	}
+	return value
+}
+
+func panopticonAWSBareIDResourcePrefixes(resourceType string) []string {
+	switch resourceType {
+	case "ec2_instance":
+		return []string{"instance"}
+	case "network_interface":
+		return []string{"network-interface", "network_interface"}
+	case "security_group":
+		return []string{"security-group", "security_group"}
+	case "subnet":
+		return []string{"subnet"}
+	case "vpc":
+		return []string{"vpc"}
+	default:
+		return nil
+	}
 }
 
 func panopticonCloudResourceTypeAlias(provider string, value string) string {
