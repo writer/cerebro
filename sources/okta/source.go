@@ -1291,8 +1291,12 @@ func appAssignmentEvent(settings settings, record appAssignmentRecord) (*primiti
 	if err != nil {
 		return nil, fmt.Errorf("marshal okta app assignment payload: %w", err)
 	}
+	eventID := fmt.Sprintf("okta-app-assignment-%s-%s-%d", appID, record.ID, occurredAt.UnixMilli())
+	if subjectType != "user" {
+		eventID = fmt.Sprintf("okta-app-assignment-%s-%s-%s-%d", appID, subjectType, record.ID, occurredAt.UnixMilli())
+	}
 	return &primitives.Event{
-		Id:         fmt.Sprintf("okta-app-assignment-%s-%s-%s-%d", appID, subjectType, record.ID, occurredAt.UnixMilli()),
+		Id:         eventID,
 		TenantId:   settings.domain,
 		SourceId:   "okta",
 		Kind:       "okta.app_assignment",
@@ -1554,15 +1558,7 @@ func appAssignmentAttributes(settings settings, record appAssignmentRecord) map[
 	subjectEmail := assignmentEmail(record)
 	subjectType := firstNonEmpty(record.SubjectType, "user")
 	appID := firstNonEmpty(record.AppID, settings.appID)
-	attributes := map[string]string{
-		"domain":         settings.domain,
-		"family":         familyAppAssign,
-		"app_id":         appID,
-		"subject_id":     record.ID,
-		"subject_type":   subjectType,
-		"principal_type": subjectType,
-		"status":         record.Status,
-	}
+	attributes := oktaevent.AppAssignmentAttributes(settings.domain, familyAppAssign, appID, record.ID, subjectType, record.Status)
 	addAttribute(attributes, "subject_email", subjectEmail)
 	addAttribute(attributes, "email", subjectEmail)
 	addAttribute(attributes, "subject_name", firstNonEmpty(stringMap(record.Profile, "displayName"), stringMap(record.Profile, "name"), subjectEmail, record.ID))
