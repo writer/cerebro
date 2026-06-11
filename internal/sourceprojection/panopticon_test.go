@@ -547,6 +547,26 @@ func TestProjectPanopticonAssetsStitchToCanonicalProviderAssets(t *testing.T) {
 					"service_account_email": "api@prod-project.iam.gserviceaccount.com",
 				},
 				{
+					"asset_id":          "asset-gcp-compute",
+					"project_id":        "prod-project",
+					"resource_provider": "gcp",
+					"resource_type":     "compute_instance",
+					"self_link":         "https://www.googleapis.com/compute/v1/projects/prod-project/zones/us-central1-a/instances/instance-1",
+				},
+				{
+					"asset_id":          "asset-gcp-sql",
+					"project_id":        "prod-project",
+					"resource_provider": "gcp",
+					"resource_type":     "cloud_sql_instance",
+					"self_link":         "https://sqladmin.googleapis.com/sql/v1beta4/projects/prod-project/instances/sql-1",
+				},
+				{
+					"asset_id":          "asset-gcp-gke",
+					"project_id":        "prod-project",
+					"resource_provider": "gcp",
+					"resource_id":       "https://container.googleapis.com/v1/projects/prod-project/locations/us-central1/clusters/cluster-1",
+				},
+				{
 					"asset_id":          "asset-gcp-bucket",
 					"project_id":        "prod-project",
 					"resource_provider": "gcp",
@@ -578,6 +598,9 @@ func TestProjectPanopticonAssetsStitchToCanonicalProviderAssets(t *testing.T) {
 	assertProjectedEntityType(t, state, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", "aws.apprunner.service")
 	assertProjectedEntityType(t, state, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1", "azure.virtual.machine")
 	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_cloud_run_service:projects/prod-project/locations/us-central1/services/api", "gcp.cloud.run.service")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_compute_instance:instance-1", "gcp.compute.instance")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_cloud_sql_instance:https://sqladmin.googleapis.com/sql/v1beta4/projects/prod-project/instances/sql-1", "gcp.cloud.sql.instance")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_gke_cluster:https://container.googleapis.com/v1/projects/prod-project/locations/us-central1/clusters/cluster-1", "gcp.gke.cluster")
 	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_gcs_bucket:prod-bucket", "gcp.gcs.bucket")
 	assertProjectedEntityType(t, state, "urn:cerebro:writer:aws_s3_bucket:prod-bucket", "aws.s3.bucket")
 	assertProjectedEntityType(t, state, "urn:cerebro:writer:kandji_device:kandji-device-1", "kandji.device")
@@ -587,6 +610,9 @@ func TestProjectPanopticonAssetsStitchToCanonicalProviderAssets(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws", relationRepresents, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e")
 	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-azure", relationRepresents, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp", relationRepresents, "urn:cerebro:writer:gcp_cloud_run_service:projects/prod-project/locations/us-central1/services/api")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp-compute", relationRepresents, "urn:cerebro:writer:gcp_compute_instance:instance-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp-sql", relationRepresents, "urn:cerebro:writer:gcp_cloud_sql_instance:https://sqladmin.googleapis.com/sql/v1beta4/projects/prod-project/instances/sql-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp-gke", relationRepresents, "urn:cerebro:writer:gcp_gke_cluster:https://container.googleapis.com/v1/projects/prod-project/locations/us-central1/clusters/cluster-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp-bucket", relationRepresents, "urn:cerebro:writer:gcp_gcs_bucket:prod-bucket")
 	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws-resource-urn", relationRepresents, "urn:cerebro:writer:aws_s3_bucket:prod-bucket")
 	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-kandji-explicit", relationRepresents, "urn:cerebro:writer:kandji_device:kandji-device-1")
@@ -638,6 +664,24 @@ func TestProjectPanopticonAssetStitchingRejectsWeakAndCrossTenantMatches(t *test
 					"asset_id": "asset-disallowed-urn",
 					"urn":      "urn:cerebro:writer:identity:email:owner@example.com",
 				},
+				{
+					"asset_id": "asset-disallowed-aws-role",
+					"urn":      "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/Admin",
+				},
+				{
+					"asset_id": "asset-disallowed-gcp-service-account",
+					"urn":      "urn:cerebro:writer:gcp_service_account:svc@prod-project.iam.gserviceaccount.com",
+				},
+				{
+					"asset_id": "asset-disallowed-azure-principal",
+					"urn":      "urn:cerebro:writer:azure_service_principal:principal-1",
+				},
+				{
+					"asset_id":          "asset-disallowed-provider-principal",
+					"resource_provider": "gcp",
+					"resource_type":     "service_account",
+					"resource_id":       "svc@prod-project.iam.gserviceaccount.com",
+				},
 			},
 		}),
 	})
@@ -648,6 +692,10 @@ func TestProjectPanopticonAssetStitchingRejectsWeakAndCrossTenantMatches(t *test
 	assertPanopticonAssetHasNoCanonicalAssetLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-host-only")
 	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-cross-tenant", relationRepresents, "urn:cerebro:other:sentinelone_agent:agent-999")
 	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-urn", relationRepresents, "urn:cerebro:writer:identity:email:owner@example.com")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-aws-role", relationRepresents, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/Admin")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-gcp-service-account", relationRepresents, "urn:cerebro:writer:gcp_service_account:svc@prod-project.iam.gserviceaccount.com")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-azure-principal", relationRepresents, "urn:cerebro:writer:azure_service_principal:principal-1")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-provider-principal", relationRepresents, "urn:cerebro:writer:gcp_service_account:svc@prod-project.iam.gserviceaccount.com")
 }
 
 func TestProjectPanopticonDoesNotOvermatchOrdinaryProse(t *testing.T) {

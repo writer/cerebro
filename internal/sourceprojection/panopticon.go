@@ -36,6 +36,7 @@ var panopticonAssetAttributeKeys = []string{
 	"hostname",
 	"id",
 	"name",
+	"instance_id",
 	"provider",
 	"resource_arn",
 	"resource_id",
@@ -676,6 +677,9 @@ func panopticonCloudAssetTarget(tenantID string, sourceID string, attrs map[stri
 	if resourceType == "" {
 		return panopticonAssetStitchTarget{}
 	}
+	if !panopticonAllowedCanonicalAssetKind(provider + "_" + resourceType) {
+		return panopticonAssetStitchTarget{}
+	}
 	resourceURN := firstAttribute(attrs, "resource_urn")
 	targetURN := resourceURN
 	if targetURN == "" {
@@ -803,7 +807,7 @@ func panopticonCloudResourceID(provider string, attrs map[string]string) (string
 			continue
 		}
 		if provider == "gcp" {
-			value = panopticonNormalizeGCPResourceID(value)
+			value = panopticonNormalizeGCPResourceID(attrs, key, value)
 		}
 		return value, key
 	}
@@ -840,6 +844,10 @@ func panopticonCloudResourceTypeAlias(provider string, value string) string {
 		switch normalized {
 		case "run_googleapis_com_service", "cloud_run_service", "cloudrun_service":
 			return "cloud_run_service"
+		case "sqladmin_googleapis_com_instance", "cloud_sql_instance", "cloudsql_instance", "sql_instance":
+			return "cloud_sql_instance"
+		case "container_googleapis_com_cluster", "gke_cluster", "kubernetes_cluster":
+			return "gke_cluster"
 		case "compute_googleapis_com_instance", "compute_instance":
 			return "compute_instance"
 		case "storage_googleapis_com_bucket", "storage_bucket", "bucket", "gcs_bucket":
@@ -945,6 +953,10 @@ func panopticonGCPResourceTypeFromID(value string) string {
 	switch {
 	case strings.Contains(lower, "storage.googleapis.com/") && strings.Contains(lower, "/buckets/"):
 		return "gcs_bucket"
+	case strings.Contains(lower, "sqladmin.googleapis.com/") && strings.Contains(lower, "/instances/"):
+		return "cloud_sql_instance"
+	case strings.Contains(lower, "container.googleapis.com/") && strings.Contains(lower, "/clusters/"):
+		return "gke_cluster"
 	case strings.Contains(lower, "run.googleapis.com/") && strings.Contains(lower, "/services/"):
 		return "cloud_run_service"
 	case strings.Contains(lower, "/locations/") && strings.Contains(lower, "/services/"):
@@ -958,10 +970,23 @@ func panopticonGCPResourceTypeFromID(value string) string {
 	}
 }
 
-func panopticonNormalizeGCPResourceID(value string) string {
+func panopticonNormalizeGCPResourceID(attrs map[string]string, key string, value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
+	}
+	resourceType := panopticonCloudResourceTypeAlias("gcp", firstAttribute(attrs, "resource_type", "asset_type", "type"))
+	if resourceType == "" {
+		resourceType = panopticonGCPResourceTypeFromID(value)
+	}
+	switch resourceType {
+	case "compute_instance":
+		return firstNonEmpty(firstAttribute(attrs, "instance_id", "resource_name", "name"), panopticonLastPathSegment(value))
+	case "cloud_sql_instance", "gke_cluster":
+		if key == "self_link" || strings.HasPrefix(strings.ToLower(value), "http://") || strings.HasPrefix(strings.ToLower(value), "https://") {
+			return value
+		}
+		return firstNonEmpty(firstAttribute(attrs, "self_link"), value)
 	}
 	lower := strings.ToLower(value)
 	if strings.Contains(lower, "storage.googleapis.com/") && strings.Contains(lower, "/buckets/") {
@@ -981,6 +1006,15 @@ func panopticonNormalizeGCPResourceID(value string) string {
 	return value
 }
 
+func panopticonLastPathSegment(value string) string {
+	value = strings.Trim(strings.TrimSpace(value), "/")
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "/")
+	return strings.TrimSpace(parts[len(parts)-1])
+}
+
 func panopticonFirstAssetAttribute(attrs map[string]string, keys ...string) (string, string) {
 	for _, key := range keys {
 		if value := firstAttribute(attrs, key); value != "" {
@@ -992,11 +1026,134 @@ func panopticonFirstAssetAttribute(attrs map[string]string, keys ...string) (str
 
 func panopticonAllowedCanonicalAssetKind(kind string) bool {
 	switch kind {
-	case "sentinelone_agent", "kolide_device", "kandji_device":
+	case
+		"sentinelone_agent",
+		"kolide_device",
+		"kandji_device",
+		"aws_access_analyzer",
+		"aws_acm_certificate",
+		"aws_apigateway_integration",
+		"aws_apigateway_route",
+		"aws_apigateway_stage",
+		"aws_apprunner_service",
+		"aws_athena_data_catalog",
+		"aws_athena_workgroup",
+		"aws_backup_plan",
+		"aws_backup_protected_resource",
+		"aws_backup_recovery_point",
+		"aws_backup_vault",
+		"aws_batch_compute_environment",
+		"aws_batch_job_queue",
+		"aws_cloudfront_key_group",
+		"aws_cloudfront_origin_access_control",
+		"aws_cloudfront_public_key",
+		"aws_cloudfront_response_headers_policy",
+		"aws_cloudtrail",
+		"aws_cloudwatch_alarm",
+		"aws_cloudwatch_log_group",
+		"aws_config_recorder",
+		"aws_datasync_location",
+		"aws_datasync_task",
+		"aws_docdb_cluster",
+		"aws_docdb_instance",
+		"aws_dynamodb_backup",
+		"aws_dynamodb_stream",
+		"aws_dynamodb_table",
+		"aws_ebs_snapshot",
+		"aws_ebs_volume",
+		"aws_ec2_instance",
+		"aws_ecr_repository",
+		"aws_ecs_service",
+		"aws_ecs_task",
+		"aws_ecs_task_definition",
+		"aws_efs_access_point",
+		"aws_efs_file_system",
+		"aws_eks_cluster",
+		"aws_eks_fargate_profile",
+		"aws_eks_nodegroup",
+		"aws_elasticache_cluster",
+		"aws_elasticache_replication_group",
+		"aws_elasticache_subnet_group",
+		"aws_elbv2_listener",
+		"aws_elbv2_target_group",
+		"aws_eventbridge_archive",
+		"aws_eventbridge_event_bus",
+		"aws_eventbridge_pipe",
+		"aws_eventbridge_rule",
+		"aws_firehose_delivery_stream",
+		"aws_fsx_file_system",
+		"aws_globalaccelerator_accelerator",
+		"aws_globalaccelerator_endpoint_group",
+		"aws_globalaccelerator_listener",
+		"aws_glue_crawler",
+		"aws_glue_database",
+		"aws_glue_job",
+		"aws_glue_table",
+		"aws_internet_gateway",
+		"aws_kinesis_stream",
+		"aws_kms_key",
+		"aws_lambda_function",
+		"aws_msk_cluster",
+		"aws_nat_gateway",
+		"aws_neptune_cluster",
+		"aws_neptune_instance",
+		"aws_network_firewall",
+		"aws_network_interface",
+		"aws_opensearch_domain",
+		"aws_opensearch_serverless_collection",
+		"aws_opensearch_serverless_security_policy",
+		"aws_rds_instance",
+		"aws_redshift_cluster",
+		"aws_route53_resolver_endpoint",
+		"aws_route53_resolver_rule",
+		"aws_route_table",
+		"aws_s3_access_point",
+		"aws_s3_bucket",
+		"aws_s3_multi_region_access_point",
+		"aws_scheduler_schedule",
+		"aws_scheduler_schedule_group",
+		"aws_secret",
+		"aws_security_group",
+		"aws_sns_topic",
+		"aws_sqs_queue",
+		"aws_ssm_association",
+		"aws_ssm_document",
+		"aws_ssm_managed_instance",
+		"aws_ssm_parameter",
+		"aws_stepfunctions_activity",
+		"aws_stepfunctions_state_machine",
+		"aws_subnet",
+		"aws_vpc",
+		"aws_vpc_endpoint",
+		"aws_vpclattice_listener",
+		"aws_vpclattice_service",
+		"aws_vpclattice_target_group",
+		"aws_wafv2_web_acl",
+		"azure_aks_cluster",
+		"azure_app_service",
+		"azure_container_registry",
+		"azure_cosmos_account",
+		"azure_function_app",
+		"azure_key_vault",
+		"azure_key_vault_key",
+		"azure_key_vault_secret",
+		"azure_sql_database",
+		"azure_sql_server",
+		"azure_storage_account",
+		"azure_virtual_machine",
+		"gcp_artifact_registry_image",
+		"gcp_artifact_registry_repository",
+		"gcp_cloud_function",
+		"gcp_cloud_run_service",
+		"gcp_cloud_sql_instance",
+		"gcp_compute_instance",
+		"gcp_gcs_bucket",
+		"gcp_gke_cluster",
+		"gcp_kms_key",
+		"gcp_secret_manager_secret":
 		return true
-	default:
-		return strings.HasPrefix(kind, "aws_") || strings.HasPrefix(kind, "azure_") || strings.HasPrefix(kind, "gcp_")
 	}
+	return false
 }
 
 func panopticonAllowedCanonicalAssetURN(tenantID string, urn string) bool {
