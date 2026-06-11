@@ -68,6 +68,28 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
         self.assertLessEqual(len(schedule_name), 29)
         self.assertTrue(schedule_name.startswith("example-very-long"))
 
+    def test_schedule_backend_can_use_eventbridge_scheduler(self) -> None:
+        expansion = expand_source_runtime_rollouts([
+            {
+                "sourceId": "example",
+                "schedule": {"backend": "scheduler", "flexibleWindowMinutes": 10},
+                "families": ["user"],
+            }
+        ])
+
+        self.assertEqual(expansion.orchestrator_schedules[0]["backend"], "scheduler")
+        self.assertEqual(expansion.orchestrator_schedules[0]["flexibleWindowMinutes"], 10)
+
+    def test_schedule_backend_must_be_known(self) -> None:
+        with self.assertRaisesRegex(ValueError, "schedule.backend"):
+            expand_source_runtime_rollouts([
+                {
+                    "sourceId": "example",
+                    "schedule": {"backend": "cronbox"},
+                    "families": ["user"],
+                }
+            ])
+
     def test_disabled_rollout_does_not_expand_secrets_runtimes_or_schedules(self) -> None:
         expansion = expand_source_runtime_rollouts([
             {

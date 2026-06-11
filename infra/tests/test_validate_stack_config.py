@@ -313,7 +313,7 @@ class ValidateStackConfigTest(unittest.TestCase):
             any(
                 finding.severity == "error"
                 and finding.path.endswith(".name")
-                and "EventBridge rule name" in finding.message
+                and "orchestrator schedule resource name" in finding.message
                 and "at most 64 characters" in finding.message
                 for finding in self._validate(content)
             )
@@ -1122,6 +1122,7 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_actual_gcp_runtimes_use_wif_without_token_secrets(self) -> None:
         for stack_name, expected_count, service_account in [
             ("Pulumi.sec-dev.yaml", 68, "cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com"),
+            ("Pulumi.go-prod.yaml", 102, "cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com"),
         ]:
             with self.subTest(stack=stack_name):
                 config = validator.apply_source_runtime_rollouts(
@@ -1149,14 +1150,31 @@ class ValidateStackConfigTest(unittest.TestCase):
                     self.assertEqual(runtime_config.get("wif_service_account_email"), service_account)
                     self.assertIn("workloadIdentityPools", runtime_config.get("wif_audience", ""))
 
-    def test_go_prod_gcp_rollouts_are_paused_until_eventbridge_capacity_exists(self) -> None:
+    def test_go_prod_gcp_rollouts_use_scheduler_backend(self) -> None:
         config = validator.apply_source_runtime_rollouts(
             validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
         )
         findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+        gcp_runtime_ids = {
+            runtime["id"]
+            for runtime in config["sourceRuntimes"]
+            if runtime.get("sourceId") == "gcp"
+        }
+        gcp_schedules = [
+            schedule
+            for schedule in config["orchestratorSchedules"]
+            if validator._runtime_id_from_command(schedule.get("command")) in gcp_runtime_ids
+        ]
+        eventbridge_schedules = [
+            schedule
+            for schedule in config["orchestratorSchedules"]
+            if validator._schedule_backend(schedule) == "eventbridge"
+        ]
 
-        self.assertEqual([runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "gcp"], [])
-        self.assertLessEqual(len(config["orchestratorSchedules"]), 294)
+        self.assertEqual(len(gcp_runtime_ids), 102)
+        self.assertTrue(gcp_schedules)
+        self.assertTrue(all(validator._schedule_backend(schedule) == "scheduler" for schedule in gcp_schedules))
+        self.assertLessEqual(len(eventbridge_schedules), 294)
         self.assertFalse(any("exceeds EventBridge rule capacity" in finding.message for finding in findings))
 
     def test_sec_dev_evidencecas_runtime_wires_private_endpoint_allowlist(self) -> None:

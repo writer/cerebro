@@ -383,7 +383,6 @@ config:
         - vpc
         - vpc_endpoint
     - sourceId: gcp
-      enabled: false
       runtimePrefix: writer-gcp-prod-writer-iam
       perPage: "100"
       commonConfig:
@@ -391,6 +390,7 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-prod/providers/cerebro-aws-provider-prod
         wif_service_account_email: cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com
       schedule:
+        backend: scheduler
         cadenceHours: 6
         nameMaxLength: 29
       families: &gcp_prod_wif_families
@@ -412,7 +412,6 @@ config:
         - secret_manager_secret
         - service_account
     - sourceId: gcp
-      enabled: false
       runtimePrefix: writer-gcp-prod-qordoba-devel
       perPage: "100"
       commonConfig:
@@ -420,11 +419,11 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-prod/providers/cerebro-aws-provider-prod
         wif_service_account_email: cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com
       schedule:
+        backend: scheduler
         cadenceHours: 6
         nameMaxLength: 29
       families: *gcp_prod_wif_families
     - sourceId: gcp
-      enabled: false
       runtimePrefix: writer-gcp-prod-qordoba-prod
       perPage: "100"
       commonConfig:
@@ -432,11 +431,11 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-prod/providers/cerebro-aws-provider-prod
         wif_service_account_email: cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com
       schedule:
+        backend: scheduler
         cadenceHours: 6
         nameMaxLength: 29
       families: *gcp_prod_wif_families
     - sourceId: gcp
-      enabled: false
       runtimePrefix: writer-gcp-prod-networking
       perPage: "100"
       commonConfig:
@@ -444,11 +443,11 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-prod/providers/cerebro-aws-provider-prod
         wif_service_account_email: cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com
       schedule:
+        backend: scheduler
         cadenceHours: 6
         nameMaxLength: 29
       families: *gcp_prod_wif_families
     - sourceId: gcp
-      enabled: false
       runtimePrefix: writer-gcp-prod-networking-nonprod
       perPage: "100"
       commonConfig:
@@ -456,11 +455,11 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-prod/providers/cerebro-aws-provider-prod
         wif_service_account_email: cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com
       schedule:
+        backend: scheduler
         cadenceHours: 6
         nameMaxLength: 29
       families: *gcp_prod_wif_families
     - sourceId: gcp
-      enabled: false
       runtimePrefix: writer-gcp-prod-devops
       perPage: "100"
       commonConfig:
@@ -468,6 +467,7 @@ config:
         wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-prod/providers/cerebro-aws-provider-prod
         wif_service_account_email: cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com
       schedule:
+        backend: scheduler
         cadenceHours: 6
         nameMaxLength: 29
       families: *gcp_prod_wif_families
