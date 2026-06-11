@@ -292,6 +292,46 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 	}
 }
 
+func TestReadLiveGCPRegionalComputeDiskKeepsRegionOutOfZone(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/compute/v1/projects/writer-prod/aggregated/disks" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"disks": []map[string]any{{
+			"id":       "disk-1",
+			"name":     "regional-disk",
+			"selfLink": "projects/writer-prod/regions/us-central1/disks/regional-disk",
+			"type":     "projects/writer-prod/regions/us-central1/diskTypes/pd-balanced",
+			"status":   "READY",
+			"sizeGb":   "100",
+		}}}}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyComputeDisk,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyComputeDisk, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["region"]; got != "us-central1" {
+		t.Fatalf("region = %q, want us-central1", got)
+	}
+	if got := pull.Events[0].Attributes["zone"]; got != "" {
+		t.Fatalf("zone = %q, want empty", got)
+	}
+}
+
 func TestReadLiveGCPServiceAccountKeyPreview(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()

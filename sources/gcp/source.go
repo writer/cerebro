@@ -1173,7 +1173,7 @@ func listComputeDisks(ctx context.Context, source *Source, settings settings, pa
 	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.Disks }, "zone")
+	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.Disks }, "")
 	records, err := decodeRecords(rawRecords, "gcp compute disk", func(record *computeDiskRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
@@ -1182,17 +1182,18 @@ func listComputeDisks(ctx context.Context, source *Source, settings settings, pa
 
 func computeAggregatedRawRecords(items map[string]computeScopedResources, get func(computeScopedResources) []json.RawMessage, scopeField string) []json.RawMessage {
 	rawRecords := make([]json.RawMessage, 0)
-	fieldNeedle := []byte(`"` + scopeField + `"`)
 	for scope, scoped := range items {
+		field := computeAggregatedScopeField(scope, scopeField)
+		fieldNeedle := []byte(`"` + field + `"`)
 		for _, raw := range get(scoped) {
 			if len(raw) == 0 {
 				continue
 			}
 			rawRecords = append(rawRecords, raw)
-			if scope != "" && !bytes.Contains(raw, fieldNeedle) {
+			if field != "" && scope != "" && !bytes.Contains(raw, fieldNeedle) {
 				var withScope map[string]any
 				if err := json.Unmarshal(raw, &withScope); err == nil {
-					withScope[scopeField] = scope
+					withScope[field] = scope
 					if patched, err := json.Marshal(withScope); err == nil {
 						rawRecords[len(rawRecords)-1] = patched
 					}
@@ -1201,6 +1202,17 @@ func computeAggregatedRawRecords(items map[string]computeScopedResources, get fu
 		}
 	}
 	return rawRecords
+}
+
+func computeAggregatedScopeField(scope string, fallback string) string {
+	switch {
+	case strings.HasPrefix(scope, "regions/"):
+		return "region"
+	case strings.HasPrefix(scope, "zones/"):
+		return "zone"
+	default:
+		return fallback
+	}
 }
 
 func listGKEClusters(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gkeClusterRecord, string, error) {
@@ -1635,6 +1647,7 @@ func computeDiskEvent(settings settings, record computeDiskRecord) (*primitives.
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	attributes := cloudResourceAttributes(settings, familyComputeDisk, resourceID, record.Name, "compute_disk", location, record.Labels)
 	attributes["zone"] = shortLocation(record.Zone)
+	attributes["region"] = firstNonEmpty(shortLocation(record.Region), attributes["region"])
 	attributes["disk_type"] = lastPathSegment(record.Type)
 	attributes["status"] = record.Status
 	attributes["size_gb"] = record.SizeGB
