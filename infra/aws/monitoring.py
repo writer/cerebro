@@ -72,6 +72,20 @@ def _source_runtime_display_name(source_system: str) -> str:
     return "".join(part.capitalize() for part in source_system.split("_"))
 
 
+def _metric_component(value: str) -> str:
+    words = [word for word in "".join(ch if ch.isalnum() else " " for ch in value).split() if word]
+    return "".join(word[:1].upper() + word[1:] for word in words) or "Unknown"
+
+
+def _observability_legacy_metric_suffix(entry: dict) -> str:
+    prefix = (
+        "SourceRuntime"
+        f"{_metric_component(str(entry.get('sourceSystem', '')))}"
+        f"{_metric_component(str(entry.get('runtimeClass', '')))}"
+    )
+    return _safe_resource_suffix(prefix)
+
+
 def _source_runtime_observability_entries(entries: list[dict] | None, dashboard_enabled: bool = False) -> list[dict]:
     valid_entries = []
     for entry in entries or []:
@@ -89,13 +103,15 @@ def _source_runtime_observability_entries(entries: list[dict] | None, dashboard_
 
 
 def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> list[dict]:
-    if not _source_runtime_observability_entries(entries):
+    valid_entries = _source_runtime_observability_entries(entries)
+    if not valid_entries:
         return []
+    legacy_suffix = _observability_legacy_metric_suffix(valid_entries[0])
     runtime_dimension = {"RuntimeId": "$.runtime_id"}
     return [
         {
             "key": "source_runtime_ingest_success",
-            "suffix": "source-runtime-ingest-success",
+            "suffix": f"{legacy_suffix}-ingest-success",
             "metric_name": "SourceRuntimeIngestSuccess",
             "pattern": '{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.status = "completed" && $.runtime_id = * }',
             "value": "1",
@@ -103,7 +119,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_ingest_failure",
-            "suffix": "source-runtime-ingest-failure",
+            "suffix": f"{legacy_suffix}-ingest-failure",
             "metric_name": "SourceRuntimeIngestFailure",
             "pattern": '{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.status = "failed" && $.runtime_id = * }',
             "value": "1",
@@ -111,7 +127,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_records_accepted",
-            "suffix": "source-runtime-records-accepted",
+            "suffix": f"{legacy_suffix}-records-accepted",
             "metric_name": "SourceRuntimeRecordsAccepted",
             "pattern": '{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.status = "completed" && $.records_accepted = * && $.runtime_id = * }',
             "value": "$.records_accepted",
@@ -119,7 +135,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_records_rejected",
-            "suffix": "source-runtime-records-rejected",
+            "suffix": f"{legacy_suffix}-records-rejected",
             "metric_name": "SourceRuntimeRecordsRejected",
             "pattern": '{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.records_rejected = * && $.runtime_id = * }',
             "value": "$.records_rejected",
@@ -127,7 +143,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_projection_success",
-            "suffix": "source-runtime-projection-success",
+            "suffix": f"{legacy_suffix}-projection-success",
             "metric_name": "SourceRuntimeProjectionSuccess",
             "pattern": '{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "completed" && $.entities_projected = * && $.runtime_id = * }',
             "value": "$.entities_projected",
@@ -135,7 +151,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_projection_failure",
-            "suffix": "source-runtime-projection-failure",
+            "suffix": f"{legacy_suffix}-projection-failure",
             "metric_name": "SourceRuntimeProjectionFailure",
             "pattern": '{ $.kind = "span_end" && $.status = "failed" && ($.name = "graph.ingest_runtime" || $.name = "orchestrator.graph_ingest" || $.name = "orchestrator.runtime") && $.runtime_id = * }',
             "value": "1",
@@ -143,7 +159,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_contract_probe_success",
-            "suffix": "source-runtime-contract-probe-success",
+            "suffix": f"{legacy_suffix}-contract-probe-success",
             "metric_name": "SourceRuntimeContractProbeSuccess",
             "pattern": '{ $.kind = "event" && $.name = "source_runtime.contract_probe" && $.contract_probe_status = "success" && $.runtime_id = * }',
             "value": "1",
@@ -151,7 +167,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_contract_probe_failure",
-            "suffix": "source-runtime-contract-probe-failure",
+            "suffix": f"{legacy_suffix}-contract-probe-failure",
             "metric_name": "SourceRuntimeContractProbeFailure",
             "pattern": '{ $.kind = "event" && $.name = "source_runtime.contract_probe" && ($.contract_probe_status = "failure" || $.contract_probe_status = "stale" || $.contract_probe_status = "unknown") && $.runtime_id = * }',
             "value": "1",
@@ -159,7 +175,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_missing_canonical_fields",
-            "suffix": "source-runtime-missing-canonical-fields",
+            "suffix": f"{legacy_suffix}-missing-canonical-fields",
             "metric_name": "SourceRuntimeMissingCanonicalFields",
             "pattern": '{ $.kind = "event" && $.name = "source_runtime.validation" && $.missing_canonical_field_class = * && $.runtime_id = * }',
             "value": "1",
@@ -167,7 +183,7 @@ def _source_runtime_observability_metric_specs(entries: list[dict] | None) -> li
         },
         {
             "key": "source_runtime_orphan_missing_link",
-            "suffix": "source-runtime-orphan-missing-link",
+            "suffix": f"{legacy_suffix}-orphan-missing-link",
             "metric_name": "SourceRuntimeOrphanMissingLink",
             "pattern": '{ $.kind = "event" && ($.name = "runtime.evidence.link_status" || $.name = "source_runtime.link_status") && ($.link_status = "orphan" || $.link_status = "missing_resource" || $.link_status = "missing_case") && $.runtime_id = * }',
             "value": "1",

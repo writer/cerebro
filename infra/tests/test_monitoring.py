@@ -251,6 +251,7 @@ class MonitoringRuntimeTest(unittest.TestCase):
             },
         )
         for call in runtime_calls:
+            self.assertIn("sourceruntimepanopticonalert", call["name"])
             self.assertEqual(call["metric_transformation"].dimensions, {"RuntimeId": "$.runtime_id"})
             self.assertFalse(hasattr(call["metric_transformation"], "default_value"))
 
@@ -316,6 +317,7 @@ class MonitoringRuntimeTest(unittest.TestCase):
             ],
         )
         for spec in specs:
+            self.assertTrue(spec["suffix"].startswith("sourceruntimeevidencecasobject-"))
             self.assertEqual(spec["dimensions"], {"RuntimeId": "$.runtime_id"})
             self.assertNotIn("tenant_id", spec["pattern"])
             self.assertNotIn("evidence_id", spec["pattern"])
