@@ -24,6 +24,20 @@ type SystemLogContext struct {
 	Transaction           map[string]any
 }
 
+func AppAssignmentAttributes(domain string, family string, appID string, subjectID string, subjectType string, status string) map[string]string {
+	return map[string]string{
+		"domain":         domain,
+		"family":         family,
+		"app_id":         appID,
+		"subject_id":     subjectID,
+		"subject_type":   subjectType,
+		"assignee_id":    subjectID,
+		"assignee_type":  subjectType,
+		"principal_type": subjectType,
+		"status":         status,
+	}
+}
+
 func AddSystemLogAttributes(attributes map[string]string, ctx SystemLogContext) {
 	auth := ctx.AuthenticationContext
 	addAttribute(attributes, "authentication_provider", stringMap(auth, "authenticationProvider"))
