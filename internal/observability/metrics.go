@@ -106,15 +106,15 @@ func Middleware(next http.Handler) http.Handler {
 		Default.Inc("cerebro_http_requests_total", labels)
 		Default.Add("cerebro_http_request_duration_seconds_sum", labels, time.Since(started).Seconds())
 		Default.Inc("cerebro_http_request_duration_seconds_count", labels)
-		recordOTELHTTPServerRequest(ctx, labels, time.Since(started).Seconds())
+		recordOTELHTTPServerRequest(ctx, labels, recorder.status, time.Since(started).Seconds())
 	})
 }
 
-func recordOTELHTTPServerRequest(ctx context.Context, labels map[string]string, durationSeconds float64) {
+func recordOTELHTTPServerRequest(ctx context.Context, labels map[string]string, statusCode int, durationSeconds float64) {
 	attrs := []attribute.KeyValue{
 		attribute.String("http.request.method", labels["method"]),
 		attribute.String("http.route", labels["route"]),
-		attribute.String("http.response.status_code", labels["status_code"]),
+		attribute.Int("http.response.status_code", statusCode),
 	}
 	otelHTTPServerRequests.Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 	otelHTTPServerDuration.Record(ctx, durationSeconds, otelmetric.WithAttributes(attrs...))
