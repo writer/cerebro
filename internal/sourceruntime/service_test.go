@@ -1349,6 +1349,7 @@ func TestSyncRuntimeRejectsEventsMissingCatalogContractFields(t *testing.T) {
 		runtimeLastFailureCategoryConfigKey: "missing_required_attribute",
 		runtimeLastInvalidFieldConfigKey:    "required_attribute",
 		runtimeLastInvalidStatusConfigKey:   "terminal",
+		runtimeContractProbeStateConfigKey:  "failure",
 	} {
 		if got := stored.GetConfig()[key]; got != want {
 			t.Fatalf("stored config[%s] = %q, want %q", key, got, want)

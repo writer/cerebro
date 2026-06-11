@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,8 +19,28 @@ import (
 )
 
 type sourceRuntimeHealthResponse struct {
-	GeneratedAt string                      `json:"generated_at"`
-	Runtimes    []sourceRuntimeHealthRecord `json:"runtimes"`
+	GeneratedAt     string                       `json:"generated_at"`
+	Runtimes        []sourceRuntimeHealthRecord  `json:"runtimes"`
+	SourceSummaries []sourceRuntimeHealthSummary `json:"source_summaries"`
+}
+
+type sourceRuntimeHealthSummary struct {
+	SourceID                   string `json:"source_id"`
+	Total                      int    `json:"total"`
+	Healthy                    int    `json:"healthy"`
+	Stale                      int    `json:"stale"`
+	Failing                    int    `json:"failing"`
+	Unknown                    int    `json:"unknown"`
+	CursorPending              int    `json:"cursor_pending"`
+	GraphCurrent               int    `json:"graph_current"`
+	GraphBehind                int    `json:"graph_behind"`
+	GraphRunning               int    `json:"graph_running"`
+	GraphFailed                int    `json:"graph_failed"`
+	GraphNotObserved           int    `json:"graph_not_observed"`
+	ContractProbePassing       int    `json:"contract_probe_passing"`
+	ContractProbeFailure       int    `json:"contract_probe_failure"`
+	ContractProbeUnknown       int    `json:"contract_probe_unknown"`
+	ContractProbeNotConfigured int    `json:"contract_probe_not_configured"`
 }
 
 type sourceRuntimeHealthRecord struct {
@@ -194,9 +215,89 @@ func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Reque
 		records = append(records, record)
 	}
 	writeJSON(w, http.StatusOK, sourceRuntimeHealthResponse{
-		GeneratedAt: generatedAt.Format(time.RFC3339Nano),
-		Runtimes:    records,
+		GeneratedAt:     generatedAt.Format(time.RFC3339Nano),
+		Runtimes:        records,
+		SourceSummaries: sourceRuntimeHealthSummaries(records),
 	})
+}
+
+func sourceRuntimeHealthSummaries(records []sourceRuntimeHealthRecord) []sourceRuntimeHealthSummary {
+	bySource := map[string]*sourceRuntimeHealthSummary{}
+	for _, record := range records {
+		sourceID := strings.TrimSpace(record.SourceID)
+		if sourceID == "" {
+			sourceID = "unknown"
+		}
+		summary := bySource[sourceID]
+		if summary == nil {
+			summary = &sourceRuntimeHealthSummary{SourceID: sourceID}
+			bySource[sourceID] = summary
+		}
+		summary.Total++
+		switch strings.ToLower(strings.TrimSpace(record.Status)) {
+		case "healthy":
+			summary.Healthy++
+		case "stale":
+			summary.Stale++
+		case "failing":
+			summary.Failing++
+		default:
+			summary.Unknown++
+		}
+		if record.CursorPending {
+			summary.CursorPending++
+		}
+		switch sourceRuntimeGraphState(record) {
+		case "current":
+			summary.GraphCurrent++
+		case "behind":
+			summary.GraphBehind++
+		case "running":
+			summary.GraphRunning++
+		case "failed":
+			summary.GraphFailed++
+		default:
+			summary.GraphNotObserved++
+		}
+		switch strings.ToLower(strings.TrimSpace(record.ContractProbeState)) {
+		case "passing":
+			summary.ContractProbePassing++
+		case "failure":
+			summary.ContractProbeFailure++
+		case "unknown":
+			summary.ContractProbeUnknown++
+		default:
+			summary.ContractProbeNotConfigured++
+		}
+	}
+	summaries := make([]sourceRuntimeHealthSummary, 0, len(bySource))
+	for _, summary := range bySource {
+		summaries = append(summaries, *summary)
+	}
+	sort.Slice(summaries, func(i, j int) bool {
+		if summaries[i].Total != summaries[j].Total {
+			return summaries[i].Total > summaries[j].Total
+		}
+		return summaries[i].SourceID < summaries[j].SourceID
+	})
+	return summaries
+}
+
+func sourceRuntimeGraphState(record sourceRuntimeHealthRecord) string {
+	if record.LatestGraphRun == nil {
+		return "not_observed"
+	}
+	status := strings.ToLower(strings.TrimSpace(record.LatestGraphRun.Status))
+	if strings.Contains(status, "fail") || strings.Contains(status, "error") || strings.Contains(status, "cancel") {
+		return "failed"
+	}
+	if strings.Contains(status, "running") || strings.Contains(status, "pending") {
+		return "running"
+	}
+	if record.GraphLagSeconds != nil && record.StaleAfterSeconds != nil && *record.GraphLagSeconds > *record.StaleAfterSeconds {
+		return "behind"
+	}
+	return "current"
 }
 
 func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.SourceRuntime, generatedAt time.Time) (sourceRuntimeHealthRecord, error) {

@@ -19,6 +19,9 @@ func TestNormalizeRouteLabelBoundsUnknownPaths(t *testing.T) {
 	if got := normalizeRouteLabel("/source-runtimes/runtime-123/" + strings.Repeat("x", 128)); got != "/source-runtimes/{runtimeID}/{subresource}" {
 		t.Fatalf("unknown source-runtime subresource label = %q", got)
 	}
+	if got := normalizeRouteLabel("/source-runtimes/health"); got != "/source-runtimes/health" {
+		t.Fatalf("source-runtime health route label = %q", got)
+	}
 }
 
 func TestNormalizeMethodLabelBoundsUnknownMethods(t *testing.T) {
