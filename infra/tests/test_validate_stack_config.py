@@ -319,6 +319,32 @@ class ValidateStackConfigTest(unittest.TestCase):
             )
         )
 
+    def test_go_prod_orchestrator_schedule_count_must_fit_eventbridge_quota(self) -> None:
+        schedules = "  cerebro:orchestratorSchedules:\n" + "".join(
+            f"""    - name: bulk-{index}
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-okta-audit
+"""
+            for index in range(295)
+        )
+        content = self._without_orchestrator_schedules(BASE_STACK).replace(
+            "  cerebro:sourceRuntimes:\n",
+            schedules + "  cerebro:sourceRuntimes:\n",
+        )
+
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and finding.path == "cerebro:orchestratorSchedules"
+                and "exceeds EventBridge rule capacity" in finding.message
+                for finding in self._validate(content)
+            )
+        )
+
     def test_service_bootstrap_ids_must_reference_source_runtimes(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:orchestratorSchedules:",
@@ -1096,7 +1122,6 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_actual_gcp_runtimes_use_wif_without_token_secrets(self) -> None:
         for stack_name, expected_count, service_account in [
             ("Pulumi.sec-dev.yaml", 68, "cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com"),
-            ("Pulumi.go-prod.yaml", 102, "cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com"),
         ]:
             with self.subTest(stack=stack_name):
                 config = validator.apply_source_runtime_rollouts(
@@ -1123,6 +1148,16 @@ class ValidateStackConfigTest(unittest.TestCase):
                     self.assertNotIn("token", runtime_config)
                     self.assertEqual(runtime_config.get("wif_service_account_email"), service_account)
                     self.assertIn("workloadIdentityPools", runtime_config.get("wif_audience", ""))
+
+    def test_go_prod_gcp_rollouts_are_paused_until_eventbridge_capacity_exists(self) -> None:
+        config = validator.apply_source_runtime_rollouts(
+            validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+        )
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+
+        self.assertEqual([runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "gcp"], [])
+        self.assertLessEqual(len(config["orchestratorSchedules"]), 294)
+        self.assertFalse(any("exceeds EventBridge rule capacity" in finding.message for finding in findings))
 
     def test_sec_dev_evidencecas_runtime_wires_private_endpoint_allowlist(self) -> None:
         config = validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
