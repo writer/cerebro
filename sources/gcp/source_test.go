@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"golang.org/x/oauth2"
+
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -20,7 +22,7 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
-func TestCheckRequiresProjectAndToken(t *testing.T) {
+func TestCheckRequiresProjectAndAuth(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -30,6 +32,12 @@ func TestCheckRequiresProjectAndToken(t *testing.T) {
 	}
 	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "writer-prod"})); err == nil {
 		t.Fatal("Check() error = nil, want missing token error")
+	}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "writer-prod", "wif_audience": "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws"})); err == nil {
+		t.Fatal("Check() error = nil, want missing WIF service account error")
+	}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "writer-prod", "wif_service_account_email": "scanner@writer-iam.iam.gserviceaccount.com"})); err == nil {
+		t.Fatal("Check() error = nil, want missing WIF audience error")
 	}
 }
 
@@ -130,6 +138,50 @@ func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	}
 	if got := urns[0].String(); got != "urn:cerebro:writer-prod:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com" {
 		t.Fatalf("Discover(service_account) urn = %q, want email-based service account urn", got)
+	}
+}
+
+func TestReadLiveGCPUsesWIFTokenSource(t *testing.T) {
+	server := httptest.NewServer(newGCPAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	calls := 0
+	source.tokenSourceFactory = func(_ context.Context, settings settings) (oauth2.TokenSource, error) {
+		calls++
+		if settings.wifAudience == "" {
+			t.Fatal("wifAudience is empty")
+		}
+		if settings.wifServiceAccount != "scanner@writer-iam.iam.gserviceaccount.com" {
+			t.Fatalf("wifServiceAccount = %q", settings.wifServiceAccount)
+		}
+		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"}), nil
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":                  server.URL,
+		"family":                    familyServiceAcct,
+		"project_id":                "writer-prod",
+		"wif_audience":              "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws",
+		"wif_service_account_email": "scanner@writer-iam.iam.gserviceaccount.com",
+		"wif_aws_region":            "us-east-1",
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(service_account) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if calls != 1 {
+		t.Fatalf("token source factory calls = %d, want 1", calls)
+	}
+	if _, err := source.Discover(context.Background(), cfg); err != nil {
+		t.Fatalf("Discover(service_account) error = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("token source factory calls after cache = %d, want 1", calls)
 	}
 }
 

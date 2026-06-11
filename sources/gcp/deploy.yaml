@@ -7,117 +7,136 @@ secretKeys:
   - GCP_KMS_LOCATION
   - GCP_PROJECT_ID
   - GCP_SERVICE_ACCOUNT_EMAIL
-  - GCP_TOKEN
+  - GCP_WIF_AUDIENCE
+  - GCP_WIF_SERVICE_ACCOUNT_EMAIL
 runtimes:
   - localId: asset-metadata
     config:
       family: asset_metadata
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: artifact-registry-image
     config:
       artifact_repository: env:GCP_ARTIFACT_REPOSITORY
       family: artifact_registry_image
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: artifact-registry-repository
     config:
       family: artifact_registry_repository
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: audit
     config:
       family: audit
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: cloud-function
     config:
       family: cloud_function
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: cloud-run-service
     config:
       family: cloud_run_service
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: cloud-sql-instance
     config:
       family: cloud_sql_instance
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-instance
     config:
       family: compute_instance
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-network
     config:
       family: compute_network
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-subnetwork
     config:
       family: compute_subnetwork
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-firewall
     config:
       family: compute_firewall
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-disk
     config:
       family: compute_disk
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: effective-permission
     config:
       family: effective_permission
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: gcs-bucket
     config:
       family: gcs_bucket
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: gke-cluster
     config:
       family: gke_cluster
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: group
     config:
       customer_id: env:GCP_CUSTOMER_ID
       family: group
       per_page: "100"
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: group-membership
     config:
       family: group_membership
       group_key: env:GCP_GROUP_KEY
       per_page: "100"
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: iam-role-assignment
     config:
       family: iam_role_assignment
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: kms-key
     config:
       family: kms_key
@@ -125,36 +144,42 @@ runtimes:
       location: env:GCP_KMS_LOCATION
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: resource-exposure
     config:
       family: resource_exposure
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: secret-manager-secret
     config:
       family: secret_manager_secret
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: service-account
     config:
       family: service_account
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: service-account-impersonation
     config:
       family: service_account_impersonation
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
       service_account_email: env:GCP_SERVICE_ACCOUNT_EMAIL
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: service-account-key
     config:
       family: service_account_key
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
       service_account_email: env:GCP_SERVICE_ACCOUNT_EMAIL
-      token: env:GCP_TOKEN
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL

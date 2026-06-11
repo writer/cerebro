@@ -10,10 +10,16 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google/externalaccount"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -52,6 +58,8 @@ const (
 	familySAImpersonation     = "service_account_impersonation"
 	familyServiceAcct         = "service_account"
 	familySAKey               = "service_account_key"
+	gcpWIFSubjectTokenType    = "urn:ietf:params:aws:token-type:aws4_request"
+	gcpCloudPlatformScope     = "https://www.googleapis.com/auth/cloud-platform"
 	familySecret              = "secret_manager_secret"
 )
 
@@ -60,6 +68,8 @@ type Source struct {
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
 	families             *sourcecdk.FamilyEngine[settings]
+	tokenSources         sync.Map
+	tokenSourceFactory   func(context.Context, settings) (oauth2.TokenSource, error)
 	allowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
@@ -74,6 +84,9 @@ type settings struct {
 	keyRing             string
 	artifactRepository  string
 	token               string
+	wifAudience         string
+	wifServiceAccount   string
+	wifAWSRegion        string
 	baseURL             string
 	filter              string
 	perPage             int
@@ -905,6 +918,9 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		keyRing:             configValue(cfg, "key_ring"),
 		artifactRepository:  configValue(cfg, "artifact_repository"),
 		token:               configValue(cfg, "token"),
+		wifAudience:         configValue(cfg, "wif_audience"),
+		wifServiceAccount:   configValue(cfg, "wif_service_account_email"),
+		wifAWSRegion:        configValue(cfg, "wif_aws_region"),
 		baseURL:             strings.TrimRight(configValue(cfg, "base_url"), "/"),
 		filter:              configValue(cfg, "filter"),
 		perPage:             defaultPageSize,
@@ -923,7 +939,15 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	if settings.token == "" {
-		return settings, fmt.Errorf("gcp token is required")
+		if settings.wifAudience == "" && settings.wifServiceAccount == "" {
+			return settings, fmt.Errorf("gcp token or wif_audience and wif_service_account_email are required")
+		}
+		if settings.wifAudience == "" {
+			return settings, fmt.Errorf("gcp wif_audience is required when token is not provided")
+		}
+		if settings.wifServiceAccount == "" {
+			return settings, fmt.Errorf("gcp wif_service_account_email is required when token is not provided")
+		}
 	}
 	switch settings.family {
 	case familyAssetMetadata, familyArtifactRepo, familyAudit, familyCloudFunction, familyCloudRunService, familyCloudSQLInstance, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeSubnetwork, familyEffectivePermission, familyGCSBucket, familyGKECluster, familyResourceExposure, familyRoleAssign, familySecret, familyServiceAcct:
@@ -2184,7 +2208,11 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 		return fmt.Errorf("build request %s: %w", requestPath, err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+settings.token)
+	token, err := gcpBearerToken(ctx, source, settings)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -2208,6 +2236,77 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 		return fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return nil
+}
+
+func gcpBearerToken(ctx context.Context, source *Source, settings settings) (string, error) {
+	if settings.token != "" {
+		return settings.token, nil
+	}
+	if source == nil {
+		return "", fmt.Errorf("gcp wif auth requires source")
+	}
+	cacheKey := settings.wifAudience + "\x00" + settings.wifServiceAccount + "\x00" + settings.wifAWSRegion
+	if cached, ok := source.tokenSources.Load(cacheKey); ok {
+		return tokenFromSource(ctx, cached.(oauth2.TokenSource))
+	}
+	factory := defaultGCPTokenSource
+	if source.tokenSourceFactory != nil {
+		factory = source.tokenSourceFactory
+	}
+	tokenSource, err := factory(ctx, settings)
+	if err != nil {
+		return "", err
+	}
+	actual, _ := source.tokenSources.LoadOrStore(cacheKey, oauth2.ReuseTokenSource(nil, tokenSource))
+	return tokenFromSource(ctx, actual.(oauth2.TokenSource))
+}
+
+func tokenFromSource(ctx context.Context, tokenSource oauth2.TokenSource) (string, error) {
+	token, err := tokenSource.Token()
+	if err != nil {
+		return "", fmt.Errorf("fetch gcp access token: %w", err)
+	}
+	if !token.Valid() || strings.TrimSpace(token.AccessToken) == "" {
+		return "", fmt.Errorf("fetch gcp access token: token is invalid")
+	}
+	return token.AccessToken, nil
+}
+
+func defaultGCPTokenSource(ctx context.Context, settings settings) (oauth2.TokenSource, error) {
+	region := firstNonEmpty(settings.wifAWSRegion, os.Getenv("AWS_REGION"), os.Getenv("AWS_DEFAULT_REGION"), "us-east-1")
+	awsConfig, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("load aws config for gcp wif: %w", err)
+	}
+	serviceAccountPath := url.PathEscape(settings.wifServiceAccount)
+	return externalaccount.NewTokenSource(ctx, externalaccount.Config{
+		Audience:                       settings.wifAudience,
+		SubjectTokenType:               gcpWIFSubjectTokenType,
+		ServiceAccountImpersonationURL: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" + serviceAccountPath + ":generateAccessToken",
+		Scopes:                         []string{gcpCloudPlatformScope},
+		AwsSecurityCredentialsSupplier: awsCredentialsSupplier{region: region, config: awsConfig},
+	})
+}
+
+type awsCredentialsSupplier struct {
+	region string
+	config awssdk.Config
+}
+
+func (s awsCredentialsSupplier) AwsRegion(context.Context, externalaccount.SupplierOptions) (string, error) {
+	return s.region, nil
+}
+
+func (s awsCredentialsSupplier) AwsSecurityCredentials(ctx context.Context, _ externalaccount.SupplierOptions) (*externalaccount.AwsSecurityCredentials, error) {
+	credentials, err := s.config.Credentials.Retrieve(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("retrieve aws credentials for gcp wif: %w", err)
+	}
+	return &externalaccount.AwsSecurityCredentials{
+		AccessKeyID:     credentials.AccessKeyID,
+		SecretAccessKey: credentials.SecretAccessKey,
+		SessionToken:    credentials.SessionToken,
+	}, nil
 }
 
 func (s *Source) safeClient() *http.Client {
