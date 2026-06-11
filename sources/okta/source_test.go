@@ -474,14 +474,27 @@ func TestReadOktaAppAssignmentsIncludesGroupAssignments(t *testing.T) {
 			if got := event.Attributes["subject_email"]; got != "admin@writer.com" {
 				t.Fatalf("user assignment subject_email = %q, want admin@writer.com", got)
 			}
+			for key, want := range map[string]string{
+				"assignee_id":   "00u1",
+				"assignee_type": "user",
+				"subject_id":    "00u1",
+				"subject_type":  "user",
+			} {
+				if got := event.Attributes[key]; got != want {
+					t.Fatalf("user assignment attribute %s = %q, want %q", key, got, want)
+				}
+			}
 		case "group":
 			sawGroup = true
 			for key, want := range map[string]string{
-				"subject_id":   "grp-security",
-				"subject_name": "Security",
-				"group_id":     "grp-security",
-				"group_name":   "Security",
-				"app_id":       "app-prod",
+				"assignee_id":   "grp-security",
+				"assignee_type": "group",
+				"subject_id":    "grp-security",
+				"subject_type":  "group",
+				"subject_name":  "Security",
+				"group_id":      "grp-security",
+				"group_name":    "Security",
+				"app_id":        "app-prod",
 			} {
 				if got := event.Attributes[key]; got != want {
 					t.Fatalf("group assignment attribute %s = %q, want %q", key, got, want)
@@ -493,6 +506,48 @@ func TestReadOktaAppAssignmentsIncludesGroupAssignments(t *testing.T) {
 	}
 	if !sawUser || !sawGroup {
 		t.Fatalf("sawUser=%v sawGroup=%v, want both", sawUser, sawGroup)
+	}
+}
+
+func TestAppAssignmentEventPreservesUserEventIDFormat(t *testing.T) {
+	created := mustTestTime(t)
+	for _, tt := range []struct {
+		name   string
+		record appAssignmentRecord
+		wantID string
+	}{
+		{
+			name: "user",
+			record: appAssignmentRecord{
+				ID:          "00u1",
+				AppID:       "app-prod",
+				SubjectType: "user",
+				Created:     &created,
+				raw:         json.RawMessage(`{"id":"00u1"}`),
+			},
+			wantID: "okta-app-assignment-app-prod-00u1-1778183686000",
+		},
+		{
+			name: "group",
+			record: appAssignmentRecord{
+				ID:          "grp-security",
+				AppID:       "app-prod",
+				SubjectType: "group",
+				Created:     &created,
+				raw:         json.RawMessage(`{"id":"grp-security"}`),
+			},
+			wantID: "okta-app-assignment-app-prod-group-grp-security-1778183686000",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event, err := appAssignmentEvent(settings{domain: "writer.okta.com", appID: "app-prod"}, tt.record)
+			if err != nil {
+				t.Fatalf("appAssignmentEvent() error = %v", err)
+			}
+			if event.Id != tt.wantID {
+				t.Fatalf("event.Id = %q, want %q", event.Id, tt.wantID)
+			}
+		})
 	}
 }
 
