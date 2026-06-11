@@ -54,6 +54,20 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
         self.assertEqual(expansion.source_runtimes[0]["id"], "writer-example-very-long-family-name")
         self.assertEqual(expansion.orchestrator_schedules[0]["name"], "short-family-inventory")
 
+    def test_schedule_name_max_length_shortens_default_name(self) -> None:
+        expansion = expand_source_runtime_rollouts([
+            {
+                "sourceId": "example",
+                "runtimePrefix": "writer-example-very-long-prefix",
+                "schedule": {"nameMaxLength": 29},
+                "families": ["organizations_account"],
+            }
+        ])
+
+        schedule_name = expansion.orchestrator_schedules[0]["name"]
+        self.assertLessEqual(len(schedule_name), 29)
+        self.assertTrue(schedule_name.startswith("example-very-long"))
+
     def test_disabled_rollout_does_not_expand_secrets_runtimes_or_schedules(self) -> None:
         expansion = expand_source_runtime_rollouts([
             {

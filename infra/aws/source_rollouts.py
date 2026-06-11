@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 from typing import Any
 
 
@@ -121,6 +122,9 @@ def _schedule(runtime_id: str, config: dict[str, Any], index: int) -> dict[str, 
     suffix = _string(config.get("nameSuffix")) or "inventory"
     if not name:
         name = f"{runtime_id.removeprefix('writer-')}-{suffix}"
+    max_name_length = _positive_int(config.get("nameMaxLength"), "schedule.nameMaxLength", 0)
+    if max_name_length and len(name) > max_name_length:
+        name = _short_name(name, max_name_length)
     return {
         "name": name,
         "scheduleExpression": expression,
@@ -169,6 +173,13 @@ def _positive_int(value: Any, path: str, default: int) -> int:
     if parsed < 1:
         raise SourceRuntimeRolloutError(f"{path} must be a positive integer")
     return parsed
+
+
+def _short_name(value: str, max_length: int) -> str:
+    if max_length < 8:
+        raise SourceRuntimeRolloutError("schedule.nameMaxLength must be at least 8")
+    digest = hashlib.sha1(value.encode("utf-8")).hexdigest()[:6]
+    return f"{value[: max_length - 7].rstrip('-')}-{digest}"
 
 
 def _slug(value: str) -> str:
