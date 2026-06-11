@@ -1582,7 +1582,13 @@ def _source_runtime_observability_widgets(telemetry_namespace: str, entries: lis
 
     widgets = []
     y = 60
-    for source_system in ("evidence_cas", "panopticon"):
+    source_system_priority = {"evidence_cas": 0, "panopticon": 1}
+    source_systems = {
+        str(entry.get("sourceSystem", "")).strip()
+        for entry in enabled_entries
+        if str(entry.get("sourceSystem", "")).strip()
+    }
+    for source_system in sorted(source_systems, key=lambda value: (source_system_priority.get(value, 10), value)):
         source_entries = [entry for entry in enabled_entries if str(entry.get("sourceSystem", "")).strip() == source_system]
         if not source_entries:
             continue

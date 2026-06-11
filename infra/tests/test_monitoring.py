@@ -217,6 +217,19 @@ class MonitoringRuntimeTest(unittest.TestCase):
                     "alarmRoute": "default",
                     "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
                 },
+                {
+                    "environment": "sec-dev",
+                    "sourceSystem": "okta",
+                    "sourceRuntimeId": "writer-okta-user",
+                    "runtimeClass": "user",
+                    "enabled": True,
+                    "freshnessSlaMinutes": 90,
+                    "dashboardEnabled": True,
+                    "alarmEnabled": True,
+                    "logGroupRef": "runtime",
+                    "alarmRoute": "default",
+                    "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
+                },
             ]
         )
 
@@ -224,6 +237,8 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("SourceRuntimeEvidenceCasObjectIngestSuccess", metric_names)
         self.assertIn("SourceRuntimePanopticonAlertContractProbeFailure", metric_names)
         self.assertIn("SourceRuntimePanopticonAlertMissingCanonicalFields", metric_names)
+        self.assertIn("SourceRuntimeOktaUserIngestSuccess", metric_names)
+        self.assertIn("SourceRuntimeOktaUserContractProbeFailure", metric_names)
         for spec in specs:
             self.assertNotIn("dimensions", spec)
             self.assertNotIn("tenant_id", spec["pattern"])
@@ -271,6 +286,19 @@ class MonitoringRuntimeTest(unittest.TestCase):
                         "alarmRoute": "default",
                         "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
                     },
+                    {
+                        "environment": "sec-dev",
+                        "sourceSystem": "okta",
+                        "sourceRuntimeId": "writer-okta-user",
+                        "runtimeClass": "user",
+                        "enabled": True,
+                        "freshnessSlaMinutes": 90,
+                        "dashboardEnabled": True,
+                        "alarmEnabled": True,
+                        "logGroupRef": "runtime",
+                        "alarmRoute": "default",
+                        "observabilityStates": ["success", "failure", "stale", "disabled", "unknown", "not_configured"],
+                    },
                 ],
             )
         finally:
@@ -278,10 +306,13 @@ class MonitoringRuntimeTest(unittest.TestCase):
 
         self.assertIn("EvidenceCAS Source Runtime Health", body)
         self.assertIn("Panopticon Source Runtime Health", body)
+        self.assertIn("Okta Source Runtime Health", body)
+        self.assertIn("User sync successes", body)
         self.assertIn("Contract Probe Status", body)
         self.assertIn("Orphan / Missing Link Indicators", body)
         self.assertNotIn("writer-evidence-cas-cases", body)
         self.assertNotIn("writer-panopticon-alerts", body)
+        self.assertNotIn("writer-okta-user", body)
 
     def test_source_runtime_observability_alarm_specs_are_actionable_and_redacted(self) -> None:
         specs = monitoring._source_runtime_observability_alarm_specs(

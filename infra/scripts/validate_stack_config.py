@@ -156,6 +156,7 @@ PANOPTICON_FORBIDDEN_CONFIG_RE = re.compile(
     re.IGNORECASE,
 )
 OBSERVABILITY_STATUS_MODEL = ["success", "failure", "stale", "disabled", "unknown", "not_configured"]
+OBSERVABILITY_SOURCE_SYSTEMS = {"evidence_cas", "okta", "panopticon"}
 NEO4J_GENERATED_RUNTIME_SECRET_KEYS = {
     "CEREBRO_NEO4J_URI",
     "CEREBRO_NEO4J_USERNAME",
@@ -189,6 +190,13 @@ OBSERVABILITY_REQUIRED_RUNTIME_KEYS = {
         ("panopticon", "writer-panopticon-cases", "case"): True,
         ("panopticon", "writer-panopticon-iocs", "ioc"): True,
     },
+}
+OKTA_OBSERVABILITY_RUNTIME_CLASSES = {
+    "writer-okta-audit": "audit",
+    "writer-okta-application": "application",
+    "writer-okta-dept-security-group-membership": "group_membership",
+    "writer-okta-group": "group",
+    "writer-okta-user": "user",
 }
 
 
@@ -1007,8 +1015,18 @@ def _validate_source_runtime_observability(
     source_runtimes: list[Any],
     findings: list[Finding],
 ) -> None:
-    expected_entries = OBSERVABILITY_REQUIRED_RUNTIME_KEYS.get(stack)
-    if expected_entries is None:
+    expected_entries = dict(OBSERVABILITY_REQUIRED_RUNTIME_KEYS.get(stack) or {})
+    if stack in {"sec-dev", "go-prod"}:
+        for runtime in source_runtimes:
+            if not isinstance(runtime, dict) or str(runtime.get("sourceId", "")).strip() != "okta":
+                continue
+            runtime_id = str(runtime.get("id", "")).strip()
+            expected_family = OKTA_OBSERVABILITY_RUNTIME_CLASSES.get(runtime_id)
+            runtime_config = runtime.get("config") or {}
+            actual_family = str(runtime_config.get("family", "")).strip() if isinstance(runtime_config, dict) else ""
+            if expected_family and actual_family == expected_family:
+                expected_entries[("okta", runtime_id, expected_family)] = True
+    if not expected_entries:
         return
 
     observability_entries = config.get("sourceRuntimeObservability")
@@ -1018,7 +1036,7 @@ def _validate_source_runtime_observability(
                 "error",
                 stack,
                 "cerebro:sourceRuntimeObservability",
-                "source runtime observability must explicitly declare EvidenceCAS and Panopticon monitoring entries",
+                "source runtime observability must explicitly declare required source monitoring entries",
             )
         )
         return
@@ -1067,9 +1085,14 @@ def _validate_source_runtime_observability(
                     f"source runtime observability environment must match stack environment {expected_environment!r}",
                 )
             )
-        if source_system not in {"evidence_cas", "panopticon"}:
+        if source_system not in OBSERVABILITY_SOURCE_SYSTEMS:
             findings.append(
-                _finding("error", stack, f"{path}.sourceSystem", "source runtime observability sourceSystem must be evidence_cas or panopticon")
+                _finding(
+                    "error",
+                    stack,
+                    f"{path}.sourceSystem",
+                    f"source runtime observability sourceSystem must be one of {', '.join(sorted(OBSERVABILITY_SOURCE_SYSTEMS))}",
+                )
             )
         enabled = entry.get("enabled")
         if not isinstance(enabled, bool):
