@@ -370,7 +370,7 @@ source_runtime_config = apply_source_runtime_rollouts({
 })
 source_secret_keys = source_runtime_config["sourceSecretKeys"]
 source_runtimes = source_runtime_config["sourceRuntimes"]
-source_runtime_service_bootstrap_ids = config.get_object("sourceRuntimeServiceBootstrapIds") or []
+source_runtime_service_bootstrap_ids = config.get_object("sourceRuntimeServiceBootstrapIds")
 orchestrator_schedules = source_runtime_config["orchestratorSchedules"]
 source_runtime_observability = config.get_object("sourceRuntimeObservability") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)

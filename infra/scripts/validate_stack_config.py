@@ -412,6 +412,28 @@ def _runtime_id_from_command(command: Any) -> str | None:
     return None
 
 
+def _validate_source_runtime_service_bootstrap(
+    stack: str,
+    config: dict[str, Any],
+    source_runtimes: list[Any],
+    runtime_ids: set[str],
+    findings: list[Finding],
+) -> None:
+    if not source_runtimes:
+        return
+    bootstrap_ids = config.get("sourceRuntimeServiceBootstrapIds")
+    if bootstrap_ids is not None and not isinstance(bootstrap_ids, list):
+        findings.append(_finding("error", stack, "cerebro:sourceRuntimeServiceBootstrapIds", "must be a list"))
+        return
+    if isinstance(bootstrap_ids, list):
+        requested_ids = [str(runtime_id).strip() for runtime_id in bootstrap_ids]
+        for index, runtime_id in enumerate(requested_ids):
+            if not runtime_id:
+                findings.append(_finding("error", stack, f"cerebro:sourceRuntimeServiceBootstrapIds[{index}]", "runtime id must be non-empty"))
+            elif runtime_id not in runtime_ids:
+                findings.append(_finding("error", stack, f"cerebro:sourceRuntimeServiceBootstrapIds[{index}]", f"unknown runtime id {runtime_id!r}"))
+
+
 def _uint_arg_from_command(command: Any, key: str) -> int | None:
     if not isinstance(command, list):
         return None
@@ -1604,6 +1626,8 @@ def validate_stack(path: Path) -> list[Finding]:
                     "secret-like runtime config values must use env: references",
                 )
             )
+
+    _validate_source_runtime_service_bootstrap(stack, config, source_runtimes, runtime_ids, findings)
 
     schedules = config.get("orchestratorSchedules") or []
     if schedules and not isinstance(schedules, list):

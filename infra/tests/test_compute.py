@@ -69,6 +69,10 @@ class SourceRuntimeEnvironmentTest(unittest.TestCase):
         )
         self.assertEqual(
             compute._source_runtime_service_bootstrap_runtimes(source_runtimes, []),
+            [],
+        )
+        self.assertEqual(
+            compute._source_runtime_service_bootstrap_runtimes(source_runtimes, None),
             source_runtimes,
         )
         with self.assertRaisesRegex(ValueError, "unknown source runtime"):
@@ -171,6 +175,24 @@ class WorkerTaskRoleTest(unittest.TestCase):
             return fake_named_resource(*args, **kwargs)
 
         with (
+            patch.object(
+                compute,
+                "_create_source_runtime_bootstrap_environment_files",
+                return_value={
+                    "service": {
+                        "environment_file_arn": "arn:aws:s3:::bootstrap/service.env",
+                        "bucket_arn": "arn:aws:s3:::bootstrap",
+                        "object_arn": "arn:aws:s3:::bootstrap/service.env",
+                        "resources": [],
+                    },
+                    "orchestrator": {
+                        "environment_file_arn": "arn:aws:s3:::bootstrap/orchestrator.env",
+                        "bucket_arn": "arn:aws:s3:::bootstrap",
+                        "object_arn": "arn:aws:s3:::bootstrap/orchestrator.env",
+                        "resources": [],
+                    },
+                },
+            ),
             patch.object(compute, "_create_execution_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-exec-role")),
             patch.object(compute, "_create_task_role", side_effect=fake_task_role),
             patch.object(compute, "_create_task_definition", side_effect=fake_task_definition),
@@ -203,8 +225,8 @@ class WorkerTaskRoleTest(unittest.TestCase):
                 orchestrator_enabled=True,
                 orchestrator_schedules=[
                     {
-                        "name": "cosmo-fact",
-                        "command": ["orchestrator", "run", "runtime_id=writer-cosmo-fact"],
+                        "name": "panopticon-alerts",
+                        "command": ["orchestrator", "run", "runtime_id=writer-panopticon-alerts"],
                     }
                 ],
                 source_runtimes=panopticon_source_runtimes,
@@ -232,8 +254,14 @@ class WorkerTaskRoleTest(unittest.TestCase):
             orchestrator_task_definition["task_role_arn"],
             "arn:aws:iam::123456789012:role/cerebro-sec-dev-worker-task-role",
         )
-        self.assertEqual(api_task_definition["source_runtimes"], [panopticon_source_runtimes[1]])
-        self.assertEqual(orchestrator_task_definition["source_runtimes"], panopticon_source_runtimes)
+        self.assertEqual(
+            api_task_definition["source_runtime_bootstrap_environment_file_arn"],
+            "arn:aws:s3:::bootstrap/service.env",
+        )
+        self.assertEqual(
+            orchestrator_task_definition["source_runtime_bootstrap_environment_file_arn"],
+            "arn:aws:s3:::bootstrap/orchestrator.env",
+        )
         self.assertEqual(
             orchestrator_events_role_calls[0]["task_role_arn"],
             "arn:aws:iam::123456789012:role/cerebro-sec-dev-worker-task-role",
@@ -248,7 +276,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
         )
         self.assertEqual(
             json.loads(event_target_calls[0]["input"]),
-            {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-cosmo-fact"]}]},
+            {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-panopticon-alerts"]}]},
         )
 
     def test_task_definition_bootstraps_panopticon_source_runtimes(self) -> None:
@@ -314,6 +342,52 @@ class WorkerTaskRoleTest(unittest.TestCase):
             cerebro_container["dependsOn"],
             [{"containerName": "source-runtime-bootstrap", "condition": "SUCCESS"}],
         )
+
+    def test_task_definition_uses_bootstrap_environment_file(self) -> None:
+        task_definition_calls: list[dict] = []
+
+        class FakeOutputAll:
+            def __init__(self, values: tuple):
+                self.values = values
+
+            def apply(self, callback):
+                return callback(self.values)
+
+        def fake_task_definition(*args, **kwargs):
+            task_definition_calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(arn=f"arn:aws:ecs:us-east-1:123456789012:task-definition/{kwargs['family']}:1")
+
+        with (
+            patch.object(compute.aws, "get_region", return_value=SimpleNamespace(region="us-east-1")),
+            patch.object(compute.aws, "get_caller_identity", return_value=SimpleNamespace(account_id="123456789012")),
+            patch.object(compute.aws.ecs, "TaskDefinition", side_effect=fake_task_definition),
+            patch.object(compute.aws.ecs, "TaskDefinitionRuntimePlatformArgs", side_effect=lambda **kwargs: SimpleNamespace(**kwargs)),
+            patch.object(compute.pulumi.Output, "all", side_effect=lambda *values: FakeOutputAll(values)),
+        ):
+            compute._create_task_definition(
+                name="cerebro-sec-dev-orchestrator",
+                container_image="image",
+                cpu=1024,
+                memory=2048,
+                execution_role_arn="exec-role",
+                task_role_arn="task-role",
+                log_group_name="/ecs/cerebro-sec-dev",
+                environment={"CEREBRO_ENVIRONMENT": "sec-dev"},
+                secret_keys=[],
+                external_secrets_prefix="/cerebro/sec-dev",
+                expose_http=False,
+                enable_health_check=False,
+                source_runtime_bootstrap_environment_file_arn="arn:aws:s3:::bootstrap/orchestrator.env",
+            )
+
+        containers = json.loads(task_definition_calls[0]["container_definitions"])
+        bootstrap_container = next(container for container in containers if container["name"] == "source-runtime-bootstrap")
+        self.assertEqual(
+            bootstrap_container["environmentFiles"],
+            [{"value": "arn:aws:s3:::bootstrap/orchestrator.env", "type": "s3"}],
+        )
+        bootstrap_env = {entry["name"]: entry["value"] for entry in bootstrap_container["environment"]}
+        self.assertNotIn("CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", bootstrap_env)
 
 
 class ServiceAutoscalingTest(unittest.TestCase):

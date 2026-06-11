@@ -303,6 +303,22 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
 
+    def test_service_bootstrap_ids_must_reference_source_runtimes(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:orchestratorSchedules:",
+            "  cerebro:sourceRuntimeServiceBootstrapIds:\n    - writer-missing-runtime\n  cerebro:orchestratorSchedules:",
+        )
+
+        self.assertTrue(any("unknown runtime id 'writer-missing-runtime'" in message for message in self._messages(content)))
+
+    def test_service_bootstrap_ids_must_be_a_list(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:orchestratorSchedules:",
+            "  cerebro:sourceRuntimeServiceBootstrapIds: writer-okta-audit\n  cerebro:orchestratorSchedules:",
+        )
+
+        self.assertTrue(any("sourceRuntimeServiceBootstrapIds" in finding.path and "must be a list" in finding.message for finding in self._validate(content)))
+
     def test_actual_source_runtime_observability_has_no_errors(self) -> None:
         for stack_file in ("Pulumi.sec-dev.yaml", "Pulumi.go-prod.yaml"):
             with self.subTest(stack_file=stack_file):
