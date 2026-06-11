@@ -36,7 +36,7 @@ type cborMapEntry struct {
 
 const maxCBORContainerElements = 1024
 
-var strictCBORDecMode = mustCBORDecMode()
+var strictCBORDecMode, strictCBORDecModeErr = newStrictCBORDecMode()
 
 func (v cborValue) lookup(key string) (cborValue, bool) {
 	for _, e := range v.mapEl {
@@ -51,6 +51,9 @@ func decodeCBOR(data []byte) (cborValue, []byte, error) {
 	if len(data) == 0 {
 		return cborValue{}, nil, errCBORUnsupported
 	}
+	if strictCBORDecModeErr != nil {
+		return cborValue{}, nil, strictCBORDecModeErr
+	}
 	var decoded any
 	rest, err := strictCBORDecMode.UnmarshalFirst(data, &decoded)
 	if err != nil {
@@ -63,7 +66,7 @@ func decodeCBOR(data []byte) (cborValue, []byte, error) {
 	return value, rest, nil
 }
 
-func mustCBORDecMode() fxcbor.DecMode {
+func newStrictCBORDecMode() (fxcbor.DecMode, error) {
 	mode, err := fxcbor.DecOptions{
 		DupMapKey:        fxcbor.DupMapKeyEnforcedAPF,
 		IndefLength:      fxcbor.IndefLengthForbidden,
@@ -75,9 +78,9 @@ func mustCBORDecMode() fxcbor.DecMode {
 		DefaultMapType:   reflect.TypeOf(map[string]any{}),
 	}.DecMode()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("attestation: cbor decoder config: %w", err)
 	}
-	return mode
+	return mode, nil
 }
 
 func cborValueFromDecoded(decoded any) (cborValue, error) {
