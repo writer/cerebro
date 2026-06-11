@@ -281,9 +281,10 @@ func runGraph(args []string) error {
 		if err != nil {
 			return err
 		}
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		shutdownCtx := context.Background()
+		ctx, stop := signal.NotifyContext(shutdownCtx, os.Interrupt)
 		defer stop()
-		deps, closeDeps, err := openGraphDependencies(ctx)
+		deps, closeDeps, err := openGraphDependenciesWithShutdown(ctx, shutdownCtx)
 		if err != nil {
 			return err
 		}
@@ -1116,6 +1117,10 @@ func parseGraphLimitArgs(args []string, defaultLimit int, command string) (int, 
 }
 
 func openGraphDependencies(ctx context.Context) (bootstrap.Dependencies, func() error, error) {
+	return openGraphDependenciesWithShutdown(ctx, ctx)
+}
+
+func openGraphDependenciesWithShutdown(ctx context.Context, shutdownCtx context.Context) (bootstrap.Dependencies, func() error, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("load config: %w", err)
@@ -1126,17 +1131,17 @@ func openGraphDependencies(ctx context.Context) (bootstrap.Dependencies, func() 
 	}
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
-		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
+		shutdownTelemetry(shutdownCtx, closeTelemetry, cfg.ShutdownTimeout)
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("open dependencies: %w", err)
 	}
 	if deps.GraphStore == nil {
 		_ = closeDeps()
-		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
+		shutdownTelemetry(shutdownCtx, closeTelemetry, cfg.ShutdownTimeout)
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("graph store is required")
 	}
 	return deps, func() error {
 		err := closeDeps()
-		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
+		shutdownTelemetry(shutdownCtx, closeTelemetry, cfg.ShutdownTimeout)
 		return err
 	}, nil
 }
