@@ -18,6 +18,96 @@ var (
 	panopticonURLPattern              = regexp.MustCompile(`https?://[^\s)"']+`)
 )
 
+var panopticonAssetAttributeKeys = []string{
+	"account_id",
+	"agent_id",
+	"asset_id",
+	"asset_name",
+	"asset_type",
+	"cloud_provider",
+	"cloud_resource_id",
+	"computer_name",
+	"device_id",
+	"device_name",
+	"device_uuid",
+	"endpoint_id",
+	"endpoint_type",
+	"external_id",
+	"hostname",
+	"id",
+	"name",
+	"instance_id",
+	"provider",
+	"resource_arn",
+	"resource_id",
+	"resource_name",
+	"resource_provider",
+	"resource_type",
+	"resource_urn",
+	"serial_number",
+	"self_link",
+	"source_product",
+	"source_provider",
+	"target_id",
+	"type",
+	"urn",
+	"uri",
+	"aws_account_id",
+	"business_critical",
+	"crown_jewel",
+	"data_classification",
+	"data_sensitivity",
+	"domain",
+	"endpoint",
+	"external_exposure",
+	"gcp_project_id",
+	"identity_principal_id",
+	"internet_exposed",
+	"network_interface_ids",
+	"network_security_group_ids",
+	"network_subnet_ids",
+	"owner",
+	"project_id",
+	"public",
+	"public_endpoint",
+	"public_host",
+	"public_ip",
+	"public_network_access",
+	"region",
+	"resource_group",
+	"resource_group_name",
+	"role_arn",
+	"role_name",
+	"runtime_identity",
+	"runtime_role_arn",
+	"runtime_role_name",
+	"runtime_service_account",
+	"scope",
+	"security_group_ids",
+	"sensitivity",
+	"service_account_email",
+	"subnet_id",
+	"subnet_ids",
+	"subscription_id",
+	"team",
+	"tier0",
+	"user_assigned_principal_ids",
+	"vpc",
+	"vpc_id",
+	"zone",
+}
+
+type panopticonAssetStitchTarget struct {
+	urn        string
+	sourceID   string
+	entityType string
+	label      string
+	attrs      map[string]string
+	matchType  string
+	matchKey   string
+	matchValue string
+}
+
 func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -227,11 +317,21 @@ func panopticonAddAssetEntity(entities map[string]*ports.ProjectedEntity, tenant
 		EntityType: "panopticon.asset",
 		Label:      firstAttribute(attrs, "name", "hostname", "asset_id", "id"),
 		Attributes: compactAttributes(map[string]string{
-			"asset_id":   firstAttribute(attrs, "asset_id", "id"),
-			"asset_type": firstAttribute(attrs, "asset_type", "type"),
-			"hostname":   firstAttribute(attrs, "hostname"),
-			"name":       firstAttribute(attrs, "name"),
-			"event_id":   eventID,
+			"agent_id":          firstAttribute(attrs, "agent_id"),
+			"asset_id":          firstAttribute(attrs, "asset_id", "id"),
+			"asset_type":        firstAttribute(attrs, "asset_type", "type"),
+			"device_id":         firstAttribute(attrs, "device_id"),
+			"device_uuid":       firstAttribute(attrs, "device_uuid"),
+			"hostname":          firstAttribute(attrs, "hostname"),
+			"name":              firstAttribute(attrs, "name", "asset_name", "device_name", "computer_name", "resource_name"),
+			"provider":          firstAttribute(attrs, "provider", "source_provider", "resource_provider", "cloud_provider", "source_product"),
+			"resource_arn":      firstAttribute(attrs, "resource_arn"),
+			"resource_id":       firstAttribute(attrs, "resource_id", "cloud_resource_id"),
+			"resource_provider": firstAttribute(attrs, "resource_provider", "cloud_provider"),
+			"resource_type":     firstAttribute(attrs, "resource_type", "endpoint_type"),
+			"resource_urn":      firstAttribute(attrs, "resource_urn", "urn"),
+			"serial_number":     firstAttribute(attrs, "serial_number"),
+			"event_id":          eventID,
 		}),
 	})
 	return assetURN
@@ -264,19 +364,14 @@ func panopticonAddAssets(entities map[string]*ports.ProjectedEntity, tenantID st
 	seen := map[string]struct{}{}
 	var urns []string
 	if len(attrs) != 0 && firstAttribute(attrs, "asset_id", "asset_name") != "" {
-		assetAttrs := map[string]string{
-			"asset_id":   firstAttribute(attrs, "asset_id"),
-			"asset_type": firstAttribute(attrs, "asset_type"),
-			"name":       firstAttribute(attrs, "asset_name"),
-			"hostname":   firstAttribute(attrs, "hostname"),
-		}
+		assetAttrs := panopticonAssetAttributes(attrs)
 		if urn := panopticonAddAssetEntity(entities, tenantID, sourceID, eventID, assetAttrs); urn != "" {
 			seen[urn] = struct{}{}
 			urns = append(urns, urn)
 		}
 	}
 	for _, asset := range panopticonObjects(payload, "assets", "affected_assets", "hosts", "endpoints") {
-		urn := panopticonAddAssetEntity(entities, tenantID, sourceID, eventID, panopticonAttributesFromObject(asset, "asset_id", "id", "asset_type", "type", "hostname", "name", "urn"))
+		urn := panopticonAddAssetEntity(entities, tenantID, sourceID, eventID, panopticonAssetAttributesFromObject(asset))
 		if urn == "" {
 			continue
 		}
@@ -394,20 +489,778 @@ func panopticonAddIOCContextAnchors(entities map[string]*ports.ProjectedEntity, 
 
 func panopticonAddAssetContextAnchors(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, attrs map[string]string, payload map[string]any) {
 	if len(attrs) != 0 && firstAttribute(attrs, "asset_id", "asset_name") != "" {
-		assetAttrs := map[string]string{
-			"asset_id":   firstAttribute(attrs, "asset_id"),
-			"asset_type": firstAttribute(attrs, "asset_type"),
-			"name":       firstAttribute(attrs, "asset_name"),
-			"hostname":   firstAttribute(attrs, "hostname"),
-		}
+		assetAttrs := panopticonAssetAttributes(attrs)
 		assetURN := panopticonAddAssetEntity(entities, tenantID, sourceID, event.GetId(), assetAttrs)
 		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, assetURN, relationRepresents, assetAttrs, nil, "panopticon_asset_context")
+		panopticonAddAssetStitching(entities, links, tenantID, sourceID, event, assetURN, assetAttrs)
 	}
 	for _, asset := range panopticonObjects(payload, "assets", "affected_assets", "hosts", "endpoints") {
-		assetAttrs := panopticonAttributesFromObject(asset, "asset_id", "id", "asset_type", "type", "hostname", "name", "urn")
+		assetAttrs := panopticonAssetAttributesFromObject(asset)
 		assetURN := panopticonAddAssetEntity(entities, tenantID, sourceID, event.GetId(), assetAttrs)
 		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, assetURN, relationRepresents, assetAttrs, asset, "panopticon_asset_context")
+		panopticonAddAssetStitching(entities, links, tenantID, sourceID, event, assetURN, assetAttrs)
 	}
+}
+
+func panopticonAssetAttributes(attrs map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, key := range panopticonAssetAttributeKeys {
+		if value := firstAttribute(attrs, key); value != "" {
+			out[key] = value
+		}
+	}
+	if out["name"] == "" {
+		out["name"] = firstAttribute(attrs, "asset_name", "device_name", "computer_name", "resource_name")
+	}
+	if out["asset_type"] == "" {
+		out["asset_type"] = firstAttribute(attrs, "type", "resource_type", "endpoint_type")
+	}
+	return out
+}
+
+func panopticonAssetAttributesFromObject(object map[string]any) map[string]string {
+	out := map[string]string{}
+	for _, key := range panopticonAssetAttributeKeys {
+		if value := panopticonString(object, key); value != "" {
+			out[key] = value
+		}
+	}
+	if out["asset_type"] == "" {
+		out["asset_type"] = firstNonEmpty(out["type"], out["resource_type"], out["endpoint_type"])
+	}
+	if out["name"] == "" {
+		out["name"] = firstNonEmpty(out["asset_name"], out["device_name"], out["computer_name"], out["resource_name"])
+	}
+	if out["asset_id"] == "" && out["id"] != "" {
+		out["asset_id"] = out["id"]
+	}
+	return out
+}
+
+func panopticonAddAssetStitching(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, assetURN string, attrs map[string]string) {
+	if strings.TrimSpace(assetURN) == "" {
+		return
+	}
+	seen := map[string]struct{}{}
+	for _, target := range panopticonAssetStitchTargets(tenantID, sourceID, attrs) {
+		if target.urn == "" {
+			continue
+		}
+		if _, ok := seen[target.urn]; ok {
+			continue
+		}
+		seen[target.urn] = struct{}{}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        target.urn,
+			TenantID:   tenantID,
+			SourceID:   firstNonEmpty(target.sourceID, sourceID),
+			EntityType: target.entityType,
+			Label:      target.label,
+			Attributes: target.attrs,
+		})
+		addLink(links, projectedLink(tenantID, sourceID, assetURN, target.urn, relationRepresents, panopticonAssetStitchAttributes(event, target)))
+		panopticonAddCloudAssetEnrichment(entities, links, tenantID, sourceID, event, target, attrs)
+	}
+}
+
+func panopticonAssetStitchTargets(tenantID string, sourceID string, attrs map[string]string) []panopticonAssetStitchTarget {
+	var targets []panopticonAssetStitchTarget
+	if target := panopticonExplicitAssetURNTarget(tenantID, attrs); target.urn != "" {
+		targets = append(targets, target)
+	}
+	if target := panopticonEndpointAssetTarget(tenantID, attrs); target.urn != "" {
+		targets = append(targets, target)
+	}
+	if target := panopticonCloudAssetTarget(tenantID, sourceID, attrs); target.urn != "" {
+		targets = append(targets, target)
+	}
+	return targets
+}
+
+func panopticonExplicitAssetURNTarget(tenantID string, attrs map[string]string) panopticonAssetStitchTarget {
+	urn := firstAttribute(attrs, "urn", "resource_urn")
+	parts := strings.Split(strings.TrimSpace(urn), ":")
+	if !panopticonAllowedCanonicalAssetURN(tenantID, urn) {
+		return panopticonAssetStitchTarget{}
+	}
+	kind := parts[3]
+	matchValue := strings.Join(parts[4:], ":")
+	return panopticonAssetStitchTarget{
+		urn:        urn,
+		sourceID:   panopticonCanonicalAssetSourceID(kind),
+		entityType: panopticonCanonicalAssetEntityType(kind),
+		label:      firstNonEmpty(firstAttribute(attrs, "name", "hostname", "resource_name", "device_name", "computer_name"), matchValue, urn),
+		attrs: compactAttributes(map[string]string{
+			"canonical_urn":       urn,
+			"source_product":      panopticonCanonicalAssetSourceID(kind),
+			"resource_id":         matchValue,
+			"resource_provider":   panopticonCanonicalAssetProvider(kind),
+			"resource_type":       panopticonCanonicalAssetResourceType(kind),
+			"panopticon_stitched": "true",
+		}),
+		matchType:  "panopticon_asset_cerebro_urn",
+		matchKey:   "urn",
+		matchValue: urn,
+	}
+}
+
+func panopticonEndpointAssetTarget(tenantID string, attrs map[string]string) panopticonAssetStitchTarget {
+	provider := panopticonAssetProvider(attrs)
+	switch provider {
+	case "sentinelone":
+		agentID := firstAttribute(attrs, "agent_id", "sentinelone_agent_id")
+		if agentID == "" {
+			return panopticonAssetStitchTarget{}
+		}
+		return panopticonAssetStitchTarget{
+			urn:        sentinelOneAgentURN(tenantID, agentID),
+			sourceID:   "sentinelone",
+			entityType: sentinelOneEntityAgent,
+			label:      firstAttribute(attrs, "computer_name", "hostname", "name", "device_name", "agent_id"),
+			attrs: compactAttributes(map[string]string{
+				"agent_id":            agentID,
+				"computer_name":       firstAttribute(attrs, "computer_name", "name", "device_name"),
+				"hostname":            firstAttribute(attrs, "hostname", "computer_name"),
+				"source_product":      "sentinelone",
+				"panopticon_stitched": "true",
+			}),
+			matchType:  "panopticon_asset_sentinelone_agent_id",
+			matchKey:   "agent_id",
+			matchValue: agentID,
+		}
+	case "kolide":
+		return panopticonEndpointDeviceTarget(tenantID, attrs, kolideEndpointProfile, "panopticon_asset_kolide_device_id")
+	case "kandji":
+		return panopticonEndpointDeviceTarget(tenantID, attrs, kandjiEndpointProfile, "panopticon_asset_kandji_device_id")
+	default:
+		return panopticonAssetStitchTarget{}
+	}
+}
+
+func panopticonEndpointDeviceTarget(tenantID string, attrs map[string]string, profile endpointProjectionProfile, matchType string) panopticonAssetStitchTarget {
+	deviceID, matchKey := panopticonFirstAssetAttribute(attrs, "device_id", "device_uuid", "serial_number", "external_id")
+	if deviceID == "" {
+		return panopticonAssetStitchTarget{}
+	}
+	return panopticonAssetStitchTarget{
+		urn:        projectionURN(tenantID, profile.EndpointKind, deviceID),
+		sourceID:   profile.Provider,
+		entityType: profile.EndpointType,
+		label:      firstAttribute(attrs, "device_name", "hostname", "computer_name", "name", "serial_number"),
+		attrs: compactAttributes(map[string]string{
+			"device_id":           deviceID,
+			"device_uuid":         firstAttribute(attrs, "device_uuid"),
+			"hostname":            firstAttribute(attrs, "hostname", "computer_name"),
+			"serial_number":       firstAttribute(attrs, "serial_number"),
+			"source_product":      profile.Provider,
+			"panopticon_stitched": "true",
+		}),
+		matchType:  matchType,
+		matchKey:   matchKey,
+		matchValue: deviceID,
+	}
+}
+
+func panopticonCloudAssetTarget(tenantID string, sourceID string, attrs map[string]string) panopticonAssetStitchTarget {
+	provider := panopticonAssetProvider(attrs)
+	if provider != "aws" && provider != "azure" && provider != "gcp" {
+		return panopticonAssetStitchTarget{}
+	}
+	resourceID, matchKey := panopticonCloudResourceID(provider, attrs)
+	if resourceID == "" {
+		return panopticonAssetStitchTarget{}
+	}
+	if strings.HasPrefix(resourceID, "urn:cerebro:") && !panopticonAllowedCanonicalAssetURN(tenantID, resourceID) {
+		return panopticonAssetStitchTarget{}
+	}
+	resourceType := panopticonCloudResourceType(provider, attrs, resourceID)
+	if resourceType == "" {
+		return panopticonAssetStitchTarget{}
+	}
+	if !panopticonAllowedCanonicalAssetKind(provider + "_" + resourceType) {
+		return panopticonAssetStitchTarget{}
+	}
+	resourceURN := firstAttribute(attrs, "resource_urn")
+	targetURN := resourceURN
+	if targetURN == "" {
+		targetURN = projectionURN(tenantID, provider+"_"+resourceType, resourceID)
+	}
+	return panopticonAssetStitchTarget{
+		urn:        targetURN,
+		sourceID:   provider,
+		entityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
+		label:      firstAttribute(attrs, "resource_name", "name", "asset_name", "hostname", "resource_id"),
+		attrs:      panopticonCloudAssetEntityAttributes(provider, sourceID, attrs, resourceID, resourceType, targetURN),
+		matchType:  "panopticon_asset_" + provider + "_resource_id",
+		matchKey:   matchKey,
+		matchValue: resourceID,
+	}
+}
+
+func panopticonAddCloudAssetEnrichment(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, target panopticonAssetStitchTarget, attrs map[string]string) {
+	provider := target.sourceID
+	if provider != "aws" && provider != "azure" && provider != "gcp" {
+		return
+	}
+	cloudAttrs := panopticonCloudAssetEntityAttributes(provider, sourceID, attrs, target.attrs["resource_id"], target.attrs["resource_type"], target.urn)
+	accountID := cloudResourceAccountID(provider, cloudAttrs, cloudAttrs["resource_id"], target.urn)
+	if accountID != "" {
+		cloudAttrs["domain"] = firstNonEmpty(cloudAttrs["domain"], accountID)
+		addCloudAccountLink(entities, links, tenantID, sourceID, event, target.urn, accountID, provider)
+	}
+	addAzureResourceGroupLinks(entities, links, tenantID, sourceID, event, identityProjectionProfile{Provider: provider}, cloudAttrs, target.urn)
+	addCloudResourceOwnerLink(entities, links, tenantID, event, target.urn, firstNonEmpty(cloudAttrs["owner"], cloudAttrs["team"]))
+	addCloudResourceClassificationLinks(entities, links, tenantID, event, target.urn, cloudAttrs, cloudResourceProjectionOptions{})
+	if provider == "aws" {
+		addAWSNetworkContextLinks(entities, links, tenantID, sourceID, event, target.urn, cloudAttrs)
+	}
+}
+
+func panopticonCloudAssetEntityAttributes(provider string, sourceID string, attrs map[string]string, resourceID string, resourceType string, targetURN string) map[string]string {
+	out := compactAttributes(cloneStringMap(attrs))
+	out["resource_id"] = firstNonEmpty(resourceID, out["resource_id"], out["cloud_resource_id"])
+	out["resource_provider"] = provider
+	out["resource_type"] = resourceType
+	out["resource_urn"] = firstNonEmpty(out["resource_urn"], targetURN)
+	out["source_product"] = firstNonEmpty(provider, sourceID)
+	out["panopticon_stitched"] = "true"
+	switch provider {
+	case "aws":
+		if accountID := cloudResourceAccountID(provider, out, out["resource_id"], targetURN); accountID != "" {
+			out["account_id"] = firstNonEmpty(out["account_id"], accountID)
+			out["domain"] = firstNonEmpty(out["domain"], accountID)
+		}
+	case "azure":
+		if subscriptionID := cloudResourceAccountID(provider, out, out["resource_id"], targetURN); subscriptionID != "" {
+			out["subscription_id"] = firstNonEmpty(out["subscription_id"], subscriptionID)
+		}
+	case "gcp":
+		if projectID := cloudResourceAccountID(provider, out, out["resource_id"], targetURN); projectID != "" {
+			out["project_id"] = firstNonEmpty(out["project_id"], projectID)
+			out["gcp_project_id"] = firstNonEmpty(out["gcp_project_id"], projectID)
+		}
+	}
+	return out
+}
+
+func panopticonAssetProvider(attrs map[string]string) string {
+	provider := normalizeCloudProvider(firstAttribute(attrs, "resource_provider", "cloud_provider", "source_provider", "provider", "source_product"))
+	switch provider {
+	case "sentinel_one", "sentinel-one":
+		return "sentinelone"
+	case "amazon", "amazonaws":
+		return "aws"
+	case "google":
+		return "gcp"
+	case "microsoft":
+		return "azure"
+	case "aws", "azure", "gcp", "sentinelone", "kolide", "kandji":
+		return provider
+	}
+	assetType := normalizeIdentifier(firstAttribute(attrs, "asset_type", "type", "resource_type", "endpoint_type"))
+	switch {
+	case strings.HasPrefix(assetType, "sentinelone") || strings.HasPrefix(assetType, "sentinel_one"):
+		return "sentinelone"
+	case strings.HasPrefix(assetType, "kolide"):
+		return "kolide"
+	case strings.HasPrefix(assetType, "kandji"):
+		return "kandji"
+	case strings.HasPrefix(assetType, "aws"):
+		return "aws"
+	case strings.HasPrefix(assetType, "azure"):
+		return "azure"
+	case strings.HasPrefix(assetType, "gcp") || strings.HasPrefix(assetType, "google_cloud"):
+		return "gcp"
+	default:
+		return ""
+	}
+}
+
+func panopticonCloudResourceType(provider string, attrs map[string]string, resourceID string) string {
+	rawType := firstAttribute(attrs, "resource_type", "asset_type", "type")
+	resourceType := panopticonCloudResourceTypeAlias(provider, rawType)
+	resourceType = strings.TrimPrefix(resourceType, provider+"_")
+	if resourceType != "" {
+		return resourceType
+	}
+	switch provider {
+	case "aws":
+		return panopticonAWSResourceTypeFromARN(firstNonEmpty(firstAttribute(attrs, "resource_arn"), resourceID))
+	case "azure":
+		return panopticonAzureResourceTypeFromID(resourceID)
+	case "gcp":
+		rawResourceID := firstAttribute(attrs, "resource_id", "cloud_resource_id", "self_link", "uri")
+		return panopticonGCPResourceTypeFromID(firstNonEmpty(rawResourceID, resourceID))
+	}
+	return ""
+}
+
+func panopticonCloudResourceID(provider string, attrs map[string]string) (string, string) {
+	if resourceURN := firstAttribute(attrs, "resource_urn"); resourceURN != "" {
+		return resourceURN, "resource_urn"
+	}
+	for _, key := range []string{"resource_arn", "resource_id", "cloud_resource_id", "self_link", "uri"} {
+		value := firstAttribute(attrs, key)
+		if value == "" {
+			continue
+		}
+		if provider == "aws" {
+			value = panopticonNormalizeAWSResourceID(attrs, value)
+		}
+		if provider == "gcp" {
+			value = panopticonNormalizeGCPResourceID(attrs, key, value)
+		}
+		return value, key
+	}
+	return "", ""
+}
+
+func panopticonNormalizeAWSResourceID(attrs map[string]string, value string) string {
+	resourceType := panopticonCloudResourceTypeAlias("aws", firstAttribute(attrs, "resource_type", "asset_type", "type"))
+	if resourceType == "" {
+		resourceType = panopticonAWSResourceTypeFromARN(value)
+	}
+	parts := strings.SplitN(strings.TrimSpace(value), ":", 6)
+	if len(parts) != 6 || parts[0] != "arn" || parts[5] == "" {
+		return value
+	}
+	resource := parts[5]
+	for _, prefix := range panopticonAWSBareIDResourcePrefixes(resourceType) {
+		for _, separator := range []string{"/", ":"} {
+			if after, ok := strings.CutPrefix(resource, prefix+separator); ok && strings.TrimSpace(after) != "" {
+				return strings.TrimSpace(after)
+			}
+		}
+	}
+	return value
+}
+
+func panopticonAWSBareIDResourcePrefixes(resourceType string) []string {
+	switch resourceType {
+	case "ec2_instance":
+		return []string{"instance"}
+	case "network_interface":
+		return []string{"network-interface", "network_interface"}
+	case "security_group":
+		return []string{"security-group", "security_group"}
+	case "subnet":
+		return []string{"subnet"}
+	case "vpc":
+		return []string{"vpc"}
+	default:
+		return nil
+	}
+}
+
+func panopticonCloudResourceTypeAlias(provider string, value string) string {
+	normalized := normalizeCloudType(value)
+	normalized = strings.ReplaceAll(normalized, ":", "_")
+	switch provider {
+	case "aws":
+		switch normalized {
+		case "aws_ec2_instance", "aws__ec2__instance", "server":
+			return "ec2_instance"
+		case "aws_s3_bucket":
+			return "s3_bucket"
+		case "aws_lambda_function":
+			return "lambda_function"
+		}
+	case "azure":
+		switch normalized {
+		case "microsoft_compute_virtualmachines", "azure_virtual_machine":
+			return "virtual_machine"
+		case "microsoft_storage_storageaccounts":
+			return "storage_account"
+		case "microsoft_keyvault_vaults":
+			return "key_vault"
+		case "microsoft_keyvault_vaults_secrets":
+			return "key_vault_secret"
+		case "microsoft_sql_servers_databases":
+			return "sql_database"
+		}
+	case "gcp":
+		switch normalized {
+		case "run_googleapis_com_service", "cloud_run_service", "cloudrun_service":
+			return "cloud_run_service"
+		case "sqladmin_googleapis_com_instance", "cloud_sql_instance", "cloudsql_instance", "sql_instance":
+			return "cloud_sql_instance"
+		case "container_googleapis_com_cluster", "gke_cluster", "kubernetes_cluster":
+			return "gke_cluster"
+		case "compute_googleapis_com_instance", "compute_instance":
+			return "compute_instance"
+		case "storage_googleapis_com_bucket", "storage_bucket", "bucket", "gcs_bucket":
+			return "gcs_bucket"
+		}
+	}
+	return normalized
+}
+
+func panopticonAWSResourceTypeFromARN(value string) string {
+	parts := strings.SplitN(strings.TrimSpace(value), ":", 6)
+	if len(parts) != 6 || parts[0] != "arn" || parts[2] == "" || parts[5] == "" {
+		return ""
+	}
+	service := normalizeIdentifier(parts[2])
+	resource := strings.TrimSpace(parts[5])
+	resourceKind := resource
+	if before, _, ok := strings.Cut(resourceKind, "/"); ok {
+		resourceKind = before
+	}
+	if before, _, ok := strings.Cut(resourceKind, ":"); ok {
+		resourceKind = before
+	}
+	resourceKind = normalizeCloudType(resourceKind)
+	if alias := panopticonAWSARNResourceTypeAlias(service, resourceKind); alias != "" {
+		return alias
+	}
+	if service == "s3" && resourceKind != "" {
+		resourceKind = "bucket"
+	}
+	if service == "" || resourceKind == "" {
+		return ""
+	}
+	return service + "_" + resourceKind
+}
+
+func panopticonAWSARNResourceTypeAlias(service string, resourceKind string) string {
+	switch service + ":" + resourceKind {
+	case "apprunner:service":
+		return "apprunner_service"
+	case "ec2:instance":
+		return "ec2_instance"
+	case "ec2:volume":
+		return "ebs_volume"
+	case "ec2:snapshot":
+		return "ebs_snapshot"
+	case "ec2:security_group":
+		return "security_group"
+	case "ec2:subnet":
+		return "subnet"
+	case "ec2:vpc":
+		return "vpc"
+	case "ec2:network_interface":
+		return "network_interface"
+	case "ecs:service":
+		return "ecs_service"
+	case "ecs:task":
+		return "ecs_task"
+	case "ecs:task_definition":
+		return "ecs_task_definition"
+	case "elasticache:cluster":
+		return "elasticache_cluster"
+	case "kinesis:stream":
+		return "kinesis_stream"
+	case "lambda:function":
+		return "lambda_function"
+	case "rds:db":
+		return "rds_instance"
+	case "s3:bucket":
+		return "s3_bucket"
+	}
+	return ""
+}
+
+func panopticonAzureResourceTypeFromID(value string) string {
+	namespace, typeName := panopticonAzureProviderType(value)
+	if namespace == "" || typeName == "" {
+		return ""
+	}
+	return panopticonCloudResourceTypeAlias("azure", namespace+"/"+typeName)
+}
+
+func panopticonAzureProviderType(value string) (string, string) {
+	parts := strings.Split(strings.TrimSpace(value), "/")
+	for index := 0; index+2 < len(parts); index++ {
+		if strings.EqualFold(parts[index], "providers") {
+			namespace := strings.TrimSpace(parts[index+1])
+			typeName := strings.TrimSpace(parts[index+2])
+			if index+4 < len(parts) && strings.EqualFold(namespace, "Microsoft.KeyVault") && strings.EqualFold(typeName, "vaults") && strings.EqualFold(parts[index+4], "secrets") {
+				typeName += "/secrets"
+			}
+			if index+4 < len(parts) && strings.EqualFold(namespace, "Microsoft.Sql") && strings.EqualFold(typeName, "servers") && strings.EqualFold(parts[index+4], "databases") {
+				typeName += "/databases"
+			}
+			return namespace, typeName
+		}
+	}
+	return "", ""
+}
+
+func panopticonGCPResourceTypeFromID(value string) string {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.Contains(lower, "storage.googleapis.com/") && strings.Contains(lower, "/buckets/"):
+		return "gcs_bucket"
+	case strings.Contains(lower, "sqladmin.googleapis.com/") && strings.Contains(lower, "/instances/"):
+		return "cloud_sql_instance"
+	case strings.Contains(lower, "container.googleapis.com/") && strings.Contains(lower, "/clusters/"):
+		return "gke_cluster"
+	case strings.Contains(lower, "run.googleapis.com/") && strings.Contains(lower, "/services/"):
+		return "cloud_run_service"
+	case strings.Contains(lower, "/locations/") && strings.Contains(lower, "/services/"):
+		return "cloud_run_service"
+	case strings.Contains(lower, "compute.googleapis.com/") && strings.Contains(lower, "/instances/"):
+		return "compute_instance"
+	case strings.Contains(lower, "/zones/") && strings.Contains(lower, "/instances/"):
+		return "compute_instance"
+	default:
+		return ""
+	}
+}
+
+func panopticonNormalizeGCPResourceID(attrs map[string]string, key string, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	resourceType := panopticonCloudResourceTypeAlias("gcp", firstAttribute(attrs, "resource_type", "asset_type", "type"))
+	if resourceType == "" {
+		resourceType = panopticonGCPResourceTypeFromID(value)
+	}
+	switch resourceType {
+	case "compute_instance":
+		return firstNonEmpty(firstAttribute(attrs, "instance_id", "resource_name", "name"), panopticonLastPathSegment(value))
+	case "cloud_sql_instance", "gke_cluster":
+		if key == "self_link" || strings.HasPrefix(strings.ToLower(value), "http://") || strings.HasPrefix(strings.ToLower(value), "https://") {
+			return value
+		}
+		return firstNonEmpty(firstAttribute(attrs, "self_link"), value)
+	}
+	lower := strings.ToLower(value)
+	if strings.Contains(lower, "storage.googleapis.com/") && strings.Contains(lower, "/buckets/") {
+		parts := strings.Split(value, "/")
+		for index := 0; index+1 < len(parts); index++ {
+			if parts[index] == "buckets" && strings.TrimSpace(parts[index+1]) != "" {
+				return strings.TrimSpace(parts[index+1])
+			}
+		}
+	}
+	if index := strings.Index(value, "/projects/"); index >= 0 {
+		return strings.TrimPrefix(value[index:], "/")
+	}
+	if strings.HasPrefix(value, "projects/") {
+		return value
+	}
+	return value
+}
+
+func panopticonLastPathSegment(value string) string {
+	value = strings.Trim(strings.TrimSpace(value), "/")
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "/")
+	return strings.TrimSpace(parts[len(parts)-1])
+}
+
+func panopticonFirstAssetAttribute(attrs map[string]string, keys ...string) (string, string) {
+	for _, key := range keys {
+		if value := firstAttribute(attrs, key); value != "" {
+			return value, key
+		}
+	}
+	return "", ""
+}
+
+func panopticonAllowedCanonicalAssetKind(kind string) bool {
+	switch kind {
+	case
+		"sentinelone_agent",
+		"kolide_device",
+		"kandji_device",
+		"aws_access_analyzer",
+		"aws_acm_certificate",
+		"aws_apigateway_integration",
+		"aws_apigateway_route",
+		"aws_apigateway_stage",
+		"aws_apprunner_service",
+		"aws_athena_data_catalog",
+		"aws_athena_workgroup",
+		"aws_backup_plan",
+		"aws_backup_protected_resource",
+		"aws_backup_recovery_point",
+		"aws_backup_vault",
+		"aws_batch_compute_environment",
+		"aws_batch_job_queue",
+		"aws_cloudfront_key_group",
+		"aws_cloudfront_origin_access_control",
+		"aws_cloudfront_public_key",
+		"aws_cloudfront_response_headers_policy",
+		"aws_cloudtrail",
+		"aws_cloudwatch_alarm",
+		"aws_cloudwatch_log_group",
+		"aws_config_recorder",
+		"aws_datasync_location",
+		"aws_datasync_task",
+		"aws_docdb_cluster",
+		"aws_docdb_instance",
+		"aws_dynamodb_backup",
+		"aws_dynamodb_stream",
+		"aws_dynamodb_table",
+		"aws_ebs_snapshot",
+		"aws_ebs_volume",
+		"aws_ec2_instance",
+		"aws_ecr_repository",
+		"aws_ecs_service",
+		"aws_ecs_task",
+		"aws_ecs_task_definition",
+		"aws_efs_access_point",
+		"aws_efs_file_system",
+		"aws_eks_cluster",
+		"aws_eks_fargate_profile",
+		"aws_eks_nodegroup",
+		"aws_elasticache_cluster",
+		"aws_elasticache_replication_group",
+		"aws_elasticache_subnet_group",
+		"aws_elbv2_listener",
+		"aws_elbv2_target_group",
+		"aws_eventbridge_archive",
+		"aws_eventbridge_event_bus",
+		"aws_eventbridge_pipe",
+		"aws_eventbridge_rule",
+		"aws_firehose_delivery_stream",
+		"aws_fsx_file_system",
+		"aws_globalaccelerator_accelerator",
+		"aws_globalaccelerator_endpoint_group",
+		"aws_globalaccelerator_listener",
+		"aws_glue_crawler",
+		"aws_glue_database",
+		"aws_glue_job",
+		"aws_glue_table",
+		"aws_internet_gateway",
+		"aws_kinesis_stream",
+		"aws_kms_key",
+		"aws_lambda_function",
+		"aws_msk_cluster",
+		"aws_nat_gateway",
+		"aws_neptune_cluster",
+		"aws_neptune_instance",
+		"aws_network_firewall",
+		"aws_network_interface",
+		"aws_opensearch_domain",
+		"aws_opensearch_serverless_collection",
+		"aws_opensearch_serverless_security_policy",
+		"aws_rds_instance",
+		"aws_redshift_cluster",
+		"aws_route53_resolver_endpoint",
+		"aws_route53_resolver_rule",
+		"aws_route_table",
+		"aws_s3_access_point",
+		"aws_s3_bucket",
+		"aws_s3_multi_region_access_point",
+		"aws_scheduler_schedule",
+		"aws_scheduler_schedule_group",
+		"aws_secret",
+		"aws_security_group",
+		"aws_sns_topic",
+		"aws_sqs_queue",
+		"aws_ssm_association",
+		"aws_ssm_document",
+		"aws_ssm_managed_instance",
+		"aws_ssm_parameter",
+		"aws_stepfunctions_activity",
+		"aws_stepfunctions_state_machine",
+		"aws_subnet",
+		"aws_vpc",
+		"aws_vpc_endpoint",
+		"aws_vpclattice_listener",
+		"aws_vpclattice_service",
+		"aws_vpclattice_target_group",
+		"aws_wafv2_web_acl",
+		"azure_aks_cluster",
+		"azure_app_service",
+		"azure_container_registry",
+		"azure_cosmos_account",
+		"azure_function_app",
+		"azure_key_vault",
+		"azure_key_vault_key",
+		"azure_key_vault_secret",
+		"azure_sql_database",
+		"azure_sql_server",
+		"azure_storage_account",
+		"azure_virtual_machine",
+		"gcp_artifact_registry_image",
+		"gcp_artifact_registry_repository",
+		"gcp_cloud_function",
+		"gcp_cloud_run_service",
+		"gcp_cloud_sql_instance",
+		"gcp_compute_instance",
+		"gcp_gcs_bucket",
+		"gcp_gke_cluster",
+		"gcp_kms_key",
+		"gcp_secret_manager_secret":
+		return true
+	}
+	return false
+}
+
+func panopticonAllowedCanonicalAssetURN(tenantID string, urn string) bool {
+	parts := strings.Split(strings.TrimSpace(urn), ":")
+	return len(parts) >= 4 && parts[0] == "urn" && parts[1] == "cerebro" && parts[2] == tenantID && panopticonAllowedCanonicalAssetKind(parts[3])
+}
+
+func panopticonCanonicalAssetSourceID(kind string) string {
+	switch {
+	case kind == "sentinelone_agent":
+		return "sentinelone"
+	case kind == "kolide_device":
+		return "kolide"
+	case kind == "kandji_device":
+		return "kandji"
+	case strings.HasPrefix(kind, "aws_"):
+		return "aws"
+	case strings.HasPrefix(kind, "azure_"):
+		return "azure"
+	case strings.HasPrefix(kind, "gcp_"):
+		return "gcp"
+	default:
+		return ""
+	}
+}
+
+func panopticonCanonicalAssetProvider(kind string) string {
+	sourceID := panopticonCanonicalAssetSourceID(kind)
+	if sourceID == "sentinelone" || sourceID == "kolide" || sourceID == "kandji" {
+		return ""
+	}
+	return sourceID
+}
+
+func panopticonCanonicalAssetResourceType(kind string) string {
+	for _, prefix := range []string{"aws_", "azure_", "gcp_"} {
+		if strings.HasPrefix(kind, prefix) {
+			return strings.TrimPrefix(kind, prefix)
+		}
+	}
+	return ""
+}
+
+func panopticonCanonicalAssetEntityType(kind string) string {
+	switch kind {
+	case "sentinelone_agent":
+		return sentinelOneEntityAgent
+	case "kolide_device":
+		return kolideEndpointProfile.EndpointType
+	case "kandji_device":
+		return kandjiEndpointProfile.EndpointType
+	default:
+		sourceID := panopticonCanonicalAssetSourceID(kind)
+		if sourceID == "" {
+			return ""
+		}
+		resourceType := strings.TrimPrefix(kind, sourceID+"_")
+		return sourceID + "." + strings.ReplaceAll(resourceType, "_", ".")
+	}
+}
+
+func panopticonAssetStitchAttributes(event *cerebrov1.EventEnvelope, target panopticonAssetStitchTarget) map[string]string {
+	attrs := panopticonLinkAttributes(event, target.matchType)
+	attrs["confidence"] = "0.99"
+	attrs["evidence_type"] = "provider_asset_identifier"
+	addProjectedAttribute(attrs, "identifier_key", target.matchKey)
+	addProjectedAttribute(attrs, "identifier_value", target.matchValue)
+	addProjectedAttribute(attrs, "target_urn", target.urn)
+	return attrs
 }
 
 func panopticonAddContextAnchors(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, attrs map[string]string, payload map[string]any, matchPrefix string) {

@@ -480,6 +480,240 @@ func TestProjectPanopticonIOCEnrichesInternetAnchors(t *testing.T) {
 	assertProjectedLink(t, state, iocURN, relationRepresents, ipURN)
 }
 
+func TestProjectPanopticonAssetsStitchToCanonicalProviderAssets(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-asset-stitch",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-asset-stitch",
+			"title":   "Provider-backed assets",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id": "case-asset-stitch",
+			"assets": []map[string]any{
+				{
+					"asset_id":      "asset-sentinelone",
+					"provider":      "sentinelone",
+					"agent_id":      "agent-123",
+					"computer_name": "writer-mac-1",
+				},
+				{
+					"asset_id":  "asset-kolide",
+					"provider":  "kolide",
+					"device_id": "kolide-device-1",
+					"hostname":  "kolide-host-1",
+				},
+				{
+					"asset_id":           "asset-aws",
+					"domain":             "123456789012",
+					"internet_exposed":   "true",
+					"owner":              "platform@writer.com",
+					"public_endpoint":    "https://api.us-east-1.awsapprunner.com",
+					"resource_provider":  "aws",
+					"resource_id":        "arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e",
+					"resource_name":      "api",
+					"role_arn":           "arn:aws:iam::123456789012:role/AppRunnerInstanceRole",
+					"role_name":          "AppRunnerInstanceRole",
+					"security_group_ids": "sg-app",
+					"subnet_ids":         "subnet-app",
+					"vpc_id":             "vpc-app",
+				},
+				{
+					"asset_id":          "asset-aws-ec2-arn",
+					"resource_provider": "aws",
+					"resource_type":     "ec2_instance",
+					"resource_arn":      "arn:aws:ec2:us-east-1:123456789012:instance/i-0123456789abcdef0",
+					"resource_id":       "i-0123456789abcdef0",
+					"resource_name":     "prod-api-1",
+				},
+				{
+					"asset_id":          "asset-aws-ec2-arn-only",
+					"resource_provider": "aws",
+					"resource_arn":      "arn:aws:ec2:us-east-1:123456789012:instance/i-0abcdef1234567890",
+				},
+				{
+					"asset_id":                    "asset-azure",
+					"identity_principal_id":       "principal-system-1",
+					"internet_exposed":            "true",
+					"owner":                       "Compute Team",
+					"public_host":                 "vm-1.eastus.cloudapp.azure.com",
+					"resource_provider":           "azure",
+					"resource_type":               "Microsoft.Compute/virtualMachines",
+					"resource_id":                 "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1",
+					"resource_name":               "vm-1",
+					"user_assigned_principal_ids": "principal-user-1",
+				},
+				{
+					"asset_id":              "asset-gcp",
+					"crown_jewel":           "true",
+					"data_classification":   "restricted",
+					"owner":                 "api-owner@writer.com",
+					"public_endpoint":       "https://api-writer-prod.run.app",
+					"resource_provider":     "gcp",
+					"resource_id":           "//run.googleapis.com/projects/prod-project/locations/us-central1/services/api",
+					"resource_name":         "api",
+					"service_account_email": "api@prod-project.iam.gserviceaccount.com",
+				},
+				{
+					"asset_id":          "asset-gcp-compute",
+					"project_id":        "prod-project",
+					"resource_provider": "gcp",
+					"resource_type":     "compute_instance",
+					"self_link":         "https://www.googleapis.com/compute/v1/projects/prod-project/zones/us-central1-a/instances/instance-1",
+				},
+				{
+					"asset_id":          "asset-gcp-sql",
+					"project_id":        "prod-project",
+					"resource_provider": "gcp",
+					"resource_type":     "cloud_sql_instance",
+					"self_link":         "https://sqladmin.googleapis.com/sql/v1beta4/projects/prod-project/instances/sql-1",
+				},
+				{
+					"asset_id":          "asset-gcp-gke",
+					"project_id":        "prod-project",
+					"resource_provider": "gcp",
+					"resource_id":       "https://container.googleapis.com/v1/projects/prod-project/locations/us-central1/clusters/cluster-1",
+				},
+				{
+					"asset_id":          "asset-gcp-bucket",
+					"project_id":        "prod-project",
+					"resource_provider": "gcp",
+					"resource_type":     "gcs_bucket",
+					"resource_id":       "//storage.googleapis.com/projects/_/buckets/prod-bucket",
+					"resource_name":     "prod-bucket",
+				},
+				{
+					"asset_id":          "asset-aws-resource-urn",
+					"resource_provider": "aws",
+					"resource_type":     "s3_bucket",
+					"resource_urn":      "urn:cerebro:writer:aws_s3_bucket:prod-bucket",
+					"resource_name":     "prod-bucket",
+				},
+				{
+					"asset_id": "asset-kandji-explicit",
+					"urn":      "urn:cerebro:writer:kandji_device:kandji-device-1",
+					"name":     "kandji-mac-1",
+				},
+			},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:sentinelone_agent:agent-123", "sentinelone.agent")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:kolide_device:kolide-device-1", "kolide.device")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", "aws.apprunner.service")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:aws_ec2_instance:i-0123456789abcdef0", "aws.ec2.instance")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:aws_ec2_instance:i-0abcdef1234567890", "aws.ec2.instance")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1", "azure.virtual.machine")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_cloud_run_service:projects/prod-project/locations/us-central1/services/api", "gcp.cloud.run.service")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_compute_instance:instance-1", "gcp.compute.instance")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_cloud_sql_instance:https://sqladmin.googleapis.com/sql/v1beta4/projects/prod-project/instances/sql-1", "gcp.cloud.sql.instance")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_gke_cluster:https://container.googleapis.com/v1/projects/prod-project/locations/us-central1/clusters/cluster-1", "gcp.gke.cluster")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:gcp_gcs_bucket:prod-bucket", "gcp.gcs.bucket")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:aws_s3_bucket:prod-bucket", "aws.s3.bucket")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:kandji_device:kandji-device-1", "kandji.device")
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-sentinelone", relationRepresents, "urn:cerebro:writer:sentinelone_agent:agent-123")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-kolide", relationRepresents, "urn:cerebro:writer:kolide_device:kolide-device-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws", relationRepresents, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws-ec2-arn", relationRepresents, "urn:cerebro:writer:aws_ec2_instance:i-0123456789abcdef0")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws-ec2-arn-only", relationRepresents, "urn:cerebro:writer:aws_ec2_instance:i-0abcdef1234567890")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-azure", relationRepresents, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp", relationRepresents, "urn:cerebro:writer:gcp_cloud_run_service:projects/prod-project/locations/us-central1/services/api")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp-compute", relationRepresents, "urn:cerebro:writer:gcp_compute_instance:instance-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp-sql", relationRepresents, "urn:cerebro:writer:gcp_cloud_sql_instance:https://sqladmin.googleapis.com/sql/v1beta4/projects/prod-project/instances/sql-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp-gke", relationRepresents, "urn:cerebro:writer:gcp_gke_cluster:https://container.googleapis.com/v1/projects/prod-project/locations/us-central1/clusters/cluster-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-gcp-bucket", relationRepresents, "urn:cerebro:writer:gcp_gcs_bucket:prod-bucket")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws-resource-urn", relationRepresents, "urn:cerebro:writer:aws_s3_bucket:prod-bucket")
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-kandji-explicit", relationRepresents, "urn:cerebro:writer:kandji_device:kandji-device-1")
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", relationOwnedBy, "urn:cerebro:writer:owner:platform@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", relationBelongsTo, "urn:cerebro:writer:aws_vpc:vpc-app")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", relationBelongsTo, "urn:cerebro:writer:aws_subnet:subnet-app")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-app")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1", relationBelongsTo, "urn:cerebro:writer:azure_resource_group:sub-1:rg-prod")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_cloud_run_service:projects/prod-project/locations/us-central1/services/api", relationBelongsTo, "urn:cerebro:writer:cloud_account:prod-project")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_cloud_run_service:projects/prod-project/locations/us-central1/services/api", relationHasClassification, "urn:cerebro:writer:data_classification:restricted")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AppRunnerInstanceRole")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1", relationRunsAs, "urn:cerebro:writer:azure_service_principal:principal-system-1")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:gcp_cloud_run_service:projects/prod-project/locations/us-central1/services/api", relationRunsAs, "urn:cerebro:writer:gcp_service_account:api@prod-project.iam.gserviceaccount.com")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws-resource-urn", relationRepresents, "urn:cerebro:writer:aws_s3_bucket:urn:cerebro:writer:aws_s3_bucket:prod-bucket")
+	assertProjectedStitchLinkAttribute(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws", "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", "confidence", "0.99")
+}
+
+func TestProjectPanopticonAssetStitchingRejectsWeakAndCrossTenantMatches(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-asset-stitch-negative",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-asset-stitch-negative",
+			"title":   "Weak assets should remain Panopticon context",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id": "case-asset-stitch-negative",
+			"assets": []map[string]any{
+				{
+					"asset_id": "asset-host-only",
+					"hostname": "prod-host-1.example.com",
+					"ip":       "203.0.113.22",
+				},
+				{
+					"asset_id": "asset-cross-tenant",
+					"urn":      "urn:cerebro:other:sentinelone_agent:agent-999",
+				},
+				{
+					"asset_id": "asset-disallowed-urn",
+					"urn":      "urn:cerebro:writer:identity:email:owner@example.com",
+				},
+				{
+					"asset_id": "asset-disallowed-aws-role",
+					"urn":      "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/Admin",
+				},
+				{
+					"asset_id": "asset-disallowed-gcp-service-account",
+					"urn":      "urn:cerebro:writer:gcp_service_account:svc@prod-project.iam.gserviceaccount.com",
+				},
+				{
+					"asset_id": "asset-disallowed-azure-principal",
+					"urn":      "urn:cerebro:writer:azure_service_principal:principal-1",
+				},
+				{
+					"asset_id":          "asset-disallowed-provider-principal",
+					"resource_provider": "gcp",
+					"resource_type":     "service_account",
+					"resource_id":       "svc@prod-project.iam.gserviceaccount.com",
+				},
+			},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	assertPanopticonAssetHasNoCanonicalAssetLink(t, state, "urn:cerebro:writer:panopticon_asset:asset-host-only")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-cross-tenant", relationRepresents, "urn:cerebro:other:sentinelone_agent:agent-999")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-urn", relationRepresents, "urn:cerebro:writer:identity:email:owner@example.com")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-aws-role", relationRepresents, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/Admin")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-gcp-service-account", relationRepresents, "urn:cerebro:writer:gcp_service_account:svc@prod-project.iam.gserviceaccount.com")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-azure-principal", relationRepresents, "urn:cerebro:writer:azure_service_principal:principal-1")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:panopticon_asset:asset-disallowed-provider-principal", relationRepresents, "urn:cerebro:writer:gcp_service_account:svc@prod-project.iam.gserviceaccount.com")
+}
+
 func TestProjectPanopticonDoesNotOvermatchOrdinaryProse(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -556,5 +790,29 @@ func assertProjectedEntityMissing(t *testing.T, recorder *projectionRecorder, ur
 	t.Helper()
 	if entity := recorder.entities[urn]; entity != nil {
 		t.Fatalf("projected entity %q should be missing: %#v", urn, entity)
+	}
+}
+
+func assertProjectedStitchLinkAttribute(t *testing.T, recorder *projectionRecorder, fromURN string, toURN string, key string, want string) {
+	t.Helper()
+	link := recorder.links[fromURN+"|"+relationRepresents+"|"+toURN]
+	if link == nil {
+		t.Fatalf("projected stitch link %q -> %q missing", fromURN, toURN)
+	}
+	if got := link.Attributes[key]; got != want {
+		t.Fatalf("projected stitch link %q attribute %q = %q, want %q", fromURN, key, got, want)
+	}
+}
+
+func assertPanopticonAssetHasNoCanonicalAssetLink(t *testing.T, recorder *projectionRecorder, assetURN string) {
+	t.Helper()
+	for _, link := range recorder.links {
+		if link.FromURN != assetURN || link.Relation != relationRepresents {
+			continue
+		}
+		parts := strings.Split(link.ToURN, ":")
+		if len(parts) >= 4 && parts[0] == "urn" && parts[1] == "cerebro" && panopticonAllowedCanonicalAssetKind(parts[3]) {
+			t.Fatalf("asset %q should not directly stitch to canonical asset %q; link=%#v", assetURN, link.ToURN, link)
+		}
 	}
 }
