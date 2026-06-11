@@ -948,7 +948,9 @@ class ValidateStackConfigTest(unittest.TestCase):
         self.assertTrue(any(finding.severity == "error" and "writer-aws-sec-prod-us1-resource-exposure" in finding.message for finding in findings))
 
     def test_go_prod_actual_aws_graph_coverage_is_expanded(self) -> None:
-        config = validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+        config = validator.apply_source_runtime_rollouts(
+            validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+        )
         aws_runtimes = [runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "aws"]
         aws_scheduled_runtime_ids = {
             validator._runtime_id_from_command(schedule.get("command"))
@@ -958,7 +960,7 @@ class ValidateStackConfigTest(unittest.TestCase):
 
         findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
 
-        self.assertEqual(len(aws_runtimes), 128)
+        self.assertEqual(len(aws_runtimes), 232)
         self.assertTrue(all(runtime["id"] in aws_scheduled_runtime_ids for runtime in aws_runtimes))
         self.assertEqual(
             {
@@ -977,19 +979,70 @@ class ValidateStackConfigTest(unittest.TestCase):
                 "eks_nodegroup",
                 "eks_pod_identity_association",
                 "effective_permission",
+                "guardduty_finding",
                 "iam_group",
                 "iam_group_membership",
                 "iam_role",
                 "iam_role_assignment",
                 "iam_role_trust",
                 "iam_user",
+                "inspector2_finding",
+                "kms_key",
                 "lambda_function",
+                "organizations_account",
+                "organizations_policy",
                 "public_endpoint",
+                "rds_instance",
                 "resource_exposure",
+                "route_table",
+                "s3_bucket",
+                "secret",
+                "security_group",
+                "securityhub_finding",
+                "subnet",
+                "vpc",
+                "vpc_endpoint",
             },
         )
         self.assertFalse(
             any(finding.severity == "error" and "go-prod AWS coverage" in finding.message for finding in findings)
+        )
+
+    def test_sec_dev_actual_aws_graph_coverage_is_expanded(self) -> None:
+        config = validator.apply_source_runtime_rollouts(
+            validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
+        )
+        aws_runtimes = [runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "aws"]
+        aws_scheduled_runtime_ids = {
+            validator._runtime_id_from_command(schedule.get("command"))
+            for schedule in config["orchestratorSchedules"]
+            if isinstance(schedule, dict)
+        }
+
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
+
+        self.assertEqual(len(aws_runtimes), 60)
+        self.assertTrue(all(runtime["id"] in aws_scheduled_runtime_ids for runtime in aws_runtimes))
+        self.assertTrue(
+            {
+                "guardduty_finding",
+                "inspector2_finding",
+                "kms_key",
+                "organizations_account",
+                "organizations_policy",
+                "rds_instance",
+                "route_table",
+                "s3_bucket",
+                "secret",
+                "security_group",
+                "securityhub_finding",
+                "subnet",
+                "vpc",
+                "vpc_endpoint",
+            }.issubset({str(runtime.get("config", {}).get("family", "")) for runtime in aws_runtimes})
+        )
+        self.assertFalse(
+            any(finding.severity == "error" and "sec-dev AWS coverage" in finding.message for finding in findings)
         )
 
     def test_sec_dev_evidencecas_runtime_wires_private_endpoint_allowlist(self) -> None:

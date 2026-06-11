@@ -88,6 +88,251 @@ config:
     - OKTA_API_TOKEN
     - OKTA_DOMAIN
     - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
+  cerebro:sourceRuntimeRollouts:
+    - sourceId: aws
+      runtimePrefix: writer-aws-devops
+      commonConfig:
+        account_id: "381491964434"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - organizations_account
+        - organizations_policy
+    - sourceId: aws
+      runtimePrefix: writer-aws-prod
+      commonConfig:
+        account_id: "009160076449"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - organizations_account
+        - organizations_policy
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-dev
+      commonConfig:
+        account_id: "944130631940"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - organizations_account
+        - organizations_policy
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-prod
+      commonConfig:
+        account_id: "837279440628"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - organizations_account
+        - organizations_policy
+    - sourceId: aws
+      runtimePrefix: writer-aws-devops-us1
+      perPage: "100"
+      commonConfig:
+        account_id: "381491964434"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
+    - sourceId: aws
+      runtimePrefix: writer-aws-devops-us2
+      perPage: "100"
+      commonConfig:
+        account_id: "381491964434"
+        include_global: "false"
+        region: us-west-2
+        role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
+    - sourceId: aws
+      runtimePrefix: writer-aws-prod-us1
+      perPage: "100"
+      commonConfig:
+        account_id: "009160076449"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
+    - sourceId: aws
+      runtimePrefix: writer-aws-prod-us2
+      perPage: "100"
+      commonConfig:
+        account_id: "009160076449"
+        include_global: "false"
+        region: us-west-2
+        role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-dev-us1
+      perPage: "100"
+      commonConfig:
+        account_id: "944130631940"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-dev-us2
+      perPage: "100"
+      commonConfig:
+        account_id: "944130631940"
+        include_global: "false"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-prod-us1
+      perPage: "100"
+      commonConfig:
+        account_id: "837279440628"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-prod-us2
+      perPage: "100"
+      commonConfig:
+        account_id: "837279440628"
+        include_global: "false"
+        region: us-west-2
+        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
   cerebro:temporarilyDisabledSourceRuntimes:
     - runtimeId: writer-cosmo-session
       owner: cerebro-platform

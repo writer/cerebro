@@ -92,6 +92,24 @@ PROD_MAX_HIGH_CONTENTION_PAGE_LIMIT = 1
 PROD_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 1
 SEC_DEV_AWS_ACCOUNT_ID = "944130631940"
 SEC_DEV_AWS_ROLE_ARN = "arn:aws:iam::944130631940:role/cerebro-org-scan-role"
+AWS_CLOUD_DEPTH_GLOBAL_FAMILIES = {
+    "organizations_account",
+    "organizations_policy",
+}
+AWS_CLOUD_DEPTH_REGIONAL_FAMILIES = {
+    "guardduty_finding",
+    "inspector2_finding",
+    "kms_key",
+    "rds_instance",
+    "route_table",
+    "s3_bucket",
+    "secret",
+    "security_group",
+    "securityhub_finding",
+    "subnet",
+    "vpc",
+    "vpc_endpoint",
+}
 SEC_DEV_AWS_GLOBAL_FAMILIES = {
     "access_key",
     "effective_permission",
@@ -101,6 +119,7 @@ SEC_DEV_AWS_GLOBAL_FAMILIES = {
     "iam_role_assignment",
     "iam_role_trust",
     "iam_user",
+    *AWS_CLOUD_DEPTH_GLOBAL_FAMILIES,
 }
 AWS_COMPUTE_REGIONAL_FAMILIES = {
     "ec2_instance",
@@ -119,6 +138,7 @@ SEC_DEV_AWS_REGIONAL_FAMILIES = {
     "public_endpoint",
     "resource_exposure",
     *AWS_COMPUTE_REGIONAL_FAMILIES,
+    *AWS_CLOUD_DEPTH_REGIONAL_FAMILIES,
 }
 SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT15M"
 GO_PROD_AWS_ACCOUNTS = {
@@ -128,7 +148,13 @@ GO_PROD_AWS_ACCOUNTS = {
     "sec-dev": "944130631940",
 }
 GO_PROD_AWS_GLOBAL_FAMILIES = SEC_DEV_AWS_GLOBAL_FAMILIES
-GO_PROD_AWS_REGIONAL_FAMILIES = {"asset_metadata", "public_endpoint", "resource_exposure", *AWS_COMPUTE_REGIONAL_FAMILIES}
+GO_PROD_AWS_REGIONAL_FAMILIES = {
+    "asset_metadata",
+    "public_endpoint",
+    "resource_exposure",
+    *AWS_COMPUTE_REGIONAL_FAMILIES,
+    *AWS_CLOUD_DEPTH_REGIONAL_FAMILIES,
+}
 GO_PROD_AWS_REGIONS = {"us1": "us-east-1", "us2": "us-west-2"}
 PANOPTICON_RUNTIME_FAMILIES = {
     "writer-panopticon-alerts": "alert",

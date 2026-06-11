@@ -243,6 +243,67 @@ config:
         - image_package
         - image_vulnerability
         - fix
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-dev
+      commonConfig:
+        account_id: "944130631940"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - organizations_account
+        - organizations_policy
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-dev-us1
+      perPage: "100"
+      commonConfig:
+        account_id: "944130631940"
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
+    - sourceId: aws
+      runtimePrefix: writer-aws-sec-dev-us2
+      perPage: "100"
+      commonConfig:
+        account_id: "944130631940"
+        include_global: "false"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - guardduty_finding
+        - inspector2_finding
+        - kms_key
+        - rds_instance
+        - route_table
+        - s3_bucket
+        - secret
+        - security_group
+        - securityhub_finding
+        - subnet
+        - vpc
+        - vpc_endpoint
   cerebro:sourceRuntimeObservability:
     - environment: sec-dev
       sourceSystem: evidence_cas
