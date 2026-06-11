@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sort"
@@ -9,10 +10,25 @@ import (
 	"sync"
 	"time"
 
-	"github.com/writer/cerebro/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 var Default = NewRegistry()
+
+var (
+	otelHTTPServerRequests, _ = otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.http.server.requests",
+		otelmetric.WithDescription("Total inbound HTTP requests served by Cerebro."),
+	)
+	otelHTTPServerDuration, _ = otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.http.server.request.duration",
+		otelmetric.WithDescription("Inbound HTTP request duration."),
+		otelmetric.WithUnit("s"),
+	)
+)
 
 type Registry struct {
 	mu       sync.Mutex
@@ -67,20 +83,41 @@ func (r *Registry) Render() string {
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := telemetry.WithTraceParent(r.Context(), r.Header.Get("Traceparent"))
+		route := normalizeRouteLabel(r.URL.Path)
+		method := normalizeMethodLabel(r.Method)
+		ctx, span := otel.Tracer("github.com/writer/cerebro/internal/observability").Start(r.Context(), "http.server",
+			oteltrace.WithSpanKind(oteltrace.SpanKindServer),
+			oteltrace.WithAttributes(
+				attribute.String("http.request.method", method),
+				attribute.String("http.route", route),
+			),
+		)
+		defer span.End()
 		r = r.WithContext(ctx)
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
 		labels := map[string]string{
-			"method":      normalizeMethodLabel(r.Method),
-			"route":       normalizeRouteLabel(r.URL.Path),
+			"method":      method,
+			"route":       route,
 			"status_code": strconv.Itoa(recorder.status),
 		}
+		span.SetAttributes(attribute.Int("http.response.status_code", recorder.status))
 		Default.Inc("cerebro_http_requests_total", labels)
 		Default.Add("cerebro_http_request_duration_seconds_sum", labels, time.Since(started).Seconds())
 		Default.Inc("cerebro_http_request_duration_seconds_count", labels)
+		recordOTELHTTPServerRequest(ctx, labels, recorder.status, time.Since(started).Seconds())
 	})
+}
+
+func recordOTELHTTPServerRequest(ctx context.Context, labels map[string]string, statusCode int, durationSeconds float64) {
+	attrs := []attribute.KeyValue{
+		attribute.String("http.request.method", labels["method"]),
+		attribute.String("http.route", labels["route"]),
+		attribute.Int("http.response.status_code", statusCode),
+	}
+	otelHTTPServerRequests.Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	otelHTTPServerDuration.Record(ctx, durationSeconds, otelmetric.WithAttributes(attrs...))
 }
 
 type statusRecorder struct {
