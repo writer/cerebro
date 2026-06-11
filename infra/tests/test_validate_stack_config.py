@@ -303,6 +303,22 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
 
+    def test_orchestrator_schedule_rule_names_must_fit_eventbridge_limit(self) -> None:
+        content = BASE_STACK.replace(
+            "    - name: okta-audit\n",
+            "    - name: gcp-prod-writer-iam-audit-inventory\n",
+        )
+
+        self.assertTrue(
+            any(
+                finding.severity == "error"
+                and finding.path.endswith(".name")
+                and "EventBridge rule name" in finding.message
+                and "at most 64 characters" in finding.message
+                for finding in self._validate(content)
+            )
+        )
+
     def test_service_bootstrap_ids_must_reference_source_runtimes(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:orchestratorSchedules:",
@@ -1095,6 +1111,13 @@ class ValidateStackConfigTest(unittest.TestCase):
 
                 self.assertEqual(len(gcp_runtimes), expected_count)
                 self.assertTrue(all(runtime["id"] in gcp_scheduled_runtime_ids for runtime in gcp_runtimes))
+                gcp_runtime_ids = {runtime["id"] for runtime in gcp_runtimes}
+                for schedule in config["orchestratorSchedules"]:
+                    if validator._runtime_id_from_command(schedule.get("command")) in gcp_runtime_ids:
+                        self.assertLessEqual(
+                            len(validator._orchestrator_rule_name(config["environment"], schedule["name"])),
+                            64,
+                        )
                 for runtime in gcp_runtimes:
                     runtime_config = runtime.get("config", {})
                     self.assertNotIn("token", runtime_config)

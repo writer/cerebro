@@ -27,6 +27,7 @@ MIN_AWS_EFFECTIVE_PERMISSION_VERSION = (2, 1, 46)
 IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
 AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
+EVENTBRIDGE_RULE_NAME_MAX_LENGTH = 64
 COSMO_REQUIRED_STACKS = {"sec-dev"}
 COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_TOKEN"}
 COSMO_MESSAGE_EXPORT_SECRET = "CEREBRO_SOURCE_COSMO_EXPORT_SECRET"
@@ -410,6 +411,20 @@ def _runtime_id_from_command(command: Any) -> str | None:
             runtime_id = text.split("=", 1)[1].strip()
             return runtime_id or None
     return None
+
+
+def _schedule_suffix(value: Any) -> str:
+    chars = []
+    for char in str(value).strip().lower():
+        if ("a" <= char <= "z") or ("0" <= char <= "9"):
+            chars.append(char)
+        elif chars and chars[-1] != "-":
+            chars.append("-")
+    return "".join(chars).strip("-")
+
+
+def _orchestrator_rule_name(environment: str, schedule_name: str) -> str:
+    return f"cerebro-{environment}-orchestrator-{_schedule_suffix(schedule_name)}"
 
 
 def _validate_source_runtime_service_bootstrap(
@@ -1668,6 +1683,7 @@ def validate_stack(path: Path) -> list[Finding]:
                 _validate_graph_page_budget(stack, guarded_runtime_id, top_level_command, "cerebro:orchestratorCommand", findings)
 
     schedule_names: set[str] = set()
+    environment_name = str(config.get("environment", stack)).strip() or stack
     for index, schedule in enumerate(schedules):
         schedule_path = f"cerebro:orchestratorSchedules[{index}]"
         if not isinstance(schedule, dict):
@@ -1681,6 +1697,16 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(_finding("error", stack, f"{schedule_path}.name", f"duplicate schedule name {name!r}"))
         else:
             schedule_names.add(name)
+            rule_name = _orchestrator_rule_name(environment_name, name)
+            if len(rule_name) > EVENTBRIDGE_RULE_NAME_MAX_LENGTH:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{schedule_path}.name",
+                        f"EventBridge rule name {rule_name!r} must be at most {EVENTBRIDGE_RULE_NAME_MAX_LENGTH} characters",
+                    )
+                )
 
         if not str(schedule.get("scheduleExpression", "")).strip():
             findings.append(_finding("error", stack, f"{schedule_path}.scheduleExpression", "schedule expression is required"))
