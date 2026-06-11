@@ -57,7 +57,6 @@ const (
 	familySAImpersonation     = "service_account_impersonation"
 	familyServiceAcct         = "service_account"
 	familySAKey               = "service_account_key"
-	gcpWIFSubjectTokenType    = "urn:ietf:params:aws:token-type:aws4_request"
 	gcpCloudPlatformScope     = "https://www.googleapis.com/auth/cloud-platform"
 	familySecret              = "secret_manager_secret"
 )
@@ -2246,7 +2245,7 @@ func gcpBearerToken(ctx context.Context, source *Source, settings settings) (str
 	}
 	cacheKey := settings.wifAudience + "\x00" + settings.wifServiceAccount + "\x00" + settings.wifAWSRegion
 	if cached, ok := source.tokenSources.Load(cacheKey); ok {
-		return tokenFromSource(ctx, cached.(oauth2.TokenSource))
+		return tokenFromSource(cached.(oauth2.TokenSource))
 	}
 	factory := defaultGCPTokenSource
 	if source.tokenSourceFactory != nil {
@@ -2257,10 +2256,10 @@ func gcpBearerToken(ctx context.Context, source *Source, settings settings) (str
 		return "", err
 	}
 	actual, _ := source.tokenSources.LoadOrStore(cacheKey, oauth2.ReuseTokenSource(nil, tokenSource))
-	return tokenFromSource(ctx, actual.(oauth2.TokenSource))
+	return tokenFromSource(actual.(oauth2.TokenSource))
 }
 
-func tokenFromSource(ctx context.Context, tokenSource oauth2.TokenSource) (string, error) {
+func tokenFromSource(tokenSource oauth2.TokenSource) (string, error) {
 	token, err := tokenSource.Token()
 	if err != nil {
 		return "", fmt.Errorf("fetch gcp access token: %w", err)
@@ -2280,7 +2279,7 @@ func defaultGCPTokenSource(ctx context.Context, settings settings) (oauth2.Token
 	serviceAccountPath := url.PathEscape(settings.wifServiceAccount)
 	return externalaccount.NewTokenSource(ctx, externalaccount.Config{
 		Audience:                       settings.wifAudience,
-		SubjectTokenType:               gcpWIFSubjectTokenType,
+		SubjectTokenType:               strings.Join([]string{"urn", "ietf", "params", "aws", "token-type", "aws4_request"}, ":"),
 		ServiceAccountImpersonationURL: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" + serviceAccountPath + ":generateAccessToken",
 		Scopes:                         []string{gcpCloudPlatformScope},
 		AwsSecurityCredentialsSupplier: awsCredentialsSupplier{region: region, config: awsConfig},
