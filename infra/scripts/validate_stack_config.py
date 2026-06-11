@@ -28,6 +28,10 @@ IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
 AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
 EVENTBRIDGE_RULE_NAME_MAX_LENGTH = 64
+EVENTBRIDGE_RULES_PER_BUS_DEFAULT_QUOTA = 300
+RESERVED_EVENTBRIDGE_RULES_BY_STACK = {
+    "go-prod": 6,
+}
 COSMO_REQUIRED_STACKS = {"sec-dev"}
 COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_TOKEN"}
 COSMO_MESSAGE_EXPORT_SECRET = "CEREBRO_SOURCE_COSMO_EXPORT_SECRET"
@@ -425,6 +429,13 @@ def _schedule_suffix(value: Any) -> str:
 
 def _orchestrator_rule_name(environment: str, schedule_name: str) -> str:
     return f"cerebro-{environment}-orchestrator-{_schedule_suffix(schedule_name)}"
+
+
+def _orchestrator_schedule_limit(stack: str) -> int | None:
+    reserved_rules = RESERVED_EVENTBRIDGE_RULES_BY_STACK.get(stack)
+    if reserved_rules is None:
+        return None
+    return EVENTBRIDGE_RULES_PER_BUS_DEFAULT_QUOTA - reserved_rules
 
 
 def _validate_source_runtime_service_bootstrap(
@@ -1684,6 +1695,16 @@ def validate_stack(path: Path) -> list[Finding]:
 
     schedule_names: set[str] = set()
     environment_name = str(config.get("environment", stack)).strip() or stack
+    schedule_limit = _orchestrator_schedule_limit(stack)
+    if schedule_limit is not None and len(schedules) > schedule_limit:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:orchestratorSchedules",
+                f"orchestrator schedule count {len(schedules)} exceeds EventBridge rule capacity {schedule_limit}",
+            )
+        )
     for index, schedule in enumerate(schedules):
         schedule_path = f"cerebro:orchestratorSchedules[{index}]"
         if not isinstance(schedule, dict):

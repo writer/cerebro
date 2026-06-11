@@ -383,6 +383,7 @@ config:
         - vpc
         - vpc_endpoint
     - sourceId: gcp
+      enabled: false
       runtimePrefix: writer-gcp-prod-writer-iam
       perPage: "100"
       commonConfig:
@@ -411,6 +412,7 @@ config:
         - secret_manager_secret
         - service_account
     - sourceId: gcp
+      enabled: false
       runtimePrefix: writer-gcp-prod-qordoba-devel
       perPage: "100"
       commonConfig:
@@ -422,6 +424,7 @@ config:
         nameMaxLength: 29
       families: *gcp_prod_wif_families
     - sourceId: gcp
+      enabled: false
       runtimePrefix: writer-gcp-prod-qordoba-prod
       perPage: "100"
       commonConfig:
@@ -433,6 +436,7 @@ config:
         nameMaxLength: 29
       families: *gcp_prod_wif_families
     - sourceId: gcp
+      enabled: false
       runtimePrefix: writer-gcp-prod-networking
       perPage: "100"
       commonConfig:
@@ -444,6 +448,7 @@ config:
         nameMaxLength: 29
       families: *gcp_prod_wif_families
     - sourceId: gcp
+      enabled: false
       runtimePrefix: writer-gcp-prod-networking-nonprod
       perPage: "100"
       commonConfig:
@@ -455,6 +460,7 @@ config:
         nameMaxLength: 29
       families: *gcp_prod_wif_families
     - sourceId: gcp
+      enabled: false
       runtimePrefix: writer-gcp-prod-devops
       perPage: "100"
       commonConfig:
