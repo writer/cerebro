@@ -45,7 +45,8 @@ func runFindingRuleGraphEvaluate(args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	shutdownCtx := context.Background()
+	ctx, cancel := context.WithTimeout(shutdownCtx, 15*time.Minute)
 	defer cancel()
 	cfg, err := config.Load()
 	if err != nil {
@@ -55,7 +56,7 @@ func runFindingRuleGraphEvaluate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("configure telemetry: %w", err)
 	}
-	defer shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
+	defer shutdownTelemetry(shutdownCtx, closeTelemetry, cfg.ShutdownTimeout)
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("open dependencies: %w", err)
