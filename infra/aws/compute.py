@@ -88,9 +88,10 @@ def create_ecs_cluster(
         name,
         kms_key_id,
         secret_prefixes,
-        [entry["object_arn"] for entry in bootstrap_environment_files.values()],
+        [entry["object_prefix_arn"] for entry in bootstrap_environment_files.values()],
         [entry["bucket_arn"] for entry in bootstrap_environment_files.values()],
     )
+    execution_role_dependencies = [execution_role.policy] if getattr(execution_role, "policy", None) is not None else []
     task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
     worker_task_role = None
 
@@ -117,7 +118,10 @@ def create_ecs_cluster(
         efs_access_point_id=efs_access_point_id,
         efs_container_path=efs_container_path,
         source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("service") or {}).get("environment_file_arn"),
-        depends_on=(bootstrap_environment_files.get("service") or {}).get("resources"),
+        depends_on=[
+            *((bootstrap_environment_files.get("service") or {}).get("resources") or []),
+            *execution_role_dependencies,
+        ],
     )
 
     orchestrator_task_definition = None
@@ -154,7 +158,10 @@ def create_ecs_cluster(
             enable_health_check=False,
             log_stream_prefix="orchestrator",
             source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("orchestrator") or {}).get("environment_file_arn"),
-            depends_on=(bootstrap_environment_files.get("orchestrator") or {}).get("resources"),
+            depends_on=[
+                *((bootstrap_environment_files.get("orchestrator") or {}).get("resources") or []),
+                *execution_role_dependencies,
+            ],
         )
         orchestrator_task_definitions.append(task_definition)
         orchestrator_task_definition = orchestrator_task_definitions[0] if orchestrator_task_definitions else None
@@ -455,12 +462,16 @@ def _create_source_runtime_bootstrap_environment_files(
             content=f"CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON={payload}\n",
             content_type="text/plain",
             tags={"Name": f"{name}-source-runtime-bootstrap-{label}"},
-            opts=pulumi.ResourceOptions(depends_on=[public_access_block, encryption, versioning]),
+            opts=pulumi.ResourceOptions(
+                depends_on=[public_access_block, encryption, versioning],
+                retain_on_delete=True,
+            ),
         )
         environment_files[label] = {
             "environment_file_arn": obj.arn,
             "bucket_arn": bucket.arn,
             "object_arn": obj.arn,
+            "object_prefix_arn": pulumi.Output.concat(bucket.arn, "/source-runtime-bootstrap/*"),
             "resources": [obj],
         }
     return environment_files
@@ -486,9 +497,9 @@ def _create_execution_role(
     name: str,
     kms_key_id: pulumi.Input[str],
     secret_prefixes: list[str],
-    source_runtime_registry_object_arns: list[pulumi.Input[str]] = None,
+    source_runtime_registry_prefix_arns: list[pulumi.Input[str]] = None,
     source_runtime_registry_bucket_arns: list[pulumi.Input[str]] = None,
-) -> aws.iam.Role:
+):
     if not secret_prefixes:
         raise ValueError("secret_prefixes is required")
 
@@ -532,7 +543,7 @@ def _create_execution_role(
                 "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
             },
         ]
-        if source_runtime_registry_object_arns:
+        if source_runtime_registry_prefix_arns:
             statements.append(
                 {
                     "Sid": "ReadSourceRuntimeBootstrapRegistryBucket",
@@ -551,17 +562,17 @@ def _create_execution_role(
             )
         return json.dumps({"Version": "2012-10-17", "Statement": statements})
 
-    aws.iam.RolePolicy(
+    policy = aws.iam.RolePolicy(
         f"{name}-exec-secrets",
         role=role.name,
         policy=pulumi.Output.all(
             secret_resources,
             kms_key_id,
             *(source_runtime_registry_bucket_arns or []),
-            *(source_runtime_registry_object_arns or []),
+            *(source_runtime_registry_prefix_arns or []),
         ).apply(build_policy),
     )
-
+    role.policy = policy
     return role
 
 
