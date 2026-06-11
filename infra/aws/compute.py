@@ -445,10 +445,10 @@ def _create_source_runtime_bootstrap_environment_files(
             )
         ],
     )
-    versioning = aws.s3.BucketVersioningV2(
+    versioning = aws.s3.BucketVersioning(
         f"{name}-source-runtime-bootstrap-versioning",
         bucket=bucket.id,
-        versioning_configuration=aws.s3.BucketVersioningV2VersioningConfigurationArgs(status="Enabled"),
+        versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(status="Enabled"),
     )
 
     environment_files = {}
