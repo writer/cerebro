@@ -315,7 +315,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				if quarantinableContractError(err) {
 					recordsRejected++
 					category := invalidEventFailureCategory(err)
-					recordRuntimeInvalidEvent(runtime, syncedEvent, category, err, time.Now().UTC())
+					recordRuntimeInvalidEvent(runtime, syncedEvent, category, err, time.Now().UTC(), len(eventContracts) > 0)
 					telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
 						telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 						telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
@@ -342,13 +342,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		runtime.LastSyncedAt = timestamppb.Now()
 		updateRuntimeSyncStatus(runtime, runtimeSyncStatus{
-			Status:            "completed",
-			RecordsScanned:    recordsScanned,
-			RecordsAccepted:   eventsAppended,
-			RecordsRejected:   recordsRejected,
-			EntitiesProjected: entitiesProjected,
-			LinksProjected:    linksProjected,
-			CompletedAt:       runtime.GetLastSyncedAt().AsTime().UTC(),
+			Status:             "completed",
+			RecordsScanned:     recordsScanned,
+			RecordsAccepted:    eventsAppended,
+			RecordsRejected:    recordsRejected,
+			EntitiesProjected:  entitiesProjected,
+			LinksProjected:     linksProjected,
+			CompletedAt:        runtime.GetLastSyncedAt().AsTime().UTC(),
+			ContractConfigured: len(eventContracts) > 0,
 		})
 		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 			return nil, err
@@ -412,13 +413,14 @@ func sourceRuntimeTelemetryErrorKind(err error) string {
 }
 
 type runtimeSyncStatus struct {
-	Status            string
-	RecordsScanned    uint32
-	RecordsAccepted   uint32
-	RecordsRejected   uint32
-	EntitiesProjected uint32
-	LinksProjected    uint32
-	CompletedAt       time.Time
+	Status             string
+	RecordsScanned     uint32
+	RecordsAccepted    uint32
+	RecordsRejected    uint32
+	EntitiesProjected  uint32
+	LinksProjected     uint32
+	CompletedAt        time.Time
+	ContractConfigured bool
 }
 
 func updateRuntimeSyncStatus(runtime *cerebrov1.SourceRuntime, status runtimeSyncStatus) {
@@ -444,10 +446,10 @@ func updateRuntimeSyncStatus(runtime *cerebrov1.SourceRuntime, status runtimeSyn
 		clearRuntimeInvalidEvent(runtime.Config)
 	}
 	if strings.TrimSpace(runtime.Config[runtimeLastFailureCategoryConfigKey]) == "" {
-		setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, ""))
+		setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, "", status.ContractConfigured))
 		return
 	}
-	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, runtime.Config[runtimeLastFailureCategoryConfigKey]))
+	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, runtime.Config[runtimeLastFailureCategoryConfigKey], status.ContractConfigured))
 }
 
 func clearRuntimeInvalidEvent(config map[string]string) {
@@ -482,7 +484,7 @@ func invalidEventFailureCategory(err error) string {
 	}
 }
 
-func recordRuntimeInvalidEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, category string, cause error, observedAt time.Time) {
+func recordRuntimeInvalidEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, category string, cause error, observedAt time.Time, contractConfigured bool) {
 	if runtime == nil || event == nil {
 		return
 	}
@@ -504,7 +506,7 @@ func recordRuntimeInvalidEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov
 	} else {
 		setRuntimeConfig(runtime.Config, runtimeLastInvalidDiagnosticConfigKey, "invalid source event")
 	}
-	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, category))
+	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, category, contractConfigured))
 }
 
 func invalidEventFieldName(err error) string {
@@ -524,8 +526,8 @@ func invalidEventFieldName(err error) string {
 	return ""
 }
 
-func contractProbeStateForRuntime(runtime *cerebrov1.SourceRuntime, failureCategory string) string {
-	if runtime == nil || strings.TrimSpace(runtime.GetSourceId()) != "evidence_cas" {
+func contractProbeStateForRuntime(runtime *cerebrov1.SourceRuntime, failureCategory string, contractConfigured bool) string {
+	if runtime == nil || !contractConfigured {
 		return "not_configured"
 	}
 	if strings.TrimSpace(failureCategory) != "" {
