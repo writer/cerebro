@@ -88,6 +88,7 @@ config:
     - OKTA_API_TOKEN
     - OKTA_DOMAIN
     - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
+  cerebro:sourceRuntimeServiceBootstrapIds: []
   cerebro:sourceRuntimeRollouts:
     - sourceId: aws
       runtimePrefix: writer-aws-devops

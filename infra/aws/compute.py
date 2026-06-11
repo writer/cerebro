@@ -2,6 +2,7 @@
 AWS ECS Fargate compute for the Cerebro rewrite runtime.
 """
 
+import hashlib
 import json
 
 import pulumi
@@ -54,6 +55,14 @@ def create_ecs_cluster(
         source_runtimes or [],
         source_runtime_service_bootstrap_ids,
     )
+    bootstrap_payloads = {}
+    service_bootstrap_payload = _source_runtime_bootstrap_payload(service_bootstrap_runtimes)
+    if service_bootstrap_payload:
+        bootstrap_payloads["service"] = service_bootstrap_payload
+    orchestrator_bootstrap_payload = _source_runtime_bootstrap_payload(source_runtimes or []) if orchestrator_enabled else ""
+    if orchestrator_bootstrap_payload:
+        bootstrap_payloads["orchestrator"] = orchestrator_bootstrap_payload
+    bootstrap_environment_files = _create_source_runtime_bootstrap_environment_files(name, kms_key_id, bootstrap_payloads)
     secret_prefixes = _secret_prefixes(secret_keys or [], external_secrets_prefix)
     cluster = aws.ecs.Cluster(
         f"{name}-cluster",
@@ -75,7 +84,13 @@ def create_ecs_cluster(
         ],
     )
 
-    execution_role = _create_execution_role(name, kms_key_id, secret_prefixes)
+    execution_role = _create_execution_role(
+        name,
+        kms_key_id,
+        secret_prefixes,
+        [entry["object_arn"] for entry in bootstrap_environment_files.values()],
+        [entry["bucket_arn"] for entry in bootstrap_environment_files.values()],
+    )
     task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
     worker_task_role = None
 
@@ -101,7 +116,8 @@ def create_ecs_cluster(
         efs_file_system_id=efs_file_system_id,
         efs_access_point_id=efs_access_point_id,
         efs_container_path=efs_container_path,
-        source_runtimes=service_bootstrap_runtimes,
+        source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("service") or {}).get("environment_file_arn"),
+        depends_on=(bootstrap_environment_files.get("service") or {}).get("resources"),
     )
 
     orchestrator_task_definition = None
@@ -137,7 +153,8 @@ def create_ecs_cluster(
             expose_http=False,
             enable_health_check=False,
             log_stream_prefix="orchestrator",
-            source_runtimes=source_runtimes or [],
+            source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("orchestrator") or {}).get("environment_file_arn"),
+            depends_on=(bootstrap_environment_files.get("orchestrator") or {}).get("resources"),
         )
         orchestrator_task_definitions.append(task_definition)
         orchestrator_task_definition = orchestrator_task_definitions[0] if orchestrator_task_definitions else None
@@ -172,7 +189,7 @@ def create_ecs_cluster(
                         assign_public_ip=False,
                     ),
                 ),
-                input=json.dumps({"containerOverrides": [{"name": "cerebro", "command": schedule["command"]}]}),
+                input=_orchestrator_target_input(schedule["command"]),
                 opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
             )
             orchestrator_rules.append(rule)
@@ -355,10 +372,12 @@ def _source_runtime_service_bootstrap_runtimes(
     source_runtimes: list[dict],
     bootstrap_ids: list[str] | None,
 ) -> list[dict]:
-    if not bootstrap_ids:
+    if bootstrap_ids is None:
         return list(source_runtimes or [])
     if not isinstance(bootstrap_ids, list):
         raise ValueError("sourceRuntimeServiceBootstrapIds must be a list")
+    if not bootstrap_ids:
+        return []
     requested_ids = [str(runtime_id).strip() for runtime_id in bootstrap_ids]
     if any(not runtime_id for runtime_id in requested_ids):
         raise ValueError("sourceRuntimeServiceBootstrapIds entries must be non-empty strings")
@@ -377,6 +396,76 @@ def _source_runtime_service_bootstrap_runtimes(
     ]
 
 
+def _orchestrator_target_input(command: list[str]) -> str:
+    return json.dumps(
+        {"containerOverrides": [{"name": "cerebro", "command": [str(part) for part in command]}]},
+        separators=(",", ":"),
+    )
+
+
+def _create_source_runtime_bootstrap_environment_files(
+    name: str,
+    kms_key_id: pulumi.Input[str],
+    payloads: dict[str, str],
+) -> dict[str, dict]:
+    if not payloads:
+        return {}
+
+    bucket = aws.s3.Bucket(
+        f"{name}-source-runtime-bootstrap",
+        bucket=f"writer-{name}-source-runtime-bootstrap",
+        force_destroy=False,
+        tags={"Name": f"writer-{name}-source-runtime-bootstrap"},
+    )
+    public_access_block = aws.s3.BucketPublicAccessBlock(
+        f"{name}-source-runtime-bootstrap-public-access",
+        bucket=bucket.id,
+        block_public_acls=True,
+        block_public_policy=True,
+        ignore_public_acls=True,
+        restrict_public_buckets=True,
+    )
+    encryption = aws.s3.BucketServerSideEncryptionConfiguration(
+        f"{name}-source-runtime-bootstrap-sse",
+        bucket=bucket.id,
+        rules=[
+            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                    sse_algorithm="aws:kms",
+                    kms_master_key_id=kms_key_id,
+                ),
+                bucket_key_enabled=True,
+            )
+        ],
+    )
+    versioning = aws.s3.BucketVersioningV2(
+        f"{name}-source-runtime-bootstrap-versioning",
+        bucket=bucket.id,
+        versioning_configuration=aws.s3.BucketVersioningV2VersioningConfigurationArgs(status="Enabled"),
+    )
+
+    environment_files = {}
+    for label, payload in sorted(payloads.items()):
+        payload_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+        key = f"source-runtime-bootstrap/{label}-{payload_hash}.env"
+        obj = aws.s3.BucketObjectv2(
+            f"{name}-source-runtime-bootstrap-{label}",
+            bucket=bucket.id,
+            key=key,
+            content=f"CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON={payload}\n",
+            content_type="text/plain",
+            tags={"Name": f"{name}-source-runtime-bootstrap-{label}"},
+            opts=pulumi.ResourceOptions(depends_on=[public_access_block, encryption, versioning]),
+        )
+        environment_files[label] = {
+            "environment_file_arn": obj.arn,
+            "bucket_arn": bucket.arn,
+            "object_arn": obj.arn,
+            "resources": [obj],
+        }
+    return environment_files
+
+
 def _secret_prefix(secret_key, default_prefix: str) -> str:
     if isinstance(secret_key, dict):
         return str(secret_key.get("prefix") or default_prefix).strip()
@@ -393,7 +482,13 @@ def _secret_prefixes(secret_keys: list, default_prefix: str) -> list[str]:
     return sorted(prefixes)
 
 
-def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], secret_prefixes: list[str]) -> aws.iam.Role:
+def _create_execution_role(
+    name: str,
+    kms_key_id: pulumi.Input[str],
+    secret_prefixes: list[str],
+    source_runtime_registry_object_arns: list[pulumi.Input[str]] = None,
+    source_runtime_registry_bucket_arns: list[pulumi.Input[str]] = None,
+) -> aws.iam.Role:
     if not secret_prefixes:
         raise ValueError("secret_prefixes is required")
 
@@ -424,24 +519,47 @@ def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], secret_pref
         for prefix in sorted(set(secret_prefixes))
     ]
 
+    def build_policy(args):
+        statements = [
+            {
+                "Effect": "Allow",
+                "Action": ["secretsmanager:GetSecretValue"],
+                "Resource": args[0],
+            },
+            {
+                "Effect": "Allow",
+                "Action": ["kms:Decrypt"],
+                "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
+            },
+        ]
+        if source_runtime_registry_object_arns:
+            statements.append(
+                {
+                    "Sid": "ReadSourceRuntimeBootstrapRegistryBucket",
+                    "Effect": "Allow",
+                    "Action": ["s3:GetBucketLocation"],
+                    "Resource": args[2 : 2 + len(source_runtime_registry_bucket_arns or [])],
+                }
+            )
+            statements.append(
+                {
+                    "Sid": "ReadSourceRuntimeBootstrapRegistry",
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject"],
+                    "Resource": args[2 + len(source_runtime_registry_bucket_arns or []) :],
+                }
+            )
+        return json.dumps({"Version": "2012-10-17", "Statement": statements})
+
     aws.iam.RolePolicy(
         f"{name}-exec-secrets",
         role=role.name,
-        policy=pulumi.Output.all(secret_resources, kms_key_id).apply(lambda args: json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": ["secretsmanager:GetSecretValue"],
-                    "Resource": args[0],
-                },
-                {
-                    "Effect": "Allow",
-                    "Action": ["kms:Decrypt"],
-                    "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
-                },
-            ],
-        })),
+        policy=pulumi.Output.all(
+            secret_resources,
+            kms_key_id,
+            *(source_runtime_registry_bucket_arns or []),
+            *(source_runtime_registry_object_arns or []),
+        ).apply(build_policy),
     )
 
     return role
@@ -646,6 +764,8 @@ def _create_task_definition(
     enable_health_check: bool = True,
     log_stream_prefix: str = "ecs",
     source_runtimes: list[dict] = None,
+    source_runtime_bootstrap_environment_file_arn: pulumi.Input[str] = None,
+    depends_on: list[pulumi.Resource] = None,
 ) -> aws.ecs.TaskDefinition:
     if not external_secrets_prefix:
         raise ValueError("external_secrets_prefix is required")
@@ -664,7 +784,8 @@ def _create_task_definition(
 
     def build_container_def(args):
         log_group = args[0]
-        resolved_env_values = args[1:]
+        bootstrap_environment_file_arn = str(args[1] or "")
+        resolved_env_values = args[2:]
         env = [
             {"name": key, "value": str(value)}
             for (key, _), value in zip(env_items, resolved_env_values)
@@ -678,34 +799,38 @@ def _create_task_definition(
             "awslogs-region": region,
         }
         bootstrap_containers = []
-        if source_runtime_bootstrap_payload:
-            bootstrap_env = [
-                *env,
-                {
-                    "name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
-                    "value": source_runtime_bootstrap_payload,
+        if source_runtime_bootstrap_payload or bootstrap_environment_file_arn:
+            bootstrap_container = {
+                "name": "source-runtime-bootstrap",
+                "image": container_image,
+                "essential": False,
+                "user": "10001",
+                "readonlyRootFilesystem": True,
+                "command": [
+                    "source-runtime",
+                    "bootstrap",
+                    "env=CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
+                ],
+                "environment": env,
+                "secrets": secret_env,
+                "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {**log_options, "awslogs-stream-prefix": "source-runtime-bootstrap"},
                 },
-            ]
-            bootstrap_containers.append(
-                {
-                    "name": "source-runtime-bootstrap",
-                    "image": container_image,
-                    "essential": False,
-                    "user": "10001",
-                    "readonlyRootFilesystem": True,
-                    "command": [
-                        "source-runtime",
-                        "bootstrap",
-                        "env=CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
-                    ],
-                    "environment": bootstrap_env,
-                    "secrets": secret_env,
-                    "logConfiguration": {
-                        "logDriver": "awslogs",
-                        "options": {**log_options, "awslogs-stream-prefix": "source-runtime-bootstrap"},
+            }
+            if bootstrap_environment_file_arn:
+                bootstrap_container["environmentFiles"] = [
+                    {"value": bootstrap_environment_file_arn, "type": "s3"}
+                ]
+            else:
+                bootstrap_container["environment"] = [
+                    *env,
+                    {
+                        "name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
+                        "value": source_runtime_bootstrap_payload,
                     },
-                }
-            )
+                ]
+            bootstrap_containers.append(bootstrap_container)
         container = {
             "name": "cerebro",
             "image": container_image,
@@ -740,7 +865,11 @@ def _create_task_definition(
             container["mountPoints"] = [{"sourceVolume": "cerebro-data", "containerPath": efs_container_path, "readOnly": False}]
         return [*bootstrap_containers, container]
 
-    container_definitions = pulumi.Output.all(log_group_name, *env_values).apply(lambda args: json.dumps(build_container_def(args)))
+    container_definitions = pulumi.Output.all(
+        log_group_name,
+        source_runtime_bootstrap_environment_file_arn or "",
+        *env_values,
+    ).apply(lambda args: json.dumps(build_container_def(args)))
 
     volumes = None
     if efs_file_system_id is not None and efs_access_point_id is not None:
@@ -772,6 +901,7 @@ def _create_task_definition(
         container_definitions=container_definitions,
         volumes=volumes,
         tags={"Name": f"{name}-task"},
+        opts=pulumi.ResourceOptions(depends_on=depends_on) if depends_on else None,
     )
 
 
