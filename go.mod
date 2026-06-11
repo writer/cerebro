@@ -77,6 +77,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/vpclattice v1.22.1
 	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.72.3
 	github.com/aws/smithy-go v1.27.1
+	github.com/fxamacker/cbor/v2 v2.9.0
+	github.com/getkin/kin-openapi v0.140.0
 	github.com/google/go-github/v66 v66.0.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/nats-io/nats.go v1.52.0
@@ -107,11 +109,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
-	github.com/go-openapi/jsonpointer v0.21.0 // indirect
+	github.com/go-openapi/jsonpointer v0.22.5 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -127,6 +129,9 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
+	github.com/oasdiff/yaml v0.1.0 // indirect
+	github.com/oasdiff/yaml3 v0.0.13 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect

@@ -5,16 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
+	"reflect"
+
+	fxcbor "github.com/fxamacker/cbor/v2"
 )
 
-// Minimal deterministic-CBOR decoder, sized to what Apple App Attest
+// Strict deterministic-CBOR adapter, sized to what Apple App Attest
 // attestation objects actually contain: top-level map, text-string keys,
 // byte-string values, arrays of byte strings, and unsigned/negative
-// integers. This avoids pulling fxamacker/cbor or another third-party
-// library, per the repo's stdlib-only policy.
+// integers.
 //
 // We deliberately do NOT implement: tags, indefinite-length items,
-// floats, big-int, half-precision floats, or non-string map keys. An
+// floats, bignum tags, half-precision floats, or non-string map keys. An
 // attestation that uses any of these is rejected with errCBORUnsupported.
 
 type cborValue struct {
@@ -33,6 +36,8 @@ type cborMapEntry struct {
 
 const maxCBORContainerElements = 1024
 
+var strictCBORDecMode = mustCBORDecMode()
+
 func (v cborValue) lookup(key string) (cborValue, bool) {
 	for _, e := range v.mapEl {
 		if e.key == key {
@@ -46,99 +51,97 @@ func decodeCBOR(data []byte) (cborValue, []byte, error) {
 	if len(data) == 0 {
 		return cborValue{}, nil, errCBORUnsupported
 	}
-	first := data[0]
-	major := first >> 5
-	additional := first & 0x1f
-	rest := data[1:]
-	val, rest, err := readCount(additional, rest)
+	var decoded any
+	rest, err := strictCBORDecMode.UnmarshalFirst(data, &decoded)
+	if err != nil {
+		return cborValue{}, nil, fmt.Errorf("%w: %w", errCBORUnsupported, err)
+	}
+	value, err := cborValueFromDecoded(decoded)
 	if err != nil {
 		return cborValue{}, nil, err
 	}
-	switch major {
-	case 0: // unsigned int
-		return cborValue{major: major, value: val}, rest, nil
-	case 1: // negative int
-		return cborValue{major: major, value: val}, rest, nil
-	case 2: // byte string
-		if uint64(len(rest)) < val {
-			return cborValue{}, nil, errCBORUnsupported
+	return value, rest, nil
+}
+
+func mustCBORDecMode() fxcbor.DecMode {
+	mode, err := fxcbor.DecOptions{
+		DupMapKey:        fxcbor.DupMapKeyEnforcedAPF,
+		IndefLength:      fxcbor.IndefLengthForbidden,
+		TagsMd:           fxcbor.TagsForbidden,
+		BignumTag:        fxcbor.BignumTagForbidden,
+		IntDec:           fxcbor.IntDecConvertNone,
+		MaxArrayElements: maxCBORContainerElements,
+		MaxMapPairs:      maxCBORContainerElements,
+		DefaultMapType:   reflect.TypeOf(map[string]any{}),
+	}.DecMode()
+	if err != nil {
+		panic(err)
+	}
+	return mode
+}
+
+func cborValueFromDecoded(decoded any) (cborValue, error) {
+	switch x := decoded.(type) {
+	case uint64:
+		return cborValue{major: 0, value: x}, nil
+	case int64:
+		if x >= 0 {
+			return cborValue{}, errCBORUnsupported
 		}
-		bs := append([]byte(nil), rest[:val]...)
-		return cborValue{major: major, bytes: bs, value: val}, rest[val:], nil
-	case 3: // text string
-		if uint64(len(rest)) < val {
-			return cborValue{}, nil, errCBORUnsupported
+		return cborValue{major: 1, value: uint64(-1 - x)}, nil
+	case big.Int:
+		return negativeBigIntCBORValue(&x)
+	case *big.Int:
+		if x == nil {
+			return cborValue{}, errCBORUnsupported
 		}
-		text := string(rest[:val])
-		return cborValue{major: major, text: text, value: val}, rest[val:], nil
-	case 4: // array
-		if val > maxCBORContainerElements {
-			return cborValue{}, nil, errCBORUnsupported
+		return negativeBigIntCBORValue(x)
+	case []byte:
+		bs := append([]byte(nil), x...)
+		return cborValue{major: 2, bytes: bs, value: uint64(len(bs))}, nil
+	case string:
+		return cborValue{major: 3, text: x, value: uint64(len(x))}, nil
+	case []any:
+		if len(x) > maxCBORContainerElements {
+			return cborValue{}, errCBORUnsupported
 		}
-		arr := make([]cborValue, 0, val)
-		for i := uint64(0); i < val; i++ {
-			el, r2, err := decodeCBOR(rest)
+		arr := make([]cborValue, 0, len(x))
+		for _, item := range x {
+			converted, err := cborValueFromDecoded(item)
 			if err != nil {
-				return cborValue{}, nil, err
+				return cborValue{}, err
 			}
-			arr = append(arr, el)
-			rest = r2
+			arr = append(arr, converted)
 		}
-		return cborValue{major: major, array: arr, value: val}, rest, nil
-	case 5: // map
-		if val > maxCBORContainerElements {
-			return cborValue{}, nil, errCBORUnsupported
+		return cborValue{major: 4, array: arr, value: uint64(len(arr))}, nil
+	case map[string]any:
+		if len(x) > maxCBORContainerElements {
+			return cborValue{}, errCBORUnsupported
 		}
-		entries := make([]cborMapEntry, 0, val)
-		for i := uint64(0); i < val; i++ {
-			k, r2, err := decodeCBOR(rest)
+		entries := make([]cborMapEntry, 0, len(x))
+		for key, item := range x {
+			converted, err := cborValueFromDecoded(item)
 			if err != nil {
-				return cborValue{}, nil, err
+				return cborValue{}, err
 			}
-			rest = r2
-			if k.major != 3 {
-				return cborValue{}, nil, errCBORUnsupported
-			}
-			vEl, r3, err := decodeCBOR(rest)
-			if err != nil {
-				return cborValue{}, nil, err
-			}
-			rest = r3
-			entries = append(entries, cborMapEntry{key: k.text, val: vEl})
+			entries = append(entries, cborMapEntry{key: key, val: converted})
 		}
-		return cborValue{major: major, mapEl: entries, value: val}, rest, nil
+		return cborValue{major: 5, mapEl: entries, value: uint64(len(entries))}, nil
 	default:
-		return cborValue{}, nil, errCBORUnsupported
+		return cborValue{}, errCBORUnsupported
 	}
 }
 
-func readCount(additional byte, rest []byte) (uint64, []byte, error) {
-	switch {
-	case additional < 24:
-		return uint64(additional), rest, nil
-	case additional == 24:
-		if len(rest) < 1 {
-			return 0, nil, errCBORUnsupported
-		}
-		return uint64(rest[0]), rest[1:], nil
-	case additional == 25:
-		if len(rest) < 2 {
-			return 0, nil, errCBORUnsupported
-		}
-		return uint64(binary.BigEndian.Uint16(rest[:2])), rest[2:], nil
-	case additional == 26:
-		if len(rest) < 4 {
-			return 0, nil, errCBORUnsupported
-		}
-		return uint64(binary.BigEndian.Uint32(rest[:4])), rest[4:], nil
-	case additional == 27:
-		if len(rest) < 8 {
-			return 0, nil, errCBORUnsupported
-		}
-		return binary.BigEndian.Uint64(rest[:8]), rest[8:], nil
-	default:
-		return 0, nil, errCBORUnsupported
+func negativeBigIntCBORValue(x *big.Int) (cborValue, error) {
+	if x.Sign() >= 0 {
+		return cborValue{}, errCBORUnsupported
 	}
+	n := new(big.Int).Neg(x)
+	n.Sub(n, big.NewInt(1))
+	if !n.IsUint64() {
+		return cborValue{}, errCBORUnsupported
+	}
+	return cborValue{major: 1, value: n.Uint64()}, nil
 }
 
 // encodeCBORDeterministic produces deterministic CBOR (RFC 8949 §4.2.1)
