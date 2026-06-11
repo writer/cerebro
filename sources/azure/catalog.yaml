@@ -21,6 +21,9 @@ emitted_kinds:
   - azure.key_vault
   - azure.key_vault_key
   - azure.key_vault_secret
+  - azure.managed_disk
+  - azure.network_security_group
+  - azure.public_ip_address
   - azure.resource_exposure
   - azure.service_principal
   - azure.sql_database
@@ -28,6 +31,7 @@ emitted_kinds:
   - azure.storage_account
   - azure.user
   - azure.virtual_machine
+  - azure.virtual_network
 runtime_families:
   - activity_log
   - aks_cluster
@@ -48,6 +52,9 @@ runtime_families:
   - key_vault
   - key_vault_key
   - key_vault_secret
+  - managed_disk
+  - network_security_group
+  - public_ip_address
   - resource_exposure
   - service_principal
   - sql_database
@@ -55,3 +62,4 @@ runtime_families:
   - storage_account
   - user
   - virtual_machine
+  - virtual_network

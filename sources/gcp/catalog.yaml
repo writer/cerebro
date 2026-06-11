@@ -9,7 +9,11 @@ emitted_kinds:
   - gcp.cloud_function
   - gcp.cloud_run_service
   - gcp.cloud_sql_instance
+  - gcp.compute_disk
+  - gcp.compute_firewall
   - gcp.compute_instance
+  - gcp.compute_network
+  - gcp.compute_subnetwork
   - gcp.effective_permission
   - gcp.gcs_bucket
   - gcp.gke_cluster
@@ -30,7 +34,11 @@ runtime_families:
   - cloud_function
   - cloud_run_service
   - cloud_sql_instance
+  - compute_disk
+  - compute_firewall
   - compute_instance
+  - compute_network
+  - compute_subnetwork
   - effective_permission
   - gcs_bucket
   - gke_cluster

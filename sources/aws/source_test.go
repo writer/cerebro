@@ -1525,7 +1525,18 @@ func TestReadAWSNetworkEdgeInventoryEvents(t *testing.T) {
 		fakeAWSNetwork: fakeAWSNetwork{
 			fakeAWSNetworkExposure: fakeAWSNetworkExposure{
 				loadBalancers: []elbv2types.LoadBalancer{{
-					LoadBalancerArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-lb/50dc6c495c0c9188"),
+					LoadBalancerArn:  awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-lb/50dc6c495c0c9188"),
+					LoadBalancerName: awssdk.String("app-lb"),
+					DNSName:          awssdk.String("app-lb-123.us-east-1.elb.amazonaws.com"),
+					Scheme:           elbv2types.LoadBalancerSchemeEnumInternetFacing,
+					Type:             elbv2types.LoadBalancerTypeEnumApplication,
+				}},
+				distributions: []cloudfronttypes.DistributionSummary{{
+					ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
+					Id:         awssdk.String("EDFDVBD632BHDS5"),
+					DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
+					Enabled:    awssdk.Bool(true),
+					Status:     awssdk.String("Deployed"),
 				}},
 			},
 			fakeAWSNetworkEdge: fakeAWSNetworkEdge{
@@ -1648,11 +1659,13 @@ func TestReadAWSNetworkEdgeInventoryEvents(t *testing.T) {
 		{family: familyVPCLatticeService, kind: "aws.vpclattice_service", attr: "dns_name", want: "orders.123.vpc-lattice-svcs.us-east-1.on.aws"},
 		{family: familyVPCLatticeListener, kind: "aws.vpclattice_listener", attr: "service_arn", want: latticeServiceARN},
 		{family: familyVPCLatticeTG, kind: "aws.vpclattice_target_group", attr: "vpc_id", want: "vpc-123"},
+		{family: familyELBV2LoadBalancer, kind: "aws.elbv2_load_balancer", attr: "dns_name", want: "app-lb-123.us-east-1.elb.amazonaws.com"},
 		{family: familyELBV2Listener, kind: "aws.elbv2_listener", attr: "target_group_arns", want: elbTargetARN},
 		{family: familyELBV2TargetGroup, kind: "aws.elbv2_target_group", attr: "target_type", want: "ip"},
 		{family: familyAPIGatewayStage, kind: "aws.apigateway_stage", attr: "stage_name", want: "$default"},
 		{family: familyAPIGatewayRoute, kind: "aws.apigateway_route", attr: "route_key", want: "GET /events"},
 		{family: familyAPIGatewayInteg, kind: "aws.apigateway_integration", attr: "integration_uri", want: "https://events.example.com"},
+		{family: familyCloudFrontDistribution, kind: "aws.cloudfront_distribution", attr: "domain_name", want: "d111111abcdef8.cloudfront.net"},
 		{family: familyCloudFrontOAC, kind: "aws.cloudfront_origin_access_control", attr: "signing_behavior", want: "always"},
 		{family: familyCloudFrontKeyGroup, kind: "aws.cloudfront_key_group", attr: "public_key_ids", want: "pk-123"},
 		{family: familyCloudFrontPublicKey, kind: "aws.cloudfront_public_key", attr: "public_key_id", want: "pk-123"},

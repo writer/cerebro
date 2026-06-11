@@ -49,6 +49,9 @@ const (
 	familyKeyVault            = "key_vault"
 	familyKeyVaultKey         = "key_vault_key"
 	familyKeyVaultSecret      = "key_vault_secret"
+	familyManagedDisk         = "managed_disk"
+	familyNetworkSecurityGrp  = "network_security_group"
+	familyPublicIPAddress     = "public_ip_address"
 	familyResourceExposure    = "resource_exposure"
 	familyServicePrincipal    = "service_principal"
 	familySQLDatabase         = "sql_database"
@@ -56,6 +59,7 @@ const (
 	familyStorageAccount      = "storage_account"
 	familyUser                = "user"
 	familyVirtualMachine      = "virtual_machine"
+	familyVirtualNetwork      = "virtual_network"
 )
 
 // Source reads Azure Entra ID inventory, Azure RBAC, and audit/activity logs.
@@ -650,6 +654,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return azureTypedResourceURN(settings, familyKeyVaultSecret, secret.Resource), nil
 			},
 		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{Name: familyVirtualNetwork, Label: "azure virtual networks", List: listVirtualNetworks, Event: virtualNetworkEvent, URN: func(settings settings, network armTypedResourceRecord) (string, error) {
+			return azureTypedResourceURN(settings, familyVirtualNetwork, network), nil
+		}}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{Name: familyNetworkSecurityGrp, Label: "azure network security groups", List: listNetworkSecurityGroups, Event: networkSecurityGroupEvent, URN: func(settings settings, group armTypedResourceRecord) (string, error) {
+			return azureTypedResourceURN(settings, familyNetworkSecurityGrp, group), nil
+		}}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{Name: familyPublicIPAddress, Label: "azure public ip addresses", List: listPublicIPAddresses, Event: publicIPAddressEvent, URN: func(settings settings, address armTypedResourceRecord) (string, error) {
+			return azureTypedResourceURN(settings, familyPublicIPAddress, address), nil
+		}}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{Name: familyManagedDisk, Label: "azure managed disks", List: listManagedDisks, Event: managedDiskEvent, URN: func(settings settings, disk armTypedResourceRecord) (string, error) {
+			return azureTypedResourceURN(settings, familyManagedDisk, disk), nil
+		}}),
 		azureFamily(s, azureFamilyOptions[azureResourceExposure]{
 			Name:  familyResourceExposure,
 			Label: "azure resource exposures",
@@ -780,7 +796,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("azure tenant_id is required")
 	}
 	switch settings.family {
-	case familyActivityLog, familyAKSCluster, familyAppService, familyAssetMetadata, familyContainerRegistry, familyCosmosAccount, familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, familyResourceExposure, familySQLDatabase, familySQLServer, familyStorageAccount, familyVirtualMachine:
+	case familyActivityLog, familyAKSCluster, familyAppService, familyAssetMetadata, familyContainerRegistry, familyCosmosAccount, familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, familyManagedDisk, familyNetworkSecurityGrp, familyPublicIPAddress, familyResourceExposure, familySQLDatabase, familySQLServer, familyStorageAccount, familyVirtualMachine, familyVirtualNetwork:
 		if settings.subscriptionID == "" {
 			return settings, fmt.Errorf("azure subscription_id is required when family=%q", settings.family)
 		}
@@ -1054,6 +1070,22 @@ func listVirtualMachines(ctx context.Context, source *Source, settings settings,
 		records = append(records, record)
 	}
 	return records, next, nil
+}
+
+func listVirtualNetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Network/virtualNetworks", "2023-09-01", "azure virtual network")
+}
+
+func listNetworkSecurityGroups(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Network/networkSecurityGroups", "2023-09-01", "azure network security group")
+}
+
+func listPublicIPAddresses(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Network/publicIPAddresses", "2023-09-01", "azure public ip address")
+}
+
+func listManagedDisks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Compute/disks", "2024-03-02", "azure managed disk")
 }
 
 func listAKSClusters(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
@@ -1577,19 +1609,7 @@ func virtualMachineEvent(settings settings, record azureVMRecord) (*primitives.E
 	resource := record.Resource
 	attributes := azureResourceAttributes(settings, resource, familyVirtualMachine)
 	addAzureIdentityAttributes(attributes, resource.Identity)
-	setAttribute(attributes, "computer_name", propertyString(resource, "osProfile", "computerName"))
-	setAttribute(attributes, "admin_username", propertyString(resource, "osProfile", "adminUsername"))
-	setAttribute(attributes, "vm_size", propertyString(resource, "hardwareProfile", "vmSize"))
-	setAttribute(attributes, "os_type", propertyString(resource, "storageProfile", "osDisk", "osType"))
-	setAttribute(attributes, "encryption_at_host", propertyBoolString(resource, "securityProfile", "encryptionAtHost"))
-	setAttribute(attributes, "boot_diagnostics_enabled", propertyBoolString(resource, "diagnosticsProfile", "bootDiagnostics", "enabled"))
-	setAttribute(attributes, "network_interface_ids", strings.Join(azureNetworkInterfaceIDs(resource), ","))
-	setAttribute(attributes, "subnet_ids", strings.Join(record.SubnetIDs, ","))
-	setAttribute(attributes, "nsg_ids", strings.Join(record.NSGIDs, ","))
-	setAttribute(attributes, "public_ip_ids", strings.Join(record.PublicIPIDs, ","))
-	setAttribute(attributes, "public_host", strings.Join(record.PublicHosts, ","))
-	setAttribute(attributes, "public_network_access", boolString(len(record.PublicIPIDs) > 0 || len(record.PublicHosts) > 0))
-	setAttribute(attributes, "internet_exposed", boolString(len(record.PublicIPIDs) > 0 || len(record.PublicHosts) > 0))
+	setAttributes(attributes, map[string]string{"computer_name": propertyString(resource, "osProfile", "computerName"), "admin_username": propertyString(resource, "osProfile", "adminUsername"), "vm_size": propertyString(resource, "hardwareProfile", "vmSize"), "os_type": propertyString(resource, "storageProfile", "osDisk", "osType"), "encryption_at_host": propertyBoolString(resource, "securityProfile", "encryptionAtHost"), "boot_diagnostics_enabled": propertyBoolString(resource, "diagnosticsProfile", "bootDiagnostics", "enabled"), "network_interface_ids": strings.Join(azureNetworkInterfaceIDs(resource), ","), "subnet_ids": strings.Join(record.SubnetIDs, ","), "nsg_ids": strings.Join(record.NSGIDs, ","), "public_ip_ids": strings.Join(record.PublicIPIDs, ","), "public_host": strings.Join(record.PublicHosts, ","), "public_network_access": boolString(len(record.PublicIPIDs) > 0 || len(record.PublicHosts) > 0), "internet_exposed": boolString(len(record.PublicIPIDs) > 0 || len(record.PublicHosts) > 0)})
 	payload, err := payloadWithRaw(resource.raw, map[string]any{"tenant_id": settings.tenantID, "subscription_id": settings.subscriptionID, "subnet_ids": record.SubnetIDs, "nsg_ids": record.NSGIDs, "public_ip_ids": record.PublicIPIDs, "public_hosts": record.PublicHosts})
 	if err != nil {
 		return nil, err
@@ -1597,18 +1617,51 @@ func virtualMachineEvent(settings settings, record azureVMRecord) (*primitives.E
 	return sourceEvent(settings, azureResourceEventID(familyVirtualMachine, resource), "azure.virtual_machine", "azure/virtual_machine/v1", payload, attributes, time.Now().UTC())
 }
 
+func virtualNetworkEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyVirtualNetwork)
+	setAttributes(attributes, map[string]string{"address_prefixes": strings.Join(propertyStringSlice(record, "addressSpace", "addressPrefixes"), ","), "subnet_ids": strings.Join(azureChildResourceIDs(record, "subnets"), ","), "subnet_names": strings.Join(azureChildResourceNames(record, "subnets"), ","), "enable_ddos_protection": propertyBoolString(record, "enableDdosProtection")})
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyVirtualNetwork, record), "azure.virtual_network", "azure/virtual_network/v1", payload, attributes, time.Now().UTC())
+}
+
+func networkSecurityGroupEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyNetworkSecurityGrp)
+	setAttributes(attributes, map[string]string{"security_rule_names": strings.Join(azureChildResourceNames(record, "securityRules"), ","), "default_security_rule_names": strings.Join(azureChildResourceNames(record, "defaultSecurityRules"), ","), "network_interface_ids": strings.Join(azureChildResourceIDs(record, "networkInterfaces"), ","), "subnet_ids": strings.Join(azureChildResourceIDs(record, "subnets"), ",")})
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyNetworkSecurityGrp, record), "azure.network_security_group", "azure/network_security_group/v1", payload, attributes, time.Now().UTC())
+}
+
+func publicIPAddressEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyPublicIPAddress)
+	hosts := azurePublicIPHosts(record)
+	setAttributes(attributes, map[string]string{"ip_address": propertyString(record, "ipAddress"), "public_host": strings.Join(hosts, ","), "public_ip_allocation_method": propertyString(record, "publicIPAllocationMethod"), "public_ip_address_version": propertyString(record, "publicIPAddressVersion"), "idle_timeout_minutes": propertyString(record, "idleTimeoutInMinutes"), "internet_exposed": boolString(len(hosts) > 0 || propertyString(record, "ipAddress") != "")})
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyPublicIPAddress, record), "azure.public_ip_address", "azure/public_ip_address/v1", payload, attributes, time.Now().UTC())
+}
+
+func managedDiskEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, familyManagedDisk)
+	setAttributes(attributes, map[string]string{"disk_size_gb": propertyString(record, "diskSizeGB"), "disk_state": propertyString(record, "diskState"), "os_type": propertyString(record, "osType"), "creation_data_source_id": propertyString(record, "creationData", "sourceResourceId"), "network_access_policy": propertyString(record, "networkAccessPolicy"), "public_network_access": propertyString(record, "publicNetworkAccess"), "encryption_type": propertyString(record, "encryption", "type"), "disk_encryption_set_id": propertyString(record, "encryption", "diskEncryptionSetId")})
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(familyManagedDisk, record), "azure.managed_disk", "azure/managed_disk/v1", payload, attributes, time.Now().UTC())
+}
+
 func aksClusterEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, familyAKSCluster)
 	addAzureIdentityAttributes(attributes, record.Identity)
-	setAttribute(attributes, "kubernetes_version", propertyString(record, "kubernetesVersion"))
-	setAttribute(attributes, "dns_prefix", propertyString(record, "dnsPrefix"))
-	setAttribute(attributes, "public_host", firstNonEmpty(propertyString(record, "fqdn"), propertyString(record, "privateFQDN")))
-	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
-	setAttribute(attributes, "private_cluster_enabled", propertyBoolString(record, "apiServerAccessProfile", "enablePrivateCluster"))
-	setAttribute(attributes, "network_plugin", propertyString(record, "networkProfile", "networkPlugin"))
-	setAttribute(attributes, "network_policy", propertyString(record, "networkProfile", "networkPolicy"))
-	setAttribute(attributes, "subnet_ids", strings.Join(aksSubnetIDs(record), ","))
-	setAttribute(attributes, "public_ip_ids", strings.Join(aksOutboundPublicIPIDs(record), ","))
+	setAttributes(attributes, map[string]string{"kubernetes_version": propertyString(record, "kubernetesVersion"), "dns_prefix": propertyString(record, "dnsPrefix"), "public_host": firstNonEmpty(propertyString(record, "fqdn"), propertyString(record, "privateFQDN")), "public_network_access": propertyString(record, "publicNetworkAccess"), "private_cluster_enabled": propertyBoolString(record, "apiServerAccessProfile", "enablePrivateCluster"), "network_plugin": propertyString(record, "networkProfile", "networkPlugin"), "network_policy": propertyString(record, "networkProfile", "networkPolicy"), "subnet_ids": strings.Join(aksSubnetIDs(record), ","), "public_ip_ids": strings.Join(aksOutboundPublicIPIDs(record), ",")})
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err
@@ -1627,17 +1680,7 @@ func functionAppEvent(settings settings, record armTypedResourceRecord) (*primit
 func webSiteEvent(settings settings, record armTypedResourceRecord, family string, kind string, schemaRef string) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, family)
 	addAzureIdentityAttributes(attributes, record.Identity)
-	setAttribute(attributes, "kind", record.Kind)
-	setAttribute(attributes, "enabled", propertyBoolString(record, "enabled"))
-	setAttribute(attributes, "https_only", propertyBoolString(record, "httpsOnly"))
-	setAttribute(attributes, "min_tls_version", firstNonEmpty(propertyString(record, "siteConfig", "minTlsVersion"), propertyString(record, "siteConfig", "minimumTlsVersion")))
-	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
-	setAttribute(attributes, "public_host", propertyString(record, "defaultHostName"))
-	setAttribute(attributes, "host_names", strings.Join(propertyStringSlice(record, "hostNames"), ","))
-	setAttribute(attributes, "subnet_ids", propertyString(record, "virtualNetworkSubnetId"))
-	setAttribute(attributes, "server_farm_id", propertyString(record, "serverFarmId"))
-	setAttribute(attributes, "runtime", firstNonEmpty(propertyString(record, "siteConfig", "linuxFxVersion"), propertyString(record, "siteConfig", "windowsFxVersion"), propertyString(record, "siteConfig", "netFrameworkVersion")))
-	setAttribute(attributes, "outbound_ip_addresses", propertyString(record, "outboundIpAddresses"))
+	setAttributes(attributes, map[string]string{"kind": record.Kind, "enabled": propertyBoolString(record, "enabled"), "https_only": propertyBoolString(record, "httpsOnly"), "min_tls_version": firstNonEmpty(propertyString(record, "siteConfig", "minTlsVersion"), propertyString(record, "siteConfig", "minimumTlsVersion")), "public_network_access": propertyString(record, "publicNetworkAccess"), "public_host": propertyString(record, "defaultHostName"), "host_names": strings.Join(propertyStringSlice(record, "hostNames"), ","), "subnet_ids": propertyString(record, "virtualNetworkSubnetId"), "server_farm_id": propertyString(record, "serverFarmId"), "runtime": firstNonEmpty(propertyString(record, "siteConfig", "linuxFxVersion"), propertyString(record, "siteConfig", "windowsFxVersion"), propertyString(record, "siteConfig", "netFrameworkVersion")), "outbound_ip_addresses": propertyString(record, "outboundIpAddresses")})
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err
@@ -1648,16 +1691,7 @@ func webSiteEvent(settings settings, record armTypedResourceRecord, family strin
 func storageAccountEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, familyStorageAccount)
 	addAzureIdentityAttributes(attributes, record.Identity)
-	setAttribute(attributes, "sku", firstNonEmpty(record.SKU.Name, record.SKU.Tier))
-	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
-	setAttribute(attributes, "allow_blob_public_access", propertyBoolString(record, "allowBlobPublicAccess"))
-	setAttribute(attributes, "allow_shared_key_access", propertyBoolString(record, "allowSharedKeyAccess"))
-	setAttribute(attributes, "https_only", propertyBoolString(record, "supportsHttpsTrafficOnly"))
-	setAttribute(attributes, "min_tls_version", propertyString(record, "minimumTlsVersion"))
-	setAttribute(attributes, "encryption_key_source", propertyString(record, "encryption", "keySource"))
-	setAttribute(attributes, "blob_encryption_enabled", propertyBoolString(record, "encryption", "services", "blob", "enabled"))
-	setAttribute(attributes, "file_encryption_enabled", propertyBoolString(record, "encryption", "services", "file", "enabled"))
-	setAttribute(attributes, "public_host", firstNonEmpty(propertyString(record, "primaryEndpoints", "blob"), propertyString(record, "primaryEndpoints", "web")))
+	setAttributes(attributes, map[string]string{"sku": firstNonEmpty(record.SKU.Name, record.SKU.Tier), "public_network_access": propertyString(record, "publicNetworkAccess"), "allow_blob_public_access": propertyBoolString(record, "allowBlobPublicAccess"), "allow_shared_key_access": propertyBoolString(record, "allowSharedKeyAccess"), "https_only": propertyBoolString(record, "supportsHttpsTrafficOnly"), "min_tls_version": propertyString(record, "minimumTlsVersion"), "encryption_key_source": propertyString(record, "encryption", "keySource"), "blob_encryption_enabled": propertyBoolString(record, "encryption", "services", "blob", "enabled"), "file_encryption_enabled": propertyBoolString(record, "encryption", "services", "file", "enabled"), "public_host": firstNonEmpty(propertyString(record, "primaryEndpoints", "blob"), propertyString(record, "primaryEndpoints", "web"))})
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err
@@ -1668,11 +1702,7 @@ func storageAccountEvent(settings settings, record armTypedResourceRecord) (*pri
 func sqlServerEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, familySQLServer)
 	addAzureIdentityAttributes(attributes, record.Identity)
-	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
-	setAttribute(attributes, "min_tls_version", propertyString(record, "minimalTlsVersion"))
-	setAttribute(attributes, "public_host", propertyString(record, "fullyQualifiedDomainName"))
-	setAttribute(attributes, "state", propertyString(record, "state"))
-	setAttribute(attributes, "primary_user_assigned_identity_id", propertyString(record, "primaryUserAssignedIdentityId"))
+	setAttributes(attributes, map[string]string{"public_network_access": propertyString(record, "publicNetworkAccess"), "min_tls_version": propertyString(record, "minimalTlsVersion"), "public_host": propertyString(record, "fullyQualifiedDomainName"), "state": propertyString(record, "state"), "primary_user_assigned_identity_id": propertyString(record, "primaryUserAssignedIdentityId")})
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err
@@ -1683,16 +1713,7 @@ func sqlServerEvent(settings settings, record armTypedResourceRecord) (*primitiv
 func sqlDatabaseEvent(settings settings, record azureSQLDatabaseRecord) (*primitives.Event, error) {
 	database := record.Database
 	attributes := azureResourceAttributes(settings, database, familySQLDatabase)
-	setAttribute(attributes, "server_id", record.Server.ID)
-	setAttribute(attributes, "server_name", record.Server.Name)
-	setAttribute(attributes, "public_host", propertyString(record.Server, "fullyQualifiedDomainName"))
-	setAttribute(attributes, "status", propertyString(database, "status"))
-	setAttribute(attributes, "collation", propertyString(database, "collation"))
-	setAttribute(attributes, "max_size_bytes", propertyString(database, "maxSizeBytes"))
-	setAttribute(attributes, "zone_redundant", propertyBoolString(database, "zoneRedundant"))
-	setAttribute(attributes, "read_scale", propertyString(database, "readScale"))
-	setAttribute(attributes, "backup_storage_redundancy", firstNonEmpty(propertyString(database, "currentBackupStorageRedundancy"), propertyString(database, "requestedBackupStorageRedundancy")))
-	setAttribute(attributes, "earliest_restore_date", propertyString(database, "earliestRestoreDate"))
+	setAttributes(attributes, map[string]string{"server_id": record.Server.ID, "server_name": record.Server.Name, "public_host": propertyString(record.Server, "fullyQualifiedDomainName"), "status": propertyString(database, "status"), "collation": propertyString(database, "collation"), "max_size_bytes": propertyString(database, "maxSizeBytes"), "zone_redundant": propertyBoolString(database, "zoneRedundant"), "read_scale": propertyString(database, "readScale"), "backup_storage_redundancy": firstNonEmpty(propertyString(database, "currentBackupStorageRedundancy"), propertyString(database, "requestedBackupStorageRedundancy")), "earliest_restore_date": propertyString(database, "earliestRestoreDate")})
 	payload, err := payloadWithRaw(database.raw, map[string]any{"tenant_id": settings.tenantID, "subscription_id": settings.subscriptionID, "server_id": record.Server.ID})
 	if err != nil {
 		return nil, err
@@ -1702,15 +1723,7 @@ func sqlDatabaseEvent(settings settings, record azureSQLDatabaseRecord) (*primit
 
 func keyVaultEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, familyKeyVault)
-	setAttribute(attributes, "tenant_id", firstNonEmpty(propertyString(record, "tenantId"), settings.tenantID))
-	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
-	setAttribute(attributes, "soft_delete_enabled", propertyBoolString(record, "enableSoftDelete"))
-	setAttribute(attributes, "purge_protection_enabled", propertyBoolString(record, "enablePurgeProtection"))
-	setAttribute(attributes, "soft_delete_retention_days", propertyString(record, "softDeleteRetentionInDays"))
-	setAttribute(attributes, "rbac_authorization_enabled", propertyBoolString(record, "enableRbacAuthorization"))
-	setAttribute(attributes, "enabled_for_disk_encryption", propertyBoolString(record, "enabledForDiskEncryption"))
-	setAttribute(attributes, "network_default_action", propertyString(record, "networkAcls", "defaultAction"))
-	setAttribute(attributes, "public_host", propertyString(record, "vaultUri"))
+	setAttributes(attributes, map[string]string{"tenant_id": firstNonEmpty(propertyString(record, "tenantId"), settings.tenantID), "public_network_access": propertyString(record, "publicNetworkAccess"), "soft_delete_enabled": propertyBoolString(record, "enableSoftDelete"), "purge_protection_enabled": propertyBoolString(record, "enablePurgeProtection"), "soft_delete_retention_days": propertyString(record, "softDeleteRetentionInDays"), "rbac_authorization_enabled": propertyBoolString(record, "enableRbacAuthorization"), "enabled_for_disk_encryption": propertyBoolString(record, "enabledForDiskEncryption"), "network_default_action": propertyString(record, "networkAcls", "defaultAction"), "public_host": propertyString(record, "vaultUri")})
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err
@@ -1752,15 +1765,7 @@ func keyVaultChildEvent(settings settings, record azureKeyVaultChildRecord, fami
 func cosmosAccountEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, familyCosmosAccount)
 	addAzureIdentityAttributes(attributes, record.Identity)
-	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
-	setAttribute(attributes, "public_host", propertyString(record, "documentEndpoint"))
-	setAttribute(attributes, "min_tls_version", propertyString(record, "minimalTlsVersion"))
-	setAttribute(attributes, "local_auth_disabled", propertyBoolString(record, "disableLocalAuth"))
-	setAttribute(attributes, "multiple_write_locations_enabled", propertyBoolString(record, "enableMultipleWriteLocations"))
-	setAttribute(attributes, "free_tier_enabled", propertyBoolString(record, "enableFreeTier"))
-	setAttribute(attributes, "default_consistency_level", propertyString(record, "consistencyPolicy", "defaultConsistencyLevel"))
-	setAttribute(attributes, "locations", strings.Join(cosmosLocationNames(record), ","))
-	setAttribute(attributes, "private_endpoint_connection_count", strconv.Itoa(len(propertyArray(record, "privateEndpointConnections"))))
+	setAttributes(attributes, map[string]string{"public_network_access": propertyString(record, "publicNetworkAccess"), "public_host": propertyString(record, "documentEndpoint"), "min_tls_version": propertyString(record, "minimalTlsVersion"), "local_auth_disabled": propertyBoolString(record, "disableLocalAuth"), "multiple_write_locations_enabled": propertyBoolString(record, "enableMultipleWriteLocations"), "free_tier_enabled": propertyBoolString(record, "enableFreeTier"), "default_consistency_level": propertyString(record, "consistencyPolicy", "defaultConsistencyLevel"), "locations": strings.Join(cosmosLocationNames(record), ","), "private_endpoint_connection_count": strconv.Itoa(len(propertyArray(record, "privateEndpointConnections")))})
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err
@@ -1771,17 +1776,7 @@ func cosmosAccountEvent(settings settings, record armTypedResourceRecord) (*prim
 func containerRegistryEvent(settings settings, record armTypedResourceRecord) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, familyContainerRegistry)
 	addAzureIdentityAttributes(attributes, record.Identity)
-	setAttribute(attributes, "sku", firstNonEmpty(record.SKU.Name, record.SKU.Tier))
-	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
-	setAttribute(attributes, "public_host", propertyString(record, "loginServer"))
-	setAttribute(attributes, "admin_user_enabled", propertyBoolString(record, "adminUserEnabled"))
-	setAttribute(attributes, "network_default_action", propertyString(record, "networkRuleSet", "defaultAction"))
-	setAttribute(attributes, "quarantine_policy_status", propertyString(record, "policies", "quarantinePolicy", "status"))
-	setAttribute(attributes, "trust_policy_status", propertyString(record, "policies", "trustPolicy", "status"))
-	setAttribute(attributes, "retention_policy_status", propertyString(record, "policies", "retentionPolicy", "status"))
-	setAttribute(attributes, "retention_policy_days", propertyString(record, "policies", "retentionPolicy", "days"))
-	setAttribute(attributes, "encryption_status", propertyString(record, "encryption", "status"))
-	setAttribute(attributes, "encryption_key_vault_key_id", propertyString(record, "encryption", "keyVaultProperties", "keyIdentifier"))
+	setAttributes(attributes, map[string]string{"sku": firstNonEmpty(record.SKU.Name, record.SKU.Tier), "public_network_access": propertyString(record, "publicNetworkAccess"), "public_host": propertyString(record, "loginServer"), "admin_user_enabled": propertyBoolString(record, "adminUserEnabled"), "network_default_action": propertyString(record, "networkRuleSet", "defaultAction"), "quarantine_policy_status": propertyString(record, "policies", "quarantinePolicy", "status"), "trust_policy_status": propertyString(record, "policies", "trustPolicy", "status"), "retention_policy_status": propertyString(record, "policies", "retentionPolicy", "status"), "retention_policy_days": propertyString(record, "policies", "retentionPolicy", "days"), "encryption_status": propertyString(record, "encryption", "status"), "encryption_key_vault_key_id": propertyString(record, "encryption", "keyVaultProperties", "keyIdentifier")})
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err
@@ -1959,6 +1954,12 @@ func setAttribute(attributes map[string]string, key string, value string) {
 	attributes[key] = value
 }
 
+func setAttributes(attributes map[string]string, values map[string]string) {
+	for key, value := range values {
+		setAttribute(attributes, key, value)
+	}
+}
+
 func getARMTypedResourceByID(ctx context.Context, source *Source, settings settings, resourceID string, apiVersion string) (armTypedResourceRecord, bool) {
 	resourceID = strings.TrimSpace(resourceID)
 	if resourceID == "" {
@@ -2054,6 +2055,25 @@ func azurePublicIPHosts(record armTypedResourceRecord) []string {
 		return []string{fqdn}
 	}
 	return uniqueStrings([]string{propertyString(record, "ipAddress")})
+}
+
+func azureChildResourceIDs(record armTypedResourceRecord, keys ...string) []string {
+	return azureChildResourceValues(record, "id", keys...)
+}
+
+func azureChildResourceNames(record armTypedResourceRecord, keys ...string) []string {
+	return azureChildResourceValues(record, "name", keys...)
+}
+
+func azureChildResourceValues(record armTypedResourceRecord, field string, keys ...string) []string {
+	items := propertyArray(record, keys...)
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		if child := mapFromAny(item); child != nil {
+			values = append(values, stringFromAny(child[field]))
+		}
+	}
+	return uniqueStrings(values)
 }
 
 func aksSubnetIDs(record armTypedResourceRecord) []string {

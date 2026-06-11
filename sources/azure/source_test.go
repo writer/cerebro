@@ -65,6 +65,9 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 		{family: familyKeyVault, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.key_vault"},
 		{family: familyKeyVaultKey, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.key_vault_key"},
 		{family: familyKeyVaultSecret, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.key_vault_secret"},
+		{family: familyManagedDisk, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.managed_disk"},
+		{family: familyNetworkSecurityGrp, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.network_security_group"},
+		{family: familyPublicIPAddress, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.public_ip_address"},
 		{family: familyResourceExposure, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.resource_exposure"},
 		{family: familyServicePrincipal, kind: "azure.service_principal"},
 		{family: familySQLDatabase, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.sql_database"},
@@ -72,6 +75,7 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 		{family: familyStorageAccount, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.storage_account"},
 		{family: familyUser, kind: "azure.user"},
 		{family: familyVirtualMachine, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.virtual_machine"},
+		{family: familyVirtualNetwork, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.virtual_network"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"tenant_id": "tenant-1", "family": tt.family, "token": "test-token"}
@@ -176,6 +180,10 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 		{family: familyEffectivePermission, kind: "azure.effective_permission", attr: "privilege_level", want: "admin"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity", attr: "data_classification", want: "restricted"},
 		{family: familyVirtualMachine, kind: "azure.virtual_machine", attr: "public_host", want: "vm1.eastus.cloudapp.azure.com"},
+		{family: familyVirtualNetwork, kind: "azure.virtual_network", attr: "address_prefixes", want: "10.0.0.0/16"},
+		{family: familyNetworkSecurityGrp, kind: "azure.network_security_group", attr: "security_rule_names", want: "AllowHTTPS"},
+		{family: familyPublicIPAddress, kind: "azure.public_ip_address", attr: "public_host", want: "vm1.eastus.cloudapp.azure.com"},
+		{family: familyManagedDisk, kind: "azure.managed_disk", attr: "disk_state", want: "Attached"},
 		{family: familyAKSCluster, kind: "azure.aks_cluster", attr: "public_host", want: "aks-prod.eastus.azmk8s.io"},
 		{family: familyAppService, kind: "azure.app_service", attr: "https_only", want: "true"},
 		{family: familyFunctionApp, kind: "azure.function_app", attr: "https_only", want: "true"},
@@ -454,6 +462,12 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/networkInterfaces/vm1-nic", "name": "vm1-nic", "type": "Microsoft.Network/networkInterfaces", "location": "eastus", "properties": map[string]any{"networkSecurityGroup": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/networkSecurityGroups/web-nsg"}, "ipConfigurations": []map[string]any{{"name": "ipconfig1", "properties": map[string]any{"subnet": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet/subnets/web"}, "publicIPAddress": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/vm1-pip"}}}}}})
 		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/vm1-pip":
 			writeJSON(t, w, map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/vm1-pip", "name": "vm1-pip", "type": "Microsoft.Network/publicIPAddresses", "location": "eastus", "properties": map[string]any{"ipAddress": "203.0.113.10", "dnsSettings": map[string]any{"fqdn": "vm1.eastus.cloudapp.azure.com"}}})
+		case "/subscriptions/sub-1/providers/Microsoft.Network/virtualNetworks":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet", "name": "prod-vnet", "type": "Microsoft.Network/virtualNetworks", "location": "eastus", "tags": map[string]string{"env": "prod"}, "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []string{"10.0.0.0/16"}}, "enableDdosProtection": true, "subnets": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet/subnets/web", "name": "web"}}}}}})
+		case "/subscriptions/sub-1/providers/Microsoft.Network/publicIPAddresses":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/vm1-pip", "name": "vm1-pip", "type": "Microsoft.Network/publicIPAddresses", "location": "eastus", "sku": map[string]string{"name": "Standard"}, "properties": map[string]any{"ipAddress": "203.0.113.10", "publicIPAllocationMethod": "Static", "publicIPAddressVersion": "IPv4", "dnsSettings": map[string]any{"fqdn": "vm1.eastus.cloudapp.azure.com"}}}}})
+		case "/subscriptions/sub-1/providers/Microsoft.Compute/disks":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/disks/vm1-osdisk", "name": "vm1-osdisk", "type": "Microsoft.Compute/disks", "location": "eastus", "sku": map[string]string{"name": "Premium_LRS"}, "properties": map[string]any{"diskSizeGB": 128, "diskState": "Attached", "osType": "Linux", "networkAccessPolicy": "DenyAll", "publicNetworkAccess": "Disabled", "encryption": map[string]any{"type": "EncryptionAtRestWithCustomerKey", "diskEncryptionSetId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/diskEncryptionSets/prod"}}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.ContainerService/managedClusters":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.ContainerService/managedClusters/aks-prod", "name": "aks-prod", "type": "Microsoft.ContainerService/managedClusters", "location": "eastus", "identity": map[string]any{"type": "SystemAssigned", "principalId": "aks-principal-1", "tenantId": "tenant-1"}, "tags": map[string]string{"owner": "platform@writer.com", "team": "platform", "env": "prod"}, "properties": map[string]any{"kubernetesVersion": "1.30.0", "dnsPrefix": "aks-prod", "fqdn": "aks-prod.eastus.azmk8s.io", "publicNetworkAccess": "Enabled", "apiServerAccessProfile": map[string]any{"enablePrivateCluster": false}, "networkProfile": map[string]any{"networkPlugin": "azure", "networkPolicy": "azure", "loadBalancerProfile": map[string]any{"effectiveOutboundIPs": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/aks-egress"}}}}, "agentPoolProfiles": []map[string]any{{"name": "system", "vnetSubnetID": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet/subnets/aks"}}}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Web/sites":

@@ -58,6 +58,30 @@ runtimes:
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
       token: env:GCP_TOKEN
+  - localId: compute-network
+    config:
+      family: compute_network
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: compute-subnetwork
+    config:
+      family: compute_subnetwork
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: compute-firewall
+    config:
+      family: compute_firewall
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
+  - localId: compute-disk
+    config:
+      family: compute_disk
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      token: env:GCP_TOKEN
   - localId: effective-permission
     config:
       family: effective_permission
