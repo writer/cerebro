@@ -2,18 +2,19 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 var (
 	routePattern   = regexp.MustCompile(`(?:mux\.HandleFunc\(|registerHTTPRoute\(mux,\s*)"(?:(GET|POST|PUT|PATCH|DELETE) )?([^"]+)"`)
-	pathPattern    = regexp.MustCompile(`^  (/[^:]+):\s*$`)
-	methodPattern  = regexp.MustCompile(`^    (get|post|put|patch|delete):\s*$`)
 	componentsLine = []byte("\ncomponents:\n")
 )
 
@@ -94,27 +95,37 @@ func registeredRoutes(paths ...string) ([]route, error) {
 }
 
 func openAPIPaths(path string) (map[string]bool, map[route]bool, error) {
-	payload, err := os.ReadFile(path)
+	loader := openapi3.NewLoader()
+	doc, err := loader.LoadFromFile(path)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := doc.Validate(context.Background()); err != nil {
 		return nil, nil, err
 	}
 	paths := map[string]bool{}
 	methods := map[route]bool{}
-	currentPath := ""
-	for _, line := range strings.Split(string(payload), "\n") {
-		if match := pathPattern.FindStringSubmatch(line); match != nil {
-			currentPath = match[1]
-			paths[currentPath] = true
+	for path, item := range doc.Paths.Map() {
+		paths[path] = true
+		if item == nil {
 			continue
 		}
-		if currentPath == "" {
-			continue
-		}
-		if match := methodPattern.FindStringSubmatch(line); match != nil {
-			methods[route{Method: match[1], Path: currentPath}] = true
+		for method := range item.Operations() {
+			if isParityMethod(method) {
+				methods[route{Method: strings.ToLower(method), Path: path}] = true
+			}
 		}
 	}
 	return paths, methods, nil
+}
+
+func isParityMethod(method string) bool {
+	switch method {
+	case "GET", "POST", "PUT", "PATCH", "DELETE":
+		return true
+	default:
+		return false
+	}
 }
 
 func appendPlaceholders(path string, routes []route) error {
