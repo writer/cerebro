@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from typing import TextIO
 import urllib.error
 import urllib.parse
@@ -59,14 +60,23 @@ def _non_negative_int(value: str) -> int:
     return parsed
 
 
-def _source_runtime_command(args: argparse.Namespace) -> list[str]:
+def _source_ids(args: argparse.Namespace) -> list[str]:
+    raw_source_ids = getattr(args, "source_ids", None)
+    if raw_source_ids:
+        return list(raw_source_ids)
+    raw_source_id = getattr(args, "source_id", None)
+    return [raw_source_id or "cosmo"]
+
+
+def _source_runtime_command(args: argparse.Namespace, source_id: str | None = None) -> list[str]:
+    source_id = source_id or _source_ids(args)[0]
     command = [
         sys.executable,
         "scripts/verify_source_runtime_ecs.py",
         "--stack-file",
         str(args.stack_file),
         "--source-id",
-        args.source_id,
+        source_id,
         "--stop-timeout-seconds",
         "600",
         "--failed-run-retry-seconds",
@@ -234,7 +244,7 @@ def _maybe_use_graph_health_cache(args: argparse.Namespace, stack: str) -> Graph
     return GraphHealthResult(status=0, diagnostics="")
 
 
-def _finish_source_process(process: subprocess.Popen[str], grace_seconds: int | None) -> int:
+def _finish_source_process(process: subprocess.Popen[str], grace_seconds: float | None) -> int:
     if grace_seconds is None:
         return process.wait()
     try:
@@ -254,9 +264,22 @@ def _finish_source_process(process: subprocess.Popen[str], grace_seconds: int | 
         return 124
 
 
+def _finish_source_processes(processes: list[subprocess.Popen[str]], grace_seconds: int | None) -> int:
+    if len(processes) == 1:
+        return _finish_source_process(processes[0], grace_seconds)
+    status = 0
+    deadline = time.monotonic() + grace_seconds if grace_seconds is not None else None
+    for process in processes:
+        process_grace = None if deadline is None else max(0, deadline - time.monotonic())
+        process_status = _finish_source_process(process, process_grace)
+        if process_status != 0 and status == 0:
+            status = process_status
+    return status
+
+
 def _report_source_degradation(stack: str, summary: TextIO | None = None) -> None:
     print(
-        "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health verification remains separately reported."
+        "::warning::Source runtime verification failed after deployment; rollout will continue and graph-health verification remains separately reported."
     )
     summary_path = Path(summary.name) if summary is not None else None
     if summary_path is None:
@@ -269,7 +292,7 @@ def _report_source_degradation(stack: str, summary: TextIO | None = None) -> Non
     with summary_path.open("a", encoding="utf-8") as handle:
         handle.write(f"### Source runtime verification degraded ({stack})\n\n")
         handle.write(
-            "Cosmo source runtime verification failed after deployment. This is reported as degraded source-provider health instead of blocking the service rollout.\n"
+            "Source runtime verification failed after deployment. This is reported as degraded source-provider health instead of blocking the service rollout.\n"
         )
 
 
@@ -599,7 +622,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run AWS deployment verifications, overlapping non-blocking source checks with graph health.")
     parser.add_argument("--stack-file", type=Path, required=True)
     parser.add_argument("--source-runtime-verify", action="store_true")
-    parser.add_argument("--source-id", default="cosmo", help="Source ID to verify when --source-runtime-verify runs.")
+    parser.add_argument(
+        "--source-id",
+        action="append",
+        dest="source_ids",
+        help="Source ID to verify when --source-runtime-verify runs. Repeat to verify multiple sources.",
+    )
     parser.add_argument("--runtime-id", action="append", default=[], help="Restrict --source-runtime-verify to a declared runtime ID.")
     parser.add_argument("--family", action="append", default=[], help="Restrict --source-runtime-verify to a runtime config family.")
     parser.add_argument("--source-runtime-dry-run", action="store_true", help="Run source runtime verification in read-only dry-run/readiness mode.")
@@ -646,19 +674,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stop-running-source-before-run", action="store_true")
     args = parser.parse_args(argv)
 
-    source_process: subprocess.Popen[str] | None = None
+    source_processes: list[subprocess.Popen[str]] = []
     source_status = 0
     graph_result: int | GraphHealthResult = 0
     stack = _stack_name(args.stack_file)
     try:
         if args.source_runtime_verify:
-            source_process = _start_process(_source_runtime_command(args))
+            source_processes = [_start_process(_source_runtime_command(args, source_id)) for source_id in _source_ids(args)]
         if args.graph_health:
             graph_result = _maybe_use_graph_health_cache(args, stack) or _stream_graph_health(_graph_health_command(args), args.graph_health_output)
     finally:
-        if source_process is not None:
+        if source_processes:
             grace_seconds = args.source_runtime_grace_seconds if args.graph_health else None
-            source_status = _finish_source_process(source_process, grace_seconds)
+            source_status = _finish_source_processes(source_processes, grace_seconds)
 
     if source_status != 0:
         _report_source_degradation(stack)

@@ -105,6 +105,47 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertEqual(command[command.index("--source-id") + 1], "panopticon")
         self.assertEqual(command[command.index("--target-concurrency") + 1], "2")
 
+    def test_source_runtime_command_uses_selected_source_from_repeated_args(self) -> None:
+        args = argparse.Namespace(
+            stack_file=Path("aws/Pulumi.go-prod.yaml"),
+            source_ids=["panopticon", "okta"],
+            runtime_id=[],
+            family=[],
+            source_target_concurrency=2,
+            stop_running_source_before_run=False,
+            source_runtime_dry_run=False,
+            source_runtime_observability_targets=True,
+            source_runtime_allow_missing_targets=False,
+        )
+
+        command = run_aws_deploy_verifications._source_runtime_command(args, "okta")
+
+        self.assertEqual(command[command.index("--source-id") + 1], "okta")
+        self.assertIn("--observability-targets", command)
+
+    def test_source_runtime_verify_starts_each_requested_source(self) -> None:
+        started_commands: list[list[str]] = []
+
+        def fake_start(command: list[str]) -> FakeProcess:
+            started_commands.append(command)
+            return FakeProcess(0)
+
+        with patch("scripts.run_aws_deploy_verifications._start_process", side_effect=fake_start):
+            status = run_aws_deploy_verifications.main(
+                [
+                    "--stack-file",
+                    "aws/Pulumi.go-prod.yaml",
+                    "--source-runtime-verify",
+                    "--source-id",
+                    "panopticon",
+                    "--source-id",
+                    "okta",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        self.assertEqual([command[command.index("--source-id") + 1] for command in started_commands], ["panopticon", "okta"])
+
     def test_graph_health_command_uses_fast_deploy_retry_defaults(self) -> None:
         args = argparse.Namespace(
             stack_file=Path("aws/Pulumi.go-prod.yaml"),
