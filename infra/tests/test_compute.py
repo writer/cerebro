@@ -105,7 +105,7 @@ class SourceRuntimeBootstrapRegistryTest(unittest.TestCase):
             patch.object(compute.aws.s3, "Bucket", side_effect=fake_bucket),
             patch.object(compute.aws.s3, "BucketPublicAccessBlock", side_effect=fake_resource),
             patch.object(compute.aws.s3, "BucketServerSideEncryptionConfiguration", side_effect=fake_resource),
-            patch.object(compute.aws.s3, "BucketVersioningV2", side_effect=fake_resource),
+            patch.object(compute.aws.s3, "BucketVersioning", side_effect=fake_resource),
             patch.object(compute.aws.s3, "BucketObjectv2", side_effect=fake_object),
             patch.object(compute.pulumi.Output, "concat", side_effect=lambda *parts: "".join(parts)),
             patch.object(compute.pulumi, "ResourceOptions", side_effect=lambda **kwargs: SimpleNamespace(**kwargs)),
