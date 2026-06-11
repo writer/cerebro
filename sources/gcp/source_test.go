@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"golang.org/x/oauth2"
+
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -20,7 +22,7 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
-func TestCheckRequiresProjectAndToken(t *testing.T) {
+func TestCheckRequiresProjectAndAuth(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -30,6 +32,12 @@ func TestCheckRequiresProjectAndToken(t *testing.T) {
 	}
 	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "writer-prod"})); err == nil {
 		t.Fatal("Check() error = nil, want missing token error")
+	}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "writer-prod", "wif_audience": "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws"})); err == nil {
+		t.Fatal("Check() error = nil, want missing WIF service account error")
+	}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "writer-prod", "wif_service_account_email": "scanner@writer-iam.iam.gserviceaccount.com"})); err == nil {
+		t.Fatal("Check() error = nil, want missing WIF audience error")
 	}
 }
 
@@ -63,7 +71,11 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyCloudFunction, kind: "gcp.cloud_function"},
 		{family: familyCloudRunService, kind: "gcp.cloud_run_service"},
 		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance"},
+		{family: familyComputeDisk, kind: "gcp.compute_disk"},
+		{family: familyComputeFirewall, kind: "gcp.compute_firewall"},
 		{family: familyComputeInstance, kind: "gcp.compute_instance"},
+		{family: familyComputeNetwork, kind: "gcp.compute_network"},
+		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork"},
 		{family: familyGCSBucket, kind: "gcp.gcs_bucket"},
 		{family: familyGKECluster, kind: "gcp.gke_cluster"},
 		{family: familyGroup, config: map[string]string{"customer_id": "C01"}, kind: "gcp.group"},
@@ -126,6 +138,50 @@ func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	}
 	if got := urns[0].String(); got != "urn:cerebro:writer-prod:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com" {
 		t.Fatalf("Discover(service_account) urn = %q, want email-based service account urn", got)
+	}
+}
+
+func TestReadLiveGCPUsesWIFTokenSource(t *testing.T) {
+	server := httptest.NewServer(newGCPAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	calls := 0
+	source.tokenSourceFactory = func(_ context.Context, settings settings) (oauth2.TokenSource, error) {
+		calls++
+		if settings.wifAudience == "" {
+			t.Fatal("wifAudience is empty")
+		}
+		if settings.wifServiceAccount != "scanner@writer-iam.iam.gserviceaccount.com" {
+			t.Fatalf("wifServiceAccount = %q", settings.wifServiceAccount)
+		}
+		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"}), nil
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":                  server.URL,
+		"family":                    familyServiceAcct,
+		"project_id":                "writer-prod",
+		"wif_audience":              "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws",
+		"wif_service_account_email": "scanner@writer-iam.iam.gserviceaccount.com",
+		"wif_aws_region":            "us-east-1",
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(service_account) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if calls != 1 {
+		t.Fatalf("token source factory calls = %d, want 1", calls)
+	}
+	if _, err := source.Discover(context.Background(), cfg); err != nil {
+		t.Fatalf("Discover(service_account) error = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("token source factory calls after cache = %d, want 1", calls)
 	}
 }
 
@@ -204,6 +260,10 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyCloudRunService, kind: "gcp.cloud_run_service", attr: "internet_exposed", want: "true"},
 		{family: familyCloudFunction, kind: "gcp.cloud_function", attr: "runtime_identity", want: "fn@writer-prod.iam.gserviceaccount.com"},
 		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance", attr: "backup_enabled", want: "true"},
+		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
+		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
+		{family: familyComputeFirewall, kind: "gcp.compute_firewall", attr: "source_ranges", want: "0.0.0.0/0"},
+		{family: familyComputeDisk, kind: "gcp.compute_disk", attr: "disk_type", want: "pd-balanced"},
 		{family: familyGCSBucket, kind: "gcp.gcs_bucket", attr: "versioning_enabled", want: "true"},
 		{family: familySecret, kind: "gcp.secret_manager_secret", attr: "rotation_enabled", want: "true"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key", attr: "protection_level", want: "HSM"},
@@ -229,6 +289,46 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadLiveGCPRegionalComputeDiskKeepsRegionOutOfZone(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/compute/v1/projects/writer-prod/aggregated/disks" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"disks": []map[string]any{{
+			"id":       "disk-1",
+			"name":     "regional-disk",
+			"selfLink": "projects/writer-prod/regions/us-central1/disks/regional-disk",
+			"type":     "projects/writer-prod/regions/us-central1/diskTypes/pd-balanced",
+			"status":   "READY",
+			"sizeGb":   "100",
+		}}}}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyComputeDisk,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyComputeDisk, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["region"]; got != "us-central1" {
+		t.Fatalf("region = %q, want us-central1", got)
+	}
+	if got := pull.Events[0].Attributes["zone"]; got != "" {
+		t.Fatalf("zone = %q, want empty", got)
 	}
 }
 
@@ -350,6 +450,8 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"keys": []map[string]any{{"name": "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1", "keyType": "USER_MANAGED", "validAfterTime": "2026-04-23T00:00:00Z"}}})
 		case "/v1/projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com:getIamPolicy":
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/iam.serviceAccountTokenCreator", "members": []string{"user:admin@writer.com"}}}})
+		case "/compute/v1/projects/writer-prod/global/networks":
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "net-1", "name": "default", "selfLink": "projects/writer-prod/global/networks/default", "description": "default network", "autoCreateSubnetworks": false, "routingConfig": map[string]string{"routingMode": "REGIONAL"}, "labels": map[string]string{"env": "prod"}}}})
 		case "/compute/v1/projects/writer-prod/global/firewalls":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "fw-1", "name": "allow-web", "network": "global/networks/default", "direction": "INGRESS", "sourceRanges": []string{"0.0.0.0/0"}, "allowed": []map[string]any{{"IPProtocol": "tcp", "ports": []string{"443"}}}}}})
 		case "/v1/groups:lookup":
@@ -365,6 +467,10 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"results": []map[string]any{{"name": "//storage.googleapis.com/projects/_/buckets/data", "assetType": "storage.googleapis.com/Bucket", "displayName": "data", "location": "us", "labels": map[string]string{"data_classification": "restricted", "owner": "security@writer.com", "tier": "critical", "pii": "true", "env": "prod"}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/instances":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"instances": []map[string]any{{"id": "123456789", "name": "web-1", "zone": "projects/writer-prod/zones/us-central1-a", "machineType": "projects/writer-prod/zones/us-central1-a/machineTypes/e2-medium", "status": "RUNNING", "labels": map[string]string{"env": "prod"}, "tags": map[string]any{"items": []string{"web"}}, "networkInterfaces": []map[string]any{{"network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "networkIP": "10.0.0.5", "accessConfigs": []map[string]any{{"type": "ONE_TO_ONE_NAT", "natIP": "34.1.2.3"}}}}, "serviceAccounts": []map[string]any{{"email": "vm@writer-prod.iam.gserviceaccount.com"}}, "disks": []map[string]any{{"boot": true, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vm"}}}}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/subnetworks":
+			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"subnetworks": []map[string]any{{"id": "subnet-1", "name": "default", "selfLink": "projects/writer-prod/regions/us-central1/subnetworks/default", "network": "projects/writer-prod/global/networks/default", "region": "projects/writer-prod/regions/us-central1", "ipCidrRange": "10.0.0.0/24", "privateIpGoogleAccess": true, "purpose": "PRIVATE", "stackType": "IPV4_ONLY", "labels": map[string]string{"env": "prod"}}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/disks":
+			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"disks": []map[string]any{{"id": "disk-1", "name": "web-1", "selfLink": "projects/writer-prod/zones/us-central1-a/disks/web-1", "zone": "projects/writer-prod/zones/us-central1-a", "type": "projects/writer-prod/zones/us-central1-a/diskTypes/pd-balanced", "status": "READY", "sizeGb": "100", "users": []string{"projects/writer-prod/zones/us-central1-a/instances/web-1"}, "labels": map[string]string{"env": "prod"}, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/disk"}}}}}})
 		case "/v1/projects/writer-prod/locations/-/clusters":
 			writeJSON(t, w, map[string]any{"clusters": []map[string]any{{"name": "prod", "selfLink": "https://container.googleapis.com/v1/projects/writer-prod/locations/us-central1/clusters/prod", "location": "us-central1", "endpoint": "35.1.2.3", "status": "RUNNING", "network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "currentMasterVersion": "1.30.1", "resourceLabels": map[string]string{"env": "prod"}, "nodeConfig": map[string]any{"serviceAccount": "gke@writer-prod.iam.gserviceaccount.com", "tags": []string{"gke"}}, "masterAuthorizedNetworksConfig": map[string]any{"enabled": true, "cidrBlocks": []map[string]string{{"cidrBlock": "0.0.0.0/0"}}}, "databaseEncryption": map[string]string{"state": "ENCRYPTED", "keyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/gke"}}}})
 		case "/v2/projects/writer-prod/locations/-/services":

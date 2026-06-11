@@ -12,8 +12,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google/externalaccount"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -36,7 +41,11 @@ const (
 	familyCloudFunction       = "cloud_function"
 	familyCloudRunService     = "cloud_run_service"
 	familyCloudSQLInstance    = "cloud_sql_instance"
+	familyComputeDisk         = "compute_disk"
+	familyComputeFirewall     = "compute_firewall"
 	familyComputeInstance     = "compute_instance"
+	familyComputeNetwork      = "compute_network"
+	familyComputeSubnetwork   = "compute_subnetwork"
 	familyEffectivePermission = "effective_permission"
 	familyGCSBucket           = "gcs_bucket"
 	familyGKECluster          = "gke_cluster"
@@ -48,6 +57,7 @@ const (
 	familySAImpersonation     = "service_account_impersonation"
 	familyServiceAcct         = "service_account"
 	familySAKey               = "service_account_key"
+	gcpCloudPlatformScope     = "https://www.googleapis.com/auth/cloud-platform"
 	familySecret              = "secret_manager_secret"
 )
 
@@ -56,6 +66,8 @@ type Source struct {
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
 	families             *sourcecdk.FamilyEngine[settings]
+	tokenSources         sync.Map
+	tokenSourceFactory   func(context.Context, settings) (oauth2.TokenSource, error)
 	allowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
@@ -70,6 +82,9 @@ type settings struct {
 	keyRing             string
 	artifactRepository  string
 	token               string
+	wifAudience         string
+	wifServiceAccount   string
+	wifAWSRegion        string
 	baseURL             string
 	filter              string
 	perPage             int
@@ -94,12 +109,14 @@ type pageResponse struct {
 }
 
 type computeAggregatedListResponse struct {
-	Items         map[string]computeScopedInstances `json:"items"`
+	Items         map[string]computeScopedResources `json:"items"`
 	NextPageToken string                            `json:"nextPageToken"`
 }
 
-type computeScopedInstances struct {
-	Instances []json.RawMessage `json:"instances"`
+type computeScopedResources struct {
+	Disks       []json.RawMessage `json:"disks"`
+	Instances   []json.RawMessage `json:"instances"`
+	Subnetworks []json.RawMessage `json:"subnetworks"`
 }
 
 type serviceAccountRecord struct {
@@ -226,6 +243,51 @@ type computeDisk struct {
 
 type diskEncryptionKey struct {
 	KMSKeyName string `json:"kmsKeyName"`
+}
+
+type computeNetworkRecord struct {
+	ID                    string               `json:"id"`
+	Name                  string               `json:"name"`
+	SelfLink              string               `json:"selfLink"`
+	Description           string               `json:"description"`
+	AutoCreateSubnetworks bool                 `json:"autoCreateSubnetworks"`
+	RoutingConfig         computeRoutingConfig `json:"routingConfig"`
+	Labels                map[string]string    `json:"labels"`
+	raw                   json.RawMessage
+}
+
+type computeRoutingConfig struct {
+	RoutingMode string `json:"routingMode"`
+}
+
+type computeSubnetworkRecord struct {
+	ID                    string            `json:"id"`
+	Name                  string            `json:"name"`
+	SelfLink              string            `json:"selfLink"`
+	Network               string            `json:"network"`
+	Region                string            `json:"region"`
+	IPCIDRRange           string            `json:"ipCidrRange"`
+	PrivateIPGoogleAccess bool              `json:"privateIpGoogleAccess"`
+	Purpose               string            `json:"purpose"`
+	Role                  string            `json:"role"`
+	StackType             string            `json:"stackType"`
+	Labels                map[string]string `json:"labels"`
+	raw                   json.RawMessage
+}
+
+type computeDiskRecord struct {
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	SelfLink          string            `json:"selfLink"`
+	Zone              string            `json:"zone"`
+	Region            string            `json:"region"`
+	Type              string            `json:"type"`
+	Status            string            `json:"status"`
+	SizeGB            string            `json:"sizeGb"`
+	Users             []string          `json:"users"`
+	Labels            map[string]string `json:"labels"`
+	DiskEncryptionKey diskEncryptionKey `json:"diskEncryptionKey"`
+	raw               json.RawMessage
 }
 
 type gkeClusterRecord struct {
@@ -669,6 +731,42 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_instance:%s", tenantID(settings), firstNonEmpty(instance.ID, instance.Name)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[computeNetworkRecord]{
+			Name:  familyComputeNetwork,
+			Label: "gcp compute networks",
+			List:  listComputeNetworks,
+			Event: computeNetworkEvent,
+			URN: func(settings settings, network computeNetworkRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_network:%s", tenantID(settings), firstNonEmpty(network.SelfLink, network.ID, network.Name)), nil
+			},
+		}),
+		gcpFamily(s, gcpFamilyOptions[computeSubnetworkRecord]{
+			Name:  familyComputeSubnetwork,
+			Label: "gcp compute subnetworks",
+			List:  listComputeSubnetworks,
+			Event: computeSubnetworkEvent,
+			URN: func(settings settings, subnetwork computeSubnetworkRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_subnetwork:%s", tenantID(settings), firstNonEmpty(subnetwork.SelfLink, subnetwork.ID, subnetwork.Name)), nil
+			},
+		}),
+		gcpFamily(s, gcpFamilyOptions[firewallRecord]{
+			Name:  familyComputeFirewall,
+			Label: "gcp compute firewall rules",
+			List:  listComputeFirewalls,
+			Event: computeFirewallEvent,
+			URN: func(settings settings, firewall firewallRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_firewall:%s", tenantID(settings), firstNonEmpty(firewall.ID, firewall.Name)), nil
+			},
+		}),
+		gcpFamily(s, gcpFamilyOptions[computeDiskRecord]{
+			Name:  familyComputeDisk,
+			Label: "gcp compute disks",
+			List:  listComputeDisks,
+			Event: computeDiskEvent,
+			URN: func(settings settings, disk computeDiskRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_disk:%s", tenantID(settings), firstNonEmpty(disk.SelfLink, disk.ID, disk.Name)), nil
+			},
+		}),
 		gcpFamily(s, gcpFamilyOptions[groupRecord]{
 			Name:  familyGroup,
 			Label: "gcp cloud identity groups",
@@ -818,6 +916,9 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		keyRing:             configValue(cfg, "key_ring"),
 		artifactRepository:  configValue(cfg, "artifact_repository"),
 		token:               configValue(cfg, "token"),
+		wifAudience:         configValue(cfg, "wif_audience"),
+		wifServiceAccount:   configValue(cfg, "wif_service_account_email"),
+		wifAWSRegion:        configValue(cfg, "wif_aws_region"),
 		baseURL:             strings.TrimRight(configValue(cfg, "base_url"), "/"),
 		filter:              configValue(cfg, "filter"),
 		perPage:             defaultPageSize,
@@ -836,10 +937,18 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	if settings.token == "" {
-		return settings, fmt.Errorf("gcp token is required")
+		if settings.wifAudience == "" && settings.wifServiceAccount == "" {
+			return settings, fmt.Errorf("gcp token or wif_audience and wif_service_account_email are required")
+		}
+		if settings.wifAudience == "" {
+			return settings, fmt.Errorf("gcp wif_audience is required when token is not provided")
+		}
+		if settings.wifServiceAccount == "" {
+			return settings, fmt.Errorf("gcp wif_service_account_email is required when token is not provided")
+		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyArtifactRepo, familyAudit, familyCloudFunction, familyCloudRunService, familyCloudSQLInstance, familyComputeInstance, familyEffectivePermission, familyGCSBucket, familyGKECluster, familyResourceExposure, familyRoleAssign, familySecret, familyServiceAcct:
+	case familyAssetMetadata, familyArtifactRepo, familyAudit, familyCloudFunction, familyCloudRunService, familyCloudSQLInstance, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeSubnetwork, familyEffectivePermission, familyGCSBucket, familyGKECluster, familyResourceExposure, familyRoleAssign, familySecret, familyServiceAcct:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -1011,6 +1120,99 @@ func listComputeInstances(ctx context.Context, source *Source, settings settings
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
+}
+
+func listComputeNetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]computeNetworkRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response pageResponse
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/networks"
+	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.Items, "gcp compute network", func(record *computeNetworkRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
+func listComputeSubnetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]computeSubnetworkRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response computeAggregatedListResponse
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/subnetworks"
+	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.Subnetworks }, "region")
+	records, err := decodeRecords(rawRecords, "gcp compute subnetwork", func(record *computeSubnetworkRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
+func listComputeFirewalls(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]firewallRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response pageResponse
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/firewalls"
+	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.Items, "gcp compute firewall", func(record *firewallRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
+func listComputeDisks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]computeDiskRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response computeAggregatedListResponse
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/disks"
+	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.Disks }, "")
+	records, err := decodeRecords(rawRecords, "gcp compute disk", func(record *computeDiskRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
+func computeAggregatedRawRecords(items map[string]computeScopedResources, get func(computeScopedResources) []json.RawMessage, scopeField string) []json.RawMessage {
+	rawRecords := make([]json.RawMessage, 0)
+	for scope, scoped := range items {
+		field := computeAggregatedScopeField(scope, scopeField)
+		fieldNeedle := []byte(`"` + field + `"`)
+		for _, raw := range get(scoped) {
+			if len(raw) == 0 {
+				continue
+			}
+			rawRecords = append(rawRecords, raw)
+			if field != "" && scope != "" && !bytes.Contains(raw, fieldNeedle) {
+				var withScope map[string]any
+				if err := json.Unmarshal(raw, &withScope); err == nil {
+					withScope[field] = scope
+					if patched, err := json.Marshal(withScope); err == nil {
+						rawRecords[len(rawRecords)-1] = patched
+					}
+				}
+			}
+		}
+	}
+	return rawRecords
+}
+
+func computeAggregatedScopeField(scope string, fallback string) string {
+	switch {
+	case strings.HasPrefix(scope, "regions/"):
+		return "region"
+	case strings.HasPrefix(scope, "zones/"):
+		return "zone"
+	default:
+		return fallback
+	}
 }
 
 func listGKEClusters(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gkeClusterRecord, string, error) {
@@ -1388,6 +1590,75 @@ func computeInstanceEvent(settings settings, record computeInstanceRecord) (*pri
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-compute-instance-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_instance", "gcp/compute_instance/v1", payload, attributes, time.Now().UTC())
+}
+
+func computeNetworkEvent(settings settings, record computeNetworkRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	attributes := cloudResourceAttributes(settings, familyComputeNetwork, resourceID, record.Name, "compute_network", "global", record.Labels)
+	attributes["description"] = record.Description
+	attributes["auto_create_subnetworks"] = boolString(record.AutoCreateSubnetworks)
+	attributes["routing_mode"] = record.RoutingConfig.RoutingMode
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-network-"+resourceID, "gcp.compute_network", "gcp/compute_network/v1", payload, attributes, time.Now().UTC())
+}
+
+func computeSubnetworkEvent(settings settings, record computeSubnetworkRecord) (*primitives.Event, error) {
+	location := shortLocation(record.Region)
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	attributes := cloudResourceAttributes(settings, familyComputeSubnetwork, resourceID, record.Name, "compute_subnetwork", location, record.Labels)
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["ip_cidr_range"] = record.IPCIDRRange
+	attributes["private_ip_google_access"] = boolString(record.PrivateIPGoogleAccess)
+	attributes["purpose"] = record.Purpose
+	attributes["role"] = record.Role
+	attributes["stack_type"] = record.StackType
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-subnetwork-"+resourceID, "gcp.compute_subnetwork", "gcp/compute_subnetwork/v1", payload, attributes, time.Now().UTC())
+}
+
+func computeFirewallEvent(settings settings, record firewallRecord) (*primitives.Event, error) {
+	allowed := firewallPrimaryAllowed(record)
+	attributes := cloudResourceAttributes(settings, familyComputeFirewall, firstNonEmpty(record.ID, record.Name), record.Name, "compute_firewall", "global", nil)
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["direction"] = record.Direction
+	attributes["disabled"] = boolString(record.Disabled)
+	attributes["source_ranges"] = strings.Join(record.SourceRanges, ",")
+	attributes["target_tags"] = strings.Join(record.TargetTags, ",")
+	attributes["target_service_accounts"] = strings.Join(record.TargetServiceAccounts, ",")
+	attributes["protocol"] = allowed.IPProtocol
+	attributes["ports"] = strings.Join(allowed.Ports, ",")
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-firewall-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_firewall", "gcp/compute_firewall/v1", payload, attributes, time.Now().UTC())
+}
+
+func computeDiskEvent(settings settings, record computeDiskRecord) (*primitives.Event, error) {
+	location := shortLocation(firstNonEmpty(record.Zone, record.Region))
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	attributes := cloudResourceAttributes(settings, familyComputeDisk, resourceID, record.Name, "compute_disk", location, record.Labels)
+	attributes["zone"] = shortLocation(record.Zone)
+	attributes["region"] = firstNonEmpty(shortLocation(record.Region), attributes["region"])
+	attributes["disk_type"] = lastPathSegment(record.Type)
+	attributes["status"] = record.Status
+	attributes["size_gb"] = record.SizeGB
+	attributes["attached_to"] = strings.Join(record.Users, ",")
+	attributes["kms_key_name"] = record.DiskEncryptionKey.KMSKeyName
+	attributes["encryption_enabled"] = boolString(record.DiskEncryptionKey.KMSKeyName != "")
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-disk-"+resourceID, "gcp.compute_disk", "gcp/compute_disk/v1", payload, attributes, time.Now().UTC())
 }
 
 func gkeClusterEvent(settings settings, record gkeClusterRecord) (*primitives.Event, error) {
@@ -1948,7 +2219,11 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 		return fmt.Errorf("build request %s: %w", requestPath, err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+settings.token)
+	token, err := gcpBearerToken(ctx, source, settings)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -1972,6 +2247,77 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 		return fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return nil
+}
+
+func gcpBearerToken(ctx context.Context, source *Source, settings settings) (string, error) {
+	if settings.token != "" {
+		return settings.token, nil
+	}
+	if source == nil {
+		return "", fmt.Errorf("gcp wif auth requires source")
+	}
+	cacheKey := settings.wifAudience + "\x00" + settings.wifServiceAccount + "\x00" + settings.wifAWSRegion
+	if cached, ok := source.tokenSources.Load(cacheKey); ok {
+		return tokenFromSource(cached.(oauth2.TokenSource))
+	}
+	factory := defaultGCPTokenSource
+	if source.tokenSourceFactory != nil {
+		factory = source.tokenSourceFactory
+	}
+	tokenSource, err := factory(ctx, settings)
+	if err != nil {
+		return "", err
+	}
+	actual, _ := source.tokenSources.LoadOrStore(cacheKey, oauth2.ReuseTokenSource(nil, tokenSource))
+	return tokenFromSource(actual.(oauth2.TokenSource))
+}
+
+func tokenFromSource(tokenSource oauth2.TokenSource) (string, error) {
+	token, err := tokenSource.Token()
+	if err != nil {
+		return "", fmt.Errorf("fetch gcp access token: %w", err)
+	}
+	if !token.Valid() || strings.TrimSpace(token.AccessToken) == "" {
+		return "", fmt.Errorf("fetch gcp access token: token is invalid")
+	}
+	return token.AccessToken, nil
+}
+
+func defaultGCPTokenSource(ctx context.Context, settings settings) (oauth2.TokenSource, error) {
+	region := firstNonEmpty(settings.wifAWSRegion, "us-east-1")
+	awsConfig, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("load aws config for gcp wif: %w", err)
+	}
+	serviceAccountPath := url.PathEscape(settings.wifServiceAccount)
+	return externalaccount.NewTokenSource(ctx, externalaccount.Config{
+		Audience:                       settings.wifAudience,
+		SubjectTokenType:               strings.Join([]string{"urn", "ietf", "params", "aws", "token-type", "aws4_request"}, ":"),
+		ServiceAccountImpersonationURL: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" + serviceAccountPath + ":generateAccessToken",
+		Scopes:                         []string{gcpCloudPlatformScope},
+		AwsSecurityCredentialsSupplier: awsCredentialsSupplier{region: region, config: awsConfig},
+	})
+}
+
+type awsCredentialsSupplier struct {
+	region string
+	config awssdk.Config
+}
+
+func (s awsCredentialsSupplier) AwsRegion(context.Context, externalaccount.SupplierOptions) (string, error) {
+	return s.region, nil
+}
+
+func (s awsCredentialsSupplier) AwsSecurityCredentials(ctx context.Context, _ externalaccount.SupplierOptions) (*externalaccount.AwsSecurityCredentials, error) {
+	credentials, err := s.config.Credentials.Retrieve(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("retrieve aws credentials for gcp wif: %w", err)
+	}
+	return &externalaccount.AwsSecurityCredentials{
+		AccessKeyID:     credentials.AccessKeyID,
+		SecretAccessKey: credentials.SecretAccessKey,
+		SessionToken:    credentials.SessionToken,
+	}, nil
 }
 
 func (s *Source) safeClient() *http.Client {

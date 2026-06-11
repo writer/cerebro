@@ -119,6 +119,34 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: virtual-network
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: virtual_network
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: network-security-group
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: network_security_group
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: public-ip-address
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: public_ip_address
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: managed-disk
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: managed_disk
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
   - localId: resource-exposure
     config:
       arm_token: env:AZURE_ARM_TOKEN

@@ -55,11 +55,13 @@ emitted_kinds:
   - aws.vpclattice_service
   - aws.vpclattice_listener
   - aws.vpclattice_target_group
+  - aws.elbv2_load_balancer
   - aws.elbv2_listener
   - aws.elbv2_target_group
   - aws.apigateway_stage
   - aws.apigateway_route
   - aws.apigateway_integration
+  - aws.cloudfront_distribution
   - aws.cloudfront_origin_access_control
   - aws.cloudfront_key_group
   - aws.cloudfront_public_key
@@ -187,11 +189,13 @@ runtime_families:
   - vpclattice_service
   - vpclattice_listener
   - vpclattice_target_group
+  - elbv2_load_balancer
   - elbv2_listener
   - elbv2_target_group
   - apigateway_stage
   - apigateway_route
   - apigateway_integration
+  - cloudfront_distribution
   - cloudfront_origin_access_control
   - cloudfront_key_group
   - cloudfront_public_key
