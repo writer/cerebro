@@ -28,7 +28,6 @@ config:
     - qordoba-devel
   cerebro:scannerRoles:
     - roles/viewer
-    - roles/compute.viewer
     - roles/logging.privateLogViewer
 """
 

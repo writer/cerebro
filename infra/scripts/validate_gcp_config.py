@@ -12,7 +12,7 @@ import yaml
 
 
 ROLE_ARN_RE = re.compile(r"^arn:aws:iam::(?P<account>[0-9]{12}):role/(?P<name>[A-Za-z0-9+=,.@_/-]+)$")
-ALLOWED_SCANNER_ROLES = {"roles/viewer", "roles/compute.viewer", "roles/logging.privateLogViewer"}
+ALLOWED_SCANNER_ROLES = {"roles/viewer", "roles/logging.privateLogViewer"}
 DEV_DISALLOWED_PROJECT_PATTERNS = ("prod", "production")
 
 

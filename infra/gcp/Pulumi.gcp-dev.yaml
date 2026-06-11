@@ -15,5 +15,4 @@ config:
     - writer-devops
   cerebro:scannerRoles:
     - "roles/viewer"
-    - "roles/compute.viewer"
     - "roles/logging.privateLogViewer"
