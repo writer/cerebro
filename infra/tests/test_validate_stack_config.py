@@ -976,7 +976,7 @@ class ValidateStackConfigTest(unittest.TestCase):
 
         findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
 
-        self.assertEqual(len(aws_runtimes), 232)
+        self.assertEqual(len(aws_runtimes), 280)
         self.assertTrue(all(runtime["id"] in aws_scheduled_runtime_ids for runtime in aws_runtimes))
         self.assertEqual(
             {
@@ -986,15 +986,20 @@ class ValidateStackConfigTest(unittest.TestCase):
             {
                 "access_key",
                 "asset_metadata",
+                "cloudfront_distribution",
                 "ec2_instance",
                 "ecs_service",
                 "ecs_task",
                 "ecs_task_definition",
+                "elbv2_load_balancer",
                 "eks_cluster",
                 "eks_fargate_profile",
                 "eks_nodegroup",
                 "eks_pod_identity_association",
                 "effective_permission",
+                "globalaccelerator_accelerator",
+                "globalaccelerator_endpoint_group",
+                "globalaccelerator_listener",
                 "guardduty_finding",
                 "iam_group",
                 "iam_group_membership",
@@ -1018,6 +1023,9 @@ class ValidateStackConfigTest(unittest.TestCase):
                 "subnet",
                 "vpc",
                 "vpc_endpoint",
+                "vpclattice_listener",
+                "vpclattice_service",
+                "vpclattice_target_group",
             },
         )
         self.assertFalse(
@@ -1037,10 +1045,15 @@ class ValidateStackConfigTest(unittest.TestCase):
 
         findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
 
-        self.assertEqual(len(aws_runtimes), 60)
+        self.assertEqual(len(aws_runtimes), 72)
         self.assertTrue(all(runtime["id"] in aws_scheduled_runtime_ids for runtime in aws_runtimes))
         self.assertTrue(
             {
+                "cloudfront_distribution",
+                "elbv2_load_balancer",
+                "globalaccelerator_accelerator",
+                "globalaccelerator_endpoint_group",
+                "globalaccelerator_listener",
                 "guardduty_finding",
                 "inspector2_finding",
                 "kms_key",
@@ -1055,11 +1068,38 @@ class ValidateStackConfigTest(unittest.TestCase):
                 "subnet",
                 "vpc",
                 "vpc_endpoint",
+                "vpclattice_listener",
+                "vpclattice_service",
+                "vpclattice_target_group",
             }.issubset({str(runtime.get("config", {}).get("family", "")) for runtime in aws_runtimes})
         )
         self.assertFalse(
             any(finding.severity == "error" and "sec-dev AWS coverage" in finding.message for finding in findings)
         )
+
+    def test_actual_gcp_runtimes_use_wif_without_token_secrets(self) -> None:
+        for stack_name, expected_count, service_account in [
+            ("Pulumi.sec-dev.yaml", 68, "cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com"),
+            ("Pulumi.go-prod.yaml", 102, "cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com"),
+        ]:
+            with self.subTest(stack=stack_name):
+                config = validator.apply_source_runtime_rollouts(
+                    validator._load_config(Path(__file__).resolve().parents[1] / f"aws/{stack_name}")
+                )
+                gcp_runtimes = [runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "gcp"]
+                gcp_scheduled_runtime_ids = {
+                    validator._runtime_id_from_command(schedule.get("command"))
+                    for schedule in config["orchestratorSchedules"]
+                    if isinstance(schedule, dict)
+                }
+
+                self.assertEqual(len(gcp_runtimes), expected_count)
+                self.assertTrue(all(runtime["id"] in gcp_scheduled_runtime_ids for runtime in gcp_runtimes))
+                for runtime in gcp_runtimes:
+                    runtime_config = runtime.get("config", {})
+                    self.assertNotIn("token", runtime_config)
+                    self.assertEqual(runtime_config.get("wif_service_account_email"), service_account)
+                    self.assertIn("workloadIdentityPools", runtime_config.get("wif_audience", ""))
 
     def test_sec_dev_evidencecas_runtime_wires_private_endpoint_allowlist(self) -> None:
         config = validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")

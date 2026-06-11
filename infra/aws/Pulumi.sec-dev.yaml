@@ -268,6 +268,11 @@ config:
         cadenceHours: 6
         nameMaxLength: 29
       families:
+        - cloudfront_distribution
+        - elbv2_load_balancer
+        - globalaccelerator_accelerator
+        - globalaccelerator_endpoint_group
+        - globalaccelerator_listener
         - guardduty_finding
         - inspector2_finding
         - kms_key
@@ -280,6 +285,9 @@ config:
         - subnet
         - vpc
         - vpc_endpoint
+        - vpclattice_listener
+        - vpclattice_service
+        - vpclattice_target_group
     - sourceId: aws
       runtimePrefix: writer-aws-sec-dev-us2
       perPage: "100"
@@ -292,6 +300,7 @@ config:
         cadenceHours: 6
         nameMaxLength: 29
       families:
+        - elbv2_load_balancer
         - guardduty_finding
         - inspector2_finding
         - kms_key
@@ -304,6 +313,70 @@ config:
         - subnet
         - vpc
         - vpc_endpoint
+        - vpclattice_listener
+        - vpclattice_service
+        - vpclattice_target_group
+    - sourceId: gcp
+      runtimePrefix: writer-gcp-dev-writer-iam
+      perPage: "100"
+      commonConfig:
+        project_id: writer-iam
+        wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev
+        wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 36
+      families: &gcp_dev_wif_families
+        - asset_metadata
+        - audit
+        - cloud_function
+        - cloud_run_service
+        - cloud_sql_instance
+        - compute_disk
+        - compute_firewall
+        - compute_instance
+        - compute_network
+        - compute_subnetwork
+        - effective_permission
+        - gcs_bucket
+        - gke_cluster
+        - iam_role_assignment
+        - resource_exposure
+        - secret_manager_secret
+        - service_account
+    - sourceId: gcp
+      runtimePrefix: writer-gcp-dev-qordoba-devel
+      perPage: "100"
+      commonConfig:
+        project_id: qordoba-devel
+        wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev
+        wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 36
+      families: *gcp_dev_wif_families
+    - sourceId: gcp
+      runtimePrefix: writer-gcp-dev-networking
+      perPage: "100"
+      commonConfig:
+        project_id: writer-networking-nonprod
+        wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev
+        wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 36
+      families: *gcp_dev_wif_families
+    - sourceId: gcp
+      runtimePrefix: writer-gcp-dev-devops
+      perPage: "100"
+      commonConfig:
+        project_id: writer-devops
+        wif_audience: //iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev
+        wif_service_account_email: cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com
+      schedule:
+        cadenceHours: 6
+        nameMaxLength: 36
+      families: *gcp_dev_wif_families
   cerebro:sourceRuntimeObservability:
     - environment: sec-dev
       sourceSystem: evidence_cas
