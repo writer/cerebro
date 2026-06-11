@@ -438,6 +438,10 @@ def _orchestrator_schedule_limit(stack: str) -> int | None:
     return EVENTBRIDGE_RULES_PER_BUS_DEFAULT_QUOTA - reserved_rules
 
 
+def _schedule_backend(schedule: dict[str, Any]) -> str:
+    return str(schedule.get("backend") or schedule.get("scheduleBackend") or "eventbridge").strip()
+
+
 def _validate_source_runtime_service_bootstrap(
     stack: str,
     config: dict[str, Any],
@@ -1696,13 +1700,14 @@ def validate_stack(path: Path) -> list[Finding]:
     schedule_names: set[str] = set()
     environment_name = str(config.get("environment", stack)).strip() or stack
     schedule_limit = _orchestrator_schedule_limit(stack)
-    if schedule_limit is not None and len(schedules) > schedule_limit:
+    eventbridge_schedule_count = sum(1 for schedule in schedules if isinstance(schedule, dict) and _schedule_backend(schedule) == "eventbridge")
+    if schedule_limit is not None and eventbridge_schedule_count > schedule_limit:
         findings.append(
             _finding(
                 "error",
                 stack,
                 "cerebro:orchestratorSchedules",
-                f"orchestrator schedule count {len(schedules)} exceeds EventBridge rule capacity {schedule_limit}",
+                f"EventBridge-backed orchestrator schedule count {eventbridge_schedule_count} exceeds EventBridge rule capacity {schedule_limit}",
             )
         )
     for index, schedule in enumerate(schedules):
@@ -1718,14 +1723,17 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(_finding("error", stack, f"{schedule_path}.name", f"duplicate schedule name {name!r}"))
         else:
             schedule_names.add(name)
-            rule_name = _orchestrator_rule_name(environment_name, name)
-            if len(rule_name) > EVENTBRIDGE_RULE_NAME_MAX_LENGTH:
+            backend = _schedule_backend(schedule)
+            if backend not in {"eventbridge", "scheduler"}:
+                findings.append(_finding("error", stack, f"{schedule_path}.backend", "schedule backend must be eventbridge or scheduler"))
+            schedule_resource_name = _orchestrator_rule_name(environment_name, name)
+            if len(schedule_resource_name) > EVENTBRIDGE_RULE_NAME_MAX_LENGTH:
                 findings.append(
                     _finding(
                         "error",
                         stack,
                         f"{schedule_path}.name",
-                        f"EventBridge rule name {rule_name!r} must be at most {EVENTBRIDGE_RULE_NAME_MAX_LENGTH} characters",
+                        f"orchestrator schedule resource name {schedule_resource_name!r} must be at most {EVENTBRIDGE_RULE_NAME_MAX_LENGTH} characters",
                     )
                 )
 

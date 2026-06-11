@@ -211,6 +211,10 @@ def _schedule_suffix(value: str) -> str:
     return suffix
 
 
+def _schedule_backend(schedule: dict[str, Any]) -> str:
+    return str(schedule.get("backend") or schedule.get("scheduleBackend") or "eventbridge").strip()
+
+
 def _aws(args: list[str], region: str) -> Any:
     command = ["aws", *args, "--region", region, "--output", "json"]
     try:
@@ -311,6 +315,26 @@ def _runtime_targets(
         schedule_name = str(schedule.get("name") or runtime_id)
         suffix = _schedule_suffix(schedule_name)
         rule_name = f"{resource_prefix}-orchestrator" if suffix == "default" else f"{resource_prefix}-orchestrator-{suffix}"
+        backend = _schedule_backend(schedule)
+        if backend == "scheduler":
+            group_name = f"{resource_prefix}-orchestrator"
+            try:
+                response = _aws(["scheduler", "get-schedule", "--group-name", group_name, "--name", rule_name], region)
+            except RuntimeError as exc:
+                if allow_missing_targets and "ResourceNotFoundException" in str(exc):
+                    print(f"warning: skipping {runtime_id}; deployed EventBridge Scheduler schedule {group_name}/{rule_name!r} is missing")
+                    continue
+                raise
+            target = response.get("Target") or {}
+            if not target:
+                if allow_missing_targets:
+                    print(f"warning: skipping {runtime_id}; deployed EventBridge Scheduler schedule {group_name}/{rule_name!r} has no target yet")
+                    continue
+                raise ValueError(f"EventBridge Scheduler schedule {group_name}/{rule_name!r} must have a target")
+            targets.append(RuntimeTarget(runtime_id=runtime_id, schedule_name=schedule_name, rule_name=rule_name, target=target))
+            continue
+        if backend != "eventbridge":
+            raise ValueError(f"unsupported orchestrator schedule backend {backend!r}")
         try:
             response = _aws(["events", "list-targets-by-rule", "--rule", rule_name], region)
         except RuntimeError as exc:

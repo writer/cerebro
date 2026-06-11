@@ -981,6 +981,10 @@ if ecs_stack.get("orchestrator_rule"):
     pulumi.export("orchestrator_schedule_rule_name", ecs_stack["orchestrator_rule"].name)
 if ecs_stack.get("orchestrator_rules"):
     pulumi.export("orchestrator_schedule_rule_names", [rule.name for rule in ecs_stack["orchestrator_rules"]])
+if ecs_stack.get("orchestrator_scheduler_group"):
+    pulumi.export("orchestrator_scheduler_group_name", ecs_stack["orchestrator_scheduler_group"].name)
+if ecs_stack.get("orchestrator_scheduler_schedules"):
+    pulumi.export("orchestrator_scheduler_schedule_names", [schedule.name for schedule in ecs_stack["orchestrator_scheduler_schedules"]])
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
 pulumi.export("api_url", pulumi.Output.concat("https://", domain) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name))
 if web_alb_stack:

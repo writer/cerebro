@@ -129,6 +129,8 @@ def create_ecs_cluster(
     orchestrator_target = None
     orchestrator_rules = []
     orchestrator_targets = []
+    orchestrator_scheduler_group = None
+    orchestrator_scheduler_schedules = []
     orchestrator_task_definitions = []
     orchestrator_events_role = None
     if orchestrator_enabled:
@@ -171,36 +173,76 @@ def create_ecs_cluster(
             execution_role_arn=execution_role.arn,
             task_role_arn=worker_task_role.arn,
         )
+        if any(schedule["backend"] == "scheduler" for schedule in schedules):
+            orchestrator_scheduler_group = aws.scheduler.ScheduleGroup(
+                f"{name}-orchestrator-schedules",
+                name=f"{name}-orchestrator",
+                tags={"Name": f"{name}-orchestrator"},
+            )
         for schedule in schedules:
             schedule_suffix = schedule["suffix"]
             schedule_resource_prefix = f"{name}-orchestrator" if schedule_suffix == "default" else f"{name}-orchestrator-{schedule_suffix}"
-            rule = aws.cloudwatch.EventRule(
-                f"{schedule_resource_prefix}-schedule",
-                name=f"{name}-orchestrator" if schedule_suffix == "default" else schedule_resource_prefix,
-                schedule_expression=schedule["schedule_expression"],
-                tags={"Name": schedule_resource_prefix},
-            )
-            target = aws.cloudwatch.EventTarget(
-                f"{schedule_resource_prefix}-target",
-                rule=rule.name,
-                arn=cluster.arn,
-                role_arn=orchestrator_events_role.arn,
-                target_id=f"{schedule_suffix}-ecs"[:64],
-                ecs_target=aws.cloudwatch.EventTargetEcsTargetArgs(
-                    task_definition_arn=orchestrator_task_definition.arn,
-                    task_count=schedule["task_count"],
-                    launch_type="FARGATE",
-                    network_configuration=aws.cloudwatch.EventTargetEcsTargetNetworkConfigurationArgs(
-                        subnets=subnet_ids,
-                        security_groups=[security_group_id],
-                        assign_public_ip=False,
+            if schedule["backend"] == "scheduler":
+                scheduler_schedule = aws.scheduler.Schedule(
+                    f"{schedule_resource_prefix}-schedule",
+                    name=schedule_resource_prefix,
+                    group_name=orchestrator_scheduler_group.name,
+                    schedule_expression=schedule["schedule_expression"],
+                    flexible_time_window=aws.scheduler.ScheduleFlexibleTimeWindowArgs(
+                        mode="FLEXIBLE",
+                        maximum_window_in_minutes=schedule["flexible_window_minutes"],
                     ),
-                ),
-                input=_orchestrator_target_input(schedule["command"]),
-                opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
-            )
-            orchestrator_rules.append(rule)
-            orchestrator_targets.append(target)
+                    target=aws.scheduler.ScheduleTargetArgs(
+                        arn=cluster.arn,
+                        role_arn=orchestrator_events_role.arn,
+                        input=_orchestrator_target_input(schedule["command"]),
+                        ecs_parameters=aws.scheduler.ScheduleTargetEcsParametersArgs(
+                            task_definition_arn=orchestrator_task_definition.arn,
+                            task_count=schedule["task_count"],
+                            launch_type="FARGATE",
+                            network_configuration=aws.scheduler.ScheduleTargetEcsParametersNetworkConfigurationArgs(
+                                subnets=subnet_ids,
+                                security_groups=[security_group_id],
+                                assign_public_ip=False,
+                            ),
+                        ),
+                        retry_policy=aws.scheduler.ScheduleTargetRetryPolicyArgs(
+                            maximum_event_age_in_seconds=3600,
+                            maximum_retry_attempts=2,
+                        ),
+                    ),
+                    state="ENABLED",
+                    opts=pulumi.ResourceOptions(depends_on=[capacity_providers, orchestrator_events_role]),
+                )
+                orchestrator_scheduler_schedules.append(scheduler_schedule)
+            else:
+                rule = aws.cloudwatch.EventRule(
+                    f"{schedule_resource_prefix}-schedule",
+                    name=f"{name}-orchestrator" if schedule_suffix == "default" else schedule_resource_prefix,
+                    schedule_expression=schedule["schedule_expression"],
+                    tags={"Name": schedule_resource_prefix},
+                )
+                target = aws.cloudwatch.EventTarget(
+                    f"{schedule_resource_prefix}-target",
+                    rule=rule.name,
+                    arn=cluster.arn,
+                    role_arn=orchestrator_events_role.arn,
+                    target_id=f"{schedule_suffix}-ecs"[:64],
+                    ecs_target=aws.cloudwatch.EventTargetEcsTargetArgs(
+                        task_definition_arn=orchestrator_task_definition.arn,
+                        task_count=schedule["task_count"],
+                        launch_type="FARGATE",
+                        network_configuration=aws.cloudwatch.EventTargetEcsTargetNetworkConfigurationArgs(
+                            subnets=subnet_ids,
+                            security_groups=[security_group_id],
+                            assign_public_ip=False,
+                        ),
+                    ),
+                    input=_orchestrator_target_input(schedule["command"]),
+                    opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
+                )
+                orchestrator_rules.append(rule)
+                orchestrator_targets.append(target)
         orchestrator_rule = orchestrator_rules[0] if orchestrator_rules else None
         orchestrator_target = orchestrator_targets[0] if orchestrator_targets else None
 
@@ -333,6 +375,8 @@ def create_ecs_cluster(
         "orchestrator_rules": orchestrator_rules,
         "orchestrator_target": orchestrator_target,
         "orchestrator_targets": orchestrator_targets,
+        "orchestrator_scheduler_group": orchestrator_scheduler_group,
+        "orchestrator_scheduler_schedules": orchestrator_scheduler_schedules,
         "orchestrator_events_role": orchestrator_events_role,
         "task_role": task_role,
         "worker_task_role": worker_task_role,
@@ -681,7 +725,7 @@ def _create_orchestrator_events_role(
             "Version": "2012-10-17",
             "Statement": [{
                 "Effect": "Allow",
-                "Principal": {"Service": "events.amazonaws.com"},
+                "Principal": {"Service": ["events.amazonaws.com", "scheduler.amazonaws.com"]},
                 "Action": "sts:AssumeRole",
             }],
         }),
@@ -723,6 +767,8 @@ def _orchestrator_schedules(
             "schedule_expression": schedule_expression,
             "command": [str(part) for part in command],
             "task_count": max(1, int(task_count or 1)),
+            "backend": "eventbridge",
+            "flexible_window_minutes": 15,
         }]
     schedules = []
     seen = set()
@@ -739,8 +785,17 @@ def _orchestrator_schedules(
             "schedule_expression": schedule.get("scheduleExpression") or schedule.get("schedule_expression") or schedule_expression,
             "command": [str(part) for part in schedule_command],
             "task_count": max(1, int(schedule.get("taskCount") or schedule.get("task_count") or task_count or 1)),
+            "backend": _schedule_backend(schedule.get("backend") or schedule.get("scheduleBackend")),
+            "flexible_window_minutes": max(1, int(schedule.get("flexibleWindowMinutes") or schedule.get("flexible_window_minutes") or 15)),
         })
     return schedules
+
+
+def _schedule_backend(value) -> str:
+    backend = str(value or "eventbridge").strip()
+    if backend not in {"eventbridge", "scheduler"}:
+        raise ValueError("orchestrator schedule backend must be eventbridge or scheduler")
+    return backend
 
 
 def _schedule_suffix(value: str) -> str:

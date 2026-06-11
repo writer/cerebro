@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 import importlib.util
 import json
 from types import SimpleNamespace
@@ -198,6 +199,31 @@ class WorkerTaskRoleTest(unittest.TestCase):
         self.assertIn("arn:aws:iam::222222222222:role/cerebro-org-scan-role", assume_policy["policy"])
         self.assertNotIn("arn:aws:iam::*:role", assume_policy["policy"])
 
+    def test_orchestrator_schedule_role_trusts_events_and_scheduler(self) -> None:
+        role_calls: list[dict] = []
+
+        def fake_role(*args, **kwargs):
+            role_calls.append(kwargs)
+            return SimpleNamespace(name=kwargs.get("name", args[0]), arn=f"arn:aws:iam::123456789012:role/{args[0]}")
+
+        with (
+            patch.object(compute.aws.iam, "Role", side_effect=fake_role),
+            patch.object(compute.aws.iam, "RolePolicy", side_effect=lambda *args, **kwargs: SimpleNamespace(name=args[0])),
+            patch.object(compute.pulumi.Output, "all", side_effect=lambda *values: SimpleNamespace(apply=lambda callback: callback(values))),
+        ):
+            compute._create_orchestrator_events_role(
+                name="cerebro-sec-dev",
+                task_definition_arns=["task-def"],
+                execution_role_arn="exec-role",
+                task_role_arn="task-role",
+            )
+
+        assume_policy = json.loads(role_calls[0]["assume_role_policy"])
+        self.assertEqual(
+            assume_policy["Statement"][0]["Principal"]["Service"],
+            ["events.amazonaws.com", "scheduler.amazonaws.com"],
+        )
+
     def test_orchestrator_uses_separate_worker_task_role(self) -> None:
         task_role_names: list[str] = []
         task_definition_calls: list[dict] = []
@@ -370,6 +396,95 @@ class WorkerTaskRoleTest(unittest.TestCase):
             json.loads(event_target_calls[0]["input"]),
             {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-panopticon-alerts"]}]},
         )
+
+    def test_scheduler_backend_uses_eventbridge_scheduler(self) -> None:
+        task_definition_calls: list[dict] = []
+        scheduler_group_calls: list[dict] = []
+        scheduler_schedule_calls: list[dict] = []
+        event_target_calls: list[dict] = []
+
+        def fake_named_resource(*args, **kwargs):
+            name = kwargs.get("name") or args[0]
+            return SimpleNamespace(name=name, id=f"{name}-id", arn=f"arn:aws:test::{name}")
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        def fake_task_definition(**kwargs):
+            task_definition_calls.append(kwargs)
+            return SimpleNamespace(arn=f"arn:aws:ecs:us-east-1:123456789012:task-definition/{kwargs['name']}:1")
+
+        def fake_scheduler_group(*args, **kwargs):
+            scheduler_group_calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs["name"], arn=f"arn:aws:scheduler:us-east-1:123456789012:schedule-group/{kwargs['name']}")
+
+        def fake_scheduler_schedule(*args, **kwargs):
+            scheduler_schedule_calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs["name"], arn=f"arn:aws:scheduler:us-east-1:123456789012:schedule/{kwargs['group_name']}/{kwargs['name']}")
+
+        with ExitStack() as stack:
+            for patcher in [
+                patch.object(compute, "_create_execution_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-exec-role", policy="exec-policy")),
+                patch.object(compute, "_create_task_role", return_value=SimpleNamespace(name="task-role", arn="arn:aws:iam::123456789012:role/task-role")),
+                patch.object(compute, "_create_task_definition", side_effect=fake_task_definition),
+                patch.object(compute, "_create_orchestrator_events_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-orchestrator-events-role")),
+                patch.object(compute.aws.ecs, "Cluster", side_effect=fake_named_resource),
+                patch.object(compute.aws.ecs, "ClusterCapacityProviders", side_effect=fake_named_resource),
+                patch.object(compute.aws.ecs, "ClusterCapacityProvidersDefaultCapacityProviderStrategyArgs", side_effect=fake_args),
+                patch.object(compute.aws.ecs, "Service", side_effect=fake_named_resource),
+                patch.object(compute.aws.ecs, "ServiceCapacityProviderStrategyArgs", side_effect=fake_args),
+                patch.object(compute.aws.ecs, "ServiceNetworkConfigurationArgs", side_effect=fake_args),
+                patch.object(compute.aws.ecs, "ServiceLoadBalancerArgs", side_effect=fake_args),
+                patch.object(compute.aws.ecs, "ServiceDeploymentCircuitBreakerArgs", side_effect=fake_args),
+                patch.object(compute.aws.cloudwatch, "LogGroup", side_effect=fake_named_resource),
+                patch.object(compute.aws.cloudwatch, "EventTarget", side_effect=lambda *args, **kwargs: event_target_calls.append(kwargs) or fake_named_resource(*args, **kwargs)),
+                patch.object(compute.aws.scheduler, "ScheduleGroup", side_effect=fake_scheduler_group),
+                patch.object(compute.aws.scheduler, "Schedule", side_effect=fake_scheduler_schedule),
+                patch.object(compute.aws.scheduler, "ScheduleFlexibleTimeWindowArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetEcsParametersArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetEcsParametersNetworkConfigurationArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetRetryPolicyArgs", side_effect=fake_args),
+                patch.object(compute.aws.appautoscaling, "Target", side_effect=fake_named_resource),
+                patch.object(compute.pulumi, "ResourceOptions", side_effect=fake_args),
+            ]:
+                stack.enter_context(patcher)
+            result = compute.create_ecs_cluster(
+                name="cerebro-sec-dev",
+                vpc_id="vpc-1",
+                subnet_ids=["subnet-1"],
+                security_group_id="sg-1",
+                kms_key_id="key-1",
+                target_group_arn="tg-1",
+                container_image="image",
+                external_secrets_prefix="/cerebro/sec-dev",
+                orchestrator_enabled=True,
+                orchestrator_schedules=[
+                    {
+                        "name": "gcp-writer-iam-audit",
+                        "backend": "scheduler",
+                        "flexibleWindowMinutes": 10,
+                        "command": ["orchestrator", "run", "runtime_id=writer-gcp-prod-writer-iam-audit"],
+                    }
+                ],
+            )
+
+        self.assertEqual(event_target_calls, [])
+        self.assertEqual(scheduler_group_calls[0]["name"], "cerebro-sec-dev-orchestrator")
+        schedule_call = scheduler_schedule_calls[0]
+        self.assertEqual(schedule_call["name"], "cerebro-sec-dev-orchestrator-gcp-writer-iam-audit")
+        self.assertEqual(schedule_call["group_name"], "cerebro-sec-dev-orchestrator")
+        self.assertEqual(schedule_call["flexible_time_window"].maximum_window_in_minutes, 10)
+        self.assertEqual(
+            json.loads(schedule_call["target"].input),
+            {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-gcp-prod-writer-iam-audit"]}]},
+        )
+        self.assertEqual(
+            schedule_call["target"].ecs_parameters.task_definition_arn,
+            "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:1",
+        )
+        self.assertEqual(len(result["orchestrator_scheduler_schedules"]), 1)
+        self.assertEqual(result["orchestrator_rules"], [])
 
     def test_task_definition_bootstraps_panopticon_source_runtimes(self) -> None:
         task_definition_calls: list[dict] = []

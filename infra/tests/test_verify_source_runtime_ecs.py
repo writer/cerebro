@@ -145,6 +145,58 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
                 [],
             )
 
+    def test_runtime_targets_can_read_scheduler_target(self) -> None:
+        config = {
+            "orchestratorSchedules": [
+                {
+                    "name": "gcp-writer-iam-audit",
+                    "backend": "scheduler",
+                    "command": ["orchestrator", "run", "runtime_id=writer-gcp-prod-writer-iam-audit"],
+                }
+            ]
+        }
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            self.assertEqual(
+                args,
+                [
+                    "scheduler",
+                    "get-schedule",
+                    "--group-name",
+                    "cerebro-go-production-orchestrator",
+                    "--name",
+                    "cerebro-go-production-orchestrator-gcp-writer-iam-audit",
+                ],
+            )
+            return {
+                "Target": {
+                    "Arn": "cluster",
+                    "Input": "{\"containerOverrides\":[]}",
+                    "EcsParameters": {
+                        "TaskDefinitionArn": "task-definition",
+                        "LaunchType": "FARGATE",
+                        "NetworkConfiguration": {
+                            "awsvpcConfiguration": {
+                                "Subnets": ["subnet-1"],
+                                "SecurityGroups": ["sg-1"],
+                                "AssignPublicIp": "DISABLED",
+                            }
+                        },
+                    },
+                }
+            }
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            targets = _runtime_targets(
+                config,
+                ["writer-gcp-prod-writer-iam-audit"],
+                "cerebro-go-production",
+                "us-east-1",
+            )
+
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(targets[0].target["Arn"], "cluster")
+
     def test_task_family_from_arn(self) -> None:
         self.assertEqual(
             _task_family("arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator-cosmo-session:3"),
