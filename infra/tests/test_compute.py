@@ -82,6 +82,94 @@ class SourceRuntimeEnvironmentTest(unittest.TestCase):
             )
 
 
+class SourceRuntimeBootstrapRegistryTest(unittest.TestCase):
+    def test_environment_files_are_retained_and_expose_prefix_arn(self) -> None:
+        object_calls: list[dict] = []
+
+        def fake_bucket(*args, **kwargs):
+            return SimpleNamespace(
+                id="writer-cerebro-sec-dev-source-runtime-bootstrap",
+                arn="arn:aws:s3:::writer-cerebro-sec-dev-source-runtime-bootstrap",
+            )
+
+        def fake_resource(*args, **kwargs):
+            return SimpleNamespace(name=args[0])
+
+        def fake_object(*args, **kwargs):
+            object_calls.append(kwargs)
+            return SimpleNamespace(
+                arn=f"arn:aws:s3:::writer-cerebro-sec-dev-source-runtime-bootstrap/{kwargs['key']}",
+            )
+
+        with (
+            patch.object(compute.aws.s3, "Bucket", side_effect=fake_bucket),
+            patch.object(compute.aws.s3, "BucketPublicAccessBlock", side_effect=fake_resource),
+            patch.object(compute.aws.s3, "BucketServerSideEncryptionConfiguration", side_effect=fake_resource),
+            patch.object(compute.aws.s3, "BucketVersioningV2", side_effect=fake_resource),
+            patch.object(compute.aws.s3, "BucketObjectv2", side_effect=fake_object),
+            patch.object(compute.pulumi.Output, "concat", side_effect=lambda *parts: "".join(parts)),
+            patch.object(compute.pulumi, "ResourceOptions", side_effect=lambda **kwargs: SimpleNamespace(**kwargs)),
+        ):
+            environment_files = compute._create_source_runtime_bootstrap_environment_files(
+                "cerebro-sec-dev",
+                "kms-key",
+                {"orchestrator": '{"runtimes":[]}'},
+            )
+
+        self.assertEqual(len(object_calls), 1)
+        self.assertTrue(object_calls[0]["opts"].retain_on_delete)
+        self.assertEqual(
+            environment_files["orchestrator"]["object_prefix_arn"],
+            "arn:aws:s3:::writer-cerebro-sec-dev-source-runtime-bootstrap/source-runtime-bootstrap/*",
+        )
+        self.assertEqual(
+            environment_files["orchestrator"]["environment_file_arn"],
+            f"arn:aws:s3:::writer-cerebro-sec-dev-source-runtime-bootstrap/{object_calls[0]['key']}",
+        )
+
+    def test_execution_role_grants_registry_prefix_and_exposes_policy_dependency(self) -> None:
+        policies: list[dict] = []
+
+        class FakeOutputAll:
+            def __init__(self, values: tuple):
+                self.values = values
+
+            def apply(self, callback):
+                return callback(self.values)
+
+        def fake_role(*args, **kwargs):
+            return SimpleNamespace(name=kwargs.get("name", args[0]), arn=f"arn:aws:iam::123456789012:role/{args[0]}")
+
+        def fake_policy(*args, **kwargs):
+            policy = SimpleNamespace(name=args[0])
+            policies.append({"resource": args[0], **kwargs, "result": policy})
+            return policy
+
+        with (
+            patch.object(compute.aws, "get_region", return_value=SimpleNamespace(region="us-east-1")),
+            patch.object(compute.aws, "get_caller_identity", return_value=SimpleNamespace(account_id="123456789012")),
+            patch.object(compute.aws.iam, "Role", side_effect=fake_role),
+            patch.object(compute.aws.iam, "RolePolicyAttachment", side_effect=lambda *args, **kwargs: SimpleNamespace(name=args[0])),
+            patch.object(compute.aws.iam, "RolePolicy", side_effect=fake_policy),
+            patch.object(compute.pulumi.Output, "all", side_effect=lambda *values: FakeOutputAll(values)),
+        ):
+            role = compute._create_execution_role(
+                "cerebro-sec-dev",
+                "kms-key",
+                ["/cerebro/sec-dev"],
+                ["arn:aws:s3:::bootstrap/source-runtime-bootstrap/*"],
+                ["arn:aws:s3:::bootstrap"],
+            )
+
+        policy_document = json.loads(policies[0]["policy"])
+        object_statement = next(statement for statement in policy_document["Statement"] if statement.get("Sid") == "ReadSourceRuntimeBootstrapRegistry")
+        self.assertEqual(
+            object_statement["Resource"],
+            ["arn:aws:s3:::bootstrap/source-runtime-bootstrap/*"],
+        )
+        self.assertIs(role.policy, policies[0]["result"])
+
+
 class WorkerTaskRoleTest(unittest.TestCase):
     def test_task_role_assume_policy_uses_declared_role_arns_only(self) -> None:
         policies: list[dict] = []
@@ -183,17 +271,19 @@ class WorkerTaskRoleTest(unittest.TestCase):
                         "environment_file_arn": "arn:aws:s3:::bootstrap/service.env",
                         "bucket_arn": "arn:aws:s3:::bootstrap",
                         "object_arn": "arn:aws:s3:::bootstrap/service.env",
-                        "resources": [],
+                        "object_prefix_arn": "arn:aws:s3:::bootstrap/source-runtime-bootstrap/*",
+                        "resources": ["service-env-file"],
                     },
                     "orchestrator": {
                         "environment_file_arn": "arn:aws:s3:::bootstrap/orchestrator.env",
                         "bucket_arn": "arn:aws:s3:::bootstrap",
                         "object_arn": "arn:aws:s3:::bootstrap/orchestrator.env",
-                        "resources": [],
+                        "object_prefix_arn": "arn:aws:s3:::bootstrap/source-runtime-bootstrap/*",
+                        "resources": ["orchestrator-env-file"],
                     },
                 },
             ),
-            patch.object(compute, "_create_execution_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-exec-role")),
+            patch.object(compute, "_create_execution_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-exec-role", policy="exec-policy")),
             patch.object(compute, "_create_task_role", side_effect=fake_task_role),
             patch.object(compute, "_create_task_definition", side_effect=fake_task_definition),
             patch.object(compute, "_create_orchestrator_events_role", side_effect=fake_orchestrator_events_role),
@@ -258,10 +348,12 @@ class WorkerTaskRoleTest(unittest.TestCase):
             api_task_definition["source_runtime_bootstrap_environment_file_arn"],
             "arn:aws:s3:::bootstrap/service.env",
         )
+        self.assertEqual(api_task_definition["depends_on"], ["service-env-file", "exec-policy"])
         self.assertEqual(
             orchestrator_task_definition["source_runtime_bootstrap_environment_file_arn"],
             "arn:aws:s3:::bootstrap/orchestrator.env",
         )
+        self.assertEqual(orchestrator_task_definition["depends_on"], ["orchestrator-env-file", "exec-policy"])
         self.assertEqual(
             orchestrator_events_role_calls[0]["task_role_arn"],
             "arn:aws:iam::123456789012:role/cerebro-sec-dev-worker-task-role",
