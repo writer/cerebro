@@ -35,7 +35,7 @@ provider_id = config.get("wifProviderId") or "cerebro-aws-provider"
 scanner_sa_id = config.get("scannerServiceAccountId") or "cerebro-scanner"
 
 _role_arn_pattern = re.compile(r"^arn:aws:iam::([0-9]{12}):role/([A-Za-z0-9+=,.@_/-]+)$")
-_allowed_scanner_roles = {"roles/viewer", "roles/logging.privateLogViewer"}
+_allowed_scanner_roles = {"roles/viewer", "roles/compute.viewer", "roles/logging.privateLogViewer"}
 
 
 def _validate_config() -> None:
