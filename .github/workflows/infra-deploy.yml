@@ -449,7 +449,7 @@ jobs:
         run: |
           args=()
           if [ "${{ needs.changes.outputs.aws_sec_dev_runtime_verify }}" = "true" ]; then
-            args+=(--source-runtime-verify --source-runtime-observability-targets --source-id panopticon --source-target-concurrency 4 --stop-running-source-before-run)
+            args+=(--source-runtime-verify --source-runtime-observability-targets --source-id panopticon --source-id okta --source-target-concurrency 4 --stop-running-source-before-run)
           fi
           if [ "${{ needs.changes.outputs.aws_sec_dev_graph_health }}" = "true" ]; then
             args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-sec-dev --github-output "$GITHUB_OUTPUT")
@@ -606,7 +606,7 @@ jobs:
         run: |
           args=()
           if [ "${{ needs.changes.outputs.aws_go_prod_runtime_verify }}" = "true" ]; then
-            args+=(--source-runtime-verify --source-runtime-observability-targets --source-id panopticon --source-target-concurrency 2)
+            args+=(--source-runtime-verify --source-runtime-observability-targets --source-id panopticon --source-id okta --source-target-concurrency 2)
           fi
           if [ "${{ needs.changes.outputs.aws_go_prod_graph_health }}" = "true" ]; then
             args+=(--graph-health --graph-health-output graph-health-go-prod.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-go-prod --github-output "$GITHUB_OUTPUT")
