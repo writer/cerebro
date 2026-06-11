@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -84,6 +85,11 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	closeTelemetry, err := configureOpenTelemetry(context.Background(), cfg)
+	if err != nil {
+		return fmt.Errorf("configure telemetry: %w", err)
+	}
+	defer shutdownTelemetry(context.Background(), closeTelemetry, cfg.ShutdownTimeout)
 	deps, closeDeps, err := bootstrap.OpenDependencies(context.Background(), cfg)
 	if err != nil {
 		return fmt.Errorf("open dependencies: %w", err)
@@ -129,6 +135,42 @@ func serve() error {
 		}
 		waitForStartupJobs(shutdownCtx, grcWarmupDone, riskBackfillDone)
 		return nil
+	}
+}
+
+func configureOpenTelemetry(ctx context.Context, cfg appconfig.Config) (telemetry.ShutdownFunc, error) {
+	return telemetry.ConfigureOpenTelemetry(ctx, telemetry.OpenTelemetryOptions{
+		Enabled:         cfg.OTEL.Enabled,
+		ServiceName:     firstNonEmptyString(cfg.OTEL.ServiceName, buildinfo.ServiceName),
+		ServiceVersion:  buildinfo.Version,
+		Protocol:        cfg.OTEL.Protocol,
+		Endpoint:        cfg.OTEL.Endpoint,
+		TracesEndpoint:  cfg.OTEL.TracesEndpoint,
+		MetricsEndpoint: cfg.OTEL.MetricsEndpoint,
+		Headers:         cfg.OTEL.Headers,
+		Insecure:        cfg.OTEL.Insecure,
+		TraceSampleRate: cfg.OTEL.TraceSampleRate,
+		MetricInterval:  cfg.OTEL.MetricInterval,
+	})
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func shutdownTelemetry(ctx context.Context, closeTelemetry telemetry.ShutdownFunc, timeout time.Duration) {
+	if closeTelemetry == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if err := closeTelemetry(ctx); err != nil {
+		log.Printf("shutdown telemetry: %v", err)
 	}
 }
 
@@ -318,6 +360,11 @@ func runSourceRuntime(args []string) error {
 	}
 	ctx, stop := sourceRuntimeCommandContext()
 	defer stop()
+	closeTelemetry, err := configureOpenTelemetry(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("configure telemetry: %w", err)
+	}
+	defer shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("open dependencies: %w", err)

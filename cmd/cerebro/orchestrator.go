@@ -210,6 +210,15 @@ func parsePositiveDurationArg(name string, value string) (time.Duration, error) 
 }
 
 func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (result *orchestratorResult, err error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	closeTelemetry, err := configureOpenTelemetry(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("configure telemetry: %w", err)
+	}
+	defer shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 	ctx, span := telemetry.Start(ctx, "orchestrator.run", telemetry.Attrs(
 		telemetryField("runtime_id", options.Filter.RuntimeID),
 		telemetryField("tenant_id", options.Filter.TenantID),
@@ -232,10 +241,6 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		}
 		telemetry.End(span, status, spanAttributes)
 	}()
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
-	}
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open dependencies: %w", err)

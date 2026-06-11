@@ -11,6 +11,11 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestEventEmitsParseableJSONLineOnStderr(t *testing.T) {
@@ -96,6 +101,48 @@ func TestParseTraceParentValidatesTraceFlags(t *testing.T) {
 			t.Fatalf("malformed traceparent flags accepted: %q", header)
 		}
 	}
+}
+
+func TestStartAndEventBridgeToOpenTelemetry(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	oldProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(oldProvider)
+		_ = provider.Shutdown(context.Background())
+	})
+
+	ctx, span := Start(context.Background(), "test.span", Attrs(Field{Key: "source_id", Value: "github"}))
+	Event(ctx, "test.event", Attrs(Field{Key: "events_processed", Value: 3}))
+	End(span, "completed", Attrs(Field{Key: "status_detail", Value: "ok"}))
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("ended spans = %d, want 1", len(ended))
+	}
+	if ended[0].Name() != "test.span" {
+		t.Fatalf("span name = %q, want test.span", ended[0].Name())
+	}
+	if len(ended[0].Events()) != 1 || ended[0].Events()[0].Name != "test.event" {
+		t.Fatalf("span events = %#v, want test.event", ended[0].Events())
+	}
+}
+
+func TestConfigureOpenTelemetryDisabledLeavesNoopProviderUsable(t *testing.T) {
+	oldProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(noop.NewTracerProvider())
+	t.Cleanup(func() { otel.SetTracerProvider(oldProvider) })
+
+	shutdown, err := ConfigureOpenTelemetry(context.Background(), OpenTelemetryOptions{})
+	if err != nil {
+		t.Fatalf("ConfigureOpenTelemetry() error = %v", err)
+	}
+	if err := shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown() error = %v", err)
+	}
+	_, span := Start(context.Background(), "noop.span", Attrs())
+	End(span, "completed", Attrs())
 }
 
 func captureOutput(t *testing.T, fn func()) (string, string) {

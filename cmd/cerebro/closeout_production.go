@@ -154,13 +154,19 @@ func openCloseoutProductionDeps(ctx context.Context) (*closeoutProductionDeps, e
 	if err != nil {
 		return nil, fmt.Errorf("closeout: load config: %w", err)
 	}
+	closeTelemetry, err := configureOpenTelemetry(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("closeout: configure telemetry: %w", err)
+	}
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
+		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 		return nil, fmt.Errorf("closeout: open dependencies: %w", err)
 	}
 	store, ok := deps.StateStore.(*postgres.Store)
 	if !ok || store == nil {
 		_ = closeDeps()
+		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 		return nil, errors.New("closeout: postgres state store is required")
 	}
 	service := buildCloseoutFindingService(store, deps.AppendLog, deps.GraphStore)
@@ -168,6 +174,7 @@ func openCloseoutProductionDeps(ctx context.Context) (*closeoutProductionDeps, e
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
 		_ = closeDeps()
+		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 		return nil, fmt.Errorf("closeout: load aws config: %w", err)
 	}
 	return &closeoutProductionDeps{
@@ -179,6 +186,7 @@ func openCloseoutProductionDeps(ctx context.Context) (*closeoutProductionDeps, e
 			if cerr := closeDeps(); cerr != nil {
 				log.Printf("close dependencies: %v", cerr)
 			}
+			shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 		},
 	}, nil
 }

@@ -369,6 +369,11 @@ func runGraph(args []string) error {
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
+		closeTelemetry, err := configureOpenTelemetry(ctx, cfg)
+		if err != nil {
+			return fmt.Errorf("configure telemetry: %w", err)
+		}
+		defer shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 		deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 		if err != nil {
 			return fmt.Errorf("open dependencies: %w", err)
@@ -1115,15 +1120,25 @@ func openGraphDependencies(ctx context.Context) (bootstrap.Dependencies, func() 
 	if err != nil {
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("load config: %w", err)
 	}
+	closeTelemetry, err := configureOpenTelemetry(ctx, cfg)
+	if err != nil {
+		return bootstrap.Dependencies{}, nil, fmt.Errorf("configure telemetry: %w", err)
+	}
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
+		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("open dependencies: %w", err)
 	}
 	if deps.GraphStore == nil {
 		_ = closeDeps()
+		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("graph store is required")
 	}
-	return deps, closeDeps, nil
+	return deps, func() error {
+		err := closeDeps()
+		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
+		return err
+	}, nil
 }
 
 func openGraphCleanupDependencies(ctx context.Context) (bootstrap.Dependencies, func() error, error) {
@@ -1131,11 +1146,20 @@ func openGraphCleanupDependencies(ctx context.Context) (bootstrap.Dependencies, 
 	if err != nil {
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("load config: %w", err)
 	}
+	closeTelemetry, err := configureOpenTelemetry(ctx, cfg)
+	if err != nil {
+		return bootstrap.Dependencies{}, nil, fmt.Errorf("configure telemetry: %w", err)
+	}
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
+		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("open dependencies: %w", err)
 	}
-	return deps, closeDeps, nil
+	return deps, func() error {
+		err := closeDeps()
+		shutdownTelemetry(ctx, closeTelemetry, cfg.ShutdownTimeout)
+		return err
+	}, nil
 }
 
 func logClose(closeFn func() error) {
