@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -2273,7 +2272,7 @@ func tokenFromSource(ctx context.Context, tokenSource oauth2.TokenSource) (strin
 }
 
 func defaultGCPTokenSource(ctx context.Context, settings settings) (oauth2.TokenSource, error) {
-	region := firstNonEmpty(settings.wifAWSRegion, os.Getenv("AWS_REGION"), os.Getenv("AWS_DEFAULT_REGION"), "us-east-1")
+	region := firstNonEmpty(settings.wifAWSRegion, "us-east-1")
 	awsConfig, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("load aws config for gcp wif: %w", err)
