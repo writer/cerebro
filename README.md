@@ -120,6 +120,7 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using 
 | --- | --- | --- |
 | Run the lightweight server | `make serve` | Starts the API without external stores; useful for health, source catalog, and OpenAPI checks. |
 | Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, and Neo4j. |
+| Host Cerebro | `docs/HOSTING.md` | Public-safe deployment guidance for containers, backing stores, auth, TLS, health checks, operations, and rollout. |
 | Try a local end-to-end path | `docs/GETTING_STARTED.md` | Creates an SDK source runtime, writes a synthetic claim, and reads it back. |
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
 | Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |
@@ -402,6 +403,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [API reference](docs/API_REFERENCE.md) | OpenAPI-oriented route reference |
 | [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
 | [Configuration](docs/CONFIGURATION.md) | configuration and deployment notes |
+| [Hosting](docs/HOSTING.md) | public-safe hosting guide for containers, backing stores, proxy/TLS, operations, and rollout |
 | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) | native Droid MCP setup, OAuth flow, transport compatibility, and troubleshooting |
 | [DevEx codegen catalog](docs/DEVEX_CODEGEN_AUTOGEN.md) | generated surface map for OpenAPI, proto, and detection catalog checks |
 | [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |
