@@ -1228,10 +1228,11 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := ports.SourceRuntimeFilter{
-		RuntimeID: strings.TrimSpace(r.URL.Query().Get("runtime_id")),
-		TenantID:  strings.TrimSpace(r.URL.Query().Get("tenant_id")),
-		SourceID:  strings.TrimSpace(r.URL.Query().Get("source_id")),
-		Limit:     limit,
+		RuntimeID:  strings.TrimSpace(r.URL.Query().Get("runtime_id")),
+		RuntimeIDs: csvQueryValues(r.URL.Query().Get("runtime_ids")),
+		TenantID:   strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		SourceID:   strings.TrimSpace(r.URL.Query().Get("source_id")),
+		Limit:      limit,
 	}
 	if filter.TenantID == "" {
 		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {
@@ -1241,28 +1242,45 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 	if filter.TenantID == "" {
 		filter.TenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
 	}
-	if filter.TenantID == "" && filter.RuntimeID != "" && requiresTenantFilter(r.Context()) {
+	filterRuntimeIDs := append([]string{}, filter.RuntimeIDs...)
+	if strings.TrimSpace(filter.RuntimeID) != "" {
+		filterRuntimeIDs = append(filterRuntimeIDs, filter.RuntimeID)
+	}
+	filterRuntimeIDs = csvQueryValues(strings.Join(filterRuntimeIDs, ","))
+	if filter.TenantID == "" && len(filterRuntimeIDs) != 0 && requiresTenantFilter(r.Context()) {
 		store := sourceRuntimeStore(a.deps.StateStore)
 		if store == nil {
 			writeSourceRuntimeError(w, sourceruntime.ErrRuntimeUnavailable)
 			return
 		}
-		runtime, err := store.GetSourceRuntime(r.Context(), filter.RuntimeID)
-		if errors.Is(err, ports.ErrSourceRuntimeNotFound) {
-			writeSourceRuntimeListJSON(w, http.StatusOK, nil)
+		tenantIDs := map[string]struct{}{}
+		for _, runtimeID := range filterRuntimeIDs {
+			runtime, err := store.GetSourceRuntime(r.Context(), runtimeID)
+			if errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+				writeSourceRuntimeListJSON(w, http.StatusOK, nil)
+				return
+			}
+			if err != nil {
+				writeSourceRuntimeError(w, err)
+				return
+			}
+			if !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
+				writeSourceRuntimeListJSON(w, http.StatusOK, nil)
+				return
+			}
+			if tenantID := strings.TrimSpace(runtime.GetTenantId()); tenantID != "" {
+				tenantIDs[tenantID] = struct{}{}
+			}
+		}
+		if len(tenantIDs) > 1 {
+			writeSourceRuntimeError(w, errTenantForbidden)
 			return
 		}
-		if err != nil {
-			writeSourceRuntimeError(w, err)
-			return
+		for tenantID := range tenantIDs {
+			filter.TenantID = tenantID
 		}
-		if !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
-			writeSourceRuntimeListJSON(w, http.StatusOK, nil)
-			return
-		}
-		filter.TenantID = strings.TrimSpace(runtime.GetTenantId())
 	}
-	if filter.TenantID == "" && filter.RuntimeID == "" && requiresTenantFilter(r.Context()) {
+	if filter.TenantID == "" && len(filterRuntimeIDs) == 0 && requiresTenantFilter(r.Context()) {
 		writeSourceRuntimeError(w, errTenantForbidden)
 		return
 	}

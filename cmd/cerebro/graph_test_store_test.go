@@ -316,10 +316,29 @@ func (s *graphTestStore) ListIngestRuns(_ context.Context, filter graphstore.Ing
 		if filter.RuntimeID != "" && run.RuntimeID != filter.RuntimeID {
 			continue
 		}
+		if len(filter.RuntimeIDs) != 0 && !testStringInSlice(filter.RuntimeIDs, run.RuntimeID) {
+			continue
+		}
 		if filter.Status != "" && run.Status != filter.Status {
 			continue
 		}
 		runs = append(runs, run)
+	}
+	if filter.LatestByRuntime {
+		latestByRuntime := map[string]graphstore.IngestRun{}
+		for _, run := range runs {
+			key := strings.TrimSpace(run.RuntimeID)
+			if key == "" {
+				key = strings.TrimSpace(run.ID)
+			}
+			if current, ok := latestByRuntime[key]; !ok || run.StartedAt > current.StartedAt || (run.StartedAt == current.StartedAt && run.ID > current.ID) {
+				latestByRuntime[key] = run
+			}
+		}
+		runs = runs[:0]
+		for _, run := range latestByRuntime {
+			runs = append(runs, run)
+		}
 	}
 	sort.Slice(runs, func(i, j int) bool {
 		return runs[i].ID < runs[j].ID
@@ -328,6 +347,15 @@ func (s *graphTestStore) ListIngestRuns(_ context.Context, filter graphstore.Ing
 		runs = runs[:filter.Limit]
 	}
 	return runs, nil
+}
+
+func testStringInSlice(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func sortedTestLinks(links map[string]*ports.ProjectedLink) []*ports.ProjectedLink {

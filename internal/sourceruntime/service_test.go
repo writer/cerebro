@@ -84,6 +84,9 @@ func (s *runtimeStore) ListSourceRuntimes(_ context.Context, filter ports.Source
 		if filter.RuntimeID != "" && runtime.GetId() != filter.RuntimeID {
 			continue
 		}
+		if len(filter.RuntimeIDs) != 0 && !stringInSlice(filter.RuntimeIDs, runtime.GetId()) {
+			continue
+		}
 		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
 			continue
 		}
@@ -96,6 +99,15 @@ func (s *runtimeStore) ListSourceRuntimes(_ context.Context, filter ports.Source
 		}
 	}
 	return runtimes, nil
+}
+
+func stringInSlice(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 type appendLog struct {
@@ -766,6 +778,27 @@ func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	}
 	if len(runtimes) != 1 || runtimes[0].GetId() != "other-token" {
 		t.Fatalf("List(runtime_id) returned %#v, want other-token", runtimes)
+	}
+}
+
+func TestListSupportsRuntimeIDsFilter(t *testing.T) {
+	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {Id: "runtime-a", SourceId: "okta", TenantId: "writer"},
+		"runtime-b": {Id: "runtime-b", SourceId: "github", TenantId: "writer"},
+		"runtime-c": {Id: "runtime-c", SourceId: "aws", TenantId: "writer"},
+	}}, nil, nil)
+
+	runtimes, err := service.List(context.Background(), ports.SourceRuntimeFilter{RuntimeIDs: []string{"runtime-b", "runtime-a", "runtime-b"}})
+	if err != nil {
+		t.Fatalf("List(runtime_ids) error = %v", err)
+	}
+	got := []string{}
+	for _, runtime := range runtimes {
+		got = append(got, runtime.GetId())
+	}
+	sort.Strings(got)
+	if len(got) != 2 || got[0] != "runtime-a" || got[1] != "runtime-b" {
+		t.Fatalf("List(runtime_ids) ids = %#v, want runtime-a/runtime-b", got)
 	}
 }
 

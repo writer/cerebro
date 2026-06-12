@@ -27,10 +27,11 @@ const (
 )
 
 type grcScope struct {
-	TenantID  string
-	RuntimeID string
-	SourceID  string
-	Limit     uint32
+	TenantID   string
+	RuntimeID  string
+	RuntimeIDs []string
+	SourceID   string
+	Limit      uint32
 }
 
 type grcDashboardResponse struct {
@@ -621,11 +622,29 @@ func grcScopeFromRequest(r *http.Request) (grcScope, error) {
 		return grcScope{}, err
 	}
 	return grcScope{
-		TenantID:  tenantID,
-		RuntimeID: strings.TrimSpace(r.URL.Query().Get("runtime_id")),
-		SourceID:  strings.TrimSpace(r.URL.Query().Get("source_id")),
-		Limit:     limit,
+		TenantID:   tenantID,
+		RuntimeID:  strings.TrimSpace(r.URL.Query().Get("runtime_id")),
+		RuntimeIDs: csvQueryValues(r.URL.Query().Get("runtime_ids")),
+		SourceID:   strings.TrimSpace(r.URL.Query().Get("source_id")),
+		Limit:      limit,
 	}, nil
+}
+
+func csvQueryValues(value string) []string {
+	seen := map[string]struct{}{}
+	values := []string{}
+	for _, part := range strings.Split(value, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		values = append(values, trimmed)
+	}
+	return values
 }
 
 func grcLimitFromRequest(r *http.Request) (uint32, error) {
@@ -644,10 +663,11 @@ func grcLimitFromRequest(r *http.Request) (uint32, error) {
 
 func (a *App) grcListRuntimes(r *http.Request, scope grcScope) ([]*cerebrov1.SourceRuntime, error) {
 	runtimes, err := a.runtimeService().List(r.Context(), ports.SourceRuntimeFilter{
-		RuntimeID: scope.RuntimeID,
-		TenantID:  scope.TenantID,
-		SourceID:  scope.SourceID,
-		Limit:     scope.Limit,
+		RuntimeID:  scope.RuntimeID,
+		RuntimeIDs: scope.RuntimeIDs,
+		TenantID:   scope.TenantID,
+		SourceID:   scope.SourceID,
+		Limit:      scope.Limit,
 	})
 	if err != nil {
 		return nil, err

@@ -104,7 +104,9 @@ type IngestRun struct {
 
 // IngestRunFilter scopes ingest run listing.
 type IngestRunFilter struct {
-	RuntimeID string
-	Status    string
-	Limit     int
+	RuntimeID       string
+	RuntimeIDs      []string
+	Status          string
+	Limit           int
+	LatestByRuntime bool
 }
