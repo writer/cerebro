@@ -43,7 +43,6 @@ func normalizeGitHubRepository(value string) string {
 func addContainerSourceRepositoryLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, imageURN string, containerRepositoryURN string, attrs map[string]string) string {
 	sourceRepository := firstAttribute(
 		attrs,
-		"github_code_repositorysitory",
 		"github_code_repository",
 		"source_repository",
 		"source_repo",

@@ -362,7 +362,6 @@ func aureliusProjectionAttributes(event *cerebrov1.EventEnvelope) map[string]str
 		"gcp_project_id",
 		"image_registry",
 		"image_repository",
-		"github_code_repositorysitory",
 		"github_code_repository",
 		"org.opencontainers.image.source",
 		"promoted_at",

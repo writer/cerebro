@@ -997,7 +997,7 @@
       "event_kinds": [
         "github.audit"
       ],
-      "output_kind": "finding.github_code_repositorysitory_collaborator_added",
+      "output_kind": "finding.github_repository_collaborator_added",
       "severity": "MEDIUM",
       "status": "open",
       "maturity": "test",
@@ -1010,7 +1010,7 @@
       ],
       "references": [
         "https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles",
-        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_code_repository_collaborator_change.yml"
+        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_repo_collaborator_change.yml"
       ],
       "false_positives": [
         "Expected onboarding or approved repository access change."
@@ -1047,7 +1047,7 @@
       "event_kinds": [
         "github.audit"
       ],
-      "output_kind": "finding.github_code_repositorysitory_ruleset_modified",
+      "output_kind": "finding.github_repository_ruleset_modified",
       "severity": "HIGH",
       "status": "open",
       "maturity": "test",
@@ -1060,7 +1060,7 @@
       ],
       "references": [
         "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets",
-        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_code_repository_ruleset_modified.yml"
+        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_repo_ruleset_modified.yml"
       ],
       "false_positives": [
         "Approved repository governance migration or ruleset tuning."
