@@ -31,6 +31,7 @@ DEFAULT_GRAPH_COMMAND_RETRY_SECONDS = 1800
 DEFAULT_CREDENTIAL_SAFE_TIMEOUT_SECONDS = 3300
 DEFAULT_LOG_WAIT_SECONDS = 60
 DEFAULT_LOG_POLL_SECONDS = 2
+MAX_ECS_CONTAINER_OVERRIDES_BYTES = 8192
 MIN_INGEST_RUN_LIMIT = 100
 INGEST_RUN_LIMIT_MULTIPLIER = 20
 MAX_INGEST_RUN_LIMIT = 500
@@ -875,11 +876,17 @@ def _graph_health_command(
     ]
     if required_relations:
         command.append(f"relations={','.join(sorted(required_relations))}")
-    if declared_runtime_ids:
-        command.append(f"runtime_ids={','.join(sorted(declared_runtime_ids))}")
     if allow_transient_source_failures:
         command.append("allow_transient_source_failures=true")
+    if declared_runtime_ids:
+        runtime_ids_arg = f"runtime_ids={','.join(sorted(declared_runtime_ids))}"
+        if _ecs_container_overrides_size([*command, runtime_ids_arg]) <= MAX_ECS_CONTAINER_OVERRIDES_BYTES:
+            command.append(runtime_ids_arg)
     return command
+
+
+def _ecs_container_overrides_size(command: list[str]) -> int:
+    return len(json.dumps(_graph_command_overrides_from_names(command, {"cerebro"}), separators=(",", ":")).encode("utf-8"))
 
 
 def _graph_health_errors(payload: dict[str, Any], exit_code: int | None) -> list[str]:

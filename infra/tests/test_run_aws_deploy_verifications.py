@@ -394,6 +394,13 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(category, "ecs_secret_initialization_failed")
 
+    def test_missing_ingest_runtime_history_is_degradation_category(self) -> None:
+        diagnostics = "ERROR: missing graph ingest run history for 2 declared runtime(s): runtime-a, runtime-b"
+
+        category = run_aws_deploy_verifications._graph_health_degradation_category(23, diagnostics)
+
+        self.assertEqual(category, "missing_ingest_runtime_history")
+
     def test_graph_integrity_failure_remains_blocking_when_degradation_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch(

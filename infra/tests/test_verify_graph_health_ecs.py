@@ -864,10 +864,18 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
                 "limit=100",
                 "max_running_minutes=45",
                 "relations=belongs_to,represents",
-                "runtime_ids=runtime-a,runtime-b",
                 "allow_transient_source_failures=true",
+                "runtime_ids=runtime-a,runtime-b",
             ],
         )
+
+    def test_graph_health_command_omits_runtime_ids_when_ecs_override_would_be_too_large(self) -> None:
+        runtime_ids = {f"runtime-{index:04d}-with-a-very-long-name" for index in range(400)}
+
+        command = _graph_health_command(runtime_ids, {"belongs_to"}, 45, True)
+
+        self.assertNotIn("runtime_ids=", " ".join(command))
+        self.assertIn("allow_transient_source_failures=true", command)
 
     def test_run_graph_health_command_with_retries_recovers_after_failed_status(self) -> None:
         original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries
