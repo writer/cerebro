@@ -1215,8 +1215,8 @@ func computeAggregatedScopeField(scope string, fallback string) string {
 	}
 }
 
-func listGKEClusters(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gkeClusterRecord, string, error) {
-	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+func listGKEClusters(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]gkeClusterRecord, string, error) {
+	query := url.Values{}
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/-/clusters"
