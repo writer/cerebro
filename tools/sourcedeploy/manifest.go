@@ -1,6 +1,6 @@
 // Package sourcedeploy declares the deploy contract that lives next to each
 // source's catalog and the loader/renderer that turns those manifests into
-// infrastructure-ready Pulumi config blocks.
+// infrastructure-ready config blocks.
 //
 // Scope of this package:
 //
@@ -11,13 +11,12 @@
 //
 //   - Out-of-scope (deployment cadence): orchestrator schedule rates, taskCount,
 //     and per-environment backfill instances. Those are operational decisions
-//     owned by the private infra repo (WriterInternal/cerebro) and do not
-//     belong in OSS.
+//     owned by deployment automation and do not belong in OSS.
 //
 // The synth tool walks every manifest and renders a single YAML fragment with
 // two keys (cerebro:sourceSecretKeys, cerebro:sourceRuntimes) that
-// WriterInternal merges into its Pulumi.<env>.yaml. Schedules are authored
-// alongside that merge step in the private repo.
+// deployment automation can merge into environment-specific config. Schedules
+// are authored alongside that deployment step.
 package sourcedeploy
 
 import (
@@ -225,9 +224,8 @@ func validateRuntimeConfig(runtime RuntimeManifest, declaredSecrets map[string]s
 	return nil
 }
 
-// isSensitiveConfigKey mirrors infra/aws/compute.py:_sensitive_source_config_key
-// so the manifest fails fast in CI if a developer leaves a literal token in
-// a runtime config.
+// isSensitiveConfigKey fails fast in CI if a developer leaves a literal token
+// in a runtime config.
 func isSensitiveConfigKey(key string) bool {
 	value := strings.ToLower(strings.TrimSpace(key))
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)

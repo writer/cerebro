@@ -2,8 +2,7 @@
 
 This document defines the next bar for Cerebro: a graph that does not just store entities and events, but tracks what is believed, who asserted it, what supports it, what contradicts it, and when Cerebro learned it.
 
-See [GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md) for how most org/security dynamics should be surfaced as extensible derived reports over this world model.
-See [GRAPH_ASSET_DEEPENING_RESEARCH.md](./GRAPH_ASSET_DEEPENING_RESEARCH.md) for the next asset/entity deepening patterns that should sit on top of this substrate.
+See [GRAPH_OPERATIONS.md](./GRAPH_OPERATIONS.md) for current graph ingest, rebuild, and query operations, and [GRAPH_REPORT_CONTRACTS_AUTOGEN.md](./GRAPH_REPORT_CONTRACTS_AUTOGEN.md) for generated report contracts that consume graph state.
 
 ## Goal
 

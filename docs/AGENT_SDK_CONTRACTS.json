@@ -1,4 +1,0 @@
-{
-  "status": "retired",
-  "message": "The historical Agent SDK gateway contract catalog is not part of the current bootstrap service. SDK helpers must reference routes present in api/openapi.yaml."
-}

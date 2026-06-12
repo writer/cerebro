@@ -10,9 +10,9 @@ Run the deployed candidate API smoke against a runtime with known replay data:
 
 ```bash
 make candidate-smoke \
-  CEREBRO_BASE_URL=https://cerebro.sec-dev.example \
+  CEREBRO_BASE_URL=https://cerebro.example.com \
   CEREBRO_API_KEY="$CEREBRO_API_KEY" \
-  RUNTIME_ID=writer-okta-audit \
+  RUNTIME_ID=<runtime-id> \
   RULE_ID=rule-id \
   CANDIDATE_SMOKE_EVENT_LIMIT=25
 ```

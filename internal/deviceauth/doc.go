@@ -19,7 +19,6 @@
 // All token material is hashed at rest. Bootstrap tokens and refresh tokens
 // are opaque random byte strings; only their SHA-256 digests are persisted.
 //
-// See docs/proposals/SECHECK_DEVICE_AUTH.md for the full design and the gap
-// matrix vs. the closed PR #409 (feat/secheck-device-auth) that this package
-// supersedes.
+// See docs/AUTH_TENANCY.md and docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md
+// for the public auth and endpoint telemetry boundaries.
 package deviceauth

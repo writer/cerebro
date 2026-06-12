@@ -1,7 +1,6 @@
 // Package attestation verifies the device-bound proofs presented at SeCheck
-// agent enrollment time. It is the Phase-2 layer on top of the
-// hardware-UUID-only binding documented in
-// docs/proposals/SECHECK_DEVICE_AUTH.md.
+// agent enrollment time. It is the hardware-backed layer on top of
+// device-auth enrollment.
 //
 // Two backends are provided:
 //
