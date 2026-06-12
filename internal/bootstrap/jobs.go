@@ -44,6 +44,7 @@ type jobEventListResponse struct {
 func (a *App) jobService() *platformjobs.Service {
 	service := platformjobs.New(jobStore(a.deps.StateStore))
 	service.WithRunner(platformjobs.KindSourceRuntimeSync, a.runSourceRuntimeSyncJob)
+	service.WithRunner(platformjobs.KindSourceRuntimeOrchestrate, a.runSourceRuntimeOrchestrateJob)
 	service.WithRunner(platformjobs.KindGraphIngestRuntime, a.runGraphIngestRuntimeJob)
 	service.WithRunner(platformjobs.KindFindingRulesEvaluate, a.runFindingRulesEvaluateJob)
 	service.WithRunner(platformjobs.KindFindingsEvaluate, a.runFindingsEvaluateJob)
@@ -191,6 +192,58 @@ func (a *App) runSourceRuntimeSyncJob(ctx context.Context, job *ports.Job, _ *pl
 	return protoToMap(response), nil, nil
 }
 
+func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+	if runtimeID == "" {
+		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
+	}
+	syncResponse, err := a.runtimeService().SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
+		Id:        runtimeID,
+		PageLimit: uint32Payload(job.Payload, "page_limit"),
+	}, sourceruntime.SyncWithLeaseOptions{LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore)})
+	if err != nil {
+		return nil, nil, err
+	}
+	graphResult, err := a.graphIngestService().RunRuntime(ctx, graphingest.RuntimeRequest{
+		RuntimeID: runtimeID,
+		PageLimit: uint32Payload(job.Payload, "graph_page_limit"),
+		Trigger:   "platform_orchestration_job",
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	ruleResult, err := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+		RuntimeID:  runtimeID,
+		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
+		EventLimit: uint32Payload(job.Payload, "event_limit"),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	graphPayload, err := json.Marshal(graphResult)
+	if err != nil {
+		return nil, nil, err
+	}
+	graphOut := map[string]any{}
+	_ = json.Unmarshal(graphPayload, &graphOut)
+	rulePayload, err := json.Marshal(ruleResult)
+	if err != nil {
+		return nil, nil, err
+	}
+	ruleOut := map[string]any{}
+	_ = json.Unmarshal(rulePayload, &ruleOut)
+	result := map[string]any{
+		"sync":          protoToMap(syncResponse),
+		"graph_ingest":  graphOut,
+		"finding_rules": ruleOut,
+	}
+	refs := map[string]string{}
+	if graphResult.Run.ID != "" {
+		refs["graph_ingest_run_id"] = graphResult.Run.ID
+	}
+	return result, refs, nil
+}
+
 func (a *App) runGraphIngestRuntimeJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
 	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
@@ -280,7 +333,7 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 		return "", err
 	}
 	switch strings.TrimSpace(request.Kind) {
-	case platformjobs.KindSourceRuntimeSync, platformjobs.KindGraphIngestRuntime, platformjobs.KindFindingRulesEvaluate, platformjobs.KindFindingsEvaluate:
+	case platformjobs.KindSourceRuntimeSync, platformjobs.KindSourceRuntimeOrchestrate, platformjobs.KindGraphIngestRuntime, platformjobs.KindFindingRulesEvaluate, platformjobs.KindFindingsEvaluate:
 		runtimeID := stringPayload(request.Payload, "runtime_id", request.SubjectID)
 		runtimeTenantID, err := sourceRuntimeTenantID(ctx, sourceRuntimeStore(store), runtimeID, false)
 		if err != nil {

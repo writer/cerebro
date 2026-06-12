@@ -2050,6 +2050,7 @@ components:
           type: string
           enum:
             - source_runtime_sync
+            - source_runtime_orchestrate
             - graph_ingest_runtime
             - finding_rules_evaluate
             - findings_evaluate
