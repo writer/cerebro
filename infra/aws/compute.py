@@ -413,6 +413,7 @@ def create_ecs_cluster(
         "orchestrator_scheduler_dlq": orchestrator_scheduler_dlq,
         "orchestrator_scheduler_schedules": orchestrator_scheduler_schedules,
         "orchestrator_events_role": orchestrator_events_role,
+        "execution_role": execution_role,
         "task_role": task_role,
         "worker_task_role": worker_task_role,
         "log_group": log_group,

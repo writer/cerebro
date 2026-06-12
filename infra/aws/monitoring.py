@@ -72,6 +72,39 @@ def _service_quota_alarm_specs(name: str, threshold_percent: int) -> list[dict]:
     return []
 
 
+def _cloudtrail_audit_metric_filter_specs(name: str) -> list[dict]:
+    return [
+        {
+            "resource_name": f"{name}-audit-scheduler-mutations-filter",
+            "filter_name": f"{name}-audit-scheduler-mutations",
+            "metric_name": "AwsControlPlaneSchedulerMutations",
+            "pattern": '{ ($.eventSource = "scheduler.amazonaws.com") && (($.eventName = "DeleteSchedule") || ($.eventName = "UpdateSchedule") || ($.eventName = "CreateSchedule") || ($.eventName = "DeleteScheduleGroup")) }',
+            "description": "Scheduler schedules were created, updated, or deleted through the AWS control plane.",
+        },
+        {
+            "resource_name": f"{name}-audit-sqs-dlq-mutations-filter",
+            "filter_name": f"{name}-audit-sqs-dlq-mutations",
+            "metric_name": "AwsControlPlaneSqsDlqMutations",
+            "pattern": '{ ($.eventSource = "sqs.amazonaws.com") && (($.eventName = "PurgeQueue") || ($.eventName = "DeleteQueue") || ($.eventName = "SetQueueAttributes")) }',
+            "description": "SQS queue or DLQ was purged, deleted, or reconfigured through the AWS control plane.",
+        },
+        {
+            "resource_name": f"{name}-audit-alarm-mutations-filter",
+            "filter_name": f"{name}-audit-alarm-mutations",
+            "metric_name": "AwsControlPlaneAlarmMutations",
+            "pattern": '{ ($.eventSource = "monitoring.amazonaws.com") && (($.eventName = "DeleteAlarms") || ($.eventName = "DisableAlarmActions") || ($.eventName = "PutMetricAlarm")) }',
+            "description": "CloudWatch alarms were deleted, disabled, or changed through the AWS control plane.",
+        },
+        {
+            "resource_name": f"{name}-audit-iam-mutations-filter",
+            "filter_name": f"{name}-audit-iam-mutations",
+            "metric_name": "AwsControlPlaneIamMutations",
+            "pattern": '{ ($.eventSource = "iam.amazonaws.com") && (($.eventName = "PutRolePolicy") || ($.eventName = "AttachRolePolicy") || ($.eventName = "UpdateAssumeRolePolicy") || ($.eventName = "DeleteRolePolicy") || ($.eventName = "DetachRolePolicy")) }',
+            "description": "IAM role trust or inline/attached policies changed through the AWS control plane.",
+        },
+    ]
+
+
 def _runtime_id_from_command(command) -> str:
     if not isinstance(command, list):
         return ""
@@ -378,6 +411,7 @@ def create_monitoring(
     orchestrator_rule_names: list[pulumi.Input[str]] = None,
     orchestrator_scheduler_group_name: pulumi.Input[str] = None,
     orchestrator_scheduler_dlq_queue_name: pulumi.Input[str] = None,
+    cloudtrail_audit_log_group_name: pulumi.Input[str] = None,
     source_runtimes: list[dict] = None,
     source_runtime_heartbeat_period_seconds: int = 28800,
     source_runtime_observability: list[dict] = None,
@@ -961,6 +995,29 @@ def create_monitoring(
             description=spec["description"],
             alarm_actions=alarm_actions,
         )
+
+    if cloudtrail_audit_log_group_name:
+        for spec in _cloudtrail_audit_metric_filter_specs(name):
+            aws.cloudwatch.LogMetricFilter(
+                spec["resource_name"],
+                name=spec["filter_name"],
+                log_group_name=cloudtrail_audit_log_group_name,
+                pattern=spec["pattern"],
+                metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                    name=spec["metric_name"],
+                    namespace=telemetry_namespace,
+                    value="1",
+                ),
+            )
+            _custom_metric_alarm(
+                resource_name=f"{spec['resource_name']}-alarm",
+                alarm_name=f"{spec['filter_name']}-alarm",
+                namespace=telemetry_namespace,
+                metric_name=spec["metric_name"],
+                threshold=0,
+                description=spec["description"],
+                alarm_actions=alarm_actions,
+            )
 
     dashboard = aws.cloudwatch.Dashboard(
         f"{name}-dashboard",

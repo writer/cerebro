@@ -78,6 +78,19 @@ class MonitoringRuntimeTest(unittest.TestCase):
     def test_service_quota_alarm_specs_stay_disabled_until_dimensions_are_verified(self) -> None:
         self.assertEqual(monitoring._service_quota_alarm_specs("cerebro-test", 80), [])
 
+    def test_cloudtrail_audit_specs_cover_control_plane_mutations(self) -> None:
+        specs = monitoring._cloudtrail_audit_metric_filter_specs("cerebro-test")
+
+        metrics = {spec["metric_name"]: spec["pattern"] for spec in specs}
+        self.assertIn("AwsControlPlaneSchedulerMutations", metrics)
+        self.assertIn("DeleteSchedule", metrics["AwsControlPlaneSchedulerMutations"])
+        self.assertIn("AwsControlPlaneSqsDlqMutations", metrics)
+        self.assertIn("PurgeQueue", metrics["AwsControlPlaneSqsDlqMutations"])
+        self.assertIn("AwsControlPlaneAlarmMutations", metrics)
+        self.assertIn("DisableAlarmActions", metrics["AwsControlPlaneAlarmMutations"])
+        self.assertIn("AwsControlPlaneIamMutations", metrics)
+        self.assertIn("UpdateAssumeRolePolicy", metrics["AwsControlPlaneIamMutations"])
+
     def test_dashboard_includes_access_audit_metrics(self) -> None:
         original_get_region = monitoring.aws.get_region
         monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")

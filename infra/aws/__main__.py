@@ -23,6 +23,7 @@ import nats
 import neo4j
 import networking
 import postgres
+import resilience
 import tailscale as ts
 import waf
 import web
@@ -53,6 +54,14 @@ def _config_int(key: str, default: int) -> int:
 def _config_bool(key: str, default: bool) -> bool:
     value = config.get_bool(key)
     return default if value is None else value
+
+
+def _disabled_runtime_ids(entries: list[dict]) -> list[str]:
+    runtime_ids = []
+    for entry in entries or []:
+        if isinstance(entry, dict) and str(entry.get("runtimeId", "")).strip():
+            runtime_ids.append(str(entry["runtimeId"]).strip())
+    return sorted(set(runtime_ids))
 
 
 # The cross-task lease around source-runtime cursor advances landed in
@@ -276,6 +285,15 @@ access_audit_auth_failure_alarm_threshold = _config_int("accessAuditAuthFailureA
 access_audit_tenant_mismatch_alarm_threshold = _config_int("accessAuditTenantMismatchAlarmThreshold", -1)
 access_audit_sensitive_denied_alarm_threshold = _config_int("accessAuditSensitiveDeniedAlarmThreshold", -1)
 aws_service_quota_alarm_threshold_percent = _config_int("awsServiceQuotaAlarmThresholdPercent", 80)
+runtime_controls_appconfig_enabled = _config_bool("runtimeControlsAppConfigEnabled", True)
+orchestrator_step_functions_enabled = _config_bool("orchestratorStepFunctionsEnabled", False)
+orchestrator_sqs_buffer_enabled = _config_bool("orchestratorSqsBufferEnabled", False)
+orchestrator_sqs_buffer_pipe_state = config.get("orchestratorSqsBufferPipeState") or "STOPPED"
+synthetics_canary_enabled = _config_bool("syntheticsCanaryEnabled", False)
+synthetics_canary_start = _config_bool("syntheticsCanaryStart", False)
+cloudtrail_audit_log_group_name = config.get("cloudTrailAuditLogGroupName") or ""
+cost_anomaly_detection_enabled = _config_bool("costAnomalyDetectionEnabled", False)
+monthly_cost_budget_limit_usd = _config_int("monthlyCostBudgetLimitUsd", 0)
 alarm_action_arns = config.get_object("alarmActionArns") or []
 alarm_email_subscriptions = config.get_object("alarmEmailSubscriptions") or []
 
@@ -374,8 +392,16 @@ source_runtimes = source_runtime_config["sourceRuntimes"]
 source_runtime_service_bootstrap_ids = config.get_object("sourceRuntimeServiceBootstrapIds")
 orchestrator_schedules = source_runtime_config["orchestratorSchedules"]
 source_runtime_observability = config.get_object("sourceRuntimeObservability") or []
+temporarily_disabled_source_runtimes = config.get_object("temporarilyDisabledSourceRuntimes") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
 _validate_source_secret_refs(source_secret_keys, source_runtime_env_refs)
+
+runtime_controls_stack = resilience.create_runtime_controls(
+    name=f"cerebro-{environment}",
+    environment=environment,
+    disabled_runtime_ids=_disabled_runtime_ids(temporarily_disabled_source_runtimes),
+    enabled=runtime_controls_appconfig_enabled,
+)
 
 
 def _infisical_secret(env_name: str, source: str | None = None) -> dict[str, str]:
@@ -819,6 +845,31 @@ ecs_stack = compute.create_ecs_cluster(
     source_runtime_service_bootstrap_ids=source_runtime_service_bootstrap_ids,
 )
 
+step_functions_stack = resilience.create_orchestrator_step_function(
+    name=f"cerebro-{environment}",
+    cluster_arn=ecs_stack["cluster"].arn,
+    task_definition_arn=ecs_stack["orchestrator_task_definition"].arn if ecs_stack.get("orchestrator_task_definition") else "",
+    subnet_ids=vpc_stack["private_subnet_ids"],
+    security_group_id=vpc_stack["app_security_group_id"],
+    execution_role_arn=ecs_stack["execution_role"].arn,
+    task_role_arn=ecs_stack["worker_task_role"].arn if ecs_stack.get("worker_task_role") else ecs_stack["task_role"].arn,
+    enabled=orchestrator_step_functions_enabled and bool(ecs_stack.get("orchestrator_task_definition")),
+)
+buffer_stack = resilience.create_orchestrator_buffer(
+    name=f"cerebro-{environment}",
+    target_state_machine_arn=step_functions_stack["state_machine"].arn if step_functions_stack.get("state_machine") else None,
+    enabled=orchestrator_sqs_buffer_enabled,
+    desired_state=orchestrator_sqs_buffer_pipe_state,
+)
+synthetics_stack = resilience.create_synthetic_canary(
+    name=f"cerebro-{environment}",
+    url=pulumi.Output.concat("https://", domain) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name),
+    subnet_ids=vpc_stack["private_subnet_ids"],
+    security_group_id=vpc_stack["app_security_group_id"],
+    enabled=synthetics_canary_enabled,
+    start_canary=synthetics_canary_start,
+)
+
 web_stack = None
 if web_enabled:
     web_secret_keys = []
@@ -885,8 +936,17 @@ monitoring_stack = monitoring.create_monitoring(
     orchestrator_rule_names=[rule.name for rule in ecs_stack.get("orchestrator_rules", [])],
     orchestrator_scheduler_group_name=ecs_stack["orchestrator_scheduler_group"].name if ecs_stack.get("orchestrator_scheduler_group") else None,
     orchestrator_scheduler_dlq_queue_name=ecs_stack["orchestrator_scheduler_dlq"].name if ecs_stack.get("orchestrator_scheduler_dlq") else None,
+    cloudtrail_audit_log_group_name=cloudtrail_audit_log_group_name or None,
     source_runtimes=source_runtimes,
     source_runtime_observability=source_runtime_observability,
+)
+
+cost_controls_stack = resilience.create_cost_controls(
+    name=f"cerebro-{environment}",
+    sns_topic_arns=alarm_action_arns,
+    email_subscriptions=alarm_email_subscriptions,
+    monthly_budget_usd=monthly_cost_budget_limit_usd,
+    anomaly_detection_enabled=cost_anomaly_detection_enabled,
 )
 
 waf_stack = None
@@ -991,6 +1051,16 @@ if ecs_stack.get("orchestrator_scheduler_dlq"):
     pulumi.export("orchestrator_scheduler_dlq_name", ecs_stack["orchestrator_scheduler_dlq"].name)
 if ecs_stack.get("orchestrator_scheduler_schedules"):
     pulumi.export("orchestrator_scheduler_schedule_names", [schedule.name for schedule in ecs_stack["orchestrator_scheduler_schedules"]])
+if runtime_controls_stack.get("application"):
+    pulumi.export("runtime_controls_appconfig_application_id", runtime_controls_stack["application"].id)
+if step_functions_stack.get("state_machine"):
+    pulumi.export("orchestrator_state_machine_arn", step_functions_stack["state_machine"].arn)
+if buffer_stack.get("queue"):
+    pulumi.export("orchestrator_buffer_queue_name", buffer_stack["queue"].name)
+if synthetics_stack.get("canary"):
+    pulumi.export("synthetics_canary_name", synthetics_stack["canary"].name)
+if cost_controls_stack.get("anomaly_monitor"):
+    pulumi.export("cost_anomaly_monitor_arn", cost_controls_stack["anomaly_monitor"].arn)
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
 pulumi.export("api_url", pulumi.Output.concat("https://", domain) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name))
 if web_alb_stack:

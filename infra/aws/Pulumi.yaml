@@ -206,6 +206,42 @@ config:
     type: integer
     default: 80
     description: AWS/Usage service-quota alarm threshold percent for Scheduler schedule counts and ECS RunTask API usage; 0 disables these alarms.
+  cerebro:runtimeControlsAppConfigEnabled:
+    type: boolean
+    default: true
+    description: Provision AppConfig hosted runtime-control configuration for emergency source-runtime coordination.
+  cerebro:orchestratorStepFunctionsEnabled:
+    type: boolean
+    default: false
+    description: Provision an opt-in Step Functions wrapper that can run orchestrator ECS tasks with centralized retries.
+  cerebro:orchestratorSqsBufferEnabled:
+    type: boolean
+    default: false
+    description: Provision an opt-in SQS buffer and stopped EventBridge Pipe for future controlled source-runtime burst draining.
+  cerebro:orchestratorSqsBufferPipeState:
+    type: string
+    default: STOPPED
+    description: Desired state for the optional orchestrator SQS buffer pipe; use STOPPED until deliberately cut over.
+  cerebro:syntheticsCanaryEnabled:
+    type: boolean
+    default: false
+    description: Provision an optional CloudWatch Synthetics API canary.
+  cerebro:syntheticsCanaryStart:
+    type: boolean
+    default: false
+    description: Start the optional CloudWatch Synthetics API canary after provisioning.
+  cerebro:cloudTrailAuditLogGroupName:
+    type: string
+    default: ""
+    description: Existing CloudTrail CloudWatch log group name for control-plane mutation audit metric filters and alarms.
+  cerebro:costAnomalyDetectionEnabled:
+    type: boolean
+    default: false
+    description: Provision Cost Explorer anomaly monitoring using configured alarm notification routes.
+  cerebro:monthlyCostBudgetLimitUsd:
+    type: integer
+    default: 0
+    description: Optional monthly AWS cost budget in USD; 0 disables budget creation.
 
   cerebro:postgresInstanceClass:
     type: string

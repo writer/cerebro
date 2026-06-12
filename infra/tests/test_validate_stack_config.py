@@ -530,6 +530,26 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK + "  cerebro:awsServiceQuotaAlarmThresholdPercent: -1\n"
         self.assertTrue(any("awsServiceQuotaAlarmThresholdPercent" in finding.path for finding in self._validate(content)))
 
+    def test_monthly_cost_budget_must_be_non_negative(self) -> None:
+        content = BASE_STACK + "  cerebro:monthlyCostBudgetLimitUsd: -1\n"
+        self.assertTrue(any("monthlyCostBudgetLimitUsd" in finding.path for finding in self._validate(content)))
+
+    def test_orchestrator_buffer_requires_step_functions(self) -> None:
+        content = BASE_STACK + "  cerebro:orchestratorSqsBufferEnabled: true\n"
+        self.assertTrue(any("requires orchestratorStepFunctionsEnabled" in message for message in self._messages(content)))
+
+    def test_orchestrator_buffer_pipe_state_must_be_known(self) -> None:
+        content = BASE_STACK + "  cerebro:orchestratorSqsBufferPipeState: PAUSED\n"
+        self.assertTrue(any("must be RUNNING or STOPPED" in message for message in self._messages(content)))
+
+    def test_synthetics_canary_start_requires_enabled_canary(self) -> None:
+        content = BASE_STACK + "  cerebro:syntheticsCanaryStart: true\n"
+        self.assertTrue(any("requires syntheticsCanaryEnabled" in message for message in self._messages(content)))
+
+    def test_cloudtrail_log_group_rejects_whitespace(self) -> None:
+        content = BASE_STACK + "  cerebro:cloudTrailAuditLogGroupName: invalid log group\n"
+        self.assertTrue(any("cloudTrailAuditLogGroupName" in finding.path for finding in self._validate(content)))
+
     def test_orchestrator_schedule_state_must_be_known(self) -> None:
         content = BASE_STACK.replace(
             "    - name: cosmo-session\n",

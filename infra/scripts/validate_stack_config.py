@@ -1482,10 +1482,22 @@ def validate_stack(path: Path) -> list[Finding]:
         "webLatencyP95AlarmThresholdSeconds",
         "dashboardLatencyP95AlarmThresholdMs",
         "awsServiceQuotaAlarmThresholdPercent",
+        "monthlyCostBudgetLimitUsd",
     ):
         threshold = config.get(key, 0)
         if not isinstance(threshold, int) or threshold < 0:
             findings.append(_finding("error", stack, f"cerebro:{key}", "must be a non-negative integer"))
+
+    buffer_state = str(config.get("orchestratorSqsBufferPipeState") or "STOPPED").strip().upper()
+    if buffer_state not in {"RUNNING", "STOPPED"}:
+        findings.append(_finding("error", stack, "cerebro:orchestratorSqsBufferPipeState", "must be RUNNING or STOPPED"))
+    if config.get("orchestratorSqsBufferEnabled") is True and config.get("orchestratorStepFunctionsEnabled") is not True:
+        findings.append(_finding("error", stack, "cerebro:orchestratorSqsBufferEnabled", "requires orchestratorStepFunctionsEnabled"))
+    if config.get("syntheticsCanaryStart") is True and config.get("syntheticsCanaryEnabled") is not True:
+        findings.append(_finding("error", stack, "cerebro:syntheticsCanaryStart", "requires syntheticsCanaryEnabled"))
+    cloudtrail_log_group = str(config.get("cloudTrailAuditLogGroupName") or "").strip()
+    if cloudtrail_log_group and any(char.isspace() for char in cloudtrail_log_group):
+        findings.append(_finding("error", stack, "cerebro:cloudTrailAuditLogGroupName", "must not contain whitespace"))
 
     for key in ("accessAuditTenantMismatchAlarmThreshold", "accessAuditSensitiveDeniedAlarmThreshold"):
         threshold = config.get(key, -1)
