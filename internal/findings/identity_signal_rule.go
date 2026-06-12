@@ -15,7 +15,6 @@ const (
 	identityAdminPrivilegeGrantedRuleID         = "identity-admin-privilege-granted"
 	identityAPIOrOAuthCredentialCreatedRuleID   = "identity-api-token-or-oauth-app-created"
 	identityAuthControlLifecycleTamperingRuleID = "identity-auth-control-lifecycle-tampering"
-	identityControlTamperCredentialChangeRuleID = "identity-control-tamper-followed-by-credential-change"
 	identityExternalGroupMemberRuleID           = "identity-external-or-personal-group-member"
 	identityMFAFactorResetOrDisabledRuleID      = "identity-mfa-factor-reset-or-disabled"
 	identityPrivilegedNoMFAAccessRuleID         = "identity-privileged-no-mfa-plus-sensitive-access"
