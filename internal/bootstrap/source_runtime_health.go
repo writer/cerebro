@@ -429,7 +429,7 @@ func runtimeFreshnessState(record sourceRuntimeHealthRecord, lifecycleState stri
 	if sourceSyncState == "stale" {
 		return "source_stale", "source_sync_stale", "source runtime is older than the configured freshness window", "run_source_sync"
 	}
-	if sourceSyncState == "current" && graphIngestState == "current" {
+	if sourceSyncState == "current" && (graphIngestState == "current" || graphIngestState == "running") {
 		return "healthy", "", "", "monitor"
 	}
 	return "unknown", "insufficient_signal", "source or graph freshness signal is unavailable", "inspect_runtime"

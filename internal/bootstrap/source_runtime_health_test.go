@@ -287,6 +287,34 @@ func TestRuntimeFreshnessFromHealthClassifiesBackfillWorklist(t *testing.T) {
 	}
 }
 
+func TestRuntimeFreshnessFromHealthTreatsRunningGraphAsHealthy(t *testing.T) {
+	health := sourceRuntimeHealthResponse{
+		GeneratedAt: "2026-06-12T00:00:00Z",
+		Runtimes: []sourceRuntimeHealthRecord{
+			{
+				RuntimeID:      "runtime-graph-running",
+				SourceID:       "okta",
+				EnabledState:   "enabled",
+				Status:         "healthy",
+				LatestGraphRun: sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "running"}),
+			},
+		},
+	}
+
+	response := runtimeFreshnessFromHealth(health)
+
+	if response.Status != "healthy" {
+		t.Fatalf("Status = %q, want healthy", response.Status)
+	}
+	record := response.Runtimes[0]
+	if record.GraphIngestState != "running" || record.FreshnessState != "healthy" || record.BackfillEligible || record.NextAction != "monitor" {
+		t.Fatalf("running graph freshness = %+v", record)
+	}
+	if response.Summaries[0].Healthy != 1 || response.Summaries[0].NeedsAttention != 0 {
+		t.Fatalf("summary = %+v", response.Summaries[0])
+	}
+}
+
 func FuzzRuntimeHealthConfigParsing(f *testing.F) {
 	f.Add("", "", "")
 	f.Add("3600", "7200", "passing")
