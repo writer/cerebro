@@ -75,16 +75,8 @@ class MonitoringRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(by_metric["ApproximateAgeOfOldestMessage"]["threshold"], 900)
 
-    def test_service_quota_alarm_specs_cover_scheduler_and_runtask(self) -> None:
-        specs = monitoring._service_quota_alarm_specs("cerebro-test", 80)
-
-        dimensions = {spec["alarm_name"]: spec["dimensions"] for spec in specs}
-        self.assertEqual(dimensions["cerebro-test-scheduler-schedule-quota"]["Service"], "Scheduler")
-        self.assertEqual(dimensions["cerebro-test-scheduler-schedule-quota"]["Resource"], "ApproximateSchedule")
-        self.assertEqual(dimensions["cerebro-test-scheduler-schedule-group-quota"]["Resource"], "ApproximateScheduleGroup")
-        self.assertEqual(dimensions["cerebro-test-ecs-runtask-api-quota"]["Service"], "ECS")
-        self.assertEqual(dimensions["cerebro-test-ecs-runtask-api-quota"]["Resource"], "RunTask")
-        self.assertTrue(all(spec["threshold"] == 80 for spec in specs))
+    def test_service_quota_alarm_specs_stay_disabled_until_dimensions_are_verified(self) -> None:
+        self.assertEqual(monitoring._service_quota_alarm_specs("cerebro-test", 80), [])
 
     def test_dashboard_includes_access_audit_metrics(self) -> None:
         original_get_region = monitoring.aws.get_region

@@ -69,29 +69,7 @@ def _scheduler_alarm_specs(name: str, schedule_group_name: pulumi.Input[str] = N
 def _service_quota_alarm_specs(name: str, threshold_percent: int) -> list[dict]:
     if threshold_percent <= 0:
         return []
-    return [
-        {
-            "resource_name": f"{name}-scheduler-schedule-quota-alarm",
-            "alarm_name": f"{name}-scheduler-schedule-quota",
-            "description": "EventBridge Scheduler schedule usage is approaching the account quota.",
-            "dimensions": {"Service": "Scheduler", "Type": "Resource", "Resource": "ApproximateSchedule", "Class": "None"},
-            "threshold": threshold_percent,
-        },
-        {
-            "resource_name": f"{name}-scheduler-schedule-group-quota-alarm",
-            "alarm_name": f"{name}-scheduler-schedule-group-quota",
-            "description": "EventBridge Scheduler schedule-group usage is approaching the account quota.",
-            "dimensions": {"Service": "Scheduler", "Type": "Resource", "Resource": "ApproximateScheduleGroup", "Class": "None"},
-            "threshold": threshold_percent,
-        },
-        {
-            "resource_name": f"{name}-ecs-runtask-api-quota-alarm",
-            "alarm_name": f"{name}-ecs-runtask-api-quota",
-            "description": "ECS RunTask API usage is approaching the account service quota; Scheduler-backed runtimes may throttle.",
-            "dimensions": {"Service": "ECS", "Type": "API", "Resource": "RunTask", "Class": "None"},
-            "threshold": threshold_percent,
-        },
-    ]
+    return []
 
 
 def _runtime_id_from_command(command) -> str:
