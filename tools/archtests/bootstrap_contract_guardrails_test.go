@@ -107,6 +107,20 @@ func TestSDKHTTPRoutesExistInOpenAPI(t *testing.T) {
 			}
 		}
 	}
+	for _, rel := range []string{
+		filepath.Join("sdk", "python", "pyproject.toml"),
+		filepath.Join("sdk", "typescript", "package.json"),
+	} {
+		body, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		for _, stale := range []string{"Agent SDK", "report runtime"} {
+			if bytes.Contains(body, []byte(stale)) {
+				t.Fatalf("%s contains retired SDK marker %q", rel, stale)
+			}
+		}
+	}
 }
 
 func TestBootstrapPublicHTTPRoutesStayMethodScopedAndDocumented(t *testing.T) {
