@@ -46,6 +46,7 @@ func (a *App) handleExecuteRuntimeResponse(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	request.TenantID = tenantID
+	request.Action = strings.TrimSpace(request.Action)
 	request.TrustedScope = hasRuntimeResponseTrustedScope(r.Context())
 	entry, err := a.runtimeResponseService().Execute(r.Context(), request)
 	if err != nil {
@@ -67,14 +68,15 @@ func (a *App) recordRuntimeResponseWorkflow(ctx context.Context, request runtime
 	if observedAt.IsZero() {
 		observedAt = time.Now().UTC()
 	}
+	action := strings.TrimSpace(request.Action)
 	actionID := fmt.Sprintf("urn:cerebro:%s:runtime_response_action:%s", entry.TenantID, entry.ID)
 	targetID := fmt.Sprintf("runtime_response:%s:%s", entry.Type, entry.Value)
 	event, err := workflowevents.NewActionRecordedEvent(workflowevents.ActionRecorded{
 		TenantID:      entry.TenantID,
 		ActionID:      actionID,
-		ActionType:    request.Action,
+		ActionType:    action,
 		Status:        "completed",
-		Title:         "Runtime response " + request.Action,
+		Title:         "Runtime response " + action,
 		Summary:       entry.Reason,
 		TargetIDs:     []string{targetID},
 		SourceSystem:  "runtime_response",

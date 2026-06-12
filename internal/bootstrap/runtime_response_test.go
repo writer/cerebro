@@ -36,7 +36,7 @@ func TestRecordRuntimeResponseWorkflowAppendsActionEvent(t *testing.T) {
 		CreatedAt:   createdAt,
 	}
 	err := app.recordRuntimeResponseWorkflow(context.Background(), runtimeresponse.ExecuteRequest{
-		Action: runtimeresponse.ActionBlockIP,
+		Action: " " + runtimeresponse.ActionBlockIP + " ",
 	}, entry)
 	if err != nil {
 		t.Fatalf("recordRuntimeResponseWorkflow() error = %v", err)
@@ -57,6 +57,9 @@ func TestRecordRuntimeResponseWorkflowAppendsActionEvent(t *testing.T) {
 	}
 	if payload.ActionType != runtimeresponse.ActionBlockIP {
 		t.Fatalf("action type = %q, want %q", payload.ActionType, runtimeresponse.ActionBlockIP)
+	}
+	if payload.Title != "Runtime response "+runtimeresponse.ActionBlockIP {
+		t.Fatalf("title = %q, want normalized runtime response title", payload.Title)
 	}
 	if payload.SourceEventID != entry.ID {
 		t.Fatalf("source event id = %q, want %q", payload.SourceEventID, entry.ID)
