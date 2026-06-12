@@ -982,6 +982,10 @@ paths:
           in: query
           schema:
             type: string
+        - name: entity_type
+          in: query
+          schema:
+            type: string
         - name: q
           in: query
           schema:

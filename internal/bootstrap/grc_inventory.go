@@ -404,7 +404,7 @@ func inventoryTestStatus(finding grcFindingItem) string {
 }
 
 func grcInventoryVulnerabilities(findings []grcFindingItem) []grcInventoryVulnerability {
-	var vulnerabilities []grcInventoryVulnerability
+	vulnerabilities := []grcInventoryVulnerability{}
 	for _, finding := range findings {
 		text := strings.ToLower(strings.Join([]string{finding.Title, finding.Summary, finding.RuleID, finding.PolicyID}, " "))
 		if !strings.Contains(text, "vulnerab") && !strings.Contains(text, "cve-") && !strings.Contains(text, "package") {

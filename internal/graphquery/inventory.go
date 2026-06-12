@@ -408,6 +408,9 @@ func inventoryEntityTypesForFilter(categoryID string, entityType string) []strin
 			result = append(result, candidate)
 		}
 	}
+	if len(result) == 0 {
+		result = append(result, strings.ReplaceAll(categoryID, "-", "."))
+	}
 	sort.Strings(result)
 	return result
 }
