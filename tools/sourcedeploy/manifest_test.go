@@ -211,3 +211,71 @@ func TestDiscoverRejectsMisplacedSource(t *testing.T) {
 		t.Fatalf("expected ErrSourceIDMismatch, got %v", err)
 	}
 }
+
+func FuzzParseDeployManifest(f *testing.F) {
+	f.Add([]byte(`
+sourceId: example
+secretKeys: [EXAMPLE_API_TOKEN]
+runtimes:
+  - localId: live
+    config:
+      family: live
+      token: env:EXAMPLE_API_TOKEN
+`))
+	f.Add([]byte(`sourceId: Example`))
+	f.Add([]byte(`[]`))
+	f.Add([]byte(`sourceId: example
+runtimes:
+  - localId: live
+    config: {token: literal-secret}
+`))
+	f.Add([]byte(`sourceId: example
+secretKeys: [TOKEN]
+runtimes:
+  - localId: live
+    config: {token: env:OTHER_TOKEN}
+`))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 4096 {
+			t.Skip()
+		}
+		manifest, err := Parse(data, "fuzz.yaml")
+		if err != nil {
+			return
+		}
+		if err := manifest.Validate(); err != nil {
+			t.Fatalf("Parse returned invalid manifest: %v", err)
+		}
+		if !sourceIDPattern.MatchString(manifest.SourceID) {
+			t.Fatalf("invalid source id accepted: %q", manifest.SourceID)
+		}
+		seenSecrets := map[string]struct{}{}
+		for _, key := range manifest.SecretKeys {
+			if !envVarRegex.MatchString(key) {
+				t.Fatalf("invalid secret key accepted: %q", key)
+			}
+			if _, ok := seenSecrets[key]; ok {
+				t.Fatalf("duplicate secret key accepted: %q", key)
+			}
+			seenSecrets[key] = struct{}{}
+		}
+		seenRuntimes := map[string]struct{}{}
+		for _, runtime := range manifest.Runtimes {
+			if !idPattern.MatchString(runtime.LocalID) {
+				t.Fatalf("invalid runtime id accepted: %q", runtime.LocalID)
+			}
+			if _, ok := seenRuntimes[runtime.LocalID]; ok {
+				t.Fatalf("duplicate runtime accepted: %q", runtime.LocalID)
+			}
+			seenRuntimes[runtime.LocalID] = struct{}{}
+			if len(runtime.Config) == 0 {
+				t.Fatalf("empty runtime config accepted for %q", runtime.LocalID)
+			}
+			for key, value := range runtime.Config {
+				if isSensitiveConfigKey(key) && !envRefRegex.MatchString(value) {
+					t.Fatalf("sensitive literal accepted for key %q", key)
+				}
+			}
+		}
+	})
+}

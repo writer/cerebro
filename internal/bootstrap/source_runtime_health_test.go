@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -214,6 +215,75 @@ func TestSourceRuntimeHealthSummariesAggregateBySource(t *testing.T) {
 	if panopticon.SourceID != "panopticon" || panopticon.Total != 1 || panopticon.Unknown != 1 || panopticon.GraphNotObserved != 1 || panopticon.ContractProbeNotConfigured != 1 {
 		t.Fatalf("panopticon summary = %+v", panopticon)
 	}
+}
+
+func FuzzRuntimeHealthConfigParsing(f *testing.F) {
+	f.Add("", "", "")
+	f.Add("3600", "7200", "passing")
+	f.Add("-1", "0", " failure ")
+	f.Add("999999999999999999999999", "nan", "unknown")
+	f.Fuzz(func(t *testing.T, cadence string, stale string, probe string) {
+		runtime := &cerebrov1.SourceRuntime{
+			SourceId:     "evidence_cas",
+			LastSyncedAt: timestamppb.New(time.Now().UTC()),
+			Config: map[string]string{
+				"expected_cadence_seconds":         cadence,
+				"stale_after_seconds":              stale,
+				runtimeContractProbeStateConfigKey: probe,
+			},
+		}
+		if got := runtimeConfigInt64(runtime, "expected_cadence_seconds"); got < 0 {
+			t.Fatalf("runtimeConfigInt64() = %d, want non-negative", got)
+		}
+		if got := runtimeConfigUint32(runtime, runtimeRecordsScannedConfigKey); got != 0 {
+			t.Fatalf("runtimeConfigUint32(absent) = %d, want 0", got)
+		}
+		if got := runtimeEnabledState(runtime); got != "enabled" && got != "disabled" && got != "unknown" {
+			t.Fatalf("runtimeEnabledState() = %q", got)
+		}
+		if got := runtimeContractProbeState(runtime); strings.TrimSpace(probe) != "" && got != strings.TrimSpace(probe) {
+			t.Fatalf("runtimeContractProbeState() = %q, want trimmed probe", got)
+		}
+	})
+}
+
+func FuzzSourceRuntimeHealthSummaries(f *testing.F) {
+	f.Add("okta", "healthy", "passing", "completed", false)
+	f.Add("", "failing", "failure", "failed", true)
+	f.Add("aws", "stale", "unknown", "running", false)
+	f.Fuzz(func(t *testing.T, sourceID string, status string, probe string, graphStatus string, cursorPending bool) {
+		graphLag := int64(7200)
+		staleAfter := int64(3600)
+		records := []sourceRuntimeHealthRecord{{
+			SourceID:           sourceID,
+			Status:             status,
+			ContractProbeState: probe,
+			CursorPending:      cursorPending,
+			LatestGraphRun:     &sourceRuntimeHealthGraphRun{Status: graphStatus},
+			GraphLagSeconds:    &graphLag,
+			StaleAfterSeconds:  &staleAfter,
+		}}
+		summaries := sourceRuntimeHealthSummaries(records)
+		if len(summaries) != 1 {
+			t.Fatalf("summary count = %d, want 1", len(summaries))
+		}
+		summary := summaries[0]
+		if summary.Total != 1 {
+			t.Fatalf("summary total = %d, want 1", summary.Total)
+		}
+		if summary.Healthy+summary.Stale+summary.Failing+summary.Unknown != summary.Total {
+			t.Fatalf("status buckets do not partition total: %+v", summary)
+		}
+		if summary.ContractProbePassing+summary.ContractProbeFailure+summary.ContractProbeUnknown+summary.ContractProbeNotConfigured != summary.Total {
+			t.Fatalf("contract buckets do not partition total: %+v", summary)
+		}
+		if summary.GraphCurrent+summary.GraphBehind+summary.GraphRunning+summary.GraphFailed+summary.GraphNotObserved != summary.Total {
+			t.Fatalf("graph buckets do not partition total: %+v", summary)
+		}
+		if strings.TrimSpace(sourceID) == "" && summary.SourceID != "unknown" {
+			t.Fatalf("empty source summary source_id = %q, want unknown", summary.SourceID)
+		}
+	})
 }
 
 func int64Ptr(value int64) *int64 {
