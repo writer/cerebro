@@ -2252,7 +2252,7 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 				"acted_on",
 				"urn:cerebro:writer:github_code_repository:repo-1",
 				"repo-1",
-				"github.code.repositorysitory",
+				"github.code.repository",
 				map[string]string{"at": "2026-05-07T18:09:42Z", "event_id": "event-1"},
 			)),
 		},
