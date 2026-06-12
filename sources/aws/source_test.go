@@ -163,18 +163,6 @@ func TestParseSettingsValidatesAssumeRoleConfig(t *testing.T) {
 	}
 }
 
-func TestParseSettingsAllowsLegacyTenantlessAssumeRoleOnlyWithInternalMarker(t *testing.T) {
-	roleARN := "arn:aws:iam::123456789012:role/cerebro-org-scan-role"
-	if _, err := parseSettings(sourcecdk.NewConfig(map[string]string{
-		"account_id":                           "123456789012",
-		"role_arn":                             roleARN,
-		sourceconfig.AWSAssumeRoleAllowlistKey: roleARN,
-		sourceconfig.LegacyTenantlessAssumeRoleKey: "true",
-	})); err != nil {
-		t.Fatalf("parseSettings() error = %v", err)
-	}
-}
-
 func TestParseSettingsRejectsUnsafeAssumeRoleConfig(t *testing.T) {
 	allowed := "arn:aws:iam::123456789012:role/cerebro-org-scan-role"
 	for _, tt := range []struct {
@@ -327,54 +315,27 @@ func TestCloudTrailCursorInvalidatesUnsafeTokens(t *testing.T) {
 	}
 }
 
-func TestParsePublicEndpointCursorUpgradesLegacyStages(t *testing.T) {
-	legacyPastAPIGateway := legacyPublicEndpointCursor(t, publicEndpointCursor{Stage: publicEndpointStageEIP, Token: "old-token"})
-	got, err := parsePublicEndpointCursor(legacyPastAPIGateway)
+func TestParsePublicEndpointCursorRejectsLegacyStages(t *testing.T) {
+	legacyPayload, err := json.Marshal(publicEndpointCursor{Stage: publicEndpointStageEIP, Token: "old-token"})
 	if err != nil {
-		t.Fatalf("parsePublicEndpointCursor(legacy eip) error = %v", err)
+		t.Fatalf("marshal legacy cursor: %v", err)
 	}
-	if got.Stage != publicEndpointStageAPIGatewayRestAPI {
-		t.Fatalf("legacy eip stage = %q, want %q", got.Stage, publicEndpointStageAPIGatewayRestAPI)
+	legacy := base64.RawURLEncoding.EncodeToString(legacyPayload)
+	if _, err := parsePublicEndpointCursor(legacy); err == nil {
+		t.Fatal("parsePublicEndpointCursor(legacy) error = nil, want unsupported version")
 	}
-	if got.Token != "" {
-		t.Fatalf("legacy eip token = %q, want empty backfill token", got.Token)
-	}
-
-	legacyAPIGateway := legacyPublicEndpointCursor(t, publicEndpointCursor{Stage: publicEndpointStageAPIGateway, Token: "domain-page"})
-	got, err = parsePublicEndpointCursor(legacyAPIGateway)
-	if err != nil {
-		t.Fatalf("parsePublicEndpointCursor(legacy apigateway) error = %v", err)
-	}
-	if got.Stage != publicEndpointStageAPIGateway || got.Token != "domain-page" {
-		t.Fatalf("legacy apigateway cursor = %#v, want stage %q token domain-page", got, publicEndpointStageAPIGateway)
+	if _, err := parsePublicEndpointCursor("eni:legacy-token"); err == nil {
+		t.Fatal("parsePublicEndpointCursor(raw legacy eni) error = nil, want parse error")
 	}
 
 	versioned := encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageEIP, Token: "new-token"})
-	got, err = parsePublicEndpointCursor(versioned)
+	got, err := parsePublicEndpointCursor(versioned)
 	if err != nil {
 		t.Fatalf("parsePublicEndpointCursor(versioned eip) error = %v", err)
 	}
 	if got.Stage != publicEndpointStageEIP || got.Token != "new-token" || got.Version != publicEndpointCursorV2 {
 		t.Fatalf("versioned eip cursor = %#v, want stage %q token new-token version %d", got, publicEndpointStageEIP, publicEndpointCursorV2)
 	}
-
-	got, err = parsePublicEndpointCursor("eni:legacy-token")
-	if err != nil {
-		t.Fatalf("parsePublicEndpointCursor(legacy eni) error = %v", err)
-	}
-	if got.Stage != publicEndpointStageAPIGatewayRestAPI {
-		t.Fatalf("legacy eni stage = %q, want %q", got.Stage, publicEndpointStageAPIGatewayRestAPI)
-	}
-}
-
-func legacyPublicEndpointCursor(t *testing.T, cursor publicEndpointCursor) string {
-	t.Helper()
-	cursor.Version = 0
-	payload, err := json.Marshal(cursor)
-	if err != nil {
-		t.Fatalf("marshal legacy cursor: %v", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
 func TestEmailLikeExtractsSSOSessionEmail(t *testing.T) {
@@ -483,9 +444,6 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
 		{family: familyIdentityCenterAssignment, kind: "aws.identity_center_account_assignment"},
 		{family: familyIdentityCenterPermission, kind: "aws.identity_center_permission_set"},
-		{family: familyIdentityStoreLegacyGroup, kind: "aws.identity_store_group"},
-		{family: familyIdentityStoreLegacyMember, kind: "aws.identity_store_group_membership"},
-		{family: familyIdentityStoreLegacyUser, kind: "aws.identity_store_user"},
 		{family: familyIdentityStoreGroup, kind: "aws.identitystore_group"},
 		{family: familyIdentityStoreMember, kind: "aws.identitystore_group_membership"},
 		{family: familyIdentityStoreUser, kind: "aws.identitystore_user"},
@@ -546,9 +504,9 @@ func TestReadAWSLegacyIdentityCenterInventoryEvents(t *testing.T) {
 	}{
 		{family: familyIdentityCenterPermission, kind: "aws.identity_center_permission_set", attr: "permission_set_name", want: "AdministratorAccess"},
 		{family: familyIdentityCenterAssignment, kind: "aws.identity_center_account_assignment", attr: "principal_id", want: "u-123"},
-		{family: familyIdentityStoreLegacyUser, kind: "aws.identity_store_user", attr: "email", want: "alice@writer.com"},
-		{family: familyIdentityStoreLegacyGroup, kind: "aws.identity_store_group", attr: "group_name", want: "Admins"},
-		{family: familyIdentityStoreLegacyMember, kind: "aws.identity_store_group_membership", attr: "member_user_id", want: "u-123"},
+		{family: familyIdentityStoreUser, kind: "aws.identitystore_user", attr: "email", want: "alice@writer.com"},
+		{family: familyIdentityStoreGroup, kind: "aws.identitystore_group", attr: "group_name", want: "Admins"},
+		{family: familyIdentityStoreMember, kind: "aws.identitystore_group_membership", attr: "member_user_id", want: "u-123"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)

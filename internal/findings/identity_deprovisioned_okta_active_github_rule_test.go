@@ -288,8 +288,8 @@ func deprovisionedOktaRuleRow(actedAttributesJSON string) ports.CypherRow {
 		"identity_label":                  "alice@writer.com",
 		"github_user_urn":                 "urn:cerebro:writer:github.user:alice",
 		"github_user_label":               "alice",
-		"target_urn":                      "urn:cerebro:writer:github_repo:writer/cerebro",
-		"target_entity_type":              "github_repo",
+		"target_urn":                      "urn:cerebro:writer:github_code_repository:writer/cerebro",
+		"target_entity_type":              "github_code_repository",
 		"target_label":                    "writer/cerebro",
 		"acted_attributes_json":           actedAttributesJSON,
 		"okta_identity_attributes_json":   recentEmail,
@@ -361,7 +361,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsKeepsRecentDropsStaleWithi
 	recentRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-2 * time.Hour)))
 	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 7*24*time.Hour))
 	staleRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(staleAt))
-	staleRow.Values["target_urn"] = "urn:cerebro:writer:github_repo:writer/legacy"
+	staleRow.Values["target_urn"] = "urn:cerebro:writer:github_code_repository:writer/legacy"
 	staleRow.Values["target_label"] = "writer/legacy"
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{recentRow, staleRow})
 	if err != nil {
@@ -374,7 +374,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsKeepsRecentDropsStaleWithi
 	if got := finding.Attributes["target_count"]; got != "1" {
 		t.Fatalf("target_count = %q, want 1; stale-only target must not be reported", got)
 	}
-	if got := finding.Attributes["target_urns"]; got != "urn:cerebro:writer:github_repo:writer/cerebro" {
+	if got := finding.Attributes["target_urns"]; got != "urn:cerebro:writer:github_code_repository:writer/cerebro" {
 		t.Fatalf("target_urns = %q, want only the recent target", got)
 	}
 }

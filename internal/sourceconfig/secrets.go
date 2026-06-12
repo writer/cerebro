@@ -6,10 +6,9 @@ import (
 )
 
 const (
-	envPrefix                     = "env:"
-	AWSAssumeRoleAllowlistKey     = "__cerebro_aws_assume_role_arns"
-	LegacyTenantlessAssumeRoleKey = "__cerebro_legacy_tenantless_assume_role"
-	RuntimeTenantIDKey            = "__cerebro_runtime_tenant_id"
+	envPrefix                 = "env:"
+	AWSAssumeRoleAllowlistKey = "__cerebro_aws_assume_role_arns"
+	RuntimeTenantIDKey        = "__cerebro_runtime_tenant_id"
 )
 
 type Resolver func(context.Context, string, map[string]string) (map[string]string, error)
@@ -49,23 +48,6 @@ func WithRuntimeTenant(values map[string]string, tenantID string) map[string]str
 		cloned[RuntimeTenantIDKey] = tenantID
 	}
 	return cloned
-}
-
-func WithLegacyTenantlessAssumeRole(values map[string]string, sourceID string, tenantID string) map[string]string {
-	cloned := make(map[string]string, len(values)+1)
-	for key, value := range values {
-		cloned[key] = value
-	}
-	if LegacyTenantlessAssumeRoleConfig(sourceID, tenantID, cloned) {
-		cloned[LegacyTenantlessAssumeRoleKey] = "true"
-	}
-	return cloned
-}
-
-func LegacyTenantlessAssumeRoleConfig(sourceID string, tenantID string, config map[string]string) bool {
-	return strings.TrimSpace(sourceID) == "aws" &&
-		strings.TrimSpace(tenantID) == "" &&
-		strings.TrimSpace(config["role_arn"]) != ""
 }
 
 func SensitiveKey(key string) bool {

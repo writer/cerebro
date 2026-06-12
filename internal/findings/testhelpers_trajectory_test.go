@@ -8,7 +8,9 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
+	"google.golang.org/protobuf/proto"
 )
 
 type FindingStatus = cerebrov1.FindingStatus
@@ -235,8 +237,8 @@ func assertGitHubTrajectoryWorkflowEvents(t *testing.T, events []*cerebrov1.Even
 			continue
 		}
 		switch event.GetKind() {
-		case workflowevents.EventKindFindingRecorded:
-			payload, err := workflowevents.DecodeFindingRecorded(event)
+		case workflowevents.EventKindFindingRecorded, securityevents.FindingRecorded:
+			payload, err := decodeCanonicalFindingRecorded(event)
 			if err != nil {
 				t.Fatalf("DecodeFindingRecorded(%q): %v", event.GetId(), err)
 			}
@@ -252,8 +254,8 @@ func assertGitHubTrajectoryWorkflowEvents(t *testing.T, events []*cerebrov1.Even
 					t.Fatalf("workflow recorded status = %q, want %q", got, expectedStatus)
 				}
 			}
-		case workflowevents.EventKindFindingStatusChanged:
-			payload, err := workflowevents.DecodeFindingStatusChanged(event)
+		case workflowevents.EventKindFindingStatusChanged, securityevents.FindingStatusChanged:
+			payload, err := decodeCanonicalFindingStatusChanged(event)
 			if err != nil {
 				t.Fatalf("DecodeFindingStatusChanged(%q): %v", event.GetId(), err)
 			}
@@ -278,4 +280,30 @@ func assertGitHubTrajectoryWorkflowEvents(t *testing.T, events []*cerebrov1.Even
 	if expectedStatus != findingStatusOpen && !statusChanged {
 		t.Fatalf("workflow finding.status_changed event for final status %q and finding %q not found in %d appended events", expectedStatus, findingID, len(events))
 	}
+}
+
+func decodeCanonicalFindingRecorded(event *cerebrov1.EventEnvelope) (*workflowevents.FindingRecorded, error) {
+	if event.GetKind() != securityevents.FindingRecorded {
+		return workflowevents.DecodeFindingRecorded(event)
+	}
+	clone := protoCloneEvent(event, workflowevents.EventKindFindingRecorded)
+	return workflowevents.DecodeFindingRecorded(clone)
+}
+
+func decodeCanonicalFindingStatusChanged(event *cerebrov1.EventEnvelope) (*workflowevents.FindingStatusChanged, error) {
+	if event.GetKind() != securityevents.FindingStatusChanged {
+		return workflowevents.DecodeFindingStatusChanged(event)
+	}
+	clone := protoCloneEvent(event, workflowevents.EventKindFindingStatusChanged)
+	return workflowevents.DecodeFindingStatusChanged(clone)
+}
+
+func protoCloneEvent(event *cerebrov1.EventEnvelope, kind string) *cerebrov1.EventEnvelope {
+	clone := proto.Clone(event).(*cerebrov1.EventEnvelope)
+	clone.Kind = kind
+	clone.Attributes = map[string]string{}
+	for key, value := range event.GetAttributes() {
+		clone.Attributes[key] = value
+	}
+	return clone
 }

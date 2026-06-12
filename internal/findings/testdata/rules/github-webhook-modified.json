@@ -58,7 +58,7 @@
       "attributes": {
         "action": "hook.create",
         "hook_id": "99",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,webhook,exfiltration,attack.t1020"
       }

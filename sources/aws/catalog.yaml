@@ -85,9 +85,6 @@ emitted_kinds:
   - aws.iam_user
   - aws.identity_center_account_assignment
   - aws.identity_center_permission_set
-  - aws.identity_store_group
-  - aws.identity_store_group_membership
-  - aws.identity_store_user
   - aws.inspector2_finding
   - aws.macie2_finding
   - aws.network_firewall
@@ -219,9 +216,6 @@ runtime_families:
   - iam_user
   - identity_center_account_assignment
   - identity_center_permission_set
-  - identity_store_group
-  - identity_store_group_membership
-  - identity_store_user
   - inspector2_finding
   - fsx_file_system
   - kms_key

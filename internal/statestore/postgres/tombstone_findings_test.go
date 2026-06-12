@@ -728,7 +728,7 @@ func TestTombstoneFinding_CommitsBeforeWorkflowEmit(t *testing.T) {
 	findingID := fmt.Sprintf("finding-commit-before-emit-%d", nonce)
 	fingerprint := fmt.Sprintf("fp-commit-before-emit-%d", nonce)
 	runID := fmt.Sprintf("run-commit-before-emit-%d", nonce)
-	anchorURI := fmt.Sprintf("urn:cerebro:%s:github_repo:writer/cerebro-%d", tenantID, nonce)
+	anchorURI := fmt.Sprintf("urn:cerebro:%s:github_code_repository:writer/cerebro-%d", tenantID, nonce)
 	cleanup := func() {
 		bg := context.Background()
 		_, _ = store.db.ExecContext(bg, `DELETE FROM finding_tombstone_events WHERE run_id = $1`, runID)

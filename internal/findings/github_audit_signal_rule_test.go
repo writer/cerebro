@@ -263,7 +263,7 @@ func TestGitHubSecretScanningAlertCreated(t *testing.T) {
 	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_secret_scanning_alert:writer/cerebro:12" {
 		t.Fatalf("primary_resource_urn = %q, want secret scanning alert source-state anchor", got)
 	}
-	if !slices.Contains(firstFinding.ResourceURNs, "urn:cerebro:writer:github_repo:writer/cerebro") {
+	if !slices.Contains(firstFinding.ResourceURNs, "urn:cerebro:writer:github_code_repository:writer/cerebro") {
 		t.Fatalf("ResourceURNs = %v, want repo context retained", firstFinding.ResourceURNs)
 	}
 	openAnchor := counterRule.OpenAnchor(firstFinding.Attributes)
@@ -765,7 +765,7 @@ func TestGitHubCodeSecurityControlsDisabled(t *testing.T) {
 	if got := firstFinding.RuleID; got != githubCodeSecurityControlsDisabledRuleID {
 		t.Fatalf("RuleID = %q, want %q", got, githubCodeSecurityControlsDisabledRuleID)
 	}
-	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:example/cerebro" {
+	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_code_repository:example/cerebro" {
 		t.Fatalf("primary_resource_urn = %q, want github repo anchor", got)
 	}
 
@@ -2132,7 +2132,7 @@ func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
 	if repoFinding.Fingerprint == orgFinding.Fingerprint {
 		t.Fatalf("repo-scope fingerprint = org-scope fingerprint %q, want per-scope anchors", repoFinding.Fingerprint)
 	}
-	if got := repoFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:writer/private-repo" {
+	if got := repoFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_code_repository:writer/private-repo" {
 		t.Fatalf("repo primary_resource_urn = %q, want github repo anchor", got)
 	}
 
@@ -2147,7 +2147,7 @@ func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
 	if err != nil || len(records) != 1 {
 		t.Fatalf("Evaluate(repoResourceOnly) = (%v, %v), want one finding", records, err)
 	}
-	if got := records[0].Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:writer/resource-only-repo" {
+	if got := records[0].Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_code_repository:writer/resource-only-repo" {
 		t.Fatalf("resource-id repo primary_resource_urn = %q, want github repo anchor", got)
 	}
 	if got := records[0].Attributes["posture_scope"]; got != "repo" {

@@ -102,8 +102,8 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	if _, ok := registry.Get(githubDependabotOpenAlertRuleID); !ok {
 		t.Fatalf("registry missing %q", githubDependabotOpenAlertRuleID)
 	}
-	if _, ok := registry.Get(githubSecretScanningDisabledRuleID); !ok {
-		t.Fatalf("registry missing %q", githubSecretScanningDisabledRuleID)
+	if _, ok := registry.Get(githubSecretScanningAlertCreatedRuleID); !ok {
+		t.Fatalf("registry missing %q", githubSecretScanningAlertCreatedRuleID)
 	}
 	if _, ok := registry.Get(oktaPolicyRuleLifecycleTamperingRuleID); !ok {
 		t.Fatalf("registry missing %q", oktaPolicyRuleLifecycleTamperingRuleID)

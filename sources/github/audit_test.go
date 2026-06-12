@@ -97,14 +97,6 @@ func TestAuditAttributes_ForwardsRunnerID(t *testing.T) {
 		t.Fatalf("runner_scope = %q, want repo:writer/cerebro; attributes=%v", got, event.Attributes)
 	}
 
-	rule := mustGitHubFindingRule(t, "github-self-hosted-runner-change")
-	records, err := rule.Evaluate(context.Background(), githubAuditRuntimeForRuleTest(), event)
-	if err != nil {
-		t.Fatalf("Evaluate(source-backed runner audit event) error = %v", err)
-	}
-	if len(records) != 0 {
-		t.Fatalf("Evaluate(source-backed runner audit event) returned %d findings, want 0 for retired runner rule; attrs=%v", len(records), event.Attributes)
-	}
 }
 
 func TestAuditAttributes_PreservesNormalizedRunnerScope(t *testing.T) {

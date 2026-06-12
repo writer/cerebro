@@ -67,18 +67,6 @@ func awsIAMGroupMembershipProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	return identityGroupMembershipProjections(event, awsIdentityProfile)
 }
 
-func awsIdentityStoreUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, awsIdentityProfile)
-}
-
-func awsIdentityStoreGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, awsIdentityProfile)
-}
-
-func awsIdentityStoreGroupMembershipProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupMembershipProjections(event, awsIdentityProfile)
-}
-
 func awsIAMRoleAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityRoleAssignmentProjections(event, awsIdentityProfile)
 }

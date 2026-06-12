@@ -13,8 +13,8 @@ const newSourcePackageLOCBudget = 300
 // sources. If a source shrinks, lower its ceiling in the same change; if a
 // source grows, move shared behavior into the Source CDK instead of raising it.
 var grandfatheredSourcePackageLOCBudgets = map[string]int{
-	"aurelius":        656,
-	"aws":             16209,
+	"aurelius":        653,
+	"aws":             15881,
 	"azure":           2607,
 	"cosmo":           1112,
 	"gcp":             2468,

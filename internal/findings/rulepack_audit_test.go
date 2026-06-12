@@ -82,25 +82,10 @@ func TestNoConvertRuleUsesEventIdOrMatchedAtFingerprint(t *testing.T) {
 	t.Logf("convert fingerprint fields: %s", strings.Join(rows, ", "))
 }
 
-func TestAlreadyRetiredRulesParity(t *testing.T) {
-	alreadyRetired := []string{
-		githubBranchProtectionDisabledRuleID,
-		githubProtectedBranchPolicyOverrideRuleID,
-		githubPushProtectionDisabledRuleID,
-		githubRepositoryMadePublicRuleID,
-		githubSecretScanningDisabledRuleID,
-		githubSelfHostedRunnerChangeRuleID,
-		sentinelOneRetiredInfectedEndpointRuleID,
-		sentinelOneRetiredMaliciousOrFilelessRuleID,
-		sentinelOneRetiredUnresolvedThreatRuleID,
-	}
-	assertRetiredRuleSetParity(t, alreadyRetired)
-}
-
 func TestCloseoutSelectorCoversAllRetiredAndConvertRules(t *testing.T) {
 	targets := append(rulepackAuditRulesByClass(t, rulepackAuditClassConvert), rulepackAuditRulesByClass(t, rulepackAuditClassRetire)...)
 	sort.Slice(targets, func(i, j int) bool { return targets[i].RuleID < targets[j].RuleID })
-	if got, want := len(targets), 37; got != want {
+	if got, want := len(targets), 26; got != want {
 		t.Fatalf("CONVERT+RETIRE closeout target count = %d, want %d", got, want)
 	}
 	for i, entry := range targets {
@@ -932,13 +917,6 @@ func assertRulepackGraphEvidence(t *testing.T, store *stubFindingStore, findingI
 	}
 }
 
-func TestNetNewRetiredRulesNoEmit(t *testing.T) {
-	assertRetiredRuleSetParity(t, []string{
-		githubCriticalResourceDeletedRuleID,
-		identityControlTamperCredentialChangeRuleID,
-	})
-}
-
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
@@ -1005,58 +983,6 @@ func TestEventRuleEvaluateRequiresLifecycle(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "lifecycle") {
 		t.Fatalf("Evaluate() error = %v, want message mentioning lifecycle", err)
-	}
-}
-
-func assertRetiredRuleSetParity(t *testing.T, ruleIDs []string) {
-	t.Helper()
-	metadataByID := rulepackAuditMetadataByID(t)
-	catalogByID := rulepackAuditCatalogByID(t)
-	registry := Builtin()
-	for _, ruleID := range ruleIDs {
-		ruleID := ruleID
-		t.Run(ruleID, func(t *testing.T) {
-			definition, ok := metadataByID[ruleID]
-			if !ok {
-				t.Fatalf("rule %q missing from BuiltinRuleMetadata", ruleID)
-			}
-			if definition.Lifecycle.Kind != LifecycleRetired {
-				t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleRetired)
-			}
-			if definition.Lifecycle.Anchor != AnchorNone {
-				t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorNone)
-			}
-			detection, ok := catalogByID[ruleID]
-			if !ok {
-				t.Fatalf("rule %q missing from public detection catalog", ruleID)
-			}
-			if detection.Maturity != "retired" {
-				t.Fatalf("catalog maturity = %q, want retired", detection.Maturity)
-			}
-			rule, ok := registry.Get(ruleID)
-			if !ok {
-				t.Fatalf("Builtin registry missing retired rule %q", ruleID)
-			}
-			retirementRule, ok := rule.(openFindingRetirementRule)
-			if !ok || !retirementRule.RetiresOpenFindings() {
-				t.Fatalf("rule %q does not expose RetiresOpenFindings=true", ruleID)
-			}
-			eventKind := firstNonEmptyString(definition.EventKinds...)
-			event := sampleRetiredRuleEvent(ruleID, eventKind)
-			runtime := &cerebrov1.SourceRuntime{
-				Id:       "example-" + runtimeSourceForEventKind(eventKind, definition.SourceID),
-				SourceId: runtimeSourceForEventKind(eventKind, definition.SourceID),
-				TenantId: "writer",
-				Config:   map[string]string{"family": eventFamilyForKind(eventKind)},
-			}
-			records, err := rule.Evaluate(context.Background(), runtime, event)
-			if err != nil {
-				t.Fatalf("Evaluate() error = %v", err)
-			}
-			if len(records) != 0 {
-				t.Fatalf("Evaluate() emitted %d findings for retired rule, want zero", len(records))
-			}
-		})
 	}
 }
 
@@ -1162,23 +1088,16 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "cloud-public-resource-exposure", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "data-sensitive-asset-risk", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "asset"},
 		{RuleID: "github-app-integration-installed", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-branch-protection-disabled", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-code-security-controls-disabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-critical-resource-deleted", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-dependabot-open-alert", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "github-org-auth-control-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-org-ip-allow-list-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-organization-owner-added", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-personal-access-token-created", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-private-repository-forking-enabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-protected-branch-policy-override", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-push-protection-disabled", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-repository-collaborator-added", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-repository-made-public", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-repository-ruleset-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-secret-scanning-alert-created", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-secret-scanning-disabled", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-self-hosted-runner-change", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-self-hosted-runner-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "github-org-owner-role-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "github-programmatic-credential-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
@@ -1198,7 +1117,6 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "identity-admin-privilege-granted", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
 		{RuleID: "identity-api-token-or-oauth-app-created", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
 		{RuleID: "identity-auth-control-lifecycle-tampering", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
-		{RuleID: "identity-control-tamper-followed-by-credential-change", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "identity"},
 		{RuleID: "identity-external-or-personal-group-member", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
 		{RuleID: "identity-github-active-without-okta-link", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "identity-mfa-factor-reset-or-disabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
@@ -1221,12 +1139,9 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "sentinelone-agent-stale", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-endpoint-active-infection", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-infected-endpoint-privileged-owner", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
-		{RuleID: "sentinelone-infected-endpoint", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
-		{RuleID: "sentinelone-malicious-or-fileless-threat", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
 		{RuleID: "sentinelone-mitigation-failed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-protection-control-tampering", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
 		{RuleID: "sentinelone-risky-exclusion", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
-		{RuleID: "sentinelone-unresolved-threat", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
 		{RuleID: "sentinelone-unmitigated-threat", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "vulnview-actionable-external-finding", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "vulnview"},
 		{RuleID: "vulnview-external-asset-concentrated-signal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "vulnview"},
@@ -1260,21 +1175,6 @@ func rulepackAuditMetadataByID(t *testing.T) map[string]RuleDefinition {
 			t.Fatalf("duplicate BuiltinRuleMetadata ID %q", definition.ID)
 		}
 		out[definition.ID] = definition
-	}
-	return out
-}
-
-func rulepackAuditCatalogByID(t *testing.T) map[string]PublicDetection {
-	t.Helper()
-	out := map[string]PublicDetection{}
-	for _, detection := range BuiltinPublicDetectionCatalog().Detections {
-		if detection.ID == "" {
-			t.Fatal("BuiltinPublicDetectionCatalog returned empty detection ID")
-		}
-		if _, exists := out[detection.ID]; exists {
-			t.Fatalf("duplicate catalog detection ID %q", detection.ID)
-		}
-		out[detection.ID] = detection
 	}
 	return out
 }
@@ -1318,65 +1218,10 @@ func rulepackAuditThresholdDuration(t *testing.T, threshold string) time.Duratio
 	return duration
 }
 
-func sampleRetiredRuleEvent(ruleID string, kind string) *cerebrov1.EventEnvelope {
-	if strings.TrimSpace(kind) == "" {
-		kind = "github.audit"
-	}
-	sourceID := runtimeSourceForEventKind(kind, "")
-	return &cerebrov1.EventEnvelope{
-		Id:         "event-" + ruleID,
-		TenantId:   "writer",
-		SourceId:   sourceID,
-		Kind:       kind,
-		OccurredAt: timestamppb.New(time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)),
-		SchemaRef:  strings.ReplaceAll(kind, ".", "/") + "/v1",
-		Attributes: map[string]string{
-			"action":              "repo.destroy",
-			"actor_email":         "actor@example.com",
-			"repo":                "writer/cerebro",
-			"resource_id":         "writer/cerebro",
-			"resource_type":       "repo",
-			"threat_id":           "threat-1",
-			"threat_name":         "retired threat",
-			"incident_status":     "unresolved",
-			"mitigation_status":   "not_mitigated",
-			"is_infected":         "true",
-			"agent_id":            "agent-1",
-			"credential_id":       "cred-1",
-			"user":                "alice@example.com",
-			"user_id":             "alice@example.com",
-			"family":              eventFamilyForKind(kind),
-			"source_runtime_id":   "example-" + sourceID,
-			"previous_visibility": "private",
-			"visibility":          "public",
-		},
-	}
-}
-
-func runtimeSourceForEventKind(kind string, fallback string) string {
-	parts := strings.Split(strings.TrimSpace(kind), ".")
-	if parts[0] != "" {
-		return parts[0]
-	}
-	if strings.TrimSpace(fallback) != "" {
-		return strings.TrimSpace(fallback)
-	}
-	return "github"
-}
-
 func eventFamilyForKind(kind string) string {
 	parts := strings.Split(strings.TrimSpace(kind), ".")
 	if len(parts) > 1 && parts[1] != "" {
 		return parts[1]
 	}
 	return "audit"
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }

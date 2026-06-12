@@ -54,7 +54,7 @@
       "attributes": {
         "action": "protected_branch.destroy",
         "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,branch-protection,supply-chain,initial-access,attack.t1195"
       }

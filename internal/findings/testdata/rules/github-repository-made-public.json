@@ -60,7 +60,7 @@
         "action": "repo.access",
         "previous_visibility": "private",
         "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,repository,exfiltration,impact,attack.t1567.001",
         "visibility": "public"

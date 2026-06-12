@@ -675,7 +675,6 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			addLink(links, projectedLink(tenantID, sourceID, resourceURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
 		}
 		addGRCGitHubRepositoryOrgLink(entities, links, tenantID, sourceID, event, resourceURN, ownerLogin)
-		addGRCGitHubRepositoryAliasLink(entities, links, tenantID, sourceID, event, resourceURN, provider, resourceType, ref.ResourceName, ownerLogin)
 		addGRCPlatformNetworkLinks(entities, links, tenantID, sourceID, event, resourceURN, ref)
 	}
 }
@@ -717,43 +716,6 @@ func addGRCGitHubRepositoryOrgLink(entities map[string]*ports.ProjectedEntity, l
 		"owner_login":  ownerLogin,
 		"source_scope": "platform_asset_ref",
 	}))
-}
-
-func addGRCGitHubRepositoryAliasLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, codeRepositoryURN string, provider string, resourceType string, repository string, ownerLogin string) {
-	codeRepositoryURN = strings.TrimSpace(codeRepositoryURN)
-	provider = strings.TrimSpace(provider)
-	resourceType = strings.TrimSpace(resourceType)
-	repository = strings.TrimSpace(repository)
-	if provider != "github" || resourceType != "code_repository" || codeRepositoryURN == "" || repository == "" || !strings.Contains(repository, "/") {
-		return
-	}
-	if ownerLogin = strings.TrimSpace(ownerLogin); ownerLogin == "" {
-		ownerLogin = githubRepositoryOwnerLogin(provider, resourceType, repository)
-	}
-	if ownerLogin == "" {
-		return
-	}
-	legacyRepoURN := projectionURN(tenantID, "github_repo", repository)
-	if legacyRepoURN == "" {
-		return
-	}
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        legacyRepoURN,
-		TenantID:   tenantID,
-		SourceID:   "github",
-		EntityType: "github.repo",
-		Label:      repository,
-		Attributes: map[string]string{"owner_login": ownerLogin, "repository": repository},
-	})
-	attrs := map[string]string{
-		"event_id":     event.GetId(),
-		"match_type":   "grc_platform_repository_full_name",
-		"owner_login":  ownerLogin,
-		"source_scope": "platform_asset_ref",
-	}
-	addLink(links, projectedLink(tenantID, sourceID, legacyRepoURN, codeRepositoryURN, relationRepresents, attrs))
-	addLink(links, projectedLink(tenantID, sourceID, codeRepositoryURN, legacyRepoURN, relationRepresents, attrs))
-	addGRCGitHubRepositoryOrgLink(entities, links, tenantID, sourceID, event, legacyRepoURN, ownerLogin)
 }
 
 func githubRepositoryOwnerLogin(provider string, resourceType string, resourceName string) string {

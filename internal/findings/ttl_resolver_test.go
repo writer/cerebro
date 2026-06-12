@@ -610,13 +610,13 @@ func decodeStatusChangedPayloads(t *testing.T, events []*cerebrov1.EventEnvelope
 	t.Helper()
 	payloads := make([]*workflowevents.FindingStatusChanged, 0, len(events))
 	for i, event := range events {
-		if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
-			if event.GetKind() == securityevents.FindingStatusChanged {
-				continue
-			}
-			t.Fatalf("appendLog.events[%d].Kind = %q, want %q", i, event.GetKind(), workflowevents.EventKindFindingStatusChanged)
+		decodeEvent := event
+		if event.GetKind() == securityevents.FindingStatusChanged {
+			decodeEvent = protoCloneEvent(event, workflowevents.EventKindFindingStatusChanged)
+		} else if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
+			t.Fatalf("appendLog.events[%d].Kind = %q, want %q", i, event.GetKind(), securityevents.FindingStatusChanged)
 		}
-		payload, err := workflowevents.DecodeFindingStatusChanged(event)
+		payload, err := workflowevents.DecodeFindingStatusChanged(decodeEvent)
 		if err != nil {
 			t.Fatalf("DecodeFindingStatusChanged(events[%d]): %v", i, err)
 		}

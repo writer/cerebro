@@ -60,7 +60,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/identitystore"
-	identitystoretypes "github.com/aws/aws-sdk-go-v2/service/identitystore/types"
 	"github.com/aws/aws-sdk-go-v2/service/kafka"
 	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
@@ -189,9 +188,6 @@ const (
 	familyIAMUser                            = "iam_user"
 	familyIdentityCenterAssignment           = "identity_center_account_assignment"
 	familyIdentityCenterPermission           = "identity_center_permission_set"
-	familyIdentityStoreLegacyGroup           = "identity_store_group"
-	familyIdentityStoreLegacyMember          = "identity_store_group_membership"
-	familyIdentityStoreLegacyUser            = "identity_store_user"
 	familyIdentityStoreGroup                 = "identitystore_group"
 	familyIdentityStoreMember                = "identitystore_group_membership"
 	familyIdentityStoreUser                  = "identitystore_user"
@@ -250,27 +246,26 @@ type Source struct {
 }
 
 type settings struct {
-	family                     string
-	accountID                  string
-	region                     string
-	profile                    string
-	accessKeyID                string
-	secretAccessKey            string
-	sessionToken               string
-	roleARN                    string
-	externalID                 string
-	assumeRoleARNs             string
-	tenantID                   string
-	legacyTenantlessAssumeRole bool
-	includeGlobal              bool
-	groupName                  string
-	principalType              string
-	principalName              string
-	userName                   string
-	identityCenter             identityCenterSettings
-	cloudTrail                 cloudTrailSettings
-	wafv2Scope                 string
-	perPage                    int
+	family          string
+	accountID       string
+	region          string
+	profile         string
+	accessKeyID     string
+	secretAccessKey string
+	sessionToken    string
+	roleARN         string
+	externalID      string
+	assumeRoleARNs  string
+	tenantID        string
+	includeGlobal   bool
+	groupName       string
+	principalType   string
+	principalName   string
+	userName        string
+	identityCenter  identityCenterSettings
+	cloudTrail      cloudTrailSettings
+	wafv2Scope      string
+	perPage         int
 }
 
 type identityCenterSettings struct {
@@ -1857,45 +1852,6 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return strings.Join([]string{awssdk.ToString(assignment.AccountId), firstNonEmpty(awssdk.ToString(assignment.PermissionSetArn), record.PermissionSetName), awssdk.ToString(assignment.PrincipalId)}, ":")
 			},
 		}),
-		awsFamily(s.clients, awsFamilyOptions[identitystoretypes.User]{
-			Name:  familyIdentityStoreLegacyUser,
-			Label: "aws identity store users",
-			List:  listLegacyIdentityStoreUsers,
-			Event: legacyIdentityStoreUserEvent,
-			URN: func(settings settings, user identitystoretypes.User) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:aws_identity_store_user:%s", settings.accountID, firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName))), nil
-			},
-			CursorFallback: func(user identitystoretypes.User) string {
-				return firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName))
-			},
-		}),
-		awsFamily(s.clients, awsFamilyOptions[identitystoretypes.Group]{
-			Name:  familyIdentityStoreLegacyGroup,
-			Label: "aws identity store groups",
-			List:  listLegacyIdentityStoreGroups,
-			Event: legacyIdentityStoreGroupEvent,
-			URN: func(settings settings, group identitystoretypes.Group) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:aws_identity_store_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(group.GroupId), awssdk.ToString(group.DisplayName))), nil
-			},
-			CursorFallback: func(group identitystoretypes.Group) string {
-				return firstNonEmpty(awssdk.ToString(group.GroupId), awssdk.ToString(group.DisplayName))
-			},
-		}),
-		awsFamily(s.clients, awsFamilyOptions[legacyIdentityStoreGroupMembership]{
-			Name:  familyIdentityStoreLegacyMember,
-			Label: "aws identity store group memberships",
-			List:  listLegacyIdentityStoreGroupMemberships,
-			Event: legacyIdentityStoreGroupMembershipEvent,
-			URN: func(settings settings, membership legacyIdentityStoreGroupMembership) (string, error) {
-				groupID := firstNonEmpty(awssdk.ToString(membership.Membership.GroupId), awssdk.ToString(membership.Group.GroupId), settings.identityCenter.groupID)
-				memberID := legacyIdentityStoreMembershipUserID(membership.Membership.MemberId)
-				return fmt.Sprintf("urn:cerebro:%s:aws_identity_store_group_membership:%s:%s", settings.accountID, groupID, memberID), nil
-			},
-			CursorFallback: func(membership legacyIdentityStoreGroupMembership) string {
-				groupID := firstNonEmpty(awssdk.ToString(membership.Membership.GroupId), awssdk.ToString(membership.Group.GroupId))
-				return strings.Join([]string{groupID, legacyIdentityStoreMembershipUserID(membership.Membership.MemberId)}, ":")
-			},
-		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
 			Name:  familyCloudTrail,
 			Label: "aws cloudtrail events",
@@ -2512,23 +2468,22 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	settings := settings{
-		family:                     configValue(cfg, "family"),
-		accountID:                  configValue(cfg, "account_id"),
-		region:                     configValue(cfg, "region"),
-		profile:                    configValue(cfg, "profile"),
-		accessKeyID:                configValue(cfg, "access_key_id"),
-		secretAccessKey:            configValue(cfg, "secret_access_key"),
-		sessionToken:               configValue(cfg, "session_token"),
-		roleARN:                    configValue(cfg, "role_arn"),
-		externalID:                 configValue(cfg, "external_id"),
-		assumeRoleARNs:             configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
-		tenantID:                   configValue(cfg, sourceconfig.RuntimeTenantIDKey),
-		legacyTenantlessAssumeRole: configBool(cfg, sourceconfig.LegacyTenantlessAssumeRoleKey, false),
-		includeGlobal:              configBool(cfg, "include_global", true),
-		groupName:                  configValue(cfg, "group_name"),
-		principalType:              configValue(cfg, "principal_type"),
-		principalName:              configValue(cfg, "principal_name"),
-		userName:                   configValue(cfg, "user_name"),
+		family:          configValue(cfg, "family"),
+		accountID:       configValue(cfg, "account_id"),
+		region:          configValue(cfg, "region"),
+		profile:         configValue(cfg, "profile"),
+		accessKeyID:     configValue(cfg, "access_key_id"),
+		secretAccessKey: configValue(cfg, "secret_access_key"),
+		sessionToken:    configValue(cfg, "session_token"),
+		roleARN:         configValue(cfg, "role_arn"),
+		externalID:      configValue(cfg, "external_id"),
+		assumeRoleARNs:  configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
+		tenantID:        configValue(cfg, sourceconfig.RuntimeTenantIDKey),
+		includeGlobal:   configBool(cfg, "include_global", true),
+		groupName:       configValue(cfg, "group_name"),
+		principalType:   configValue(cfg, "principal_type"),
+		principalName:   configValue(cfg, "principal_name"),
+		userName:        configValue(cfg, "user_name"),
 		identityCenter: identityCenterSettings{
 			storeID:          configValue(cfg, "identity_store_id"),
 			groupID:          configValue(cfg, "group_id"),
@@ -2573,7 +2528,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyInternetGateway, familyNATGateway, familyVPCEndpoint, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreLegacyGroup, familyIdentityStoreLegacyMember, familyIdentityStoreLegacyUser, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyInternetGateway, familyNATGateway, familyVPCEndpoint, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyFinding, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -2602,9 +2557,6 @@ func validateAssumeRoleConfig(settings settings) error {
 		return fmt.Errorf("aws role_arn account must match account_id")
 	}
 	if settings.tenantID == "" {
-		if settings.legacyTenantlessAssumeRole && legacyTenantlessAssumeRoleARNAllowed(settings.roleARN, settings.assumeRoleARNs) {
-			return nil
-		}
 		return fmt.Errorf("aws role_arn requires runtime tenant_id")
 	}
 	if !assumeRoleARNAllowed(settings.tenantID, settings.roleARN, settings.assumeRoleARNs) {
@@ -2628,21 +2580,6 @@ func assumeRoleARNAllowed(tenantID string, roleARN string, allowlist string) boo
 			continue
 		}
 		if strings.TrimSpace(tenant) == tenantID && strings.TrimSpace(arn) == roleARN {
-			return true
-		}
-	}
-	return false
-}
-
-func legacyTenantlessAssumeRoleARNAllowed(roleARN string, allowlist string) bool {
-	roleARN = strings.TrimSpace(roleARN)
-	if roleARN == "" {
-		return false
-	}
-	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
-	}) {
-		if strings.TrimSpace(value) == roleARN {
 			return true
 		}
 	}
@@ -4306,9 +4243,6 @@ func parsePublicEndpointCursor(raw string) (publicEndpointCursor, error) {
 	if raw == "" {
 		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageRoute53}, nil
 	}
-	if strings.HasPrefix(raw, "eni:") {
-		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageAPIGatewayRestAPI}, nil
-	}
 	decoded, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
 		return publicEndpointCursor{}, fmt.Errorf("parse aws public_endpoint cursor: %w", err)
@@ -4320,7 +4254,9 @@ func parsePublicEndpointCursor(raw string) (publicEndpointCursor, error) {
 	if cursor.Stage == "" {
 		cursor.Stage = publicEndpointStageRoute53
 	}
-	cursor = upgradePublicEndpointCursor(cursor)
+	if cursor.Version != publicEndpointCursorV2 {
+		return publicEndpointCursor{}, fmt.Errorf("parse aws public_endpoint cursor: unsupported cursor version %d", cursor.Version)
+	}
 	return cursor, nil
 }
 
@@ -4360,19 +4296,6 @@ func encodeIAMPrincipalAssignmentCursor(cursor iamPrincipalAssignmentCursor) str
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(payload)
-}
-
-func upgradePublicEndpointCursor(cursor publicEndpointCursor) publicEndpointCursor {
-	if cursor.Version != 0 {
-		return cursor
-	}
-	switch cursor.Stage {
-	case publicEndpointStageAPIGatewayV2, publicEndpointStageEIP, publicEndpointStageENI:
-		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageAPIGatewayRestAPI}
-	default:
-		cursor.Version = publicEndpointCursorV2
-		return cursor
-	}
 }
 
 func route53HostedZoneID(raw string) string {

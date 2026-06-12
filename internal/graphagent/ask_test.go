@@ -515,7 +515,7 @@ func TestServicePushesTopRiskFiltersBeforeCandidateLimit(t *testing.T) {
 			"finding_label":                     "Open repository finding",
 			"resource_urn":                      "urn:cerebro:writer:repo:alpha",
 			"resource_label":                    "repo-alpha",
-			"resource_type":                     "github.repo",
+			"resource_type":                     "github.code.repository",
 			"relation_attributes_json_internal": `{"risk_score":88,"severity":"HIGH","status":"open"}`,
 			"finding_attributes_json_internal":  `{}`,
 		},
@@ -542,7 +542,7 @@ func TestServicePushesTopRiskFiltersBeforeCandidateLimit(t *testing.T) {
 		t.Fatalf("Stream() error = %v", err)
 	}
 	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
-	if !strings.Contains(store.requests[0].Query, "toLower(filter_status) = 'open'") || !strings.Contains(store.requests[0].Query, "resource.entity_type IN ['github.code.repository', 'github.repo']") {
+	if !strings.Contains(store.requests[0].Query, "toLower(filter_status) = 'open'") || !strings.Contains(store.requests[0].Query, "resource.entity_type = 'github.code.repository'") {
 		t.Fatalf("store request should push supported filters into Cypher:\n%s", store.requests[0].Query)
 	}
 	rowsEvent := events[6].Data.(RowsEvent)
@@ -559,8 +559,8 @@ func TestResourceTypeMatchesRepositoryFilterByEntityTypeOnly(t *testing.T) {
 	if resourceTypeMatchesFilter("github.runner", "repository") {
 		t.Fatal("repository filter matched github.runner because its URN contains repo")
 	}
-	if !resourceTypeMatchesFilter("github.repo", "repository") {
-		t.Fatal("repository filter did not match github.repo entity type")
+	if !resourceTypeMatchesFilter("github.code.repository", "repository") {
+		t.Fatal("repository filter did not match github.code.repository entity type")
 	}
 }
 

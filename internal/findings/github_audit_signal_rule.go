@@ -531,7 +531,7 @@ var githubCodeSecurityControlsDisabledConfig = githubAuditSignalConfig{
 			return "github.org"
 		}
 		if scope == "repo" {
-			return "github.repo"
+			return "github.code.repository"
 		}
 		return ""
 	},
@@ -629,7 +629,7 @@ var githubPrivateRepositoryForkingEnabledConfig = githubAuditSignalConfig{
 	primaryEntityType: func(attributes map[string]string) string {
 		scope, _ := githubPrivateRepositoryForkingScope(attributes)
 		if scope == "repo" {
-			return "github.repo"
+			return "github.code.repository"
 		}
 		return "github.org"
 	},
@@ -643,7 +643,7 @@ var githubPrivateRepositoryForkingEnabledConfig = githubAuditSignalConfig{
 // finding per audit event, which collapses repeated tampering on the same
 // repo into noise instead of one durable "secret scanning disabled" finding
 // keyed by repo. Posture coverage moves to a future graph rule over the
-// projected `github.repo` entity. The wrapper stays registered so any open
+// projected `github.code.repository` entity. The wrapper stays registered so any open
 // mirror findings are auto-resolved by the existing stale-finding sweep on
 // the next replay.
 func newGitHubSecretScanningDisabledRule() Rule {
@@ -659,7 +659,7 @@ func newGitHubPushProtectionDisabledRule() Rule {
 
 // newGitHubBranchProtectionDisabledRule is retired. The durable replacement
 // is a graph rule that reports protected-branch coverage gaps over
-// `github.repo` -> `github.branch` paths.
+// `github.code.repository` -> `github.branch` paths.
 func newGitHubBranchProtectionDisabledRule() Rule {
 	return newRetiredGitHubAuditRule(githubBranchProtectionDisabledDefinition)
 }
@@ -767,7 +767,7 @@ func githubSecretScanningAlertFinding(ctx context.Context, runtime *cerebrov1.So
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
 	}
 	alertURN := firstNonEmpty(githubProjectionURN(event.GetTenantId(), "github_secret_scanning_alert", repo, number), projectedContext.PrimaryResourceURN)
-	repoURN := githubProjectionURN(event.GetTenantId(), "github_repo", repo)
+	repoURN := githubProjectionURN(event.GetTenantId(), "github_code_repository", repo)
 	resourceURNs := deduplicateStrings(append(projectedContext.ResourceURNs, alertURN, repoURN))
 	findingAttributes := githubSecretScanningAlertAttributes(event, alertURN)
 	observedAt := time.Time{}

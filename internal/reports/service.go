@@ -27,7 +27,6 @@ const (
 	riskDeltaReportName              = "Risk Delta"
 	findingSummaryReportStatus       = "completed"
 	reportParameterTenantID          = "tenant_id"
-	reportParameterRuntimeID         = "runtime_id"
 	reportParameterRuntimeIDs        = "runtime_ids"
 	reportParameterScenarioType      = "scenario_type"
 	reportParameterTargetURN         = "target_urn"
@@ -157,14 +156,9 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterTenantID)
 	}
-	runtimeID := strings.TrimSpace(parameters[reportParameterRuntimeID])
-	runtimeIDs := normalizeRuntimeIDs(runtimeID, parameters[reportParameterRuntimeIDs])
+	runtimeIDs := normalizeRuntimeIDs(parameters[reportParameterRuntimeIDs])
 	if len(runtimeIDs) == 0 {
-		return nil, fmt.Errorf("%w: report parameter %q or %q is required", ErrInvalidRequest, reportParameterRuntimeID, reportParameterRuntimeIDs)
-	}
-	resultRuntimeID := ""
-	if len(runtimeIDs) == 1 {
-		resultRuntimeID = runtimeIDs[0]
+		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterRuntimeIDs)
 	}
 	runtimeIDsCSV := strings.Join(runtimeIDs, ",")
 	resourceLimit, err := normalizePositiveLimit(parameters[reportParameterResourceLimit], defaultResourceEvidenceLimit, maxResourceEvidenceLimit, reportParameterResourceLimit)
@@ -303,7 +297,6 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	}
 	result, err := structpb.NewStruct(map[string]any{
 		reportParameterTenantID:   tenantID,
-		reportParameterRuntimeID:  resultRuntimeID,
 		reportParameterRuntimeIDs: reportStringValues(runtimeIDs),
 		"total_findings":          len(findings),
 		"runtime_counts":          countEntries(runtimeCounts, "runtime_id"),
@@ -337,14 +330,9 @@ func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterTenantID)
 	}
-	runtimeID := strings.TrimSpace(parameters[reportParameterRuntimeID])
-	runtimeIDs := normalizeRuntimeIDs(runtimeID, parameters[reportParameterRuntimeIDs])
+	runtimeIDs := normalizeRuntimeIDs(parameters[reportParameterRuntimeIDs])
 	if len(runtimeIDs) == 0 {
-		return nil, fmt.Errorf("%w: report parameter %q or %q is required", ErrInvalidRequest, reportParameterRuntimeID, reportParameterRuntimeIDs)
-	}
-	resultRuntimeID := ""
-	if len(runtimeIDs) == 1 {
-		resultRuntimeID = runtimeIDs[0]
+		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterRuntimeIDs)
 	}
 	scenarioType, err := normalizeRiskDeltaScenario(parameters[reportParameterScenarioType])
 	if err != nil {
@@ -402,7 +390,6 @@ func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string
 	}
 	result, err := structpb.NewStruct(map[string]any{
 		reportParameterTenantID:       tenantID,
-		reportParameterRuntimeID:      resultRuntimeID,
 		reportParameterRuntimeIDs:     reportStringValues(runtimeIDs),
 		reportParameterScenarioType:   scenarioType,
 		reportParameterTargetURN:      targetURN,
@@ -435,14 +422,10 @@ func jsonPayload(value any) (any, error) {
 	return decoded, nil
 }
 
-func normalizeRuntimeIDs(runtimeID string, runtimeIDs string) []string {
-	values := []string{}
-	if strings.TrimSpace(runtimeID) != "" {
-		values = append(values, runtimeID)
-	}
-	values = append(values, strings.FieldsFunc(runtimeIDs, func(r rune) bool {
+func normalizeRuntimeIDs(runtimeIDs string) []string {
+	values := strings.FieldsFunc(runtimeIDs, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\t'
-	})...)
+	})
 	seen := map[string]struct{}{}
 	normalized := make([]string, 0, len(values))
 	for _, value := range values {
@@ -564,11 +547,6 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 				Required:    true,
 			},
 			{
-				Id:          reportParameterRuntimeID,
-				Description: "Optional legacy single stored source runtime identifier. Use runtime_ids as the required runtime selector for new clients.",
-				Required:    false,
-			},
-			{
 				Id:          reportParameterRuntimeIDs,
 				Description: "Required comma-separated stored source runtime identifiers for finding summaries.",
 				Required:    true,
@@ -597,11 +575,6 @@ func riskDeltaDefinition() *cerebrov1.ReportDefinition {
 				Id:          reportParameterTenantID,
 				Description: "Tenant identifier whose persisted findings should be simulated.",
 				Required:    true,
-			},
-			{
-				Id:          reportParameterRuntimeID,
-				Description: "Optional legacy single stored source runtime identifier. Use runtime_ids as the required runtime selector for new clients.",
-				Required:    false,
 			},
 			{
 				Id:          reportParameterRuntimeIDs,

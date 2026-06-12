@@ -87,12 +87,11 @@ func TestParseSettings(t *testing.T) {
 			},
 		},
 		{
-			name: "per-page-precedes-legacy-page-size",
+			name: "per-page",
 			values: map[string]string{
 				"bucket":    "writer-aurelius-telemetry",
 				"prefix":    "verdicts/",
 				"per_page":  "25",
-				"page_size": "250",
 				"tenant_id": "writer",
 			},
 			want: settings{
@@ -166,7 +165,7 @@ func TestParseSettings(t *testing.T) {
 			values: map[string]string{
 				"bucket":    "writer-aurelius-telemetry",
 				"prefix":    "x/",
-				"page_size": "0",
+				"per_page":  "0",
 				"tenant_id": "writer",
 			},
 			wantErrIs: ErrInvalidPageSize,
@@ -176,7 +175,7 @@ func TestParseSettings(t *testing.T) {
 			values: map[string]string{
 				"bucket":    "writer-aurelius-telemetry",
 				"prefix":    "x/",
-				"page_size": "999999",
+				"per_page":  "999999",
 				"tenant_id": "writer",
 			},
 			want: settings{
@@ -456,7 +455,7 @@ func TestReadReturnsCursorWhenS3PageIsTruncated(t *testing.T) {
 		"family":    familyVerdict,
 		"bucket":    "writer-aurelius-telemetry",
 		"prefix":    "verdicts/",
-		"page_size": "1",
+		"per_page":  "1",
 		"tenant_id": "writer",
 	})
 

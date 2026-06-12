@@ -59,7 +59,7 @@
       "attributes": {
         "action": "repo.register_self_hosted_runner",
         "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "runner_ephemeral": "false",
         "runner_id": "777",

@@ -15,7 +15,6 @@ const (
 	identityAdminPrivilegeGrantedRuleID         = "identity-admin-privilege-granted"
 	identityAPIOrOAuthCredentialCreatedRuleID   = "identity-api-token-or-oauth-app-created"
 	identityAuthControlLifecycleTamperingRuleID = "identity-auth-control-lifecycle-tampering"
-	identityControlTamperCredentialChangeRuleID = "identity-control-tamper-followed-by-credential-change"
 	identityExternalGroupMemberRuleID           = "identity-external-or-personal-group-member"
 	identityMFAFactorResetOrDisabledRuleID      = "identity-mfa-factor-reset-or-disabled"
 	identityPrivilegedNoMFAAccessRuleID         = "identity-privileged-no-mfa-plus-sensitive-access"
@@ -40,11 +39,6 @@ type identitySignalConfig struct {
 
 type identitySignalRule struct {
 	config identitySignalConfig
-}
-
-type retiredIdentitySignalRule struct {
-	Rule
-	definition RuleDefinition
 }
 
 type identitySignalClosePredicate func(Event) (string, bool)
@@ -73,34 +67,6 @@ func newIdentitySignalCounterEventRule(config identitySignalConfig, openAnchor f
 		openAnchor:  openAnchor,
 		closeAnchor: closeAnchor,
 	}
-}
-
-func newRetiredIdentitySignalRule(config identitySignalConfig) Rule {
-	retired := config.definition
-	if len(config.eventKinds) != 0 {
-		retired.EventKinds = append([]string(nil), config.eventKinds...)
-	}
-	retired.Description = "Retired identity correlation-mirror rule retained so stale open findings auto-resolve; correlation moved to runtime enrichment hints on the underlying state-anchored identity findings."
-	retired.Maturity = "retired"
-	retired.Lifecycle = Lifecycle{Kind: LifecycleRetired, Anchor: AnchorNone}
-	retired.Tags = appendUniqueString(cloneStringSlice(retired.Tags), "retired", "cleanup")
-	config.definition = retired
-	config.predicate = func(*cerebrov1.EventEnvelope, map[string]string) bool { return false }
-	return &retiredIdentitySignalRule{
-		Rule:       newIdentitySignalRule(config),
-		definition: retired,
-	}
-}
-
-func (r *retiredIdentitySignalRule) RuleMetadata() RuleDefinition {
-	if r == nil {
-		return RuleDefinition{}
-	}
-	return cloneRuleDefinition(r.definition)
-}
-
-func (r *retiredIdentitySignalRule) RetiresOpenFindings() bool {
-	return r != nil
 }
 
 func (r *identitySignalCounterEventRule) RuleMetadata() RuleDefinition {
@@ -231,18 +197,6 @@ func newIdentitySignalRules() []Rule {
 			predicate:   matchesIdentityExternalGroupMember,
 			fingerprint: identityExternalGroupMemberFingerprintInputs,
 		}, identityExternalGroupMemberAnchor, identityExternalGroupMemberCloseAnchor),
-		newRetiredIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
-				identityControlTamperCredentialChangeRuleID,
-				"Identity Control Tamper Or Credential Change",
-				"Detect control tampering and sensitive credential changes so exposure analysis can correlate them by actor or resource.",
-				"HIGH",
-				"finding.identity_control_tamper_or_credential_change",
-				[]string{"identity", "correlation", "credential-access", "defense-evasion"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
-		}),
 	}
 }
 

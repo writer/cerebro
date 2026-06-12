@@ -245,12 +245,12 @@ func addRepoLink(entities map[string]*ports.ProjectedEntity, links map[string]*p
 	}
 	owner, _, hasOwner := strings.Cut(repository, "/")
 	owner = strings.TrimSpace(owner)
-	repoURN := projectionURN(tenantID, "github_repo", repository)
+	repoURN := projectionURN(tenantID, "github_code_repository", repository)
 	repoAttrs := map[string]string{"repository": repository}
 	if hasOwner && owner != "" {
 		repoAttrs["owner_login"] = owner
 	}
-	addEntity(entities, &ports.ProjectedEntity{URN: repoURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "github.repo", Label: repository, Attributes: repoAttrs})
+	addEntity(entities, &ports.ProjectedEntity{URN: repoURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "github.code.repository", Label: repository, Attributes: repoAttrs})
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "repository"}))
 	if !hasOwner || owner == "" {
 		return

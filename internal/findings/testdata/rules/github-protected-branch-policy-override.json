@@ -59,7 +59,7 @@
       "attributes": {
         "action": "protected_branch.policy_override",
         "branch": "main",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,branch-protection,policy-override,supply-chain,impact,attack.t1195"
       }
