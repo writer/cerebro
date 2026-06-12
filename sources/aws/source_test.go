@@ -1190,6 +1190,33 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	}
 }
 
+func TestReadAWSKMSKeysSkipsDeniedKeyDetails(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		fakeAWSData: fakeAWSData{
+			fakeAWSCoreData: fakeAWSCoreData{
+				kmsKeys: []kmstypes.KeyMetadata{
+					{Arn: awssdk.String("arn:aws:kms:us-east-1:123456789012:key/denied"), KeyId: awssdk.String("denied")},
+					{Arn: awssdk.String("arn:aws:kms:us-east-1:123456789012:key/allowed"), KeyId: awssdk.String("allowed")},
+				},
+				kmsDescribeErrors: map[string]error{"denied": fmt.Errorf("AccessDeniedException: denied")},
+				kmsTagErrors:      map[string]error{"allowed": fmt.Errorf("AccessDeniedException: denied")},
+				kmsRotationErrors: map[string]error{"allowed": fmt.Errorf("AccessDeniedException: denied")},
+			},
+		},
+	})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyKMSKey}), nil)
+	if err != nil {
+		t.Fatalf("Read(kms_key) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["key_id"]; got != "allowed" {
+		t.Fatalf("key_id = %q, want allowed", got)
+	}
+}
+
 func TestReadAWSDataManagerInventoryEvents(t *testing.T) {
 	openSearchARN := "arn:aws:es:us-east-1:123456789012:domain/search-prod"
 	aossCollectionARN := "arn:aws:aoss:us-east-1:123456789012:collection/col-123"
@@ -2041,6 +2068,25 @@ func TestReadAWSGovernanceInventoryEvents(t *testing.T) {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadAWSOrganizationsAccountsFallsBackWhenListDenied(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		fakeAWSGovernance: fakeAWSGovernance{
+			organizationAccountsError: fmt.Errorf("AccessDeniedException: denied"),
+		},
+	})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyOrganizationsAcct}), nil)
+	if err != nil {
+		t.Fatalf("Read(organizations_account) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["account_id"]; got != "123456789012" {
+		t.Fatalf("account_id = %q, want 123456789012", got)
 	}
 }
 
@@ -3891,6 +3937,9 @@ type fakeAWSCoreData struct {
 	s3OptionalError      error
 	rdsInstances         []rdstypes.DBInstance
 	kmsKeys              []kmstypes.KeyMetadata
+	kmsDescribeErrors    map[string]error
+	kmsTagErrors         map[string]error
+	kmsRotationErrors    map[string]error
 	kmsTags              map[string][]kmstypes.Tag
 	kmsRotation          map[string]bool
 	secrets              []secretsmanagertypes.SecretListEntry
@@ -4035,6 +4084,7 @@ type fakeAWSAnalytics struct {
 
 type fakeAWSGovernance struct {
 	organizationAccounts      []organizationstypes.Account
+	organizationAccountsError error
 	organizationRoots         []organizationstypes.Root
 	organizationOUs           map[string][]organizationstypes.OrganizationalUnit
 	organizationParents       map[string]organizationstypes.Parent
@@ -6010,6 +6060,9 @@ func (f fakeAWS) GetInstanceProfile(_ context.Context, input *iam.GetInstancePro
 }
 
 func (f fakeAWS) ListAccounts(context.Context, *organizations.ListAccountsInput, ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+	if f.organizationAccountsError != nil {
+		return nil, f.organizationAccountsError
+	}
 	return &organizations.ListAccountsOutput{Accounts: f.organizationAccounts}, nil
 }
 
@@ -6652,6 +6705,9 @@ func (f fakeAWS) ListKeys(context.Context, *kms.ListKeysInput, ...func(*kms.Opti
 
 func (f fakeAWS) DescribeKey(_ context.Context, input *kms.DescribeKeyInput, _ ...func(*kms.Options)) (*kms.DescribeKeyOutput, error) {
 	keyID := awssdk.ToString(input.KeyId)
+	if err := f.kmsDescribeErrors[keyID]; err != nil {
+		return nil, err
+	}
 	for _, key := range f.kmsKeys {
 		if awssdk.ToString(key.KeyId) == keyID || awssdk.ToString(key.Arn) == keyID {
 			copy := key
@@ -6662,11 +6718,19 @@ func (f fakeAWS) DescribeKey(_ context.Context, input *kms.DescribeKeyInput, _ .
 }
 
 func (f fakeAWS) ListResourceTags(_ context.Context, input *kms.ListResourceTagsInput, _ ...func(*kms.Options)) (*kms.ListResourceTagsOutput, error) {
-	return &kms.ListResourceTagsOutput{Tags: f.kmsTags[awssdk.ToString(input.KeyId)]}, nil
+	keyID := awssdk.ToString(input.KeyId)
+	if err := f.kmsTagErrors[keyID]; err != nil {
+		return nil, err
+	}
+	return &kms.ListResourceTagsOutput{Tags: f.kmsTags[keyID]}, nil
 }
 
 func (f fakeAWS) GetKeyRotationStatus(_ context.Context, input *kms.GetKeyRotationStatusInput, _ ...func(*kms.Options)) (*kms.GetKeyRotationStatusOutput, error) {
-	return &kms.GetKeyRotationStatusOutput{KeyRotationEnabled: f.kmsRotation[awssdk.ToString(input.KeyId)]}, nil
+	keyID := awssdk.ToString(input.KeyId)
+	if err := f.kmsRotationErrors[keyID]; err != nil {
+		return nil, err
+	}
+	return &kms.GetKeyRotationStatusOutput{KeyRotationEnabled: f.kmsRotation[keyID]}, nil
 }
 
 func (f fakeAWS) ListSecrets(context.Context, *secretsmanager.ListSecretsInput, ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error) {

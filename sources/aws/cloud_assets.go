@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -159,22 +160,21 @@ func listKMSKeys(ctx context.Context, clients awsClients, _ settings, cursor str
 			continue
 		}
 		describe, err := clients.kms.DescribeKey(ctx, &kms.DescribeKeyInput{KeyId: awssdk.String(keyID)})
-		if err != nil {
+		if err != nil && !optionalAWSError(err, "AccessDeniedException", "NotFoundException", "KMSInvalidStateException") {
 			return nil, "", fmt.Errorf("describe kms key %q: %w", keyID, err)
 		}
-		if describe.KeyMetadata == nil {
+		if err != nil || describe.KeyMetadata == nil {
 			continue
 		}
 		record := awsKMSKey{Metadata: *describe.KeyMetadata}
 		if tags, err := clients.kms.ListResourceTags(ctx, &kms.ListResourceTagsInput{KeyId: awssdk.String(keyID), Limit: awssdk.Int32(50)}); err == nil {
 			record.Tags = kmsTagMap(tags.Tags)
-		} else if !optionalAWSError(err, "NotFoundException") {
+		} else if !optionalAWSError(err, "AccessDeniedException", "NotFoundException") {
 			return nil, "", fmt.Errorf("list kms tags %q: %w", keyID, err)
 		}
 		if rotation, err := clients.kms.GetKeyRotationStatus(ctx, &kms.GetKeyRotationStatusInput{KeyId: awssdk.String(keyID)}); err == nil {
-			enabled := rotation.KeyRotationEnabled
-			record.RotationEnabled = &enabled
-		} else if !optionalAWSError(err, "UnsupportedOperationException", "KMSInvalidStateException", "NotFoundException") {
+			record.RotationEnabled = &rotation.KeyRotationEnabled
+		} else if !optionalAWSError(err, "AccessDeniedException", "UnsupportedOperationException", "KMSInvalidStateException", "NotFoundException") {
 			return nil, "", fmt.Errorf("get kms rotation %q: %w", keyID, err)
 		}
 		records = append(records, record)
@@ -673,17 +673,11 @@ func optionalAWSError(err error, codes ...string) bool {
 		return false
 	}
 	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		for _, allowed := range codes {
-			if code == allowed {
-				return true
-			}
-		}
+	if errors.As(err, &apiErr) && slices.Contains(codes, apiErr.ErrorCode()) {
+		return true
 	}
-	message := err.Error()
 	for _, allowed := range codes {
-		if strings.Contains(message, allowed) {
+		if strings.Contains(fmt.Sprint(err), allowed) {
 			return true
 		}
 	}

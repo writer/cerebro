@@ -340,6 +340,9 @@ func listSecurityHubFindings(ctx context.Context, clients awsClients, _ settings
 		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
 		NextToken:  stringPtr(cursor),
 	})
+	if err != nil && optionalAWSError(err, "AccessDeniedException", "InvalidAccessException", "ResourceNotFoundException") {
+		return nil, "", nil
+	}
 	if err != nil {
 		return nil, "", err
 	}
