@@ -4956,10 +4956,7 @@ func emailLike(value string) string {
 }
 
 func boolString(value bool) string {
-	if value {
-		return "true"
-	}
-	return "false"
+	return strconv.FormatBool(value)
 }
 
 func firstNonEmpty(values ...string) string {

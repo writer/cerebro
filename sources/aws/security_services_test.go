@@ -191,6 +191,28 @@ func TestReadAWSSecurityHubUnavailableReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestListSecurityHubFindingsRetriesExpiredCursor(t *testing.T) {
+	fake := &fakeAWSSecurityServices{
+		securityHubExpiredTokenError: errors.New("InvalidInputException: Invalid NextToken: token expired"),
+		securityHubFindings:          []securityhubtypes.AwsSecurityFinding{{Id: awssdk.String("finding-1")}},
+	}
+	clients := awsClients{awsSecurityClients: awsSecurityClients{securityHub: fakeSecurityHubSecurity{fake: fake}}}
+
+	records, next, err := listSecurityHubFindings(context.Background(), clients, settings{}, "expired-token", 10)
+	if err != nil {
+		t.Fatalf("listSecurityHubFindings() error = %v", err)
+	}
+	if next != "" {
+		t.Fatalf("next = %q, want empty", next)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if got := fake.securityHubTokens; len(got) != 2 || got[0] != "expired-token" || got[1] != "" {
+		t.Fatalf("securityHubTokens = %#v, want expired-token then empty", got)
+	}
+}
+
 func newSecurityTestSource(t *testing.T, fake *fakeAWSSecurityServices) *Source {
 	t.Helper()
 	spec, err := loadSpec()
@@ -218,22 +240,24 @@ func newSecurityTestSource(t *testing.T, fake *fakeAWSSecurityServices) *Source 
 }
 
 type fakeAWSSecurityServices struct {
-	analyzers            []accessanalyzertypes.AnalyzerSummary
-	configRecorders      []configtypes.ConfigurationRecorder
-	configStatuses       []configtypes.ConfigurationRecorderStatus
-	guardDutyDetectorIDs []string
-	guardDutyFindingIDs  map[string][]string
-	guardDutyFindings    map[string]guarddutytypes.Finding
-	securityHubFindings  []securityhubtypes.AwsSecurityFinding
-	securityHubError     error
-	inspector2Findings   []inspector2types.Finding
-	macieFindingIDs      []string
-	macieFindings        []macie2types.Finding
-	wafv2Summaries       []wafv2types.WebACLSummary
-	wafv2Details         map[string]wafv2types.WebACL
-	lastWAFV2Scope       wafv2types.Scope
-	firewalls            []networkfirewalltypes.FirewallMetadata
-	firewallDetails      map[string]networkfirewalltypes.Firewall
+	analyzers                    []accessanalyzertypes.AnalyzerSummary
+	configRecorders              []configtypes.ConfigurationRecorder
+	configStatuses               []configtypes.ConfigurationRecorderStatus
+	guardDutyDetectorIDs         []string
+	guardDutyFindingIDs          map[string][]string
+	guardDutyFindings            map[string]guarddutytypes.Finding
+	securityHubFindings          []securityhubtypes.AwsSecurityFinding
+	securityHubError             error
+	securityHubExpiredTokenError error
+	securityHubTokens            []string
+	inspector2Findings           []inspector2types.Finding
+	macieFindingIDs              []string
+	macieFindings                []macie2types.Finding
+	wafv2Summaries               []wafv2types.WebACLSummary
+	wafv2Details                 map[string]wafv2types.WebACL
+	lastWAFV2Scope               wafv2types.Scope
+	firewalls                    []networkfirewalltypes.FirewallMetadata
+	firewallDetails              map[string]networkfirewalltypes.Firewall
 }
 
 func (f *fakeAWSSecurityServices) ListAnalyzers(context.Context, *accessanalyzer.ListAnalyzersInput, ...func(*accessanalyzer.Options)) (*accessanalyzer.ListAnalyzersOutput, error) {
@@ -274,7 +298,12 @@ type fakeSecurityHubSecurity struct {
 	fake *fakeAWSSecurityServices
 }
 
-func (f fakeSecurityHubSecurity) GetFindings(context.Context, *securityhub.GetFindingsInput, ...func(*securityhub.Options)) (*securityhub.GetFindingsOutput, error) {
+func (f fakeSecurityHubSecurity) GetFindings(_ context.Context, input *securityhub.GetFindingsInput, _ ...func(*securityhub.Options)) (*securityhub.GetFindingsOutput, error) {
+	token := awssdk.ToString(input.NextToken)
+	f.fake.securityHubTokens = append(f.fake.securityHubTokens, token)
+	if token != "" && f.fake.securityHubExpiredTokenError != nil {
+		return nil, f.fake.securityHubExpiredTokenError
+	}
 	if f.fake.securityHubError != nil {
 		return nil, f.fake.securityHubError
 	}
