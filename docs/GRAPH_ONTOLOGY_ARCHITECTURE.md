@@ -81,7 +81,6 @@ Generated ontology snapshot:
 - `docs/CLOUDEVENTS_AUTOGEN.md` (via `go run ./scripts/generate_cloudevents_docs/main.go`) for event envelope and mapping-level contract extraction.
 - `docs/CLOUDEVENTS_CONTRACTS.json` for machine-readable event/mapping contracts and per-mapping generated data schemas.
 - `go run ./scripts/check_cloudevents_contract_compat/main.go` to enforce required-key/enum compatibility with versioning discipline.
-- External benchmark references: `docs/GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md`
 - World-model target state and implemented claim substrate: `docs/GRAPH_WORLD_MODEL_ARCHITECTURE.md`
 
 ## Ingestion Mapping Strategy
@@ -96,8 +95,8 @@ Generated ontology snapshot:
 - Always rely on mapper-injected temporal/provenance defaults unless the event provides stronger values.
 - Run mapper validation in `enforce` mode by default and dead-letter invalid writes for replay/debugging.
 - Maintain fixture-driven mapper contract tests (`internal/graphingest/testdata/mapper_contracts.json`) so CI catches ontology regressions per source.
-- Monitor mapper runtime counters and DLQ tail health through `GET /api/v1/graph/ingest/health`.
-- Use `cerebro ingest replay-dead-letter` to replay previously rejected events after ontology/mapping fixes.
+- Monitor graph ingest health through `GET /platform/graph/ingest-health` and `./bin/cerebro graph health`.
+- Use source runtime invalid-event inspection and graph rebuild dry-runs after ontology/mapping fixes.
 
 ## Query and Intelligence Usage
 
@@ -121,7 +120,7 @@ When adding a new kind:
 2. Register built-in schema definition with required properties and relationships.
 3. Add or update mapper rules to emit that kind.
 4. Add schema and mapper tests.
-5. Update this doc and `GRAPH_INTELLIGENCE_LAYER.md`.
+5. Update this doc and `GRAPH_OPERATIONS.md` when operator-facing behavior changes.
 
 When adding a new edge:
 

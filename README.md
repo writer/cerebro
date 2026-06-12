@@ -120,15 +120,18 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using 
 | --- | --- | --- |
 | Run the lightweight server | `make serve` | Starts the API without external stores; useful for health, source catalog, and OpenAPI checks. |
 | Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, and Neo4j. |
-| Host Cerebro | `docs/HOSTING.md` | Public-safe deployment guidance for containers, backing stores, auth, TLS, health checks, operations, and rollout. |
+| Host Cerebro | `docs/HOSTING.md`, `docs/DEPLOYMENT_EXAMPLES.md`, and `docs/OPERATIONS_RUNBOOK.md` | Deployment guidance, example platform shapes, health checks, operations, and rollout. |
 | Try a local end-to-end path | `docs/GETTING_STARTED.md` | Creates an SDK source runtime, writes a synthetic claim, and reads it back. |
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
 | Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |
 | Use SDK helpers | `sdk/python/README.md`, `sdk/typescript/README.md`, and `sources/sdk` | Maintained helpers target current bootstrap routes; the historical Agent SDK gateway is retired. |
 | Ingest Panopticon exports | `sources/panopticon`, source runtime config, and `sdk/python/examples/panopticon_push_claims.py` | S3 runtimes read canonical `alerts/`, `cases/`, and `iocs/` event archives; SDK helper writes supported claim payloads only. |
 | Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
-| Persist and sync a runtime | `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
-| Work on graph behavior | `graph counts`, `graph health`, `graph ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
+| Persist and sync a runtime | `docs/SOURCE_RUNTIME_GUIDE.md` and `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
+| Work on graph behavior | `docs/GRAPH_OPERATIONS.md` and `graph counts/health/ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
+| Configure auth and tenancy | `docs/AUTH_TENANCY.md` | Covers API keys, structured credentials, tenant scoping, proxy origin, and rotation. |
+| Consume release artifacts | `docs/RELEASE_CONTRACT.md` | Covers image tags, runtime deploy contracts, source manifests, and artifact verification. |
+| Troubleshoot operations | `docs/TROUBLESHOOTING.md` | Symptom-to-cause recipes for health, auth, source sync, graph, and MCP OAuth. |
 | Integrate MCP clients | `docs/MCP_DROID_SETUP.md` and `/api/v1/mcp` | Covers stateless Streamable HTTP, OAuth discovery, and compatibility checks. |
 | Integrate endpoint telemetry | `docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md` | Covers device-authenticated telemetry, trusted endpoint claims, and trust-gate evidence. |
 | Author policies or finding rules | `policies/`, `internal/findings`, and catalog checks | Run the relevant catalog and finding-rule tests before opening a PR. |
@@ -403,7 +406,14 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [API reference](docs/API_REFERENCE.md) | OpenAPI-oriented route reference |
 | [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
 | [Configuration](docs/CONFIGURATION.md) | configuration and deployment notes |
-| [Hosting](docs/HOSTING.md) | public-safe hosting guide for containers, backing stores, proxy/TLS, operations, and rollout |
+| [Hosting](docs/HOSTING.md) | hosting guide for containers, backing stores, proxy/TLS, operations, and rollout |
+| [Deployment examples](docs/DEPLOYMENT_EXAMPLES.md) | portable examples for Docker Compose, Kubernetes, ECS-style tasks, systemd, and scheduled jobs |
+| [Operations runbook](docs/OPERATIONS_RUNBOOK.md) | startup, health, dependency, rollout, rollback, and incident triage guidance |
+| [Source runtime guide](docs/SOURCE_RUNTIME_GUIDE.md) | source preview, runtime persistence, sync, secrets, health, and scheduling |
+| [Auth and tenancy](docs/AUTH_TENANCY.md) | API keys, structured credentials, tenant scoping, public origin, proxy trust, and rotation |
+| [Graph operations](docs/GRAPH_OPERATIONS.md) | graph health, ingest, rebuild, cleanup, query safety, and troubleshooting |
+| [Release contract](docs/RELEASE_CONTRACT.md) | release artifacts, runtime deploy contract schema, source manifests, and verification |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | symptom-driven cookbook for health, auth, source runtime, graph, MCP, and device-auth issues |
 | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) | native Droid MCP setup, OAuth flow, transport compatibility, and troubleshooting |
 | [DevEx codegen catalog](docs/DEVEX_CODEGEN_AUTOGEN.md) | generated surface map for OpenAPI, proto, and detection catalog checks |
 | [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |

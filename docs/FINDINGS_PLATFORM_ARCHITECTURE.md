@@ -2,7 +2,7 @@
 
 This document explains why Cerebro now treats findings as a shared platform primitive instead of leaving detection logic trapped inside one-off source flows.
 
-It complements [ARCHITECTURE.md](./ARCHITECTURE.md), [PLATFORM_TRANSITION_ARCHITECTURE.md](./PLATFORM_TRANSITION_ARCHITECTURE.md), and [RUNTIME_VISIBILITY_ARCHITECTURE.md](./RUNTIME_VISIBILITY_ARCHITECTURE.md).
+It complements [ARCHITECTURE.md](./ARCHITECTURE.md), [RUNTIME_VISIBILITY_ARCHITECTURE.md](./RUNTIME_VISIBILITY_ARCHITECTURE.md), and [GRAPH_OPERATIONS.md](./GRAPH_OPERATIONS.md).
 
 ## Why This Exists
 
@@ -137,7 +137,7 @@ This returns the discoverable rule catalog so clients can choose a `rule_id` ins
 
 ```bash
 curl -X POST \
-  "http://localhost:8080/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=identity-okta-policy-rule-lifecycle-tampering&event_limit=100"
+  "http://localhost:8080/source-runtimes/<runtime-id>/findings/evaluate?rule_id=<rule-id>&event_limit=100"
 ```
 
 This replays one runtime, persists findings emitted by the selected rule, and returns the durable evaluation run metadata.
@@ -146,7 +146,7 @@ This replays one runtime, persists findings emitted by the selected rule, and re
 
 ```bash
 curl \
-  "http://localhost:8080/source-runtimes/writer-okta-audit/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=20"
+  "http://localhost:8080/source-runtimes/<runtime-id>/finding-evaluation-runs?rule_id=<rule-id>&status=completed&limit=20"
 
 curl http://localhost:8080/finding-evaluation-runs/<run-id>
 ```
@@ -157,7 +157,7 @@ These endpoints answer operational questions like "when did this rule last run?"
 
 ```bash
 curl \
-  "http://localhost:8080/source-runtimes/writer-okta-audit/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open"
+  "http://localhost:8080/source-runtimes/<runtime-id>/findings?rule_id=<rule-id>&status=open"
 ```
 
 This reads normalized persisted findings, not transient rule output.

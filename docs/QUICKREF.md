@@ -58,9 +58,9 @@ export CEREBRO_API_KEYS='secret-key:principal:tenant_id'
 Runtime-backed commands require Postgres and, for sync/replay, JetStream:
 
 ```bash
-./bin/cerebro source-runtime put writer-github github tenant_id=writer owner=writer repo=cerebro
-./bin/cerebro source-runtime get writer-github
-./bin/cerebro source-runtime sync writer-github page_limit=1
+./bin/cerebro source-runtime put local-github github tenant_id=local owner=writer repo=cerebro
+./bin/cerebro source-runtime get local-github
+./bin/cerebro source-runtime sync local-github page_limit=1
 ```
 
 Graph operations require Neo4j:
@@ -68,7 +68,7 @@ Graph operations require Neo4j:
 ```bash
 ./bin/cerebro graph counts
 ./bin/cerebro graph neighborhood <root-urn> limit=10
-./bin/cerebro graph ingest-runtime writer-github page_limit=1
+./bin/cerebro graph ingest-runtime local-github page_limit=1
 ```
 
 ## Validation

@@ -1,0 +1,265 @@
+# Operations Runbook
+
+This runbook is for operators hosting the public Cerebro bootstrap service. It is based on the current Go runtime, public CLI, public HTTP routes, and release artifacts in this repository. It intentionally avoids environment-specific hostnames, account IDs, tenant names, schedules, secret paths, and rollout processes.
+
+Use it with:
+
+- [`docs/HOSTING.md`](./HOSTING.md) for the hosting baseline.
+- [`docs/DEPLOYMENT_EXAMPLES.md`](./DEPLOYMENT_EXAMPLES.md) for portable deployment patterns.
+- [`docs/TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) for symptom-driven debugging.
+- [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) for current environment variables.
+- [`api/openapi.yaml`](../api/openapi.yaml) for the HTTP route contract.
+
+## Operating model
+
+Cerebro currently operates as one HTTP service plus optional backing stores:
+
+| Runtime profile | Backing stores | Operational responsibility |
+| --- | --- | --- |
+| Lightweight API | none | keep the process alive and serve public catalog/health/API metadata routes |
+| Durable API | Postgres | preserve runtime, claim, finding, report, OAuth, and device-auth state |
+| Durable sync | Postgres plus NATS JetStream | preserve runtime state and replayable append-log events |
+| Graph-enabled | Postgres plus NATS JetStream plus Neo4j or Aura | preserve runtime state, append-log events, and graph projection/query state |
+
+The implementation is intentionally fail-closed for missing required dependencies. Operations that require a store should return a clear unavailable or dependency error when the store is not configured, rather than silently switching to volatile storage.
+
+## First checks
+
+Run these checks whenever an instance starts, restarts, or is promoted behind a load balancer:
+
+```bash
+curl -fsS http://127.0.0.1:8080/livez
+curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:8080/openapi.yaml >/dev/null
+```
+
+If API auth is enabled, use an authenticated request for protected routes:
+
+```bash
+curl -fsS \
+  -H "Authorization: Bearer ${CEREBRO_API_KEY}" \
+  "https://cerebro.example.com/source-runtimes?limit=1"
+```
+
+Use `GET /livez` or `GET /healthz` for liveness. Use `GET /health` for readiness, because it is dependency-aware.
+
+## Health and readiness
+
+| Route | Auth | Meaning | Operator action |
+| --- | --- | --- | --- |
+| `GET /livez` | public | process is serving HTTP | restart only if this fails repeatedly |
+| `GET /healthz` | public | liveness alias | same as `/livez` |
+| `GET /health` | public | dependency-aware readiness | remove from traffic if degraded |
+| `GET /metrics` | protected when auth is enabled | Prometheus-style runtime metrics | scrape only from trusted networks |
+| `GET /source-runtimes/health` | protected | source runtime health summary | use for sync and source health dashboards |
+| `GET /platform/graph/ingest-health` | protected | graph ingest health summary | use for graph freshness dashboards |
+| `GET /platform/graph/ingest-runs` | protected | graph ingest run history | use during graph incidents |
+
+`/health` returns HTTP `503` when the service is alive but a configured dependency is degraded. That should block readiness, but should not by itself force a process restart.
+
+## Startup checklist
+
+1. Confirm the image tag or binary version you intended to run.
+2. Confirm `CEREBRO_HTTP_ADDR` matches the container or service port.
+3. Confirm `CEREBRO_SHUTDOWN_TIMEOUT` is long enough for your platform's termination grace period.
+4. Confirm `CEREBRO_API_AUTH_ENABLED=true` for shared deployments.
+5. Confirm at least one auth mechanism is configured when API auth is enabled.
+6. Confirm `CEREBRO_PUBLIC_ORIGIN` matches the HTTPS origin clients use.
+7. Confirm trusted proxy CIDRs and hop count match the proxy topology.
+8. Confirm Postgres config if durable state is expected.
+9. Confirm NATS JetStream config if source sync or workflow replay is expected.
+10. Confirm Neo4j or Aura config if graph operations are expected.
+11. Confirm source runtime secrets are injected by the platform, not checked into files.
+12. Confirm `/livez` succeeds.
+13. Confirm `/health` succeeds for the selected runtime profile.
+14. Confirm logs and metrics are being collected.
+
+## Dependency checks
+
+### Postgres
+
+Postgres is required for durable source runtimes, claims, findings, evidence, evaluations, reports, MCP OAuth, and device-auth state.
+
+Check:
+
+- `CEREBRO_STATE_STORE_DRIVER=postgres`
+- `CEREBRO_POSTGRES_DSN`
+- TLS and network reachability from the Cerebro service
+- connection pool settings if the database is connection-limited
+- database storage, CPU, locks, and slow queries
+
+Relevant variables:
+
+- `CEREBRO_POSTGRES_MAX_OPEN_CONNS`
+- `CEREBRO_POSTGRES_MAX_IDLE_CONNS`
+- `CEREBRO_POSTGRES_CONN_MAX_LIFETIME`
+- `CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME`
+
+### NATS JetStream
+
+NATS JetStream is required for append-log-backed sync and replay.
+
+Check:
+
+- `CEREBRO_APPEND_LOG_DRIVER=jetstream`
+- `CEREBRO_JETSTREAM_URL`
+- `CEREBRO_JETSTREAM_SUBJECT_PREFIX`
+- stream storage and retention
+- consumer lag
+- disk pressure
+- graceful drain timeout during rollout
+
+Relevant variable:
+
+- `CEREBRO_JETSTREAM_DRAIN_TIMEOUT`
+
+### Neo4j or Aura
+
+Neo4j or Aura is required for graph projection, graph queries, graph health, graph ingest runs, impact queries, and graph-agent flows.
+
+Check:
+
+- `CEREBRO_GRAPH_STORE_DRIVER=neo4j`
+- `CEREBRO_NEO4J_URI`
+- `CEREBRO_NEO4J_USERNAME`
+- `CEREBRO_NEO4J_PASSWORD`
+- `CEREBRO_NEO4J_DATABASE`, when using a non-default database
+- `CEREBRO_NEO4J_QUERY_TIMEOUT`, when graph reads need a bounded timeout
+
+Run:
+
+```bash
+./bin/cerebro graph health
+./bin/cerebro graph counts
+./bin/cerebro graph ingest-runs limit=10
+```
+
+## Source runtime operations
+
+Common runtime checks:
+
+```bash
+./bin/cerebro source list
+./bin/cerebro source-runtime list tenant_id=<tenant-id> limit=20
+./bin/cerebro source-runtime get <runtime-id>
+curl -fsS -H "Authorization: Bearer ${CEREBRO_API_KEY}" \
+  "https://cerebro.example.com/source-runtimes/health?limit=20"
+```
+
+Common sync operation:
+
+```bash
+./bin/cerebro source-runtime sync <runtime-id> page_limit=100
+```
+
+Operational guidance:
+
+- Start new runtimes with a small `page_limit`.
+- Use `page_limit=100` only after provider credentials, rate limits, and persistence are stable.
+- Avoid two sync jobs for the same cursor-sensitive runtime unless the source and stores are known to handle concurrency safely.
+- Treat provider rate limits and auth failures as source-specific incidents, not Cerebro process failures.
+- Keep runtime IDs and schedules in your deployment system, not in public docs.
+
+## Graph operations
+
+Common graph checks:
+
+```bash
+./bin/cerebro graph health
+./bin/cerebro graph counts
+./bin/cerebro graph relation-counts
+./bin/cerebro graph ingest-runs limit=20
+```
+
+Runtime-backed ingest:
+
+```bash
+./bin/cerebro graph ingest-runtime <runtime-id> page_limit=100
+```
+
+Dry-run rebuild:
+
+```bash
+./bin/cerebro graph rebuild <runtime-id> dry_run=true mode=replay event_limit=100 preview_limit=10
+```
+
+Operational guidance:
+
+- Use `graph health` before and after enabling graph-dependent workflows.
+- Use dry-run rebuilds before applying broad projection changes.
+- Investigate failed, stale-running, or zero-projection ingest runs before increasing ingest cadence.
+- Keep graph repair and cleanup commands in dry-run mode until you have reviewed their output.
+
+## Rollout
+
+Before rollout:
+
+1. Run local or CI validation for the release.
+2. Record the image tag and config version.
+3. Confirm all required secrets exist in the target runtime environment.
+4. Confirm dependency migrations or schema expectations, if any, are documented for the release.
+5. Confirm readiness and liveness routes are wired correctly.
+6. Confirm rollback is image tag revert plus config revert, unless the release notes say otherwise.
+
+During rollout:
+
+1. Start with the smallest safe replica or percentage.
+2. Wait for `/health` to pass.
+3. Watch HTTP `5xx`, HTTP `4xx`, auth denials, dependency errors, and process restarts.
+4. Watch Postgres connections, NATS stream health, and graph ingest errors.
+5. Pause scheduled sync or graph jobs if dependency pressure increases.
+
+After rollout:
+
+1. Confirm all replicas run the expected version.
+2. Confirm source runtime sync still advances.
+3. Confirm graph ingest runs complete if graph is enabled.
+4. Confirm dashboards and alerts receive new data.
+5. Save the final image tag and config version in your deployment records.
+
+## Rollback
+
+Rollback should be boring:
+
+1. Revert the image tag.
+2. Revert config changes coupled to the new image.
+3. Pause background jobs if they depend on the reverted behavior.
+4. Wait for `/livez` and `/health`.
+5. Run a representative source or graph smoke check.
+6. Confirm error rates return to baseline.
+
+If a release includes persistent storage or event-shape changes, read the release notes before rolling back. Do not assume arbitrary downgrade safety for stateful data.
+
+## Incident triage
+
+Use this sequence for most incidents:
+
+1. **Scope**: process down, readiness degraded, one route failing, one tenant failing, one source failing, or graph only.
+2. **Recent change**: image tag, config, secret, proxy, dependency, source provider, or schedule.
+3. **Health**: `/livez`, `/health`, dependency dashboards.
+4. **Auth**: `401`, `403`, tenant mismatch, scope mismatch, proxy stripped headers.
+5. **State**: Postgres connectivity and connection saturation.
+6. **Append log**: NATS connectivity, consumer lag, stream storage.
+7. **Graph**: Neo4j connectivity, query timeout, ingest run status.
+8. **Source**: provider credentials, rate limits, runtime config, cursor progress.
+
+Escalate only after you can say which layer is failing.
+
+## Alert suggestions
+
+Useful alerts for any shared deployment:
+
+- process not serving `/livez`
+- `/health` degraded for longer than a short rollout window
+- sustained HTTP `5xx`
+- unusual HTTP `401` or `403` increase
+- Postgres connection saturation
+- Postgres query failures
+- NATS JetStream unavailable
+- NATS consumer lag or storage pressure
+- graph ingest failure or stale-running runs
+- source runtime sync failures
+- repeated process restarts
+- missing metrics scrape
+
+Keep exact thresholds environment-specific.

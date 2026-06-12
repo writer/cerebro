@@ -39,8 +39,8 @@ runtimes:
 		t.Fatalf("Discover: %v", err)
 	}
 	contract, err := RenderContract(root, manifests, ContractOptions{
-		Environment: "sec-dev",
-		TenantID:    "writer",
+		Environment: "dev",
+		TenantID:    "example",
 		ImageTag:    "v2.1.60",
 	})
 	if err != nil {
@@ -67,7 +67,7 @@ runtimes:
 	if !equalStrings(okta.RequiredSecrets, []string{"OKTA_API_TOKEN", "OKTA_DOMAIN"}) {
 		t.Fatalf("okta secrets = %v", okta.RequiredSecrets)
 	}
-	if len(okta.Runtimes) != 1 || okta.Runtimes[0].ID != "writer-okta-audit" {
+	if len(okta.Runtimes) != 1 || okta.Runtimes[0].ID != "example-okta-audit" {
 		t.Fatalf("okta runtimes = %#v", okta.Runtimes)
 	}
 	if !equalStrings(okta.Runtimes[0].RequiredSecrets, []string{"OKTA_API_TOKEN", "OKTA_DOMAIN"}) {
@@ -88,8 +88,8 @@ func TestContractMarshalJSONStable(t *testing.T) {
 	t.Parallel()
 	contract := Contract{
 		SchemaVersion: ContractSchemaVersion,
-		Environment:   "sec-dev",
-		TenantID:      "writer",
+		Environment:   "dev",
+		TenantID:      "example",
 		Sources:       []ContractSource{{SourceID: "aws"}},
 	}
 	data, err := contract.MarshalJSONStable()
@@ -114,7 +114,7 @@ func TestRenderContractUsesRuntimeFamilyCatalogOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
-	contract, err := RenderContract(root, manifests, ContractOptions{Environment: "sec-dev", TenantID: "writer"})
+	contract, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"})
 	if err != nil {
 		t.Fatalf("RenderContract: %v", err)
 	}
@@ -145,7 +145,7 @@ runtimes:
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
-	if _, err := RenderContract(root, manifests, ContractOptions{Environment: "sec-dev", TenantID: "writer"}); err == nil {
+	if _, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"}); err == nil {
 		t.Fatal("RenderContract error = nil, want invalid source health receipt error")
 	}
 }
@@ -169,7 +169,7 @@ runtimes:
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
-	contract, err := RenderContract(root, manifests, ContractOptions{Environment: "sec-dev", TenantID: "writer"})
+	contract, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"})
 	if err != nil {
 		t.Fatalf("RenderContract: %v", err)
 	}
@@ -238,7 +238,7 @@ runtimes:
 		if err != nil {
 			t.Fatalf("Discover: %v", err)
 		}
-		contract, err := RenderContract(root, manifests, ContractOptions{Environment: "sec-dev", TenantID: "writer"})
+		contract, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"})
 		if err != nil {
 			return
 		}

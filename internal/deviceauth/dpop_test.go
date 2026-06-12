@@ -114,8 +114,8 @@ func TestDPoPVerifyES256RoundTrip(t *testing.T) {
 	v := NewDPoPVerifier(time.Minute, time.Minute)
 	v.SetClock(func() time.Time { return now })
 	signer := newDPoPSignerES256(t)
-	proof := makeDPoPProof(t, signer, "POST", "https://cerebro.writer.com/platform/devices/token", now, "abc-1")
-	res, err := v.Verify(proof, "POST", "https://cerebro.writer.com/platform/devices/token")
+	proof := makeDPoPProof(t, signer, "POST", "https://cerebro.example.com/platform/devices/token", now, "abc-1")
+	res, err := v.Verify(proof, "POST", "https://cerebro.example.com/platform/devices/token")
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
@@ -129,8 +129,8 @@ func TestDPoPVerifyEdDSARoundTrip(t *testing.T) {
 	v := NewDPoPVerifier(time.Minute, time.Minute)
 	v.SetClock(func() time.Time { return now })
 	signer := newDPoPSignerEd25519(t)
-	proof := makeDPoPProof(t, signer, "POST", "https://cerebro.writer.com/x", now, "abc-2")
-	if _, err := v.Verify(proof, "POST", "https://cerebro.writer.com/x"); err != nil {
+	proof := makeDPoPProof(t, signer, "POST", "https://cerebro.example.com/x", now, "abc-2")
+	if _, err := v.Verify(proof, "POST", "https://cerebro.example.com/x"); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
 }

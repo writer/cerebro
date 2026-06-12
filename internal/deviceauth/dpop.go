@@ -36,10 +36,9 @@ type DPoPResult struct {
 }
 
 // DPoPVerifier validates RFC 9449 DPoP proof JWTs and dedupes seen jti values
-// for proofTTL+clockSkew. The dedupe table is per-process; production should
-// pair this with a Redis-backed jti store keyed by device_id when more than
-// one cerebro replica is deployed (see docs/proposals/SECHECK_DEVICE_AUTH.md
-// §"DPoP replay store").
+// for proofTTL+clockSkew. The dedupe table is per-process; deployments with
+// more than one Cerebro replica should use shared replay state before enabling
+// multi-replica device-auth traffic.
 type DPoPVerifier struct {
 	clockSkew time.Duration
 	proofTTL  time.Duration

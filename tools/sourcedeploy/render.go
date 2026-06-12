@@ -19,20 +19,21 @@ type RenderOptions struct {
 	TenantID    string
 }
 
-// Fragment is the Pulumi-shaped subset this tool owns. Marshalling it as YAML
-// produces keys identical to the ones consumed by infra/aws/__main__.py:
-// cerebro:sourceSecretKeys and cerebro:sourceRuntimes.
+// Fragment is the deployment-config subset this tool owns. Marshalling it as
+// YAML produces two stable keys: cerebro:sourceSecretKeys and
+// cerebro:sourceRuntimes.
 //
 // cerebro:orchestratorSchedules is intentionally *not* rendered here: the
 // rate, taskCount, and choice of which runtimes to schedule are operational
-// decisions owned by WriterInternal/cerebro and authored alongside the
-// generated fragment in Pulumi.<env>.yaml.
+// decisions owned by deployment automation and authored alongside the generated
+// fragment.
 type Fragment struct {
 	SourceSecretKeys []string          `yaml:"cerebro:sourceSecretKeys,omitempty"`
 	SourceRuntimes   []RenderedRuntime `yaml:"cerebro:sourceRuntimes,omitempty"`
 }
 
-// RenderedRuntime is the shape Pulumi expects in `sourceRuntimes`.
+// RenderedRuntime is the shape deployment automation expects in
+// `sourceRuntimes`.
 type RenderedRuntime struct {
 	ID       string            `yaml:"id"`
 	SourceID string            `yaml:"sourceId"`
@@ -42,7 +43,7 @@ type RenderedRuntime struct {
 
 // Render projects a list of manifests for a tenant. The result is a
 // deterministic, alphabetically sorted Fragment that can be merged into a
-// Pulumi.<env>.yaml `config:` block.
+// deployment config block.
 func Render(manifests []Manifest, opts RenderOptions) (Fragment, error) {
 	if strings.TrimSpace(opts.TenantID) == "" {
 		return Fragment{}, fmt.Errorf("RenderOptions.TenantID is required")
@@ -87,9 +88,9 @@ func Render(manifests []Manifest, opts RenderOptions) (Fragment, error) {
 }
 
 // MarshalYAML emits the Fragment as a deterministic YAML document with
-// 2-space indentation matching the hand-authored Pulumi config files. Map
-// keys inside `config` are sorted, and config values are emitted as quoted
-// strings because the Pulumi consumer always coerces them via str().
+// 2-space indentation. Map keys inside `config` are sorted, and config values
+// are emitted as quoted strings so deployment consumers can parse them
+// consistently.
 func (f Fragment) MarshalYAML() ([]byte, error) {
 	doc := &yaml.Node{Kind: yaml.MappingNode}
 	if len(f.SourceSecretKeys) > 0 {
@@ -166,8 +167,7 @@ func sortedQuotedMap(in map[string]string) *yaml.Node {
 }
 
 // shouldQuoteConfigValue forces double-quotes on values yaml.v3 would
-// otherwise tag as non-strings (digits, ISO-8601 timestamps), so the rendered
-// file matches the hand-authored Pulumi config style.
+// otherwise tag as non-strings, such as digits or ISO-8601 timestamps.
 func shouldQuoteConfigValue(value string) bool {
 	if value == "" {
 		return true

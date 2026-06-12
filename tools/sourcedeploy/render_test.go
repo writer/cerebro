@@ -37,7 +37,7 @@ func TestRenderEmitsSecretsAndRuntimes(t *testing.T) {
 		},
 	}
 
-	frag, err := Render(manifests, RenderOptions{Environment: "sec-dev", TenantID: "writer"})
+	frag, err := Render(manifests, RenderOptions{Environment: "dev", TenantID: "example"})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -49,10 +49,10 @@ func TestRenderEmitsSecretsAndRuntimes(t *testing.T) {
 	if len(frag.SourceRuntimes) != 2 {
 		t.Fatalf("expected 2 rendered runtimes, got %d", len(frag.SourceRuntimes))
 	}
-	if frag.SourceRuntimes[0].ID != "writer-okta-audit" {
+	if frag.SourceRuntimes[0].ID != "example-okta-audit" {
 		t.Fatalf("runtime[0].id = %q", frag.SourceRuntimes[0].ID)
 	}
-	if frag.SourceRuntimes[1].ID != "writer-sentinelone-threat" {
+	if frag.SourceRuntimes[1].ID != "example-sentinelone-threat" {
 		t.Fatalf("runtime[1].id = %q", frag.SourceRuntimes[1].ID)
 	}
 }
@@ -60,9 +60,9 @@ func TestRenderEmitsSecretsAndRuntimes(t *testing.T) {
 func TestRenderRejectsBadOptions(t *testing.T) {
 	t.Parallel()
 	cases := []RenderOptions{
-		{Environment: "sec-dev"},
-		{Environment: "sec-dev", TenantID: "Writer"},
-		{TenantID: "writer"},
+		{Environment: "dev"},
+		{Environment: "dev", TenantID: "Example"},
+		{TenantID: "example"},
 	}
 	for _, opt := range cases {
 		if _, err := Render(nil, opt); err == nil {
@@ -71,12 +71,12 @@ func TestRenderRejectsBadOptions(t *testing.T) {
 	}
 }
 
-func TestFragmentMarshalsPulumiKeys(t *testing.T) {
+func TestFragmentMarshalsDeploymentKeys(t *testing.T) {
 	t.Parallel()
 	frag := Fragment{
 		SourceSecretKeys: []string{"AAA"},
 		SourceRuntimes: []RenderedRuntime{{
-			ID: "writer-example-live", SourceID: "example", TenantID: "writer",
+			ID: "example-source-live", SourceID: "example-source", TenantID: "example",
 			Config: map[string]string{"family": "live", "per_page": "200"},
 		}},
 	}
@@ -88,7 +88,7 @@ func TestFragmentMarshalsPulumiKeys(t *testing.T) {
 	for _, want := range []string{
 		"cerebro:sourceSecretKeys",
 		"cerebro:sourceRuntimes",
-		"writer-example-live",
+		"example-source-live",
 		"family: live",
 		`per_page: "200"`,
 	} {
@@ -97,7 +97,7 @@ func TestFragmentMarshalsPulumiKeys(t *testing.T) {
 		}
 	}
 	if strings.Contains(got, "cerebro:orchestratorSchedules") {
-		t.Fatalf("renderer must not emit cerebro:orchestratorSchedules; ops cadence belongs in WriterInternal\n%s", got)
+		t.Fatalf("renderer must not emit cerebro:orchestratorSchedules; ops cadence belongs in deployment automation\n%s", got)
 	}
 }
 

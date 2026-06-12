@@ -1,6 +1,6 @@
 # Non-Goals
 
-This document collects, in one place, the things Cerebro intentionally does not try to do. It exists because non-goals in this repo are otherwise scattered across [`PLAN.md`](../PLAN.md), [`ARCHITECTURE.md`](./ARCHITECTURE.md), [`PLATFORM_TRANSITION_ARCHITECTURE.md`](./PLATFORM_TRANSITION_ARCHITECTURE.md), [`FINDINGS_PLATFORM_ARCHITECTURE.md`](./FINDINGS_PLATFORM_ARCHITECTURE.md), [`RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md), and [`ACTION_ENGINE_ARCHITECTURE.md`](./ACTION_ENGINE_ARCHITECTURE.md), with no single index that a contributor, agent, or reviewer can read first.
+This document collects, in one place, the things Cerebro intentionally does not try to do. It exists because non-goals in this repo are otherwise scattered across [`PLAN.md`](../PLAN.md), [`ARCHITECTURE.md`](./ARCHITECTURE.md), [`FINDINGS_PLATFORM_ARCHITECTURE.md`](./FINDINGS_PLATFORM_ARCHITECTURE.md), [`RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md), and [`ACTION_ENGINE_ARCHITECTURE.md`](./ACTION_ENGINE_ARCHITECTURE.md), with no single index that a contributor, agent, or reviewer can read first.
 
 Each section lists what Cerebro will not do, why that boundary exists, where in the codebase the boundary is enforced, and what evidence would justify revisiting the decision. The point is not to freeze scope. The point is to make scope drift expensive on purpose: if a change crosses one of these lines, the PR description should say so explicitly, and the corresponding entry in this document should be amended in the same change.
 
@@ -73,7 +73,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### Agent push surface (device-keyed write) is bounded to first-party fleet agents.
 
-- Cerebro accepts push traffic only from first-party agents Cerebro itself authenticates and authorizes per-device. The current concrete instance is the SeCheck endpoint agent (see [`docs/proposals/SECHECK_DEVICE_AUTH.md`](./proposals/SECHECK_DEVICE_AUTH.md)). Third-party services and unmanaged callers do not write to the platform: they integrate via the Source CDK's pull contract.
+- Cerebro accepts push traffic only from first-party agents Cerebro itself authenticates and authorizes per-device. Third-party services and unmanaged callers do not write to the platform: they integrate via the Source CDK's pull contract.
 - Why: a first-party agent is a substantively different trust shape from a third-party API. Cerebro provisions the device identity (bootstrap token via MDM), signs the JWTs, owns the rotation key material, and revokes the device. None of those affordances exist for third-party callers, and conflating them would erase the Source-CDK boundary that makes replay, rebuild, and rule evaluation deterministic. Distinct affordance gets distinct entry.
 - Enforced in: [`internal/deviceauth`](../internal/deviceauth) (token issuance, rotation, replay detection); the bootstrap auth pipeline in [`internal/bootstrap/auth.go`](../internal/bootstrap/auth.go) (the device-JWT verifier sits next to the existing API-key and capability-token paths, not as a separate service); the `platform.devices.*`, `platform.telemetry.ingest`, and `security.devices.findings.read` scope set wired through `authorizeHTTPRequestScope`.
 - What would change this: a second first-party agent class with materially different posture (e.g. server-side runtime agents, container sidecars). That belongs to its own design proposal and its own [`docs/NON_GOALS.md`](./NON_GOALS.md) entry; reusing the SeCheck shape by default is not the answer.
@@ -105,7 +105,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - Bus factor, coordination fragility, privilege concentration, blast-radius posture, and similar derived analytics live on top of the shared graph as report runs and intelligence section views. They will not be promoted into standalone graph primitives, dedicated `/api/v1/*` resource trees, or new node categories until they require their own write lifecycle, durable IDs, approvals, or actuation semantics.
 - Why: every promoted primitive is a permanent contract. Treating early views as report runs lets the platform iterate without growing a new tax surface.
-- Enforced in: [`PLATFORM_TRANSITION_ARCHITECTURE.md`](./PLATFORM_TRANSITION_ARCHITECTURE.md) §1 "Executive Summary" and §3 "Target Platform Model"; resource families under `/api/v1/platform/intelligence/*`.
+- Enforced in: the current platform route layout in [`internal/bootstrap/routes.go`](../internal/bootstrap/routes.go) and report/run contracts in [`docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md`](./GRAPH_REPORT_CONTRACTS_AUTOGEN.md).
 - What would change this: a derived view that demonstrably needs durable IDs, approvals, or actuation, with the promotion proposed in a contract PR before the new resource ships.
 
 ## Findings Platform
@@ -188,10 +188,10 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### Cerebro is not exclusively a security product.
 
-- The platform exposes shared primitives — graph, knowledge, identity, schema, ingest, intelligence, simulations, jobs — at `/api/v1/platform/*`. Security is one application surface that uses those primitives, exposed at `/api/v1/security/*`. Org dynamics is another, at `/api/v1/org/*`. Operational concerns live at `/api/v1/admin/*`.
+- The platform exposes shared primitives such as graph, knowledge, source runtimes, workflow replay, jobs, and runtime response through typed bootstrap routes. Security, governance, and operations are application surfaces that use those primitives rather than redefining them.
 - The platform vocabulary will not adopt security-first naming as default. "Security graph", "asset", "finding", "compliance", and "threat intel" are valid security application nouns; they are not the platform vocabulary.
 - Why: collapsing platform into security ships a worse platform and a worse security product. Both layers benefit from explicit contracts.
-- Enforced in: [`PLATFORM_TRANSITION_ARCHITECTURE.md`](./PLATFORM_TRANSITION_ARCHITECTURE.md) §1, §2, §3 "Namespace Decision".
+- Enforced in: the current HTTP route surface in [`internal/bootstrap/routes.go`](../internal/bootstrap/routes.go), [`docs/API_REFERENCE.md`](./API_REFERENCE.md), and [`docs/API_CONTRACTS_AUTOGEN.md`](./API_CONTRACTS_AUTOGEN.md).
 - What would change this: nothing. New application surfaces (DataOps, ML observability, supply chain, GRC programs) follow the same boundary.
 
 ### Cerebro is not a CSPM, CNAPP, CWPP, EDR, SIEM, SOAR, or IDS replacement.
@@ -202,7 +202,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
   - It does not own response automation as its primary product surface; runtime response is a constrained subsystem with explicit gates, not a SOAR.
   - It does not author cloud posture from Cerebro's own scanners as the source of truth; cloud posture findings come from typed sources whose budgets are explicit.
 - Why: Cerebro's value is the typed substrate (events, claims, evidence, decisions, workflows, the read graph, and the safety boundary). Promising a replacement promise would force the codebase to take on operational scope that is incompatible with that substrate.
-- Enforced in: [`README.md`](../README.md) "Operations data platform"; the absence of category-implying endpoints in [`docs/PLATFORM_TRANSITION_ARCHITECTURE.md`](./PLATFORM_TRANSITION_ARCHITECTURE.md) §3.
+- Enforced in: [`README.md`](../README.md) "Operations data platform" and the current route surface in [`docs/API_REFERENCE.md`](./API_REFERENCE.md).
 - What would change this: nothing in this repo. Category-shaped products belong on top of Cerebro, not inside it.
 
 ## Operational And Distribution
@@ -230,9 +230,9 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### Cerebro will not maintain undocumented compatibility aliases indefinitely.
 
-- Legacy `/graph/*` aliases for routes that have moved to `/api/v1/platform/*` exist only when there are real consumers. When no known consumer exists, the alias is removed quickly rather than preserved as silent drift.
+- Legacy `/graph/*` aliases for routes that have moved to `/platform/graph/*` exist only when there are real consumers. When no known consumer exists, the alias is removed quickly rather than preserved as silent drift.
 - Why: indefinite aliasing turns the API surface into a museum of every past decision. Removal discipline keeps the contract honest.
-- Enforced in: [`PLATFORM_TRANSITION_ARCHITECTURE.md`](./PLATFORM_TRANSITION_ARCHITECTURE.md) §1 closing paragraph; deprecation header behavior in `internal/bootstrap`.
+- Enforced in: route registration in [`internal/bootstrap/routes.go`](../internal/bootstrap/routes.go) and deprecation header behavior in `internal/bootstrap`.
 - What would change this: a documented external consumer that justifies the alias for a defined window, tracked with a removal date.
 
 ## Vocabulary

@@ -10,7 +10,7 @@ The design goal is practical:
 - keep high-volume raw telemetry out of the graph and out of the platform job hot path
 - make runtime visibility provider-pluggable instead of coupling the system to one sensor
 
-This document complements [RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md) and [GRAPH_INTELLIGENCE_LAYER.md](./GRAPH_INTELLIGENCE_LAYER.md).
+This document complements [RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md), [GRAPH_OPERATIONS.md](./GRAPH_OPERATIONS.md), and [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md).
 
 ## Why This Needs A Separate Architecture
 
