@@ -38,6 +38,8 @@ class BackfillRun:
     run_page_limit: int
     run_graph_page_limit: int
     run_event_limit: int
+    wait_timeout_seconds: int
+    run_attempt_timeout_seconds: int
     stop_running_before_run: bool
     targets: list[BackfillTarget]
     commands: list[list[str]]
@@ -188,6 +190,10 @@ def _verify_command(args: argparse.Namespace, source_id: str, runtime_ids: list[
         command.extend(["--run-graph-page-limit", str(args.run_graph_page_limit)])
     if args.run_event_limit:
         command.extend(["--run-event-limit", str(args.run_event_limit)])
+    if args.wait_timeout_seconds:
+        command.extend(["--wait-timeout-seconds", str(args.wait_timeout_seconds)])
+    if args.run_attempt_timeout_seconds:
+        command.extend(["--run-attempt-timeout-seconds", str(args.run_attempt_timeout_seconds)])
     if args.stop_running_before_run:
         command.append("--stop-running-before-run")
     for runtime_id in runtime_ids:
@@ -232,6 +238,8 @@ def backfill_run(args: argparse.Namespace, runtime_ids: list[str], targets: list
         "run_page_limit": args.run_page_limit,
         "run_graph_page_limit": args.run_graph_page_limit,
         "run_event_limit": args.run_event_limit,
+        "wait_timeout_seconds": args.wait_timeout_seconds,
+        "run_attempt_timeout_seconds": args.run_attempt_timeout_seconds,
         "stop_running_before_run": args.stop_running_before_run,
         "targets": [asdict(target) for target in targets],
     }
@@ -264,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-page-limit", type=int, default=0)
     parser.add_argument("--run-graph-page-limit", type=int, default=0)
     parser.add_argument("--run-event-limit", type=int, default=0)
+    parser.add_argument("--wait-timeout-seconds", type=int, default=0)
+    parser.add_argument("--run-attempt-timeout-seconds", type=int, default=0)
     parser.add_argument("--stop-running-before-run", action="store_true")
     args = parser.parse_args(argv)
 

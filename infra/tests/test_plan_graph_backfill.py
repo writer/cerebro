@@ -44,6 +44,8 @@ class PlanGraphBackfillTest(unittest.TestCase):
             run_page_limit=10,
             run_graph_page_limit=20,
             run_event_limit=30,
+            wait_timeout_seconds=600,
+            run_attempt_timeout_seconds=300,
             stop_running_before_run=True,
         )
 
@@ -51,6 +53,8 @@ class PlanGraphBackfillTest(unittest.TestCase):
 
         self.assertIn("--run", command)
         self.assertIn("--succeed-after-graph-ingest", command)
+        self.assertIn("--wait-timeout-seconds", command)
+        self.assertIn("--run-attempt-timeout-seconds", command)
         self.assertEqual(command.count("--runtime-id"), 2)
 
     def test_write_commands_outputs_json_command_arrays(self) -> None:
@@ -61,6 +65,8 @@ class PlanGraphBackfillTest(unittest.TestCase):
             run_page_limit=0,
             run_graph_page_limit=0,
             run_event_limit=0,
+            wait_timeout_seconds=0,
+            run_attempt_timeout_seconds=0,
             stop_running_before_run=False,
         )
         targets = [
@@ -86,6 +92,8 @@ class PlanGraphBackfillTest(unittest.TestCase):
             run_page_limit=0,
             run_graph_page_limit=0,
             run_event_limit=0,
+            wait_timeout_seconds=0,
+            run_attempt_timeout_seconds=0,
             stop_running_before_run=False,
         )
         targets = [
@@ -129,6 +137,8 @@ class PlanGraphBackfillTest(unittest.TestCase):
             run_page_limit=0,
             run_graph_page_limit=0,
             run_event_limit=0,
+            wait_timeout_seconds=0,
+            run_attempt_timeout_seconds=0,
             stop_running_before_run=False,
         )
         targets = plan_backfill(

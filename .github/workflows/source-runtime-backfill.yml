@@ -44,6 +44,16 @@ on:
         required: false
         default: ''
         type: string
+      wait_timeout_seconds:
+        description: Optional verifier wait timeout per command
+        required: false
+        default: ''
+        type: string
+      run_attempt_timeout_seconds:
+        description: Optional timeout for each run attempt before stopping and failing/retrying
+        required: false
+        default: ''
+        type: string
       stop_running_before_run:
         description: Stop active matching runtime tasks before run mode
         required: false
@@ -100,6 +110,8 @@ jobs:
           RUN_PAGE_LIMIT: ${{ github.event.inputs.run_page_limit }}
           RUN_GRAPH_PAGE_LIMIT: ${{ github.event.inputs.run_graph_page_limit }}
           RUN_EVENT_LIMIT: ${{ github.event.inputs.run_event_limit }}
+          WAIT_TIMEOUT_SECONDS: ${{ github.event.inputs.wait_timeout_seconds }}
+          RUN_ATTEMPT_TIMEOUT_SECONDS: ${{ github.event.inputs.run_attempt_timeout_seconds }}
           STOP_RUNNING_BEFORE_RUN: ${{ github.event.inputs.stop_running_before_run }}
           EXPECTED_PLAN_HASH: ${{ github.event.inputs.expected_plan_hash }}
         run: |
@@ -109,6 +121,8 @@ jobs:
           if [ -n "${RUN_PAGE_LIMIT}" ]; then planner+=(--run-page-limit "${RUN_PAGE_LIMIT}"); fi
           if [ -n "${RUN_GRAPH_PAGE_LIMIT}" ]; then planner+=(--run-graph-page-limit "${RUN_GRAPH_PAGE_LIMIT}"); fi
           if [ -n "${RUN_EVENT_LIMIT}" ]; then planner+=(--run-event-limit "${RUN_EVENT_LIMIT}"); fi
+          if [ -n "${WAIT_TIMEOUT_SECONDS}" ]; then planner+=(--wait-timeout-seconds "${WAIT_TIMEOUT_SECONDS}"); fi
+          if [ -n "${RUN_ATTEMPT_TIMEOUT_SECONDS}" ]; then planner+=(--run-attempt-timeout-seconds "${RUN_ATTEMPT_TIMEOUT_SECONDS}"); fi
           if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then planner+=(--stop-running-before-run); fi
           "${planner[@]}" --format tsv > source-runtime-backfill-plan.tsv
           "${planner[@]}" --format run-json --mode "${MODE}" > source-runtime-backfill-run.json
@@ -164,6 +178,8 @@ jobs:
           RUN_PAGE_LIMIT: ${{ github.event.inputs.run_page_limit }}
           RUN_GRAPH_PAGE_LIMIT: ${{ github.event.inputs.run_graph_page_limit }}
           RUN_EVENT_LIMIT: ${{ github.event.inputs.run_event_limit }}
+          WAIT_TIMEOUT_SECONDS: ${{ github.event.inputs.wait_timeout_seconds }}
+          RUN_ATTEMPT_TIMEOUT_SECONDS: ${{ github.event.inputs.run_attempt_timeout_seconds }}
           STOP_RUNNING_BEFORE_RUN: ${{ github.event.inputs.stop_running_before_run }}
           EXPECTED_PLAN_HASH: ${{ github.event.inputs.expected_plan_hash }}
         run: |
@@ -173,6 +189,8 @@ jobs:
           if [ -n "${RUN_PAGE_LIMIT}" ]; then planner+=(--run-page-limit "${RUN_PAGE_LIMIT}"); fi
           if [ -n "${RUN_GRAPH_PAGE_LIMIT}" ]; then planner+=(--run-graph-page-limit "${RUN_GRAPH_PAGE_LIMIT}"); fi
           if [ -n "${RUN_EVENT_LIMIT}" ]; then planner+=(--run-event-limit "${RUN_EVENT_LIMIT}"); fi
+          if [ -n "${WAIT_TIMEOUT_SECONDS}" ]; then planner+=(--wait-timeout-seconds "${WAIT_TIMEOUT_SECONDS}"); fi
+          if [ -n "${RUN_ATTEMPT_TIMEOUT_SECONDS}" ]; then planner+=(--run-attempt-timeout-seconds "${RUN_ATTEMPT_TIMEOUT_SECONDS}"); fi
           if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then planner+=(--stop-running-before-run); fi
           "${planner[@]}" --format tsv > source-runtime-backfill-plan.tsv
           "${planner[@]}" --format run-json --mode "${MODE}" > source-runtime-backfill-run.json

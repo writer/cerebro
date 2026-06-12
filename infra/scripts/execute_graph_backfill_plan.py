@@ -39,10 +39,18 @@ def execute_plan(plan: dict[str, Any], expected_plan_hash: str) -> int:
         raise ValueError("expected plan hash is required for dry-run and run modes")
     if plan_hash != expected_plan_hash:
         raise ValueError(f"plan hash mismatch: expected {expected_plan_hash}, got {plan_hash}")
+    status = 0
     for command in _commands(plan):
         print(json.dumps({"event": "execute_backfill_command", "command": command}, sort_keys=True), flush=True)
-        subprocess.run(command, check=True)
-    return 0
+        try:
+            result = subprocess.run(command, check=False)
+        except OSError as exc:
+            print(str(exc), file=sys.stderr)
+            status = 1
+            continue
+        if result.returncode != 0:
+            status = result.returncode
+    return status
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,6 +64,6 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+    except ValueError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1)

@@ -25,27 +25,30 @@ class ExecuteGraphBackfillPlanTest(unittest.TestCase):
         }
 
         with mock.patch("scripts.execute_graph_backfill_plan.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess(["python", "-c", "print('ok')"], 0)
             self.assertEqual(execute_plan(plan, "abc"), 0)
 
-        run.assert_called_once_with(["python", "-c", "print('ok')"], check=True)
+        run.assert_called_once_with(["python", "-c", "print('ok')"], check=False)
 
     def test_execute_plan_rejects_plan_mode(self) -> None:
         with self.assertRaisesRegex(ValueError, "plan mode"):
             execute_plan({"mode": "plan", "plan_hash": "abc", "commands": []}, "abc")
 
-    def test_execute_plan_surfaces_command_failure(self) -> None:
+    def test_execute_plan_continues_after_command_failure(self) -> None:
         plan = {
             "mode": "run",
             "plan_hash": "abc",
-            "commands": [["false"]],
+            "commands": [["false"], ["true"]],
         }
 
-        with mock.patch(
-            "scripts.execute_graph_backfill_plan.subprocess.run",
-            side_effect=subprocess.CalledProcessError(1, ["false"]),
-        ):
-            with self.assertRaises(subprocess.CalledProcessError):
-                execute_plan(plan, "abc")
+        with mock.patch("scripts.execute_graph_backfill_plan.subprocess.run") as run:
+            run.side_effect = [
+                subprocess.CompletedProcess(["false"], 1),
+                subprocess.CompletedProcess(["true"], 0),
+            ]
+            self.assertEqual(execute_plan(plan, "abc"), 1)
+
+        self.assertEqual(run.call_count, 2)
 
 
 if __name__ == "__main__":
