@@ -1507,7 +1507,7 @@ def _verify_runtime_target(target: RuntimeTarget, options: VerificationOptions) 
             options.failed_run_retry_seconds,
             options.run_attempt_timeout_seconds,
             options.succeed_after_graph_ingest,
-            options.bootstrap_runtime_ids,
+            (target.runtime_id,) if options.bootstrap_runtime_ids else (),
         )
     task_arn = _latest_task(target, options.max_age_minutes, options.region)
     return _verify_task(target, task_arn, options.region)

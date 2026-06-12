@@ -44,6 +44,7 @@ from scripts.verify_source_runtime_ecs import (
     _task_family,
     _task_logs,
     _verify_bootstrap_payload_targets,
+    _verify_runtime_target,
     _verify_task,
     _verification_result_from_logs,
     _verify_runtime_targets,
@@ -815,6 +816,32 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         self.assertEqual([result.runtime_id for result in results], ["runtime-0", "runtime-1", "runtime-2"])
         self.assertEqual(max_active, 2)
+
+    def test_verify_runtime_target_scopes_bootstrap_to_current_runtime(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="runtime-1",
+            schedule_name="runtime-1",
+            rule_name="runtime-1",
+            target={"Arn": "cluster"},
+        )
+        verified = VerificationResult(
+            runtime_id="runtime-1",
+            task_arn="task-1",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="completed",
+            graph_ingest_status="completed",
+            events_appended=1,
+            pages_read=1,
+        )
+
+        def fake_run_and_verify(*args):
+            self.assertEqual(args[-1], ("runtime-1",))
+            return verified
+
+        options = VerificationOptions(run=True, bootstrap_runtime_ids=("runtime-1", "runtime-2"))
+        with patch("scripts.verify_source_runtime_ecs._run_and_verify_task_with_retries", side_effect=fake_run_and_verify):
+            self.assertEqual(_verify_runtime_target(target, options), verified)
 
     def test_run_verify_stops_and_retries_timed_out_attempt(self) -> None:
         target = RuntimeTarget(
