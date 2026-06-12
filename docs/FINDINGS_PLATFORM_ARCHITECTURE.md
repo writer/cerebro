@@ -2,7 +2,7 @@
 
 This document explains why Cerebro now treats findings as a shared platform primitive instead of leaving detection logic trapped inside one-off source flows.
 
-It complements [ARCHITECTURE.md](./ARCHITECTURE.md), [RUNTIME_VISIBILITY_ARCHITECTURE.md](./RUNTIME_VISIBILITY_ARCHITECTURE.md), and [GRAPH_OPERATIONS.md](./GRAPH_OPERATIONS.md).
+It complements [ARCHITECTURE.md](./ARCHITECTURE.md), [SOURCE_RUNTIME_GUIDE.md](./SOURCE_RUNTIME_GUIDE.md), and [GRAPH_OPERATIONS.md](./GRAPH_OPERATIONS.md).
 
 ## Why This Exists
 

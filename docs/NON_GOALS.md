@@ -1,6 +1,6 @@
 # Non-Goals
 
-This document collects, in one place, the things Cerebro intentionally does not try to do. It exists because non-goals in this repo are otherwise scattered across [`PLAN.md`](../PLAN.md), [`ARCHITECTURE.md`](./ARCHITECTURE.md), [`FINDINGS_PLATFORM_ARCHITECTURE.md`](./FINDINGS_PLATFORM_ARCHITECTURE.md), [`RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md), and [`ACTION_ENGINE_ARCHITECTURE.md`](./ACTION_ENGINE_ARCHITECTURE.md), with no single index that a contributor, agent, or reviewer can read first.
+This document collects, in one place, the things Cerebro intentionally does not try to do. It exists because non-goals in this repo are otherwise scattered across [`PLAN.md`](../PLAN.md), [`ARCHITECTURE.md`](./ARCHITECTURE.md), and [`FINDINGS_PLATFORM_ARCHITECTURE.md`](./FINDINGS_PLATFORM_ARCHITECTURE.md), with no single index that a contributor, agent, or reviewer can read first.
 
 Each section lists what Cerebro will not do, why that boundary exists, where in the codebase the boundary is enforced, and what evidence would justify revisiting the decision. The point is not to freeze scope. The point is to make scope drift expensive on purpose: if a change crosses one of these lines, the PR description should say so explicitly, and the corresponding entry in this document should be amended in the same change.
 
@@ -31,7 +31,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - Each capability has exactly one implementation. Cerebro will not silently degrade a graph query to a SQL query, swap an LLM provider behind the caller's back, or substitute an action executor based on which dependency is reachable.
 - Why: silent fallbacks hide the real failure mode and grow into a debugging tax that compounds with every new dependency. Typed capability errors are the contract.
-- Enforced in: sin #16 `nofallback` in [`PLAN.md`](../PLAN.md) §7, "fail with a typed capability error instead of silently pretending to succeed" in [`RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md).
+- Enforced in: sin #16 `nofallback` in [`PLAN.md`](../PLAN.md) §7 and typed capability errors in runtime response paths.
 - What would change this: a redundancy requirement that survives review on its own merits, with the redundancy modeled as a typed capability the caller can detect, not as a hidden swap.
 
 ### Snowflake is not a store of record.
@@ -105,7 +105,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - Bus factor, coordination fragility, privilege concentration, blast-radius posture, and similar derived analytics live on top of the shared graph as report runs and intelligence section views. They will not be promoted into standalone graph primitives, dedicated `/api/v1/*` resource trees, or new node categories until they require their own write lifecycle, durable IDs, approvals, or actuation semantics.
 - Why: every promoted primitive is a permanent contract. Treating early views as report runs lets the platform iterate without growing a new tax surface.
-- Enforced in: the current platform route layout in [`internal/bootstrap/routes.go`](../internal/bootstrap/routes.go) and report/run contracts in [`docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md`](./GRAPH_REPORT_CONTRACTS_AUTOGEN.md).
+- Enforced in: the current platform route layout in [`internal/bootstrap/routes.go`](../internal/bootstrap/routes.go) and report/run contracts in [`internal/reports`](../internal/reports).
 - What would change this: a derived view that demonstrably needs durable IDs, approvals, or actuation, with the promotion proposed in a contract PR before the new resource ships.
 
 ## Findings Platform
@@ -144,7 +144,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - `internal/actionengine` models `Signal`, `Trigger`, `Playbook`, `Step`, `Execution`, and `Event`. It is not a DAG runtime, not a long-running scheduler, and not a generic workflow product. Cerebro will not import Argo Workflows, Temporal, or Cadence-shaped semantics into the core just because remediation and runtime response can be expressed in those.
 - Why: every workflow engine pays for itself only when DAG-level orchestration is actually needed. Cerebro's substrate is "the minimum model needed to unify remediation and runtime response" and growing it past that without evidence imports complexity that the rest of the system has to live with.
-- Enforced in: [`docs/ACTION_ENGINE_ARCHITECTURE.md`](./ACTION_ENGINE_ARCHITECTURE.md) "Core Model" and "External Reference Points".
+- Enforced in: the absence of a DAG/workflow runtime dependency and the current workflow event/projection packages.
 - What would change this: a documented execution shape that genuinely requires DAG-level fan-out, conditional branching beyond per-step failure policies, or sub-workflow composition, ratified before code lands.
 
 ### Workflow durability is event-and-projection. Not graph-direct, not transactional outbox today, not optimistic.
@@ -167,21 +167,21 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - Runtime response mutations require a server-derived trusted actuation scope. Cerebro will not accept a runtime target identifier from an unauthenticated source, treat a finding payload as a containment authorization, or fail open when actuation scope is missing.
 - Why: containment is the highest-stakes runtime side effect Cerebro performs. The trusted actuation scope is what keeps a malformed finding from triggering a real outage.
-- Enforced in: [`docs/RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md) "Direct Action Semantics" and "Cerebro will not mutate containment state from unauthenticated runtime target identifiers".
+- Enforced in: runtime response authorization checks and trusted actuation scope derivation in `internal/bootstrap` and `internal/runtimeresponse`.
 - What would change this: a stronger authorization model that subsumes trusted actuation scope; loosening current behavior is not on the table.
 
 ### Cerebro is not a replacement for the endpoint sensor or container runtime.
 
 - Runtime response operates above an existing sensor or runtime substrate (eBPF agent, EDR, K8s API, cloud control plane). It will not ship a kernel agent, a container runtime, a node-side daemon, or its own packet path. It depends on those substrates and is honest about what is and is not covered when they are absent.
 - Why: shipping runtime infrastructure is a separate engineering and operational discipline. Cerebro's value is in the typed control loop above it, not in re-implementing the substrate.
-- Enforced in: capability errors when a remote tool provider is unconfigured (see ensemble-delegated executors in [`docs/RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md)).
+- Enforced in: capability errors when a remote tool provider is unconfigured.
 - What would change this: nothing inside this repo.
 
 ### Runtime response is not yet a fully-distributed containment system.
 
 - Today the runtime blocklist is process-local. Persisted/distributed propagation, provider-native credential revocation, and host/network isolation across common clouds are tracked as gaps, not promised. Cerebro will not pretend that policies "succeed" when the actuator path is missing.
 - Why: silent-success in containment is worse than honest "not configured". The Follow-On Gaps section in the runtime response doc names the gaps so they cannot be glossed.
-- Enforced in: [`docs/RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md) "Follow-On Gaps".
+- Enforced in: runtime response capability checks and explicit actuator-path errors.
 - What would change this: distributed blocklist propagation and provider-native actuator paths, designed and reviewed as separate work.
 
 ## Platform Vs Application Boundary
