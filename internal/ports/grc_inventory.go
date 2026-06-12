@@ -78,11 +78,20 @@ type GRCInventoryAssetReportTriageUpdate struct {
 	TriagedBy    string
 }
 
+type GRCInventoryAssetReportSummary struct {
+	AssetURN     string
+	ReportCount  int
+	TriageStatus string
+	Reason       string
+	UpdatedAt    time.Time
+}
+
 type GRCInventoryAssetReportStore interface {
 	StateStore
 	CreateGRCInventoryAssetReport(context.Context, GRCInventoryAssetReportRecord) (*GRCInventoryAssetReportRecord, error)
 	GetGRCInventoryAssetReport(context.Context, string, string) (*GRCInventoryAssetReportRecord, error)
 	ListGRCInventoryAssetReports(context.Context, GRCInventoryAssetReportFilter) ([]*GRCInventoryAssetReportRecord, error)
+	SummarizeGRCInventoryAssetReports(context.Context, GRCInventoryAssetReportFilter) ([]*GRCInventoryAssetReportSummary, error)
 	UpdateGRCInventoryAssetReportTriage(context.Context, GRCInventoryAssetReportTriageUpdate) (*GRCInventoryAssetReportRecord, error)
 }
 

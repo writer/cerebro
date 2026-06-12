@@ -696,23 +696,22 @@ func (a *App) enrichGRCInventoryAssetsWithReports(r *http.Request, scope grcScop
 			urns = append(urns, asset.URN)
 		}
 	}
-	reports, err := store.ListGRCInventoryAssetReports(r.Context(), ports.GRCInventoryAssetReportFilter{
+	summaries, err := store.SummarizeGRCInventoryAssetReports(r.Context(), ports.GRCInventoryAssetReportFilter{
 		TenantID:  scope.TenantID,
 		AssetURNs: urns,
-		Limit:     boundedUint32(len(urns) * 5),
 	})
 	if err != nil {
 		return nil, err
 	}
-	byURN := map[string][]*ports.GRCInventoryAssetReportRecord{}
-	for _, report := range reports {
-		if report == nil {
+	byURN := map[string]*ports.GRCInventoryAssetReportSummary{}
+	for _, summary := range summaries {
+		if summary == nil {
 			continue
 		}
-		byURN[report.AssetURN] = append(byURN[report.AssetURN], report)
+		byURN[summary.AssetURN] = summary
 	}
 	for index := range assets {
-		applyGRCInventoryAssetReports(&assets[index], byURN[assets[index].URN])
+		applyGRCInventoryAssetReportSummary(&assets[index], byURN[assets[index].URN])
 	}
 	return assets, nil
 }
@@ -747,27 +746,15 @@ func applyGRCInventoryScope(asset *graphquery.InventoryAsset, record *ports.GRCI
 	}
 }
 
-func applyGRCInventoryAssetReports(asset *graphquery.InventoryAsset, reports []*ports.GRCInventoryAssetReportRecord) {
-	if asset == nil || len(reports) == 0 {
+func applyGRCInventoryAssetReportSummary(asset *graphquery.InventoryAsset, summary *ports.GRCInventoryAssetReportSummary) {
+	if asset == nil || summary == nil {
 		return
 	}
-	asset.AssetReportCount = len(reports)
-	latest := reports[0]
-	for _, report := range reports[1:] {
-		if report == nil {
-			continue
-		}
-		if latest == nil || report.UpdatedAt.After(latest.UpdatedAt) {
-			latest = report
-		}
-	}
-	if latest == nil {
-		return
-	}
-	asset.LatestAssetReportStatus = latest.TriageStatus
-	asset.LatestAssetReportReason = latest.Reason
-	if !latest.UpdatedAt.IsZero() {
-		asset.LatestAssetReportUpdatedAt = latest.UpdatedAt.UTC().Format(time.RFC3339)
+	asset.AssetReportCount = summary.ReportCount
+	asset.LatestAssetReportStatus = summary.TriageStatus
+	asset.LatestAssetReportReason = summary.Reason
+	if !summary.UpdatedAt.IsZero() {
+		asset.LatestAssetReportUpdatedAt = summary.UpdatedAt.UTC().Format(time.RFC3339)
 	}
 }
 
