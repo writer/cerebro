@@ -13,6 +13,9 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/bootstrap"
+	appconfig "github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -59,6 +62,32 @@ func TestWritePreflightReceiptJSONRedactsToBoundedDetail(t *testing.T) {
 	}
 	if decoded.Status != "fail" || len(decoded.Checks) != 1 {
 		t.Fatalf("decoded receipt = %#v", decoded)
+	}
+}
+
+func TestExecuteDeployPreflightReportsDependencyCloseFailure(t *testing.T) {
+	closeErr := errors.New("close failed")
+	receipt := executeDeployPreflightWith(context.Background(), preflightRuntime{
+		loadConfig: func() (appconfig.Config, error) {
+			return appconfig.Config{}, nil
+		},
+		openDependencies: func(context.Context, appconfig.Config) (bootstrap.Dependencies, func() error, error) {
+			return bootstrap.Dependencies{}, func() error { return closeErr }, nil
+		},
+		probeLLM: func(context.Context, graphagent.LLMClient) error {
+			return nil
+		},
+	})
+
+	if receipt.Status != "fail" {
+		t.Fatalf("receipt status = %q, want fail", receipt.Status)
+	}
+	if got := len(receipt.Checks); got != 4 {
+		t.Fatalf("check count = %d, want 4: %#v", got, receipt.Checks)
+	}
+	closeCheck := receipt.Checks[3]
+	if closeCheck.Name != "dependencies.close" || closeCheck.Status != "fail" || closeCheck.Detail == "" {
+		t.Fatalf("close check = %#v, want failed dependencies.close detail", closeCheck)
 	}
 }
 
