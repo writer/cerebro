@@ -213,7 +213,7 @@ jobs:
             "${IMAGE_TAG}" \
             "^https://github\.com/writer/cerebro/\.github/workflows/release\.yml@refs/tags/${escaped_tag}$"
 
-      - name: Verify web GHCR image signature and attestations
+      - name: Verify web GHCR image signature
         id: verify-web-ghcr-image
         if: steps.web-ghcr-image.outputs.available == 'true'
         shell: bash
@@ -225,8 +225,21 @@ jobs:
           bash .github/scripts/verify-ghcr-image.sh \
             "${WEB_GHCR_IMAGE}" \
             "${IMAGE_TAG}" \
-            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$" \
-            "true"
+            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$"
+
+      - name: Verify web GHCR build attestations
+        if: steps.web-ghcr-image.outputs.available == 'true'
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.verify-web-ghcr-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}" --raw > web-image-index.json
+          if ! jq -e '.manifests[]? | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest")' web-image-index.json >/dev/null; then
+            echo "No SBOM/provenance attestation manifests found for ${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}" >&2
+            cat web-image-index.json >&2
+            exit 1
+          fi
 
       - name: Configure AWS credentials (sec-dev)
         if: steps.ghcr-image.outputs.available == 'true' || steps.web-ghcr-image.outputs.available == 'true'

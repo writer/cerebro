@@ -30,7 +30,18 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
             r"^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$",
             verify_block,
         )
-        self.assertIn('"true"', verify_block)
+        self.assertNotIn('"true"', verify_block)
+
+    def test_web_image_attestations_use_buildx_index_metadata(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        attest_block = workflow.split("- name: Verify web GHCR build attestations", 1)[1].split(
+            "\n\n      - name:",
+            1,
+        )[0]
+
+        self.assertIn('IMAGE_DIGEST: ${{ steps.verify.outputs.digest }}', attest_block)
+        self.assertIn('docker buildx imagetools inspect "${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}" --raw', attest_block)
+        self.assertIn('annotations["vnd.docker.reference.type"] == "attestation-manifest"', attest_block)
 
     def test_direct_push_matches_backend_sec_dev_promotion_shape(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -54,6 +65,8 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
             r"^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$",
             workflow,
         )
+        self.assertIn('IMAGE_DIGEST: ${{ steps.verify-web-ghcr-image.outputs.digest }}', workflow)
+        self.assertIn('docker buildx imagetools inspect "${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}" --raw', workflow)
 
 
 if __name__ == "__main__":

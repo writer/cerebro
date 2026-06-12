@@ -134,7 +134,7 @@ jobs:
         shell: bash
         run: bash .github/scripts/install-cosign.sh
 
-      - name: Verify web GHCR image signature and attestations
+      - name: Verify web GHCR image signature
         id: verify
         shell: bash
         env:
@@ -145,8 +145,20 @@ jobs:
           bash .github/scripts/verify-ghcr-image.sh \
             "${WEB_GHCR_IMAGE}" \
             "${IMAGE_TAG}" \
-            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$" \
-            "true"
+            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$"
+
+      - name: Verify web GHCR build attestations
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.verify.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}" --raw > web-image-index.json
+          if ! jq -e '.manifests[]? | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest")' web-image-index.json >/dev/null; then
+            echo "No SBOM/provenance attestation manifests found for ${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}" >&2
+            cat web-image-index.json >&2
+            exit 1
+          fi
 
       - name: Validate dispatched digest
         if: steps.inputs.outputs.expected_digest != ''
