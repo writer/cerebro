@@ -1,5 +1,5 @@
 name: Propose Web Image Tag
-run-name: Web image ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'sec-dev' }} ${{ github.event.client_payload.web_image_tag || github.event.inputs.image_tag || 'latest' }}
+run-name: Web image ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'sec-dev' }} ${{ github.event.client_payload.web_image_tag || github.event.inputs.image_tag || 'latest' }} ${{ github.event.client_payload.request_id || github.run_id }}
 
 on:
   repository_dispatch:
@@ -20,6 +20,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: write
   packages: read
   pull-requests: write
@@ -29,7 +30,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  WEB_GHCR_IMAGE: ghcr.io/writerinternal/cerebro-web
+  WEB_GHCR_IMAGE: ghcr.io/writer/cerebro-web
 
 jobs:
   propose:
@@ -42,9 +43,14 @@ jobs:
         id: inputs
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           DISPATCH_TAG: ${{ github.event.client_payload.web_image_tag || '' }}
           DISPATCH_ENV: ${{ github.event.client_payload.target_environment || '' }}
           DISPATCH_MODE: ${{ github.event.client_payload.apply_mode || '' }}
+          DISPATCH_WEB_IMAGE: ${{ github.event.client_payload.web_image || '' }}
+          DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository || '' }}
+          DISPATCH_SOURCE_REF: ${{ github.event.client_payload.source_ref || '' }}
+          EXPECTED_DIGEST: ${{ github.event.client_payload.web_image_digest || '' }}
           INPUT_TAG: ${{ github.event.inputs.image_tag || '' }}
           INPUT_ENV: ${{ github.event.inputs.environment || '' }}
         run: |
@@ -65,8 +71,30 @@ jobs:
             echo "Web image promotion is currently only supported for sec-dev" >&2
             exit 1
           fi
-          if [ "${mode}" != "pull_request" ]; then
-            echo "Web image promotion must use pull_request mode" >&2
+          if [ "${mode}" != "pull_request" ] && [ "${mode}" != "direct_push" ]; then
+            echo "Web image promotion must use pull_request or direct_push mode" >&2
+            exit 1
+          fi
+          if [ "${mode}" = "direct_push" ] && [ "${EVENT_NAME}" != "repository_dispatch" ]; then
+            echo "direct_push is reserved for public release dispatches" >&2
+            exit 1
+          fi
+          if [ "${EVENT_NAME}" = "repository_dispatch" ]; then
+            if [ "${DISPATCH_SOURCE_REPOSITORY}" != "writer/cerebro-web" ]; then
+              echo "Repository dispatch must originate from writer/cerebro-web; got ${DISPATCH_SOURCE_REPOSITORY}" >&2
+              exit 1
+            fi
+            if [ -n "${DISPATCH_WEB_IMAGE}" ] && [ "${DISPATCH_WEB_IMAGE}" != "${WEB_GHCR_IMAGE}" ]; then
+              echo "Repository dispatch image ${DISPATCH_WEB_IMAGE} does not match ${WEB_GHCR_IMAGE}" >&2
+              exit 1
+            fi
+            if [[ "${tag}" == sha-* ]] && [ -n "${DISPATCH_SOURCE_REF}" ] && [ "${tag}" != "sha-${DISPATCH_SOURCE_REF:0:12}" ]; then
+              echo "Repository dispatch tag ${tag} does not match source ref ${DISPATCH_SOURCE_REF}" >&2
+              exit 1
+            fi
+          fi
+          if [ -n "${EXPECTED_DIGEST}" ] && ! [[ "${EXPECTED_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid dispatched web image digest: ${EXPECTED_DIGEST}" >&2
             exit 1
           fi
 
@@ -74,6 +102,7 @@ jobs:
             echo "tag=${tag}"
             echo "env=${env}"
             echo "mode=${mode}"
+            echo "expected_digest=${EXPECTED_DIGEST}"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved: ${WEB_GHCR_IMAGE}:${tag} -> ${env} (${mode})"
 
@@ -88,7 +117,6 @@ jobs:
         shell: bash
         env:
           IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if ! docker manifest inspect "${WEB_GHCR_IMAGE}:${IMAGE_TAG}" >/dev/null 2>&1; then
@@ -97,43 +125,53 @@ jobs:
           fi
           echo "Verified ${WEB_GHCR_IMAGE}:${IMAGE_TAG} exists"
 
-      - name: Update Pulumi stack config
-        id: update
+      - name: Set up Go for cosign
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: "1.26.3"
+
+      - name: Install cosign
+        shell: bash
+        run: bash .github/scripts/install-cosign.sh
+
+      - name: Verify web GHCR image signature and attestations
+        id: verify
         shell: bash
         env:
-          STACK_NAME: ${{ steps.inputs.outputs.env }}
           IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
+          COSIGN_EXPERIMENTAL: "true"
         run: |
           set -euo pipefail
-          config_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
+          bash .github/scripts/verify-ghcr-image.sh \
+            "${WEB_GHCR_IMAGE}" \
+            "${IMAGE_TAG}" \
+            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$" \
+            "true"
 
-          current_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' "${config_file}")"
-          echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
-
-          if [ "${current_tag}" = "${IMAGE_TAG}" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Stack ${STACK_NAME} already uses web image ${IMAGE_TAG}"
-            exit 0
-          fi
-
-          sed -i "s|cerebro:webImageTag:.*|cerebro:webImageTag: ${IMAGE_TAG}|" "${config_file}"
-
-          if ! grep -q "cerebro:webImageTag: ${IMAGE_TAG}" "${config_file}"; then
-            echo "Failed to update webImageTag in ${config_file}" >&2
+      - name: Validate dispatched digest
+        if: steps.inputs.outputs.expected_digest != ''
+        shell: bash
+        env:
+          EXPECTED_DIGEST: ${{ steps.inputs.outputs.expected_digest }}
+          VERIFIED_DIGEST: ${{ steps.verify.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ "${EXPECTED_DIGEST}" != "${VERIFIED_DIGEST}" ]; then
+            echo "Verified digest ${VERIFIED_DIGEST} does not match dispatched digest ${EXPECTED_DIGEST}" >&2
             exit 1
           fi
+          echo "Verified dispatched digest ${EXPECTED_DIGEST}"
 
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "Updated ${STACK_NAME} web image: ${current_tag} -> ${IMAGE_TAG}"
-
-      - name: Push update
-        if: steps.update.outputs.changed == 'true'
+      - name: Apply stack config update
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN || github.token }}
+          AUTORELEASE_TOKEN_CONFIGURED: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN != '' }}
+          APPLY_MODE: ${{ steps.inputs.outputs.mode }}
+          EVENT_NAME: ${{ github.event_name }}
           STACK_NAME: ${{ steps.inputs.outputs.env }}
           IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
-          CURRENT_TAG: ${{ steps.update.outputs.current_tag }}
+          IMAGE_DIGEST: ${{ steps.verify.outputs.digest }}
           SOURCE_REPO: ${{ github.event.client_payload.source_repository || 'manual' }}
           SOURCE_REF: ${{ github.event.client_payload.source_ref || github.sha }}
         run: |
@@ -142,34 +180,135 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          safe_tag="$(printf '%s' "${IMAGE_TAG}" | tr -c 'A-Za-z0-9._-' '-')"
+          branch="automation/cerebro-web-${STACK_NAME}-${safe_tag}"
           expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
+          title="chore: deploy ${STACK_NAME} cerebro-web ${IMAGE_TAG}"
+
+          refresh_from_main_and_apply_update() {
+            git fetch origin main:refs/remotes/origin/main
+            git checkout -f -B "${branch}" origin/main
+
+            current_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' "${expected_file}")"
+            echo "Refreshed ${branch} from origin/main; ${STACK_NAME} web was ${current_tag}, target is ${IMAGE_TAG}."
+
+            if [ "${current_tag}" = "${IMAGE_TAG}" ]; then
+              echo "Stack ${STACK_NAME} already uses web image ${IMAGE_TAG}"
+              exit 0
+            fi
+
+            sed -i "s|cerebro:webImageTag:.*|cerebro:webImageTag: ${IMAGE_TAG}|" "${expected_file}"
+            if ! grep -q "cerebro:webImageTag: ${IMAGE_TAG}" "${expected_file}"; then
+              echo "Failed to update webImageTag in ${expected_file}" >&2
+              exit 1
+            fi
+          }
+
+          dispatch_and_require_run() {
+            local workflow="$1"
+            shift
+            local run=""
+            local run_id=""
+            local run_url=""
+
+            gh workflow run "${workflow}" --ref main "$@"
+            for _ in {1..24}; do
+              run="$(gh run list \
+                --workflow "${workflow}" \
+                --event workflow_dispatch \
+                --branch main \
+                --limit 20 \
+                --json databaseId,headSha,url \
+                --jq ".[] | select(.headSha == \"${deploy_sha}\") | [.databaseId, .url] | @tsv" | head -n 1)"
+              if [ -n "${run}" ]; then
+                IFS=$'\t' read -r run_id run_url <<< "${run}"
+                echo "Created ${workflow} workflow_dispatch run ${run_id} for ${deploy_sha}: ${run_url}"
+                return 0
+              fi
+              sleep 5
+            done
+            echo "Could not find ${workflow} workflow_dispatch run for ${deploy_sha}" >&2
+            exit 1
+          }
+
+          refresh_from_main_and_apply_update
           changed_files="$(git diff --name-only)"
           if [ "${changed_files}" != "${expected_file}" ]; then
             echo "Unexpected changed files: ${changed_files}" >&2
             exit 1
           fi
-          safe_tag="$(printf '%s' "${IMAGE_TAG}" | tr -c 'A-Za-z0-9._-' '-')"
-          branch="automation/cerebro-web-${STACK_NAME}-${safe_tag}"
-          title="chore: deploy ${STACK_NAME} cerebro-web ${IMAGE_TAG}"
-
           git add "${expected_file}"
+
+          if [ "${APPLY_MODE}" = "direct_push" ]; then
+            if [ "${STACK_NAME}" != "sec-dev" ]; then
+              echo "direct_push is only allowed for sec-dev; got ${STACK_NAME}" >&2
+              exit 1
+            fi
+            if [ "${EVENT_NAME}" != "repository_dispatch" ]; then
+              echo "direct_push is reserved for signed public release dispatches" >&2
+              exit 1
+            fi
+            if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
+              echo "CEREBRO_AUTORELEASE_TOKEN is required for direct_push so the push triggers deploy workflows" >&2
+              exit 1
+            fi
+
+            git commit -m "${title}" \
+              -m "Triggered by ${SOURCE_REPO}@${SOURCE_REF}." \
+              -m "Image: ${WEB_GHCR_IMAGE}:${IMAGE_TAG}" \
+              -m "Digest: ${IMAGE_DIGEST}"
+            deploy_sha="$(git rev-parse HEAD)"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:main"
+
+            gh pr list --state open --json number,headRefName \
+              --jq ".[] | select(.headRefName | startswith(\"automation/cerebro-web-${STACK_NAME}-\")) | .number" \
+            | while read -r old_pr; do
+              echo "Closing superseded PR #${old_pr}"
+              gh pr close "${old_pr}" --comment "Superseded by direct-push of ${IMAGE_TAG}." --delete-branch || true
+            done
+            mapfile -t stale_branches < <(
+              gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
+              | grep -E "^automation/cerebro-web-${STACK_NAME}-" || true
+            )
+            for old_branch in "${stale_branches[@]}"; do
+              echo "Deleting stale branch ${old_branch}"
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
+            done
+
+            echo "Pushed ${STACK_NAME} web deploy commit for ${IMAGE_TAG}; dispatching sec-dev publish and deploy workflows."
+            dispatch_and_require_run ci.yml
+            dispatch_and_require_run infra-deploy.yml -f environment="${STACK_NAME}"
+            exit 0
+          fi
+
+          if [ "${APPLY_MODE}" != "pull_request" ]; then
+            echo "Unknown apply_mode ${APPLY_MODE}; expected pull_request or direct_push" >&2
+            exit 1
+          fi
+
           git commit -m "${title}" \
             -m "Source: ${SOURCE_REPO}@${SOURCE_REF}" \
             -m "Image: ${WEB_GHCR_IMAGE}:${IMAGE_TAG}" \
-            -m "Previous: ${CURRENT_TAG}"
+            -m "Digest: ${IMAGE_DIGEST}"
 
-          git checkout -B "${branch}"
-          git push --force-with-lease origin "HEAD:${branch}"
+          git push --force-with-lease "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${branch}"
 
           body="$(mktemp)"
           {
             echo "Updates \`${STACK_NAME}\` to \`${WEB_GHCR_IMAGE}:${IMAGE_TAG}\`."
             echo
             echo "- Source: \`${SOURCE_REPO}@${SOURCE_REF}\`"
-            echo "- Previous: \`${CURRENT_TAG}\`"
+            echo "- Digest: \`${IMAGE_DIGEST}\`"
             echo
             echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
           } > "${body}"
+
+          gh pr list --state open --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"automation/cerebro-web-${STACK_NAME}-\")) | select(.headRefName != \"${branch}\") | .number" \
+          | while read -r old_pr; do
+            echo "Closing superseded PR #${old_pr}"
+            gh pr close "${old_pr}" --comment "Superseded by ${IMAGE_TAG}." --delete-branch || true
+          done
 
           existing_pr="$(gh pr list --head "${branch}" --json url --jq '.[0].url // empty')"
           if [ -n "${existing_pr}" ]; then

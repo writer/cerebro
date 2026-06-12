@@ -21,7 +21,7 @@ env:
   SEC_PROD_ACCOUNT_ID: "837279440628"
   ECR_REPOSITORY: cerebro
   GHCR_IMAGE: ghcr.io/writer/cerebro
-  WEB_GHCR_IMAGE: ghcr.io/writerinternal/cerebro-web
+  WEB_GHCR_IMAGE: ghcr.io/writer/cerebro-web
 
 jobs:
   changes:
@@ -225,7 +225,8 @@ jobs:
           bash .github/scripts/verify-ghcr-image.sh \
             "${WEB_GHCR_IMAGE}" \
             "${IMAGE_TAG}" \
-            "(?i)^https://github\.com/writerinternal/cerebro-web/\.github/workflows/[^@]+@refs/heads/main$"
+            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$" \
+            "true"
 
       - name: Configure AWS credentials (sec-dev)
         if: steps.ghcr-image.outputs.available == 'true' || steps.web-ghcr-image.outputs.available == 'true'
