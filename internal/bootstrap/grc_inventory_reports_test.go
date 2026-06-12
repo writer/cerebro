@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -67,7 +68,51 @@ func (s *memoryGRCInventoryAssetReportStore) ListGRCInventoryAssetReports(_ cont
 		reports = append(reports, cloneGRCInventoryAssetReportValue(report))
 	}
 	sort.Slice(reports, func(i, j int) bool { return reports[i].UpdatedAt.After(reports[j].UpdatedAt) })
+	if filter.Limit > 0 && len(reports) > int(filter.Limit) {
+		reports = reports[:filter.Limit]
+	}
 	return reports, nil
+}
+
+func (s *memoryGRCInventoryAssetReportStore) SummarizeGRCInventoryAssetReports(ctx context.Context, filter ports.GRCInventoryAssetReportFilter) ([]*ports.GRCInventoryAssetReportSummary, error) {
+	reports, err := s.ListGRCInventoryAssetReports(ctx, ports.GRCInventoryAssetReportFilter{
+		TenantID:     filter.TenantID,
+		AssetURNs:    filter.AssetURNs,
+		SourceID:     filter.SourceID,
+		TriageStatus: filter.TriageStatus,
+	})
+	if err != nil {
+		return nil, err
+	}
+	byURN := map[string]*ports.GRCInventoryAssetReportSummary{}
+	for _, report := range reports {
+		if report == nil {
+			continue
+		}
+		summary := byURN[report.AssetURN]
+		if summary == nil {
+			byURN[report.AssetURN] = &ports.GRCInventoryAssetReportSummary{
+				AssetURN:     report.AssetURN,
+				ReportCount:  1,
+				TriageStatus: report.TriageStatus,
+				Reason:       report.Reason,
+				UpdatedAt:    report.UpdatedAt,
+			}
+			continue
+		}
+		summary.ReportCount++
+		if report.UpdatedAt.After(summary.UpdatedAt) {
+			summary.TriageStatus = report.TriageStatus
+			summary.Reason = report.Reason
+			summary.UpdatedAt = report.UpdatedAt
+		}
+	}
+	summaries := make([]*ports.GRCInventoryAssetReportSummary, 0, len(byURN))
+	for _, summary := range byURN {
+		summaries = append(summaries, summary)
+	}
+	sort.Slice(summaries, func(i, j int) bool { return summaries[i].UpdatedAt.After(summaries[j].UpdatedAt) })
+	return summaries, nil
 }
 
 func (s *memoryGRCInventoryAssetReportStore) UpdateGRCInventoryAssetReportTriage(_ context.Context, update ports.GRCInventoryAssetReportTriageUpdate) (*ports.GRCInventoryAssetReportRecord, error) {
@@ -144,6 +189,51 @@ func TestGRCInventoryAssetReportRejectsInvalidStatus(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("POST status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestGRCInventoryAssetReportSummaryPreservesCountsAcrossListCap(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	store := &memoryGRCInventoryAssetReportStore{reports: map[string]*ports.GRCInventoryAssetReportRecord{}}
+	for index := 0; index < 12; index++ {
+		id := "asset-a-report-" + string(rune('a'+index))
+		store.reports[id] = &ports.GRCInventoryAssetReportRecord{
+			ID:           id,
+			TenantID:     "writer",
+			AssetURN:     "urn:cerebro:writer:github_code_repository:writer/a",
+			Reason:       "asset a report",
+			TriageStatus: ports.GRCInventoryAssetReportStatusSubmitted,
+			CreatedAt:    now.Add(time.Duration(index) * time.Minute),
+			UpdatedAt:    now.Add(time.Duration(index) * time.Minute),
+		}
+	}
+	store.reports["asset-b-report"] = &ports.GRCInventoryAssetReportRecord{
+		ID:           "asset-b-report",
+		TenantID:     "writer",
+		AssetURN:     "urn:cerebro:writer:github_code_repository:writer/b",
+		Reason:       "asset b report",
+		TriageStatus: ports.GRCInventoryAssetReportStatusAccepted,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/grc/inventory/assets?tenant_id=writer", nil)
+
+	assets, err := app.enrichGRCInventoryAssetsWithReports(req, grcScope{TenantID: "writer"}, []graphquery.InventoryAsset{
+		{URN: "urn:cerebro:writer:github_code_repository:writer/a", Label: "A"},
+		{URN: "urn:cerebro:writer:github_code_repository:writer/b", Label: "B"},
+	})
+	if err != nil {
+		t.Fatalf("enrichGRCInventoryAssetsWithReports() error = %v", err)
+	}
+	if assets[0].AssetReportCount != 12 {
+		t.Fatalf("asset a report count = %d, want 12", assets[0].AssetReportCount)
+	}
+	if assets[1].AssetReportCount != 1 {
+		t.Fatalf("asset b report count = %d, want 1", assets[1].AssetReportCount)
+	}
+	if assets[1].LatestAssetReportStatus != ports.GRCInventoryAssetReportStatusAccepted {
+		t.Fatalf("asset b latest status = %q, want accepted", assets[1].LatestAssetReportStatus)
 	}
 }
 

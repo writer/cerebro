@@ -231,6 +231,54 @@ LIMIT $%d`, strings.Join(clauses, " AND "), len(args))
 	return records, rows.Err()
 }
 
+func (s *Store) SummarizeGRCInventoryAssetReports(ctx context.Context, filter ports.GRCInventoryAssetReportFilter) ([]*ports.GRCInventoryAssetReportSummary, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureGRCInventoryAssetReportTables(ctx); err != nil {
+		return nil, err
+	}
+	if len(normalizedNonEmptyStrings(filter.AssetURNs)) == 0 {
+		return []*ports.GRCInventoryAssetReportSummary{}, nil
+	}
+	clauses := []string{"1=1"}
+	args := []any{}
+	addTextFilter(&clauses, &args, "tenant_id", filter.TenantID)
+	addTextFilter(&clauses, &args, "source_id", filter.SourceID)
+	addTextFilter(&clauses, &args, "triage_status", filter.TriageStatus)
+	addStringInFilter(&clauses, &args, "asset_urn", filter.AssetURNs)
+	// #nosec G201 -- clauses are assembled from fixed column predicates and values remain parameterized.
+	query := fmt.Sprintf(`
+WITH ranked_reports AS (
+  SELECT asset_urn,
+         reason,
+         triage_status,
+         updated_at,
+         COUNT(*) OVER (PARTITION BY asset_urn) AS report_count,
+         ROW_NUMBER() OVER (PARTITION BY asset_urn ORDER BY updated_at DESC, created_at DESC, id ASC) AS report_rank
+  FROM grc_inventory_asset_reports
+  WHERE %s
+)
+SELECT asset_urn, report_count, triage_status, reason, updated_at
+FROM ranked_reports
+WHERE report_rank = 1
+ORDER BY updated_at DESC, asset_urn ASC`, strings.Join(clauses, " AND "))
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("summarize inventory asset reports: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	summaries := []*ports.GRCInventoryAssetReportSummary{}
+	for rows.Next() {
+		summary, err := scanGRCInventoryAssetReportSummary(rows)
+		if err != nil {
+			return nil, err
+		}
+		summaries = append(summaries, summary)
+	}
+	return summaries, rows.Err()
+}
+
 func (s *Store) UpdateGRCInventoryAssetReportTriage(ctx context.Context, update ports.GRCInventoryAssetReportTriageUpdate) (*ports.GRCInventoryAssetReportRecord, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
@@ -298,6 +346,14 @@ func scanGRCInventoryAssetReport(row scanner) (*ports.GRCInventoryAssetReportRec
 	record.Attributes = map[string]string{}
 	_ = json.Unmarshal([]byte(attrs), &record.Attributes)
 	return record, nil
+}
+
+func scanGRCInventoryAssetReportSummary(row scanner) (*ports.GRCInventoryAssetReportSummary, error) {
+	summary := &ports.GRCInventoryAssetReportSummary{}
+	if err := row.Scan(&summary.AssetURN, &summary.ReportCount, &summary.TriageStatus, &summary.Reason, &summary.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return summary, nil
 }
 
 func emptyStringMap(values map[string]string) map[string]string {
