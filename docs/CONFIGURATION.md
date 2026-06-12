@@ -2,6 +2,8 @@
 
 Cerebro `main` uses a small bootstrap configuration surface.
 
+For end-to-end hosting guidance, including container deployment, reverse proxy settings, backing stores, health checks, secrets, and rollout operations, see [`docs/HOSTING.md`](./HOSTING.md).
+
 ## Minimal local configuration
 
 No external stores are required for `/health`, `/healthz`, `/livez`, `/openapi.yaml`, `/sources`, and source preview routes that do not need provider credentials. `/health` reports dependency-aware readiness; `/healthz` and `/livez` are liveness-only.
