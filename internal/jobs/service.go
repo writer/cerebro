@@ -20,6 +20,7 @@ var (
 
 const (
 	KindSourceRuntimeSync         = "source_runtime_sync"
+	KindSourceRuntimeOrchestrate  = "source_runtime_orchestrate"
 	KindGraphIngestRuntime        = "graph_ingest_runtime"
 	KindFindingRulesEvaluate      = "finding_rules_evaluate"
 	KindFindingCandidatesEvaluate = "finding_candidates_evaluate"
