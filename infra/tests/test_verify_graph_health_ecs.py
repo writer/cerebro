@@ -18,6 +18,7 @@ from scripts.verify_graph_health_ecs import (
     GraphCommandContext,
     _count_health_errors,
     _declared_aws_families,
+    _extract_graph_payload_with_retries,
     _extract_json_payload,
     _failed_integrity_checks,
     _declared_runtime_ids,
@@ -458,6 +459,8 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
 
     def test_run_graph_command_reports_ecs_stop_reason_when_logs_missing(self) -> None:
         original_aws = verify_graph_health_ecs._aws
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
         context = GraphCommandContext(
             cluster="cluster",
             task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
@@ -500,11 +503,16 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             raise AssertionError(f"unexpected args: {args}")
 
         verify_graph_health_ecs._aws = fake_aws
+        times = iter([0, 91, 0, 91])
+        verify_graph_health_ecs.time.time = lambda: next(times)
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
         try:
             with self.assertRaisesRegex(RuntimeError, "ResourceInitializationError.*MISSING"):
                 _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
         finally:
             verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
 
     def test_run_graph_command_allows_nonzero_graph_health_payload(self) -> None:
         original_aws = verify_graph_health_ecs._aws
@@ -699,6 +707,31 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertEqual(payload["status"], "passed")
         self.assertEqual(payload["counts"], {"nodes": 2, "relations": 3})
 
+    def test_extract_graph_payload_retries_missing_log_stream(self) -> None:
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
+        calls = 0
+
+        def fake_fetch_messages() -> list[str]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("ResourceNotFoundException: specified log stream does not exist")
+            return ['{"status":"passed","counts":{"nodes":1},"integrity":{"checks":[]}}']
+
+        times = iter([0, 1])
+        verify_graph_health_ecs.time.time = lambda: next(times)
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
+        try:
+            messages, payload = _extract_graph_payload_with_retries(["graph", "health"], "task-arn", fake_fetch_messages)
+        finally:
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
+
+        self.assertEqual(calls, 2)
+        self.assertEqual(messages, ['{"status":"passed","counts":{"nodes":1},"integrity":{"checks":[]}}'])
+        self.assertEqual(payload["status"], "passed")
+
     def test_verify_counts_rejects_empty_graph(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "node count"):
             _verify_counts({"nodes": 0, "relations": 1})
@@ -831,6 +864,7 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
                 "limit=100",
                 "max_running_minutes=45",
                 "relations=belongs_to,represents",
+                "runtime_ids=runtime-a,runtime-b",
                 "allow_transient_source_failures=true",
             ],
         )

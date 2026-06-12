@@ -426,14 +426,29 @@ def _task_messages(
 def _wait_for_task_messages(fetch_messages, timeout_seconds: int = DEFAULT_LOG_WAIT_SECONDS) -> list[str]:
     deadline = time.time() + timeout_seconds
     messages: list[str] = []
+    last_error: Exception | None = None
     while True:
-        messages = fetch_messages()
+        try:
+            messages = fetch_messages()
+            last_error = None
+        except Exception as exc:
+            if not _is_missing_log_stream_error(exc):
+                raise
+            last_error = exc
+            messages = []
         if any(message.strip() for message in messages):
             return messages
         now = time.time()
         if now >= deadline:
+            if last_error is not None:
+                raise TimeoutError(f"task log stream was not available after {timeout_seconds}s: {last_error}") from last_error
             return messages
         time.sleep(min(DEFAULT_LOG_POLL_SECONDS, max(1, int(deadline - now))))
+
+
+def _is_missing_log_stream_error(error: Exception) -> bool:
+    text = str(error).lower()
+    return "specified log stream does not exist" in text or "resourcenotfoundexception" in text
 
 
 def _is_span_log_message(message: str) -> bool:
@@ -516,15 +531,22 @@ def _extract_graph_payload_with_retries(command: list[str], task_arn: str, fetch
     messages: list[str] = []
     last_error: Exception | None = None
     while True:
-        messages = fetch_messages()
         try:
-            return messages, _extract_json_payload(messages)
+            messages = fetch_messages()
         except Exception as exc:
+            if not _is_missing_log_stream_error(exc):
+                raise
             last_error = exc
-            now = time.time()
-            if now >= deadline:
-                break
-            time.sleep(min(DEFAULT_LOG_POLL_SECONDS, max(1, int(deadline - now))))
+            messages = []
+        else:
+            try:
+                return messages, _extract_json_payload(messages)
+            except Exception as exc:
+                last_error = exc
+        now = time.time()
+        if now >= deadline:
+            break
+        time.sleep(min(DEFAULT_LOG_POLL_SECONDS, max(1, int(deadline - now))))
     raise RuntimeError(
         f"graph command {' '.join(command)} did not emit valid JSON for {task_arn}: {last_error}; "
         f"log tail: {_log_tail(messages)}"
@@ -853,6 +875,8 @@ def _graph_health_command(
     ]
     if required_relations:
         command.append(f"relations={','.join(sorted(required_relations))}")
+    if declared_runtime_ids:
+        command.append(f"runtime_ids={','.join(sorted(declared_runtime_ids))}")
     if allow_transient_source_failures:
         command.append("allow_transient_source_failures=true")
     return command

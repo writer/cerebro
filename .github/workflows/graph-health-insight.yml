@@ -4,6 +4,8 @@ on:
   workflow_run:
     workflows: ["Infrastructure Deploy"]
     types: [completed]
+  schedule:
+    - cron: '17 13 * * *'
   workflow_dispatch:
     inputs:
       environment:
@@ -41,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           aws_insight=false
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "schedule" ]; then
             aws_insight=true
           else
             if git rev-parse HEAD^ >/dev/null 2>&1; then
@@ -62,8 +64,9 @@ jobs:
     needs: [changes]
     if: >-
       needs.changes.outputs.aws_insight == 'true' &&
+      ((github.event_name == 'schedule') ||
       ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') ||
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'sec-dev')))
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'sec-dev'))))
     concurrency:
       group: graph-health-insight-sec-dev
       cancel-in-progress: true
@@ -130,8 +133,9 @@ jobs:
     needs: [changes]
     if: >-
       needs.changes.outputs.aws_insight == 'true' &&
+      ((github.event_name == 'schedule') ||
       ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') ||
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'go-prod')))
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'go-prod'))))
     concurrency:
       group: graph-health-insight-go-prod
       cancel-in-progress: true
