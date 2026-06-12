@@ -877,6 +877,59 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertNotIn("runtime_ids=", " ".join(command))
         self.assertIn("allow_transient_source_failures=true", command)
 
+    def test_run_graph_health_command_checks_ingest_runs_when_runtime_ids_omitted(self) -> None:
+        original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries
+        runtime_ids = {f"runtime-{index:04d}-with-a-very-long-name" for index in range(400)}
+        commands: list[list[str]] = []
+
+        def fake_run_graph_command_with_retries(*args, **_kwargs):
+            command = args[2]
+            commands.append(command)
+            if command[:2] == ["graph", "health"]:
+                self.assertNotIn("runtime_ids=", " ".join(command))
+                return verify_graph_health_ecs.GraphCommandResult(
+                    command=command,
+                    task_arn="task-health",
+                    exit_code=0,
+                    payload={
+                        "status": "passed",
+                        "counts": {"nodes": 1, "relations": 1},
+                        "integrity": {"passed": 1, "failed": 0},
+                        "ingest": {"current_runtime_count": 1},
+                    },
+                )
+            if command[:2] == ["graph", "ingest-runs"]:
+                return verify_graph_health_ecs.GraphCommandResult(
+                    command=command,
+                    task_arn="task-ingest-runs",
+                    exit_code=0,
+                    payload={"runs": [{"id": "run-a", "runtime_id": "runtime-0000-with-a-very-long-name", "status": "completed"}]},
+                )
+            raise AssertionError(f"unexpected command: {command}")
+
+        verify_graph_health_ecs._run_graph_command_with_retries = fake_run_graph_command_with_retries
+        try:
+            result = _run_graph_health_command_with_retries(
+                "prefix",
+                {},
+                runtime_ids,
+                {"belongs_to"},
+                10,
+                1,
+                "us-east-1",
+                0,
+                0,
+                60,
+                False,
+            )
+        finally:
+            verify_graph_health_ecs._run_graph_command_with_retries = original_run_graph_command_with_retries
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("missing graph ingest run history", result.payload["failures"][0])
+        self.assertEqual(commands[0][:2], ["graph", "health"])
+        self.assertEqual(commands[1][:2], ["graph", "ingest-runs"])
+
     def test_run_graph_health_command_with_retries_recovers_after_failed_status(self) -> None:
         original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries
         original_time = verify_graph_health_ecs.time.time
@@ -935,6 +988,35 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
 
         self.assertEqual(result.task_arn, "task-2")
         self.assertEqual(calls, 2)
+
+    def test_verify_current_ingest_runs_with_retries_checks_declared_runtime_ids(self) -> None:
+        original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries
+
+        def fake_run_graph_command_with_retries(*_args, **_kwargs):
+            return verify_graph_health_ecs.GraphCommandResult(
+                command=["graph", "ingest-runs"],
+                task_arn="task-1",
+                exit_code=0,
+                payload={"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}]},
+            )
+
+        verify_graph_health_ecs._run_graph_command_with_retries = fake_run_graph_command_with_retries
+        try:
+            with self.assertRaisesRegex(RuntimeError, "runtime-b"):
+                verify_graph_health_ecs._verify_current_ingest_runs_with_retries(
+                    "prefix",
+                    {},
+                    {"runtime-a", "runtime-b"},
+                    10,
+                    1,
+                    "us-east-1",
+                    0,
+                    0,
+                    60,
+                    False,
+                )
+        finally:
+            verify_graph_health_ecs._run_graph_command_with_retries = original_run_graph_command_with_retries
 
     def test_verify_current_ingest_runs_rejects_missing_declared_runtime(self) -> None:
         payload = {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}]}

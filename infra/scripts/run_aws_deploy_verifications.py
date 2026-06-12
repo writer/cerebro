@@ -510,20 +510,26 @@ def _github_api_json(repository: str, token: str, path: str, *, method: str = "G
         return json.loads(response.read().decode("utf-8"))
 
 
-def _find_open_graph_health_issue(repository: str, token: str, title: str) -> dict | None:
+def _find_open_graph_health_issues(repository: str, token: str, title: str) -> list[dict]:
+    matches: list[dict] = []
     for page in range(1, 6):
         query = urllib.parse.urlencode({"state": "open", "per_page": "100", "page": str(page)})
         issues = _github_api_json(repository, token, f"/issues?{query}")
         if not isinstance(issues, list):
-            return None
+            return matches
         for issue in issues:
             if not isinstance(issue, dict) or issue.get("pull_request"):
                 continue
             if issue.get("title") == title:
-                return issue
+                matches.append(issue)
         if len(issues) < 100:
             break
-    return None
+    return matches
+
+
+def _find_open_graph_health_issue(repository: str, token: str, title: str) -> dict | None:
+    matches = _find_open_graph_health_issues(repository, token, title)
+    return matches[0] if matches else None
 
 
 def _graph_health_issue_body(stack: str, status: int, category: str, artifact_name: str, run_url: str, *, degraded: bool) -> str:
@@ -554,8 +560,9 @@ def _create_graph_health_issue(stack: str, status: int, category: str, artifact_
     title = f"Graph health {outcome} for {stack}"
     body = _graph_health_issue_body(stack, status, category, artifact_name, run_url, degraded=degraded)
     try:
-        existing = _find_open_graph_health_issue(repository, token, title)
-        if existing:
+        existing_issues = _find_open_graph_health_issues(repository, token, title)
+        if existing_issues:
+            existing = existing_issues[0]
             issue_number = existing.get("number")
             if issue_number:
                 updated = _github_api_json(
@@ -567,6 +574,16 @@ def _create_graph_health_issue(stack: str, status: int, category: str, artifact_
                 )
                 if isinstance(updated, dict):
                     print(f"::notice::Updated existing graph-health follow-up issue: {updated.get('html_url')}")
+                    for duplicate in existing_issues[1:]:
+                        duplicate_number = duplicate.get("number")
+                        if isinstance(duplicate_number, int):
+                            _close_graph_health_issue(
+                                repository,
+                                token,
+                                duplicate_number,
+                                f"Closing duplicate graph-health issue; continuing follow-up in #{issue_number}.",
+                                notice="Closed duplicate graph-health issue",
+                            )
                     return
         created = _github_api_json(repository, token, "/issues", method="POST", payload={"title": title, "body": body})
     except urllib.error.URLError as exc:
@@ -575,7 +592,7 @@ def _create_graph_health_issue(stack: str, status: int, category: str, artifact_
     print(f"::notice::Created graph-health follow-up issue: {created.get('html_url')}")
 
 
-def _close_graph_health_issue(repository: str, token: str, issue_number: int, body: str) -> None:
+def _close_graph_health_issue(repository: str, token: str, issue_number: int, body: str, *, notice: str = "Closed recovered graph-health issue") -> None:
     updated = _github_api_json(
         repository,
         token,
@@ -585,7 +602,7 @@ def _close_graph_health_issue(repository: str, token: str, issue_number: int, bo
     )
     _github_api_json(repository, token, f"/issues/{issue_number}", method="PATCH", payload={"state": "closed"})
     if isinstance(updated, dict):
-        print(f"::notice::Closed recovered graph-health issue: {updated.get('html_url')}")
+        print(f"::notice::{notice}: {updated.get('html_url')}")
 
 
 def _close_recovered_graph_health_issues(stack: str, artifact_name: str) -> None:
@@ -608,12 +625,10 @@ def _close_recovered_graph_health_issues(stack: str, artifact_name: str) -> None
     )
     try:
         for title in (f"Graph health degraded for {stack}", f"Graph health blocked deployment for {stack}"):
-            existing = _find_open_graph_health_issue(repository, token, title)
-            if not existing:
-                continue
-            issue_number = existing.get("number")
-            if isinstance(issue_number, int):
-                _close_graph_health_issue(repository, token, issue_number, body)
+            for existing in _find_open_graph_health_issues(repository, token, title):
+                issue_number = existing.get("number")
+                if isinstance(issue_number, int):
+                    _close_graph_health_issue(repository, token, issue_number, body)
     except urllib.error.URLError as exc:
         print(f"WARNING: failed to close recovered graph-health issue: {exc}", file=sys.stderr)
 

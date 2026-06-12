@@ -622,23 +622,83 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         payload = json.loads(requests[1].data.decode("utf-8"))
         self.assertIn("ecs_secret_initialization_failed", payload["body"])
 
-    def test_passing_graph_health_closes_existing_degraded_issue(self) -> None:
+    def test_graph_degradation_closes_duplicate_followup_issues(self) -> None:
         requests = []
 
         def fake_urlopen(request, timeout: int):  # noqa: ANN001
             requests.append(request)
             if request.get_method() == "GET":
-                if "page=1" in request.full_url:
+                return FakeHTTPResponse(
+                    [
+                        {
+                            "number": 956,
+                            "title": "Graph health degraded for go-prod",
+                            "html_url": "https://github.com/WriterInternal/cerebro/issues/956",
+                        },
+                        {
+                            "number": 957,
+                            "title": "Graph health degraded for go-prod",
+                            "html_url": "https://github.com/WriterInternal/cerebro/issues/957",
+                        },
+                    ]
+                )
+            return FakeHTTPResponse({"html_url": "https://github.com/WriterInternal/cerebro/issues/956#issuecomment-2"})
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GITHUB_TOKEN": "token",
+                    "GITHUB_REPOSITORY": "WriterInternal/cerebro",
+                    "GITHUB_RUN_ID": "27284692112",
+                },
+            ),
+            patch("scripts.run_aws_deploy_verifications.urllib.request.urlopen", side_effect=fake_urlopen),
+        ):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                run_aws_deploy_verifications._create_graph_health_issue(
+                    "go-prod",
+                    1,
+                    "stale_ingest_run",
+                    "graph-health-go-prod",
+                )
+
+        patch_urls = [request.full_url for request in requests if request.get_method() == "PATCH"]
+        self.assertEqual(patch_urls, ["https://api.github.com/repos/WriterInternal/cerebro/issues/957"])
+
+    def test_passing_graph_health_closes_all_existing_graph_issues(self) -> None:
+        requests = []
+        get_calls = 0
+
+        def fake_urlopen(request, timeout: int):  # noqa: ANN001
+            nonlocal get_calls
+            requests.append(request)
+            if request.get_method() == "GET":
+                get_calls += 1
+                if get_calls == 1:
                     return FakeHTTPResponse(
                         [
                             {
                                 "number": 956,
                                 "title": "Graph health degraded for go-prod",
                                 "html_url": "https://github.com/WriterInternal/cerebro/issues/956",
-                            }
+                            },
+                            {
+                                "number": 957,
+                                "title": "Graph health degraded for go-prod",
+                                "html_url": "https://github.com/WriterInternal/cerebro/issues/957",
+                            },
                         ]
                     )
-                return FakeHTTPResponse([])
+                return FakeHTTPResponse(
+                    [
+                        {
+                            "number": 958,
+                            "title": "Graph health blocked deployment for go-prod",
+                            "html_url": "https://github.com/WriterInternal/cerebro/issues/958",
+                        }
+                    ]
+                )
             return FakeHTTPResponse({"html_url": "https://github.com/WriterInternal/cerebro/issues/956#issuecomment-2"})
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -668,11 +728,18 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                 )
 
         self.assertEqual(status, 0)
-        methods = [request.get_method() for request in requests]
-        self.assertIn("POST", methods)
-        self.assertIn("PATCH", methods)
-        patch_payload = json.loads(next(request.data.decode("utf-8") for request in requests if request.get_method() == "PATCH"))
-        self.assertEqual(patch_payload["state"], "closed")
+        patch_urls = [request.full_url for request in requests if request.get_method() == "PATCH"]
+        self.assertEqual(
+            patch_urls,
+            [
+                "https://api.github.com/repos/WriterInternal/cerebro/issues/956",
+                "https://api.github.com/repos/WriterInternal/cerebro/issues/957",
+                "https://api.github.com/repos/WriterInternal/cerebro/issues/958",
+            ],
+        )
+        for request in requests:
+            if request.get_method() == "PATCH":
+                self.assertEqual(json.loads(request.data.decode("utf-8"))["state"], "closed")
 
     def test_healed_graph_health_closes_existing_issue(self) -> None:
         requests = []

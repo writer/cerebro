@@ -850,6 +850,7 @@ def _verify_current_ingest_runs_with_retries(
         try:
             current_ingest_runtimes = _verify_current_ingest_runs(
                 ingest_runs.payload,
+                declared_runtime_ids=declared_runtime_ids,
                 max_running_minutes=max_running_minutes,
                 allow_transient_source_failures=allow_transient_source_failures,
             )
@@ -889,6 +890,20 @@ def _ecs_container_overrides_size(command: list[str]) -> int:
     return len(json.dumps(_graph_command_overrides_from_names(command, {"cerebro"}), separators=(",", ":")).encode("utf-8"))
 
 
+def _graph_health_command_has_runtime_ids(command: list[str]) -> bool:
+    return any(argument.startswith("runtime_ids=") for argument in command)
+
+
+def _graph_health_payload_with_failure(payload: dict[str, Any], failure: str) -> dict[str, Any]:
+    updated = dict(payload)
+    failures = updated.get("failures") or []
+    if not isinstance(failures, list):
+        failures = [failures]
+    updated["failures"] = [str(item).strip() for item in failures if str(item).strip()]
+    updated["failures"].append(failure)
+    return updated
+
+
 def _graph_health_errors(payload: dict[str, Any], exit_code: int | None) -> list[str]:
     failures = payload.get("failures") or []
     if not isinstance(failures, list):
@@ -923,10 +938,12 @@ def _run_graph_health_command_with_retries(
         max_running_minutes,
         allow_transient_source_failures,
     )
+    runtime_ids_in_command = _graph_health_command_has_runtime_ids(command)
     deadline = time.time() + ingest_health_retry_seconds
     if overall_deadline is not None:
         deadline = min(deadline, overall_deadline)
     while True:
+        nonretryable_error = False
         result = _run_graph_command_with_retries(
             resource_prefix,
             service,
@@ -940,8 +957,33 @@ def _run_graph_health_command_with_retries(
             allow_nonzero=True,
         )
         errors = _graph_health_errors(result.payload, result.exit_code)
+        if not errors and declared_runtime_ids and not runtime_ids_in_command:
+            try:
+                _verify_current_ingest_runs_with_retries(
+                    resource_prefix,
+                    service,
+                    declared_runtime_ids,
+                    wait_timeout_seconds,
+                    poll_seconds,
+                    region,
+                    graph_command_retry_seconds,
+                    ingest_health_retry_seconds,
+                    max_running_minutes,
+                    allow_transient_source_failures,
+                    context,
+                    overall_deadline=overall_deadline,
+                )
+            except CurrentIngestRunsError as exc:
+                nonretryable_error = not exc.retryable
+                result = GraphCommandResult(
+                    command=result.command,
+                    task_arn=result.task_arn,
+                    exit_code=result.exit_code or 1,
+                    payload=_graph_health_payload_with_failure(result.payload, str(exc)),
+                )
+                errors = _graph_health_errors(result.payload, result.exit_code)
         now = time.time()
-        if not errors or ingest_health_retry_seconds <= 0 or now >= deadline:
+        if not errors or nonretryable_error or ingest_health_retry_seconds <= 0 or now >= deadline:
             return result
         print(
             f"WARNING: graph health command reported {len(errors)} failure(s): "
