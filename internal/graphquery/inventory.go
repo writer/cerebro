@@ -43,18 +43,22 @@ type InventoryCategory struct {
 }
 
 type InventoryAsset struct {
-	URN            string            `json:"urn"`
-	EntityType     string            `json:"entity_type"`
-	Label          string            `json:"label"`
-	SourceID       string            `json:"source_id,omitempty"`
-	RuntimeID      string            `json:"runtime_id,omitempty"`
-	RiskScore      int               `json:"risk_score,omitempty"`
-	RiskLevel      string            `json:"risk_level,omitempty"`
-	RiskReasons    []string          `json:"risk_reasons,omitempty"`
-	ScopeState     string            `json:"scope_state,omitempty"`
-	ScopeReason    string            `json:"scope_reason,omitempty"`
-	ScopeUpdatedAt string            `json:"scope_updated_at,omitempty"`
-	Attributes     map[string]string `json:"attributes,omitempty"`
+	URN                        string            `json:"urn"`
+	EntityType                 string            `json:"entity_type"`
+	Label                      string            `json:"label"`
+	SourceID                   string            `json:"source_id,omitempty"`
+	RuntimeID                  string            `json:"runtime_id,omitempty"`
+	RiskScore                  int               `json:"risk_score,omitempty"`
+	RiskLevel                  string            `json:"risk_level,omitempty"`
+	RiskReasons                []string          `json:"risk_reasons,omitempty"`
+	ScopeState                 string            `json:"scope_state,omitempty"`
+	ScopeReason                string            `json:"scope_reason,omitempty"`
+	ScopeUpdatedAt             string            `json:"scope_updated_at,omitempty"`
+	AssetReportCount           int               `json:"asset_report_count,omitempty"`
+	LatestAssetReportStatus    string            `json:"latest_asset_report_status,omitempty"`
+	LatestAssetReportReason    string            `json:"latest_asset_report_reason,omitempty"`
+	LatestAssetReportUpdatedAt string            `json:"latest_asset_report_updated_at,omitempty"`
+	Attributes                 map[string]string `json:"attributes,omitempty"`
 }
 
 type InventoryAssetDetail struct {
