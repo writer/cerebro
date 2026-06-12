@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 )
 
 const defaultWorkflowKindPrefix = "workflow.v1."
@@ -45,37 +46,43 @@ func (r *Replayer) Replay(ctx context.Context, request ReplayRequest) (*ReplayRe
 	if r == nil || r.replayer == nil || r.graph == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	kindPrefix := strings.TrimSpace(request.KindPrefix)
-	if kindPrefix == "" {
-		kindPrefix = defaultWorkflowKindPrefix
-	}
-	events, err := r.replayer.Replay(ctx, ports.ReplayRequest{
-		KindPrefix:      kindPrefix,
-		TenantID:        strings.TrimSpace(request.TenantID),
-		AttributeEquals: request.AttributeEquals,
-		Limit:           request.Limit,
-	})
-	if err != nil {
-		return nil, err
-	}
 	projector := New(r.graph)
 	result := &ReplayResult{}
-	for _, event := range events {
-		result.EventsRead++
-		projection, err := projector.Project(ctx, event)
+	for _, kindPrefix := range workflowReplayKindPrefixes(request.KindPrefix) {
+		events, err := r.replayer.Replay(ctx, ports.ReplayRequest{
+			KindPrefix:      kindPrefix,
+			TenantID:        strings.TrimSpace(request.TenantID),
+			AttributeEquals: request.AttributeEquals,
+			Limit:           request.Limit,
+		})
 		if err != nil {
 			return nil, err
 		}
-		eventsProjected := projection.EventsProjected
-		if eventsProjected == 0 && (projection.EntitiesProjected != 0 || projection.LinksProjected != 0 || projection.EntitiesDeleted != 0 || projection.LinksDeleted != 0) {
-			eventsProjected = 1
+		for _, event := range events {
+			result.EventsRead++
+			projection, err := projector.Project(ctx, event)
+			if err != nil {
+				return nil, err
+			}
+			eventsProjected := projection.EventsProjected
+			if eventsProjected == 0 && (projection.EntitiesProjected != 0 || projection.LinksProjected != 0 || projection.EntitiesDeleted != 0 || projection.LinksDeleted != 0) {
+				eventsProjected = 1
+			}
+			if eventsProjected == 0 {
+				continue
+			}
+			result.EventsProjected += eventsProjected
+			result.EntitiesProjected += projection.EntitiesProjected
+			result.LinksProjected += projection.LinksProjected
 		}
-		if eventsProjected == 0 {
-			continue
-		}
-		result.EventsProjected += eventsProjected
-		result.EntitiesProjected += projection.EntitiesProjected
-		result.LinksProjected += projection.LinksProjected
 	}
 	return result, nil
+}
+
+func workflowReplayKindPrefixes(kindPrefix string) []string {
+	kindPrefix = strings.TrimSpace(kindPrefix)
+	if kindPrefix != "" {
+		return []string{kindPrefix}
+	}
+	return []string{defaultWorkflowKindPrefix, securityevents.FindingsV1Prefix + "."}
 }
