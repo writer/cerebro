@@ -11,6 +11,7 @@ import (
 
 func TestPlatformHTTPRoutesHaveAuthPolicies(t *testing.T) {
 	root := bootstrapRepoRoot(t)
+	// #nosec G304 -- fixed repo-relative guardrail path derived from runtime.Caller.
 	body, err := os.ReadFile(filepath.Join(root, "internal", "bootstrap", "routes.go"))
 	if err != nil {
 		t.Fatalf("read routes.go: %v", err)
@@ -36,6 +37,7 @@ func TestPlatformHTTPRoutesHaveAuthPolicies(t *testing.T) {
 
 func TestConnectProceduresHaveAuthPolicies(t *testing.T) {
 	root := bootstrapRepoRoot(t)
+	// #nosec G304 -- fixed repo-relative guardrail path derived from runtime.Caller.
 	body, err := os.ReadFile(filepath.Join(root, "gen", "cerebro", "v1", "cerebrov1connect", "bootstrap.connect.go"))
 	if err != nil {
 		t.Fatalf("read bootstrap.connect.go: %v", err)
