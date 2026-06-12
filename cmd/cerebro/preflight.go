@@ -33,6 +33,12 @@ type preflightOptions struct {
 	Stdout io.Writer
 }
 
+type preflightRuntime struct {
+	loadConfig       func() (appconfig.Config, error)
+	openDependencies func(context.Context, appconfig.Config) (bootstrap.Dependencies, func() error, error)
+	probeLLM         func(context.Context, graphagent.LLMClient) error
+}
+
 func runDeploy(args []string) error {
 	if len(args) == 0 {
 		return usageError("usage: cerebro deploy [preflight]")
@@ -70,7 +76,15 @@ func runDeployPreflight(args []string, opts preflightOptions) error {
 }
 
 func executeDeployPreflight(ctx context.Context) preflightReceipt {
-	receipt := preflightReceipt{
+	return executeDeployPreflightWith(ctx, preflightRuntime{
+		loadConfig:       appconfig.Load,
+		openDependencies: bootstrap.OpenDependencies,
+		probeLLM:         graphagent.ProbeLLM,
+	})
+}
+
+func executeDeployPreflightWith(ctx context.Context, runtime preflightRuntime) (receipt preflightReceipt) {
+	receipt = preflightReceipt{
 		Kind:        "cerebro.deploy_preflight",
 		Status:      "pass",
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -85,12 +99,12 @@ func executeDeployPreflight(ctx context.Context) preflightReceipt {
 		receipt.Checks = append(receipt.Checks, check)
 	}
 
-	cfg, err := appconfig.Load()
+	cfg, err := runtime.loadConfig()
 	addCheck("config.load", err)
 	if err != nil {
 		return receipt
 	}
-	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
+	deps, closeDeps, err := runtime.openDependencies(ctx, cfg)
 	addCheck("dependencies.open", err)
 	if err != nil {
 		return receipt
@@ -98,7 +112,7 @@ func executeDeployPreflight(ctx context.Context) preflightReceipt {
 	defer func() {
 		addCheck("dependencies.close", closeDeps())
 	}()
-	addCheck("graph_agent_llm.probe", graphagent.ProbeLLM(ctx, deps.GraphAgentLLM))
+	addCheck("graph_agent_llm.probe", runtime.probeLLM(ctx, deps.GraphAgentLLM))
 	return receipt
 }
 
