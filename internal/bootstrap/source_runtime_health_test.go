@@ -217,6 +217,76 @@ func TestSourceRuntimeHealthSummariesAggregateBySource(t *testing.T) {
 	}
 }
 
+func TestRuntimeFreshnessFromHealthClassifiesBackfillWorklist(t *testing.T) {
+	graphLag := int64(7200)
+	staleAfter := int64(3600)
+	health := sourceRuntimeHealthResponse{
+		GeneratedAt: "2026-06-12T00:00:00Z",
+		Runtimes: []sourceRuntimeHealthRecord{
+			{
+				RuntimeID:         "runtime-current",
+				SourceID:          "okta",
+				EnabledState:      "enabled",
+				Status:            "healthy",
+				LatestGraphRun:    sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed"}),
+				GraphLagSeconds:   int64Ptr(60),
+				StaleAfterSeconds: &staleAfter,
+			},
+			{
+				RuntimeID:         "runtime-missing-graph",
+				SourceID:          "okta",
+				EnabledState:      "enabled",
+				Status:            "healthy",
+				GraphLagSeconds:   &graphLag,
+				StaleAfterSeconds: &staleAfter,
+			},
+			{
+				RuntimeID:           "runtime-source-failed",
+				SourceID:            "gcp",
+				EnabledState:        "enabled",
+				Status:              "failing",
+				LastFailureCategory: "auth_error",
+				LatestGraphRun:      sourceRuntimeGraphRunHealth(graphstore.IngestRun{Status: "completed"}),
+				StaleAfterSeconds:   &staleAfter,
+			},
+			{
+				RuntimeID:    "runtime-disabled",
+				SourceID:     "cosmo",
+				EnabledState: "disabled",
+				Status:       "unknown",
+			},
+		},
+	}
+
+	response := runtimeFreshnessFromHealth(health)
+
+	if response.Status != "degraded" {
+		t.Fatalf("Status = %q, want degraded", response.Status)
+	}
+	byRuntime := map[string]runtimeFreshnessRecord{}
+	for _, record := range response.Runtimes {
+		byRuntime[record.RuntimeID] = record
+	}
+	if got := byRuntime["runtime-current"]; got.FreshnessState != "healthy" || got.BackfillEligible {
+		t.Fatalf("runtime-current freshness = %+v", got)
+	}
+	if got := byRuntime["runtime-missing-graph"]; got.FreshnessState != "graph_missing" || !got.BackfillEligible || got.RecommendedWorkflow != "source-runtime-backfill" {
+		t.Fatalf("runtime-missing-graph freshness = %+v", got)
+	}
+	if got := byRuntime["runtime-source-failed"]; got.FreshnessState != "source_failed" || got.FailureClass != "auth_error" || got.BackfillEligible {
+		t.Fatalf("runtime-source-failed freshness = %+v", got)
+	}
+	if got := byRuntime["runtime-disabled"]; got.FreshnessState != "disabled" || got.LifecycleState != "disabled" || got.BackfillEligible {
+		t.Fatalf("runtime-disabled freshness = %+v", got)
+	}
+	if len(response.Summaries) != 3 {
+		t.Fatalf("len(Summaries) = %d, want 3", len(response.Summaries))
+	}
+	if response.Summaries[0].SourceID != "okta" || response.Summaries[0].BackfillEligible != 1 || response.Summaries[0].GraphMissing != 1 {
+		t.Fatalf("okta summary = %+v", response.Summaries[0])
+	}
+}
+
 func FuzzRuntimeHealthConfigParsing(f *testing.F) {
 	f.Add("", "", "")
 	f.Add("3600", "7200", "passing")

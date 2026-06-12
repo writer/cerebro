@@ -149,6 +149,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: runtime_ids
+          in: query
+          schema:
+            type: string
+          description: Comma-separated runtime IDs.
         - name: tenant_id
           in: query
           schema:
@@ -1358,6 +1363,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EndpointVulnerabilityFindingsResponse'
+  /platform/runtime-freshness:
+    get:
+      summary: List canonical runtime freshness
+      tags:
+        - Platform
+      parameters:
+        - name: runtime_id
+          in: query
+          schema:
+            type: string
+        - name: runtime_ids
+          in: query
+          schema:
+            type: string
+          description: Comma-separated runtime IDs.
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Canonical source sync and graph freshness worklist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeFreshnessResponse'
   /platform/graph/ingest-health:
     get:
       summary: Check graph ingest health
@@ -2590,6 +2626,187 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SourceRuntimeHealthRecord'
+        source_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceRuntimeHealthSummary'
+    SourceRuntimeHealthSummary:
+      type: object
+      properties:
+        source_id:
+          type: string
+        total:
+          type: integer
+          minimum: 0
+        healthy:
+          type: integer
+          minimum: 0
+        stale:
+          type: integer
+          minimum: 0
+        failing:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        graph_current:
+          type: integer
+          minimum: 0
+        graph_behind:
+          type: integer
+          minimum: 0
+        graph_failed:
+          type: integer
+          minimum: 0
+        graph_running:
+          type: integer
+          minimum: 0
+        graph_not_observed:
+          type: integer
+          minimum: 0
+        contract_probe_passing:
+          type: integer
+          minimum: 0
+        contract_probe_failure:
+          type: integer
+          minimum: 0
+        contract_probe_unknown:
+          type: integer
+          minimum: 0
+        contract_probe_not_configured:
+          type: integer
+          minimum: 0
+        cursor_pending:
+          type: integer
+          minimum: 0
+    RuntimeFreshnessResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [healthy, degraded]
+        runtimes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeFreshnessRecord'
+        summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeFreshnessSummary'
+    RuntimeFreshnessSummary:
+      type: object
+      properties:
+        source_id:
+          type: string
+        total:
+          type: integer
+          minimum: 0
+        healthy:
+          type: integer
+          minimum: 0
+        needs_attention:
+          type: integer
+          minimum: 0
+        source_failed:
+          type: integer
+          minimum: 0
+        source_stale:
+          type: integer
+          minimum: 0
+        graph_missing:
+          type: integer
+          minimum: 0
+        graph_failed:
+          type: integer
+          minimum: 0
+        graph_behind:
+          type: integer
+          minimum: 0
+        backfill_eligible:
+          type: integer
+          minimum: 0
+        quarantined_or_disabled:
+          type: integer
+          minimum: 0
+    RuntimeFreshnessRecord:
+      type: object
+      properties:
+        runtime_id:
+          type: string
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        family:
+          type: string
+        lifecycle_state:
+          type: string
+          enum: [active, disabled]
+        schedule_state:
+          type: string
+          enum: [configured, unknown]
+        freshness_state:
+          type: string
+          enum: [healthy, disabled, source_failed, source_stale, graph_missing, graph_failed, graph_behind, unknown]
+        source_sync_state:
+          type: string
+          enum: [current, stale, failed, unknown]
+        graph_ingest_state:
+          type: string
+          enum: [current, behind, failed, running, not_observed]
+        finding_evaluation_state:
+          type: string
+          enum: [current, failed, running, not_observed]
+        failure_class:
+          type: string
+        failure_reason:
+          type: string
+        last_synced_at:
+          type: string
+          format: date-time
+        sync_lag_seconds:
+          type: integer
+          minimum: 0
+        checkpoint_watermark:
+          type: string
+          format: date-time
+        watermark_lag_seconds:
+          type: integer
+          minimum: 0
+        latest_graph_run:
+          $ref: '#/components/schemas/SourceRuntimeHealthGraphRun'
+        graph_lag_seconds:
+          type: integer
+          minimum: 0
+        latest_finding_evaluation:
+          $ref: '#/components/schemas/SourceRuntimeHealthFindingEvaluation'
+        expected_cadence_seconds:
+          type: integer
+          minimum: 0
+        stale_after_seconds:
+          type: integer
+          minimum: 0
+        backfill_eligible:
+          type: boolean
+        backfill_eligibility_reason:
+          type: string
+        next_action:
+          type: string
+        recommended_workflow:
+          type: string
+        cursor_pending:
+          type: boolean
+        checkpoint_cursor_present:
+          type: boolean
+        schedule_context_configured:
+          type: boolean
+        generated_at:
+          type: string
+          format: date-time
     SourceRuntimeHealthRecord:
       type: object
       properties:

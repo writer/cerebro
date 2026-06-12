@@ -228,6 +228,7 @@ var exactRouteLabels = map[string]struct{}{
 	"/platform/knowledge/actions/recommendation":                          {},
 	"/platform/knowledge/outcomes":                                        {},
 	"/platform/workflow/replay":                                           {},
+	"/platform/runtime-freshness":                                         {},
 	"/platform/graph/neighborhood":                                        {},
 	"/platform/graph/impact/package":                                      {},
 	"/platform/graph/impact/asset":                                        {},

@@ -25,6 +25,9 @@ func TestNormalizeRouteLabelBoundsUnknownPaths(t *testing.T) {
 	if got := normalizeRouteLabel("/source-runtimes/health"); got != "/source-runtimes/health" {
 		t.Fatalf("source-runtime health route label = %q", got)
 	}
+	if got := normalizeRouteLabel("/platform/runtime-freshness"); got != "/platform/runtime-freshness" {
+		t.Fatalf("runtime freshness route label = %q", got)
+	}
 }
 
 func TestNormalizeMethodLabelBoundsUnknownMethods(t *testing.T) {
