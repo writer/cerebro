@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 )
 
@@ -177,11 +176,18 @@ func TestOpenRouterLLMClient_AuthenticationFailure(t *testing.T) {
 	if !errors.Is(err, ErrLLMAuthenticationFailed) {
 		t.Fatalf("error = %v, want ErrLLMAuthenticationFailed", err)
 	}
-	if !strings.Contains(err.Error(), "CEREBRO_OPENROUTER_API_KEY") {
-		t.Fatalf("error = %v, want credential diagnostic", err)
+	var authErr *OpenRouterAuthenticationError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("error = %T, want OpenRouterAuthenticationError", err)
 	}
-	if strings.Contains(err.Error(), "test-secret-key") {
-		t.Fatalf("error leaked API key: %v", err)
+	if authErr.StatusCode != 401 {
+		t.Fatalf("status code = %d, want 401", authErr.StatusCode)
+	}
+	if authErr.ProviderMessage != "Missing Authentication header" {
+		t.Fatalf("provider message = %q, want Missing Authentication header", authErr.ProviderMessage)
+	}
+	if authErr.CredentialEnvVar != "CEREBRO_OPENROUTER_API_KEY" {
+		t.Fatalf("credential env var = %q, want CEREBRO_OPENROUTER_API_KEY", authErr.CredentialEnvVar)
 	}
 }
 
