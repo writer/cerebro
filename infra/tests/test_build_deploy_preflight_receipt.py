@@ -78,6 +78,49 @@ config:
         self.assertIn("OpenRouter provider is missing its secret import", body)
         self.assertNotIn("OPENROUTER_RUNTIME_TOKEN", body)
 
+    def test_receipt_passes_with_bedrock_model_and_region(self) -> None:
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            contract, stack = self._write_inputs(root)
+            stack.write_text(
+                """
+config:
+  cerebro:imageTag: v2.1.60
+  cerebro:environment: sec-dev
+  cerebro:graphAgentLlmProvider: bedrock
+  cerebro:graphAgentLlmModel: us.anthropic.claude-sonnet-4-6
+  cerebro:bedrockRegion: us-east-1
+""",
+                encoding="utf-8",
+            )
+            receipt = build_deploy_preflight_receipt.build_receipt(contract, stack)
+
+        self.assertEqual(receipt["status"], "pass")
+        graph_check = next(check for check in receipt["checks"] if check["name"] == "graph_agent_llm")
+        self.assertEqual(graph_check["status"], "pass")
+        self.assertTrue(graph_check["details"]["bedrock_model_configured"])
+        self.assertTrue(graph_check["details"]["bedrock_region_configured"])
+
+    def test_receipt_fails_with_incomplete_bedrock_config(self) -> None:
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            contract, stack = self._write_inputs(root)
+            stack.write_text(
+                """
+config:
+  cerebro:imageTag: v2.1.60
+  cerebro:environment: sec-dev
+  cerebro:graphAgentLlmProvider: bedrock
+""",
+                encoding="utf-8",
+            )
+            receipt = build_deploy_preflight_receipt.build_receipt(contract, stack)
+
+        body = json.dumps(receipt)
+        self.assertEqual(receipt["status"], "fail")
+        self.assertIn("Bedrock provider is missing its model or inference profile id", body)
+        self.assertIn("Bedrock provider is missing its runtime region", body)
+
     def test_import_plan_uses_fingerprints_not_names(self) -> None:
         with TemporaryDirectory() as raw:
             contract, stack = self._write_inputs(Path(raw))

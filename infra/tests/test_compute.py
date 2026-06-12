@@ -199,6 +199,38 @@ class WorkerTaskRoleTest(unittest.TestCase):
         self.assertIn("arn:aws:iam::222222222222:role/cerebro-org-scan-role", assume_policy["policy"])
         self.assertNotIn("arn:aws:iam::*:role", assume_policy["policy"])
 
+    def test_task_role_grants_bedrock_invoke_to_configured_models(self) -> None:
+        policies: list[dict] = []
+
+        def fake_role(*args, **kwargs):
+            return SimpleNamespace(name=kwargs.get("name", args[0]), id=f"{args[0]}-id", arn=f"arn:aws:iam::123456789012:role/{args[0]}")
+
+        def fake_policy(*args, **kwargs):
+            policies.append(kwargs)
+            return SimpleNamespace(name=args[0])
+
+        with (
+            patch.object(compute.aws, "get_caller_identity", return_value=SimpleNamespace(account_id="123456789012")),
+            patch.object(compute.aws.iam, "Role", side_effect=fake_role),
+            patch.object(compute.aws.iam, "RolePolicy", side_effect=fake_policy),
+        ):
+            compute._create_task_role(
+                "cerebro-sec-dev",
+                bedrock_model_ids=["us.anthropic.claude-sonnet-4-6"],
+            )
+
+        bedrock_policy = next(policy for policy in policies if policy["policy"].find("bedrock:InvokeModel") >= 0)
+        document = json.loads(bedrock_policy["policy"])
+        statement = document["Statement"][0]
+        self.assertEqual(statement["Action"], ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"])
+        self.assertCountEqual(
+            statement["Resource"],
+            [
+                "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6",
+                "arn:aws:bedrock:*:123456789012:inference-profile/us.anthropic.claude-sonnet-4-6",
+            ],
+        )
+
     def test_orchestrator_schedule_role_trusts_events_and_scheduler(self) -> None:
         role_calls: list[dict] = []
         policy_calls: list[dict] = []

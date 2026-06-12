@@ -52,18 +52,30 @@ def build_receipt(contract_path: Path, stack_path: Path, require_manifest_runtim
     )
 
     provider = str(stack.get("graphAgentLlmProvider") or "").strip().lower()
+    model = str(stack.get("graphAgentLlmModel") or "").strip()
+    bedrock_region = str(stack.get("bedrockRegion") or "").strip()
     openrouter_secret = str(stack.get("openrouterApiKeySecret") or "").strip()
-    openrouter_errors: list[str] = []
+    llm_errors: list[str] = []
     if provider == "openrouter":
         if not openrouter_secret:
-            openrouter_errors.append("OpenRouter provider is missing its secret import")
+            llm_errors.append("OpenRouter provider is missing its secret import")
         if not any(item.env_name == "CEREBRO_OPENROUTER_API_KEY" for item in imports):
-            openrouter_errors.append("OpenRouter API key is absent from the secret import plan")
+            llm_errors.append("OpenRouter API key is absent from the secret import plan")
+    if provider == "bedrock":
+        if not model:
+            llm_errors.append("Bedrock provider is missing its model or inference profile id")
+        if not bedrock_region:
+            llm_errors.append("Bedrock provider is missing its runtime region")
     checks.append(
         _check(
             "graph_agent_llm",
-            openrouter_errors,
-            {"provider": provider or "unconfigured", "openrouter_secret_configured": bool(openrouter_secret)},
+            llm_errors,
+            {
+                "provider": provider or "unconfigured",
+                "openrouter_secret_configured": bool(openrouter_secret),
+                "bedrock_model_configured": bool(model) if provider == "bedrock" else False,
+                "bedrock_region_configured": bool(bedrock_region) if provider == "bedrock" else False,
+            },
         )
     )
 

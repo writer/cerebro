@@ -801,9 +801,33 @@ if graph_agent_llm_provider:
 graph_agent_llm_model = config.get("graphAgentLlmModel")
 if graph_agent_llm_model:
     app_environment["CEREBRO_GRAPH_AGENT_LLM_MODEL"] = graph_agent_llm_model
+graph_agent_llm_model_sonnet = config.get("graphAgentLlmModelSonnet")
+if graph_agent_llm_model_sonnet:
+    app_environment["CEREBRO_GRAPH_AGENT_LLM_MODEL_SONNET"] = graph_agent_llm_model_sonnet
+graph_agent_llm_model_opus = config.get("graphAgentLlmModelOpus")
+if graph_agent_llm_model_opus:
+    app_environment["CEREBRO_GRAPH_AGENT_LLM_MODEL_OPUS"] = graph_agent_llm_model_opus
+graph_agent_llm_model_haiku = config.get("graphAgentLlmModelHaiku")
+if graph_agent_llm_model_haiku:
+    app_environment["CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU"] = graph_agent_llm_model_haiku
+bedrock_region = config.get("bedrockRegion")
+if bedrock_region:
+    app_environment["CEREBRO_BEDROCK_REGION"] = bedrock_region
 openrouter_api_key_secret = config.get("openrouterApiKeySecret")
 if openrouter_api_key_secret:
     secret_keys.append({"name": "CEREBRO_OPENROUTER_API_KEY", "source": openrouter_api_key_secret})
+bedrock_model_ids = []
+if str(graph_agent_llm_provider or "").strip().lower() == "bedrock":
+    bedrock_model_ids = [
+        model
+        for model in [
+            graph_agent_llm_model,
+            graph_agent_llm_model_sonnet,
+            graph_agent_llm_model_opus,
+            graph_agent_llm_model_haiku,
+        ]
+        if model
+    ]
 
 runtime_dependencies = [
     postgres_stack["secret_version"],
@@ -831,6 +855,7 @@ ecs_stack = compute.create_ecs_cluster(
     environment=app_environment,
     secret_keys=secret_keys,
     external_secrets_prefix=external_secrets_prefix,
+    bedrock_model_ids=bedrock_model_ids,
     log_group_kms_key_id=logs_kms_key["key_arn"] if logs_kms_key else None,
     s3_source_iam_configs=s3_source_iam_configs or None,
     depends_on=runtime_dependencies,

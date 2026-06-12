@@ -66,6 +66,9 @@ config:
   cerebro:accessAuditTenantMismatchAlarmThreshold: 0
   cerebro:accessAuditSensitiveDeniedAlarmThreshold: 0
   cerebro:capabilityTokenSecretName: CEREBRO_CAPABILITY_TOKEN_SECRETS_GO_PROD
+  cerebro:graphAgentLlmProvider: bedrock
+  cerebro:graphAgentLlmModel: us.anthropic.claude-sonnet-4-6
+  cerebro:bedrockRegion: us-east-1
   cerebro:allowedTenants:
     - writer
   cerebro:mcpOauthEnabled: true

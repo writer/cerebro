@@ -28,6 +28,7 @@ def create_ecs_cluster(
     environment: dict = None,
     secret_keys: list[str] = None,
     external_secrets_prefix: str = None,
+    bedrock_model_ids: list[str] = None,
     log_group_kms_key_id: pulumi.Input[str] = None,
     s3_source_iam_configs: list[dict] = None,
     efs_file_system_id: pulumi.Input[str] = None,
@@ -112,7 +113,7 @@ def create_ecs_cluster(
         [entry["bucket_arn"] for entry in bootstrap_environment_files.values()],
     )
     execution_role_dependencies = [execution_role.policy] if getattr(execution_role, "policy", None) is not None else []
-    task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
+    task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []), bedrock_model_ids)
     worker_task_role = None
 
     log_group = aws.cloudwatch.LogGroup(
@@ -155,7 +156,7 @@ def create_ecs_cluster(
     orchestrator_task_definitions = []
     orchestrator_events_role = None
     if orchestrator_enabled:
-        worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
+        worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []), bedrock_model_ids)
         schedules = prepared_orchestrator_schedules
         task_definition = _create_task_definition(
             name=f"{name}-orchestrator",
@@ -689,11 +690,43 @@ def _create_execution_role(
     return role
 
 
+def _bedrock_model_resource_arns(model_ids: list[str]) -> list[str]:
+    cleaned = sorted({str(model_id).strip() for model_id in model_ids if str(model_id).strip()})
+    if not cleaned:
+        return []
+    caller = aws.get_caller_identity()
+    resources: set[str] = set()
+    for model_id in cleaned:
+        if model_id.startswith("arn:aws:bedrock:"):
+            resources.add(model_id)
+            continue
+        if _is_bedrock_inference_profile_id(model_id):
+            resources.add(f"arn:aws:bedrock:*:{caller.account_id}:inference-profile/{model_id}")
+            foundation_model_id = _foundation_model_id_from_profile(model_id)
+            if foundation_model_id:
+                resources.add(f"arn:aws:bedrock:*::foundation-model/{foundation_model_id}")
+            continue
+        resources.add(f"arn:aws:bedrock:*::foundation-model/{model_id}")
+    return sorted(resources)
+
+
+def _is_bedrock_inference_profile_id(model_id: str) -> bool:
+    return model_id.startswith(("us.", "global.", "eu.", "apac."))
+
+
+def _foundation_model_id_from_profile(profile_id: str) -> str:
+    for prefix in ("us.", "global.", "eu.", "apac."):
+        if profile_id.startswith(prefix):
+            return profile_id[len(prefix):]
+    return ""
+
+
 def _create_task_role(
     name: str,
     s3_source_iam_configs: list[dict] = None,
     efs_file_system_id: pulumi.Input[str] = None,
     assume_role_arns: list[str] = None,
+    bedrock_model_ids: list[str] = None,
 ) -> aws.iam.Role:
     role = aws.iam.Role(
         f"{name}-task-role",
@@ -732,6 +765,21 @@ def _create_task_role(
                     "Effect": "Allow",
                     "Action": ["sts:AssumeRole", "sts:TagSession"],
                     "Resource": sorted(set(assume_role_arns)),
+                }],
+            }),
+        )
+
+    bedrock_resources = _bedrock_model_resource_arns(bedrock_model_ids or [])
+    if bedrock_resources:
+        aws.iam.RolePolicy(
+            f"{name}-task-bedrock",
+            role=role.name,
+            policy=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+                    "Resource": bedrock_resources,
                 }],
             }),
         )

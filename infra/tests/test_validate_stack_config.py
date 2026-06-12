@@ -590,6 +590,30 @@ class ValidateStackConfigTest(unittest.TestCase):
         self.assertFalse(any("OpenRouter model" in message for message in self._messages(content)))
         self.assertFalse(any("OpenRouter provider must declare the API key secret import" in message for message in self._messages(content)))
 
+    def test_bedrock_provider_requires_model_and_region(self) -> None:
+        content = BASE_STACK + "  cerebro:graphAgentLlmProvider: bedrock\n"
+        messages = self._messages(content)
+        self.assertTrue(any("Bedrock provider must set an explicit Bedrock model" in message for message in messages))
+        self.assertTrue(any("Bedrock provider must set the runtime AWS region" in message for message in messages))
+
+    def test_bedrock_provider_rejects_openrouter_slug(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:graphAgentLlmProvider: bedrock\n"
+            "  cerebro:graphAgentLlmModel: anthropic/claude-sonnet-4.6\n"
+            "  cerebro:bedrockRegion: us-east-1\n"
+        )
+        self.assertTrue(any("not an OpenRouter slug" in message for message in self._messages(content)))
+
+    def test_bedrock_provider_accepts_inference_profile(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:graphAgentLlmProvider: bedrock\n"
+            "  cerebro:graphAgentLlmModel: us.anthropic.claude-sonnet-4-6\n"
+            "  cerebro:bedrockRegion: us-east-1\n"
+        )
+        messages = self._messages(content)
+        self.assertFalse(any("Bedrock provider" in message for message in messages))
+        self.assertFalse(any("Bedrock model" in message for message in messages))
+
     def test_missing_source_secret_is_error(self) -> None:
         content = BASE_STACK.replace(f"    - {API_TOKEN_KEY}\n", "")
         self.assertTrue(any("not listed in cerebro:sourceSecretKeys" in message for message in self._messages(content)))

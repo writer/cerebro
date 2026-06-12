@@ -27,6 +27,9 @@ MIN_AWS_EFFECTIVE_PERMISSION_VERSION = (2, 1, 46)
 IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
 AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
+AWS_REGION_RE = re.compile(r"^[a-z]{2}(-gov)?-[a-z]+-\d$")
+BEDROCK_MODEL_ID_RE = re.compile(r"^(?:[a-z]+\.)?anthropic\.claude-[A-Za-z0-9.-]+(?::[0-9]+)?$")
+BEDROCK_MODEL_ARN_RE = re.compile(r"^arn:aws:bedrock:[a-z0-9-]+:(?:(?:[0-9]{12})?):(?:foundation-model|inference-profile)/[A-Za-z0-9_.:-]+$")
 EVENTBRIDGE_RULE_NAME_MAX_LENGTH = 64
 EVENTBRIDGE_RULES_PER_BUS_DEFAULT_QUOTA = 300
 RESERVED_EVENTBRIDGE_RULES_BY_STACK = {
@@ -1448,6 +1451,8 @@ def validate_stack(path: Path) -> list[Finding]:
         )
     graph_agent_llm_provider = str(config.get("graphAgentLlmProvider", "")).strip().lower()
     graph_agent_llm_model = str(config.get("graphAgentLlmModel", "")).strip()
+    if graph_agent_llm_provider and graph_agent_llm_provider not in {"openrouter", "bedrock"}:
+        findings.append(_finding("error", stack, "cerebro:graphAgentLlmProvider", "graph agent LLM provider must be openrouter or bedrock"))
     if graph_agent_llm_provider == "openrouter":
         if not str(config.get("openrouterApiKeySecret", "")).strip():
             findings.append(_finding("error", stack, "cerebro:openrouterApiKeySecret", "OpenRouter provider must declare the API key secret import"))
@@ -1457,6 +1462,18 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter model must use provider/model form"))
         elif re.search(r"claude-[a-z0-9.-]+-\d{8}$", graph_agent_llm_model):
             findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter model must use an OpenRouter slug, not an Anthropic dated model id"))
+    if graph_agent_llm_provider == "bedrock":
+        bedrock_region = str(config.get("bedrockRegion", "")).strip()
+        if not graph_agent_llm_model:
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "Bedrock provider must set an explicit Bedrock model or inference profile id"))
+        elif "/" in graph_agent_llm_model and not graph_agent_llm_model.startswith("arn:aws:bedrock:"):
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "Bedrock model must use a Bedrock model id, inference profile id, or ARN, not an OpenRouter slug"))
+        elif not (BEDROCK_MODEL_ID_RE.match(graph_agent_llm_model) or BEDROCK_MODEL_ARN_RE.match(graph_agent_llm_model)):
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "Bedrock model must be an Anthropic Bedrock model id, inference profile id, or ARN"))
+        if not bedrock_region:
+            findings.append(_finding("error", stack, "cerebro:bedrockRegion", "Bedrock provider must set the runtime AWS region"))
+        elif not AWS_REGION_RE.match(bedrock_region):
+            findings.append(_finding("error", stack, "cerebro:bedrockRegion", "Bedrock region must be a canonical AWS region"))
     web_max_instances = config.get("webMaxInstances", 1)
     if config.get("webEnabled") is True and (not isinstance(web_max_instances, int) or web_max_instances < 2):
         findings.append(
