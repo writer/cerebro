@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 )
 
 const defaultWorkflowKindPrefix = "workflow.v1."
@@ -45,21 +46,23 @@ func (r *Replayer) Replay(ctx context.Context, request ReplayRequest) (*ReplayRe
 	if r == nil || r.replayer == nil || r.graph == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	kindPrefix := strings.TrimSpace(request.KindPrefix)
-	if kindPrefix == "" {
-		kindPrefix = defaultWorkflowKindPrefix
-	}
-	events, err := r.replayer.Replay(ctx, ports.ReplayRequest{
-		KindPrefix:      kindPrefix,
+	projector := New(r.graph)
+	result := &ReplayResult{}
+	replayRequest := ports.ReplayRequest{
 		TenantID:        strings.TrimSpace(request.TenantID),
 		AttributeEquals: request.AttributeEquals,
 		Limit:           request.Limit,
-	})
+	}
+	kindPrefixes := workflowReplayKindPrefixes(request.KindPrefix)
+	if len(kindPrefixes) == 1 {
+		replayRequest.KindPrefix = kindPrefixes[0]
+	} else {
+		replayRequest.KindPrefixes = kindPrefixes
+	}
+	events, err := r.replayer.Replay(ctx, replayRequest)
 	if err != nil {
 		return nil, err
 	}
-	projector := New(r.graph)
-	result := &ReplayResult{}
 	for _, event := range events {
 		result.EventsRead++
 		projection, err := projector.Project(ctx, event)
@@ -78,4 +81,12 @@ func (r *Replayer) Replay(ctx context.Context, request ReplayRequest) (*ReplayRe
 		result.LinksProjected += projection.LinksProjected
 	}
 	return result, nil
+}
+
+func workflowReplayKindPrefixes(kindPrefix string) []string {
+	kindPrefix = strings.TrimSpace(kindPrefix)
+	if kindPrefix != "" {
+		return []string{kindPrefix}
+	}
+	return []string{defaultWorkflowKindPrefix, securityevents.FindingsV1Prefix + "."}
 }

@@ -617,7 +617,7 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 		if request.RuntimeID != "" && event.GetAttributes()[ports.EventAttributeSourceRuntimeID] != request.RuntimeID {
 			continue
 		}
-		if request.KindPrefix != "" && !strings.HasPrefix(event.GetKind(), request.KindPrefix) {
+		if !replayEventMatchesKindPrefixes(event.GetKind(), request.KindPrefix, request.KindPrefixes) {
 			continue
 		}
 		if request.TenantID != "" && event.GetTenantId() != request.TenantID {
@@ -632,6 +632,21 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 		}
 	}
 	return events, nil
+}
+
+func replayEventMatchesKindPrefixes(kind string, kindPrefix string, kindPrefixes []string) bool {
+	if strings.TrimSpace(kindPrefix) == "" && len(kindPrefixes) == 0 {
+		return true
+	}
+	if strings.TrimSpace(kindPrefix) != "" && strings.HasPrefix(kind, strings.TrimSpace(kindPrefix)) {
+		return true
+	}
+	for _, prefix := range kindPrefixes {
+		if strings.TrimSpace(prefix) != "" && strings.HasPrefix(kind, strings.TrimSpace(prefix)) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchesReplayAttributes(event *cerebrov1.EventEnvelope, expected map[string]string) bool {
@@ -6292,8 +6307,11 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	if len(appendLog.replayRequests) != 1 {
 		t.Fatalf("len(replayRequests) = %d, want 1", len(appendLog.replayRequests))
 	}
-	if got := appendLog.replayRequests[0].KindPrefix; got != "workflow.v1." {
-		t.Fatalf("HTTP replay kind prefix = %q, want workflow.v1.", got)
+	if got := appendLog.replayRequests[0].KindPrefix; got != "" {
+		t.Fatalf("HTTP replay kind prefix = %q, want empty multi-prefix request", got)
+	}
+	if got := appendLog.replayRequests[0].KindPrefixes; len(got) != 2 || got[0] != "workflow.v1." || got[1] != "sec.findings.v1." {
+		t.Fatalf("HTTP replay kind prefixes = %v, want workflow and sec finding prefixes", got)
 	}
 	if got := appendLog.replayRequests[0].AttributeEquals["workflow_kind"]; got != "knowledge_decision" {
 		t.Fatalf("HTTP replay workflow_kind filter = %q, want knowledge_decision", got)
