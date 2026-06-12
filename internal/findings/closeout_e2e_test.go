@@ -162,7 +162,7 @@ func TestService_TombstonedFindingEmitMintsFreshGraphEdge(t *testing.T) {
 	ruleID := "rule-critical-resource-deleted"
 	baseID := fmt.Sprintf("f-stable-%d", nonce)
 	fingerprint := fmt.Sprintf("fp-stable-%d", nonce)
-	anchor := fmt.Sprintf("urn:cerebro:%s:github_repo:writer/cerebro-%d", tenantID, nonce)
+	anchor := fmt.Sprintf("urn:cerebro:%s:github_code_repository:writer/cerebro-%d", tenantID, nonce)
 
 	t.Cleanup(func() {
 		bg := context.Background()
@@ -807,7 +807,7 @@ func seedCloseoutAtomicFinding(t *testing.T, ctx context.Context, store *postgre
 		Severity:        "MEDIUM",
 		Status:          "open",
 		Summary:         "finding used for closeout atomicity regression",
-		ResourceURNs:    []string{fmt.Sprintf("urn:cerebro:%s:github_repo:writer/cerebro-%d", tenantID, nonce)},
+		ResourceURNs:    []string{fmt.Sprintf("urn:cerebro:%s:github_code_repository:writer/cerebro-%d", tenantID, nonce)},
 		EventIDs:        []string{fmt.Sprintf("event-%d", nonce)},
 		FirstObservedAt: now.Add(-24 * time.Hour),
 		LastObservedAt:  now,

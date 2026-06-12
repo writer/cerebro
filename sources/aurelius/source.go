@@ -270,9 +270,6 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings{}, fmt.Errorf("aurelius external_id requires role_arn")
 	}
 	rawPageSize, ok := cfg.Lookup("per_page")
-	if !ok || strings.TrimSpace(rawPageSize) == "" {
-		rawPageSize, ok = cfg.Lookup("page_size")
-	}
 	if ok && strings.TrimSpace(rawPageSize) != "" {
 		size, err := strconv.ParseInt(strings.TrimSpace(rawPageSize), 10, 32)
 		if err != nil {

@@ -56,7 +56,7 @@
       "attributes": {
         "action": "repo.add_member",
         "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,collaborator,supply-chain,initial-access,attack.t1195",
         "user": "octocat"

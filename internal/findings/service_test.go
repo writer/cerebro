@@ -829,7 +829,7 @@ func (r *counterAnchorRule) Evaluate(_ context.Context, runtime *cerebrov1.Sourc
 			Severity:        "HIGH",
 			Status:          findingStatusOpen,
 			Summary:         "counter anchor rule open finding",
-			ResourceURNs:    []string{"urn:cerebro:writer:github_repo:" + strings.TrimSpace(event.GetAttributes()["repo"])},
+			ResourceURNs:    []string{"urn:cerebro:writer:github_code_repository:" + strings.TrimSpace(event.GetAttributes()["repo"])},
 			EventIDs:        []string{strings.TrimSpace(event.GetId())},
 			ControlRefs:     cloneFindingControlRefs(r.definition.ControlRefs),
 			Attributes:      map[string]string{"repo": strings.TrimSpace(event.GetAttributes()["repo"]), "user": strings.TrimSpace(event.GetAttributes()["user"])},
@@ -1286,14 +1286,11 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 	if _, ok := graph.links[primaryResourceURN+"|has_finding|"+findingURN]; !ok {
 		t.Fatalf("graph has_finding link missing for %s -> %s", primaryResourceURN, findingURN)
 	}
-	if got := len(appendLog.events); got != 2 {
-		t.Fatalf("len(appendLog.events) = %d, want 2", got)
+	if got := len(appendLog.events); got != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", got)
 	}
-	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingRecorded {
-		t.Fatalf("appendLog.events[0].Kind = %q, want %q", got, workflowevents.EventKindFindingRecorded)
-	}
-	if got := appendLog.events[1].GetKind(); got != securityevents.FindingRecorded {
-		t.Fatalf("appendLog.events[1].Kind = %q, want %q", got, securityevents.FindingRecorded)
+	if got := appendLog.events[0].GetKind(); got != securityevents.FindingRecorded {
+		t.Fatalf("appendLog.events[0].Kind = %q, want %q", got, securityevents.FindingRecorded)
 	}
 }
 
@@ -1408,7 +1405,7 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 		Severity:        "HIGH",
 		Status:          "open",
 		Summary:         "secret scanning was disabled by an old audit event",
-		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		ResourceURNs:    []string{"urn:cerebro:writer:github_code_repository:writer/cerebro"},
 		EventIDs:        []string{"github-old-event-outside-replay"},
 		FirstObservedAt: time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
 		LastObservedAt:  time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
@@ -1471,7 +1468,7 @@ func TestCounterEventRule_AnchorClose(t *testing.T) {
 		Severity:        "HIGH",
 		Status:          findingStatusOpen,
 		Summary:         "repository collaborator remained risky",
-		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		ResourceURNs:    []string{"urn:cerebro:writer:github_code_repository:writer/cerebro"},
 		EventIDs:        []string{"github-open-event"},
 		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
 		FirstObservedAt: openedAt,
@@ -1733,7 +1730,7 @@ func TestCounterEventRule_OlderCloseDoesNotResolveNewerOpenFinding(t *testing.T)
 		Severity:        "HIGH",
 		Status:          findingStatusOpen,
 		Summary:         "repository collaborator remained risky after an older close",
-		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		ResourceURNs:    []string{"urn:cerebro:writer:github_code_repository:writer/cerebro"},
 		EventIDs:        []string{"github-newer-open-event"},
 		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
 		FirstObservedAt: openedAt,
@@ -1811,7 +1808,7 @@ func TestCounterEventRule_NonImplementingUnaffected(t *testing.T) {
 		Severity:        "HIGH",
 		Status:          findingStatusOpen,
 		Summary:         "repository collaborator remained risky",
-		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		ResourceURNs:    []string{"urn:cerebro:writer:github_code_repository:writer/cerebro"},
 		EventIDs:        []string{"github-open-event"},
 		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
 		FirstObservedAt: openedAt,
@@ -2253,9 +2250,9 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 				"alice",
 				"github.user",
 				"acted_on",
-				"urn:cerebro:writer:github_repo:repo-1",
+				"urn:cerebro:writer:github_code_repository:repo-1",
 				"repo-1",
-				"github.repository",
+				"github.code.repositorysitory",
 				map[string]string{"at": "2026-05-07T18:09:42Z", "event_id": "event-1"},
 			)),
 		},
@@ -2272,7 +2269,7 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 	if _, ok := evidence.GetAttributes()["empty"]; ok {
 		t.Fatalf("Evidence.Attributes retained empty value: %#v", evidence.GetAttributes())
 	}
-	if !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:writer:github_user:alice") || !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:writer:github_repo:repo-1") {
+	if !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:writer:github_user:alice") || !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:writer:github_code_repository:repo-1") {
 		t.Fatalf("Evidence.GraphPathUrns = %#v, want both path endpoints", evidence.GetGraphPathUrns())
 	}
 	if got := evidence.GetGraphRows()[0].GetPaths()[0].GetObservedAt(); got != "2026-05-07T18:09:42Z" {
@@ -2305,8 +2302,8 @@ func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 	if !slices.Contains(ruleIDs, githubDependabotOpenAlertRuleID) {
 		t.Fatalf("ListRules().Rules missing %q: %#v", githubDependabotOpenAlertRuleID, ruleIDs)
 	}
-	if !slices.Contains(ruleIDs, githubSecretScanningDisabledRuleID) {
-		t.Fatalf("ListRules().Rules missing %q: %#v", githubSecretScanningDisabledRuleID, ruleIDs)
+	if !slices.Contains(ruleIDs, githubSecretScanningAlertCreatedRuleID) {
+		t.Fatalf("ListRules().Rules missing %q: %#v", githubSecretScanningAlertCreatedRuleID, ruleIDs)
 	}
 	if !slices.Contains(ruleIDs, oktaPolicyRuleLifecycleTamperingRuleID) {
 		t.Fatalf("ListRules().Rules missing %q: %#v", oktaPolicyRuleLifecycleTamperingRuleID, ruleIDs)
@@ -2821,7 +2818,7 @@ func TestPromoteFindingCandidateWritesProductionFindingEvidenceAndAudit(t *testi
 	if got := countWorkflowEventsByKind(appendLog.events, workflowevents.EventKindKnowledgeDecisionRecorded); got != 1 {
 		t.Fatalf("promotion audit events = %d, want 1", got)
 	}
-	if got := countWorkflowEventsByKind(appendLog.events, workflowevents.EventKindFindingRecorded); got != 1 {
+	if got := countWorkflowEventsByKind(appendLog.events, securityevents.FindingRecorded); got != 1 {
 		t.Fatalf("finding recorded events = %d, want 1", got)
 	}
 }
@@ -3843,15 +3840,6 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 }
 
 func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
-	retiredRuleIDs := map[string]struct{}{
-		githubSecretScanningDisabledRuleID:        {},
-		githubPushProtectionDisabledRuleID:        {},
-		githubBranchProtectionDisabledRuleID:      {},
-		githubRepositoryMadePublicRuleID:          {},
-		githubProtectedBranchPolicyOverrideRuleID: {},
-		githubCriticalResourceDeletedRuleID:       {},
-		githubSelfHostedRunnerChangeRuleID:        {},
-	}
 	activeRuleIDs := []string{
 		githubRepositoryCollaboratorAddedRuleID,
 		githubOrganizationOwnerAddedRuleID,
@@ -3864,11 +3852,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubWebhookModifiedRuleID,
 		githubPrivateRepositoryForkingEnabledRuleID,
 	}
-	ruleIDs := make([]string, 0, len(activeRuleIDs)+len(retiredRuleIDs))
-	for retiredID := range retiredRuleIDs {
-		ruleIDs = append(ruleIDs, retiredID)
-	}
-	ruleIDs = append(ruleIDs, activeRuleIDs...)
+	ruleIDs := append([]string(nil), activeRuleIDs...)
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
@@ -3922,11 +3906,6 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		findingCountByRule[ruleID] += len(evaluation.Findings)
 		if len(evaluation.Findings) >= 1 {
 			findingsByRule[ruleID] = evaluation.Findings[0]
-		}
-	}
-	for retiredID := range retiredRuleIDs {
-		if count := findingCountByRule[retiredID]; count != 0 {
-			t.Fatalf("retired rule %q produced %d findings, want 0", retiredID, count)
 		}
 	}
 	for _, ruleID := range activeRuleIDs {
@@ -4265,13 +4244,10 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 	if outcomeCount != 1 {
 		t.Fatalf("outcome entity count = %d, want 1", outcomeCount)
 	}
-	if len(appendLog.events) != 4 {
-		t.Fatalf("len(appendLog.events) = %d, want 4", len(appendLog.events))
+	if len(appendLog.events) != 3 {
+		t.Fatalf("len(appendLog.events) = %d, want 3", len(appendLog.events))
 	}
-	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
-		t.Fatalf("first append event kind = %q, want %q", got, workflowevents.EventKindFindingStatusChanged)
-	}
-	if got := appendLog.events[1].GetKind(); got != securityevents.FindingStatusChanged {
+	if got := appendLog.events[0].GetKind(); got != securityevents.FindingStatusChanged {
 		t.Fatalf("canonical status event kind = %q, want %q", got, securityevents.FindingStatusChanged)
 	}
 }
@@ -4437,19 +4413,16 @@ func TestBackfillFindingRiskProjectsUpdatedRiskRows(t *testing.T) {
 	if closed := graphStore.entities["urn:cerebro:tenant-a:finding:finding-closed"]; closed == nil || closed.Attributes["risk_score"] != "83" {
 		t.Fatalf("closed projected finding = %#v, want risk_score 83", closed)
 	}
-	if got := len(appendLog.events); got != 4 {
-		t.Fatalf("len(appended events) = %d, want 4", got)
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appended events) = %d, want 2", got)
 	}
 	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
 		t.Fatalf("backfill event occurred_at = %s, want startup time", eventTime.Format(time.RFC3339Nano))
 	}
-	if got := appendLog.events[1].GetKind(); got != securityevents.FindingRecorded {
+	if got := appendLog.events[0].GetKind(); got != securityevents.FindingRecorded {
 		t.Fatalf("canonical open finding event kind = %q, want %q", got, securityevents.FindingRecorded)
 	}
-	if got := appendLog.events[2].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
-		t.Fatalf("closed finding event kind = %q, want status_changed", got)
-	}
-	if got := appendLog.events[3].GetKind(); got != securityevents.FindingStatusChanged {
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingStatusChanged {
 		t.Fatalf("canonical closed finding event kind = %q, want %q", got, securityevents.FindingStatusChanged)
 	}
 	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
@@ -4609,10 +4582,10 @@ func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetFindingDueDate(second) error = %v", err)
 	}
-	if got := len(appendLog.events); got != 4 {
-		t.Fatalf("len(appended events) = %d, want 4", got)
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appended events) = %d, want 2", got)
 	}
-	if secondEventID := appendLog.events[2].GetId(); secondEventID == firstEventID {
+	if secondEventID := appendLog.events[1].GetId(); secondEventID == firstEventID {
 		t.Fatalf("SetFindingDueDate() reused finding_record event id %q, want non-deduplicated refresh event", secondEventID)
 	}
 }
@@ -4952,13 +4925,10 @@ func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|annotated_with|"+annotationURN]; !ok {
 		t.Fatal("finding annotation link missing")
 	}
-	if len(appendLog.events) != 2 {
-		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
+	if len(appendLog.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
 	}
-	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingNoteAdded {
-		t.Fatalf("append event kind = %q, want %q", got, workflowevents.EventKindFindingNoteAdded)
-	}
-	if got := appendLog.events[1].GetKind(); got != securityevents.FindingNoteAdded {
+	if got := appendLog.events[0].GetKind(); got != securityevents.FindingNoteAdded {
 		t.Fatalf("canonical append event kind = %q, want %q", got, securityevents.FindingNoteAdded)
 	}
 }
@@ -5008,13 +4978,10 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+ticketURN]; !ok {
 		t.Fatal("finding ticket link missing")
 	}
-	if len(appendLog.events) != 2 {
-		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
+	if len(appendLog.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
 	}
-	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingTicketLinked {
-		t.Fatalf("append event kind = %q, want %q", got, workflowevents.EventKindFindingTicketLinked)
-	}
-	if got := appendLog.events[1].GetKind(); got != securityevents.FindingTicketLinked {
+	if got := appendLog.events[0].GetKind(); got != securityevents.FindingTicketLinked {
 		t.Fatalf("canonical append event kind = %q, want %q", got, securityevents.FindingTicketLinked)
 	}
 }
@@ -5638,10 +5605,13 @@ func containsTrimmed(values []string, expected string) bool {
 func findStatusChangedPayload(t *testing.T, events []*cerebrov1.EventEnvelope, findingID string) *workflowevents.FindingStatusChanged {
 	t.Helper()
 	for _, event := range events {
-		if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
+		decodeEvent := event
+		if event.GetKind() == securityevents.FindingStatusChanged {
+			decodeEvent = protoCloneEvent(event, workflowevents.EventKindFindingStatusChanged)
+		} else if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
 			continue
 		}
-		payload, err := workflowevents.DecodeFindingStatusChanged(event)
+		payload, err := workflowevents.DecodeFindingStatusChanged(decodeEvent)
 		if err != nil {
 			t.Fatalf("DecodeFindingStatusChanged(%q): %v", event.GetId(), err)
 		}

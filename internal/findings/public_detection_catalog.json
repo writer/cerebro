@@ -556,57 +556,6 @@
       ]
     },
     {
-      "id": "github-branch-protection-disabled",
-      "pack_id": "github",
-      "pack_name": "GitHub",
-      "name": "GitHub Branch Protection Disabled",
-      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
-      "source_id": "github",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "github.audit"
-      ],
-      "output_kind": "finding.github_branch_protection_disabled",
-      "severity": "HIGH",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "attack.t1195",
-        "branch-protection",
-        "cleanup",
-        "github",
-        "initial-access",
-        "retired",
-        "supply-chain"
-      ],
-      "references": [
-        "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches",
-        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_branch_protection_disabled.yml"
-      ],
-      "false_positives": [
-        "Approved repository administration during migration or branch policy redesign."
-      ],
-      "runbook": "Validate the actor and ticket, restore branch protections, and review protected-branch pushes or force-push attempts after the change.",
-      "required_attributes": [
-        "action",
-        "repo"
-      ],
-      "fingerprint_fields": [
-        "repo",
-        "action"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.6"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.8.9"
-        }
-      ]
-    },
-    {
       "id": "github-code-security-controls-disabled",
       "pack_id": "github",
       "pack_name": "GitHub",
@@ -642,56 +591,6 @@
       "fingerprint_fields": [
         "repo",
         "org"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.6"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.8.9"
-        }
-      ]
-    },
-    {
-      "id": "github-critical-resource-deleted",
-      "pack_id": "github",
-      "pack_name": "GitHub",
-      "name": "GitHub Critical Resource Deleted",
-      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
-      "source_id": "github",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "github.audit"
-      ],
-      "output_kind": "finding.github_critical_resource_deleted",
-      "severity": "HIGH",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "attack.t1485",
-        "cleanup",
-        "destructive-action",
-        "github",
-        "impact",
-        "retired"
-      ],
-      "references": [
-        "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_delete_action_invoked.yml",
-        "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/impact_github_repository_deleted.toml"
-      ],
-      "false_positives": [
-        "Approved repository or environment decommissioning."
-      ],
-      "runbook": "Validate the deletion, recover the resource if unauthorized, and review actor access plus adjacent destructive events.",
-      "required_attributes": [
-        "action"
-      ],
-      "fingerprint_fields": [
-        "repo",
-        "resource_id",
-        "action"
       ],
       "control_refs": [
         {
@@ -1088,110 +987,6 @@
       ]
     },
     {
-      "id": "github-protected-branch-policy-override",
-      "pack_id": "github",
-      "pack_name": "GitHub",
-      "name": "GitHub Protected Branch Policy Override",
-      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
-      "source_id": "github",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "github.audit"
-      ],
-      "output_kind": "finding.github_protected_branch_policy_override",
-      "severity": "HIGH",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "attack.t1195",
-        "branch-protection",
-        "cleanup",
-        "github",
-        "impact",
-        "policy-override",
-        "retired",
-        "supply-chain"
-      ],
-      "references": [
-        "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches",
-        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_branch_policy_override.yml"
-      ],
-      "false_positives": [
-        "Emergency production fix by authorized repository administrator."
-      ],
-      "runbook": "Validate override approval, inspect commits or force-pushes made under the override, and restore protections.",
-      "required_attributes": [
-        "action",
-        "repo"
-      ],
-      "fingerprint_fields": [
-        "repo",
-        "branch",
-        "action"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.6"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.8.9"
-        }
-      ]
-    },
-    {
-      "id": "github-push-protection-disabled",
-      "pack_id": "github",
-      "pack_name": "GitHub",
-      "name": "GitHub Push Protection Disabled",
-      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
-      "source_id": "github",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "github.audit"
-      ],
-      "output_kind": "finding.github_push_protection_disabled",
-      "severity": "HIGH",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "attack.t1562.001",
-        "cleanup",
-        "defense-evasion",
-        "github",
-        "push-protection",
-        "retired",
-        "secret-scanning"
-      ],
-      "references": [
-        "https://docs.github.com/en/code-security/secret-scanning/push-protection-for-repositories-and-organizations",
-        "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_push_protection_disabled.yml"
-      ],
-      "false_positives": [
-        "Approved administrative testing or controlled rollout changes."
-      ],
-      "runbook": "Confirm whether push protection was intentionally disabled; re-enable enforcement and inspect nearby pushes for exposed credentials.",
-      "required_attributes": [
-        "action"
-      ],
-      "fingerprint_fields": [
-        "repo",
-        "resource_id",
-        "action"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.6"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.8.9"
-        }
-      ]
-    },
-    {
       "id": "github-repository-collaborator-added",
       "pack_id": "github",
       "pack_name": "GitHub",
@@ -1202,7 +997,7 @@
       "event_kinds": [
         "github.audit"
       ],
-      "output_kind": "finding.github_repository_collaborator_added",
+      "output_kind": "finding.github_code_repositorysitory_collaborator_added",
       "severity": "MEDIUM",
       "status": "open",
       "maturity": "test",
@@ -1215,7 +1010,7 @@
       ],
       "references": [
         "https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles",
-        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_repo_collaborator_change.yml"
+        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_code_repository_collaborator_change.yml"
       ],
       "false_positives": [
         "Expected onboarding or approved repository access change."
@@ -1242,58 +1037,6 @@
       ]
     },
     {
-      "id": "github-repository-made-public",
-      "pack_id": "github",
-      "pack_name": "GitHub",
-      "name": "GitHub Repository Made Public",
-      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
-      "source_id": "github",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "github.audit"
-      ],
-      "output_kind": "finding.github_repository_made_public",
-      "severity": "HIGH",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "attack.t1567.001",
-        "cleanup",
-        "exfiltration",
-        "github",
-        "impact",
-        "repository",
-        "retired"
-      ],
-      "references": [
-        "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/exfiltration_github_private_repository_turned_public.toml"
-      ],
-      "false_positives": [
-        "Approved open-source release of a sanitized repository."
-      ],
-      "runbook": "Confirm the visibility change, revert if unauthorized, enumerate forks/downloads, and rotate secrets exposed in repository history.",
-      "required_attributes": [
-        "action",
-        "previous_visibility",
-        "repo",
-        "visibility"
-      ],
-      "fingerprint_fields": [
-        "repo",
-        "action"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.6"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.8.9"
-        }
-      ]
-    },
-    {
       "id": "github-repository-ruleset-modified",
       "pack_id": "github",
       "pack_name": "GitHub",
@@ -1304,7 +1047,7 @@
       "event_kinds": [
         "github.audit"
       ],
-      "output_kind": "finding.github_repository_ruleset_modified",
+      "output_kind": "finding.github_code_repositorysitory_ruleset_modified",
       "severity": "HIGH",
       "status": "open",
       "maturity": "test",
@@ -1317,7 +1060,7 @@
       ],
       "references": [
         "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets",
-        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_repo_ruleset_modified.yml"
+        "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_code_repository_ruleset_modified.yml"
       ],
       "false_positives": [
         "Approved repository governance migration or ruleset tuning."
@@ -1381,109 +1124,6 @@
       "fingerprint_fields": [
         "repo",
         "number"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.6"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.8.9"
-        }
-      ]
-    },
-    {
-      "id": "github-secret-scanning-disabled",
-      "pack_id": "github",
-      "pack_name": "GitHub",
-      "name": "GitHub Secret Scanning Disabled",
-      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
-      "source_id": "github",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "github.audit"
-      ],
-      "output_kind": "finding.github_secret_scanning_disabled",
-      "severity": "HIGH",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "attack.t1562.001",
-        "cleanup",
-        "defense-evasion",
-        "github",
-        "retired",
-        "secret-scanning"
-      ],
-      "references": [
-        "https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning",
-        "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_secret_scanning_feature_disabled.yml",
-        "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/defense_evasion_secret_scanning_disabled.toml"
-      ],
-      "false_positives": [
-        "Approved repository migration or temporary maintenance by authorized administrators."
-      ],
-      "runbook": "Verify the actor and change request, re-enable secret scanning and push protection, then review commits and workflow runs during the exposure window.",
-      "required_attributes": [
-        "action"
-      ],
-      "fingerprint_fields": [
-        "repo",
-        "resource_id",
-        "action"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.6"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.8.9"
-        }
-      ]
-    },
-    {
-      "id": "github-self-hosted-runner-change",
-      "pack_id": "github",
-      "pack_name": "GitHub",
-      "name": "GitHub Self-Hosted Runner Change",
-      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
-      "source_id": "github",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "github.audit"
-      ],
-      "output_kind": "finding.github_self_hosted_runner_change",
-      "severity": "MEDIUM",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "actions",
-        "attack.t1195",
-        "cleanup",
-        "github",
-        "retired",
-        "self-hosted-runner",
-        "supply-chain"
-      ],
-      "references": [
-        "https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners",
-        "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_self_hosted_runner_changes_detected.yml",
-        "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/initial_access_github_register_self_hosted_runner.toml"
-      ],
-      "false_positives": [
-        "Approved runner maintenance, ephemeral runner churn, or expected runner group administration."
-      ],
-      "runbook": "Validate the runner owner and host, inspect recent workflows assigned to it, and isolate the runner if authorization is unclear.",
-      "required_attributes": [
-        "runner_id",
-        "scope"
-      ],
-      "fingerprint_fields": [
-        "scope",
-        "runner_id"
       ],
       "control_refs": [
         {
@@ -2517,56 +2157,6 @@
       ]
     },
     {
-      "id": "identity-control-tamper-followed-by-credential-change",
-      "pack_id": "identity",
-      "pack_name": "Identity",
-      "name": "Identity Control Tamper Or Credential Change",
-      "description": "Retired identity correlation-mirror rule retained so stale open findings auto-resolve; correlation moved to runtime enrichment hints on the underlying state-anchored identity findings.",
-      "source_id": "identity",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "aws.cloudtrail",
-        "azure.activity_log",
-        "azure.directory_audit",
-        "gcp.audit",
-        "google_workspace.audit",
-        "okta.audit"
-      ],
-      "output_kind": "finding.identity_control_tamper_or_credential_change",
-      "severity": "HIGH",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "cleanup",
-        "correlation",
-        "credential-access",
-        "defense-evasion",
-        "identity",
-        "retired"
-      ],
-      "references": [
-        "https://developers.google.com/admin-sdk/reports/v1/guides/manage-audit-admin",
-        "https://help.okta.com/en-us/content/topics/reports/reports_syslog.htm"
-      ],
-      "false_positives": [
-        "Approved identity administration during a documented change window."
-      ],
-      "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "fingerprint_fields": [
-        "event_id"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.2"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.16"
-        }
-      ]
-    },
-    {
       "id": "identity-external-or-personal-group-member",
       "pack_id": "identity",
       "pack_name": "Identity",
@@ -3393,34 +2983,6 @@
       ]
     },
     {
-      "id": "sentinelone-infected-endpoint",
-      "pack_id": "sentinelone",
-      "pack_name": "SentinelOne",
-      "name": "Retired SentinelOne Infected Endpoint",
-      "description": "Retired SentinelOne threat-mirror rule retained temporarily so stale open findings are resolved after rule redesign.",
-      "source_id": "sentinelone",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "sentinelone.threat"
-      ],
-      "output_kind": "finding.sentinelone_infected_endpoint",
-      "severity": "INFO",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "cleanup",
-        "retired",
-        "sentinelone"
-      ],
-      "references": [
-        "https://docs.sentinelone.com/"
-      ],
-      "false_positives": [
-        "Approved security testing, decommissioned endpoint, documented exception, or SentinelOne false positive reviewed by security."
-      ],
-      "runbook": "Review SentinelOne endpoint state, linked threat/activity evidence, policy scope, and documented exceptions before remediation or closure."
-    },
-    {
       "id": "sentinelone-infected-endpoint-privileged-owner",
       "pack_id": "sentinelone",
       "pack_name": "SentinelOne",
@@ -3485,34 +3047,6 @@
           "control_id": "A.8.7"
         }
       ]
-    },
-    {
-      "id": "sentinelone-malicious-or-fileless-threat",
-      "pack_id": "sentinelone",
-      "pack_name": "SentinelOne",
-      "name": "Retired SentinelOne Malicious Or Fileless Threat",
-      "description": "Retired SentinelOne threat-mirror rule retained temporarily so stale open findings are resolved after rule redesign.",
-      "source_id": "sentinelone",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "sentinelone.threat"
-      ],
-      "output_kind": "finding.sentinelone_malicious_or_fileless_threat",
-      "severity": "INFO",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "cleanup",
-        "retired",
-        "sentinelone"
-      ],
-      "references": [
-        "https://docs.sentinelone.com/"
-      ],
-      "false_positives": [
-        "Approved security testing, decommissioned endpoint, documented exception, or SentinelOne false positive reviewed by security."
-      ],
-      "runbook": "Review SentinelOne endpoint state, linked threat/activity evidence, policy scope, and documented exceptions before remediation or closure."
     },
     {
       "id": "sentinelone-mitigation-failed",
@@ -3697,34 +3231,6 @@
           "control_id": "A.5.25"
         }
       ]
-    },
-    {
-      "id": "sentinelone-unresolved-threat",
-      "pack_id": "sentinelone",
-      "pack_name": "SentinelOne",
-      "name": "Retired SentinelOne Unresolved Threat",
-      "description": "Retired SentinelOne threat-mirror rule retained temporarily so stale open findings are resolved after rule redesign.",
-      "source_id": "sentinelone",
-      "evaluation_mode": "event",
-      "event_kinds": [
-        "sentinelone.threat"
-      ],
-      "output_kind": "finding.sentinelone_unresolved_threat",
-      "severity": "INFO",
-      "status": "open",
-      "maturity": "retired",
-      "tags": [
-        "cleanup",
-        "retired",
-        "sentinelone"
-      ],
-      "references": [
-        "https://docs.sentinelone.com/"
-      ],
-      "false_positives": [
-        "Approved security testing, decommissioned endpoint, documented exception, or SentinelOne false positive reviewed by security."
-      ],
-      "runbook": "Review SentinelOne endpoint state, linked threat/activity evidence, policy scope, and documented exceptions before remediation or closure."
     },
     {
       "id": "vulnview-actionable-external-finding",

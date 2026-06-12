@@ -263,7 +263,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
 			reportParameterTenantID:   "writer",
-			reportParameterRuntimeID:  "writer-okta-audit",
+			reportParameterRuntimeIDs: "writer-okta-audit",
 			reportParameterGraphLimit: "2",
 		},
 	})
@@ -288,9 +288,6 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	result := response.GetRun().GetResult().AsMap()
 	if got := result[reportParameterTenantID]; got != "writer" {
 		t.Fatalf("Run().Run.Result[tenant_id] = %#v, want writer", got)
-	}
-	if got := result[reportParameterRuntimeID]; got != "writer-okta-audit" {
-		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want writer-okta-audit", got)
 	}
 	if got := result["total_findings"]; got != float64(2) {
 		t.Fatalf("Run().Run.Result[total_findings] = %#v, want 2", got)
@@ -453,9 +450,6 @@ func TestRunFindingSummaryReportDoesNotPublishMultiRuntimeListAsRuntimeID(t *tes
 		t.Fatalf("ListFindings().RuntimeIDs = %#v, want both runtimes", got)
 	}
 	result := response.GetRun().GetResult().AsMap()
-	if got := result[reportParameterRuntimeID]; got != "" {
-		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want empty for multi-runtime request", got)
-	}
 	runtimeIDs, ok := result[reportParameterRuntimeIDs].([]any)
 	if !ok || len(runtimeIDs) != 2 || runtimeIDs[0] != "example-github-audit" || runtimeIDs[1] != "example-okta-audit" {
 		t.Fatalf("Run().Run.Result[runtime_ids] = %#v, want both runtime ids", result[reportParameterRuntimeIDs])
@@ -505,7 +499,7 @@ func TestRunRiskDeltaReportSimulatesPublicExposureRemoval(t *testing.T) {
 		ReportId: riskDeltaReportID,
 		Parameters: map[string]string{
 			reportParameterTenantID:     "writer",
-			reportParameterRuntimeID:    "writer-aws",
+			reportParameterRuntimeIDs:   "writer-aws",
 			reportParameterScenarioType: findinganalysis.RiskDeltaScenarioRemovePublicExposure,
 			reportParameterTargetURN:    "urn:cerebro:writer:aws_secret_store:prod-secrets",
 		},
@@ -557,7 +551,7 @@ func TestRunRiskDeltaReportRejectsCrossTenantTargetURN(t *testing.T) {
 		ReportId: riskDeltaReportID,
 		Parameters: map[string]string{
 			reportParameterTenantID:     "writer",
-			reportParameterRuntimeID:    "writer-aws",
+			reportParameterRuntimeIDs:   "writer-aws",
 			reportParameterScenarioType: findinganalysis.RiskDeltaScenarioRemovePublicExposure,
 			reportParameterTargetURN:    "urn:cerebro:other:aws_secret_store:prod-secrets",
 		},
@@ -602,9 +596,6 @@ func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	parameters := reportParametersByID(reportsByID[findingSummaryReportID].GetParameters())
 	if !parameters[reportParameterRuntimeIDs].GetRequired() {
 		t.Fatalf("runtime_ids parameter Required = false, want true")
-	}
-	if parameters[reportParameterRuntimeID].GetRequired() {
-		t.Fatalf("runtime_id parameter Required = true, want false")
 	}
 	riskDeltaParameters := reportParametersByID(reportsByID[riskDeltaReportID].GetParameters())
 	if !riskDeltaParameters[reportParameterScenarioType].GetRequired() || !riskDeltaParameters[reportParameterTargetURN].GetRequired() {
@@ -656,8 +647,8 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
-			reportParameterTenantID:  "writer",
-			reportParameterRuntimeID: "writer-okta-audit",
+			reportParameterTenantID:   "writer",
+			reportParameterRuntimeIDs: "writer-okta-audit",
 		},
 	})
 	if err != nil {

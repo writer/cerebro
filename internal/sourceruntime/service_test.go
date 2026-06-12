@@ -672,11 +672,10 @@ func TestProgressConfigHashIgnoresInternalRuntimeMetadata(t *testing.T) {
 		"lookup_key": "inventory",
 	})
 	withInternal := progressConfigHash(map[string]string{
-		"lookup_key":                               "inventory",
-		sourceconfig.RuntimeTenantIDKey:            "writer",
-		sourceconfig.AWSAssumeRoleAllowlistKey:     "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
-		sourceconfig.LegacyTenantlessAssumeRoleKey: "true",
-		runtimeProgressConfigHashKey:               "old-hash",
+		"lookup_key":                           "inventory",
+		sourceconfig.RuntimeTenantIDKey:        "writer",
+		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+		runtimeProgressConfigHashKey:           "old-hash",
 	})
 	if base != withInternal {
 		t.Fatal("progressConfigHash changed when only internal runtime metadata changed")
@@ -685,11 +684,10 @@ func TestProgressConfigHashIgnoresInternalRuntimeMetadata(t *testing.T) {
 
 func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 	config := userConfig(map[string]string{
-		"family":                                   "public_endpoint",
-		runtimeProgressConfigHashKey:               "hash",
-		sourceconfig.AWSAssumeRoleAllowlistKey:     "caller-controlled",
-		sourceconfig.LegacyTenantlessAssumeRoleKey: "true",
-		sourceconfig.RuntimeTenantIDKey:            "writer",
+		"family":                               "public_endpoint",
+		runtimeProgressConfigHashKey:           "hash",
+		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+		sourceconfig.RuntimeTenantIDKey:        "writer",
 	})
 	if got := config["family"]; got != "public_endpoint" {
 		t.Fatalf("family = %q, want public_endpoint", got)
@@ -702,9 +700,6 @@ func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 	}
 	if _, ok := config[sourceconfig.RuntimeTenantIDKey]; ok {
 		t.Fatal("userConfig preserved internal runtime tenant key")
-	}
-	if _, ok := config[sourceconfig.LegacyTenantlessAssumeRoleKey]; ok {
-		t.Fatal("userConfig preserved internal legacy tenantless role key")
 	}
 }
 

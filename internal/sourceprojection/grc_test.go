@@ -929,7 +929,6 @@ func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testi
 	}
 
 	repoURN := "urn:cerebro:writer:github_code_repository:1242719606"
-	legacyRepoURN := "urn:cerebro:writer:github_repo:Writer/cerebro"
 	orgURN := "urn:cerebro:writer:github_org:Writer"
 	integrationURN := "urn:cerebro:writer:source:vanta:integration:github"
 
@@ -946,13 +945,7 @@ func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testi
 	if org := state.entities[orgURN]; org == nil || org.EntityType != "github.org" {
 		t.Fatalf("github org entity %q missing or wrong type: %#v", orgURN, org)
 	}
-	if legacyRepo := state.entities[legacyRepoURN]; legacyRepo == nil || legacyRepo.EntityType != "github.repo" {
-		t.Fatalf("legacy github repo entity %q missing or wrong type: %#v", legacyRepoURN, legacyRepo)
-	}
 	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
-	assertProjectedLink(t, state, legacyRepoURN, relationBelongsTo, orgURN)
-	assertProjectedLink(t, state, legacyRepoURN, relationRepresents, repoURN)
-	assertProjectedLink(t, state, repoURN, relationRepresents, legacyRepoURN)
 	assertProjectedLink(t, state, repoURN, relationBelongsTo, integrationURN)
 }
 
@@ -976,7 +969,7 @@ func TestProjectGRCVulnerableAssetDoesNotCreateGitHubAliasForNonGitHubSlashName(
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	if entity := state.entities["urn:cerebro:writer:github_repo:prod/app"]; entity != nil {
+	if entity := state.entities["urn:cerebro:writer:github_code_repository:prod/app"]; entity != nil {
 		t.Fatalf("non-github platform asset unexpectedly created github repo alias: %#v", entity)
 	}
 	if entity := state.entities["urn:cerebro:writer:github_org:prod"]; entity != nil {

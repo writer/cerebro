@@ -56,7 +56,7 @@
       ],
       "attributes": {
         "action": "repo.destroy",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,destructive-action,impact,attack.t1485"
       }

@@ -9,8 +9,6 @@ import (
 	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/identitystore"
-	identitystoretypes "github.com/aws/aws-sdk-go-v2/service/identitystore/types"
 	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
 	ssoadmintypes "github.com/aws/aws-sdk-go-v2/service/ssoadmin/types"
 
@@ -26,11 +24,6 @@ type identityCenterAccountAssignment struct {
 	Instance          ssoadmintypes.InstanceMetadata
 	Assignment        ssoadmintypes.AccountAssignment
 	PermissionSetName string
-}
-
-type legacyIdentityStoreGroupMembership struct {
-	Group      identitystoretypes.Group
-	Membership identitystoretypes.GroupMembership
 }
 
 func listIdentityCenterInstances(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]ssoadmintypes.InstanceMetadata, error) {
@@ -302,129 +295,6 @@ func listAllIdentityCenterProvisionedAccounts(ctx context.Context, clients awsCl
 	return cleanStrings(accounts), nil
 }
 
-func identityStoreID(ctx context.Context, clients awsClients, settings settings) (string, error) {
-	if settings.identityCenter.storeID != "" {
-		return settings.identityCenter.storeID, nil
-	}
-	instances, err := listIdentityCenterInstances(ctx, clients, settings, "", 1)
-	if err != nil {
-		return "", err
-	}
-	for _, instance := range instances {
-		if id := awssdk.ToString(instance.IdentityStoreId); id != "" {
-			return id, nil
-		}
-	}
-	return "", fmt.Errorf("aws identity_store_id is required when no IAM Identity Center instance exposes one")
-}
-
-func listLegacyIdentityStoreUsers(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]identitystoretypes.User, string, error) {
-	storeID, err := identityStoreID(ctx, clients, settings)
-	if err != nil {
-		return nil, "", err
-	}
-	out, err := clients.identityStore.ListUsers(ctx, &identitystore.ListUsersInput{
-		IdentityStoreId: awssdk.String(storeID),
-		MaxResults:      int32Ptr(boundedAWSPageSize(limit, 1, 100)),
-		NextToken:       stringPtr(cursor),
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	return out.Users, awssdk.ToString(out.NextToken), nil
-}
-
-func listLegacyIdentityStoreGroups(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]identitystoretypes.Group, string, error) {
-	storeID, err := identityStoreID(ctx, clients, settings)
-	if err != nil {
-		return nil, "", err
-	}
-	out, err := clients.identityStore.ListGroups(ctx, &identitystore.ListGroupsInput{
-		IdentityStoreId: awssdk.String(storeID),
-		MaxResults:      int32Ptr(boundedAWSPageSize(limit, 1, 100)),
-		NextToken:       stringPtr(cursor),
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	return out.Groups, awssdk.ToString(out.NextToken), nil
-}
-
-func listLegacyIdentityStoreGroupMemberships(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]legacyIdentityStoreGroupMembership, string, error) {
-	storeID, err := identityStoreID(ctx, clients, settings)
-	if err != nil {
-		return nil, "", err
-	}
-	if settings.identityCenter.groupID != "" {
-		out, err := clients.identityStore.ListGroupMemberships(ctx, &identitystore.ListGroupMembershipsInput{
-			GroupId:         awssdk.String(settings.identityCenter.groupID),
-			IdentityStoreId: awssdk.String(storeID),
-			MaxResults:      int32Ptr(boundedAWSPageSize(limit, 1, 100)),
-			NextToken:       stringPtr(cursor),
-		})
-		if err != nil {
-			return nil, "", err
-		}
-		records := make([]legacyIdentityStoreGroupMembership, 0, len(out.GroupMemberships))
-		for _, membership := range out.GroupMemberships {
-			records = append(records, legacyIdentityStoreGroupMembership{Group: identitystoretypes.Group{GroupId: awssdk.String(settings.identityCenter.groupID), IdentityStoreId: awssdk.String(storeID)}, Membership: membership})
-		}
-		return records, awssdk.ToString(out.NextToken), nil
-	}
-	page, err := decodeIdentityStoreGroupMembershipCursor(cursor)
-	if err != nil {
-		return nil, "", err
-	}
-	resumeAfterGroupID := page.GroupID
-	records := make([]legacyIdentityStoreGroupMembership, 0)
-	if page.GroupID != "" {
-		pages, next, err := listIdentityStoreGroupMembershipPage(ctx, clients, storeID, page.GroupID, page.MembershipToken, limit)
-		if err != nil {
-			return nil, "", err
-		}
-		group := identitystoretypes.Group{DisplayName: awssdk.String(page.GroupName), GroupId: awssdk.String(page.GroupID), IdentityStoreId: awssdk.String(storeID)}
-		for _, membershipPage := range pages {
-			records = append(records, legacyIdentityStoreGroupMembership{Group: group, Membership: membershipPage.Membership})
-		}
-		if next != "" {
-			return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: page.GroupToken, GroupID: page.GroupID, GroupName: page.GroupName, MembershipToken: next}), nil
-		}
-		page.GroupID = ""
-		page.MembershipToken = ""
-	}
-	groups, nextGroups, err := listLegacyIdentityStoreGroups(ctx, clients, settings, page.GroupToken, limit)
-	if err != nil {
-		return nil, "", err
-	}
-	groupStarted := resumeAfterGroupID == ""
-	for _, group := range groups {
-		groupID := awssdk.ToString(group.GroupId)
-		if groupID == "" {
-			continue
-		}
-		if !groupStarted {
-			if groupID == resumeAfterGroupID {
-				groupStarted = true
-			}
-			continue
-		}
-		groupRecords, next, err := listIdentityStoreGroupMembershipPage(ctx, clients, storeID, groupID, "", limit)
-		if err != nil {
-			return nil, "", err
-		}
-		for _, record := range groupRecords {
-			records = append(records, legacyIdentityStoreGroupMembership{Group: group, Membership: record.Membership})
-		}
-		if next != "" {
-			return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: page.GroupToken, GroupID: groupID, GroupName: awssdk.ToString(group.DisplayName), MembershipToken: next}), nil
-		}
-	}
-	if nextGroups != "" {
-		return records, encodeIdentityStoreGroupMembershipCursor(identityStoreGroupMembershipCursor{GroupToken: nextGroups}), nil
-	}
-	return records, "", nil
-}
-
 func identityCenterPermissionSetEvent(settings settings, record identityCenterPermissionSet) (*primitives.Event, error) {
 	permissionSet := record.PermissionSet
 	instance := record.Instance
@@ -490,109 +360,6 @@ func identityCenterAccountAssignmentEvent(settings settings, record identityCent
 	return sourceEvent(settings, id, "aws.identity_center_account_assignment", "aws/identity_center_account_assignment/v1", payload, attributes, time.Now().UTC())
 }
 
-func legacyIdentityStoreUserEvent(settings settings, user identitystoretypes.User) (*primitives.Event, error) {
-	email := legacyIdentityStorePrimaryEmail(user.Emails)
-	displayName := firstNonEmpty(awssdk.ToString(user.DisplayName), legacyIdentityStoreFormattedName(user.Name), awssdk.ToString(user.UserName), email)
-	attributes := map[string]string{
-		"account_id":        settings.accountID,
-		"display_name":      displayName,
-		"domain":            settings.accountID,
-		"email":             email,
-		"family":            familyIdentityStoreLegacyUser,
-		"identity_store_id": awssdk.ToString(user.IdentityStoreId),
-		"is_admin":          boolString(containsAny(strings.ToLower(displayName), "admin", "administrator")),
-		"login":             awssdk.ToString(user.UserName),
-		"principal_type":    "user",
-		"status":            string(user.UserStatus),
-		"user_id":           firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName), email),
-		"user_type":         awssdk.ToString(user.UserType),
-	}
-	addTimeAttribute(attributes, "created_at", user.CreatedAt)
-	addTimeAttribute(attributes, "updated_at", user.UpdatedAt)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "user": user})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "aws-identitystore-user-"+firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName), email), "aws.identity_store_user", "aws/identity_store_user/v1", payload, attributes, firstTime(user.UpdatedAt, user.CreatedAt))
-}
-
-func legacyIdentityStoreGroupEvent(settings settings, group identitystoretypes.Group) (*primitives.Event, error) {
-	attributes := map[string]string{
-		"account_id":        settings.accountID,
-		"description":       awssdk.ToString(group.Description),
-		"domain":            settings.accountID,
-		"family":            familyIdentityStoreLegacyGroup,
-		"group_id":          awssdk.ToString(group.GroupId),
-		"group_name":        awssdk.ToString(group.DisplayName),
-		"identity_store_id": awssdk.ToString(group.IdentityStoreId),
-	}
-	addTimeAttribute(attributes, "created_at", group.CreatedAt)
-	addTimeAttribute(attributes, "updated_at", group.UpdatedAt)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "group": group})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "aws-identitystore-group-"+firstNonEmpty(awssdk.ToString(group.GroupId), awssdk.ToString(group.DisplayName)), "aws.identity_store_group", "aws/identity_store_group/v1", payload, attributes, firstTime(group.UpdatedAt, group.CreatedAt))
-}
-
-func legacyIdentityStoreGroupMembershipEvent(settings settings, record legacyIdentityStoreGroupMembership) (*primitives.Event, error) {
-	membership := record.Membership
-	group := record.Group
-	groupID := firstNonEmpty(awssdk.ToString(membership.GroupId), awssdk.ToString(group.GroupId), settings.identityCenter.groupID)
-	memberUserID := legacyIdentityStoreMembershipUserID(membership.MemberId)
-	attributes := map[string]string{
-		"account_id":        settings.accountID,
-		"domain":            settings.accountID,
-		"family":            familyIdentityStoreLegacyMember,
-		"group_id":          groupID,
-		"group_name":        awssdk.ToString(group.DisplayName),
-		"identity_store_id": firstNonEmpty(awssdk.ToString(membership.IdentityStoreId), awssdk.ToString(group.IdentityStoreId), settings.identityCenter.storeID),
-		"member_id":         memberUserID,
-		"member_type":       "user",
-		"member_user_id":    memberUserID,
-		"membership_id":     awssdk.ToString(membership.MembershipId),
-		"role":              "member",
-	}
-	addTimeAttribute(attributes, "created_at", membership.CreatedAt)
-	addTimeAttribute(attributes, "updated_at", membership.UpdatedAt)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "group": group, "membership": membership})
-	if err != nil {
-		return nil, err
-	}
-	id := fmt.Sprintf("aws-identitystore-group-membership-%s-%s", groupID, firstNonEmpty(memberUserID, awssdk.ToString(membership.MembershipId)))
-	return sourceEvent(settings, id, "aws.identity_store_group_membership", "aws/identity_store_group_membership/v1", payload, attributes, firstTime(membership.UpdatedAt, membership.CreatedAt))
-}
-
-func legacyIdentityStorePrimaryEmail(emails []identitystoretypes.Email) string {
-	for _, email := range emails {
-		if email.Primary {
-			return strings.ToLower(strings.TrimSpace(awssdk.ToString(email.Value)))
-		}
-	}
-	for _, email := range emails {
-		if value := strings.ToLower(strings.TrimSpace(awssdk.ToString(email.Value))); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func legacyIdentityStoreFormattedName(name *identitystoretypes.Name) string {
-	if name == nil {
-		return ""
-	}
-	return firstNonEmpty(awssdk.ToString(name.Formatted), strings.Join(cleanStrings([]string{awssdk.ToString(name.GivenName), awssdk.ToString(name.FamilyName)}), " "))
-}
-
-func legacyIdentityStoreMembershipUserID(member identitystoretypes.MemberId) string {
-	switch typed := member.(type) {
-	case *identitystoretypes.MemberIdMemberUserId:
-		return strings.TrimSpace(typed.Value)
-	default:
-		return ""
-	}
-}
-
 type identityCenterPermissionSetCursor struct {
 	InstanceARN string `json:"instance_arn,omitempty"`
 	Token       string `json:"token,omitempty"`
@@ -604,34 +371,6 @@ type identityCenterAccountAssignmentCursor struct {
 	PermissionSetARN   string `json:"permission_set_arn,omitempty"`
 	AccountID          string `json:"account_id,omitempty"`
 	Token              string `json:"token,omitempty"`
-}
-
-type identityStoreGroupMembershipCursor struct {
-	GroupToken      string `json:"group_token,omitempty"`
-	GroupID         string `json:"group_id,omitempty"`
-	GroupName       string `json:"group_name,omitempty"`
-	MembershipToken string `json:"membership_token,omitempty"`
-}
-
-type identityStoreGroupMembershipPage struct {
-	Membership identitystoretypes.GroupMembership
-}
-
-func listIdentityStoreGroupMembershipPage(ctx context.Context, clients awsClients, storeID string, groupID string, cursor string, limit int) ([]identityStoreGroupMembershipPage, string, error) {
-	out, err := clients.identityStore.ListGroupMemberships(ctx, &identitystore.ListGroupMembershipsInput{
-		GroupId:         awssdk.String(groupID),
-		IdentityStoreId: awssdk.String(storeID),
-		MaxResults:      int32Ptr(boundedAWSPageSize(limit, 1, 100)),
-		NextToken:       stringPtr(cursor),
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	records := make([]identityStoreGroupMembershipPage, 0, len(out.GroupMemberships))
-	for _, membership := range out.GroupMemberships {
-		records = append(records, identityStoreGroupMembershipPage{Membership: membership})
-	}
-	return records, awssdk.ToString(out.NextToken), nil
 }
 
 func decodeIdentityCenterPermissionSetCursor(raw string) (identityCenterPermissionSetCursor, error) {
@@ -647,14 +386,6 @@ func decodeIdentityCenterAccountAssignmentCursor(raw string) (identityCenterAcco
 }
 
 func encodeIdentityCenterAccountAssignmentCursor(cursor identityCenterAccountAssignmentCursor) string {
-	return encodeIdentityCenterCursor(cursor)
-}
-
-func decodeIdentityStoreGroupMembershipCursor(raw string) (identityStoreGroupMembershipCursor, error) {
-	return decodeIdentityCenterCursor[identityStoreGroupMembershipCursor](raw)
-}
-
-func encodeIdentityStoreGroupMembershipCursor(cursor identityStoreGroupMembershipCursor) string {
 	return encodeIdentityCenterCursor(cursor)
 }
 

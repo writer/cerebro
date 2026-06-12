@@ -43,8 +43,8 @@ func normalizeGitHubRepository(value string) string {
 func addContainerSourceRepositoryLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, imageURN string, containerRepositoryURN string, attrs map[string]string) string {
 	sourceRepository := firstAttribute(
 		attrs,
-		"github_repository",
-		"github_repo",
+		"github_code_repositorysitory",
+		"github_code_repository",
 		"source_repository",
 		"source_repo",
 		"source_repository_url",
@@ -57,7 +57,7 @@ func addContainerSourceRepositoryLinks(entities map[string]*ports.ProjectedEntit
 	if repository == "" {
 		return ""
 	}
-	repoURN := projectionURN(tenantID, "github_repo", repository)
+	repoURN := projectionURN(tenantID, "github_code_repository", repository)
 	if repoURN == "" {
 		return ""
 	}
@@ -66,7 +66,7 @@ func addContainerSourceRepositoryLinks(entities map[string]*ports.ProjectedEntit
 		URN:        repoURN,
 		TenantID:   tenantID,
 		SourceID:   "github",
-		EntityType: "github.repo",
+		EntityType: "github.code.repository",
 		Label:      repository,
 		Attributes: compactAttributes(map[string]string{"owner_login": owner, "repository": repository}),
 	})

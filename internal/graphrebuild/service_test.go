@@ -253,7 +253,7 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if len(result.GraphPathPatterns) != 6 {
 		t.Fatalf("len(GraphPathPatterns) = %d, want 6", len(result.GraphPathPatterns))
 	}
-	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[authored]-> github.pull_request -[belongs_to]-> github.repo", 1) {
+	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[authored]-> github.pull_request -[belongs_to]-> github.code.repository", 1) {
 		t.Fatalf("GraphPathPatterns missing authored pattern: %#v", result.GraphPathPatterns)
 	}
 	if len(result.GraphTopology) != 4 {
@@ -651,8 +651,8 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
 		t.Fatalf("event kind github.audit = %d, want 1", got)
 	}
-	if got := countValue(result.GraphEntityTypes, "github.repo"); got != 1 {
-		t.Fatalf("graph entity type github.repo = %d, want 1", got)
+	if got := countValue(result.GraphEntityTypes, "github.code.repository"); got != 1 {
+		t.Fatalf("graph entity type github.code.repository = %d, want 1", got)
 	}
 	// The broad acted_on audit chain is suppressed from traversal previews.
 	if len(result.GraphTraversals) != 4 {
@@ -681,7 +681,7 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if len(result.GraphPathPatterns) != 4 {
 		t.Fatalf("len(GraphPathPatterns) = %d, want 4", len(result.GraphPathPatterns))
 	}
-	if containsPathPatternPreview(result.GraphPathPatterns, "github.user -[acted_on]-> github.repo -[belongs_to]-> github.org", 1) {
+	if containsPathPatternPreview(result.GraphPathPatterns, "github.user -[acted_on]-> github.code.repository -[belongs_to]-> github.org", 1) {
 		t.Fatalf("GraphPathPatterns included suppressed acted_on pattern: %#v", result.GraphPathPatterns)
 	}
 	// identifier.login moved from sinks_only to intermediate after gaining

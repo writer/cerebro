@@ -309,7 +309,6 @@ func TestProjectGitHubCodeRepositoryLinksOwnerAndLegacyRepo(t *testing.T) {
 	}
 
 	codeRepoURN := "urn:cerebro:writer:github_code_repository:1"
-	legacyRepoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
 	orgURN := "urn:cerebro:writer:github_org:writer"
 	if entity := state.entities[codeRepoURN]; entity == nil || entity.EntityType != "github.code.repository" {
 		t.Fatalf("github code repository entity missing: %#v", entity)
@@ -318,9 +317,6 @@ func TestProjectGitHubCodeRepositoryLinksOwnerAndLegacyRepo(t *testing.T) {
 		t.Fatalf("code repository owner_login = %q, want writer", got)
 	}
 	assertProjectedLink(t, state, codeRepoURN, relationBelongsTo, orgURN)
-	assertProjectedLink(t, state, legacyRepoURN, relationBelongsTo, orgURN)
-	assertProjectedLink(t, state, legacyRepoURN, relationRepresents, codeRepoURN)
-	assertProjectedLink(t, state, codeRepoURN, relationRepresents, legacyRepoURN)
 }
 
 func TestProjectStampsRuntimeIDOnEntitiesAndLinks(t *testing.T) {
@@ -449,7 +445,7 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 	}
 
 	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
-	repoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	repoURN := "urn:cerebro:writer:github_code_repository:writer/cerebro"
 	advisoryURN := "urn:cerebro:writer:github_advisory:GHSA-xxxx-yyyy-zzzz"
 	packageURN := "urn:cerebro:writer:package:go:golang.org/x/crypto"
 	canonicalPackageURN := "urn:cerebro:writer:package:canonical:golang.org/x/crypto"
@@ -507,7 +503,7 @@ func TestProjectGitHubDependabotAlertLinksRepoScopedDependency(t *testing.T) {
 	}
 
 	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
-	repoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	repoURN := "urn:cerebro:writer:github_code_repository:writer/cerebro"
 	manifestURN := "urn:cerebro:writer:github_dependency_manifest:writer/cerebro:go.mod"
 	dependencyURN := "urn:cerebro:writer:github_dependency:writer/cerebro:go.mod:go:golang.org/x/crypto"
 	packageURN := "urn:cerebro:writer:package:go:golang.org/x/crypto"
@@ -1478,7 +1474,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer/cerebro",
 				"resource_type": "repository_secret_scanning",
 			},
-			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+			resource: "urn:cerebro:writer:github_code_repository:writer/cerebro",
 		},
 		{
 			id: "github-audit-org-auth-modified",
@@ -1527,7 +1523,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer/cerebro",
 				"resource_type": "protected_branch",
 			},
-			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+			resource: "urn:cerebro:writer:github_code_repository:writer/cerebro",
 		},
 		{
 			id: "github-audit-ruleset-modified",
@@ -1539,7 +1535,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"ruleset_id":    "42",
 				"ruleset_name":  "main protections",
 			},
-			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+			resource: "urn:cerebro:writer:github_code_repository:writer/cerebro",
 		},
 		{
 			id: "github-audit-webhook-modified",
@@ -1550,7 +1546,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer/cerebro",
 				"resource_type": "hook",
 			},
-			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+			resource: "urn:cerebro:writer:github_code_repository:writer/cerebro",
 		},
 	}
 	for _, tt := range events {
@@ -1581,7 +1577,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 			if _, ok := graph.entities[tt.resource]; !ok {
 				t.Fatalf("graph resource %q missing", tt.resource)
 			}
-			if strings.Contains(tt.resource, "github_repo") {
+			if strings.Contains(tt.resource, "github_code_repository") {
 				attrs := graph.entities[tt.resource].Attributes
 				if attrs["repository"] != "writer/cerebro" || attrs["resource_type"] != tt.attrs["resource_type"] {
 					t.Fatalf("repo attributes = %#v, want repository and resource_type", attrs)
@@ -1622,7 +1618,7 @@ func TestProjectGitHubAuditStampsAtOnActedOn(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 	actorURN := "urn:cerebro:writer:github_user:alice"
-	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	resourceURN := "urn:cerebro:writer:github_code_repository:writer/cerebro"
 	link, ok := graph.links[actorURN+"|"+relationActedOn+"|"+resourceURN]
 	if !ok {
 		t.Fatalf("acted_on link missing for %s -> %s: %#v", actorURN, resourceURN, graph.links)
@@ -1772,7 +1768,7 @@ func TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 	actorURN := "urn:cerebro:writer:github_user:alice"
-	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	resourceURN := "urn:cerebro:writer:github_code_repository:writer/cerebro"
 	link, ok := graph.links[actorURN+"|"+relationActedOn+"|"+resourceURN]
 	if !ok {
 		t.Fatalf("acted_on link missing for %s -> %s: %#v", actorURN, resourceURN, graph.links)
@@ -1853,7 +1849,7 @@ func TestProjectGitHubAuditProjectsAutomationActorsAsCredentials(t *testing.T) {
 			if got := credential.EntityType; got != "github.credential" {
 				t.Fatalf("credential entity_type = %q, want github.credential", got)
 			}
-			assertProjectedLink(t, graph, credentialURN, relationActedOn, "urn:cerebro:writer:github_repo:writer/cerebro")
+			assertProjectedLink(t, graph, credentialURN, relationActedOn, "urn:cerebro:writer:github_code_repository:writer/cerebro")
 			for key := range graph.links {
 				if strings.HasPrefix(key, actorURN+"|") {
 					t.Fatalf("automation actor %q emitted identity graph link %q", actorURN, key)
@@ -2076,7 +2072,7 @@ func TestProjectGitHubAuditMintsGithubUserWhenActorIsNotOrgSelf(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 	actorURN := "urn:cerebro:writer:github_user:alice"
-	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	resourceURN := "urn:cerebro:writer:github_code_repository:writer/cerebro"
 	if _, ok := graph.entities[actorURN]; !ok {
 		t.Fatalf("github.user entity %q missing for user actor; org-self detection must not trip when IDs differ", actorURN)
 	}
@@ -2172,7 +2168,7 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 			t.Fatalf("credential attributes[%s] = %q, want %q", key, got, want)
 		}
 	}
-	resourceURN := "urn:cerebro:writer:github_repo:WriterInternal/k8s"
+	resourceURN := "urn:cerebro:writer:github_code_repository:WriterInternal/k8s"
 	link, ok := graph.links[credentialURN+"|"+relationActedOn+"|"+resourceURN]
 	if !ok {
 		t.Fatalf("acted_on link missing for credential %s -> %s: %#v", credentialURN, resourceURN, graph.links)
@@ -2318,7 +2314,7 @@ func TestProjectGitHubAuditProjectsSelfHostedRunnerState(t *testing.T) {
 			t.Fatalf("runner attributes[%s] = %q, want %q", key, got, want)
 		}
 	}
-	assertProjectedLink(t, graph, runnerURN, relationBelongsTo, "urn:cerebro:writer:github_repo:writer/cerebro")
+	assertProjectedLink(t, graph, runnerURN, relationBelongsTo, "urn:cerebro:writer:github_code_repository:writer/cerebro")
 
 	_, err = New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-audit-runner-remove",

@@ -49,7 +49,7 @@ func TestProjectBackstageComponent(t *testing.T) {
 	ownerURN := "urn:cerebro:writer:owner:platform/security"
 	ownerIdentifierURN := "urn:cerebro:writer:identifier:login:security"
 	systemURN := "urn:cerebro:writer:system:security"
-	repoURN := "urn:cerebro:writer:github_repo:WriterInternal/cerebro"
+	repoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/cerebro"
 	orgURN := "urn:cerebro:writer:github_org:WriterInternal"
 	entity := state.entities[serviceURN]
 	if entity == nil || entity.EntityType != "service" || entity.Attributes["lifecycle"] != "production" {
@@ -175,7 +175,7 @@ func TestProjectSecurityToolingMapTool(t *testing.T) {
 	}
 	toolURN := "urn:cerebro:writer:security_tool:agent-gateway"
 	ownerURN := "urn:cerebro:writer:owner:security"
-	repoURN := "urn:cerebro:writer:github_repo:WriterInternal/agent-gateway"
+	repoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/agent-gateway"
 	orgURN := "urn:cerebro:writer:github_org:WriterInternal"
 	assertProjectedLink(t, state, toolURN, relationOwnedBy, ownerURN)
 	assertProjectedLink(t, state, ownerURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:security")

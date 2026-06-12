@@ -607,13 +607,13 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		})
 	}
 
-	repoURN := projectionURN(tenantID, "github_repo", repository)
+	repoURN := projectionURN(tenantID, "github_code_repository", repository)
 	if repository != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        repoURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: "github.repo",
+			EntityType: "github.code.repository",
 			Label:      repository,
 			Attributes: map[string]string{"repository": repository},
 		})
@@ -726,26 +726,6 @@ func githubCodeRepositoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 		}
 	}
 
-	legacyRepoURN := projectionURN(tenantID, "github_repo", repository)
-	if repository != "" {
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        legacyRepoURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "github.repo",
-			Label:      repository,
-			Attributes: map[string]string{"owner_login": owner, "repository": repository},
-		})
-		if orgURN != "" {
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), legacyRepoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "owner_login": owner}))
-		}
-		if codeRepoURN != "" {
-			attrs := map[string]string{"event_id": event.GetId(), "match_type": "github_repository_full_name"}
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), legacyRepoURN, codeRepoURN, relationRepresents, attrs))
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), codeRepoURN, legacyRepoURN, relationRepresents, attrs))
-		}
-	}
-
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -825,7 +805,7 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 		}
 	}
 
-	repoURN := projectionURN(tenantID, "github_repo", firstNonEmpty(repo, resourceID))
+	repoURN := projectionURN(tenantID, "github_code_repository", firstNonEmpty(repo, resourceID))
 	repoScopePresent := repo != "" || (resourceID != "" && strings.Contains(resourceID, "/"))
 	if repoScopePresent {
 		label := firstNonEmpty(repo, resourceID)
@@ -833,7 +813,7 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			URN:        repoURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: "github.repo",
+			EntityType: "github.code.repository",
 			Label:      label,
 			Attributes: map[string]string{"repository": label},
 		})
@@ -852,7 +832,7 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 		label := firstNonEmpty(resourceID, resourceType)
 		entityType := "github.resource"
 		if repoURN != "" && resourceURN == repoURN {
-			entityType = "github.repo"
+			entityType = "github.code.repository"
 			label = firstNonEmpty(repo, resourceID)
 		}
 		resourceAttrs := map[string]string{
@@ -1348,13 +1328,13 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		})
 	}
 
-	repoURN := projectionURN(tenantID, "github_repo", repository)
+	repoURN := projectionURN(tenantID, "github_code_repository", repository)
 	if repository != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        repoURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: "github.repo",
+			EntityType: "github.code.repository",
 			Label:      repository,
 			Attributes: map[string]string{"repository": repository},
 		})
@@ -1563,13 +1543,13 @@ func githubSecretScanningAlertProjections(event *cerebrov1.EventEnvelope) ([]*po
 		})
 	}
 
-	repoURN := projectionURN(tenantID, "github_repo", repository)
+	repoURN := projectionURN(tenantID, "github_code_repository", repository)
 	if repository != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        repoURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: "github.repo",
+			EntityType: "github.code.repository",
 			Label:      repository,
 			Attributes: map[string]string{"repository": repository},
 		})

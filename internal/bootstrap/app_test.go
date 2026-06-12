@@ -4874,7 +4874,7 @@ func TestFindingRuleEndpoints(t *testing.T) {
 		}
 		ruleIDs[ruleID] = struct{}{}
 	}
-	for _, ruleID := range []string{"github-dependabot-open-alert", "github-secret-scanning-disabled", "identity-okta-policy-rule-lifecycle-tampering"} {
+	for _, ruleID := range []string{"github-dependabot-open-alert", "github-secret-scanning-alert-created", "identity-okta-policy-rule-lifecycle-tampering"} {
 		if _, ok := ruleIDs[ruleID]; !ok {
 			t.Fatalf("/finding-rules missing %q in %#v", ruleID, ruleIDs)
 		}
@@ -4892,7 +4892,7 @@ func TestFindingRuleEndpoints(t *testing.T) {
 	for _, rule := range listResp.Msg.GetRules() {
 		connectRuleIDs[rule.GetId()] = struct{}{}
 	}
-	for _, ruleID := range []string{"github-dependabot-open-alert", "github-secret-scanning-disabled", "identity-okta-policy-rule-lifecycle-tampering"} {
+	for _, ruleID := range []string{"github-dependabot-open-alert", "github-secret-scanning-alert-created", "identity-okta-policy-rule-lifecycle-tampering"} {
 		if _, ok := connectRuleIDs[ruleID]; !ok {
 			t.Fatalf("ListFindingRules() missing %q in %#v", ruleID, connectRuleIDs)
 		}
@@ -6596,12 +6596,12 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 				Label:      "writer/cerebro#447",
 			},
 			Neighbors: []*ports.NeighborhoodNode{
-				{URN: "urn:cerebro:writer:github_repo:writer/cerebro", EntityType: "github.repo", Label: "writer/cerebro"},
+				{URN: "urn:cerebro:writer:github_code_repository:writer/cerebro", EntityType: "github.code.repository", Label: "writer/cerebro"},
 				{URN: "urn:cerebro:writer:github_user:alice", EntityType: "github.user", Label: "Alice"},
 			},
 			Relations: []*ports.NeighborhoodRelation{
 				{FromURN: "urn:cerebro:writer:github_user:alice", Relation: "authored", ToURN: "urn:cerebro:writer:github_pull_request:writer/cerebro#447"},
-				{FromURN: "urn:cerebro:writer:github_pull_request:writer/cerebro#447", Relation: "belongs_to", ToURN: "urn:cerebro:writer:github_repo:writer/cerebro"},
+				{FromURN: "urn:cerebro:writer:github_pull_request:writer/cerebro#447", Relation: "belongs_to", ToURN: "urn:cerebro:writer:github_code_repository:writer/cerebro"},
 			},
 		},
 	}
@@ -6775,7 +6775,7 @@ func TestReportEndpoints(t *testing.T) {
 		t.Fatalf("/reports payload = %#v, want 2 entries", listPayload["reports"])
 	}
 
-	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=writer&runtime_id=writer-okta-audit&graph_limit=2", nil)
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=writer&runtime_ids=writer-okta-audit&graph_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new run report request: %v", err)
 	}
@@ -6874,8 +6874,8 @@ func TestReportEndpoints(t *testing.T) {
 	runReportResp, err := client.RunReport(context.Background(), connect.NewRequest(&cerebrov1.RunReportRequest{
 		ReportId: "finding-summary",
 		Parameters: map[string]string{
-			"tenant_id":  "writer",
-			"runtime_id": "writer-okta-audit",
+			"tenant_id":   "writer",
+			"runtime_ids": "writer-okta-audit",
 		},
 	}))
 	if err != nil {

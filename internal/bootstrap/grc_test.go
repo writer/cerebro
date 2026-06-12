@@ -61,7 +61,7 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 				Title:          "Critical dependency exposure",
 				Severity:       "CRITICAL",
 				Status:         "open",
-				ResourceURNs:   []string{"urn:cerebro:writer:github_repository:writer/app"},
+				ResourceURNs:   []string{"urn:cerebro:writer:github_code_repositorysitory:writer/app"},
 				LastObservedAt: now.Add(-time.Hour),
 			},
 			"finding-resolved": {

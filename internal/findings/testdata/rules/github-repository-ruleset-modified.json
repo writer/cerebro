@@ -60,7 +60,7 @@
       ],
       "attributes": {
         "action": "repository_ruleset.destroy",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "ruleset_id": "42",
         "ruleset_name": "main protections",

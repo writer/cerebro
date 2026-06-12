@@ -1,5 +1,4 @@
 identity-api-token-or-oauth-app-created
-identity-control-tamper-followed-by-credential-change
 identity-privileged-account-without-mfa
 identity-privileged-no-mfa-plus-sensitive-access
 identity-stale-privileged-account

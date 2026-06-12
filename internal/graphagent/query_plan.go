@@ -426,8 +426,8 @@ func topRiskFilterClauses(filters map[string]string) (string, string) {
 func resourceTypePredicate(value string) string {
 	canonical := canonicalEntityType(value)
 	switch canonical {
-	case "github.code.repository", "github.repo":
-		return "resource.entity_type IN ['github.code.repository', 'github.repo']"
+	case "github.code.repository":
+		return "resource.entity_type = 'github.code.repository'"
 	default:
 		return "resource.entity_type = " + cypherStringLiteral(canonical)
 	}

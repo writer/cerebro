@@ -1278,7 +1278,7 @@ func panopticonAddContextAnchors(entities map[string]*ports.ProjectedEntity, lin
 		panopticonAddAWSInstanceAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, instanceID, matchPrefix+"_aws_instance")
 	}
 	for _, repository := range panopticonContextGitHubRepositories(samples) {
-		panopticonAddGitHubRepositoryAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, repository, matchPrefix+"_github_repo")
+		panopticonAddGitHubRepositoryAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, repository, matchPrefix+"_github_code_repository")
 	}
 	for _, projectID := range panopticonContextGCPProjects(samples) {
 		panopticonAddCloudAccountAnchor(entities, links, tenantID, sourceID, event, fromURN, relation, "gcp", projectID, matchPrefix+"_gcp_project")
@@ -1346,7 +1346,7 @@ func panopticonAddGitHubRepositoryAnchor(entities map[string]*ports.ProjectedEnt
 	if repository == "" {
 		return
 	}
-	repoURN := projectionURN(tenantID, "github_repo", repository)
+	repoURN := projectionURN(tenantID, "github_code_repository", repository)
 	if repoURN == "" {
 		return
 	}
@@ -1355,7 +1355,7 @@ func panopticonAddGitHubRepositoryAnchor(entities map[string]*ports.ProjectedEnt
 		URN:        repoURN,
 		TenantID:   tenantID,
 		SourceID:   "github",
-		EntityType: "github.repo",
+		EntityType: "github.code.repository",
 		Label:      repository,
 		Attributes: compactAttributes(map[string]string{"owner_login": owner, "repository": repository}),
 	})

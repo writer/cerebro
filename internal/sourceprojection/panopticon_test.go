@@ -382,11 +382,11 @@ func TestProjectPanopticonCaseEnrichesGitHubGCPAndIdentityAnchors(t *testing.T) 
 			"status":  "open",
 		},
 		Payload: mustJSON(t, map[string]any{
-			"case_id":        "case-enrich",
-			"title":          "GitHub secret scanning in repo ExampleOrg/example-service for GCP project example-dev",
-			"github_repo":    "https://github.com/ExampleOrg/example-service.git",
-			"gcp_project_id": "example-dev",
-			"assignee_email": "analyst@example.com",
+			"case_id":                "case-enrich",
+			"title":                  "GitHub secret scanning in repo ExampleOrg/example-service for GCP project example-dev",
+			"github_code_repository": "https://github.com/ExampleOrg/example-service.git",
+			"gcp_project_id":         "example-dev",
+			"assignee_email":         "analyst@example.com",
 		}),
 	})
 	if err != nil {
@@ -394,13 +394,13 @@ func TestProjectPanopticonCaseEnrichesGitHubGCPAndIdentityAnchors(t *testing.T) 
 	}
 
 	caseURN := "urn:cerebro:writer:panopticon_case:case-enrich"
-	repoURN := "urn:cerebro:writer:github_repo:ExampleOrg/example-service"
+	repoURN := "urn:cerebro:writer:github_code_repository:ExampleOrg/example-service"
 	orgURN := "urn:cerebro:writer:github_org:ExampleOrg"
 	accountURN := "urn:cerebro:writer:cloud_account:example-dev"
 	identityURN := "urn:cerebro:writer:identity:email:analyst@example.com"
 	identifierURN := "urn:cerebro:writer:identifier:email:analyst@example.com"
 
-	assertProjectedEntityType(t, state, repoURN, "github.repo")
+	assertProjectedEntityType(t, state, repoURN, "github.code.repository")
 	assertProjectedEntityType(t, state, accountURN, "cloud.account")
 	assertProjectedEntityType(t, state, identityURN, "identity.email")
 	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
@@ -737,7 +737,7 @@ func TestProjectPanopticonDoesNotOvermatchOrdinaryProse(t *testing.T) {
 		t.Fatalf("Project(case) error = %v", err)
 	}
 
-	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_repo:cmd/powershell")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_code_repository:cmd/powershell")
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_org:cmd")
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:cloud_account:roll-out")
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:internet_ip:1.2.3.4")
@@ -770,8 +770,8 @@ func TestProjectPanopticonSkipsSensitivePayloadContext(t *testing.T) {
 
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:identity:email:owner@example.com")
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:identity:email:another-owner@example.com")
-	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_repo:ExampleOrg/private-repo")
-	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_repo:ExampleOrg/another-repo")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_code_repository:ExampleOrg/private-repo")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:github_code_repository:ExampleOrg/another-repo")
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:internet_ip:203.0.113.55")
 }
 

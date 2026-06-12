@@ -376,7 +376,7 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 				TenantID:  event.GetTenantId(),
 				SourceID:  event.GetSourceId(),
 				RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
-				FromURN:   "urn:cerebro:writer:github_repo:WriterInternal/k8s",
+				FromURN:   "urn:cerebro:writer:github_code_repository:WriterInternal/k8s",
 				Relation:  "belongs_to",
 				ToURN:     "urn:cerebro:writer:github_org:WriterInternal",
 				Attributes: map[string]string{
@@ -411,7 +411,7 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	if got := entity.Attributes["event_id"]; got != "event-2" {
 		t.Fatalf("coalesced entity event_id = %q, want latest event-2", got)
 	}
-	link := store.links["urn:cerebro:writer:github_repo:WriterInternal/k8s|belongs_to|urn:cerebro:writer:github_org:WriterInternal"]
+	link := store.links["urn:cerebro:writer:github_code_repository:WriterInternal/k8s|belongs_to|urn:cerebro:writer:github_org:WriterInternal"]
 	if link == nil {
 		t.Fatal("coalesced repo->org link missing")
 	}
@@ -739,7 +739,7 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 				RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
 				FromURN:   "urn:cerebro:writer:github_user:alice",
 				Relation:  "acted_on",
-				ToURN:     "urn:cerebro:writer:github_repo:writer/cerebro",
+				ToURN:     "urn:cerebro:writer:github_code_repository:writer/cerebro",
 				Attributes: map[string]string{
 					"action":         "git.clone",
 					"at":             at,
@@ -777,7 +777,7 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 	if got := entity.Attributes["login"]; got != "older-event" {
 		t.Fatalf("coalesced entity non-observation attribute login = %q, want older-event latest write", got)
 	}
-	link := store.links["urn:cerebro:writer:github_user:alice|acted_on|urn:cerebro:writer:github_repo:writer/cerebro"]
+	link := store.links["urn:cerebro:writer:github_user:alice|acted_on|urn:cerebro:writer:github_code_repository:writer/cerebro"]
 	if link == nil {
 		t.Fatal("coalesced acted_on link missing")
 	}

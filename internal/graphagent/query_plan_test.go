@@ -52,14 +52,11 @@ func TestOntologyPromptUsesProjectedIdentityShape(t *testing.T) {
 	}
 }
 
-func TestOntologyPromptMentionsLegacyRepositoryShape(t *testing.T) {
+func TestOntologyPromptMentionsCanonicalRepositoryShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
 		"Entity `github.code.repository`",
-		"Entity `github.repo`",
-		"Repository questions should consider both `entity_type: 'github.code.repository'` and legacy `entity_type: 'github.repo'`",
 		"GitHub repository metadata such as `owner_login`, `repository`, `visibility`, and `default_branch` is stored in `attributes_json`",
-		"Legacy `github.repo` anchors often carry the repository name in `urn`, `label`, and `attributes_json.repository`",
 		"urn:cerebro:writer:github_code_repository:1",
 	} {
 		if !strings.Contains(hint, want) {
@@ -231,7 +228,7 @@ LIMIT 25`
 	for _, want := range []string{
 		"toUpper(filter_severity) = 'HIGH'",
 		"toLower(filter_status) = 'open'",
-		"resource.entity_type IN ['github.code.repository', 'github.repo']",
+		"resource.entity_type = 'github.code.repository'",
 		"resource.entity_type AS resource_type",
 		"relation_attributes_json_internal",
 		"finding_attributes_json_internal",

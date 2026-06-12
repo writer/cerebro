@@ -101,21 +101,21 @@ func TestAnalyzeFindingExposureCorrelatesCrossSourceFindings(t *testing.T) {
 
 func TestAnalyzeFindingPatternCorrelationsDetectsGitHubSecretExposurePattern(t *testing.T) {
 	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
-	staleControlDisabled := compoundRiskFinding("gh-stale-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_repo:example/cerebro", "repository_secret_scanning.disable")
+	staleControlDisabled := compoundRiskFinding("gh-stale-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_code_repository:example/cerebro", "repository_secret_scanning.disable")
 	staleControlDisabled.FirstObservedAt = base.Add(-72 * time.Hour)
 	staleControlDisabled.LastObservedAt = base.Add(-72 * time.Hour)
 	staleControlDisabled.EventIDs = []string{"event-stale-control"}
 	staleControlDisabled.Attributes["repository"] = "example/cerebro"
 	delete(staleControlDisabled.Attributes, "repo")
 
-	controlDisabled := compoundRiskFinding("gh-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_repo:example/cerebro", "repository_secret_scanning.disable")
+	controlDisabled := compoundRiskFinding("gh-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_code_repository:example/cerebro", "repository_secret_scanning.disable")
 	controlDisabled.FirstObservedAt = base
 	controlDisabled.LastObservedAt = base
 	controlDisabled.EventIDs = []string{"event-control"}
 	controlDisabled.Attributes["repository"] = "example/cerebro"
 	delete(controlDisabled.Attributes, "repo")
 
-	secretAlert := compoundRiskFinding("gh-secret", githubSecretScanningAlertCreatedRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_repo:example/cerebro", "secret_scanning_alert.create")
+	secretAlert := compoundRiskFinding("gh-secret", githubSecretScanningAlertCreatedRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_code_repository:example/cerebro", "secret_scanning_alert.create")
 	secretAlert.FirstObservedAt = base.Add(30 * time.Minute)
 	secretAlert.LastObservedAt = base.Add(30 * time.Minute)
 	secretAlert.EventIDs = []string{"event-secret"}

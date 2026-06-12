@@ -186,7 +186,7 @@ var githubRepositoryMadePublicDefinition = RuleDefinition{
 	Description:        "Detect private GitHub repositories changed to public visibility.",
 	SourceID:           "github",
 	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_repository_made_public",
+	OutputKind:         "finding.github_code_repositorysitory_made_public",
 	Severity:           "HIGH",
 	Status:             findingStatusOpen,
 	Maturity:           "test",
@@ -245,12 +245,12 @@ var githubRepositoryCollaboratorAddedDefinition = RuleDefinition{
 	Description:        "Detect users added as collaborators to GitHub repositories.",
 	SourceID:           "github",
 	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_repository_collaborator_added",
+	OutputKind:         "finding.github_code_repositorysitory_collaborator_added",
 	Severity:           "MEDIUM",
 	Status:             findingStatusOpen,
 	Maturity:           "test",
 	Tags:               []string{"github", "collaborator", "supply-chain", "initial-access", "attack.t1195"},
-	References:         []string{"https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_repo_collaborator_change.yml"},
+	References:         []string{"https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_code_repository_collaborator_change.yml"},
 	FalsePositives:     []string{"Expected onboarding or approved repository access change."},
 	Runbook:            "Confirm the collaborator is authorized, review their repository permissions, and inspect immediate repository activity after access was granted.",
 	RequiredAttributes: []string{"action", "repo", "user"},
@@ -403,12 +403,12 @@ var githubRepositoryRulesetModifiedDefinition = RuleDefinition{
 	Description:        "Detect destructive or weakening changes to GitHub repository rulesets.",
 	SourceID:           "github",
 	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_repository_ruleset_modified",
+	OutputKind:         "finding.github_code_repositorysitory_ruleset_modified",
 	Severity:           "HIGH",
 	Status:             findingStatusOpen,
 	Maturity:           "test",
 	Tags:               []string{"github", "ruleset", "branch-protection", "defense-evasion", "attack.t1562"},
-	References:         []string{"https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_repo_ruleset_modified.yml"},
+	References:         []string{"https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_code_repository_ruleset_modified.yml"},
 	FalsePositives:     []string{"Approved repository governance migration or ruleset tuning."},
 	Runbook:            "Review changed ruleset enforcement and bypass actors, restore required checks/reviews, and inspect protected branch activity.",
 	RequiredAttributes: []string{"action", "repo", "ruleset_id"},
@@ -428,7 +428,7 @@ var githubCriticalResourceDeletedDefinition = RuleDefinition{
 	Status:             findingStatusOpen,
 	Maturity:           "test",
 	Tags:               []string{"github", "destructive-action", "impact", "attack.t1485"},
-	References:         []string{"https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_delete_action_invoked.yml", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/impact_github_repository_deleted.toml"},
+	References:         []string{"https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_delete_action_invoked.yml", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/impact_github_code_repositorysitory_deleted.toml"},
 	FalsePositives:     []string{"Approved repository or environment decommissioning."},
 	Runbook:            "Validate the deletion, recover the resource if unauthorized, and review actor access plus adjacent destructive events.",
 	RequiredAttributes: []string{"action"},
@@ -531,7 +531,7 @@ var githubCodeSecurityControlsDisabledConfig = githubAuditSignalConfig{
 			return "github.org"
 		}
 		if scope == "repo" {
-			return "github.repo"
+			return "github.code.repository"
 		}
 		return ""
 	},
@@ -629,7 +629,7 @@ var githubPrivateRepositoryForkingEnabledConfig = githubAuditSignalConfig{
 	primaryEntityType: func(attributes map[string]string) string {
 		scope, _ := githubPrivateRepositoryForkingScope(attributes)
 		if scope == "repo" {
-			return "github.repo"
+			return "github.code.repository"
 		}
 		return "github.org"
 	},
@@ -643,7 +643,7 @@ var githubPrivateRepositoryForkingEnabledConfig = githubAuditSignalConfig{
 // finding per audit event, which collapses repeated tampering on the same
 // repo into noise instead of one durable "secret scanning disabled" finding
 // keyed by repo. Posture coverage moves to a future graph rule over the
-// projected `github.repo` entity. The wrapper stays registered so any open
+// projected `github.code.repository` entity. The wrapper stays registered so any open
 // mirror findings are auto-resolved by the existing stale-finding sweep on
 // the next replay.
 func newGitHubSecretScanningDisabledRule() Rule {
@@ -659,7 +659,7 @@ func newGitHubPushProtectionDisabledRule() Rule {
 
 // newGitHubBranchProtectionDisabledRule is retired. The durable replacement
 // is a graph rule that reports protected-branch coverage gaps over
-// `github.repo` -> `github.branch` paths.
+// `github.code.repository` -> `github.branch` paths.
 func newGitHubBranchProtectionDisabledRule() Rule {
 	return newRetiredGitHubAuditRule(githubBranchProtectionDisabledDefinition)
 }
@@ -767,7 +767,7 @@ func githubSecretScanningAlertFinding(ctx context.Context, runtime *cerebrov1.So
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
 	}
 	alertURN := firstNonEmpty(githubProjectionURN(event.GetTenantId(), "github_secret_scanning_alert", repo, number), projectedContext.PrimaryResourceURN)
-	repoURN := githubProjectionURN(event.GetTenantId(), "github_repo", repo)
+	repoURN := githubProjectionURN(event.GetTenantId(), "github_code_repository", repo)
 	resourceURNs := deduplicateStrings(append(projectedContext.ResourceURNs, alertURN, repoURN))
 	findingAttributes := githubSecretScanningAlertAttributes(event, alertURN)
 	observedAt := time.Time{}

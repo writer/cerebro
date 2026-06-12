@@ -8,9 +8,9 @@ import (
 
 func TestAnalyzeCompoundRisksGroupsFindingsByActorResourceAndRepository(t *testing.T) {
 	report := AnalyzeCompoundRisks([]*ports.FindingRecord{
-		compoundRiskFinding("finding-1", "github-branch-protection-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "protected_branch.destroy"),
-		compoundRiskFinding("finding-2", "github-secret-scanning-alert-created", "MEDIUM", "alice", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "secret_scanning_alert.create"),
-		compoundRiskFinding("finding-3", "github-repository-collaborator-added", "MEDIUM", "bob", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "repo.add_member"),
+		compoundRiskFinding("finding-1", "github-branch-protection-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_code_repository:writer/app", "protected_branch.destroy"),
+		compoundRiskFinding("finding-2", "github-secret-scanning-alert-created", "MEDIUM", "alice", "writer/app", "urn:cerebro:writer:github_code_repository:writer/app", "secret_scanning_alert.create"),
+		compoundRiskFinding("finding-3", "github-repository-collaborator-added", "MEDIUM", "bob", "writer/app", "urn:cerebro:writer:github_code_repository:writer/app", "repo.add_member"),
 		compoundRiskFinding("finding-4", "github-app-integration-installed", "MEDIUM", "alice", "", "urn:cerebro:writer:github_resource:integration_installation:writer", "integration_installation.create"),
 	}, CompoundRiskOptions{Limit: 10, SampleLimit: 2})
 
@@ -58,7 +58,7 @@ func TestAnalyzeCompoundRisksGroupsFindingsByActorResourceAndRepository(t *testi
 		t.Fatalf("len(Resources) = %d, want 1", got)
 	}
 	resource := report.Resources[0]
-	if got := resource.Key; got != "urn:cerebro:writer:github_repo:writer/app" {
+	if got := resource.Key; got != "urn:cerebro:writer:github_code_repository:writer/app" {
 		t.Fatalf("Resources[0].Key = %q, want repo resource urn", got)
 	}
 	if got := resource.Actions[0].Value; got != "protected_branch.destroy" {
@@ -67,13 +67,13 @@ func TestAnalyzeCompoundRisksGroupsFindingsByActorResourceAndRepository(t *testi
 }
 
 func TestAnalyzeCompoundRisksDeduplicatesFindingsAndAppliesLimit(t *testing.T) {
-	high := compoundRiskFinding("finding-1", "github-secret-scanning-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "repository_secret_scanning.disable")
+	high := compoundRiskFinding("finding-1", "github-secret-scanning-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_code_repository:writer/app", "repository_secret_scanning.disable")
 	report := AnalyzeCompoundRisks([]*ports.FindingRecord{
 		high,
 		high,
-		compoundRiskFinding("finding-2", "github-secret-scanning-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "repository_secret_scanning.disable"),
-		compoundRiskFinding("finding-3", "github-repository-collaborator-added", "MEDIUM", "bob", "writer/lib", "urn:cerebro:writer:github_repo:writer/lib", "repo.add_member"),
-		compoundRiskFinding("finding-4", "github-secret-scanning-alert-created", "LOW", "bob", "writer/lib", "urn:cerebro:writer:github_repo:writer/lib", "secret_scanning_alert.create"),
+		compoundRiskFinding("finding-2", "github-secret-scanning-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_code_repository:writer/app", "repository_secret_scanning.disable"),
+		compoundRiskFinding("finding-3", "github-repository-collaborator-added", "MEDIUM", "bob", "writer/lib", "urn:cerebro:writer:github_code_repository:writer/lib", "repo.add_member"),
+		compoundRiskFinding("finding-4", "github-secret-scanning-alert-created", "LOW", "bob", "writer/lib", "urn:cerebro:writer:github_code_repository:writer/lib", "secret_scanning_alert.create"),
 	}, CompoundRiskOptions{Limit: 1})
 
 	if got := len(report.Actors); got != 1 {

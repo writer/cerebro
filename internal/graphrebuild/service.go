@@ -576,7 +576,6 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 
 func (s *Service) prepareConfig(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]string, error) {
 	config := sourceconfig.WithRuntimeTenant(runtime.GetConfig(), runtime.GetTenantId())
-	config = sourceconfig.WithLegacyTenantlessAssumeRole(config, runtime.GetSourceId(), runtime.GetTenantId())
 	if s == nil || s.preparer == nil {
 		return config, nil
 	}

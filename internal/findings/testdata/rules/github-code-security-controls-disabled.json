@@ -64,7 +64,7 @@
         "action": "dependabot_alerts.disable",
         "dependabot_alerts_enabled": "false",
         "disabled_controls": "dependabot",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:writer:github_code_repository:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,advanced-security,dependabot,secret-scanning,defense-evasion,supply-chain,attack.t1562"
       }

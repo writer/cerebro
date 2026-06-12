@@ -864,7 +864,7 @@ func TestTombstoneFindingsBulk_OlderThanFilter(t *testing.T) {
 
 func TestTombstoneFindingsBulk_AuditRowFieldFidelity(t *testing.T) {
 	fx := newCloseoutFixture(t)
-	primary := "urn:cerebro:writer:github_repo:writer/cerebro"
+	primary := "urn:cerebro:writer:github_code_repository:writer/cerebro"
 	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), func(f *ports.FindingRecord) {
 		f.ResourceURNs = []string{primary}
 	})
@@ -985,7 +985,7 @@ func TestTombstoneFindingsBulk_RejectsSourceOnlySelector(t *testing.T) {
 func TestExpandCloseoutRuleIDs_NarrowsOnSources(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	const (
-		ghRuleOne   = "github-critical-resource-deleted"
+		ghRuleOne   = "github-repository-collaborator-added"
 		oktaRule    = "identity-okta-deprovisioned-active-in-github"
 		ghRuleTwo   = "github-webhook-modified"
 		extraGHRule = "github-secret-scanning-disabled"
@@ -1025,7 +1025,7 @@ func TestExpandCloseoutRuleIDs_NarrowsOnSources(t *testing.T) {
 func TestCloseoutRun_SelectorJSONMatchesExecutedScope(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	const (
-		githubRule = "github-critical-resource-deleted"
+		githubRule = "github-repository-collaborator-added"
 		oktaRule   = "identity-okta-deprovisioned-active-in-github"
 	)
 	fx.seedFindingWithRule("f-gh-match", githubRule, "open", fx.now.Add(-48*time.Hour), func(f *ports.FindingRecord) {

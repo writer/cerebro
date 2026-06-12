@@ -155,10 +155,10 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 		Attributes: map[string]string{"login": "alice"},
 	}
 	repo := &ports.ProjectedEntity{
-		URN:        "urn:cerebro:writer:github_repository:writer/cerebro",
+		URN:        "urn:cerebro:writer:github_code_repositorysitory:writer/cerebro",
 		TenantID:   "writer",
 		SourceID:   "github",
-		EntityType: "github_repository",
+		EntityType: "github_code_repositorysitory",
 		Label:      "writer/cerebro",
 	}
 	issue := &ports.ProjectedEntity{

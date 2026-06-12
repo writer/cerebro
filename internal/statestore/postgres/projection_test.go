@@ -39,7 +39,7 @@ func TestUpsertProjectedLinkRejectsMissingRelation(t *testing.T) {
 		TenantID: "writer",
 		SourceID: "github",
 		FromURN:  "urn:cerebro:writer:github_user:alice",
-		ToURN:    "urn:cerebro:writer:github_repo:writer/cerebro",
+		ToURN:    "urn:cerebro:writer:github_code_repository:writer/cerebro",
 	})
 	if err == nil {
 		t.Fatal("UpsertProjectedLink() error = nil, want non-nil")

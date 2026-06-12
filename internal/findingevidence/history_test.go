@@ -65,12 +65,12 @@ func testEvidence(runID string, observedAt time.Time, fromURN string) *cerebrov1
 					{
 						FromUrn:    fromURN,
 						Relation:   "acted_on",
-						ToUrn:      "urn:cerebro:writer:github_repo:repo-1",
+						ToUrn:      "urn:cerebro:writer:github_code_repository:repo-1",
 						ObservedAt: observedAt.Format(time.RFC3339),
 					},
 				},
 			},
 		},
-		GraphPathUrns: []string{fromURN, "urn:cerebro:writer:github_repo:repo-1"},
+		GraphPathUrns: []string{fromURN, "urn:cerebro:writer:github_code_repository:repo-1"},
 	}
 }
