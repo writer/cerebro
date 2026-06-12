@@ -20,14 +20,17 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
 
     def test_web_image_signature_uses_public_release_workflow_identity(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
+        verify_block = workflow.split("bash .github/scripts/verify-ghcr-image.sh \\", 1)[1].split(
+            "\n\n      - name:",
+            1,
+        )[0]
 
         self.assertIn("bash .github/scripts/install-cosign.sh", workflow)
-        self.assertIn("bash .github/scripts/verify-ghcr-image.sh", workflow)
         self.assertIn(
             r"^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$",
-            workflow,
+            verify_block,
         )
-        self.assertIn('"true"', workflow)
+        self.assertIn('"true"', verify_block)
 
     def test_direct_push_matches_backend_sec_dev_promotion_shape(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
