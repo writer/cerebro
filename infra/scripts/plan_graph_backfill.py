@@ -165,10 +165,14 @@ def _write_tsv(targets: list[BackfillTarget]) -> None:
 
 
 def _write_commands(args: argparse.Namespace, targets: list[BackfillTarget]) -> None:
-    print("set -euo pipefail")
+    print("set -uo pipefail")
+    print("status=0")
     for source_id, runtime_ids in _group_backfillable(targets).items():
-        command = _verify_command(args, source_id, runtime_ids)
-        print(" ".join(shlex.quote(part) for part in command))
+        runtime_groups = [[runtime_id] for runtime_id in runtime_ids] if args.target_concurrency == 1 else [runtime_ids]
+        for runtime_group in runtime_groups:
+            command = _verify_command(args, source_id, runtime_group)
+            print(" ".join(shlex.quote(part) for part in command) + " || status=$?")
+    print('exit "${status}"')
 
 
 def _load_runtime_ids(args: argparse.Namespace) -> list[str]:
