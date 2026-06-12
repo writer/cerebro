@@ -42,7 +42,7 @@ def create_nats_service(
             dns_records=[aws.servicediscovery.ServiceDnsConfigDnsRecordArgs(type="A", ttl=10)],
             routing_policy="MULTIVALUE",
         ),
-        health_check_custom_config=aws.servicediscovery.ServiceHealthCheckCustomConfigArgs(),
+        health_check_custom_config=aws.servicediscovery.ServiceHealthCheckCustomConfigArgs(failure_threshold=1),
     )
 
     security_group = aws.ec2.SecurityGroup(
