@@ -32,6 +32,7 @@ type Store struct {
 	askTrajectoryReady        bool
 	jobTablesReady            bool
 	runtimeBlocklistReady     bool
+	grcInventoryScopeReady    bool
 }
 
 // Open opens a Postgres-backed current-state store.

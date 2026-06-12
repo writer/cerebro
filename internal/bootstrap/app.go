@@ -3446,6 +3446,14 @@ func runtimeBlocklistStore(store ports.StateStore) ports.RuntimeBlocklistStore {
 	return blocklist
 }
 
+func grcInventoryScopeStore(store ports.StateStore) ports.GRCInventoryScopeStore {
+	scopeStore, ok := store.(ports.GRCInventoryScopeStore)
+	if !ok || isNilInterface(scopeStore) {
+		return nil
+	}
+	return scopeStore
+}
+
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {
 	replayer, ok := appendLog.(ports.EventReplayer)
 	if !ok || isNilInterface(replayer) {

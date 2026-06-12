@@ -43,12 +43,18 @@ type InventoryCategory struct {
 }
 
 type InventoryAsset struct {
-	URN        string            `json:"urn"`
-	EntityType string            `json:"entity_type"`
-	Label      string            `json:"label"`
-	SourceID   string            `json:"source_id,omitempty"`
-	RuntimeID  string            `json:"runtime_id,omitempty"`
-	Attributes map[string]string `json:"attributes,omitempty"`
+	URN            string            `json:"urn"`
+	EntityType     string            `json:"entity_type"`
+	Label          string            `json:"label"`
+	SourceID       string            `json:"source_id,omitempty"`
+	RuntimeID      string            `json:"runtime_id,omitempty"`
+	RiskScore      int               `json:"risk_score,omitempty"`
+	RiskLevel      string            `json:"risk_level,omitempty"`
+	RiskReasons    []string          `json:"risk_reasons,omitempty"`
+	ScopeState     string            `json:"scope_state,omitempty"`
+	ScopeReason    string            `json:"scope_reason,omitempty"`
+	ScopeUpdatedAt string            `json:"scope_updated_at,omitempty"`
+	Attributes     map[string]string `json:"attributes,omitempty"`
 }
 
 type InventoryAssetDetail struct {
@@ -208,13 +214,96 @@ func normalizeInventoryLimit(limit uint32) int {
 }
 
 func inventoryAssetFromRow(row ports.CypherRow) InventoryAsset {
+	attrs := parseInventoryAttributes(rowString(row, "attributes_json"))
+	score, reasons := inventoryRisk(attrs)
 	return InventoryAsset{
-		URN:        rowString(row, "urn"),
-		EntityType: rowString(row, "entity_type"),
-		Label:      firstInventoryString(rowString(row, "label"), rowString(row, "urn")),
-		SourceID:   rowString(row, "source_id"),
-		RuntimeID:  rowString(row, "runtime_id"),
-		Attributes: parseInventoryAttributes(rowString(row, "attributes_json")),
+		URN:         rowString(row, "urn"),
+		EntityType:  rowString(row, "entity_type"),
+		Label:       firstInventoryString(rowString(row, "label"), rowString(row, "urn")),
+		SourceID:    rowString(row, "source_id"),
+		RuntimeID:   rowString(row, "runtime_id"),
+		RiskScore:   score,
+		RiskLevel:   inventoryRiskLevel(score),
+		RiskReasons: reasons,
+		ScopeState:  "in_scope",
+		Attributes:  attrs,
+	}
+}
+
+func inventoryRisk(attrs map[string]string) (int, []string) {
+	if attrs == nil {
+		return 0, nil
+	}
+	if score := inventoryIntAttribute(attrs, "risk_score", "risk"); score > 0 {
+		return clampInventoryRisk(score), []string{"source risk score"}
+	}
+	score := 0
+	reasons := []string{}
+	if inventoryBoolAttribute(attrs, "public", "publicly_accessible", "internet_exposed", "external") {
+		score += 35
+		reasons = append(reasons, "public exposure")
+	}
+	if inventoryBoolAttribute(attrs, "privileged", "admin", "critical", "crown_jewel") {
+		score += 25
+		reasons = append(reasons, "privileged or critical")
+	}
+	if strings.EqualFold(attrs["environment"], "prod") || strings.EqualFold(attrs["environment"], "production") {
+		score += 15
+		reasons = append(reasons, "production")
+	}
+	if firstInventoryString(attrs["owner"], attrs["owner_email"], attrs["owner_login"], attrs["assignee"]) == "" {
+		score += 10
+		reasons = append(reasons, "missing owner")
+	}
+	return clampInventoryRisk(score), reasons
+}
+
+func inventoryIntAttribute(attrs map[string]string, keys ...string) int {
+	for _, key := range keys {
+		value := strings.TrimSpace(attrs[key])
+		if value == "" {
+			continue
+		}
+		var parsed int
+		if _, err := fmt.Sscanf(value, "%d", &parsed); err == nil {
+			return parsed
+		}
+	}
+	return 0
+}
+
+func inventoryBoolAttribute(attrs map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		switch strings.ToLower(strings.TrimSpace(attrs[key])) {
+		case "1", "t", "true", "yes", "y":
+			return true
+		}
+	}
+	return false
+}
+
+func clampInventoryRisk(score int) int {
+	if score < 0 {
+		return 0
+	}
+	if score > 100 {
+		return 100
+	}
+	return score
+}
+
+func inventoryRiskLevel(score int) string {
+	switch {
+	case score >= 85:
+		return "critical"
+	case score >= 70:
+		return "high"
+	case score >= 40:
+		return "medium"
+	case score > 0:
+		return "low"
+	default:
+		return "unknown"
 	}
 }
 

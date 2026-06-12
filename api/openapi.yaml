@@ -943,9 +943,14 @@ paths:
           in: query
           schema:
             type: string
+        - name: scope_state
+          in: query
+          schema:
+            type: string
+            enum: [in_scope, out_of_scope, all]
       responses:
         '200':
-          description: Inventory asset list.
+          description: Inventory asset list with risk, ownership, and GRC purview state.
   /grc/inventory/assets/detail:
     get:
       summary: Inventory asset detail
@@ -963,7 +968,7 @@ paths:
         - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
-          description: Inventory asset overview, related findings, evidence, controls, tests, and vulnerabilities.
+          description: Inventory asset overview, related findings, evidence, controls, tests, vulnerabilities, timeline, and recommended actions.
   /grc/inventory/resource-scope:
     get:
       summary: Inventory resource scope
@@ -984,6 +989,36 @@ paths:
       responses:
         '200':
           description: Source runtime scope and currently projected resources.
+    post:
+      summary: Update inventory resource scope
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asset_urn, scope_state]
+              properties:
+                tenant_id:
+                  type: string
+                asset_urn:
+                  type: string
+                source_id:
+                  type: string
+                scope_state:
+                  type: string
+                  enum: [in_scope, out_of_scope]
+                reason:
+                  type: string
+                attributes:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Updated GRC purview state for one inventory asset.
   /grc/entities/{entityID}/impact:
     get:
       summary: GRC entity impact map
