@@ -89,15 +89,15 @@ type awsIdentityStoreGroupMembership struct {
 	Membership      identitystoretypes.GroupMembership
 }
 
-func listOrganizationsAccounts(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsOrganizationsAccount, string, error) {
-	records, err := listAllOrganizationsAccounts(ctx, clients)
+func listOrganizationsAccounts(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsOrganizationsAccount, string, error) {
+	records, err := listAllOrganizationsAccounts(ctx, clients, settings)
 	if err != nil {
 		return nil, "", err
 	}
 	return governancePage(records, cursor, limit)
 }
 
-func listAllOrganizationsAccounts(ctx context.Context, clients awsClients) ([]awsOrganizationsAccount, error) {
+func listAllOrganizationsAccounts(ctx context.Context, clients awsClients, settings settings) ([]awsOrganizationsAccount, error) {
 	var records []awsOrganizationsAccount
 	var next *string
 	for {
@@ -105,6 +105,9 @@ func listAllOrganizationsAccounts(ctx context.Context, clients awsClients) ([]aw
 			MaxResults: awssdk.Int32(20),
 			NextToken:  next,
 		})
+		if err != nil && optionalAWSError(err, "AccessDeniedException") && settings.accountID != "" {
+			return []awsOrganizationsAccount{{ID: settings.accountID}}, nil
+		}
 		if err != nil {
 			return nil, err
 		}

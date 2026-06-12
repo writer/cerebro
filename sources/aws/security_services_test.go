@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
@@ -176,6 +177,20 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 	}
 }
 
+func TestReadAWSSecurityHubUnavailableReturnsEmpty(t *testing.T) {
+	source := newSecurityTestSource(t, &fakeAWSSecurityServices{
+		securityHubError: errors.New("InvalidAccessException: Security Hub is not enabled"),
+	})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySecurityHubFinding}), nil)
+	if err != nil {
+		t.Fatalf("Read(securityhub_finding) error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))
+	}
+}
+
 func newSecurityTestSource(t *testing.T, fake *fakeAWSSecurityServices) *Source {
 	t.Helper()
 	spec, err := loadSpec()
@@ -210,6 +225,7 @@ type fakeAWSSecurityServices struct {
 	guardDutyFindingIDs  map[string][]string
 	guardDutyFindings    map[string]guarddutytypes.Finding
 	securityHubFindings  []securityhubtypes.AwsSecurityFinding
+	securityHubError     error
 	inspector2Findings   []inspector2types.Finding
 	macieFindingIDs      []string
 	macieFindings        []macie2types.Finding
@@ -259,6 +275,9 @@ type fakeSecurityHubSecurity struct {
 }
 
 func (f fakeSecurityHubSecurity) GetFindings(context.Context, *securityhub.GetFindingsInput, ...func(*securityhub.Options)) (*securityhub.GetFindingsOutput, error) {
+	if f.fake.securityHubError != nil {
+		return nil, f.fake.securityHubError
+	}
 	return &securityhub.GetFindingsOutput{Findings: f.fake.securityHubFindings}, nil
 }
 
