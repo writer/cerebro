@@ -333,7 +333,7 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 		return "", err
 	}
 	switch strings.TrimSpace(request.Kind) {
-	case platformjobs.KindSourceRuntimeSync, platformjobs.KindGraphIngestRuntime, platformjobs.KindFindingRulesEvaluate, platformjobs.KindFindingsEvaluate:
+	case platformjobs.KindSourceRuntimeSync, platformjobs.KindSourceRuntimeOrchestrate, platformjobs.KindGraphIngestRuntime, platformjobs.KindFindingRulesEvaluate, platformjobs.KindFindingsEvaluate:
 		runtimeID := stringPayload(request.Payload, "runtime_id", request.SubjectID)
 		runtimeTenantID, err := sourceRuntimeTenantID(ctx, sourceRuntimeStore(store), runtimeID, false)
 		if err != nil {
