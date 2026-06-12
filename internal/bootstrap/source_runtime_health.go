@@ -24,6 +24,75 @@ type sourceRuntimeHealthResponse struct {
 	SourceSummaries []sourceRuntimeHealthSummary `json:"source_summaries"`
 }
 
+type runtimeFreshnessResponse struct {
+	GeneratedAt string                    `json:"generated_at"`
+	Status      string                    `json:"status"`
+	Runtimes    []runtimeFreshnessRecord  `json:"runtimes"`
+	Summaries   []runtimeFreshnessSummary `json:"summaries"`
+}
+
+type runtimeFreshnessSummary struct {
+	SourceID              string `json:"source_id"`
+	Total                 int    `json:"total"`
+	Healthy               int    `json:"healthy"`
+	NeedsAttention        int    `json:"needs_attention"`
+	SourceFailed          int    `json:"source_failed"`
+	SourceStale           int    `json:"source_stale"`
+	GraphMissing          int    `json:"graph_missing"`
+	GraphFailed           int    `json:"graph_failed"`
+	GraphBehind           int    `json:"graph_behind"`
+	BackfillEligible      int    `json:"backfill_eligible"`
+	QuarantinedOrDisabled int    `json:"quarantined_or_disabled"`
+}
+
+type runtimeFreshnessRecord struct {
+	runtimeFreshnessIdentity
+	runtimeFreshnessStates
+	runtimeFreshnessObservations
+	runtimeFreshnessActions
+}
+
+type runtimeFreshnessIdentity struct {
+	RuntimeID string `json:"runtime_id"`
+	SourceID  string `json:"source_id"`
+	TenantID  string `json:"tenant_id,omitempty"`
+	Family    string `json:"family,omitempty"`
+}
+
+type runtimeFreshnessStates struct {
+	LifecycleState            string `json:"lifecycle_state"`
+	ScheduleState             string `json:"schedule_state"`
+	FreshnessState            string `json:"freshness_state"`
+	SourceSyncState           string `json:"source_sync_state"`
+	GraphIngestState          string `json:"graph_ingest_state"`
+	FindingEvaluationState    string `json:"finding_evaluation_state"`
+	FailureClass              string `json:"failure_class,omitempty"`
+	FailureReason             string `json:"failure_reason,omitempty"`
+	BackfillEligible          bool   `json:"backfill_eligible"`
+	BackfillEligibilityReason string `json:"backfill_eligibility_reason,omitempty"`
+}
+
+type runtimeFreshnessObservations struct {
+	LastSyncedAt            string                                `json:"last_synced_at,omitempty"`
+	SyncLagSeconds          *int64                                `json:"sync_lag_seconds,omitempty"`
+	CheckpointWatermark     string                                `json:"checkpoint_watermark,omitempty"`
+	WatermarkLagSeconds     *int64                                `json:"watermark_lag_seconds,omitempty"`
+	LatestGraphRun          *sourceRuntimeHealthGraphRun          `json:"latest_graph_run,omitempty"`
+	GraphLagSeconds         *int64                                `json:"graph_lag_seconds,omitempty"`
+	LatestFindingEvaluation *sourceRuntimeHealthFindingEvaluation `json:"latest_finding_evaluation,omitempty"`
+	ExpectedCadenceSeconds  *int64                                `json:"expected_cadence_seconds,omitempty"`
+	StaleAfterSeconds       *int64                                `json:"stale_after_seconds,omitempty"`
+	GeneratedAt             string                                `json:"generated_at"`
+}
+
+type runtimeFreshnessActions struct {
+	NextAction                string `json:"next_action"`
+	RecommendedWorkflow       string `json:"recommended_workflow,omitempty"`
+	CursorPending             bool   `json:"cursor_pending"`
+	CheckpointCursorPresent   bool   `json:"checkpoint_cursor_present"`
+	ScheduleContextConfigured bool   `json:"schedule_context_configured"`
+}
+
 type sourceRuntimeHealthSummary struct {
 	SourceID                   string `json:"source_id"`
 	Total                      int    `json:"total"`
@@ -132,16 +201,34 @@ const (
 )
 
 func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Request) {
-	limit, err := uint32QueryParam(r, "limit")
+	response, err := a.listSourceRuntimeHealth(r)
 	if err != nil {
 		writeSourceRuntimeError(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleListRuntimeFreshness(w http.ResponseWriter, r *http.Request) {
+	health, err := a.listSourceRuntimeHealth(r)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, runtimeFreshnessFromHealth(health))
+}
+
+func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthResponse, error) {
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		return sourceRuntimeHealthResponse{}, err
+	}
 	filter := ports.SourceRuntimeFilter{
-		RuntimeID: strings.TrimSpace(r.URL.Query().Get("runtime_id")),
-		TenantID:  strings.TrimSpace(r.URL.Query().Get("tenant_id")),
-		SourceID:  strings.TrimSpace(r.URL.Query().Get("source_id")),
-		Limit:     limit,
+		RuntimeID:  strings.TrimSpace(r.URL.Query().Get("runtime_id")),
+		RuntimeIDs: csvQueryValues(r.URL.Query().Get("runtime_ids")),
+		TenantID:   strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		SourceID:   strings.TrimSpace(r.URL.Query().Get("source_id")),
+		Limit:      limit,
 	}
 	if filter.TenantID == "" {
 		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {
@@ -154,49 +241,40 @@ func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Reque
 	if filter.TenantID == "" && filter.RuntimeID != "" && requiresTenantFilter(r.Context()) {
 		store := sourceRuntimeStore(a.deps.StateStore)
 		if store == nil {
-			writeSourceRuntimeError(w, sourceruntime.ErrRuntimeUnavailable)
-			return
+			return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
 		}
 		runtime, err := store.GetSourceRuntime(r.Context(), filter.RuntimeID)
 		if errors.Is(err, ports.ErrSourceRuntimeNotFound) {
-			writeJSON(w, http.StatusOK, sourceRuntimeHealthResponse{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)})
-			return
+			return sourceRuntimeHealthResponse{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)}, nil
 		}
 		if err != nil {
-			writeSourceRuntimeError(w, err)
-			return
+			return sourceRuntimeHealthResponse{}, err
 		}
 		if !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
-			writeJSON(w, http.StatusOK, sourceRuntimeHealthResponse{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)})
-			return
+			return sourceRuntimeHealthResponse{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)}, nil
 		}
 		filter.TenantID = strings.TrimSpace(runtime.GetTenantId())
 	}
-	if filter.TenantID == "" && filter.RuntimeID == "" && requiresTenantFilter(r.Context()) {
-		writeSourceRuntimeError(w, errTenantForbidden)
-		return
+	if filter.TenantID == "" && filter.RuntimeID == "" && len(filter.RuntimeIDs) == 0 && requiresTenantFilter(r.Context()) {
+		return sourceRuntimeHealthResponse{}, errTenantForbidden
 	}
 	if err := authorizeTenantID(r.Context(), filter.TenantID); err != nil {
-		writeSourceRuntimeError(w, err)
-		return
+		return sourceRuntimeHealthResponse{}, err
 	}
 	store := sourceRuntimeStore(a.deps.StateStore)
 	if store == nil {
-		writeSourceRuntimeError(w, sourceruntime.ErrRuntimeUnavailable)
-		return
+		return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
 	}
 	lister, ok := store.(ports.SourceRuntimeListStore)
 	if !ok {
-		writeSourceRuntimeError(w, sourceruntime.ErrRuntimeUnavailable)
-		return
+		return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
 	}
 	if filter.Limit == 0 {
 		filter.Limit = 100
 	}
 	runtimes, err := lister.ListSourceRuntimes(r.Context(), filter)
 	if err != nil {
-		writeSourceRuntimeError(w, err)
-		return
+		return sourceRuntimeHealthResponse{}, err
 	}
 	generatedAt := time.Now().UTC()
 	records := make([]sourceRuntimeHealthRecord, 0, len(runtimes))
@@ -209,16 +287,219 @@ func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Reque
 		}
 		record, err := a.sourceRuntimeHealthRecord(r.Context(), runtime, generatedAt)
 		if err != nil {
-			writeSourceRuntimeError(w, err)
-			return
+			return sourceRuntimeHealthResponse{}, err
 		}
 		records = append(records, record)
 	}
-	writeJSON(w, http.StatusOK, sourceRuntimeHealthResponse{
+	return sourceRuntimeHealthResponse{
 		GeneratedAt:     generatedAt.Format(time.RFC3339Nano),
 		Runtimes:        records,
 		SourceSummaries: sourceRuntimeHealthSummaries(records),
+	}, nil
+}
+
+func runtimeFreshnessFromHealth(health sourceRuntimeHealthResponse) runtimeFreshnessResponse {
+	records := make([]runtimeFreshnessRecord, 0, len(health.Runtimes))
+	for _, record := range health.Runtimes {
+		records = append(records, runtimeFreshnessRecordFromHealth(record))
+	}
+	status := "healthy"
+	for _, record := range records {
+		if record.FreshnessState != "healthy" {
+			status = "degraded"
+			break
+		}
+	}
+	return runtimeFreshnessResponse{
+		GeneratedAt: health.GeneratedAt,
+		Status:      status,
+		Runtimes:    records,
+		Summaries:   runtimeFreshnessSummaries(records),
+	}
+}
+
+func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeFreshnessRecord {
+	lifecycleState := "active"
+	if strings.ToLower(strings.TrimSpace(record.EnabledState)) == "disabled" {
+		lifecycleState = "disabled"
+	}
+	sourceSyncState := runtimeFreshnessSourceSyncState(record)
+	graphIngestState := sourceRuntimeGraphState(record)
+	findingEvaluationState := runtimeFreshnessFindingEvaluationState(record)
+	scheduleState := "unknown"
+	if record.ScheduleContextConfigured {
+		scheduleState = "configured"
+	}
+	freshnessState, failureClass, failureReason, nextAction := runtimeFreshnessState(record, lifecycleState, sourceSyncState, graphIngestState)
+	backfillEligible, backfillReason := runtimeBackfillEligibility(lifecycleState, sourceSyncState, graphIngestState)
+	workflow := ""
+	if backfillEligible {
+		workflow = "source-runtime-backfill"
+	}
+	return runtimeFreshnessRecord{
+		runtimeFreshnessIdentity: runtimeFreshnessIdentity{
+			RuntimeID: record.RuntimeID,
+			SourceID:  record.SourceID,
+			TenantID:  record.TenantID,
+			Family:    record.Family,
+		},
+		runtimeFreshnessStates: runtimeFreshnessStates{
+			LifecycleState:            lifecycleState,
+			ScheduleState:             scheduleState,
+			FreshnessState:            freshnessState,
+			SourceSyncState:           sourceSyncState,
+			GraphIngestState:          graphIngestState,
+			FindingEvaluationState:    findingEvaluationState,
+			FailureClass:              failureClass,
+			FailureReason:             failureReason,
+			BackfillEligible:          backfillEligible,
+			BackfillEligibilityReason: backfillReason,
+		},
+		runtimeFreshnessObservations: runtimeFreshnessObservations{
+			LastSyncedAt:            record.LastSyncedAt,
+			SyncLagSeconds:          record.SyncLagSeconds,
+			CheckpointWatermark:     record.CheckpointWatermark,
+			WatermarkLagSeconds:     record.WatermarkLagSeconds,
+			LatestGraphRun:          record.LatestGraphRun,
+			GraphLagSeconds:         record.GraphLagSeconds,
+			LatestFindingEvaluation: record.LatestFindingEvaluation,
+			ExpectedCadenceSeconds:  record.ExpectedCadenceSeconds,
+			StaleAfterSeconds:       record.StaleAfterSeconds,
+			GeneratedAt:             record.GeneratedAt,
+		},
+		runtimeFreshnessActions: runtimeFreshnessActions{
+			NextAction:                nextAction,
+			RecommendedWorkflow:       workflow,
+			CursorPending:             record.CursorPending,
+			CheckpointCursorPresent:   record.CheckpointCursorPresent,
+			ScheduleContextConfigured: record.ScheduleContextConfigured,
+		},
+	}
+}
+
+func runtimeFreshnessSourceSyncState(record sourceRuntimeHealthRecord) string {
+	if strings.TrimSpace(record.LastFailureCategory) != "" {
+		return "failed"
+	}
+	switch strings.ToLower(strings.TrimSpace(record.Status)) {
+	case "failing":
+		return "failed"
+	case "stale":
+		return "stale"
+	case "healthy":
+		return "current"
+	default:
+		return "unknown"
+	}
+}
+
+func runtimeFreshnessFindingEvaluationState(record sourceRuntimeHealthRecord) string {
+	if record.LatestFindingEvaluation == nil {
+		return "not_observed"
+	}
+	status := strings.ToLower(strings.TrimSpace(record.LatestFindingEvaluation.Status))
+	if strings.Contains(status, "fail") || strings.Contains(status, "error") || strings.Contains(status, "cancel") {
+		return "failed"
+	}
+	if strings.Contains(status, "running") || strings.Contains(status, "pending") {
+		return "running"
+	}
+	return "current"
+}
+
+func runtimeFreshnessState(record sourceRuntimeHealthRecord, lifecycleState string, sourceSyncState string, graphIngestState string) (string, string, string, string) {
+	if lifecycleState != "active" {
+		return "disabled", "disabled", "runtime is disabled", "review_runtime_enablement"
+	}
+	if sourceSyncState == "failed" {
+		failureClass := strings.TrimSpace(record.LastFailureCategory)
+		if failureClass == "" {
+			failureClass = "source_sync_failed"
+		}
+		return "source_failed", failureClass, "source sync is failing", "fix_source_sync"
+	}
+	switch graphIngestState {
+	case "failed":
+		return "graph_failed", "graph_ingest_failed", "latest graph ingest failed", "inspect_graph_ingest"
+	case "not_observed":
+		return "graph_missing", "graph_ingest_missing", "no graph ingest run has been observed", "plan_backfill"
+	case "behind":
+		return "graph_behind", "graph_ingest_behind", "graph ingest is older than the configured freshness window", "plan_backfill"
+	}
+	if sourceSyncState == "stale" {
+		return "source_stale", "source_sync_stale", "source runtime is older than the configured freshness window", "run_source_sync"
+	}
+	if sourceSyncState == "current" && (graphIngestState == "current" || graphIngestState == "running") {
+		return "healthy", "", "", "monitor"
+	}
+	return "unknown", "insufficient_signal", "source or graph freshness signal is unavailable", "inspect_runtime"
+}
+
+func runtimeBackfillEligibility(lifecycleState string, sourceSyncState string, graphIngestState string) (bool, string) {
+	if lifecycleState != "active" {
+		return false, "runtime is disabled"
+	}
+	if sourceSyncState == "failed" {
+		return false, "source sync must succeed before graph backfill"
+	}
+	switch graphIngestState {
+	case "failed", "not_observed", "behind":
+		return true, "graph ingest is missing, failed, or behind"
+	default:
+		return false, "graph ingest backfill is not indicated"
+	}
+}
+
+func runtimeFreshnessSummaries(records []runtimeFreshnessRecord) []runtimeFreshnessSummary {
+	bySource := map[string]*runtimeFreshnessSummary{}
+	for _, record := range records {
+		sourceID := record.SourceID
+		if sourceID == "" {
+			sourceID = "unknown"
+		}
+		summary := bySource[sourceID]
+		if summary == nil {
+			summary = &runtimeFreshnessSummary{SourceID: sourceID}
+			bySource[sourceID] = summary
+		}
+		summary.Total++
+		if record.FreshnessState == "healthy" {
+			summary.Healthy++
+		} else {
+			summary.NeedsAttention++
+		}
+		switch record.FreshnessState {
+		case "source_failed":
+			summary.SourceFailed++
+		case "source_stale":
+			summary.SourceStale++
+		case "graph_missing":
+			summary.GraphMissing++
+		case "graph_failed":
+			summary.GraphFailed++
+		case "graph_behind":
+			summary.GraphBehind++
+		case "disabled":
+			summary.QuarantinedOrDisabled++
+		}
+		if record.BackfillEligible {
+			summary.BackfillEligible++
+		}
+	}
+	summaries := make([]runtimeFreshnessSummary, 0, len(bySource))
+	for _, summary := range bySource {
+		summaries = append(summaries, *summary)
+	}
+	sort.Slice(summaries, func(i, j int) bool {
+		if summaries[i].NeedsAttention != summaries[j].NeedsAttention {
+			return summaries[i].NeedsAttention > summaries[j].NeedsAttention
+		}
+		if summaries[i].Total != summaries[j].Total {
+			return summaries[i].Total > summaries[j].Total
+		}
+		return summaries[i].SourceID < summaries[j].SourceID
 	})
+	return summaries
 }
 
 func sourceRuntimeHealthSummaries(records []sourceRuntimeHealthRecord) []sourceRuntimeHealthSummary {
