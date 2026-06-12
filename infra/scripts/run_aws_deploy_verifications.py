@@ -340,7 +340,6 @@ def _graph_health_degradation_category(status: int, diagnostics: str) -> str | N
         "missing required relation",
         "graph node count must be positive",
         "graph relation count must be positive",
-        "missing graph ingest run history",
     )
     if any(token in text for token in blocking_tokens):
         return None
@@ -355,6 +354,7 @@ def _graph_health_degradation_category(status: int, diagnostics: str) -> str | N
     categories = (
         ("latest graph ingest run is stale-running", "stale_ingest_run"),
         ("latest graph ingest run failed", "stale_or_transient_ingest_run"),
+        ("missing graph ingest run history", "missing_ingest_run_history"),
         ("latest graph ingest projected no graph records", "zero_projection_ingest_run"),
         ("did not emit valid json", "graph_command_no_json"),
         ("getlogevents operation: the specified log stream does not exist", "graph_command_no_logs"),

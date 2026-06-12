@@ -356,6 +356,32 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertIn("graph_health_degraded=true", outputs)
         self.assertIn("graph_health_degradation_category=graph_command_no_logs", outputs)
 
+    def test_missing_ingest_run_history_degrades_when_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "outputs.txt"
+            diagnostics = "ERROR: missing graph ingest run history for 2 declared runtime(s): runtime-a, runtime-b"
+            with patch(
+                "scripts.run_aws_deploy_verifications._stream_graph_health",
+                return_value=run_aws_deploy_verifications.GraphHealthResult(23, diagnostics),
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--github-output",
+                        str(output_path),
+                    ]
+                )
+                outputs = output_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, 0)
+        self.assertIn("graph_health_degraded=true", outputs)
+        self.assertIn("graph_health_degradation_category=missing_ingest_run_history", outputs)
+
     def test_resource_initialization_secret_failure_uses_specific_category(self) -> None:
         diagnostics = (
             "stoppedReason=ResourceInitializationError: unable to pull secrets or registry auth: "
