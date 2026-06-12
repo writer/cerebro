@@ -175,6 +175,21 @@ def _container_override_command(value: Any) -> list[str]:
     return []
 
 
+def _container_override_bootstrap_payload(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    overrides = value.get("containerOverrides") or []
+    if not isinstance(overrides, list):
+        return ""
+    for override in overrides:
+        if not isinstance(override, dict) or override.get("name") != BOOTSTRAP_CONTAINER_NAME:
+            continue
+        for item in override.get("environment") or []:
+            if item.get("name") == BOOTSTRAP_ENV_NAME:
+                return str(item.get("value") or "")
+    return ""
+
+
 def _target_command(target: RuntimeTarget) -> list[str]:
     raw_input = target.target.get("Input")
     if not raw_input:
@@ -183,6 +198,16 @@ def _target_command(target: RuntimeTarget) -> list[str]:
         return _container_override_command(json.loads(str(raw_input)))
     except json.JSONDecodeError:
         return []
+
+
+def _target_bootstrap_payload(target: RuntimeTarget) -> str:
+    raw_input = target.target.get("Input")
+    if not raw_input:
+        return ""
+    try:
+        return _container_override_bootstrap_payload(json.loads(str(raw_input)))
+    except json.JSONDecodeError:
+        return ""
 
 
 def _task_command(task: dict[str, Any]) -> list[str]:
@@ -444,10 +469,16 @@ def _run_task(
     if effective_command:
         container_overrides.append({"name": "cerebro", "command": effective_command})
     if bootstrap_runtime_ids:
-        scoped_payload = _scoped_bootstrap_payload_from_task_definition(
-            task_definition,
-            set(bootstrap_runtime_ids),
-            region,
+        requested_bootstrap_runtime_ids = set(bootstrap_runtime_ids)
+        target_payload = _target_bootstrap_payload(target)
+        scoped_payload = (
+            _scoped_bootstrap_payload(target_payload, requested_bootstrap_runtime_ids)
+            if target_payload
+            else _scoped_bootstrap_payload_from_task_definition(
+                task_definition,
+                requested_bootstrap_runtime_ids,
+                region,
+            )
         )
         container_overrides.append(
             {
@@ -864,6 +895,14 @@ def _bootstrap_payload_diagnostics(
     region: str | None = None,
 ) -> tuple[set[str], str]:
     payload = _bootstrap_payload_from_task_definition(task_definition, region)
+    return _bootstrap_payload_diagnostics_from_payload(runtime_id, payload, requested_runtime_ids)
+
+
+def _bootstrap_payload_diagnostics_from_payload(
+    runtime_id: str,
+    payload: str,
+    requested_runtime_ids: set[str],
+) -> tuple[set[str], str]:
     if not payload:
         return set(), (
             "bootstrap diagnostics: task definition is missing "
@@ -941,11 +980,16 @@ def _verify_bootstrap_payload_targets(targets: list[RuntimeTarget], region: str)
     for target in targets:
         task_definition = _latest_active_task_definition(target.target["EcsParameters"]["TaskDefinitionArn"], region)
         response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
-        _payload_runtime_ids, diagnostics = _bootstrap_payload_diagnostics(
-            target.runtime_id,
-            response.get("taskDefinition") or {},
-            {target.runtime_id},
-            region,
+        target_payload = _target_bootstrap_payload(target)
+        _payload_runtime_ids, diagnostics = (
+            _bootstrap_payload_diagnostics_from_payload(target.runtime_id, target_payload, {target.runtime_id})
+            if target_payload
+            else _bootstrap_payload_diagnostics(
+                target.runtime_id,
+                response.get("taskDefinition") or {},
+                {target.runtime_id},
+                region,
+            )
         )
         if f"missing_runtime_ids={target.runtime_id}" in diagnostics or "payload_status=missing" in diagnostics:
             raise RuntimeVerificationFailedError(

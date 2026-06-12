@@ -332,6 +332,17 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
                 ]
             }
         )
+        target.target["Input"] = json.dumps(
+            {
+                "containerOverrides": [
+                    {"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-panopticon-alerts"]},
+                    {
+                        "name": "source-runtime-bootstrap",
+                        "environment": [{"name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", "value": full_payload}],
+                    },
+                ]
+            }
+        )
 
         def fake_aws(args: list[str], _region: str) -> dict[str, object]:
             if args[:2] == ["ecs", "describe-task-definition"]:
@@ -339,12 +350,7 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
                     "taskDefinition": {
                         "status": "ACTIVE",
                         "taskDefinitionArn": target.target["EcsParameters"]["TaskDefinitionArn"],
-                        "containerDefinitions": [
-                            {
-                                "name": "source-runtime-bootstrap",
-                                "environment": [{"name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", "value": full_payload}],
-                            }
-                        ],
+                        "containerDefinitions": [{"name": "source-runtime-bootstrap"}],
                     }
                 }
             if args[:2] == ["ecs", "run-task"]:
@@ -1563,6 +1569,35 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws),
             patch("scripts.verify_source_runtime_ecs._read_s3_object", return_value=f"CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON={payload}\n"),
         ):
+            _verify_bootstrap_payload_targets([target], "us-east-1")
+
+    def test_verify_bootstrap_payload_targets_reads_target_input_payload(self) -> None:
+        payload = '{"runtimes":[{"id":"writer-panopticon-alerts","source_id":"panopticon"}]}'
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+            target={
+                "Input": json.dumps(
+                    {
+                        "containerOverrides": [
+                            {
+                                "name": "source-runtime-bootstrap",
+                                "environment": [{"name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", "value": payload}],
+                            }
+                        ]
+                    }
+                ),
+                "EcsParameters": {"TaskDefinitionArn": "task-def"},
+            },
+        )
+
+        def fake_aws(args, region):
+            if args[:2] == ["ecs", "list-task-definitions"]:
+                return {"taskDefinitionArns": ["task-def:2"]}
+            return {"taskDefinition": {"taskDefinitionArn": "task-def:2", "containerDefinitions": []}}
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
             _verify_bootstrap_payload_targets([target], "us-east-1")
 
     def test_run_validates_bootstrap_payload_before_secret_preflight_and_run_task(self) -> None:
