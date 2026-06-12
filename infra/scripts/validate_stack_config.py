@@ -1488,11 +1488,13 @@ def validate_stack(path: Path) -> list[Finding]:
         if not isinstance(threshold, int) or threshold < 0:
             findings.append(_finding("error", stack, f"cerebro:{key}", "must be a non-negative integer"))
 
-    buffer_state = str(config.get("orchestratorSqsBufferPipeState") or "STOPPED").strip().upper()
+    buffer_state = config.get("orchestratorSqsBufferPipeState") or "STOPPED"
     if buffer_state not in {"RUNNING", "STOPPED"}:
         findings.append(_finding("error", stack, "cerebro:orchestratorSqsBufferPipeState", "must be RUNNING or STOPPED"))
     if config.get("orchestratorSqsBufferEnabled") is True and config.get("orchestratorStepFunctionsEnabled") is not True:
         findings.append(_finding("error", stack, "cerebro:orchestratorSqsBufferEnabled", "requires orchestratorStepFunctionsEnabled"))
+    if config.get("orchestratorSqsBufferEnabled") is True and config.get("orchestratorEnabled") is not True:
+        findings.append(_finding("error", stack, "cerebro:orchestratorSqsBufferEnabled", "requires orchestratorEnabled"))
     if config.get("syntheticsCanaryStart") is True and config.get("syntheticsCanaryEnabled") is not True:
         findings.append(_finding("error", stack, "cerebro:syntheticsCanaryStart", "requires syntheticsCanaryEnabled"))
     cloudtrail_log_group = str(config.get("cloudTrailAuditLogGroupName") or "").strip()

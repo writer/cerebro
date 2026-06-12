@@ -288,7 +288,7 @@ aws_service_quota_alarm_threshold_percent = _config_int("awsServiceQuotaAlarmThr
 runtime_controls_appconfig_enabled = _config_bool("runtimeControlsAppConfigEnabled", True)
 orchestrator_step_functions_enabled = _config_bool("orchestratorStepFunctionsEnabled", False)
 orchestrator_sqs_buffer_enabled = _config_bool("orchestratorSqsBufferEnabled", False)
-orchestrator_sqs_buffer_pipe_state = config.get("orchestratorSqsBufferPipeState") or "STOPPED"
+orchestrator_sqs_buffer_pipe_state = str(config.get("orchestratorSqsBufferPipeState") or "STOPPED").strip().upper()
 synthetics_canary_enabled = _config_bool("syntheticsCanaryEnabled", False)
 synthetics_canary_start = _config_bool("syntheticsCanaryStart", False)
 cloudtrail_audit_log_group_name = config.get("cloudTrailAuditLogGroupName") or ""
@@ -855,6 +855,11 @@ step_functions_stack = resilience.create_orchestrator_step_function(
     task_role_arn=ecs_stack["worker_task_role"].arn if ecs_stack.get("worker_task_role") else ecs_stack["task_role"].arn,
     enabled=orchestrator_step_functions_enabled and bool(ecs_stack.get("orchestrator_task_definition")),
 )
+if orchestrator_sqs_buffer_enabled and not step_functions_stack.get("state_machine"):
+    raise ValueError(
+        "cerebro:orchestratorSqsBufferEnabled requires cerebro:orchestratorStepFunctionsEnabled=true "
+        "and cerebro:orchestratorEnabled=true"
+    )
 buffer_stack = resilience.create_orchestrator_buffer(
     name=f"cerebro-{environment}",
     target_state_machine_arn=step_functions_stack["state_machine"].arn if step_functions_stack.get("state_machine") else None,

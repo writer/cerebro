@@ -235,6 +235,40 @@ def create_synthetic_canary(
         force_destroy=True,
         tags={"Name": f"{name}-synthetics-artifacts"},
     )
+    public_access_block = aws.s3.BucketPublicAccessBlock(
+        f"{name}-synthetics-artifacts-public-access",
+        bucket=artifact_bucket.id,
+        block_public_acls=True,
+        block_public_policy=True,
+        ignore_public_acls=True,
+        restrict_public_buckets=True,
+    )
+    encryption = aws.s3.BucketServerSideEncryptionConfiguration(
+        f"{name}-synthetics-artifacts-sse",
+        bucket=artifact_bucket.id,
+        rules=[
+            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                    sse_algorithm="AES256",
+                ),
+            )
+        ],
+    )
+    versioning = aws.s3.BucketVersioning(
+        f"{name}-synthetics-artifacts-versioning",
+        bucket=artifact_bucket.id,
+        versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(status="Enabled"),
+    )
+    script_object = aws.s3.BucketObjectv2(
+        f"{name}-synthetics-script",
+        bucket=artifact_bucket.id,
+        key="synthetics/canary.zip",
+        content_base64=pulumi.Output.from_input(url).apply(_canary_zip_file),
+        content_type="application/zip",
+        server_side_encryption="AES256",
+        tags={"Name": f"{name}-synthetics-script"},
+        opts=pulumi.ResourceOptions(depends_on=[public_access_block, encryption, versioning]),
+    )
     role = aws.iam.Role(
         f"{name}-synthetics-role",
         name=f"{name}-synthetics-role",
@@ -250,7 +284,7 @@ def create_synthetic_canary(
         policy=artifact_bucket.arn.apply(lambda arn: json.dumps({
             "Version": "2012-10-17",
             "Statement": [
-                {"Effect": "Allow", "Action": ["s3:PutObject", "s3:GetBucketLocation"], "Resource": [arn, f"{arn}/*"]},
+                {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:GetBucketLocation"], "Resource": [arn, f"{arn}/*"]},
                 {"Effect": "Allow", "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], "Resource": "*"},
                 {"Effect": "Allow", "Action": ["cloudwatch:PutMetricData"], "Resource": "*"},
                 {"Effect": "Allow", "Action": ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface"], "Resource": "*"},
@@ -266,11 +300,20 @@ def create_synthetic_canary(
         runtime_version="syn-nodejs-puppeteer-6.2",
         schedule=aws.synthetics.CanaryScheduleArgs(expression="rate(5 minutes)"),
         start_canary=start_canary,
-        zip_file=url.apply(lambda endpoint: _canary_zip_file(endpoint)),
+        s3_bucket=artifact_bucket.bucket,
+        s3_key=script_object.key,
         vpc_config=aws.synthetics.CanaryVpcConfigArgs(subnet_ids=subnet_ids, security_group_ids=[security_group_id]),
         tags={"Name": f"{name}-api-canary"},
     )
-    return {"artifact_bucket": artifact_bucket, "role": role, "canary": canary}
+    return {
+        "artifact_bucket": artifact_bucket,
+        "public_access_block": public_access_block,
+        "encryption": encryption,
+        "versioning": versioning,
+        "script_object": script_object,
+        "role": role,
+        "canary": canary,
+    }
 
 
 def _synthetics_canary_name(name: str) -> str:
@@ -330,6 +373,7 @@ def create_cost_controls(
             frequency="DAILY",
             monitor_arn_lists=[monitor.arn],
             subscribers=subscribers,
+            threshold_expression=_cost_anomaly_threshold_expression(),
             tags={"Name": f"{name}-cost-anomaly"},
         )
         resources.update({"anomaly_monitor": monitor, "anomaly_subscription": subscription})
@@ -355,3 +399,13 @@ def create_cost_controls(
         )
         resources["budget"] = budget
     return resources
+
+
+def _cost_anomaly_threshold_expression() -> aws.costexplorer.AnomalySubscriptionThresholdExpressionArgs:
+    return aws.costexplorer.AnomalySubscriptionThresholdExpressionArgs(
+        dimension=aws.costexplorer.AnomalySubscriptionThresholdExpressionDimensionArgs(
+            key="ANOMALY_TOTAL_IMPACT_PERCENTAGE",
+            match_options=["GREATER_THAN_OR_EQUAL"],
+            values=["20"],
+        )
+    )

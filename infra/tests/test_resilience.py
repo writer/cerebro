@@ -45,6 +45,58 @@ class ResilienceTest(unittest.TestCase):
         self.assertEqual(resilience._synthetics_canary_name("cerebro-go-production-api"), "cerebro-go-production")
         self.assertLessEqual(len(resilience._synthetics_canary_name("cerebro-go-production-api")), 21)
 
+    def test_synthetic_canary_uses_s3_script_and_secures_artifact_bucket(self) -> None:
+        calls = []
+
+        class FakeApply:
+            def __init__(self, value):
+                self.value = value
+
+            def apply(self, func):
+                return func(self.value)
+
+        def fake_bucket(*args, **kwargs):
+            calls.append(("bucket", args, kwargs))
+            return SimpleNamespace(id="bucket-id", bucket="bucket-name", arn=FakeApply("arn:aws:s3:::bucket-name"))
+
+        def fake_resource(kind):
+            def inner(*args, **kwargs):
+                calls.append((kind, args, kwargs))
+                return SimpleNamespace(key=kwargs.get("key"))
+            return inner
+
+        def fake_role(*args, **kwargs):
+            calls.append(("role", args, kwargs))
+            return SimpleNamespace(name="role-name", arn="role-arn")
+
+        with patch.object(resilience.aws.s3, "BucketV2", fake_bucket), \
+             patch.object(resilience.aws.s3, "BucketPublicAccessBlock", fake_resource("public_access_block")), \
+             patch.object(resilience.aws.s3, "BucketServerSideEncryptionConfiguration", fake_resource("encryption")), \
+             patch.object(resilience.aws.s3, "BucketVersioning", fake_resource("versioning")), \
+             patch.object(resilience.aws.s3, "BucketObjectv2", fake_resource("object")), \
+             patch.object(resilience.aws.iam, "Role", fake_role), \
+             patch.object(resilience.aws.iam, "RolePolicy", fake_resource("role_policy")), \
+             patch.object(resilience.aws.synthetics, "Canary", fake_resource("canary")), \
+             patch.object(resilience.pulumi, "ResourceOptions", lambda **kwargs: SimpleNamespace(**kwargs)):
+            resources = resilience.create_synthetic_canary(
+                "cerebro-test",
+                url="https://cerebro.example.com",
+                subnet_ids=["subnet-a"],
+                security_group_id="sg-a",
+                enabled=True,
+            )
+
+        self.assertIn("public_access_block", resources)
+        self.assertIn("encryption", resources)
+        self.assertIn("versioning", resources)
+        object_call = next(call for call in calls if call[0] == "object")
+        self.assertEqual(object_call[2]["key"], "synthetics/canary.zip")
+        self.assertEqual(object_call[2]["content_type"], "application/zip")
+        canary_call = next(call for call in calls if call[0] == "canary")
+        self.assertEqual(canary_call[2]["s3_bucket"], "bucket-name")
+        self.assertEqual(canary_call[2]["s3_key"], "synthetics/canary.zip")
+        self.assertNotIn("zip_file", canary_call[2])
+
     def test_cost_controls_create_nothing_without_notification_route(self) -> None:
         self.assertEqual(
             resilience.create_cost_controls(
@@ -83,6 +135,10 @@ class ResilienceTest(unittest.TestCase):
         self.assertEqual(set(resources), {"anomaly_monitor", "anomaly_subscription", "budget"})
         subscription = next(call for call in calls if call[0] == "subscription")
         self.assertEqual(subscription[2]["monitor_arn_lists"], ["monitor-arn"])
+        threshold = subscription[2]["threshold_expression"]
+        self.assertEqual(threshold.dimension.key, "ANOMALY_TOTAL_IMPACT_PERCENTAGE")
+        self.assertEqual(threshold.dimension.match_options, ["GREATER_THAN_OR_EQUAL"])
+        self.assertEqual(threshold.dimension.values, ["20"])
         budget = next(call for call in calls if call[0] == "budget")
         self.assertEqual(budget[2]["limit_amount"], "100")
         self.assertEqual(budget[2]["notifications"][0].threshold, 80)

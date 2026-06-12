@@ -538,8 +538,19 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK + "  cerebro:orchestratorSqsBufferEnabled: true\n"
         self.assertTrue(any("requires orchestratorStepFunctionsEnabled" in message for message in self._messages(content)))
 
+    def test_orchestrator_buffer_requires_enabled_orchestrator(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:orchestratorStepFunctionsEnabled: true\n"
+            "  cerebro:orchestratorSqsBufferEnabled: true\n"
+        )
+        self.assertTrue(any("requires orchestratorEnabled" in message for message in self._messages(content)))
+
     def test_orchestrator_buffer_pipe_state_must_be_known(self) -> None:
         content = BASE_STACK + "  cerebro:orchestratorSqsBufferPipeState: PAUSED\n"
+        self.assertTrue(any("must be RUNNING or STOPPED" in message for message in self._messages(content)))
+
+    def test_orchestrator_buffer_pipe_state_must_be_canonical(self) -> None:
+        content = BASE_STACK + "  cerebro:orchestratorSqsBufferPipeState: running\n"
         self.assertTrue(any("must be RUNNING or STOPPED" in message for message in self._messages(content)))
 
     def test_synthetics_canary_start_requires_enabled_canary(self) -> None:
