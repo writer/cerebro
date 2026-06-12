@@ -73,11 +73,13 @@ func run(args []string) error {
 		return runVulnDB(args[1:])
 	case "closeout":
 		return runCloseout(args[1:])
+	case "deploy":
+		return runDeploy(args[1:])
 	case "version":
 		fmt.Printf("%s %s\n", buildinfo.ServiceName, buildinfo.Version)
 		return nil
 	}
-	return usageError(fmt.Sprintf("usage: %s [serve|version|graph|orchestrator|finding-rule|source|source-runtime|vulndb|closeout]", os.Args[0]))
+	return usageError(fmt.Sprintf("usage: %s [serve|version|deploy|graph|orchestrator|finding-rule|source|source-runtime|vulndb|closeout]", os.Args[0]))
 }
 
 func serve() error {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -189,6 +190,74 @@ func TestOpenRouterLLMClient_AuthenticationFailure(t *testing.T) {
 	if authErr.CredentialEnvVar != "CEREBRO_OPENROUTER_API_KEY" {
 		t.Fatalf("credential env var = %q, want CEREBRO_OPENROUTER_API_KEY", authErr.CredentialEnvVar)
 	}
+	if strings.Contains(err.Error(), "test-secret-key") {
+		t.Fatalf("error leaked API key: %v", err)
+	}
+}
+
+func TestOpenRouterLLMClient_Probe(t *testing.T) {
+	respBody, _ := json.Marshal(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]string{"content": "OK"},
+		}},
+	})
+	doer := &stubHTTPDoer{statusCode: 200, body: respBody}
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	if err := ProbeLLM(context.Background(), client); err != nil {
+		t.Fatalf("ProbeLLM() error = %v", err)
+	}
+	assertOpenRouterRequestModel(t, doer.lastBody, defaultOpenRouterModel)
+}
+
+func FuzzOpenRouterAuthErrorClassification(f *testing.F) {
+	f.Add(401, `{"error":{"message":"Missing Authentication header","code":401}}`)
+	f.Add(403, `{"error":{"message":"No auth credentials found"}}`)
+	f.Add(401, `not-json`)
+	f.Add(403, `{"error":{"message":""}}`)
+	f.Add(429, `{"error":{"message":"Missing Authentication header"}}`)
+	f.Add(500, strings.Repeat("x", 512))
+	f.Fuzz(func(t *testing.T, statusCode int, body string) {
+		if statusCode < 100 || statusCode > 599 {
+			t.Skip()
+		}
+		apiKey := "test-secret-key"
+		doer := &stubHTTPDoer{statusCode: statusCode, body: []byte(body)}
+		client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: apiKey, HTTPDoer: doer})
+		if err != nil {
+			t.Fatalf("create client: %v", err)
+		}
+		_, err = client.chat(context.Background(), defaultOpenRouterModel, "hello", 16)
+		if err == nil {
+			return
+		}
+		if strings.Contains(err.Error(), apiKey) || strings.Contains(err.Error(), "Bearer "+apiKey) {
+			t.Fatalf("error leaked API key: %v", err)
+		}
+		var authErr *OpenRouterAuthenticationError
+		isAuth := errors.Is(err, ErrLLMAuthenticationFailed)
+		hasAuthErr := errors.As(err, &authErr)
+		if statusCode == 401 || statusCode == 403 {
+			if !isAuth || !hasAuthErr {
+				t.Fatalf("status %d error = %T %v, want auth classification", statusCode, err, err)
+			}
+			if authErr.StatusCode != statusCode {
+				t.Fatalf("auth status = %d, want %d", authErr.StatusCode, statusCode)
+			}
+			if authErr.CredentialEnvVar != "CEREBRO_OPENROUTER_API_KEY" {
+				t.Fatalf("credential env var = %q", authErr.CredentialEnvVar)
+			}
+			if len(authErr.ProviderMessage) > 203 {
+				t.Fatalf("provider message too long: %d", len(authErr.ProviderMessage))
+			}
+			return
+		}
+		if isAuth || hasAuthErr {
+			t.Fatalf("status %d incorrectly classified auth error: %v", statusCode, err)
+		}
+	})
 }
 
 func TestOpenRouterLLMClient_HTTPDoerError(t *testing.T) {

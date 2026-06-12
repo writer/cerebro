@@ -112,6 +112,11 @@ func (c *OpenRouterLLMClient) Summarize(ctx context.Context, req SummarizeReques
 	return c.chat(ctx, c.modelID(req.Model), summarizePrompt(req), c.maxTokens)
 }
 
+func (c *OpenRouterLLMClient) Probe(ctx context.Context) error {
+	_, err := c.chat(ctx, c.defaultModel, "Reply with OK if this credential can call OpenRouter.", 16)
+	return err
+}
+
 func (c *OpenRouterLLMClient) modelID(requested string) string {
 	switch normalizeModel(requested) {
 	case "claude-sonnet-4-6":
@@ -154,10 +159,11 @@ func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt str
 		return "", fmt.Errorf("openrouter request failed: %w", err)
 	}
 	if statusCode != 200 {
-		if statusCode == 401 || statusCode == 403 {
+		message := openRouterErrorMessage(respBody)
+		if openRouterAuthenticationFailure(statusCode, message) {
 			return "", &OpenRouterAuthenticationError{
 				StatusCode:       statusCode,
-				ProviderMessage:  openRouterErrorMessage(respBody),
+				ProviderMessage:  message,
 				CredentialEnvVar: "CEREBRO_OPENROUTER_API_KEY",
 			}
 		}
@@ -184,6 +190,22 @@ func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt str
 		return "", fmt.Errorf("openrouter response contained no text")
 	}
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+}
+
+func openRouterAuthenticationFailure(statusCode int, message string) bool {
+	if statusCode == 401 {
+		return true
+	}
+	if statusCode != 403 {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	for _, marker := range []string{"auth", "api key", "api-key", "credential", "unauthorized"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func openRouterErrorMessage(respBody []byte) string {
