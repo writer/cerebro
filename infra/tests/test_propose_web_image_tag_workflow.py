@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "propose-web-image-tag.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+INFRA_DEPLOY_WORKFLOW = ROOT / ".github" / "workflows" / "infra-deploy.yml"
 VERIFY_SCRIPT = ROOT / ".github" / "scripts" / "verify-ghcr-image.sh"
 
 
@@ -82,6 +83,11 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("attestation_mode=", script)
         self.assertIn("signature-only)", script)
         self.assertIn("Unknown attestation mode", script)
+
+    def test_workflow_contract_test_changes_do_not_trigger_deploys(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("propose_web_image_tag_workflow", workflow)
 
 
 if __name__ == "__main__":
