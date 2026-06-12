@@ -918,6 +918,39 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result.entities_projected, 5)
         self.assertEqual(result.links_projected, 3)
 
+    def test_source_sync_failure_includes_span_diagnostics(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-aws-kms",
+            schedule_name="aws-kms",
+            rule_name="cerebro-sec-dev-orchestrator-aws-kms",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+            {"level": "error", "message": "source sync failed", "error": "AccessDeniedException"},
+            {"kind": "span_end", "name": "source_runtime.sync", "status": "failed", "error": "describe kms key: AccessDeniedException"},
+        ]
+
+        with self.assertRaisesRegex(RuntimeVerificationFailedError, "describe kms key: AccessDeniedException"):
+            _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
+
+    def test_graph_ingest_failure_includes_span_diagnostics(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-gcp-audit",
+            schedule_name="gcp-audit",
+            rule_name="cerebro-sec-dev-orchestrator-gcp-audit",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+            {"kind": "span_end", "name": "source_runtime.sync", "status": "completed", "events_appended": 10},
+            {"kind": "span_end", "name": "graph.ingest_runtime", "status": "failed", "error": "projection constraint violation"},
+            {"kind": "span_end", "name": "orchestrator.graph_ingest", "status": "failed", "error": "graph ingest failed"},
+        ]
+
+        with self.assertRaisesRegex(RuntimeVerificationFailedError, "projection constraint violation"):
+            _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
+
     def test_verify_task_fails_closed_for_contract_probe_failure(self) -> None:
         target = RuntimeTarget(
             runtime_id="writer-evidence-cas-cases",

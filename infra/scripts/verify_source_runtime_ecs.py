@@ -1050,6 +1050,16 @@ def _runtime_skip_retryable(reason: str) -> bool:
     return reason == "lease_not_acquired"
 
 
+def _failure_diagnostics(messages: list[dict[str, Any]], *spans: dict[str, Any] | None) -> str:
+    span_ids = {id(span) for span in spans if span is not None}
+    interesting = [
+        message
+        for message in messages
+        if id(message) in span_ids or str(message.get("level") or "").lower() in {"error", "warn", "warning"}
+    ]
+    return _summarize_log_messages(interesting, limit=8)
+
+
 def _verification_result_from_logs(
     target: RuntimeTarget,
     task_arn: str,
@@ -1076,9 +1086,11 @@ def _verification_result_from_logs(
     if runtime_status == "skipped":
         raise RuntimeSkippedError(target.runtime_id, task_arn, _runtime_skip_reason(runtime_span))
     if sync_status == "failed":
-        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "source sync", sync_status)
+        diagnostics = _failure_diagnostics(messages, sync_span, runtime_span)
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "source sync", sync_status, diagnostics)
     if graph_ingest_status == "failed":
-        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "graph ingest", graph_ingest_status)
+        diagnostics = _failure_diagnostics(messages, graph_ingest_span, graph_runtime_span, runtime_span)
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "graph ingest", graph_ingest_status, diagnostics)
     if require_runtime_completed and runtime_status != "completed":
         raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
     if sync_status != "completed":
