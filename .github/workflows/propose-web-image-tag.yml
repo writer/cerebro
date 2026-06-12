@@ -84,12 +84,20 @@ jobs:
               echo "Repository dispatch must originate from writer/cerebro-web; got ${DISPATCH_SOURCE_REPOSITORY}" >&2
               exit 1
             fi
-            if [ -n "${DISPATCH_WEB_IMAGE}" ] && [ "${DISPATCH_WEB_IMAGE}" != "${WEB_GHCR_IMAGE}" ]; then
+            if [ "${DISPATCH_WEB_IMAGE}" != "${WEB_GHCR_IMAGE}" ]; then
               echo "Repository dispatch image ${DISPATCH_WEB_IMAGE} does not match ${WEB_GHCR_IMAGE}" >&2
               exit 1
             fi
-            if [[ "${tag}" == sha-* ]] && [ -n "${DISPATCH_SOURCE_REF}" ] && [ "${tag}" != "sha-${DISPATCH_SOURCE_REF:0:12}" ]; then
+            if ! [[ "${DISPATCH_SOURCE_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Repository dispatch source_ref must be a full commit SHA" >&2
+              exit 1
+            fi
+            if [ "${tag}" != "sha-${DISPATCH_SOURCE_REF:0:12}" ]; then
               echo "Repository dispatch tag ${tag} does not match source ref ${DISPATCH_SOURCE_REF}" >&2
+              exit 1
+            fi
+            if [ -z "${EXPECTED_DIGEST}" ]; then
+              echo "Repository dispatch must include web_image_digest" >&2
               exit 1
             fi
           fi
@@ -129,6 +137,7 @@ jobs:
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: "1.26.3"
+          cache: false
 
       - name: Install cosign
         shell: bash
@@ -145,7 +154,8 @@ jobs:
           bash .github/scripts/verify-ghcr-image.sh \
             "${WEB_GHCR_IMAGE}" \
             "${IMAGE_TAG}" \
-            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$"
+            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$" \
+            "signature-only"
 
       - name: Verify web GHCR build attestations
         shell: bash
@@ -222,6 +232,9 @@ jobs:
             local run=""
             local run_id=""
             local run_url=""
+            local status_payload=""
+            local status=""
+            local conclusion=""
 
             gh workflow run "${workflow}" --ref main "$@"
             for _ in {1..24}; do
@@ -235,11 +248,30 @@ jobs:
               if [ -n "${run}" ]; then
                 IFS=$'\t' read -r run_id run_url <<< "${run}"
                 echo "Created ${workflow} workflow_dispatch run ${run_id} for ${deploy_sha}: ${run_url}"
-                return 0
+                break
               fi
               sleep 5
             done
-            echo "Could not find ${workflow} workflow_dispatch run for ${deploy_sha}" >&2
+            if [ -z "${run_id}" ]; then
+              echo "Could not find ${workflow} workflow_dispatch run for ${deploy_sha}" >&2
+              exit 1
+            fi
+
+            for _ in {1..120}; do
+              status_payload="$(gh run view "${run_id}" --json status,conclusion,url)"
+              status="$(jq -r '.status' <<< "${status_payload}")"
+              conclusion="$(jq -r '.conclusion // ""' <<< "${status_payload}")"
+              if [ "${status}" = "completed" ]; then
+                if [ "${conclusion}" != "success" ]; then
+                  echo "${workflow} run ${run_id} completed with ${conclusion}: ${run_url}" >&2
+                  exit 1
+                fi
+                echo "${workflow} run ${run_id} completed successfully: ${run_url}"
+                return 0
+              fi
+              sleep 15
+            done
+            echo "${workflow} run ${run_id} did not complete before timeout: ${run_url}" >&2
             exit 1
           }
 

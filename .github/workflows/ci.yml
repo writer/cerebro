@@ -186,6 +186,7 @@ jobs:
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: "1.26.3"
+          cache: false
 
       - name: Install cosign
         if: steps.ghcr-image.outputs.available == 'true' || steps.web-ghcr-image.outputs.available == 'true'
@@ -225,7 +226,8 @@ jobs:
           bash .github/scripts/verify-ghcr-image.sh \
             "${WEB_GHCR_IMAGE}" \
             "${IMAGE_TAG}" \
-            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$"
+            "^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$" \
+            "signature-only"
 
       - name: Verify web GHCR build attestations
         if: steps.web-ghcr-image.outputs.available == 'true'
@@ -399,6 +401,7 @@ jobs:
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: "1.26.3"
+          cache: false
 
       - name: Install cosign
         shell: bash

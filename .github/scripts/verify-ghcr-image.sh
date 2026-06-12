@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-image="${1:?usage: verify-ghcr-image.sh <image> <tag> <certificate-identity-regexp> [require-attestations]}"
-tag="${2:?usage: verify-ghcr-image.sh <image> <tag> <certificate-identity-regexp> [require-attestations]}"
-certificate_identity_regexp="${3:?usage: verify-ghcr-image.sh <image> <tag> <certificate-identity-regexp> [require-attestations]}"
-require_attestations="${4:-false}"
+image="${1:?usage: verify-ghcr-image.sh <image> <tag> <certificate-identity-regexp> [attestation-mode]}"
+tag="${2:?usage: verify-ghcr-image.sh <image> <tag> <certificate-identity-regexp> [attestation-mode]}"
+certificate_identity_regexp="${3:?usage: verify-ghcr-image.sh <image> <tag> <certificate-identity-regexp> [attestation-mode]}"
+attestation_mode="${4:-warn}"
 cosign_bin="${COSIGN_BIN:-${RUNNER_TEMP:-/tmp}/cosign/cosign}"
 
 if [ ! -x "${cosign_bin}" ]; then
@@ -24,15 +24,25 @@ if ! [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   exit 1
 fi
 
-tree="$("${cosign_bin}" tree "${image}@${digest}")"
-if ! grep -Eq 'Attestation|SBOM|Provenance' <<<"${tree}"; then
-  if [ "${require_attestations}" = "true" ]; then
-    echo "No SBOM/provenance attestations found for ${image}@${digest}" >&2
-    printf '%s\n' "${tree}" >&2
+case "${attestation_mode}" in
+  signature-only)
+    ;;
+  true | require | warn | false)
+    tree="$("${cosign_bin}" tree "${image}@${digest}")"
+    if ! grep -Eq 'Attestation|SBOM|Provenance' <<<"${tree}"; then
+      if [ "${attestation_mode}" = "true" ] || [ "${attestation_mode}" = "require" ]; then
+        echo "No SBOM/provenance attestations found for ${image}@${digest}" >&2
+        printf '%s\n' "${tree}" >&2
+        exit 1
+      fi
+      echo "::warning::No SBOM/provenance attestations found for ${image}@${digest}; signature and digest are verified" >&2
+    fi
+    ;;
+  *)
+    echo "Unknown attestation mode ${attestation_mode}; expected signature-only, warn, or require" >&2
     exit 1
-  fi
-  echo "::warning::No SBOM/provenance attestations found for ${image}@${digest}; signature and digest are verified" >&2
-fi
+    ;;
+esac
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "digest=${digest}" >> "${GITHUB_OUTPUT}"

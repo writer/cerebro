@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "propose-web-image-tag.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+VERIFY_SCRIPT = ROOT / ".github" / "scripts" / "verify-ghcr-image.sh"
 
 
 class ProposeWebImageTagWorkflowTest(unittest.TestCase):
@@ -16,6 +17,9 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("WEB_GHCR_IMAGE: ghcr.io/writer/cerebro-web", workflow)
         self.assertIn('DISPATCH_SOURCE_REPOSITORY}" != "writer/cerebro-web"', workflow)
         self.assertIn('DISPATCH_WEB_IMAGE}" != "${WEB_GHCR_IMAGE}"', workflow)
+        self.assertIn('DISPATCH_SOURCE_REF}" =~ ^[0-9a-f]{40}$', workflow)
+        self.assertIn('Repository dispatch must include web_image_digest', workflow)
+        self.assertIn('"sha-${DISPATCH_SOURCE_REF:0:12}"', workflow)
         self.assertIn("steps.inputs.outputs.expected_digest", workflow)
 
     def test_web_image_signature_uses_public_release_workflow_identity(self) -> None:
@@ -30,6 +34,7 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
             r"^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$",
             verify_block,
         )
+        self.assertIn('"signature-only"', verify_block)
         self.assertNotIn('"true"', verify_block)
 
     def test_web_image_attestations_use_buildx_index_metadata(self) -> None:
@@ -56,6 +61,8 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('"HEAD:main"', direct_push_block)
         self.assertIn("dispatch_and_require_run ci.yml", direct_push_block)
         self.assertIn("dispatch_and_require_run infra-deploy.yml -f environment=", direct_push_block)
+        self.assertIn('conclusion}" != "success"', workflow)
+        self.assertIn("completed successfully", workflow)
 
     def test_ci_mirrors_public_web_image(self) -> None:
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -65,8 +72,16 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
             r"^https://github\.com/writer/cerebro-web/\.github/workflows/release\.yml@refs/heads/main$",
             workflow,
         )
+        self.assertIn('"signature-only"', workflow)
         self.assertIn('IMAGE_DIGEST: ${{ steps.verify-web-ghcr-image.outputs.digest }}', workflow)
         self.assertIn('docker buildx imagetools inspect "${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}" --raw', workflow)
+
+    def test_ghcr_verifier_supports_signature_only_mode(self) -> None:
+        script = VERIFY_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("attestation_mode=", script)
+        self.assertIn("signature-only)", script)
+        self.assertIn("Unknown attestation mode", script)
 
 
 if __name__ == "__main__":
