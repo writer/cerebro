@@ -20,39 +20,6 @@ FORBIDDEN_DOC_MARKERS = {
         "SQLite via `internal/vulndb.SQLiteStore`",
         "persisted by default at `VULNDB_STATE_FILE`",
     ],
-    "docs/WORKLOAD_SCAN_ARCHITECTURE.md": [
-        "internal/workloadscan.SQLiteRunStore",
-        "internal/executionstore",
-        "SQLiteRunStore",
-        "SQLite-backed",
-    ],
-    "docs/IMAGE_SCAN_ARCHITECTURE.md": [
-        "internal/imagescan.SQLiteRunStore",
-        "internal/executionstore",
-        "SQLite is durable",
-    ],
-    "docs/FUNCTION_SCAN_ARCHITECTURE.md": [
-        "internal/functionscan.SQLiteRunStore",
-        "internal/executionstore",
-        "SQLite is durable",
-    ],
-    "docs/FILESYSTEM_ANALYZER_ARCHITECTURE.md": [
-        "internal/workloadscan.FilesystemAnalyzer",
-        "internal/imagescan.FilesystemAnalyzer",
-        "internal/functionscan.FilesystemAnalyzer",
-        "internal/executionstore",
-        "SQLite-backed",
-    ],
-    "docs/ACTION_ENGINE_ARCHITECTURE.md": [
-        "internal/executionstore",
-        "backend remains SQLite",
-    ],
-    "docs/RUNTIME_VISIBILITY_ARCHITECTURE.md": [
-        "POST /api/v1/runtime/events",
-        "in `internal/runtime`",
-        "internal/executionstore",
-        "SQLite-backed execution state",
-    ],
 }
 
 

@@ -404,7 +404,6 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [Getting started](docs/GETTING_STARTED.md) | local durable stack plus SDK source runtime and claim-write walkthrough |
 | [API contracts](docs/API_CONTRACTS_AUTOGEN.md) | current bootstrap HTTP and Connect contract reference |
 | [API reference](docs/API_REFERENCE.md) | OpenAPI-oriented route reference |
-| [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
 | [Configuration](docs/CONFIGURATION.md) | configuration and deployment notes |
 | [Hosting](docs/HOSTING.md) | hosting guide for containers, backing stores, proxy/TLS, operations, and rollout |
 | [Deployment examples](docs/DEPLOYMENT_EXAMPLES.md) | portable examples for Docker Compose, Kubernetes, ECS-style tasks, systemd, and scheduled jobs |
@@ -416,8 +415,6 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | symptom-driven cookbook for health, auth, source runtime, graph, MCP, and device-auth issues |
 | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) | native Droid MCP setup, OAuth flow, transport compatibility, and troubleshooting |
 | [DevEx codegen catalog](docs/DEVEX_CODEGEN_AUTOGEN.md) | generated surface map for OpenAPI, proto, and detection catalog checks |
-| [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |
-| [Graph report contracts](docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md) | generated graph/report contract reference |
 | [Endpoint security platform integration](docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md) | trusted-endpoint, secheck, Security/Kairos, identity, telemetry, and trust-gate integration contract |
 | [Non-goals](docs/NON_GOALS.md) | what Cerebro intentionally does not try to do, with rationale and enforcement pointers |
 | [Policies](docs/POLICIES.md) | policy catalog and authoring notes |

@@ -2,12 +2,7 @@
 
 This guide covers operating Cerebro's graph projection and graph query surfaces. Graph operations require Neo4j or Aura and, for runtime-backed ingest, the configured source runtime stores.
 
-Use it with:
-
-- [`docs/GRAPH_ONTOLOGY_AUTOGEN.md`](./GRAPH_ONTOLOGY_AUTOGEN.md) for graph entity and relation shape.
-- [`docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md`](./GRAPH_REPORT_CONTRACTS_AUTOGEN.md) for graph report contracts.
-- [`docs/SOURCE_RUNTIME_GUIDE.md`](./SOURCE_RUNTIME_GUIDE.md) for source runtime sync.
-- [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) for operational checks.
+Use it with [`docs/SOURCE_RUNTIME_GUIDE.md`](./SOURCE_RUNTIME_GUIDE.md) for source runtime sync and [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) for operational checks.
 
 ## Dependencies
 
