@@ -132,6 +132,13 @@ func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt str
 		return "", fmt.Errorf("openrouter request failed: %w", err)
 	}
 	if statusCode != 200 {
+		if statusCode == 401 || statusCode == 403 {
+			message := openRouterErrorMessage(respBody)
+			if message != "" {
+				return "", fmt.Errorf("%w: openrouter authentication failed (%d): %s; check CEREBRO_OPENROUTER_API_KEY", ErrLLMAuthenticationFailed, statusCode, message)
+			}
+			return "", fmt.Errorf("%w: openrouter authentication failed (%d); check CEREBRO_OPENROUTER_API_KEY", ErrLLMAuthenticationFailed, statusCode)
+		}
 		return "", fmt.Errorf("openrouter returned %d: %s", statusCode, truncateStr(string(respBody), 200))
 	}
 
@@ -155,6 +162,18 @@ func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt str
 		return "", fmt.Errorf("openrouter response contained no text")
 	}
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+}
+
+func openRouterErrorMessage(respBody []byte) string {
+	var result struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(respBody, &result); err == nil && result.Error != nil {
+		return truncateStr(strings.TrimSpace(result.Error.Message), 200)
+	}
+	return ""
 }
 
 func truncateStr(s string, maxLen int) string {

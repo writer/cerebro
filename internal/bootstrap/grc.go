@@ -585,6 +585,8 @@ func grcTelemetryErrorKind(err error) string {
 		errors.Is(err, ports.ErrFindingEvidenceNotFound),
 		errors.Is(err, ports.ErrGraphEntityNotFound):
 		return "not_found"
+	case errors.Is(err, graphagent.ErrLLMAuthenticationFailed):
+		return "llm_authentication_failed"
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
@@ -1451,6 +1453,7 @@ func grcHTTPStatusCode(err error) int {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
+		errors.Is(err, graphagent.ErrLLMAuthenticationFailed),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable

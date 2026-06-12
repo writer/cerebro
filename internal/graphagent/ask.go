@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	ErrRuntimeUnavailable = errors.New("graph agent runtime is unavailable")
-	ErrInvalidRequest     = errors.New("invalid graph agent request")
+	ErrRuntimeUnavailable      = errors.New("graph agent runtime is unavailable")
+	ErrLLMAuthenticationFailed = errors.New("graph agent llm authentication failed")
+	ErrInvalidRequest          = errors.New("invalid graph agent request")
 )
 
 const (

@@ -106,6 +106,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU", "anthropic.claude-haiku-example")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "900")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "0.25")
+	t.Setenv("CEREBRO_OPENROUTER_API_KEY", "openrouter-test-key")
 	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
 	t.Setenv("CEREBRO_OTEL_SERVICE_NAME", "cerebro-test")
 	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
@@ -168,6 +169,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.GraphAgentLLM.SonnetModel != "anthropic.claude-sonnet-example" || cfg.GraphAgentLLM.OpusModel == "" || cfg.GraphAgentLLM.HaikuModel == "" {
 		t.Fatalf("GraphAgentLLM model mapping = %#v", cfg.GraphAgentLLM)
+	}
+	if cfg.GraphAgentLLM.OpenRouterAPIKey != "openrouter-test-key" {
+		t.Fatal("GraphAgentLLM.OpenRouterAPIKey was not loaded")
 	}
 	if !cfg.OTEL.Enabled || cfg.OTEL.Protocol != "grpc" || cfg.OTEL.ServiceName != "cerebro-test" {
 		t.Fatalf("OTEL = %#v, want enabled grpc config", cfg.OTEL)
@@ -263,6 +267,7 @@ func clearGraphAgentEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU", "")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "")
+	t.Setenv("CEREBRO_OPENROUTER_API_KEY", "")
 }
 
 func clearOpenTelemetryEnv(t *testing.T) {

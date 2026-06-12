@@ -212,6 +212,49 @@ func TestGRCAskDraftFailureReturnsServiceUnavailable(t *testing.T) {
 	}
 }
 
+func TestGRCAskLLMAuthenticationFailureUsesSpecificErrorCode(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		GraphStore: &stubGraphStore{},
+		GraphAgentLLM: &graphagent.StubLLMClient{DraftErr: errors.Join(
+			graphagent.ErrLLMAuthenticationFailed,
+			errors.New("openrouter authentication failed; check CEREBRO_OPENROUTER_API_KEY"),
+		)},
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	var events []sseRecord
+	stderr := captureBootstrapStderr(t, func() {
+		resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"hello"}`))
+		if err != nil {
+			t.Fatalf("POST /grc/ask error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d with streamed error event", resp.StatusCode, http.StatusOK)
+		}
+		events = readSSEEvents(t, resp)
+	})
+	assertSSEEventNames(t, events, []string{"progress", "graph_probe", "progress", "error"})
+	var errorEvent graphagent.ErrorEvent
+	if err := json.Unmarshal(events[3].Data, &errorEvent); err != nil {
+		t.Fatalf("unmarshal error event: %v", err)
+	}
+	if errorEvent.Code != "llm_authentication_failed" {
+		t.Fatalf("error code = %q, want llm_authentication_failed", errorEvent.Code)
+	}
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	if got := payload["runtime_error.code"]; got != "llm_authentication_failed" {
+		t.Fatalf("runtime_error.code = %#v, want llm_authentication_failed; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "llm_authentication_failed" {
+		t.Fatalf("error_kind = %#v, want llm_authentication_failed; payload=%#v", got, payload)
+	}
+	if _, exists := payload["error"]; exists {
+		t.Fatalf("raw error recorded in telemetry: payload=%#v", payload)
+	}
+}
+
 func TestGRCAskExplainFailureReturnsServiceUnavailable(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		GraphStore:    &stubGraphStore{err: errors.New("neo4j unavailable")},

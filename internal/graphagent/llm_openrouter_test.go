@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -155,6 +156,32 @@ func TestOpenRouterLLMClient_ErrorResponse(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for 429 response")
+	}
+}
+
+func TestOpenRouterLLMClient_AuthenticationFailure(t *testing.T) {
+	doer := &stubHTTPDoer{statusCode: 401, body: []byte(`{"error":{"message":"Missing Authentication header","code":401}}`)}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-secret-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show nodes",
+	})
+	if err == nil {
+		t.Fatal("expected error for auth failure")
+	}
+	if !errors.Is(err, ErrLLMAuthenticationFailed) {
+		t.Fatalf("error = %v, want ErrLLMAuthenticationFailed", err)
+	}
+	if !strings.Contains(err.Error(), "CEREBRO_OPENROUTER_API_KEY") {
+		t.Fatalf("error = %v, want credential diagnostic", err)
+	}
+	if strings.Contains(err.Error(), "test-secret-key") {
+		t.Fatalf("error leaked API key: %v", err)
 	}
 }
 
