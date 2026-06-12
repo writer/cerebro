@@ -679,6 +679,57 @@ func scopeForConnectProcedure(procedure string) string {
 	}
 }
 
+func connectProcedurePolicyKnown(procedure string) bool {
+	switch procedure {
+	case cerebrov1connect.BootstrapServiceGetVersionProcedure,
+		cerebrov1connect.BootstrapServiceCheckHealthProcedure,
+		cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure,
+		cerebrov1connect.BootstrapServiceListFindingRulesProcedure,
+		cerebrov1connect.BootstrapServiceRunReportProcedure,
+		cerebrov1connect.BootstrapServiceGetReportRunProcedure,
+		cerebrov1connect.BootstrapServiceListSourcesProcedure,
+		cerebrov1connect.BootstrapServiceCheckSourceProcedure,
+		cerebrov1connect.BootstrapServiceDiscoverSourceProcedure,
+		cerebrov1connect.BootstrapServiceReadSourceProcedure,
+		cerebrov1connect.BootstrapServicePutSourceRuntimeProcedure,
+		cerebrov1connect.BootstrapServiceGetSourceRuntimeProcedure,
+		cerebrov1connect.BootstrapServiceSyncSourceRuntimeProcedure,
+		cerebrov1connect.BootstrapServiceWriteClaimsProcedure,
+		cerebrov1connect.BootstrapServiceListClaimsProcedure,
+		cerebrov1connect.BootstrapServiceListFindingsProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingProcedure,
+		cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure,
+		cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingCandidatesProcedure,
+		cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure,
+		cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure,
+		cerebrov1connect.BootstrapServiceResolveFindingProcedure,
+		cerebrov1connect.BootstrapServiceSuppressFindingProcedure,
+		cerebrov1connect.BootstrapServiceAssignFindingProcedure,
+		cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure,
+		cerebrov1connect.BootstrapServiceAddFindingNoteProcedure,
+		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
+		cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure,
+		cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingEvidenceProcedure,
+		cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure,
+		cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingsProcedure,
+		cerebrov1connect.BootstrapServiceWriteDecisionProcedure,
+		cerebrov1connect.BootstrapServiceWriteActionProcedure,
+		cerebrov1connect.BootstrapServiceWriteOutcomeProcedure,
+		cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure,
+		cerebrov1connect.BootstrapServiceGetEntityNeighborhoodProcedure,
+		cerebrov1connect.BootstrapServiceRunGraphIngestRuntimeProcedure,
+		cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure,
+		cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure,
+		cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:
+		return true
+	default:
+		return false
+	}
+}
+
 func tenantIDFromMetadata(metadata map[string]any) string {
 	if len(metadata) == 0 {
 		return ""
