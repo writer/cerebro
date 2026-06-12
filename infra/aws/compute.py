@@ -80,6 +80,8 @@ def create_ecs_cluster(
     )
     if orchestrator_bootstrap_payload:
         bootstrap_payloads["orchestrator"] = orchestrator_bootstrap_payload
+    if not bootstrap_payloads and orchestrator_enabled and source_runtimes:
+        bootstrap_payloads["retained"] = json.dumps({"runtimes": []}, sort_keys=True, separators=(",", ":"))
     bootstrap_environment_files = _create_source_runtime_bootstrap_environment_files(name, kms_key_id, bootstrap_payloads)
     secret_prefixes = _secret_prefixes(secret_keys or [], external_secrets_prefix)
     cluster = aws.ecs.Cluster(
