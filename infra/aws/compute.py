@@ -55,11 +55,29 @@ def create_ecs_cluster(
         source_runtimes or [],
         source_runtime_service_bootstrap_ids,
     )
+    prepared_orchestrator_schedules = []
+    if orchestrator_enabled:
+        prepared_orchestrator_schedules = _orchestrator_schedules(
+            orchestrator_schedule_expression,
+            orchestrator_command or ["orchestrator", "run"],
+            orchestrator_task_count,
+            orchestrator_schedules or [],
+        )
+        runtime_by_id = _source_runtime_by_id(source_runtimes or [])
+        for schedule in prepared_orchestrator_schedules:
+            schedule["bootstrap_payload"] = _orchestrator_schedule_bootstrap_payload(
+                schedule["command"],
+                runtime_by_id,
+            )
     bootstrap_payloads = {}
     service_bootstrap_payload = _source_runtime_bootstrap_payload(service_bootstrap_runtimes)
     if service_bootstrap_payload:
         bootstrap_payloads["service"] = service_bootstrap_payload
-    orchestrator_bootstrap_payload = _source_runtime_bootstrap_payload(source_runtimes or []) if orchestrator_enabled else ""
+    orchestrator_bootstrap_payload = (
+        _source_runtime_bootstrap_payload(source_runtimes or [])
+        if orchestrator_enabled and any(not schedule.get("bootstrap_payload") for schedule in prepared_orchestrator_schedules)
+        else ""
+    )
     if orchestrator_bootstrap_payload:
         bootstrap_payloads["orchestrator"] = orchestrator_bootstrap_payload
     bootstrap_environment_files = _create_source_runtime_bootstrap_environment_files(name, kms_key_id, bootstrap_payloads)
@@ -135,12 +153,7 @@ def create_ecs_cluster(
     orchestrator_events_role = None
     if orchestrator_enabled:
         worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
-        schedules = _orchestrator_schedules(
-            orchestrator_schedule_expression,
-            orchestrator_command or ["orchestrator", "run"],
-            orchestrator_task_count,
-            orchestrator_schedules or [],
-        )
+        schedules = prepared_orchestrator_schedules
         task_definition = _create_task_definition(
             name=f"{name}-orchestrator",
             container_image=container_image,
@@ -160,6 +173,7 @@ def create_ecs_cluster(
             enable_health_check=False,
             log_stream_prefix="orchestrator",
             source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("orchestrator") or {}).get("environment_file_arn"),
+            enable_source_runtime_bootstrap=bool(source_runtimes or []),
             depends_on=[
                 *((bootstrap_environment_files.get("orchestrator") or {}).get("resources") or []),
                 *execution_role_dependencies,
@@ -195,7 +209,10 @@ def create_ecs_cluster(
                     target=aws.scheduler.ScheduleTargetArgs(
                         arn=cluster.arn,
                         role_arn=orchestrator_events_role.arn,
-                        input=_orchestrator_target_input(schedule["command"]),
+                        input=_orchestrator_target_input(
+                            schedule["command"],
+                            schedule.get("bootstrap_payload") or "",
+                        ),
                         ecs_parameters=aws.scheduler.ScheduleTargetEcsParametersArgs(
                             task_definition_arn=orchestrator_task_definition.arn,
                             task_count=schedule["task_count"],
@@ -238,7 +255,10 @@ def create_ecs_cluster(
                             assign_public_ip=False,
                         ),
                     ),
-                    input=_orchestrator_target_input(schedule["command"]),
+                    input=_orchestrator_target_input(
+                        schedule["command"],
+                        schedule.get("bootstrap_payload") or "",
+                    ),
                     opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
                 )
                 orchestrator_rules.append(rule)
@@ -447,9 +467,42 @@ def _source_runtime_service_bootstrap_runtimes(
     ]
 
 
-def _orchestrator_target_input(command: list[str]) -> str:
+def _source_runtime_by_id(source_runtimes: list[dict]) -> dict[str, dict]:
+    return {
+        runtime_id: runtime
+        for runtime in source_runtimes or []
+        if (runtime_id := _runtime_field(runtime, "id"))
+    }
+
+
+def _runtime_id_from_orchestrator_command(command: list[str]) -> str:
+    for part in command or []:
+        text = str(part).strip()
+        if text.startswith("runtime_id="):
+            return text.split("=", 1)[1].strip()
+    return ""
+
+
+def _orchestrator_schedule_bootstrap_payload(command: list[str], runtime_by_id: dict[str, dict]) -> str:
+    runtime_id = _runtime_id_from_orchestrator_command(command)
+    runtime = runtime_by_id.get(runtime_id)
+    if not runtime:
+        return ""
+    return _source_runtime_bootstrap_payload([runtime])
+
+
+def _orchestrator_target_input(command: list[str], bootstrap_payload: str = "") -> str:
+    container_overrides = [{"name": "cerebro", "command": [str(part) for part in command]}]
+    if bootstrap_payload:
+        container_overrides.append(
+            {
+                "name": "source-runtime-bootstrap",
+                "environmentFiles": [],
+                "environment": [{"name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", "value": bootstrap_payload}],
+            }
+        )
     return json.dumps(
-        {"containerOverrides": [{"name": "cerebro", "command": [str(part) for part in command]}]},
+        {"containerOverrides": container_overrides},
         separators=(",", ":"),
     )
 
@@ -831,6 +884,7 @@ def _create_task_definition(
     log_stream_prefix: str = "ecs",
     source_runtimes: list[dict] = None,
     source_runtime_bootstrap_environment_file_arn: pulumi.Input[str] = None,
+    enable_source_runtime_bootstrap: bool = False,
     depends_on: list[pulumi.Resource] = None,
 ) -> aws.ecs.TaskDefinition:
     if not external_secrets_prefix:
@@ -865,7 +919,7 @@ def _create_task_definition(
             "awslogs-region": region,
         }
         bootstrap_containers = []
-        if source_runtime_bootstrap_payload or bootstrap_environment_file_arn:
+        if source_runtime_bootstrap_payload or bootstrap_environment_file_arn or enable_source_runtime_bootstrap:
             bootstrap_container = {
                 "name": "source-runtime-bootstrap",
                 "image": container_image,
@@ -888,7 +942,7 @@ def _create_task_definition(
                 bootstrap_container["environmentFiles"] = [
                     {"value": bootstrap_environment_file_arn, "type": "s3"}
                 ]
-            else:
+            elif source_runtime_bootstrap_payload:
                 bootstrap_container["environment"] = [
                     *env,
                     {

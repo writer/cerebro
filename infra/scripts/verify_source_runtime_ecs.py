@@ -445,6 +445,7 @@ def _run_task(
         container_overrides.append(
             {
                 "name": BOOTSTRAP_CONTAINER_NAME,
+                "environmentFiles": [],
                 "environment": [{"name": BOOTSTRAP_ENV_NAME, "value": scoped_payload}],
             }
         )

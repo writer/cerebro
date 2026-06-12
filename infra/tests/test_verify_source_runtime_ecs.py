@@ -327,6 +327,7 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             if args[:2] == ["ecs", "run-task"]:
                 override = json.loads(args[args.index("--overrides") + 1])
                 bootstrap_override = next(item for item in override["containerOverrides"] if item["name"] == "source-runtime-bootstrap")
+                self.assertEqual(bootstrap_override["environmentFiles"], [])
                 scoped_payload = json.loads(bootstrap_override["environment"][0]["value"])
                 self.assertEqual([runtime["id"] for runtime in scoped_payload["runtimes"]], ["writer-panopticon-alerts"])
                 self.assertNotIn("COSMO_TOKEN", json.dumps(scoped_payload))
