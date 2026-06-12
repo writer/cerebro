@@ -160,7 +160,7 @@ func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt str
 	}
 	if statusCode != 200 {
 		message := openRouterErrorMessage(respBody)
-		if openRouterAuthenticationFailure(statusCode, message) {
+		if openRouterAuthenticationFailure(statusCode) {
 			return "", &OpenRouterAuthenticationError{
 				StatusCode:       statusCode,
 				ProviderMessage:  message,
@@ -192,20 +192,8 @@ func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt str
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
 }
 
-func openRouterAuthenticationFailure(statusCode int, message string) bool {
-	if statusCode == 401 {
-		return true
-	}
-	if statusCode != 403 {
-		return false
-	}
-	normalized := strings.ToLower(strings.TrimSpace(message))
-	for _, marker := range []string{"auth", "api key", "api-key", "credential", "unauthorized"} {
-		if strings.Contains(normalized, marker) {
-			return true
-		}
-	}
-	return false
+func openRouterAuthenticationFailure(statusCode int) bool {
+	return statusCode == 401
 }
 
 func openRouterErrorMessage(respBody []byte) string {
