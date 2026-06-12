@@ -58,7 +58,6 @@ config:
   cerebro:postgresBackupRetentionDays: 14
   cerebro:postgresDeletionProtection: true
   cerebro:postgresMultiAz: true
-  cerebro:retainLegacyJobsTableForDeletionProtectionTransition: true
   cerebro:natsCpu: 512
   cerebro:natsMemory: 1024
   cerebro:jetstreamStreamName: CEREBRO_EVENTS

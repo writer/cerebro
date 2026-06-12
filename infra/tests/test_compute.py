@@ -235,6 +235,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
         task_role_names: list[str] = []
         task_definition_calls: list[dict] = []
         orchestrator_events_role_calls: list[dict] = []
+        event_rule_calls: list[dict] = []
         event_target_calls: list[dict] = []
         panopticon_source_runtimes = [
             {
@@ -295,6 +296,10 @@ class WorkerTaskRoleTest(unittest.TestCase):
             event_target_calls.append({"resource": args[0], **kwargs})
             return fake_named_resource(*args, **kwargs)
 
+        def fake_event_rule(*args, **kwargs):
+            event_rule_calls.append({"resource": args[0], **kwargs})
+            return fake_named_resource(*args, **kwargs)
+
         with (
             patch.object(
                 compute,
@@ -322,7 +327,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
             patch.object(compute.aws.ecs, "ServiceLoadBalancerArgs", side_effect=fake_args),
             patch.object(compute.aws.ecs, "ServiceDeploymentCircuitBreakerArgs", side_effect=fake_args),
             patch.object(compute.aws.cloudwatch, "LogGroup", side_effect=fake_named_resource),
-            patch.object(compute.aws.cloudwatch, "EventRule", side_effect=fake_named_resource),
+            patch.object(compute.aws.cloudwatch, "EventRule", side_effect=fake_event_rule),
             patch.object(compute.aws.cloudwatch, "EventTarget", side_effect=fake_event_target),
             patch.object(compute.aws.cloudwatch, "EventTargetEcsTargetArgs", side_effect=fake_args),
             patch.object(compute.aws.cloudwatch, "EventTargetEcsTargetNetworkConfigurationArgs", side_effect=fake_args),
@@ -393,6 +398,8 @@ class WorkerTaskRoleTest(unittest.TestCase):
             event_target_calls[0]["ecs_target"].task_definition_arn,
             "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:1",
         )
+        self.assertEqual(event_rule_calls[0]["state"], "ENABLED")
+        self.assertNotIn("is_enabled", event_rule_calls[0])
         target_input = json.loads(event_target_calls[0]["input"])
         self.assertEqual(
             target_input["containerOverrides"][0],

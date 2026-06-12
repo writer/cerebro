@@ -250,7 +250,7 @@ def create_ecs_cluster(
                     f"{schedule_resource_prefix}-schedule",
                     name=f"{name}-orchestrator" if schedule_suffix == "default" else schedule_resource_prefix,
                     schedule_expression=schedule["schedule_expression"],
-                    is_enabled=schedule["state"] == "ENABLED",
+                    state=schedule["state"],
                     tags={"Name": schedule_resource_prefix},
                 )
                 target = aws.cloudwatch.EventTarget(
