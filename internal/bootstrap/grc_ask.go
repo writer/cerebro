@@ -114,7 +114,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 			evt.result.timings = timings
 		}
 		errorEvent := graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
-			Code:    "ask_failed",
+			Code:    askRuntimeErrorCode(err),
 			Message: err.Error(),
 			TraceID: graphagent.ErrorTraceID(err),
 			Timings: timings,
@@ -135,6 +135,13 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	}
 	evt.sseEvents = eventCount
 	evt.finish(r, started, http.StatusOK, nil)
+}
+
+func askRuntimeErrorCode(err error) string {
+	if errors.Is(err, graphagent.ErrLLMAuthenticationFailed) {
+		return "llm_authentication_failed"
+	}
+	return "ask_failed"
 }
 
 type askWideEvent struct {

@@ -240,20 +240,30 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	))
 	status := "failed"
 	spanAttributes := telemetry.Attrs()
+	var (
+		runtime             *cerebrov1.SourceRuntime
+		eventContracts      []sourcecdk.EventContract
+		contractConfigured  bool
+		runtimeLoadedForRun bool
+	)
 	defer func() {
 		if err != nil {
 			status = "failed"
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
+			if runtimeLoadedForRun {
+				_ = s.recordRuntimeSyncFailure(context.WithoutCancel(ctx), runtime, err, contractConfigured)
+			}
 		}
 		telemetry.End(span, status, spanAttributes)
 	}()
 	if s == nil || s.store == nil || s.appendLog == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	runtime, err := s.lookupRuntime(ctx, req.GetId())
+	runtime, err = s.lookupRuntime(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
+	runtimeLoadedForRun = true
 	source, err := s.lookupSource(runtime.GetSourceId())
 	if err != nil {
 		return nil, err
@@ -278,10 +288,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		entitiesProjected uint32
 		linksProjected    uint32
 	)
-	var eventContracts []sourcecdk.EventContract
 	if provider, ok := source.(sourcecdk.EventContractProvider); ok {
 		eventContracts = provider.EventContracts()
 	}
+	contractConfigured = len(eventContracts) > 0
 	for i := uint32(0); i < pageLimit; i++ {
 		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtimeConfig), cursor)
 		if err != nil {
@@ -412,6 +422,57 @@ func sourceRuntimeTelemetryErrorKind(err error) string {
 	}
 }
 
+func (s *Service) recordRuntimeSyncFailure(ctx context.Context, runtime *cerebrov1.SourceRuntime, cause error, contractConfigured bool) error {
+	if s == nil || s.store == nil || runtime == nil || cause == nil {
+		return nil
+	}
+	if runtime.Config == nil {
+		runtime.Config = map[string]string{}
+	}
+	setRuntimeConfig(runtime.Config, runtimeStatusConfigKey, "failed")
+	setRuntimeConfig(runtime.Config, runtimeLastFailureCategoryConfigKey, sourceRuntimeFailureCategory(cause))
+	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, runtime.Config[runtimeLastFailureCategoryConfigKey], contractConfigured))
+	return s.store.PutSourceRuntime(ctx, runtime)
+}
+
+func sourceRuntimeFailureCategory(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, sourcecdk.ErrInvalidConfig):
+		return "invalid_source_config"
+	case errors.Is(err, sourcecdk.ErrInvalidEventEnvelope):
+		return "invalid_event"
+	case errors.Is(err, ErrRuntimeUnavailable):
+		return "dependency_error"
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "unauthorized"),
+		strings.Contains(message, "forbidden"),
+		strings.Contains(message, "authentication"),
+		strings.Contains(message, "invalid credential"),
+		strings.Contains(message, "invalid token"),
+		strings.Contains(message, "401"),
+		strings.Contains(message, "403"):
+		return "auth_error"
+	case strings.Contains(message, "rate limit"),
+		strings.Contains(message, "too many requests"),
+		strings.Contains(message, "429"):
+		return "rate_limited"
+	case strings.Contains(message, "timeout"),
+		strings.Contains(message, "deadline exceeded"),
+		strings.Contains(message, "connection refused"),
+		strings.Contains(message, "connection reset"),
+		strings.Contains(message, "503"),
+		strings.Contains(message, "502"),
+		strings.Contains(message, "500"):
+		return "provider_unavailable"
+	default:
+		return "sync_failed"
+	}
+}
+
 type runtimeSyncStatus struct {
 	Status             string
 	RecordsScanned     uint32
@@ -517,7 +578,7 @@ func invalidEventFieldName(err error) string {
 			continue
 		}
 		value := strings.TrimSpace(message[index+len(marker):])
-		value = strings.Trim(value, "\"'")
+		value = strings.TrimLeft(value, "\"' :")
 		if end := strings.IndexAny(value, " :"); end > 0 {
 			value = value[:end]
 		}

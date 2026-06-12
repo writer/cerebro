@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -156,6 +157,124 @@ func TestOpenRouterLLMClient_ErrorResponse(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 429 response")
 	}
+}
+
+func TestOpenRouterLLMClient_AuthenticationFailure(t *testing.T) {
+	doer := &stubHTTPDoer{statusCode: 401, body: []byte(`{"error":{"message":"Missing Authentication header","code":401}}`)}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-secret-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show nodes",
+	})
+	if err == nil {
+		t.Fatal("expected error for auth failure")
+	}
+	if !errors.Is(err, ErrLLMAuthenticationFailed) {
+		t.Fatalf("error = %v, want ErrLLMAuthenticationFailed", err)
+	}
+	var authErr *OpenRouterAuthenticationError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("error = %T, want OpenRouterAuthenticationError", err)
+	}
+	if authErr.StatusCode != 401 {
+		t.Fatalf("status code = %d, want 401", authErr.StatusCode)
+	}
+	if authErr.ProviderMessage != "Missing Authentication header" {
+		t.Fatalf("provider message = %q, want Missing Authentication header", authErr.ProviderMessage)
+	}
+	if authErr.CredentialEnvVar != "CEREBRO_OPENROUTER_API_KEY" {
+		t.Fatalf("credential env var = %q, want CEREBRO_OPENROUTER_API_KEY", authErr.CredentialEnvVar)
+	}
+}
+
+func TestOpenRouterLLMClient_ForbiddenIsNotAuthenticationFailure(t *testing.T) {
+	doer := &stubHTTPDoer{statusCode: 403, body: []byte(`{"error":{"message":"Request blocked by moderation"}}`)}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show nodes",
+	})
+	if err == nil {
+		t.Fatal("expected error for 403 response")
+	}
+	if errors.Is(err, ErrLLMAuthenticationFailed) {
+		t.Fatalf("error = %v, did not want ErrLLMAuthenticationFailed", err)
+	}
+	var authErr *OpenRouterAuthenticationError
+	if errors.As(err, &authErr) {
+		t.Fatalf("error = %T, did not want OpenRouterAuthenticationError", err)
+	}
+}
+
+func TestOpenRouterLLMClient_Probe(t *testing.T) {
+	respBody, _ := json.Marshal(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]string{"content": "OK"},
+		}},
+	})
+	doer := &stubHTTPDoer{statusCode: 200, body: respBody}
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	if err := ProbeLLM(context.Background(), client); err != nil {
+		t.Fatalf("ProbeLLM() error = %v", err)
+	}
+	assertOpenRouterRequestModel(t, doer.lastBody, defaultOpenRouterModel)
+}
+
+func FuzzOpenRouterAuthErrorClassification(f *testing.F) {
+	f.Add(401, `{"error":{"message":"Missing Authentication header","code":401}}`)
+	f.Add(403, `{"error":{"message":"No auth credentials found"}}`)
+	f.Add(401, `not-json`)
+	f.Add(403, `{"error":{"message":""}}`)
+	f.Add(429, `{"error":{"message":"Missing Authentication header"}}`)
+	f.Add(500, strings.Repeat("x", 512))
+	f.Fuzz(func(t *testing.T, statusCode int, body string) {
+		if statusCode < 100 || statusCode > 599 {
+			t.Skip()
+		}
+		doer := &stubHTTPDoer{statusCode: statusCode, body: []byte(body)}
+		client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+		if err != nil {
+			t.Fatalf("create client: %v", err)
+		}
+		_, err = client.chat(context.Background(), defaultOpenRouterModel, "hello", 16)
+		if err == nil {
+			return
+		}
+		var authErr *OpenRouterAuthenticationError
+		isAuth := errors.Is(err, ErrLLMAuthenticationFailed)
+		hasAuthErr := errors.As(err, &authErr)
+		if statusCode == 401 {
+			if !isAuth || !hasAuthErr {
+				t.Fatalf("status %d error = %T %v, want auth classification", statusCode, err, err)
+			}
+			if authErr.StatusCode != statusCode {
+				t.Fatalf("auth status = %d, want %d", authErr.StatusCode, statusCode)
+			}
+			if authErr.CredentialEnvVar != "CEREBRO_OPENROUTER_API_KEY" {
+				t.Fatalf("credential env var = %q", authErr.CredentialEnvVar)
+			}
+			if len(authErr.ProviderMessage) > 203 {
+				t.Fatalf("provider message too long: %d", len(authErr.ProviderMessage))
+			}
+			return
+		}
+		if isAuth || hasAuthErr {
+			t.Fatalf("status %d incorrectly classified auth error: %v", statusCode, err)
+		}
+	})
 }
 
 func TestOpenRouterLLMClient_HTTPDoerError(t *testing.T) {

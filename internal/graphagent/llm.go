@@ -47,6 +47,10 @@ type LLMClient interface {
 	Summarize(context.Context, SummarizeRequest) (string, error)
 }
 
+type LLMProber interface {
+	Probe(context.Context) error
+}
+
 type LLMConfig struct {
 	Provider    string
 	Model       string
@@ -98,6 +102,17 @@ func NewLLMClientWithSecrets(ctx context.Context, cfg LLMConfigWithSecrets) (LLM
 	default:
 		return nil, fmt.Errorf("%w: unsupported graph agent llm provider %q", ErrInvalidRequest, provider)
 	}
+}
+
+func ProbeLLM(ctx context.Context, client LLMClient) error {
+	if client == nil {
+		return nil
+	}
+	prober, ok := client.(LLMProber)
+	if !ok {
+		return nil
+	}
+	return prober.Probe(ctx)
 }
 
 func normalizeModel(model string) string {

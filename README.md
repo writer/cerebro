@@ -223,6 +223,9 @@ Build first with `make build`, then run `./bin/cerebro`.
 ./bin/cerebro serve
 ./bin/cerebro version
 
+# Deploy preflight receipt
+./bin/cerebro deploy preflight
+
 # Source catalog and previews
 ./bin/cerebro source list
 ./bin/cerebro source check github owner=writer repo=cerebro
@@ -254,7 +257,7 @@ Build first with `make build`, then run `./bin/cerebro`.
 ./bin/cerebro graph rebuild example-github dry_run=true mode=replay
 ```
 
-Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, and `closeout`.
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
 ---
 

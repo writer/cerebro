@@ -1165,6 +1165,75 @@ func TestSyncRuntimeTelemetryClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	if strings.Contains(stderr, "fake-sensitive-value") || strings.Contains(stderr, "credential=") {
 		t.Fatalf("source runtime telemetry leaked raw error: %s", stderr)
 	}
+	stored := store.runtimes["writer-failing"]
+	if got := stored.GetConfig()[runtimeStatusConfigKey]; got != "failed" {
+		t.Fatalf("runtime status = %q, want failed", got)
+	}
+	if got := stored.GetConfig()[runtimeLastFailureCategoryConfigKey]; got != "sync_failed" {
+		t.Fatalf("failure category = %q, want sync_failed", got)
+	}
+}
+
+func TestSyncRuntimePersistsFailureCategories(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "auth", err: errors.New("provider returned 401 unauthorized"), want: "auth_error"},
+		{name: "rate limited", err: errors.New("provider returned 429 too many requests"), want: "rate_limited"},
+		{name: "unavailable", err: errors.New("connection refused"), want: "provider_unavailable"},
+		{name: "invalid config", err: sourcecdk.ErrInvalidConfig, want: "invalid_source_config"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			registry, err := sourcecdk.NewRegistry(failingSource{err: tt.err})
+			if err != nil {
+				t.Fatalf("NewRegistry() error = %v", err)
+			}
+			store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-failing": {Id: "writer-failing", SourceId: "failing"},
+			}}
+			service := New(registry, store, &appendLog{}, nil)
+			_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-failing"})
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("Sync() error = %v, want %v", err, tt.err)
+			}
+			stored := store.runtimes["writer-failing"]
+			if got := stored.GetConfig()[runtimeStatusConfigKey]; got != "failed" {
+				t.Fatalf("runtime status = %q, want failed", got)
+			}
+			if got := stored.GetConfig()[runtimeLastFailureCategoryConfigKey]; got != tt.want {
+				t.Fatalf("failure category = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func FuzzInvalidEventFailureClassification(f *testing.F) {
+	f.Add("missing required attribute source_system")
+	f.Add("missing required payload field uri")
+	f.Add("provider returned 401 unauthorized")
+	f.Add("provider returned 429 too many requests")
+	f.Add("connection refused")
+	f.Fuzz(func(t *testing.T, message string) {
+		err := errors.New(message)
+		category := sourceRuntimeFailureCategory(err)
+		switch category {
+		case "auth_error", "rate_limited", "provider_unavailable", "sync_failed":
+		default:
+			t.Fatalf("unexpected source runtime failure category %q", category)
+		}
+		invalidCategory := invalidEventFailureCategory(err)
+		switch invalidCategory {
+		case "missing_required_attribute", "missing_required_payload_field", "invalid_event":
+		default:
+			t.Fatalf("unexpected invalid event failure category %q", invalidCategory)
+		}
+		field := invalidEventFieldName(err)
+		if strings.Contains(field, " ") || strings.Contains(field, ":") {
+			t.Fatalf("invalid event field was not bounded to field token: %q", field)
+		}
+	})
 }
 
 func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {

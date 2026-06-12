@@ -98,6 +98,47 @@ func TestValidateEventContractsRejectsDuplicateKinds(t *testing.T) {
 	}
 }
 
+func FuzzValidateEventEnvelopeWithContracts(f *testing.F) {
+	f.Add("github.audit", "github/audit/v1", []byte(`{"action":"protected_branch.destroy","org":"example"}`), "org", "example", "action")
+	f.Add("GitHub.Audit", "github/audit/v1", []byte(`{"action":"x"}`), "org", "example", "action")
+	f.Add("github.audit", "github/audit/v1", []byte(`[]`), "org", "example", "action")
+	f.Add("github.audit", "github/audit/v1", []byte(`{"action":""}`), "org", "", "action")
+	f.Fuzz(func(t *testing.T, kind string, schemaRef string, payload []byte, attrKey string, attrValue string, requiredPayloadField string) {
+		if len(payload) > 4096 || len(kind) > 128 || len(schemaRef) > 128 || len(attrKey) > 128 || len(requiredPayloadField) > 128 {
+			t.Skip()
+		}
+		event := normalizedTestEvent()
+		event.Kind = kind
+		event.SchemaRef = schemaRef
+		event.Payload = payload
+		event.Attributes = map[string]string{}
+		if attrKey != "" {
+			event.Attributes[attrKey] = attrValue
+		}
+		contracts := []EventContract{{
+			Kind:                  "github.audit",
+			SchemaRef:             "github/audit/v1",
+			RequiredAttributes:    []string{"org"},
+			RequiredPayloadFields: []string{requiredPayloadField},
+		}}
+		err := ValidateEventEnvelopeWithContracts(event, contracts)
+		if err == nil {
+			if kind != "github.audit" || schemaRef != "github/audit/v1" {
+				t.Fatalf("accepted event with mismatched contract kind/schema: kind=%q schema=%q", kind, schemaRef)
+			}
+			if attrValue == "" && attrKey == "org" {
+				t.Fatalf("accepted event with empty required attribute")
+			}
+			return
+		}
+		if !errors.Is(err, ErrInvalidEventEnvelope) {
+			if _, normalizeErr := NormalizeEventContract(contracts[0]); normalizeErr == nil {
+				t.Fatalf("error = %v, want ErrInvalidEventEnvelope", err)
+			}
+		}
+	})
+}
+
 func normalizedTestEvent() *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         "github-audit-1",

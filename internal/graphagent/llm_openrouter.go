@@ -39,6 +39,28 @@ type OpenRouterConfig struct {
 	Temperature  float64
 }
 
+type OpenRouterAuthenticationError struct {
+	StatusCode       int
+	ProviderMessage  string
+	CredentialEnvVar string
+}
+
+func (e *OpenRouterAuthenticationError) Error() string {
+	if e == nil {
+		return ErrLLMAuthenticationFailed.Error()
+	}
+	credentialEnvVar := firstNonEmpty(strings.TrimSpace(e.CredentialEnvVar), "CEREBRO_OPENROUTER_API_KEY")
+	message := truncateStr(strings.TrimSpace(e.ProviderMessage), 200)
+	if message != "" {
+		return fmt.Sprintf("%s: openrouter authentication failed (%d): %s; check %s", ErrLLMAuthenticationFailed, e.StatusCode, message, credentialEnvVar)
+	}
+	return fmt.Sprintf("%s: openrouter authentication failed (%d); check %s", ErrLLMAuthenticationFailed, e.StatusCode, credentialEnvVar)
+}
+
+func (e *OpenRouterAuthenticationError) Unwrap() error {
+	return ErrLLMAuthenticationFailed
+}
+
 func NewOpenRouterLLMClient(cfg OpenRouterConfig) (*OpenRouterLLMClient, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, fmt.Errorf("%w: CEREBRO_OPENROUTER_API_KEY is required for the openrouter LLM provider", ErrRuntimeUnavailable)
@@ -90,6 +112,11 @@ func (c *OpenRouterLLMClient) Summarize(ctx context.Context, req SummarizeReques
 	return c.chat(ctx, c.modelID(req.Model), summarizePrompt(req), c.maxTokens)
 }
 
+func (c *OpenRouterLLMClient) Probe(ctx context.Context) error {
+	_, err := c.chat(ctx, c.defaultModel, "Reply with OK if this credential can call OpenRouter.", 16)
+	return err
+}
+
 func (c *OpenRouterLLMClient) modelID(requested string) string {
 	switch normalizeModel(requested) {
 	case "claude-sonnet-4-6":
@@ -132,6 +159,14 @@ func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt str
 		return "", fmt.Errorf("openrouter request failed: %w", err)
 	}
 	if statusCode != 200 {
+		message := openRouterErrorMessage(respBody)
+		if openRouterAuthenticationFailure(statusCode) {
+			return "", &OpenRouterAuthenticationError{
+				StatusCode:       statusCode,
+				ProviderMessage:  message,
+				CredentialEnvVar: "CEREBRO_OPENROUTER_API_KEY",
+			}
+		}
 		return "", fmt.Errorf("openrouter returned %d: %s", statusCode, truncateStr(string(respBody), 200))
 	}
 
@@ -155,6 +190,22 @@ func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt str
 		return "", fmt.Errorf("openrouter response contained no text")
 	}
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+}
+
+func openRouterAuthenticationFailure(statusCode int) bool {
+	return statusCode == 401
+}
+
+func openRouterErrorMessage(respBody []byte) string {
+	var result struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(respBody, &result); err == nil && result.Error != nil {
+		return truncateStr(strings.TrimSpace(result.Error.Message), 200)
+	}
+	return ""
 }
 
 func truncateStr(s string, maxLen int) string {

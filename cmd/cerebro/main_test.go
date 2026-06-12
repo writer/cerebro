@@ -28,6 +28,40 @@ func TestRunRejectsUnsupportedCommand(t *testing.T) {
 	}
 }
 
+func TestRunDeployRejectsUnsupportedSubcommand(t *testing.T) {
+	err := run([]string{"deploy", "bogus"})
+	var usage usageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("run(deploy bogus) error = %v, want usageError", err)
+	}
+}
+
+func TestWritePreflightReceiptJSONRedactsToBoundedDetail(t *testing.T) {
+	receipt := preflightReceipt{
+		Kind:   "cerebro.deploy_preflight",
+		Status: "fail",
+		Checks: []preflightCheck{{
+			Name:   "graph_agent_llm.probe",
+			Status: "fail",
+			Detail: preflightErrorDetail(fmt.Errorf("openrouter failed: %s", strings.Repeat("x", 400))),
+		}},
+	}
+	var buf strings.Builder
+	if err := writePreflightReceipt(&buf, receipt, "json"); err != nil {
+		t.Fatalf("writePreflightReceipt() error = %v", err)
+	}
+	if strings.Contains(buf.String(), strings.Repeat("x", 260)) {
+		t.Fatalf("preflight detail was not bounded: %s", buf.String())
+	}
+	var decoded preflightReceipt
+	if err := json.Unmarshal([]byte(buf.String()), &decoded); err != nil {
+		t.Fatalf("preflight JSON invalid: %v", err)
+	}
+	if decoded.Status != "fail" || len(decoded.Checks) != 1 {
+		t.Fatalf("decoded receipt = %#v", decoded)
+	}
+}
+
 func TestSourceRuntimeCommandSignalsIncludeSIGTERM(t *testing.T) {
 	signals := sourceRuntimeCommandSignals()
 	if len(signals) != 2 || signals[0] != os.Interrupt || signals[1] != syscall.SIGTERM {
