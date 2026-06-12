@@ -161,8 +161,9 @@ func (a *App) handleGRCInventoryAssets(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
+	summary := summarizeGRCInventoryAssets(assets)
 	assets = filterGRCInventoryAssetsByScope(assets, strings.TrimSpace(r.URL.Query().Get("scope_state")))
-	writeJSON(w, http.StatusOK, grcInventoryAssetsResponse{Assets: assets, Summary: summarizeGRCInventoryAssets(assets), GeneratedAt: time.Now().UTC()})
+	writeJSON(w, http.StatusOK, grcInventoryAssetsResponse{Assets: assets, Summary: summary, GeneratedAt: time.Now().UTC()})
 }
 
 func (a *App) handleGRCInventoryAssetDetail(w http.ResponseWriter, r *http.Request) {

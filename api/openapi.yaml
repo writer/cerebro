@@ -977,6 +977,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/limitQuery'
         - name: category_id
           in: query
