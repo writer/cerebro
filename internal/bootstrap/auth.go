@@ -589,6 +589,7 @@ func authorizeFindingCandidatePromotion(ctx context.Context) error {
 const (
 	scopeCosmoSecurityRead       = "cerebro.cosmo.security.read"
 	scopeFindingCandidatePromote = "cerebro.finding_candidates.promote"
+	scopeGRCInventoryWrite       = "cerebro.grc.inventory.write"
 	scopeRuntimeResponseWrite    = "cerebro.runtime_response.write"
 )
 

@@ -52,6 +52,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Prefix: "/finding-evidence/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Prefix: "/grc/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodPost, Exact: "/grc/ask", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/grc/inventory/resource-scope", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/neighborhood", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/impact/package", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/impact/asset", Scope: scopeCosmoSecurityRead, Static: true},

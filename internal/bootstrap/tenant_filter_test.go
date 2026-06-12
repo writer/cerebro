@@ -91,6 +91,21 @@ func TestRuntimeResponseTrustedScopeIsServerDerived(t *testing.T) {
 	}
 }
 
+func TestGRCInventoryScopeMutationRequiresWriteScope(t *testing.T) {
+	request, err := http.NewRequest(http.MethodPost, "/grc/inventory/resource-scope", nil)
+	if err != nil {
+		t.Fatalf("NewRequest error = %v", err)
+	}
+	if got := scopeForHTTPRequest(request); got != scopeGRCInventoryWrite {
+		t.Fatalf("scopeForHTTPRequest(grc inventory scope update) = %q, want %q", got, scopeGRCInventoryWrite)
+	}
+
+	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+	if err := authorizePrincipalScope(readOnly, scopeGRCInventoryWrite); err == nil {
+		t.Fatal("read-only scoped principal authorized for GRC inventory write scope")
+	}
+}
+
 func TestRequireMatchingJobTenantRejectsMismatchedTargetTenant(t *testing.T) {
 	if err := requireMatchingJobTenant("tenant-a", "tenant-a"); err != nil {
 		t.Fatalf("matching tenants error = %v", err)
