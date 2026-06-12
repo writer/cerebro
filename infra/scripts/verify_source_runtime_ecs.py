@@ -743,13 +743,59 @@ def _summarize_raw_log_messages(messages: list[str], limit: int = 20) -> str:
     return "\n".join(lines)
 
 
-def _bootstrap_payload_from_task_definition(task_definition: dict[str, Any]) -> str:
+def _s3_bucket_key_from_arn(value: str) -> tuple[str, str]:
+    prefix = "arn:aws:s3:::"
+    if not value.startswith(prefix):
+        raise ValueError("environment file must be an S3 object ARN")
+    bucket_key = value.removeprefix(prefix)
+    if "/" not in bucket_key:
+        raise ValueError("environment file ARN must include an object key")
+    bucket, key = bucket_key.split("/", 1)
+    if not bucket or not key:
+        raise ValueError("environment file ARN must include a bucket and key")
+    return bucket, key
+
+
+def _read_s3_object(bucket: str, key: str, region: str) -> str:
+    completed = subprocess.run(
+        ["aws", "s3", "cp", f"s3://{bucket}/{key}", "-", "--region", region],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return completed.stdout
+
+
+def _env_file_value(content: str, name: str) -> str:
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == name:
+            return value
+    return ""
+
+
+def _bootstrap_payload_from_task_definition(task_definition: dict[str, Any], region: str | None = None) -> str:
     for container in task_definition.get("containerDefinitions") or []:
         if container.get("name") != BOOTSTRAP_CONTAINER_NAME:
             continue
         for item in container.get("environment") or []:
             if item.get("name") == BOOTSTRAP_ENV_NAME:
                 return str(item.get("value") or "")
+        if not region:
+            continue
+        for environment_file in container.get("environmentFiles") or []:
+            if str(environment_file.get("type") or "").lower() != "s3":
+                continue
+            value = str(environment_file.get("value") or "")
+            if not value:
+                continue
+            bucket, key = _s3_bucket_key_from_arn(value)
+            payload = _env_file_value(_read_s3_object(bucket, key, region), BOOTSTRAP_ENV_NAME)
+            if payload:
+                return payload
     return ""
 
 
@@ -797,7 +843,7 @@ def _scoped_bootstrap_payload_from_task_definition(
     if not runtime_ids:
         return ""
     response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition_arn], region)
-    payload = _bootstrap_payload_from_task_definition(response.get("taskDefinition") or {})
+    payload = _bootstrap_payload_from_task_definition(response.get("taskDefinition") or {}, region)
     if not payload:
         raise ValueError("bootstrap payload is missing from task definition")
     return _scoped_bootstrap_payload(payload, runtime_ids)
@@ -807,8 +853,9 @@ def _bootstrap_payload_diagnostics(
     runtime_id: str,
     task_definition: dict[str, Any],
     requested_runtime_ids: set[str],
+    region: str | None = None,
 ) -> tuple[set[str], str]:
-    payload = _bootstrap_payload_from_task_definition(task_definition)
+    payload = _bootstrap_payload_from_task_definition(task_definition, region)
     if not payload:
         return set(), (
             "bootstrap diagnostics: task definition is missing "
@@ -865,6 +912,7 @@ def _bootstrap_task_diagnostics(
             target.runtime_id,
             response.get("taskDefinition") or {},
             {target.runtime_id},
+            region,
         )
         lines.append(diagnostics)
     except Exception as exc:
@@ -889,6 +937,7 @@ def _verify_bootstrap_payload_targets(targets: list[RuntimeTarget], region: str)
             target.runtime_id,
             response.get("taskDefinition") or {},
             {target.runtime_id},
+            region,
         )
         if f"missing_runtime_ids={target.runtime_id}" in diagnostics or "payload_status=missing" in diagnostics:
             raise RuntimeVerificationFailedError(

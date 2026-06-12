@@ -21,6 +21,7 @@ from scripts.verify_source_runtime_ecs import (
     SecretImportPreflightFinding,
     VerificationOptions,
     VerificationResult,
+    _bootstrap_payload_from_task_definition,
     _bootstrap_payload_runtime_ids,
     _config_for_runtime_scope,
     _bootstrap_task_diagnostics,
@@ -1405,6 +1406,31 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(_bootstrap_payload_runtime_ids(object_payload), {"writer-panopticon-alerts"})
         self.assertEqual(_bootstrap_payload_runtime_ids(list_payload), {"writer-panopticon-cases"})
 
+    def test_bootstrap_payload_reads_s3_environment_file(self) -> None:
+        payload = '{"runtimes":[{"id":"writer-panopticon-alerts","source_id":"panopticon"}]}'
+        task_definition = {
+            "containerDefinitions": [
+                {
+                    "name": "source-runtime-bootstrap",
+                    "environmentFiles": [
+                        {
+                            "type": "s3",
+                            "value": "arn:aws:s3:::writer-cerebro-sec-dev-source-runtime-bootstrap/source-runtime-bootstrap/orchestrator.env",
+                        }
+                    ],
+                }
+            ]
+        }
+
+        with patch("scripts.verify_source_runtime_ecs._read_s3_object", return_value=f"CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON={payload}\n") as read_s3:
+            self.assertEqual(_bootstrap_payload_from_task_definition(task_definition, "us-east-1"), payload)
+
+        read_s3.assert_called_once_with(
+            "writer-cerebro-sec-dev-source-runtime-bootstrap",
+            "source-runtime-bootstrap/orchestrator.env",
+            "us-east-1",
+        )
+
     def test_scoped_bootstrap_payload_keeps_requested_runtimes_only(self) -> None:
         payload = json.dumps(
             {
@@ -1479,6 +1505,41 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
             with self.assertRaisesRegex(RuntimeVerificationFailedError, "bootstrap payload status is missing"):
                 _verify_bootstrap_payload_targets([target], "us-east-1")
+
+    def test_verify_bootstrap_payload_targets_reads_s3_environment_file(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-panopticon-alerts",
+            schedule_name="panopticon-alerts-live",
+            rule_name="cerebro-sec-dev-orchestrator-panopticon-alerts-live",
+            target={"EcsParameters": {"TaskDefinitionArn": "task-def"}},
+        )
+        payload = '{"runtimes":[{"id":"writer-panopticon-alerts","source_id":"panopticon"}]}'
+
+        def fake_aws(args, region):
+            if args[:2] == ["ecs", "list-task-definitions"]:
+                return {"taskDefinitionArns": ["task-def:2"]}
+            return {
+                "taskDefinition": {
+                    "taskDefinitionArn": "task-def:2",
+                    "containerDefinitions": [
+                        {
+                            "name": "source-runtime-bootstrap",
+                            "environmentFiles": [
+                                {
+                                    "type": "s3",
+                                    "value": "arn:aws:s3:::bootstrap/source-runtime-bootstrap/orchestrator.env",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            }
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws),
+            patch("scripts.verify_source_runtime_ecs._read_s3_object", return_value=f"CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON={payload}\n"),
+        ):
+            _verify_bootstrap_payload_targets([target], "us-east-1")
 
     def test_run_validates_bootstrap_payload_before_secret_preflight_and_run_task(self) -> None:
         stack_file = Path("aws/Pulumi.sec-dev.yaml")
