@@ -48,33 +48,37 @@ func (r *Replayer) Replay(ctx context.Context, request ReplayRequest) (*ReplayRe
 	}
 	projector := New(r.graph)
 	result := &ReplayResult{}
-	for _, kindPrefix := range workflowReplayKindPrefixes(request.KindPrefix) {
-		events, err := r.replayer.Replay(ctx, ports.ReplayRequest{
-			KindPrefix:      kindPrefix,
-			TenantID:        strings.TrimSpace(request.TenantID),
-			AttributeEquals: request.AttributeEquals,
-			Limit:           request.Limit,
-		})
+	replayRequest := ports.ReplayRequest{
+		TenantID:        strings.TrimSpace(request.TenantID),
+		AttributeEquals: request.AttributeEquals,
+		Limit:           request.Limit,
+	}
+	kindPrefixes := workflowReplayKindPrefixes(request.KindPrefix)
+	if len(kindPrefixes) == 1 {
+		replayRequest.KindPrefix = kindPrefixes[0]
+	} else {
+		replayRequest.KindPrefixes = kindPrefixes
+	}
+	events, err := r.replayer.Replay(ctx, replayRequest)
+	if err != nil {
+		return nil, err
+	}
+	for _, event := range events {
+		result.EventsRead++
+		projection, err := projector.Project(ctx, event)
 		if err != nil {
 			return nil, err
 		}
-		for _, event := range events {
-			result.EventsRead++
-			projection, err := projector.Project(ctx, event)
-			if err != nil {
-				return nil, err
-			}
-			eventsProjected := projection.EventsProjected
-			if eventsProjected == 0 && (projection.EntitiesProjected != 0 || projection.LinksProjected != 0 || projection.EntitiesDeleted != 0 || projection.LinksDeleted != 0) {
-				eventsProjected = 1
-			}
-			if eventsProjected == 0 {
-				continue
-			}
-			result.EventsProjected += eventsProjected
-			result.EntitiesProjected += projection.EntitiesProjected
-			result.LinksProjected += projection.LinksProjected
+		eventsProjected := projection.EventsProjected
+		if eventsProjected == 0 && (projection.EntitiesProjected != 0 || projection.LinksProjected != 0 || projection.EntitiesDeleted != 0 || projection.LinksDeleted != 0) {
+			eventsProjected = 1
 		}
+		if eventsProjected == 0 {
+			continue
+		}
+		result.EventsProjected += eventsProjected
+		result.EntitiesProjected += projection.EntitiesProjected
+		result.LinksProjected += projection.LinksProjected
 	}
 	return result, nil
 }

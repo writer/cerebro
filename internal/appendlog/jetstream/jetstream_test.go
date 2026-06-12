@@ -412,6 +412,43 @@ func TestReplayFiltersCanonicalSecurityEventsByKindPrefix(t *testing.T) {
 	}
 }
 
+func TestReplayFiltersMultipleKindPrefixesInAppendOrder(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>", "sec.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, securityevents.FindingRecorded, workflowReplayEvent("evt-1", securityevents.FindingRecorded, "writer", "")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "writer-github")),
+				3: rawReplayMsg(t, "events.workflow.v1.finding.tombstoned", workflowReplayEvent("evt-3", "workflow.v1.finding.tombstoned", "writer", "")),
+				4: rawReplayMsg(t, securityevents.ToolRegistered, workflowReplayEvent("evt-4", securityevents.ToolRegistered, "writer", "")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{
+		KindPrefixes: []string{"workflow.v1.", securityevents.FindingsV1Prefix + "."},
+		TenantID:     "writer",
+	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if events[0].GetId() != "evt-1" || events[1].GetId() != "evt-3" {
+		t.Fatalf("replayed ids = [%q, %q], want [evt-1, evt-3]", events[0].GetId(), events[1].GetId())
+	}
+}
+
 func TestReplaySkipsDecodeForSubjectsOutsideKindPrefix(t *testing.T) {
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{

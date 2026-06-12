@@ -200,7 +200,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		return nil, errors.New("jetstream is not configured")
 	}
 	request := normalizeReplayRequest(req)
-	if request.RuntimeID == "" && request.KindPrefix == "" && request.TenantID == "" && len(request.AttributeEquals) == 0 {
+	if request.RuntimeID == "" && request.KindPrefix == "" && len(request.KindPrefixes) == 0 && request.TenantID == "" && len(request.AttributeEquals) == 0 {
 		return nil, errors.New("at least one replay filter is required")
 	}
 	stream, err := l.replayStream(ctx)
@@ -211,7 +211,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if err != nil {
 		return nil, err
 	}
-	subjectPrefix := replaySubjectPrefix(prefix, request.KindPrefix)
+	subjectPrefixes := replaySubjectPrefixes(prefix, request)
 	limit := normalizeReplayLimit(request.Limit)
 	candidateLimit := normalizeReplayCandidateLimit(limit)
 	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
@@ -233,7 +233,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 			}
 			return nil, fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
 		}
-		if raw != nil && replaySubjectMatchesPrefix(raw.Subject, subjectPrefix) {
+		if raw != nil && replaySubjectMatchesAnyPrefix(raw.Subject, subjectPrefixes) {
 			event, err := decodeReplayEvent(raw)
 			if err != nil {
 				return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
@@ -285,10 +285,31 @@ func replaySubjectPrefix(prefix string, kindPrefix string) string {
 	return normalized + "." + kindPrefix
 }
 
+func replaySubjectPrefixes(prefix string, request ports.ReplayRequest) []string {
+	kindPrefixes := replayKindPrefixes(request)
+	if len(kindPrefixes) == 0 {
+		return []string{replaySubjectPrefix(prefix, "")}
+	}
+	subjectPrefixes := make([]string, 0, len(kindPrefixes))
+	for _, kindPrefix := range kindPrefixes {
+		subjectPrefixes = append(subjectPrefixes, replaySubjectPrefix(prefix, kindPrefix))
+	}
+	return subjectPrefixes
+}
+
 func replaySubjectMatchesPrefix(subject string, prefix string) bool {
 	subject = strings.TrimSpace(subject)
 	prefix = strings.TrimSpace(prefix)
 	return subject == prefix || strings.HasPrefix(subject, prefix+".")
+}
+
+func replaySubjectMatchesAnyPrefix(subject string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if replaySubjectMatchesPrefix(subject, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func publishPayload(event *cerebrov1.EventEnvelope) ([]byte, error) {
@@ -447,6 +468,7 @@ func normalizeReplayRequest(req ports.ReplayRequest) ports.ReplayRequest {
 	normalized := ports.ReplayRequest{
 		RuntimeID:       strings.TrimSpace(req.RuntimeID),
 		KindPrefix:      strings.TrimSpace(req.KindPrefix),
+		KindPrefixes:    normalizeReplayKindPrefixes(req.KindPrefixes),
 		TenantID:        strings.TrimSpace(req.TenantID),
 		AttributeEquals: make(map[string]string, len(req.AttributeEquals)),
 		Limit:           req.Limit,
@@ -462,6 +484,44 @@ func normalizeReplayRequest(req ports.ReplayRequest) ports.ReplayRequest {
 	return normalized
 }
 
+func normalizeReplayKindPrefixes(kindPrefixes []string) []string {
+	normalized := make([]string, 0, len(kindPrefixes))
+	seen := map[string]struct{}{}
+	for _, kindPrefix := range kindPrefixes {
+		kindPrefix = strings.TrimSpace(kindPrefix)
+		if kindPrefix == "" {
+			continue
+		}
+		if _, ok := seen[kindPrefix]; ok {
+			continue
+		}
+		seen[kindPrefix] = struct{}{}
+		normalized = append(normalized, kindPrefix)
+	}
+	return normalized
+}
+
+func replayKindPrefixes(req ports.ReplayRequest) []string {
+	prefixes := make([]string, 0, 1+len(req.KindPrefixes))
+	seen := map[string]struct{}{}
+	add := func(kindPrefix string) {
+		kindPrefix = strings.TrimSpace(kindPrefix)
+		if kindPrefix == "" {
+			return
+		}
+		if _, ok := seen[kindPrefix]; ok {
+			return
+		}
+		seen[kindPrefix] = struct{}{}
+		prefixes = append(prefixes, kindPrefix)
+	}
+	add(req.KindPrefix)
+	for _, kindPrefix := range req.KindPrefixes {
+		add(kindPrefix)
+	}
+	return prefixes
+}
+
 func matchesReplayRequest(event *cerebrov1.EventEnvelope, req ports.ReplayRequest) bool {
 	if event == nil {
 		return false
@@ -469,8 +529,18 @@ func matchesReplayRequest(event *cerebrov1.EventEnvelope, req ports.ReplayReques
 	if req.RuntimeID != "" && strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]) != req.RuntimeID {
 		return false
 	}
-	if req.KindPrefix != "" && !strings.HasPrefix(strings.TrimSpace(event.GetKind()), req.KindPrefix) {
-		return false
+	if kindPrefixes := replayKindPrefixes(req); len(kindPrefixes) > 0 {
+		eventKind := strings.TrimSpace(event.GetKind())
+		matched := false
+		for _, kindPrefix := range kindPrefixes {
+			if strings.HasPrefix(eventKind, kindPrefix) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
 	}
 	if req.TenantID != "" && strings.TrimSpace(event.GetTenantId()) != req.TenantID {
 		return false

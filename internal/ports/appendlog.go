@@ -18,6 +18,7 @@ type AppendLog interface {
 type ReplayRequest struct {
 	RuntimeID       string
 	KindPrefix      string
+	KindPrefixes    []string
 	TenantID        string
 	AttributeEquals map[string]string
 	Limit           uint32
