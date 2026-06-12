@@ -49,6 +49,11 @@ on:
         required: false
         default: false
         type: boolean
+      expected_plan_hash:
+        description: Required for dry-run/run. Copy the plan_hash from a prior plan run for the same inputs.
+        required: false
+        default: ''
+        type: string
 
 permissions:
   id-token: write
@@ -96,6 +101,7 @@ jobs:
           RUN_GRAPH_PAGE_LIMIT: ${{ github.event.inputs.run_graph_page_limit }}
           RUN_EVENT_LIMIT: ${{ github.event.inputs.run_event_limit }}
           STOP_RUNNING_BEFORE_RUN: ${{ github.event.inputs.stop_running_before_run }}
+          EXPECTED_PLAN_HASH: ${{ github.event.inputs.expected_plan_hash }}
         run: |
           set -euo pipefail
           printf '%s\n' "${RUNTIME_IDS}" > runtime-ids.txt
@@ -105,10 +111,13 @@ jobs:
           if [ -n "${RUN_EVENT_LIMIT}" ]; then planner+=(--run-event-limit "${RUN_EVENT_LIMIT}"); fi
           if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then planner+=(--stop-running-before-run); fi
           "${planner[@]}" --format tsv > source-runtime-backfill-plan.tsv
-          "${planner[@]}" --format commands --mode "${MODE}" > source-runtime-backfill.sh
+          "${planner[@]}" --format run-json --mode "${MODE}" > source-runtime-backfill-run.json
           cat source-runtime-backfill-plan.tsv
-          cat source-runtime-backfill.sh
-          if [ "${MODE}" != "plan" ]; then bash source-runtime-backfill.sh; fi
+          cat source-runtime-backfill-run.json
+          uv run python -c 'import json; print("plan_hash=" + json.load(open("source-runtime-backfill-run.json", encoding="utf-8"))["plan_hash"])'
+          if [ "${MODE}" != "plan" ]; then
+            uv run python scripts/execute_graph_backfill_plan.py source-runtime-backfill-run.json --expected-plan-hash "${EXPECTED_PLAN_HASH}"
+          fi
       - name: Upload backfill plan
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -116,7 +125,7 @@ jobs:
           name: source-runtime-backfill-sec-dev
           path: |
             infra/source-runtime-backfill-plan.tsv
-            infra/source-runtime-backfill.sh
+            infra/source-runtime-backfill-run.json
 
   backfill-go-prod:
     name: Backfill go-prod source runtimes
@@ -156,6 +165,7 @@ jobs:
           RUN_GRAPH_PAGE_LIMIT: ${{ github.event.inputs.run_graph_page_limit }}
           RUN_EVENT_LIMIT: ${{ github.event.inputs.run_event_limit }}
           STOP_RUNNING_BEFORE_RUN: ${{ github.event.inputs.stop_running_before_run }}
+          EXPECTED_PLAN_HASH: ${{ github.event.inputs.expected_plan_hash }}
         run: |
           set -euo pipefail
           printf '%s\n' "${RUNTIME_IDS}" > runtime-ids.txt
@@ -165,10 +175,13 @@ jobs:
           if [ -n "${RUN_EVENT_LIMIT}" ]; then planner+=(--run-event-limit "${RUN_EVENT_LIMIT}"); fi
           if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then planner+=(--stop-running-before-run); fi
           "${planner[@]}" --format tsv > source-runtime-backfill-plan.tsv
-          "${planner[@]}" --format commands --mode "${MODE}" > source-runtime-backfill.sh
+          "${planner[@]}" --format run-json --mode "${MODE}" > source-runtime-backfill-run.json
           cat source-runtime-backfill-plan.tsv
-          cat source-runtime-backfill.sh
-          if [ "${MODE}" != "plan" ]; then bash source-runtime-backfill.sh; fi
+          cat source-runtime-backfill-run.json
+          uv run python -c 'import json; print("plan_hash=" + json.load(open("source-runtime-backfill-run.json", encoding="utf-8"))["plan_hash"])'
+          if [ "${MODE}" != "plan" ]; then
+            uv run python scripts/execute_graph_backfill_plan.py source-runtime-backfill-run.json --expected-plan-hash "${EXPECTED_PLAN_HASH}"
+          fi
       - name: Upload backfill plan
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -176,4 +189,4 @@ jobs:
           name: source-runtime-backfill-go-prod
           path: |
             infra/source-runtime-backfill-plan.tsv
-            infra/source-runtime-backfill.sh
+            infra/source-runtime-backfill-run.json

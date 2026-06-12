@@ -572,6 +572,7 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_openrouter_provider_requires_explicit_model(self) -> None:
         content = BASE_STACK + "  cerebro:graphAgentLlmProvider: openrouter\n"
         self.assertTrue(any("OpenRouter provider must set an explicit OpenRouter model id" in message for message in self._messages(content)))
+        self.assertTrue(any("OpenRouter provider must declare the API key secret import" in message for message in self._messages(content)))
 
     def test_openrouter_provider_rejects_anthropic_dated_model_id(self) -> None:
         content = BASE_STACK + (
@@ -584,8 +585,10 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK + (
             "  cerebro:graphAgentLlmProvider: openrouter\n"
             "  cerebro:graphAgentLlmModel: anthropic/claude-sonnet-4.6\n"
+            "  cerebro:openrouterApiKeySecret: CEREBRO_OPENROUTER_API_KEY\n"
         )
         self.assertFalse(any("OpenRouter model" in message for message in self._messages(content)))
+        self.assertFalse(any("OpenRouter provider must declare the API key secret import" in message for message in self._messages(content)))
 
     def test_missing_source_secret_is_error(self) -> None:
         content = BASE_STACK.replace(f"    - {API_TOKEN_KEY}\n", "")

@@ -35,6 +35,20 @@ class AwsSecretImportsTest(unittest.TestCase):
         self.assertEqual(by_env["SOURCE_TOKEN"].secret_id, "cerebro-go-production/aws-sync/SOURCE_TOKEN")
         self.assertEqual(by_env["SOURCE_ALIAS"].secret_id, "custom-prefix/SOURCE_CANONICAL")
 
+    def test_expected_imports_include_openrouter_when_configured(self) -> None:
+        imports = verify_aws_secret_imports.expected_secret_imports(
+            {
+                "environment": "sec-dev",
+                "graphAgentLlmProvider": "openrouter",
+                "openrouterApiKeySecret": "OPENROUTER_RUNTIME_TOKEN",
+            },
+            "sec-dev",
+        )
+
+        by_env = {item.env_name: item for item in imports}
+        self.assertEqual(by_env["CEREBRO_OPENROUTER_API_KEY"].secret_id, "cerebro-sec-dev/OPENROUTER_RUNTIME_TOKEN")
+        self.assertEqual(by_env["CEREBRO_OPENROUTER_API_KEY"].category, "runtime-import")
+
     def test_missing_env_refs_are_reported_without_names(self) -> None:
         imports = [
             verify_aws_secret_imports.SecretImport(

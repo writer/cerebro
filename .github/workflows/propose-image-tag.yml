@@ -250,10 +250,18 @@ jobs:
             uv run --project infra python infra/scripts/verify_runtime_contract.py \
               --contract "${CONTRACT_PATH}" \
               --stack-file "${target_config}"
+            uv run --project infra python infra/scripts/build_deploy_preflight_receipt.py \
+              --contract "${CONTRACT_PATH}" \
+              --stack-file "${target_config}" \
+              --output "deploy-preflight-${STACK_NAME}.json"
             if [ "${STACK_NAME}" = "go-prod" ] && ! git diff --quiet -- "${sec_dev_config}"; then
               uv run --project infra python infra/scripts/verify_runtime_contract.py \
                 --contract "${CONTRACT_PATH}" \
                 --stack-file "${sec_dev_config}"
+              uv run --project infra python infra/scripts/build_deploy_preflight_receipt.py \
+                --contract "${CONTRACT_PATH}" \
+                --stack-file "${sec_dev_config}" \
+                --output "deploy-preflight-sec-dev.json"
             fi
           fi
 
@@ -316,10 +324,18 @@ jobs:
               uv run --project infra python infra/scripts/verify_runtime_contract.py \
                 --contract "${CONTRACT_PATH}" \
                 --stack-file "${target_config}"
+              uv run --project infra python infra/scripts/build_deploy_preflight_receipt.py \
+                --contract "${CONTRACT_PATH}" \
+                --stack-file "${target_config}" \
+                --output "deploy-preflight-${STACK_NAME}.json"
               if [ "${STACK_NAME}" = "go-prod" ] && ! git diff --quiet -- "${sec_dev_config}"; then
                 uv run --project infra python infra/scripts/verify_runtime_contract.py \
                   --contract "${CONTRACT_PATH}" \
                   --stack-file "${sec_dev_config}"
+                uv run --project infra python infra/scripts/build_deploy_preflight_receipt.py \
+                  --contract "${CONTRACT_PATH}" \
+                  --stack-file "${sec_dev_config}" \
+                  --output "deploy-preflight-sec-dev.json"
               fi
             fi
 

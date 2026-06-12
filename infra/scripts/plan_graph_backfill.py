@@ -4,10 +4,10 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from dataclasses import asdict, dataclass
+import hashlib
 import json
 from pathlib import Path
 import re
-import shlex
 import sys
 from typing import Any
 
@@ -27,6 +27,21 @@ class BackfillTarget:
     schedule_expression: str
     state: str
     reason: str
+
+
+@dataclass(frozen=True)
+class BackfillRun:
+    stack_file: str
+    mode: str
+    requested_runtime_ids: list[str]
+    target_concurrency: int
+    run_page_limit: int
+    run_graph_page_limit: int
+    run_event_limit: int
+    stop_running_before_run: bool
+    targets: list[BackfillTarget]
+    commands: list[list[str]]
+    plan_hash: str
 
 
 def _runtime_ids_from_text(text: str) -> list[str]:
@@ -82,11 +97,33 @@ def _runtime_map(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return mapped
 
 
+def _disabled_runtime_map(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    mapped: dict[str, dict[str, Any]] = {}
+    entries = config.get("temporarilyDisabledSourceRuntimes") or []
+    if not isinstance(entries, list):
+        return mapped
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        runtime_id = str(entry.get("runtimeId") or entry.get("runtime_id") or entry.get("sourceRuntimeId") or "").strip()
+        if runtime_id:
+            mapped[runtime_id] = entry
+    return mapped
+
+
 def plan_backfill(config: dict[str, Any], runtime_ids: list[str], source_id: str = "") -> list[BackfillTarget]:
     runtimes = _runtime_map(config)
+    disabled = _disabled_runtime_map(config)
     schedules = _schedule_map(config)
     targets: list[BackfillTarget] = []
     for runtime_id in _dedupe(runtime_ids):
+        disabled_entry = disabled.get(runtime_id)
+        if disabled_entry is not None:
+            reason = str(disabled_entry.get("reason") or "temporarily disabled").strip()
+            if review_deadline := str(disabled_entry.get("reviewDeadline") or "").strip():
+                reason = f"{reason}; review_deadline={review_deadline}"
+            targets.append(BackfillTarget(runtime_id, "", "", "", "", "quarantined", reason))
+            continue
         runtime = runtimes.get(runtime_id)
         if runtime is None:
             targets.append(BackfillTarget(runtime_id, "", "", "", "", "not_declared", "runtime is not declared in stack config"))
@@ -165,14 +202,41 @@ def _write_tsv(targets: list[BackfillTarget]) -> None:
 
 
 def _write_commands(args: argparse.Namespace, targets: list[BackfillTarget]) -> None:
-    print("set -uo pipefail")
-    print("status=0")
+    for command in _commands(args, targets):
+        print(json.dumps(command))
+
+
+def _command_groups(args: argparse.Namespace, targets: list[BackfillTarget]) -> list[tuple[str, list[str]]]:
+    groups: list[tuple[str, list[str]]] = []
     for source_id, runtime_ids in _group_backfillable(targets).items():
         runtime_groups = [[runtime_id] for runtime_id in runtime_ids] if args.target_concurrency == 1 else [runtime_ids]
-        for runtime_group in runtime_groups:
-            command = _verify_command(args, source_id, runtime_group)
-            print(" ".join(shlex.quote(part) for part in command) + " || status=$?")
-    print('exit "${status}"')
+        groups.extend((source_id, runtime_group) for runtime_group in runtime_groups)
+    return groups
+
+
+def _commands(args: argparse.Namespace, targets: list[BackfillTarget]) -> list[list[str]]:
+    return [_verify_command(args, source_id, runtime_ids) for source_id, runtime_ids in _command_groups(args, targets)]
+
+
+def _plan_hash(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def backfill_run(args: argparse.Namespace, runtime_ids: list[str], targets: list[BackfillTarget]) -> BackfillRun:
+    commands = _commands(args, targets)
+    hash_payload = {
+        "stack_file": str(args.stack_file),
+        "requested_runtime_ids": runtime_ids,
+        "target_concurrency": args.target_concurrency,
+        "run_page_limit": args.run_page_limit,
+        "run_graph_page_limit": args.run_graph_page_limit,
+        "run_event_limit": args.run_event_limit,
+        "stop_running_before_run": args.stop_running_before_run,
+        "targets": [asdict(target) for target in targets],
+    }
+    payload = {"mode": args.mode, "commands": commands, **hash_payload}
+    return BackfillRun(plan_hash=_plan_hash(hash_payload), **payload)
 
 
 def _load_runtime_ids(args: argparse.Namespace) -> list[str]:
@@ -195,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--diagnostics-file", type=Path)
     parser.add_argument("--source-id", default="")
     parser.add_argument("--mode", choices=["plan", "dry-run", "run"], default="plan")
-    parser.add_argument("--format", choices=["tsv", "json", "commands"], default="tsv")
+    parser.add_argument("--format", choices=["tsv", "json", "commands", "run-json"], default="tsv")
     parser.add_argument("--target-concurrency", type=int, default=4)
     parser.add_argument("--run-page-limit", type=int, default=0)
     parser.add_argument("--run-graph-page-limit", type=int, default=0)
@@ -213,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps([asdict(target) for target in targets], indent=2, sort_keys=True))
     elif args.format == "commands":
         _write_commands(args, targets)
+    elif args.format == "run-json":
+        print(json.dumps(asdict(backfill_run(args, runtime_ids, targets)), indent=2, sort_keys=True))
     else:
         _write_tsv(targets)
     return 0

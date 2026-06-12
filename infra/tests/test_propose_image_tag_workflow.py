@@ -69,6 +69,17 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("source_health_receipt", apply_step)
         self.assertIn("Runtime contract:", apply_step)
 
+    def test_image_tag_proposal_builds_deploy_preflight_receipt_after_contract_verification(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("infra/scripts/build_deploy_preflight_receipt.py", workflow)
+        self.assertLess(
+            workflow.index("infra/scripts/verify_runtime_contract.py"),
+            workflow.index("infra/scripts/build_deploy_preflight_receipt.py"),
+        )
+        self.assertIn('--output "deploy-preflight-${STACK_NAME}.json"', workflow)
+        self.assertIn('--output "deploy-preflight-sec-dev.json"', workflow)
+
     def test_go_prod_auto_merge_rechecks_latest_and_sec_dev_success(self) -> None:
         apply_step = self._apply_step()
         auto_merge_block = apply_step.split("auto_merge_trusted_pr() {", 1)[1].split(

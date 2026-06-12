@@ -1449,6 +1449,8 @@ def validate_stack(path: Path) -> list[Finding]:
     graph_agent_llm_provider = str(config.get("graphAgentLlmProvider", "")).strip().lower()
     graph_agent_llm_model = str(config.get("graphAgentLlmModel", "")).strip()
     if graph_agent_llm_provider == "openrouter":
+        if not str(config.get("openrouterApiKeySecret", "")).strip():
+            findings.append(_finding("error", stack, "cerebro:openrouterApiKeySecret", "OpenRouter provider must declare the API key secret import"))
         if not graph_agent_llm_model:
             findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter provider must set an explicit OpenRouter model id"))
         elif "/" not in graph_agent_llm_model:
