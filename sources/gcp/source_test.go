@@ -332,6 +332,50 @@ func TestReadLiveGCPRegionalComputeDiskKeepsRegionOutOfZone(t *testing.T) {
 	}
 }
 
+func TestReadLiveGCPDisabledOptionalServicesReturnEmpty(t *testing.T) {
+	for _, tt := range []struct {
+		family string
+		path   string
+	}{
+		{family: familyGKECluster, path: "/v1/projects/writer-prod/locations/-/clusters"},
+		{family: familyCloudRunService, path: "/v2/projects/writer-prod/locations/-/services"},
+		{family: familyCloudFunction, path: "/v2/projects/writer-prod/locations/-/functions"},
+		{family: familySecret, path: "/v1/projects/writer-prod/secrets"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != tt.path {
+					http.NotFound(w, r)
+					return
+				}
+				w.WriteHeader(http.StatusForbidden)
+				writeJSON(t, w, map[string]any{"error": map[string]any{
+					"code":    403,
+					"message": "Example API has not been used in project before or it is disabled.",
+					"status":  "PERMISSION_DENIED",
+					"details": []map[string]any{{"reason": "SERVICE_DISABLED"}},
+				}})
+			}))
+			defer server.Close()
+			source, err := newLiveTestSource()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			cfg := sourcecdk.NewConfig(map[string]string{"base_url": server.URL, "family": tt.family, "project_id": "writer-prod", "token": "test-token"})
+			if err := source.Check(context.Background(), cfg); err != nil {
+				t.Fatalf("Check(%s) error = %v", tt.family, err)
+			}
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 0 {
+				t.Fatalf("len(events) = %d, want 0", len(pull.Events))
+			}
+		})
+	}
+}
+
 func TestReadLiveGCPServiceAccountKeyPreview(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()

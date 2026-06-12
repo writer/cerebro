@@ -1220,7 +1220,7 @@ func listGKEClusters(ctx context.Context, source *Source, settings settings, pag
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/-/clusters"
-	if err := getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Clusters, "gcp gke cluster", func(record *gkeClusterRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
@@ -1232,7 +1232,7 @@ func listCloudRunServices(ctx context.Context, source *Source, settings settings
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/locations/-/services"
-	if err := getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Services, "gcp cloud run service", func(record *cloudRunServiceRecord, raw json.RawMessage) {
@@ -1246,7 +1246,7 @@ func listCloudFunctions(ctx context.Context, source *Source, settings settings, 
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/locations/-/functions"
-	if err := getJSON(ctx, source, settings, functionsBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, functionsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Functions, "gcp cloud function", func(record *cloudFunctionRecord, raw json.RawMessage) {
@@ -1285,7 +1285,7 @@ func listSecrets(ctx context.Context, source *Source, settings settings, pageTok
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/secrets"
-	if err := getJSON(ctx, source, settings, secretManagerBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, secretManagerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Secrets, "gcp secret", func(record *secretRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
@@ -2160,9 +2160,6 @@ func artifactRepositoryName(value string) string {
 
 func artifactRegistryHost(value string) string {
 	parts := strings.Split(strings.TrimSpace(value), "/")
-	if len(parts) == 0 {
-		return ""
-	}
 	if strings.Contains(parts[0], ".pkg.dev") {
 		return parts[0]
 	}
@@ -2247,6 +2244,13 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 		return fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return nil
+}
+
+func optionalGCPServiceErr(err error) error {
+	if err != nil && (strings.Contains(fmt.Sprint(err), "SERVICE_DISABLED") || strings.Contains(fmt.Sprint(err), "has not been used")) {
+		return nil
+	}
+	return err
 }
 
 func gcpBearerToken(ctx context.Context, source *Source, settings settings) (string, error) {
@@ -2498,10 +2502,7 @@ func disabledStatus(disabled bool) string {
 }
 
 func boolString(value bool) string {
-	if value {
-		return "true"
-	}
-	return "false"
+	return strconv.FormatBool(value)
 }
 
 func tenantID(settings settings) string {
