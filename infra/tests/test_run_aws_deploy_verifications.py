@@ -399,7 +399,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         category = run_aws_deploy_verifications._graph_health_degradation_category(23, diagnostics)
 
-        self.assertEqual(category, "missing_ingest_runtime_history")
+        self.assertEqual(category, "missing_ingest_run_history")
 
     def test_graph_integrity_failure_remains_blocking_when_degradation_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
