@@ -57,6 +57,35 @@ class MonitoringRuntimeTest(unittest.TestCase):
             "cerebro-test-orchestrator-rule-aws-secdev-us2-res-exp-failed-invocations",
         )
 
+    def test_scheduler_alarm_specs_cover_dlq_and_target_failures(self) -> None:
+        specs = monitoring._scheduler_alarm_specs(
+            "cerebro-test",
+            schedule_group_name="cerebro-test-orchestrator",
+            dlq_queue_name="cerebro-test-orchestrator-scheduler-dlq",
+        )
+
+        by_metric = {spec["metric_name"]: spec for spec in specs}
+        self.assertEqual(by_metric["TargetErrorCount"]["namespace"], "AWS/Scheduler")
+        self.assertEqual(by_metric["TargetErrorCount"]["dimensions"], {"ScheduleGroup": "cerebro-test-orchestrator"})
+        self.assertEqual(by_metric["InvocationDroppedCount"]["namespace"], "AWS/Scheduler")
+        self.assertEqual(by_metric["ApproximateNumberOfMessagesVisible"]["namespace"], "AWS/SQS")
+        self.assertEqual(
+            by_metric["ApproximateNumberOfMessagesVisible"]["dimensions"],
+            {"QueueName": "cerebro-test-orchestrator-scheduler-dlq"},
+        )
+        self.assertEqual(by_metric["ApproximateAgeOfOldestMessage"]["threshold"], 900)
+
+    def test_service_quota_alarm_specs_cover_scheduler_and_runtask(self) -> None:
+        specs = monitoring._service_quota_alarm_specs("cerebro-test", 80)
+
+        dimensions = {spec["alarm_name"]: spec["dimensions"] for spec in specs}
+        self.assertEqual(dimensions["cerebro-test-scheduler-schedule-quota"]["Service"], "Scheduler")
+        self.assertEqual(dimensions["cerebro-test-scheduler-schedule-quota"]["Resource"], "ApproximateSchedule")
+        self.assertEqual(dimensions["cerebro-test-scheduler-schedule-group-quota"]["Resource"], "ApproximateScheduleGroup")
+        self.assertEqual(dimensions["cerebro-test-ecs-runtask-api-quota"]["Service"], "ECS")
+        self.assertEqual(dimensions["cerebro-test-ecs-runtask-api-quota"]["Resource"], "RunTask")
+        self.assertTrue(all(spec["threshold"] == 80 for spec in specs))
+
     def test_dashboard_includes_access_audit_metrics(self) -> None:
         original_get_region = monitoring.aws.get_region
         monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")

@@ -198,6 +198,29 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(len(targets), 1)
         self.assertEqual(targets[0].target["Arn"], "cluster")
 
+    def test_runtime_targets_skip_disabled_schedule(self) -> None:
+        config = {
+            "orchestratorSchedules": [
+                {
+                    "name": "gcp-writer-iam-audit",
+                    "backend": "scheduler",
+                    "state": "DISABLED",
+                    "command": ["orchestrator", "run", "runtime_id=writer-gcp-prod-writer-iam-audit"],
+                }
+            ]
+        }
+
+        with patch("scripts.verify_source_runtime_ecs._aws") as aws_call:
+            targets = _runtime_targets(
+                config,
+                ["writer-gcp-prod-writer-iam-audit"],
+                "cerebro-go-production",
+                "us-east-1",
+            )
+
+        self.assertEqual(targets, [])
+        aws_call.assert_not_called()
+
     def test_task_family_from_arn(self) -> None:
         self.assertEqual(
             _task_family("arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator-cosmo-session:3"),

@@ -275,6 +275,7 @@ access_audit_denied_alarm_threshold = _config_int("accessAuditDeniedAlarmThresho
 access_audit_auth_failure_alarm_threshold = _config_int("accessAuditAuthFailureAlarmThreshold", 0)
 access_audit_tenant_mismatch_alarm_threshold = _config_int("accessAuditTenantMismatchAlarmThreshold", -1)
 access_audit_sensitive_denied_alarm_threshold = _config_int("accessAuditSensitiveDeniedAlarmThreshold", -1)
+aws_service_quota_alarm_threshold_percent = _config_int("awsServiceQuotaAlarmThresholdPercent", 80)
 alarm_action_arns = config.get_object("alarmActionArns") or []
 alarm_email_subscriptions = config.get_object("alarmEmailSubscriptions") or []
 
@@ -877,10 +878,13 @@ monitoring_stack = monitoring.create_monitoring(
     access_audit_auth_failure_alarm_threshold=access_audit_auth_failure_alarm_threshold,
     access_audit_tenant_mismatch_alarm_threshold=access_audit_tenant_mismatch_alarm_threshold,
     access_audit_sensitive_denied_alarm_threshold=access_audit_sensitive_denied_alarm_threshold,
+    aws_service_quota_alarm_threshold_percent=aws_service_quota_alarm_threshold_percent,
     alarm_action_arns=alarm_action_arns,
     alarm_email_subscriptions=alarm_email_subscriptions,
     orchestrator_schedules=orchestrator_schedules,
     orchestrator_rule_names=[rule.name for rule in ecs_stack.get("orchestrator_rules", [])],
+    orchestrator_scheduler_group_name=ecs_stack["orchestrator_scheduler_group"].name if ecs_stack.get("orchestrator_scheduler_group") else None,
+    orchestrator_scheduler_dlq_queue_name=ecs_stack["orchestrator_scheduler_dlq"].name if ecs_stack.get("orchestrator_scheduler_dlq") else None,
     source_runtimes=source_runtimes,
     source_runtime_observability=source_runtime_observability,
 )
@@ -983,6 +987,8 @@ if ecs_stack.get("orchestrator_rules"):
     pulumi.export("orchestrator_schedule_rule_names", [rule.name for rule in ecs_stack["orchestrator_rules"]])
 if ecs_stack.get("orchestrator_scheduler_group"):
     pulumi.export("orchestrator_scheduler_group_name", ecs_stack["orchestrator_scheduler_group"].name)
+if ecs_stack.get("orchestrator_scheduler_dlq"):
+    pulumi.export("orchestrator_scheduler_dlq_name", ecs_stack["orchestrator_scheduler_dlq"].name)
 if ecs_stack.get("orchestrator_scheduler_schedules"):
     pulumi.export("orchestrator_scheduler_schedule_names", [schedule.name for schedule in ecs_stack["orchestrator_scheduler_schedules"]])
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)

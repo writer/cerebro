@@ -72,13 +72,14 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
         expansion = expand_source_runtime_rollouts([
             {
                 "sourceId": "example",
-                "schedule": {"backend": "scheduler", "flexibleWindowMinutes": 10},
+                "schedule": {"backend": "scheduler", "flexibleWindowMinutes": 10, "state": "DISABLED"},
                 "families": ["user"],
             }
         ])
 
         self.assertEqual(expansion.orchestrator_schedules[0]["backend"], "scheduler")
         self.assertEqual(expansion.orchestrator_schedules[0]["flexibleWindowMinutes"], 10)
+        self.assertEqual(expansion.orchestrator_schedules[0]["state"], "DISABLED")
 
     def test_schedule_backend_must_be_known(self) -> None:
         with self.assertRaisesRegex(ValueError, "schedule.backend"):
@@ -86,6 +87,16 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
                 {
                     "sourceId": "example",
                     "schedule": {"backend": "cronbox"},
+                    "families": ["user"],
+                }
+            ])
+
+    def test_schedule_state_must_be_known(self) -> None:
+        with self.assertRaisesRegex(ValueError, "schedule.state"):
+            expand_source_runtime_rollouts([
+                {
+                    "sourceId": "example",
+                    "schedule": {"state": "paused"},
                     "families": ["user"],
                 }
             ])

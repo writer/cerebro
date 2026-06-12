@@ -17,6 +17,83 @@ def _orchestrator_rule_alarm_resource_name(name: str, index: int, schedule: dict
     return f"{name}-orchestrator-rule-{suffix}-failed-invocations"
 
 
+def _scheduler_alarm_specs(name: str, schedule_group_name: pulumi.Input[str] = None, dlq_queue_name: pulumi.Input[str] = None) -> list[dict]:
+    specs = []
+    if schedule_group_name:
+        specs.extend(
+            [
+                {
+                    "resource_name": f"{name}-scheduler-target-errors-alarm",
+                    "alarm_name": f"{name}-scheduler-target-errors",
+                    "namespace": "AWS/Scheduler",
+                    "metric_name": "TargetErrorCount",
+                    "dimensions": {"ScheduleGroup": schedule_group_name},
+                    "description": "EventBridge Scheduler target invocations failed for orchestrator schedules; inspect ECS RunTask failures and Scheduler DLQ.",
+                },
+                {
+                    "resource_name": f"{name}-scheduler-dropped-invocations-alarm",
+                    "alarm_name": f"{name}-scheduler-dropped-invocations",
+                    "namespace": "AWS/Scheduler",
+                    "metric_name": "InvocationDroppedCount",
+                    "dimensions": {"ScheduleGroup": schedule_group_name},
+                    "description": "EventBridge Scheduler dropped orchestrator invocations after retries or event age limits.",
+                },
+            ]
+        )
+    if dlq_queue_name:
+        specs.extend(
+            [
+                {
+                    "resource_name": f"{name}-scheduler-dlq-visible-alarm",
+                    "alarm_name": f"{name}-scheduler-dlq-visible",
+                    "namespace": "AWS/SQS",
+                    "metric_name": "ApproximateNumberOfMessagesVisible",
+                    "dimensions": {"QueueName": dlq_queue_name},
+                    "description": "EventBridge Scheduler DLQ has undelivered orchestrator events waiting for triage.",
+                },
+                {
+                    "resource_name": f"{name}-scheduler-dlq-age-alarm",
+                    "alarm_name": f"{name}-scheduler-dlq-age",
+                    "namespace": "AWS/SQS",
+                    "metric_name": "ApproximateAgeOfOldestMessage",
+                    "dimensions": {"QueueName": dlq_queue_name},
+                    "description": "EventBridge Scheduler DLQ contains stale undelivered orchestrator events.",
+                    "threshold": 900,
+                    "statistic": "Maximum",
+                },
+            ]
+        )
+    return specs
+
+
+def _service_quota_alarm_specs(name: str, threshold_percent: int) -> list[dict]:
+    if threshold_percent <= 0:
+        return []
+    return [
+        {
+            "resource_name": f"{name}-scheduler-schedule-quota-alarm",
+            "alarm_name": f"{name}-scheduler-schedule-quota",
+            "description": "EventBridge Scheduler schedule usage is approaching the account quota.",
+            "dimensions": {"Service": "Scheduler", "Type": "Resource", "Resource": "ApproximateSchedule", "Class": "None"},
+            "threshold": threshold_percent,
+        },
+        {
+            "resource_name": f"{name}-scheduler-schedule-group-quota-alarm",
+            "alarm_name": f"{name}-scheduler-schedule-group-quota",
+            "description": "EventBridge Scheduler schedule-group usage is approaching the account quota.",
+            "dimensions": {"Service": "Scheduler", "Type": "Resource", "Resource": "ApproximateScheduleGroup", "Class": "None"},
+            "threshold": threshold_percent,
+        },
+        {
+            "resource_name": f"{name}-ecs-runtask-api-quota-alarm",
+            "alarm_name": f"{name}-ecs-runtask-api-quota",
+            "description": "ECS RunTask API usage is approaching the account service quota; Scheduler-backed runtimes may throttle.",
+            "dimensions": {"Service": "ECS", "Type": "API", "Resource": "RunTask", "Class": "None"},
+            "threshold": threshold_percent,
+        },
+    ]
+
+
 def _runtime_id_from_command(command) -> str:
     if not isinstance(command, list):
         return ""
@@ -316,10 +393,13 @@ def create_monitoring(
     access_audit_auth_failure_alarm_threshold: int = 0,
     access_audit_tenant_mismatch_alarm_threshold: int = -1,
     access_audit_sensitive_denied_alarm_threshold: int = -1,
+    aws_service_quota_alarm_threshold_percent: int = 80,
     alarm_action_arns: list[str] = None,
     alarm_email_subscriptions: list[str] = None,
     orchestrator_schedules: list[dict] = None,
     orchestrator_rule_names: list[pulumi.Input[str]] = None,
+    orchestrator_scheduler_group_name: pulumi.Input[str] = None,
+    orchestrator_scheduler_dlq_queue_name: pulumi.Input[str] = None,
     source_runtimes: list[dict] = None,
     source_runtime_heartbeat_period_seconds: int = 28800,
     source_runtime_observability: list[dict] = None,
@@ -881,6 +961,29 @@ def create_monitoring(
             tags={"Name": pulumi.Output.concat(rule_name, "-failed-invocations")},
         )
 
+    for spec in _scheduler_alarm_specs(name, orchestrator_scheduler_group_name, orchestrator_scheduler_dlq_queue_name):
+        _custom_metric_alarm(
+            resource_name=spec["resource_name"],
+            alarm_name=spec["alarm_name"],
+            namespace=spec["namespace"],
+            metric_name=spec["metric_name"],
+            threshold=spec.get("threshold", 0),
+            description=spec["description"],
+            alarm_actions=alarm_actions,
+            statistic=spec.get("statistic", "Sum"),
+            dimensions=spec["dimensions"],
+        )
+
+    for spec in _service_quota_alarm_specs(name, aws_service_quota_alarm_threshold_percent):
+        _aws_usage_quota_alarm(
+            resource_name=spec["resource_name"],
+            alarm_name=spec["alarm_name"],
+            dimensions=spec["dimensions"],
+            threshold_percent=spec["threshold"],
+            description=spec["description"],
+            alarm_actions=alarm_actions,
+        )
+
     dashboard = aws.cloudwatch.Dashboard(
         f"{name}-dashboard",
         dashboard_name=f"{name}-dashboard",
@@ -921,6 +1024,46 @@ def _custom_metric_alarm(
         alarm_description=description,
         alarm_actions=alarm_actions,
         dimensions=dimensions,
+        tags={"Name": alarm_name},
+    )
+
+
+def _aws_usage_quota_alarm(
+    resource_name: str,
+    alarm_name: str,
+    dimensions: dict[str, str],
+    threshold_percent: int,
+    description: str,
+    alarm_actions: list[pulumi.Input[str]],
+) -> aws.cloudwatch.MetricAlarm:
+    return aws.cloudwatch.MetricAlarm(
+        resource_name,
+        name=alarm_name,
+        comparison_operator="GreaterThanThreshold",
+        evaluation_periods=1,
+        threshold=threshold_percent,
+        treat_missing_data="notBreaching",
+        alarm_description=description,
+        alarm_actions=alarm_actions,
+        metric_queries=[
+            aws.cloudwatch.MetricAlarmMetricQueryArgs(
+                id="usage",
+                metric=aws.cloudwatch.MetricAlarmMetricQueryMetricArgs(
+                    namespace="AWS/Usage",
+                    metric_name="ResourceCount" if dimensions.get("Type") == "Resource" else "CallCount",
+                    dimensions=dimensions,
+                    period=300,
+                    stat="Maximum",
+                ),
+                return_data=False,
+            ),
+            aws.cloudwatch.MetricAlarmMetricQueryArgs(
+                id="pct",
+                expression="usage / SERVICE_QUOTA(usage) * 100",
+                label=f"{alarm_name} quota usage percent",
+                return_data=True,
+            ),
+        ],
         tags={"Name": alarm_name},
     )
 

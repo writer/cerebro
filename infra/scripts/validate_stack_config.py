@@ -442,6 +442,10 @@ def _schedule_backend(schedule: dict[str, Any]) -> str:
     return str(schedule.get("backend") or schedule.get("scheduleBackend") or "eventbridge").strip()
 
 
+def _schedule_state(schedule: dict[str, Any]) -> str:
+    return str(schedule.get("state") or schedule.get("scheduleState") or "ENABLED").strip().upper()
+
+
 def _validate_source_runtime_service_bootstrap(
     stack: str,
     config: dict[str, Any],
@@ -1477,6 +1481,7 @@ def validate_stack(path: Path) -> list[Finding]:
         "apiLatencyP95AlarmThresholdSeconds",
         "webLatencyP95AlarmThresholdSeconds",
         "dashboardLatencyP95AlarmThresholdMs",
+        "awsServiceQuotaAlarmThresholdPercent",
     ):
         threshold = config.get(key, 0)
         if not isinstance(threshold, int) or threshold < 0:
@@ -1726,6 +1731,9 @@ def validate_stack(path: Path) -> list[Finding]:
             backend = _schedule_backend(schedule)
             if backend not in {"eventbridge", "scheduler"}:
                 findings.append(_finding("error", stack, f"{schedule_path}.backend", "schedule backend must be eventbridge or scheduler"))
+            state = _schedule_state(schedule)
+            if state not in {"ENABLED", "DISABLED"}:
+                findings.append(_finding("error", stack, f"{schedule_path}.state", "schedule state must be ENABLED or DISABLED"))
             schedule_resource_name = _orchestrator_rule_name(environment_name, name)
             if len(schedule_resource_name) > EVENTBRIDGE_RULE_NAME_MAX_LENGTH:
                 findings.append(

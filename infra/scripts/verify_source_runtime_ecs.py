@@ -215,6 +215,10 @@ def _schedule_backend(schedule: dict[str, Any]) -> str:
     return str(schedule.get("backend") or schedule.get("scheduleBackend") or "eventbridge").strip()
 
 
+def _schedule_state(schedule: dict[str, Any]) -> str:
+    return str(schedule.get("state") or schedule.get("scheduleState") or "ENABLED").strip().upper()
+
+
 def _aws(args: list[str], region: str) -> Any:
     command = ["aws", *args, "--region", region, "--output", "json"]
     try:
@@ -312,6 +316,9 @@ def _runtime_targets(
         if len(matches) != 1:
             raise ValueError(f"runtime {runtime_id!r} must have exactly one orchestrator schedule, found {len(matches)}")
         schedule = matches[0]
+        if _schedule_state(schedule) == "DISABLED":
+            print(f"warning: skipping {runtime_id}; declared orchestrator schedule is DISABLED")
+            continue
         schedule_name = str(schedule.get("name") or runtime_id)
         suffix = _schedule_suffix(schedule_name)
         rule_name = f"{resource_prefix}-orchestrator" if suffix == "default" else f"{resource_prefix}-orchestrator-{suffix}"

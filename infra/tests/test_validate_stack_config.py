@@ -526,6 +526,18 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK + "  cerebro:dashboardLatencyP95AlarmThresholdMs: -1\n"
         self.assertTrue(any("must be a non-negative integer" in message for message in self._messages(content)))
 
+    def test_service_quota_alarm_threshold_must_be_non_negative(self) -> None:
+        content = BASE_STACK + "  cerebro:awsServiceQuotaAlarmThresholdPercent: -1\n"
+        self.assertTrue(any("awsServiceQuotaAlarmThresholdPercent" in finding.path for finding in self._validate(content)))
+
+    def test_orchestrator_schedule_state_must_be_known(self) -> None:
+        content = BASE_STACK.replace(
+            "    - name: cosmo-session\n",
+            "    - name: cosmo-session\n      state: PAUSED\n",
+            1,
+        )
+        self.assertTrue(any("schedule state must be ENABLED or DISABLED" in message for message in self._messages(content)))
+
     def test_openrouter_provider_requires_explicit_model(self) -> None:
         content = BASE_STACK + "  cerebro:graphAgentLlmProvider: openrouter\n"
         self.assertTrue(any("OpenRouter provider must set an explicit OpenRouter model id" in message for message in self._messages(content)))

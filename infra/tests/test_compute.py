@@ -201,6 +201,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
 
     def test_orchestrator_schedule_role_trusts_events_and_scheduler(self) -> None:
         role_calls: list[dict] = []
+        policy_calls: list[dict] = []
 
         def fake_role(*args, **kwargs):
             role_calls.append(kwargs)
@@ -208,7 +209,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
 
         with (
             patch.object(compute.aws.iam, "Role", side_effect=fake_role),
-            patch.object(compute.aws.iam, "RolePolicy", side_effect=lambda *args, **kwargs: SimpleNamespace(name=args[0])),
+            patch.object(compute.aws.iam, "RolePolicy", side_effect=lambda *args, **kwargs: policy_calls.append(kwargs) or SimpleNamespace(name=args[0])),
             patch.object(compute.pulumi.Output, "all", side_effect=lambda *values: SimpleNamespace(apply=lambda callback: callback(values))),
         ):
             compute._create_orchestrator_events_role(
@@ -216,12 +217,18 @@ class WorkerTaskRoleTest(unittest.TestCase):
                 task_definition_arns=["task-def"],
                 execution_role_arn="exec-role",
                 task_role_arn="task-role",
+                scheduler_dlq_arn="dlq-arn",
             )
 
         assume_policy = json.loads(role_calls[0]["assume_role_policy"])
         self.assertEqual(
             assume_policy["Statement"][0]["Principal"]["Service"],
             ["events.amazonaws.com", "scheduler.amazonaws.com"],
+        )
+        role_policy = json.loads(policy_calls[0]["policy"])
+        self.assertIn(
+            {"Effect": "Allow", "Action": ["sqs:SendMessage"], "Resource": "dlq-arn"},
+            role_policy["Statement"],
         )
 
     def test_orchestrator_uses_separate_worker_task_role(self) -> None:
@@ -403,6 +410,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
     def test_scheduler_backend_uses_eventbridge_scheduler(self) -> None:
         task_definition_calls: list[dict] = []
         scheduler_group_calls: list[dict] = []
+        scheduler_dlq_calls: list[dict] = []
         scheduler_schedule_calls: list[dict] = []
         event_target_calls: list[dict] = []
 
@@ -424,6 +432,10 @@ class WorkerTaskRoleTest(unittest.TestCase):
         def fake_scheduler_schedule(*args, **kwargs):
             scheduler_schedule_calls.append({"resource": args[0], **kwargs})
             return SimpleNamespace(name=kwargs["name"], arn=f"arn:aws:scheduler:us-east-1:123456789012:schedule/{kwargs['group_name']}/{kwargs['name']}")
+
+        def fake_sqs_queue(*args, **kwargs):
+            scheduler_dlq_calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs["name"], arn=f"arn:aws:sqs:us-east-1:123456789012:{kwargs['name']}")
 
         with ExitStack() as stack:
             for patcher in [
@@ -448,6 +460,8 @@ class WorkerTaskRoleTest(unittest.TestCase):
                 patch.object(compute.aws.scheduler, "ScheduleTargetEcsParametersArgs", side_effect=fake_args),
                 patch.object(compute.aws.scheduler, "ScheduleTargetEcsParametersNetworkConfigurationArgs", side_effect=fake_args),
                 patch.object(compute.aws.scheduler, "ScheduleTargetRetryPolicyArgs", side_effect=fake_args),
+                patch.object(compute.aws.scheduler, "ScheduleTargetDeadLetterConfigArgs", side_effect=fake_args),
+                patch.object(compute.aws.sqs, "Queue", side_effect=fake_sqs_queue),
                 patch.object(compute.aws.appautoscaling, "Target", side_effect=fake_named_resource),
                 patch.object(compute.pulumi, "ResourceOptions", side_effect=fake_args),
             ]:
@@ -466,6 +480,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
                     {
                         "name": "gcp-writer-iam-audit",
                         "backend": "scheduler",
+                        "state": "DISABLED",
                         "flexibleWindowMinutes": 10,
                         "command": ["orchestrator", "run", "runtime_id=writer-gcp-prod-writer-iam-audit"],
                     }
@@ -474,10 +489,13 @@ class WorkerTaskRoleTest(unittest.TestCase):
 
         self.assertEqual(event_target_calls, [])
         self.assertEqual(scheduler_group_calls[0]["name"], "cerebro-sec-dev-orchestrator")
+        self.assertEqual(scheduler_dlq_calls[0]["name"], "cerebro-sec-dev-orchestrator-scheduler-dlq")
         schedule_call = scheduler_schedule_calls[0]
         self.assertEqual(schedule_call["name"], "cerebro-sec-dev-orchestrator-gcp-writer-iam-audit")
         self.assertEqual(schedule_call["group_name"], "cerebro-sec-dev-orchestrator")
+        self.assertEqual(schedule_call["state"], "DISABLED")
         self.assertEqual(schedule_call["flexible_time_window"].maximum_window_in_minutes, 10)
+        self.assertEqual(schedule_call["target"].dead_letter_config.arn, "arn:aws:sqs:us-east-1:123456789012:cerebro-sec-dev-orchestrator-scheduler-dlq")
         self.assertEqual(
             json.loads(schedule_call["target"].input),
             {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-gcp-prod-writer-iam-audit"]}]},
@@ -487,6 +505,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
             "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:1",
         )
         self.assertEqual(len(result["orchestrator_scheduler_schedules"]), 1)
+        self.assertEqual(result["orchestrator_scheduler_dlq"].name, "cerebro-sec-dev-orchestrator-scheduler-dlq")
         self.assertEqual(result["orchestrator_rules"], [])
 
     def test_task_definition_bootstraps_panopticon_source_runtimes(self) -> None:

@@ -131,6 +131,7 @@ def _schedule(runtime_id: str, config: dict[str, Any], index: int) -> dict[str, 
         "taskCount": _positive_int(config.get("taskCount"), "schedule.taskCount", 1),
         "backend": _schedule_backend(config.get("backend")),
         "flexibleWindowMinutes": _positive_int(config.get("flexibleWindowMinutes"), "schedule.flexibleWindowMinutes", 15),
+        "state": _schedule_state(config.get("state") or config.get("scheduleState")),
         "command": [
             "orchestrator",
             "run",
@@ -147,6 +148,13 @@ def _schedule_backend(value: Any) -> str:
     if backend not in {"eventbridge", "scheduler"}:
         raise SourceRuntimeRolloutError("schedule.backend must be eventbridge or scheduler")
     return backend
+
+
+def _schedule_state(value: Any) -> str:
+    state = (_string(value) or "ENABLED").upper()
+    if state not in {"ENABLED", "DISABLED"}:
+        raise SourceRuntimeRolloutError("schedule.state must be ENABLED or DISABLED")
+    return state
 
 
 def _required_string(values: dict[str, Any], key: str, path: str) -> str:

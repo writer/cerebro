@@ -202,6 +202,10 @@ config:
     type: integer
     default: 3000
     description: GRC dashboard application p95 latency alarm threshold in milliseconds; 0 disables this alarm.
+  cerebro:awsServiceQuotaAlarmThresholdPercent:
+    type: integer
+    default: 80
+    description: AWS/Usage service-quota alarm threshold percent for Scheduler schedule counts and ECS RunTask API usage; 0 disables these alarms.
 
   cerebro:postgresInstanceClass:
     type: string

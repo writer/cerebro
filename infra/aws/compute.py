@@ -148,6 +148,7 @@ def create_ecs_cluster(
     orchestrator_rules = []
     orchestrator_targets = []
     orchestrator_scheduler_group = None
+    orchestrator_scheduler_dlq = None
     orchestrator_scheduler_schedules = []
     orchestrator_task_definitions = []
     orchestrator_events_role = None
@@ -181,18 +182,25 @@ def create_ecs_cluster(
         )
         orchestrator_task_definitions.append(task_definition)
         orchestrator_task_definition = orchestrator_task_definitions[0] if orchestrator_task_definitions else None
-        orchestrator_events_role = _create_orchestrator_events_role(
-            name=name,
-            task_definition_arns=[task_definition.arn for task_definition in orchestrator_task_definitions],
-            execution_role_arn=execution_role.arn,
-            task_role_arn=worker_task_role.arn,
-        )
         if any(schedule["backend"] == "scheduler" for schedule in schedules):
             orchestrator_scheduler_group = aws.scheduler.ScheduleGroup(
                 f"{name}-orchestrator-schedules",
                 name=f"{name}-orchestrator",
                 tags={"Name": f"{name}-orchestrator"},
             )
+            orchestrator_scheduler_dlq = aws.sqs.Queue(
+                f"{name}-orchestrator-scheduler-dlq",
+                name=f"{name}-orchestrator-scheduler-dlq",
+                message_retention_seconds=1209600,
+                tags={"Name": f"{name}-orchestrator-scheduler-dlq"},
+            )
+        orchestrator_events_role = _create_orchestrator_events_role(
+            name=name,
+            task_definition_arns=[task_definition.arn for task_definition in orchestrator_task_definitions],
+            execution_role_arn=execution_role.arn,
+            task_role_arn=worker_task_role.arn,
+            scheduler_dlq_arn=orchestrator_scheduler_dlq.arn if orchestrator_scheduler_dlq else None,
+        )
         for schedule in schedules:
             schedule_suffix = schedule["suffix"]
             schedule_resource_prefix = f"{name}-orchestrator" if schedule_suffix == "default" else f"{name}-orchestrator-{schedule_suffix}"
@@ -227,8 +235,11 @@ def create_ecs_cluster(
                             maximum_event_age_in_seconds=3600,
                             maximum_retry_attempts=2,
                         ),
+                        dead_letter_config=aws.scheduler.ScheduleTargetDeadLetterConfigArgs(
+                            arn=orchestrator_scheduler_dlq.arn,
+                        ),
                     ),
-                    state="ENABLED",
+                    state=schedule["state"],
                     opts=pulumi.ResourceOptions(depends_on=[capacity_providers, orchestrator_events_role]),
                 )
                 orchestrator_scheduler_schedules.append(scheduler_schedule)
@@ -237,6 +248,7 @@ def create_ecs_cluster(
                     f"{schedule_resource_prefix}-schedule",
                     name=f"{name}-orchestrator" if schedule_suffix == "default" else schedule_resource_prefix,
                     schedule_expression=schedule["schedule_expression"],
+                    is_enabled=schedule["state"] == "ENABLED",
                     tags={"Name": schedule_resource_prefix},
                 )
                 target = aws.cloudwatch.EventTarget(
@@ -396,6 +408,7 @@ def create_ecs_cluster(
         "orchestrator_target": orchestrator_target,
         "orchestrator_targets": orchestrator_targets,
         "orchestrator_scheduler_group": orchestrator_scheduler_group,
+        "orchestrator_scheduler_dlq": orchestrator_scheduler_dlq,
         "orchestrator_scheduler_schedules": orchestrator_scheduler_schedules,
         "orchestrator_events_role": orchestrator_events_role,
         "task_role": task_role,
@@ -770,6 +783,7 @@ def _create_orchestrator_events_role(
     task_definition_arns: list[pulumi.Input[str]],
     execution_role_arn: pulumi.Input[str],
     task_role_arn: pulumi.Input[str],
+    scheduler_dlq_arn: pulumi.Input[str] = None,
 ) -> aws.iam.Role:
     role = aws.iam.Role(
         f"{name}-orchestrator-events-role",
@@ -785,24 +799,36 @@ def _create_orchestrator_events_role(
         tags={"Name": f"{name}-orchestrator-events-role"},
     )
 
+    policy_inputs = [*task_definition_arns, execution_role_arn, task_role_arn]
+    if scheduler_dlq_arn is not None:
+        policy_inputs.append(scheduler_dlq_arn)
+
+    def _policy(args):
+        task_definition_count = len(task_definition_arns)
+        statements = [
+            {
+                "Effect": "Allow",
+                "Action": ["ecs:RunTask"],
+                "Resource": args[:task_definition_count],
+            },
+            {
+                "Effect": "Allow",
+                "Action": ["iam:PassRole"],
+                "Resource": [args[task_definition_count], args[task_definition_count + 1]],
+            },
+        ]
+        if scheduler_dlq_arn is not None:
+            statements.append({
+                "Effect": "Allow",
+                "Action": ["sqs:SendMessage"],
+                "Resource": args[-1],
+            })
+        return json.dumps({"Version": "2012-10-17", "Statement": statements})
+
     aws.iam.RolePolicy(
         f"{name}-orchestrator-events-policy",
         role=role.name,
-        policy=pulumi.Output.all(*task_definition_arns, execution_role_arn, task_role_arn).apply(lambda args: json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": ["ecs:RunTask"],
-                    "Resource": args[:-2],
-                },
-                {
-                    "Effect": "Allow",
-                    "Action": ["iam:PassRole"],
-                    "Resource": [args[-2], args[-1]],
-                },
-            ],
-        })),
+        policy=pulumi.Output.all(*policy_inputs).apply(_policy),
     )
 
     return role
@@ -822,6 +848,7 @@ def _orchestrator_schedules(
             "task_count": max(1, int(task_count or 1)),
             "backend": "eventbridge",
             "flexible_window_minutes": 15,
+            "state": "ENABLED",
         }]
     schedules = []
     seen = set()
@@ -840,6 +867,7 @@ def _orchestrator_schedules(
             "task_count": max(1, int(schedule.get("taskCount") or schedule.get("task_count") or task_count or 1)),
             "backend": _schedule_backend(schedule.get("backend") or schedule.get("scheduleBackend")),
             "flexible_window_minutes": max(1, int(schedule.get("flexibleWindowMinutes") or schedule.get("flexible_window_minutes") or 15)),
+            "state": _schedule_state(schedule.get("state") or schedule.get("scheduleState")),
         })
     return schedules
 
@@ -849,6 +877,13 @@ def _schedule_backend(value) -> str:
     if backend not in {"eventbridge", "scheduler"}:
         raise ValueError("orchestrator schedule backend must be eventbridge or scheduler")
     return backend
+
+
+def _schedule_state(value) -> str:
+    state = str(value or "ENABLED").strip().upper()
+    if state not in {"ENABLED", "DISABLED"}:
+        raise ValueError("orchestrator schedule state must be ENABLED or DISABLED")
+    return state
 
 
 def _schedule_suffix(value: str) -> str:
