@@ -471,15 +471,15 @@ def _run_task(
     if bootstrap_runtime_ids:
         requested_bootstrap_runtime_ids = set(bootstrap_runtime_ids)
         target_payload = _target_bootstrap_payload(target)
-        scoped_payload = (
-            _scoped_bootstrap_payload(target_payload, requested_bootstrap_runtime_ids)
-            if target_payload
-            else _scoped_bootstrap_payload_from_task_definition(
+        scoped_payload = ""
+        if target_payload and requested_bootstrap_runtime_ids.issubset(_bootstrap_payload_runtime_ids(target_payload)):
+            scoped_payload = _scoped_bootstrap_payload(target_payload, requested_bootstrap_runtime_ids)
+        if not scoped_payload:
+            scoped_payload = _scoped_bootstrap_payload_from_task_definition(
                 task_definition,
                 requested_bootstrap_runtime_ids,
                 region,
             )
-        )
         container_overrides.append(
             {
                 "name": BOOTSTRAP_CONTAINER_NAME,

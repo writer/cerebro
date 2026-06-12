@@ -369,6 +369,106 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
                 "task-arn",
             )
 
+    def test_run_task_uses_task_definition_payload_when_schedule_payload_is_too_narrow(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-aws-sec-dev-organizations-account",
+            schedule_name="aws-sec-dev-organizati-178491",
+            rule_name="cerebro-sec-dev-orchestrator-aws-sec-dev-organizati-178491",
+            target={
+                "Arn": "cluster",
+                "EcsParameters": {
+                    "TaskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/runtime:3",
+                    "LaunchType": "FARGATE",
+                    "NetworkConfiguration": {
+                        "awsvpcConfiguration": {
+                            "Subnets": ["subnet-1"],
+                            "SecurityGroups": ["sg-1"],
+                            "AssignPublicIp": "DISABLED",
+                        }
+                    },
+                },
+            },
+        )
+        target.target["Input"] = json.dumps(
+            {
+                "containerOverrides": [
+                    {
+                        "name": "source-runtime-bootstrap",
+                        "environment": [
+                            {
+                                "name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
+                                "value": json.dumps(
+                                    {
+                                        "runtimes": [
+                                            {
+                                                "id": "writer-aws-sec-dev-organizations-account",
+                                                "source_id": "aws",
+                                            }
+                                        ]
+                                    }
+                                ),
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        task_definition_payload = json.dumps(
+            {
+                "runtimes": [
+                    {"id": "writer-aws-sec-dev-organizations-account", "source_id": "aws"},
+                    {"id": "writer-aws-sec-dev-organizations-policy", "source_id": "aws"},
+                    {"id": "writer-aws-sec-dev-us1-cloudfront-distribution", "source_id": "aws"},
+                ]
+            }
+        )
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                return {
+                    "taskDefinition": {
+                        "status": "ACTIVE",
+                        "taskDefinitionArn": target.target["EcsParameters"]["TaskDefinitionArn"],
+                        "containerDefinitions": [
+                            {
+                                "name": "source-runtime-bootstrap",
+                                "environment": [
+                                    {
+                                        "name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
+                                        "value": task_definition_payload,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                }
+            if args[:2] == ["ecs", "run-task"]:
+                override = json.loads(args[args.index("--overrides") + 1])
+                bootstrap_override = next(item for item in override["containerOverrides"] if item["name"] == "source-runtime-bootstrap")
+                scoped_payload = json.loads(bootstrap_override["environment"][0]["value"])
+                self.assertEqual(
+                    [runtime["id"] for runtime in scoped_payload["runtimes"]],
+                    [
+                        "writer-aws-sec-dev-organizations-account",
+                        "writer-aws-sec-dev-organizations-policy",
+                    ],
+                )
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            self.assertEqual(
+                _run_task(
+                    target,
+                    "us-east-1",
+                    bootstrap_runtime_ids=(
+                        "writer-aws-sec-dev-organizations-account",
+                        "writer-aws-sec-dev-organizations-policy",
+                    ),
+                ),
+                "task-arn",
+            )
+
     def test_stop_running_tasks_stops_and_waits_for_runtime_family(self) -> None:
         target = RuntimeTarget(
             runtime_id="writer-cosmo-fact",
