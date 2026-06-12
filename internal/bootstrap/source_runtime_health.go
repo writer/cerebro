@@ -46,35 +46,51 @@ type runtimeFreshnessSummary struct {
 }
 
 type runtimeFreshnessRecord struct {
-	RuntimeID                 string                                `json:"runtime_id"`
-	SourceID                  string                                `json:"source_id"`
-	TenantID                  string                                `json:"tenant_id,omitempty"`
-	Family                    string                                `json:"family,omitempty"`
-	LifecycleState            string                                `json:"lifecycle_state"`
-	ScheduleState             string                                `json:"schedule_state"`
-	FreshnessState            string                                `json:"freshness_state"`
-	SourceSyncState           string                                `json:"source_sync_state"`
-	GraphIngestState          string                                `json:"graph_ingest_state"`
-	FindingEvaluationState    string                                `json:"finding_evaluation_state"`
-	FailureClass              string                                `json:"failure_class,omitempty"`
-	FailureReason             string                                `json:"failure_reason,omitempty"`
-	LastSyncedAt              string                                `json:"last_synced_at,omitempty"`
-	SyncLagSeconds            *int64                                `json:"sync_lag_seconds,omitempty"`
-	CheckpointWatermark       string                                `json:"checkpoint_watermark,omitempty"`
-	WatermarkLagSeconds       *int64                                `json:"watermark_lag_seconds,omitempty"`
-	LatestGraphRun            *sourceRuntimeHealthGraphRun          `json:"latest_graph_run,omitempty"`
-	GraphLagSeconds           *int64                                `json:"graph_lag_seconds,omitempty"`
-	LatestFindingEvaluation   *sourceRuntimeHealthFindingEvaluation `json:"latest_finding_evaluation,omitempty"`
-	ExpectedCadenceSeconds    *int64                                `json:"expected_cadence_seconds,omitempty"`
-	StaleAfterSeconds         *int64                                `json:"stale_after_seconds,omitempty"`
-	BackfillEligible          bool                                  `json:"backfill_eligible"`
-	BackfillEligibilityReason string                                `json:"backfill_eligibility_reason,omitempty"`
-	NextAction                string                                `json:"next_action"`
-	RecommendedWorkflow       string                                `json:"recommended_workflow,omitempty"`
-	CursorPending             bool                                  `json:"cursor_pending"`
-	CheckpointCursorPresent   bool                                  `json:"checkpoint_cursor_present"`
-	ScheduleContextConfigured bool                                  `json:"schedule_context_configured"`
-	GeneratedAt               string                                `json:"generated_at"`
+	runtimeFreshnessIdentity
+	runtimeFreshnessStates
+	runtimeFreshnessObservations
+	runtimeFreshnessActions
+}
+
+type runtimeFreshnessIdentity struct {
+	RuntimeID string `json:"runtime_id"`
+	SourceID  string `json:"source_id"`
+	TenantID  string `json:"tenant_id,omitempty"`
+	Family    string `json:"family,omitempty"`
+}
+
+type runtimeFreshnessStates struct {
+	LifecycleState            string `json:"lifecycle_state"`
+	ScheduleState             string `json:"schedule_state"`
+	FreshnessState            string `json:"freshness_state"`
+	SourceSyncState           string `json:"source_sync_state"`
+	GraphIngestState          string `json:"graph_ingest_state"`
+	FindingEvaluationState    string `json:"finding_evaluation_state"`
+	FailureClass              string `json:"failure_class,omitempty"`
+	FailureReason             string `json:"failure_reason,omitempty"`
+	BackfillEligible          bool   `json:"backfill_eligible"`
+	BackfillEligibilityReason string `json:"backfill_eligibility_reason,omitempty"`
+}
+
+type runtimeFreshnessObservations struct {
+	LastSyncedAt            string                                `json:"last_synced_at,omitempty"`
+	SyncLagSeconds          *int64                                `json:"sync_lag_seconds,omitempty"`
+	CheckpointWatermark     string                                `json:"checkpoint_watermark,omitempty"`
+	WatermarkLagSeconds     *int64                                `json:"watermark_lag_seconds,omitempty"`
+	LatestGraphRun          *sourceRuntimeHealthGraphRun          `json:"latest_graph_run,omitempty"`
+	GraphLagSeconds         *int64                                `json:"graph_lag_seconds,omitempty"`
+	LatestFindingEvaluation *sourceRuntimeHealthFindingEvaluation `json:"latest_finding_evaluation,omitempty"`
+	ExpectedCadenceSeconds  *int64                                `json:"expected_cadence_seconds,omitempty"`
+	StaleAfterSeconds       *int64                                `json:"stale_after_seconds,omitempty"`
+	GeneratedAt             string                                `json:"generated_at"`
+}
+
+type runtimeFreshnessActions struct {
+	NextAction                string `json:"next_action"`
+	RecommendedWorkflow       string `json:"recommended_workflow,omitempty"`
+	CursorPending             bool   `json:"cursor_pending"`
+	CheckpointCursorPresent   bool   `json:"checkpoint_cursor_present"`
+	ScheduleContextConfigured bool   `json:"schedule_context_configured"`
 }
 
 type sourceRuntimeHealthSummary struct {
@@ -321,35 +337,43 @@ func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeF
 		workflow = "source-runtime-backfill"
 	}
 	return runtimeFreshnessRecord{
-		RuntimeID:                 record.RuntimeID,
-		SourceID:                  record.SourceID,
-		TenantID:                  record.TenantID,
-		Family:                    record.Family,
-		LifecycleState:            lifecycleState,
-		ScheduleState:             scheduleState,
-		FreshnessState:            freshnessState,
-		SourceSyncState:           sourceSyncState,
-		GraphIngestState:          graphIngestState,
-		FindingEvaluationState:    findingEvaluationState,
-		FailureClass:              failureClass,
-		FailureReason:             failureReason,
-		LastSyncedAt:              record.LastSyncedAt,
-		SyncLagSeconds:            record.SyncLagSeconds,
-		CheckpointWatermark:       record.CheckpointWatermark,
-		WatermarkLagSeconds:       record.WatermarkLagSeconds,
-		LatestGraphRun:            record.LatestGraphRun,
-		GraphLagSeconds:           record.GraphLagSeconds,
-		LatestFindingEvaluation:   record.LatestFindingEvaluation,
-		ExpectedCadenceSeconds:    record.ExpectedCadenceSeconds,
-		StaleAfterSeconds:         record.StaleAfterSeconds,
-		BackfillEligible:          backfillEligible,
-		BackfillEligibilityReason: backfillReason,
-		NextAction:                nextAction,
-		RecommendedWorkflow:       workflow,
-		CursorPending:             record.CursorPending,
-		CheckpointCursorPresent:   record.CheckpointCursorPresent,
-		ScheduleContextConfigured: record.ScheduleContextConfigured,
-		GeneratedAt:               record.GeneratedAt,
+		runtimeFreshnessIdentity: runtimeFreshnessIdentity{
+			RuntimeID: record.RuntimeID,
+			SourceID:  record.SourceID,
+			TenantID:  record.TenantID,
+			Family:    record.Family,
+		},
+		runtimeFreshnessStates: runtimeFreshnessStates{
+			LifecycleState:            lifecycleState,
+			ScheduleState:             scheduleState,
+			FreshnessState:            freshnessState,
+			SourceSyncState:           sourceSyncState,
+			GraphIngestState:          graphIngestState,
+			FindingEvaluationState:    findingEvaluationState,
+			FailureClass:              failureClass,
+			FailureReason:             failureReason,
+			BackfillEligible:          backfillEligible,
+			BackfillEligibilityReason: backfillReason,
+		},
+		runtimeFreshnessObservations: runtimeFreshnessObservations{
+			LastSyncedAt:            record.LastSyncedAt,
+			SyncLagSeconds:          record.SyncLagSeconds,
+			CheckpointWatermark:     record.CheckpointWatermark,
+			WatermarkLagSeconds:     record.WatermarkLagSeconds,
+			LatestGraphRun:          record.LatestGraphRun,
+			GraphLagSeconds:         record.GraphLagSeconds,
+			LatestFindingEvaluation: record.LatestFindingEvaluation,
+			ExpectedCadenceSeconds:  record.ExpectedCadenceSeconds,
+			StaleAfterSeconds:       record.StaleAfterSeconds,
+			GeneratedAt:             record.GeneratedAt,
+		},
+		runtimeFreshnessActions: runtimeFreshnessActions{
+			NextAction:                nextAction,
+			RecommendedWorkflow:       workflow,
+			CursorPending:             record.CursorPending,
+			CheckpointCursorPresent:   record.CheckpointCursorPresent,
+			ScheduleContextConfigured: record.ScheduleContextConfigured,
+		},
 	}
 }
 
