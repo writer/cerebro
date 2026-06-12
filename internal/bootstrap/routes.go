@@ -77,6 +77,10 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/inventory/assets/detail", routeSurfacePlatformHTTP, app.handleGRCInventoryAssetDetail)
 	registerHTTPRoute(mux, "GET /grc/inventory/resource-scope", routeSurfacePlatformHTTP, app.handleGRCResourceScope)
 	registerHTTPRoute(mux, "POST /grc/inventory/resource-scope", routeSurfacePlatformHTTP, app.handleUpdateGRCResourceScope)
+	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports", routeSurfacePlatformHTTP, app.handleListGRCInventoryAssetReports)
+	registerHTTPRoute(mux, "POST /grc/inventory/asset-reports", routeSurfacePlatformHTTP, app.handleCreateGRCInventoryAssetReport)
+	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports/{reportID}", routeSurfacePlatformHTTP, app.handleGetGRCInventoryAssetReport)
+	registerHTTPRoute(mux, "PATCH /grc/inventory/asset-reports/{reportID}/triage", routeSurfacePlatformHTTP, app.handleUpdateGRCInventoryAssetReportTriage)
 	registerHTTPRoute(mux, "GET /grc/entities/{entityID}/impact", routeSurfacePlatformHTTP, app.handleGRCEntityImpact)
 	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}", routeSurfacePlatformHTTP, app.handleGRCAuditPacket)
 }

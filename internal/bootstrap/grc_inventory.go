@@ -1,6 +1,8 @@
 package bootstrap
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,10 +15,11 @@ import (
 )
 
 const (
-	grcRuntimeStatusConfigKey      = "__cerebro_runtime_status"
-	maxGRCInventoryScopeBodyBytes  = 32 << 10
-	grcInventoryScopeStateInScope  = ports.GRCInventoryScopeStateIn
-	grcInventoryScopeStateOutScope = ports.GRCInventoryScopeStateOut
+	grcRuntimeStatusConfigKey           = "__cerebro_runtime_status"
+	maxGRCInventoryScopeBodyBytes       = 32 << 10
+	maxGRCInventoryAssetReportBodyBytes = 32 << 10
+	grcInventoryScopeStateInScope       = ports.GRCInventoryScopeStateIn
+	grcInventoryScopeStateOutScope      = ports.GRCInventoryScopeStateOut
 )
 
 type grcInventoryCategoriesResponse struct {
@@ -31,16 +34,17 @@ type grcInventoryAssetsResponse struct {
 }
 
 type grcInventoryAssetDetailResponse struct {
-	Asset           graphquery.InventoryAsset   `json:"asset"`
-	Graph           any                         `json:"graph,omitempty"`
-	Findings        []grcFindingItem            `json:"findings"`
-	Evidence        []grcEvidenceItem           `json:"evidence"`
-	Controls        []grcControlItem            `json:"controls"`
-	Tests           []grcInventoryTestItem      `json:"tests"`
-	Vulnerabilities []grcInventoryVulnerability `json:"vulnerabilities"`
-	Timeline        []grcInventoryTimelineEvent `json:"timeline"`
-	Actions         []grcInventoryAction        `json:"actions"`
-	GeneratedAt     time.Time                   `json:"generated_at"`
+	Asset           graphquery.InventoryAsset              `json:"asset"`
+	Graph           any                                    `json:"graph,omitempty"`
+	Findings        []grcFindingItem                       `json:"findings"`
+	Evidence        []grcEvidenceItem                      `json:"evidence"`
+	Controls        []grcControlItem                       `json:"controls"`
+	Tests           []grcInventoryTestItem                 `json:"tests"`
+	Vulnerabilities []grcInventoryVulnerability            `json:"vulnerabilities"`
+	AssetReports    []*ports.GRCInventoryAssetReportRecord `json:"asset_reports,omitempty"`
+	Timeline        []grcInventoryTimelineEvent            `json:"timeline"`
+	Actions         []grcInventoryAction                   `json:"actions"`
+	GeneratedAt     time.Time                              `json:"generated_at"`
 }
 
 type grcInventorySummary struct {
@@ -110,6 +114,33 @@ type grcInventoryScopeUpdateRequest struct {
 type grcInventoryScopeUpdateResponse struct {
 	Scope       *ports.GRCInventoryScopeRecord `json:"scope"`
 	GeneratedAt time.Time                      `json:"generated_at"`
+}
+
+type grcInventoryAssetReportCreateRequest struct {
+	TenantID     string            `json:"tenant_id,omitempty"`
+	AssetURN     string            `json:"asset_urn"`
+	SourceID     string            `json:"source_id,omitempty"`
+	Reason       string            `json:"reason"`
+	Reporter     string            `json:"reporter,omitempty"`
+	TriageStatus string            `json:"triage_status,omitempty"`
+	Attributes   map[string]string `json:"attributes,omitempty"`
+}
+
+type grcInventoryAssetReportTriageRequest struct {
+	TenantID     string `json:"tenant_id,omitempty"`
+	TriageStatus string `json:"triage_status"`
+	TriageReason string `json:"triage_reason,omitempty"`
+	TriagedBy    string `json:"triaged_by,omitempty"`
+}
+
+type grcInventoryAssetReportResponse struct {
+	Report      *ports.GRCInventoryAssetReportRecord `json:"report"`
+	GeneratedAt time.Time                            `json:"generated_at"`
+}
+
+type grcInventoryAssetReportsResponse struct {
+	Reports     []*ports.GRCInventoryAssetReportRecord `json:"reports"`
+	GeneratedAt time.Time                              `json:"generated_at"`
 }
 
 type grcResourceScopeRuntime struct {
@@ -220,6 +251,11 @@ func (a *App) handleGRCInventoryAssetDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	asset = applyFindingRiskToInventoryAsset(asset, findingItems, tests, vulnerabilities)
+	reports, err := a.listGRCInventoryAssetReportsForAsset(r, scope, asset.URN, scope.Limit)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, grcInventoryAssetDetailResponse{
 		Asset:           asset,
 		Graph:           detail.Graph,
@@ -228,7 +264,8 @@ func (a *App) handleGRCInventoryAssetDetail(w http.ResponseWriter, r *http.Reque
 		Controls:        controls,
 		Tests:           tests,
 		Vulnerabilities: vulnerabilities,
-		Timeline:        grcInventoryTimeline(asset, findingItems, evidenceItems, tests),
+		AssetReports:    reports,
+		Timeline:        grcInventoryTimeline(asset, findingItems, evidenceItems, tests, reports),
 		Actions:         grcInventoryActions(asset, findingItems, controls, tests, vulnerabilities),
 		GeneratedAt:     time.Now().UTC(),
 	})
@@ -342,6 +379,190 @@ func (a *App) handleUpdateGRCResourceScope(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, grcInventoryScopeUpdateResponse{Scope: record, GeneratedAt: time.Now().UTC()})
 }
 
+func (a *App) handleCreateGRCInventoryAssetReport(w http.ResponseWriter, r *http.Request) {
+	var request grcInventoryAssetReportCreateRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxGRCInventoryAssetReportBodyBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeGRCError(w, fmt.Errorf("%w: decode inventory asset report request: %w", errInvalidHTTPRequest, err))
+		return
+	}
+	request.AssetURN = strings.TrimSpace(request.AssetURN)
+	request.Reason = strings.TrimSpace(request.Reason)
+	if request.AssetURN == "" {
+		writeGRCError(w, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest))
+		return
+	}
+	if request.Reason == "" {
+		writeGRCError(w, fmt.Errorf("%w: reason is required", errInvalidHTTPRequest))
+		return
+	}
+	if err := authorizeCerebroURNTenant(r.Context(), request.AssetURN); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		tenantID = tenantIDFromCerebroURN(request.AssetURN)
+	}
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	status := strings.TrimSpace(request.TriageStatus)
+	if status == "" {
+		status = ports.GRCInventoryAssetReportStatusSubmitted
+	}
+	if !ports.IsGRCInventoryAssetReportStatus(status) {
+		writeGRCError(w, fmt.Errorf("%w: triage_status is invalid", errInvalidHTTPRequest))
+		return
+	}
+	store := grcInventoryAssetReportStore(a.deps.StateStore)
+	if store == nil {
+		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
+		return
+	}
+	reporter := strings.TrimSpace(request.Reporter)
+	if reporter == "" {
+		reporter = grcInventoryUpdatedBy(r)
+	}
+	record, err := store.CreateGRCInventoryAssetReport(r.Context(), ports.GRCInventoryAssetReportRecord{
+		ID:           newGRCInventoryAssetReportID(),
+		TenantID:     tenantID,
+		AssetURN:     request.AssetURN,
+		SourceID:     strings.TrimSpace(request.SourceID),
+		Reason:       request.Reason,
+		Reporter:     reporter,
+		TriageStatus: status,
+		Attributes:   request.Attributes,
+	})
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, grcInventoryAssetReportResponse{Report: record, GeneratedAt: time.Now().UTC()})
+}
+
+func (a *App) handleListGRCInventoryAssetReports(w http.ResponseWriter, r *http.Request) {
+	scope, err := grcScopeFromRequest(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	assetURN := strings.TrimSpace(r.URL.Query().Get("asset_urn"))
+	if assetURN != "" {
+		if err := authorizeCerebroURNTenant(r.Context(), assetURN); err != nil {
+			writeGRCError(w, err)
+			return
+		}
+		if scope.TenantID == "" {
+			scope.TenantID = tenantIDFromCerebroURN(assetURN)
+		}
+	}
+	if err := authorizeTenantID(r.Context(), scope.TenantID); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	status := strings.TrimSpace(r.URL.Query().Get("triage_status"))
+	if status != "" && !ports.IsGRCInventoryAssetReportStatus(status) {
+		writeGRCError(w, fmt.Errorf("%w: triage_status is invalid", errInvalidHTTPRequest))
+		return
+	}
+	store := grcInventoryAssetReportStore(a.deps.StateStore)
+	if store == nil {
+		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
+		return
+	}
+	var urns []string
+	if assetURN != "" {
+		urns = []string{assetURN}
+	}
+	records, err := store.ListGRCInventoryAssetReports(r.Context(), ports.GRCInventoryAssetReportFilter{
+		TenantID:     scope.TenantID,
+		AssetURNs:    urns,
+		SourceID:     scope.SourceID,
+		TriageStatus: status,
+		Limit:        scope.Limit,
+	})
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, grcInventoryAssetReportsResponse{Reports: records, GeneratedAt: time.Now().UTC()})
+}
+
+func (a *App) handleGetGRCInventoryAssetReport(w http.ResponseWriter, r *http.Request) {
+	store := grcInventoryAssetReportStore(a.deps.StateStore)
+	if store == nil {
+		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
+		return
+	}
+	record, err := store.GetGRCInventoryAssetReport(r.Context(), strings.TrimSpace(r.PathValue("reportID")), strings.TrimSpace(r.URL.Query().Get("tenant_id")))
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	if err := authorizeCerebroURNTenant(r.Context(), record.AssetURN); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, grcInventoryAssetReportResponse{Report: record, GeneratedAt: time.Now().UTC()})
+}
+
+func (a *App) handleUpdateGRCInventoryAssetReportTriage(w http.ResponseWriter, r *http.Request) {
+	var request grcInventoryAssetReportTriageRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxGRCInventoryAssetReportBodyBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeGRCError(w, fmt.Errorf("%w: decode inventory asset report triage request: %w", errInvalidHTTPRequest, err))
+		return
+	}
+	status := strings.TrimSpace(request.TriageStatus)
+	if !ports.IsGRCInventoryAssetReportStatus(status) {
+		writeGRCError(w, fmt.Errorf("%w: triage_status is invalid", errInvalidHTTPRequest))
+		return
+	}
+	reportID := strings.TrimSpace(r.PathValue("reportID"))
+	store := grcInventoryAssetReportStore(a.deps.StateStore)
+	if store == nil {
+		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
+		return
+	}
+	record, err := store.GetGRCInventoryAssetReport(r.Context(), reportID, strings.TrimSpace(request.TenantID))
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	if err := authorizeCerebroURNTenant(r.Context(), record.AssetURN); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	triagedBy := strings.TrimSpace(request.TriagedBy)
+	if triagedBy == "" {
+		triagedBy = grcInventoryUpdatedBy(r)
+	}
+	record, err = store.UpdateGRCInventoryAssetReportTriage(r.Context(), ports.GRCInventoryAssetReportTriageUpdate{
+		ID:           reportID,
+		TenantID:     record.TenantID,
+		TriageStatus: status,
+		TriageReason: strings.TrimSpace(request.TriageReason),
+		TriagedBy:    triagedBy,
+	})
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, grcInventoryAssetReportResponse{Report: record, GeneratedAt: time.Now().UTC()})
+}
+
 func grcInventoryTests(findings []grcFindingItem, controls []grcControlItem) []grcInventoryTestItem {
 	tests := []grcInventoryTestItem{}
 	seen := map[string]struct{}{}
@@ -424,7 +645,48 @@ func grcInventoryVulnerabilities(findings []grcFindingItem) []grcInventoryVulner
 }
 
 func (a *App) enrichGRCInventoryAssets(r *http.Request, scope grcScope, assets []graphquery.InventoryAsset) ([]graphquery.InventoryAsset, error) {
+	if len(assets) == 0 {
+		return assets, nil
+	}
 	store := grcInventoryScopeStore(a.deps.StateStore)
+	if store != nil {
+		urns := make([]string, 0, len(assets))
+		for _, asset := range assets {
+			if strings.TrimSpace(asset.URN) != "" {
+				urns = append(urns, asset.URN)
+			}
+		}
+		records, err := store.ListGRCInventoryScopes(r.Context(), ports.GRCInventoryScopeFilter{
+			TenantID:  scope.TenantID,
+			AssetURNs: urns,
+			Limit:     boundedUint32(len(urns)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		byURN := map[string]*ports.GRCInventoryScopeRecord{}
+		for _, record := range records {
+			if record != nil {
+				byURN[record.AssetURN] = record
+			}
+		}
+		for index := range assets {
+			applyGRCInventoryScope(&assets[index], byURN[assets[index].URN])
+		}
+	}
+	return a.enrichGRCInventoryAssetsWithReports(r, scope, assets)
+}
+
+func (a *App) enrichGRCInventoryAsset(r *http.Request, scope grcScope, asset graphquery.InventoryAsset) (graphquery.InventoryAsset, error) {
+	assets, err := a.enrichGRCInventoryAssets(r, scope, []graphquery.InventoryAsset{asset})
+	if err != nil || len(assets) == 0 {
+		return asset, err
+	}
+	return assets[0], nil
+}
+
+func (a *App) enrichGRCInventoryAssetsWithReports(r *http.Request, scope grcScope, assets []graphquery.InventoryAsset) ([]graphquery.InventoryAsset, error) {
+	store := grcInventoryAssetReportStore(a.deps.StateStore)
 	if store == nil || len(assets) == 0 {
 		return assets, nil
 	}
@@ -434,32 +696,38 @@ func (a *App) enrichGRCInventoryAssets(r *http.Request, scope grcScope, assets [
 			urns = append(urns, asset.URN)
 		}
 	}
-	records, err := store.ListGRCInventoryScopes(r.Context(), ports.GRCInventoryScopeFilter{
+	reports, err := store.ListGRCInventoryAssetReports(r.Context(), ports.GRCInventoryAssetReportFilter{
 		TenantID:  scope.TenantID,
 		AssetURNs: urns,
-		Limit:     boundedUint32(len(urns)),
+		Limit:     boundedUint32(len(urns) * 5),
 	})
 	if err != nil {
 		return nil, err
 	}
-	byURN := map[string]*ports.GRCInventoryScopeRecord{}
-	for _, record := range records {
-		if record != nil {
-			byURN[record.AssetURN] = record
+	byURN := map[string][]*ports.GRCInventoryAssetReportRecord{}
+	for _, report := range reports {
+		if report == nil {
+			continue
 		}
+		byURN[report.AssetURN] = append(byURN[report.AssetURN], report)
 	}
 	for index := range assets {
-		applyGRCInventoryScope(&assets[index], byURN[assets[index].URN])
+		applyGRCInventoryAssetReports(&assets[index], byURN[assets[index].URN])
 	}
 	return assets, nil
 }
 
-func (a *App) enrichGRCInventoryAsset(r *http.Request, scope grcScope, asset graphquery.InventoryAsset) (graphquery.InventoryAsset, error) {
-	assets, err := a.enrichGRCInventoryAssets(r, scope, []graphquery.InventoryAsset{asset})
-	if err != nil || len(assets) == 0 {
-		return asset, err
+func (a *App) listGRCInventoryAssetReportsForAsset(r *http.Request, scope grcScope, assetURN string, limit uint32) ([]*ports.GRCInventoryAssetReportRecord, error) {
+	store := grcInventoryAssetReportStore(a.deps.StateStore)
+	if store == nil || strings.TrimSpace(assetURN) == "" {
+		return []*ports.GRCInventoryAssetReportRecord{}, nil
 	}
-	return assets[0], nil
+	return store.ListGRCInventoryAssetReports(r.Context(), ports.GRCInventoryAssetReportFilter{
+		TenantID:  fallbackString(scope.TenantID, tenantIDFromCerebroURN(assetURN)),
+		AssetURNs: []string{assetURN},
+		SourceID:  scope.SourceID,
+		Limit:     limit,
+	})
 }
 
 func applyGRCInventoryScope(asset *graphquery.InventoryAsset, record *ports.GRCInventoryScopeRecord) {
@@ -476,6 +744,30 @@ func applyGRCInventoryScope(asset *graphquery.InventoryAsset, record *ports.GRCI
 	asset.ScopeReason = record.Reason
 	if !record.UpdatedAt.IsZero() {
 		asset.ScopeUpdatedAt = record.UpdatedAt.UTC().Format(time.RFC3339)
+	}
+}
+
+func applyGRCInventoryAssetReports(asset *graphquery.InventoryAsset, reports []*ports.GRCInventoryAssetReportRecord) {
+	if asset == nil || len(reports) == 0 {
+		return
+	}
+	asset.AssetReportCount = len(reports)
+	latest := reports[0]
+	for _, report := range reports[1:] {
+		if report == nil {
+			continue
+		}
+		if latest == nil || report.UpdatedAt.After(latest.UpdatedAt) {
+			latest = report
+		}
+	}
+	if latest == nil {
+		return
+	}
+	asset.LatestAssetReportStatus = latest.TriageStatus
+	asset.LatestAssetReportReason = latest.Reason
+	if !latest.UpdatedAt.IsZero() {
+		asset.LatestAssetReportUpdatedAt = latest.UpdatedAt.UTC().Format(time.RFC3339)
 	}
 }
 
@@ -557,7 +849,7 @@ func applyFindingRiskToInventoryAsset(asset graphquery.InventoryAsset, findings 
 	return asset
 }
 
-func grcInventoryTimeline(asset graphquery.InventoryAsset, findings []grcFindingItem, evidence []grcEvidenceItem, tests []grcInventoryTestItem) []grcInventoryTimelineEvent {
+func grcInventoryTimeline(asset graphquery.InventoryAsset, findings []grcFindingItem, evidence []grcEvidenceItem, tests []grcInventoryTestItem, reports []*ports.GRCInventoryAssetReportRecord) []grcInventoryTimelineEvent {
 	events := []grcInventoryTimelineEvent{}
 	for _, key := range []string{"created_at", "first_seen_at"} {
 		if at := parseGRCInventoryTime(asset.Attributes[key]); at != nil {
@@ -573,6 +865,16 @@ func grcInventoryTimeline(asset graphquery.InventoryAsset, findings []grcFinding
 	}
 	if asset.ScopeUpdatedAt != "" {
 		events = append(events, grcInventoryTimelineEvent{At: parseGRCInventoryTime(asset.ScopeUpdatedAt), Kind: "scope", Title: "GRC purview updated", Description: asset.ScopeReason, Status: asset.ScopeState})
+	}
+	for _, report := range reports {
+		if report == nil {
+			continue
+		}
+		createdAt := report.CreatedAt.UTC()
+		events = append(events, grcInventoryTimelineEvent{At: &createdAt, Kind: "asset_report", Title: "Asset reported for curation", Description: report.Reason, Status: report.TriageStatus})
+		if report.TriagedAt != nil {
+			events = append(events, grcInventoryTimelineEvent{At: report.TriagedAt, Kind: "asset_report", Title: "Asset report triaged", Description: report.TriageReason, Status: report.TriageStatus})
+		}
 	}
 	for _, finding := range findings {
 		events = append(events, grcInventoryTimelineEvent{At: finding.LastObservedAt, Kind: "finding", Title: finding.Title, Description: finding.ID, Status: finding.Status})
@@ -729,6 +1031,14 @@ func grcInventoryUpdatedBy(r *http.Request) string {
 		return strings.TrimSpace(auth.principal.Name)
 	}
 	return ""
+}
+
+func newGRCInventoryAssetReportID() string {
+	var random [8]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return fmt.Sprintf("asset-report-%d", time.Now().UnixNano())
+	}
+	return "asset-report-" + hex.EncodeToString(random[:])
 }
 
 func runtimeConfigValue(config map[string]string, key string) string {

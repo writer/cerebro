@@ -15,24 +15,25 @@ import (
 
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
-	db                        *sql.DB
-	schemaMu                  sync.Mutex
-	claimTablesReady          bool
-	projectionTablesReady     bool
-	findingTablesReady        bool
-	reportRunTableReady       bool
-	sourceRuntimeTableReady   bool
-	findingEvidenceReady      bool
-	findingEvaluationRunReady bool
-	findingCandidateReady     bool
-	vulnDBTablesReady         bool
-	deviceAuthTablesReady     bool
-	mcpOAuthTablesReady       bool
-	startupLeaseTableReady    bool
-	askTrajectoryReady        bool
-	jobTablesReady            bool
-	runtimeBlocklistReady     bool
-	grcInventoryScopeReady    bool
+	db                           *sql.DB
+	schemaMu                     sync.Mutex
+	claimTablesReady             bool
+	projectionTablesReady        bool
+	findingTablesReady           bool
+	reportRunTableReady          bool
+	sourceRuntimeTableReady      bool
+	findingEvidenceReady         bool
+	findingEvaluationRunReady    bool
+	findingCandidateReady        bool
+	vulnDBTablesReady            bool
+	deviceAuthTablesReady        bool
+	mcpOAuthTablesReady          bool
+	startupLeaseTableReady       bool
+	askTrajectoryReady           bool
+	jobTablesReady               bool
+	runtimeBlocklistReady        bool
+	grcInventoryScopeReady       bool
+	grcInventoryAssetReportReady bool
 }
 
 // Open opens a Postgres-backed current-state store.

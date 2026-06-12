@@ -3454,6 +3454,14 @@ func grcInventoryScopeStore(store ports.StateStore) ports.GRCInventoryScopeStore
 	return scopeStore
 }
 
+func grcInventoryAssetReportStore(store ports.StateStore) ports.GRCInventoryAssetReportStore {
+	reportStore, ok := store.(ports.GRCInventoryAssetReportStore)
+	if !ok || isNilInterface(reportStore) {
+		return nil
+	}
+	return reportStore
+}
+
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {
 	replayer, ok := appendLog.(ports.EventReplayer)
 	if !ok || isNilInterface(replayer) {

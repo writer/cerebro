@@ -92,12 +92,21 @@ func TestRuntimeResponseTrustedScopeIsServerDerived(t *testing.T) {
 }
 
 func TestGRCInventoryScopeMutationRequiresWriteScope(t *testing.T) {
-	request, err := http.NewRequest(http.MethodPost, "/grc/inventory/resource-scope", nil)
-	if err != nil {
-		t.Fatalf("NewRequest error = %v", err)
-	}
-	if got := scopeForHTTPRequest(request); got != scopeGRCInventoryWrite {
-		t.Fatalf("scopeForHTTPRequest(grc inventory scope update) = %q, want %q", got, scopeGRCInventoryWrite)
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/grc/inventory/resource-scope"},
+		{method: http.MethodPost, path: "/grc/inventory/asset-reports"},
+		{method: http.MethodPatch, path: "/grc/inventory/asset-reports/report-1/triage"},
+	} {
+		request, err := http.NewRequest(tc.method, tc.path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest error = %v", err)
+		}
+		if got := scopeForHTTPRequest(request); got != scopeGRCInventoryWrite {
+			t.Fatalf("scopeForHTTPRequest(%s %s) = %q, want %q", tc.method, tc.path, got, scopeGRCInventoryWrite)
+		}
 	}
 
 	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}

@@ -1029,6 +1029,105 @@ paths:
       responses:
         '200':
           description: Updated GRC purview state for one inventory asset.
+  /grc/inventory/asset-reports:
+    get:
+      summary: Inventory asset reports
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: asset_urn
+          in: query
+          schema:
+            type: string
+        - name: triage_status
+          in: query
+          schema:
+            type: string
+            enum: [submitted, in_triage, accepted, rejected, resolved]
+      responses:
+        '200':
+          description: Reported inventory asset data quality and curation items.
+    post:
+      summary: Report an inventory asset
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asset_urn, reason]
+              properties:
+                tenant_id:
+                  type: string
+                asset_urn:
+                  type: string
+                source_id:
+                  type: string
+                reason:
+                  type: string
+                reporter:
+                  type: string
+                triage_status:
+                  type: string
+                  enum: [submitted, in_triage, accepted, rejected, resolved]
+                attributes:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '201':
+          description: Captured inventory asset report.
+  /grc/inventory/asset-reports/{reportID}:
+    get:
+      summary: Inventory asset report
+      tags:
+        - GRC
+      parameters:
+        - name: reportID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: One reported inventory asset data quality and curation item.
+  /grc/inventory/asset-reports/{reportID}/triage:
+    patch:
+      summary: Update inventory asset report triage
+      tags:
+        - GRC
+      parameters:
+        - name: reportID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [triage_status]
+              properties:
+                tenant_id:
+                  type: string
+                triage_status:
+                  type: string
+                  enum: [submitted, in_triage, accepted, rejected, resolved]
+                triage_reason:
+                  type: string
+                triaged_by:
+                  type: string
+      responses:
+        '200':
+          description: Updated inventory asset report triage state.
   /grc/entities/{entityID}/impact:
     get:
       summary: GRC entity impact map
