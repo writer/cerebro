@@ -391,7 +391,7 @@ func (s *Service) Health(ctx context.Context, limit uint32) (result *HealthResul
 	if err != nil {
 		return nil, err
 	}
-	recentRuns, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{Limit: MaxStatusLimit})
+	recentRuns, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{Limit: MaxStatusLimit, LatestByRuntime: true})
 	if err != nil {
 		return nil, err
 	}

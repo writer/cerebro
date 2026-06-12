@@ -547,11 +547,37 @@ func runGraphHealth(args []string) error {
 		return err
 	}
 	defer logClose(closeDeps)
+	if len(options.DeclaredRuntimeIDs) == 0 {
+		declaredRuntimeIDs, err := graphHealthDeclaredRuntimeIDs(ctx, deps)
+		if err != nil {
+			return err
+		}
+		options.DeclaredRuntimeIDs = declaredRuntimeIDs
+	}
 	result, err := checkGraphHealth(ctx, deps.GraphStore, options, time.Now().UTC())
 	if printErr := printJSON(result); printErr != nil {
 		return printErr
 	}
 	return err
+}
+
+func graphHealthDeclaredRuntimeIDs(ctx context.Context, deps bootstrap.Dependencies) ([]string, error) {
+	lister, ok := deps.StateStore.(ports.SourceRuntimeListStore)
+	if !ok {
+		return nil, nil
+	}
+	runtimes, err := lister.ListSourceRuntimes(ctx, ports.SourceRuntimeFilter{Limit: graphingest.MaxStatusLimit})
+	if err != nil {
+		return nil, fmt.Errorf("list declared source runtimes: %w", err)
+	}
+	runtimeIDs := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtimeID := strings.TrimSpace(runtime.GetId()); runtimeID != "" {
+			runtimeIDs = append(runtimeIDs, runtimeID)
+		}
+	}
+	sort.Strings(runtimeIDs)
+	return runtimeIDs, nil
 }
 
 func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graphHealthOptions, now time.Time) (graphHealthResult, error) {
@@ -670,7 +696,14 @@ func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graph
 	if !ok {
 		addFailure("graph store does not support ingest run history")
 	} else {
-		runs, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{Limit: options.IngestLimit})
+		ingestRunFilter := graphstore.IngestRunFilter{Limit: options.IngestLimit, LatestByRuntime: true}
+		if len(options.DeclaredRuntimeIDs) != 0 {
+			ingestRunFilter.RuntimeIDs = options.DeclaredRuntimeIDs
+			if len(options.DeclaredRuntimeIDs) > ingestRunFilter.Limit {
+				ingestRunFilter.Limit = len(options.DeclaredRuntimeIDs)
+			}
+		}
+		runs, err := runStore.ListIngestRuns(ctx, ingestRunFilter)
 		if err != nil {
 			addFailure("list graph ingest runs: %v", err)
 		} else {
@@ -680,6 +713,18 @@ func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graph
 				addFailure("graph ingest run history is empty")
 			}
 			successfulRuntimeIDs := successfulGraphHealthRuntimeIDs(runs)
+			if options.AllowTransientSourceFailures {
+				historyFilter := graphstore.IngestRunFilter{Limit: graphingest.MaxStatusLimit}
+				if len(options.DeclaredRuntimeIDs) != 0 {
+					historyFilter.RuntimeIDs = options.DeclaredRuntimeIDs
+				}
+				history, err := runStore.ListIngestRuns(ctx, historyFilter)
+				if err != nil {
+					addWarning("list graph ingest run history for transient failures: %v", err)
+				} else {
+					successfulRuntimeIDs = successfulGraphHealthRuntimeIDs(history)
+				}
+			}
 			currentRuntimeIDs := make(map[string]struct{}, len(current))
 			for runtimeID, run := range current {
 				currentRuntimeIDs[runtimeID] = struct{}{}

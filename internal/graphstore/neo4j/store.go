@@ -1167,9 +1167,13 @@ func (s *Store) ListIngestRuns(ctx context.Context, filter IngestRunFilter) (_ [
 	}
 	where := make([]string, 0, 2)
 	params := map[string]any{}
-	if runtimeID := strings.TrimSpace(filter.RuntimeID); runtimeID != "" {
+	runtimeIDs := normalizedNonEmptyStrings(append(filter.RuntimeIDs, filter.RuntimeID))
+	if len(runtimeIDs) == 1 {
 		where = append(where, "r.runtime_id = $runtime_id")
-		params["runtime_id"] = runtimeID
+		params["runtime_id"] = runtimeIDs[0]
+	} else if len(runtimeIDs) > 1 {
+		where = append(where, "r.runtime_id IN $runtime_ids")
+		params["runtime_ids"] = runtimeIDs
 	}
 	if status := strings.TrimSpace(filter.Status); status != "" {
 		if !validIngestRunStatus(status) {
@@ -1183,6 +1187,13 @@ func (s *Store) ListIngestRuns(ctx context.Context, filter IngestRunFilter) (_ [
 		prefix += " WHERE " + strings.Join(where, " AND ")
 	}
 	query := ingestRunReturnQuery(prefix) + fmt.Sprintf(" ORDER BY coalesce(r.started_at, '') DESC, r.id DESC LIMIT %d", limit)
+	if filter.LatestByRuntime {
+		query = prefix + `
+WITH coalesce(r.runtime_id, r.id) AS runtime_key, r
+ORDER BY runtime_key ASC, coalesce(r.started_at, '') DESC, r.id DESC
+WITH runtime_key, collect(r)[0] AS r
+` + ingestRunReturnQuery("WITH r") + fmt.Sprintf(" ORDER BY coalesce(r.started_at, '') DESC, r.id DESC LIMIT %d", limit)
+	}
 	var runs []IngestRun
 	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		runs = runs[:0]
@@ -1202,6 +1213,23 @@ func (s *Store) ListIngestRuns(ctx context.Context, filter IngestRunFilter) (_ [
 		return nil, fmt.Errorf("list ingest runs: %w", err)
 	}
 	return runs, nil
+}
+
+func normalizedNonEmptyStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
 }
 
 func (s *Store) requireConfigured() error {

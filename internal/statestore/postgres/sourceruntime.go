@@ -131,9 +131,17 @@ func (s *Store) ListSourceRuntimes(ctx context.Context, filter ports.SourceRunti
 	}
 	clauses := []string{"1=1"}
 	args := []any{}
-	if runtimeID := strings.TrimSpace(filter.RuntimeID); runtimeID != "" {
-		args = append(args, runtimeID)
+	runtimeIDs := normalizedNonEmptyStrings(append(filter.RuntimeIDs, filter.RuntimeID))
+	if len(runtimeIDs) == 1 {
+		args = append(args, runtimeIDs[0])
 		clauses = append(clauses, fmt.Sprintf("id = $%d", len(args)))
+	} else if len(runtimeIDs) > 1 {
+		placeholders := make([]string, 0, len(runtimeIDs))
+		for _, runtimeID := range runtimeIDs {
+			args = append(args, runtimeID)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
+		}
+		clauses = append(clauses, fmt.Sprintf("id IN (%s)", strings.Join(placeholders, ", ")))
 	}
 	if tenantID := strings.TrimSpace(filter.TenantID); tenantID != "" {
 		args = append(args, tenantID)

@@ -158,6 +158,38 @@ func TestCheckGraphHealthFailsZeroProjectionRun(t *testing.T) {
 	}
 }
 
+func TestCheckGraphHealthExpandsLimitForDeclaredRuntimeIDs(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+	store := graphHealthFixtureStore(t, now)
+	if err := store.PutIngestRun(ctx, graphstore.IngestRun{
+		ID:                "run-azure",
+		RuntimeID:         "azure-runtime",
+		SourceID:          "azure",
+		Status:            graphstore.IngestRunStatusCompleted,
+		StartedAt:         now.Add(-2 * time.Minute).Format(time.RFC3339Nano),
+		FinishedAt:        now.Add(-time.Minute).Format(time.RFC3339Nano),
+		EventsRead:        1,
+		EntitiesProjected: 1,
+		LinksProjected:    1,
+	}); err != nil {
+		t.Fatalf("PutIngestRun(azure) error = %v", err)
+	}
+
+	result, err := checkGraphHealth(ctx, store, graphHealthOptions{
+		IngestLimit:        1,
+		MaxRunningMinutes:  60,
+		RequiredRelations:  []string{"belongs_to"},
+		DeclaredRuntimeIDs: []string{"aws-runtime", "azure-runtime"},
+	}, now)
+	if err != nil {
+		t.Fatalf("checkGraphHealth() error = %v", err)
+	}
+	if result.Ingest.CurrentRuntimeCount != 2 || len(result.Ingest.MissingRuntimeIDs) != 0 {
+		t.Fatalf("ingest = %#v, want both declared runtimes current", result.Ingest)
+	}
+}
+
 func TestParseGraphHealthArgs(t *testing.T) {
 	options, err := parseGraphHealthArgs([]string{
 		"ingest_limit=100",

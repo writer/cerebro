@@ -639,10 +639,11 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 
 func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeFilter, error) {
 	normalized := ports.SourceRuntimeFilter{
-		RuntimeID: strings.TrimSpace(filter.RuntimeID),
-		TenantID:  strings.TrimSpace(filter.TenantID),
-		SourceID:  strings.TrimSpace(filter.SourceID),
-		Limit:     filter.Limit,
+		RuntimeID:  strings.TrimSpace(filter.RuntimeID),
+		RuntimeIDs: normalizedListFilterRuntimeIDs(filter),
+		TenantID:   strings.TrimSpace(filter.TenantID),
+		SourceID:   strings.TrimSpace(filter.SourceID),
+		Limit:      filter.Limit,
 	}
 	if normalized.Limit == 0 {
 		normalized.Limit = defaultListLimit
@@ -651,6 +652,27 @@ func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeF
 		return ports.SourceRuntimeFilter{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidRequest, maxListLimit)
 	}
 	return normalized, nil
+}
+
+func normalizedListFilterRuntimeIDs(filter ports.SourceRuntimeFilter) []string {
+	values := append([]string{}, filter.RuntimeIDs...)
+	if strings.TrimSpace(filter.RuntimeID) != "" {
+		values = append(values, filter.RuntimeID)
+	}
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
 }
 
 func restoreRedactedConfig(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) {

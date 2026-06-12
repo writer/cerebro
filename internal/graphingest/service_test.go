@@ -44,15 +44,30 @@ func (s *stubRunStore) ListIngestRuns(_ context.Context, filter graphstore.Inges
 		if filter.RuntimeID != "" && run.RuntimeID != filter.RuntimeID {
 			continue
 		}
+		if len(filter.RuntimeIDs) != 0 && !graphIngestStringInSlice(filter.RuntimeIDs, run.RuntimeID) {
+			continue
+		}
 		if filter.Status != "" && run.Status != filter.Status {
 			continue
 		}
 		runs = append(runs, run)
 	}
+	if filter.LatestByRuntime {
+		runs = latestRunsByRuntime(runs)
+	}
 	if filter.Limit != 0 && len(runs) > filter.Limit {
 		runs = runs[:filter.Limit]
 	}
 	return runs, nil
+}
+
+func graphIngestStringInSlice(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 type recordProjectorFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
