@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/securityevents"
@@ -88,11 +90,11 @@ func TestReplayProjectsCanonicalFindingEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFindingRecordedEvent() error = %v", err)
 	}
-	canonical := *findingEvent
+	canonical := proto.Clone(findingEvent).(*cerebrov1.EventEnvelope)
 	canonical.Kind = securityevents.FindingRecorded
 	graph := &projectionRecorder{}
 	result, err := NewReplayer(&eventReplayer{eventsByPrefix: map[string][]*cerebrov1.EventEnvelope{
-		securityevents.FindingsV1Prefix + ".": {&canonical},
+		securityevents.FindingsV1Prefix + ".": {canonical},
 	}}, graph).Replay(context.Background(), ReplayRequest{TenantID: "writer"})
 	if err != nil {
 		t.Fatalf("Replay() error = %v", err)

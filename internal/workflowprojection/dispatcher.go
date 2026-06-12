@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/securityevents"
@@ -62,7 +64,10 @@ func eventWithProjectionKind(event *cerebrov1.EventEnvelope, kind string) *cereb
 	if event == nil || strings.TrimSpace(event.GetKind()) == kind {
 		return event
 	}
-	clone := *event
+	clone, ok := proto.Clone(event).(*cerebrov1.EventEnvelope)
+	if !ok {
+		return event
+	}
 	clone.Kind = kind
-	return &clone
+	return clone
 }

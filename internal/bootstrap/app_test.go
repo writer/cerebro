@@ -6289,11 +6289,14 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	if _, ok := graphStore.links[decisionID+"|targets|"+targetURN]; !ok {
 		t.Fatal("decision target link missing after replay")
 	}
-	if len(appendLog.replayRequests) != 1 {
-		t.Fatalf("len(replayRequests) = %d, want 1", len(appendLog.replayRequests))
+	if len(appendLog.replayRequests) != 2 {
+		t.Fatalf("len(replayRequests) = %d, want 2", len(appendLog.replayRequests))
 	}
 	if got := appendLog.replayRequests[0].KindPrefix; got != "workflow.v1." {
 		t.Fatalf("HTTP replay kind prefix = %q, want workflow.v1.", got)
+	}
+	if got := appendLog.replayRequests[1].KindPrefix; got != "sec.findings.v1." {
+		t.Fatalf("HTTP replay canonical finding prefix = %q, want sec.findings.v1.", got)
 	}
 	if got := appendLog.replayRequests[0].AttributeEquals["workflow_kind"]; got != "knowledge_decision" {
 		t.Fatalf("HTTP replay workflow_kind filter = %q, want knowledge_decision", got)
@@ -6311,10 +6314,10 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	if got := connectResp.Msg.GetEntitiesProjected(); got != 1 {
 		t.Fatalf("ReplayWorkflowEvents().EntitiesProjected = %d, want 1", got)
 	}
-	if len(appendLog.replayRequests) != 2 {
-		t.Fatalf("len(replayRequests) = %d, want 2", len(appendLog.replayRequests))
+	if len(appendLog.replayRequests) != 3 {
+		t.Fatalf("len(replayRequests) = %d, want 3", len(appendLog.replayRequests))
 	}
-	if got := appendLog.replayRequests[1].KindPrefix; got != "workflow.v1.knowledge." {
+	if got := appendLog.replayRequests[2].KindPrefix; got != "workflow.v1.knowledge." {
 		t.Fatalf("Connect replay kind prefix = %q, want workflow.v1.knowledge.", got)
 	}
 }
