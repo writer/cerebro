@@ -910,6 +910,80 @@ paths:
       responses:
         '200':
           description: Evidence items with finding context.
+  /grc/inventory/categories:
+    get:
+      summary: Inventory categories
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Inventory categories grouped by graph entity type.
+  /grc/inventory/assets:
+    get:
+      summary: Inventory assets
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: category_id
+          in: query
+          schema:
+            type: string
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Inventory asset list.
+  /grc/inventory/assets/detail:
+    get:
+      summary: Inventory asset detail
+      tags:
+        - GRC
+      parameters:
+        - name: urn
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Inventory asset overview, related findings, evidence, controls, tests, and vulnerabilities.
+  /grc/inventory/resource-scope:
+    get:
+      summary: Inventory resource scope
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: category_id
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Source runtime scope and currently projected resources.
   /grc/entities/{entityID}/impact:
     get:
       summary: GRC entity impact map
