@@ -19,6 +19,7 @@ import (
 var (
 	ErrRuntimeUnavailable      = errors.New("graph agent runtime is unavailable")
 	ErrLLMAuthenticationFailed = errors.New("graph agent llm authentication failed")
+	ErrLLMAccessDenied         = errors.New("graph agent llm access denied")
 	ErrInvalidRequest          = errors.New("invalid graph agent request")
 )
 

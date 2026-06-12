@@ -90,6 +90,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 				SonnetModel: cfg.GraphAgentLLM.SonnetModel,
 				OpusModel:   cfg.GraphAgentLLM.OpusModel,
 				HaikuModel:  cfg.GraphAgentLLM.HaikuModel,
+				Region:      cfg.GraphAgentLLM.BedrockRegion,
 				MaxTokens:   cfg.GraphAgentLLM.MaxTokens,
 				Temperature: cfg.GraphAgentLLM.Temperature,
 			},
@@ -110,6 +111,7 @@ func graphAgentLLMConfigured(cfg config.GraphAgentLLMConfig) bool {
 		cfg.SonnetModel != "" ||
 		cfg.OpusModel != "" ||
 		cfg.HaikuModel != "" ||
+		cfg.BedrockRegion != "" ||
 		cfg.OpenRouterAPIKey != "" ||
 		cfg.MaxTokens != 0 ||
 		cfg.Temperature != 0

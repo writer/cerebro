@@ -4,16 +4,27 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	"github.com/aws/smithy-go"
 )
 
+const maxBedrockConverseTokens int32 = 1<<31 - 1
+
+var errBedrockNoText = errors.New("bedrock response contained no text")
+
+type BedrockRuntimeInvoker interface {
+	Converse(context.Context, *bedrockruntime.ConverseInput, ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error)
+}
+
 type BedrockLLMClient struct {
-	client       *bedrockruntime.Client
+	client       BedrockRuntimeInvoker
 	defaultModel string
 	sonnetModel  string
 	opusModel    string
@@ -27,14 +38,40 @@ type BedrockConfig struct {
 	SonnetModel  string
 	OpusModel    string
 	HaikuModel   string
+	Region       string
 	MaxTokens    int
 	Temperature  float64
+	Runtime      BedrockRuntimeInvoker
+}
+
+type BedrockAccessDeniedError struct {
+	Code string
+}
+
+func (e *BedrockAccessDeniedError) Error() string {
+	code := strings.TrimSpace(e.Code)
+	if code == "" {
+		code = "AccessDeniedException"
+	}
+	return fmt.Sprintf("%s: bedrock access denied (%s); grant bedrock:InvokeModel for the configured graph-agent model", ErrLLMAccessDenied, code)
+}
+
+func (e *BedrockAccessDeniedError) Unwrap() error {
+	return ErrLLMAccessDenied
 }
 
 func NewBedrockLLMClient(ctx context.Context, llmConfig BedrockConfig) (*BedrockLLMClient, error) {
-	awsConfig, err := awsconfig.LoadDefaultConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("load AWS config for Bedrock: %w", err)
+	client := llmConfig.Runtime
+	if client == nil {
+		loadOptions := []func(*awsconfig.LoadOptions) error{}
+		if region := strings.TrimSpace(llmConfig.Region); region != "" {
+			loadOptions = append(loadOptions, awsconfig.WithRegion(region))
+		}
+		awsConfig, err := awsconfig.LoadDefaultConfig(ctx, loadOptions...)
+		if err != nil {
+			return nil, fmt.Errorf("load AWS config for Bedrock: %w", err)
+		}
+		client = bedrockruntime.NewFromConfig(awsConfig)
 	}
 	if llmConfig.DefaultModel == "" {
 		llmConfig.DefaultModel = DefaultModel
@@ -43,7 +80,7 @@ func NewBedrockLLMClient(ctx context.Context, llmConfig BedrockConfig) (*Bedrock
 		llmConfig.MaxTokens = 1200
 	}
 	return &BedrockLLMClient{
-		client:       bedrockruntime.NewFromConfig(awsConfig),
+		client:       client,
 		defaultModel: strings.TrimSpace(llmConfig.DefaultModel),
 		sonnetModel:  strings.TrimSpace(llmConfig.SonnetModel),
 		opusModel:    strings.TrimSpace(llmConfig.OpusModel),
@@ -79,6 +116,11 @@ func (c *BedrockLLMClient) Summarize(ctx context.Context, req SummarizeRequest) 
 	return c.invokeMessages(ctx, c.modelID(req.Model), summarizePrompt(req), c.maxTokens)
 }
 
+func (c *BedrockLLMClient) Probe(ctx context.Context) error {
+	_, err := c.invokeMessages(ctx, c.defaultModel, "Reply with OK if this Bedrock model is callable.", 16)
+	return err
+}
+
 func (c *BedrockLLMClient) modelID(requested string) string {
 	switch normalizeModel(requested) {
 	case "claude-sonnet-4-6":
@@ -96,53 +138,87 @@ func (c *BedrockLLMClient) modelID(requested string) string {
 }
 
 func (c *BedrockLLMClient) invokeMessages(ctx context.Context, modelID string, prompt string, maxTokens int) (string, error) {
-	body := map[string]any{
-		"anthropic_version": "bedrock-2023-05-31",
-		"max_tokens":        maxTokens,
-		"temperature":       c.temperature,
-		"messages": []map[string]any{{
-			"role": "user",
-			"content": []map[string]string{{
-				"type": "text",
-				"text": prompt,
-			}},
-		}},
-	}
-	payload, err := json.Marshal(body)
+	maxTokens32, err := bedrockConverseMaxTokens(maxTokens)
 	if err != nil {
 		return "", err
 	}
-	out, err := c.client.InvokeModel(ctx, &bedrockruntime.InvokeModelInput{
-		ModelId:     aws.String(modelID),
-		ContentType: aws.String("application/json"),
-		Accept:      aws.String("application/json"),
-		Body:        payload,
+	temperature32 := float32(c.temperature)
+	out, err := c.client.Converse(ctx, &bedrockruntime.ConverseInput{
+		ModelId: aws.String(modelID),
+		Messages: []bedrocktypes.Message{{
+			Role: bedrocktypes.ConversationRoleUser,
+			Content: []bedrocktypes.ContentBlock{
+				&bedrocktypes.ContentBlockMemberText{Value: prompt},
+			},
+		}},
+		InferenceConfig: &bedrocktypes.InferenceConfiguration{
+			MaxTokens:   &maxTokens32,
+			Temperature: &temperature32,
+		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("invoke Bedrock model: %w", err)
-	}
-	var response struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(out.Body, &response); err != nil {
-		return "", fmt.Errorf("parse Bedrock response: %w", err)
+		return "", classifyBedrockInvokeError(err)
 	}
 	var text strings.Builder
-	for _, part := range response.Content {
-		if part.Type == "text" && strings.TrimSpace(part.Text) != "" {
+	message, ok := out.Output.(*bedrocktypes.ConverseOutputMemberMessage)
+	if ok && message != nil {
+		for _, part := range message.Value.Content {
+			partText := bedrockContentText(part)
+			if strings.TrimSpace(partText) == "" {
+				continue
+			}
 			if text.Len() > 0 {
 				text.WriteString("\n")
 			}
-			text.WriteString(part.Text)
+			text.WriteString(partText)
 		}
 	}
 	if strings.TrimSpace(text.String()) == "" {
-		return "", fmt.Errorf("bedrock response contained no text")
+		return "", errBedrockNoText
 	}
 	return strings.TrimSpace(text.String()), nil
+}
+
+func bedrockConverseMaxTokens(maxTokens int) (int32, error) {
+	if maxTokens <= 0 {
+		return 0, fmt.Errorf("bedrock max tokens must be greater than zero")
+	}
+	if maxTokens > int(maxBedrockConverseTokens) {
+		return 0, fmt.Errorf("bedrock max tokens exceeds supported limit")
+	}
+	return int32(maxTokens), nil
+}
+
+func bedrockContentText(part bedrocktypes.ContentBlock) string {
+	switch typed := part.(type) {
+	case *bedrocktypes.ContentBlockMemberText:
+		if typed == nil {
+			return ""
+		}
+		return typed.Value
+	default:
+		return ""
+	}
+}
+
+func classifyBedrockInvokeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && bedrockAccessDeniedCode(apiErr.ErrorCode()) {
+		return &BedrockAccessDeniedError{Code: apiErr.ErrorCode()}
+	}
+	return fmt.Errorf("invoke Bedrock model: %w", err)
+}
+
+func bedrockAccessDeniedCode(code string) bool {
+	switch strings.TrimSpace(code) {
+	case "AccessDenied", "AccessDeniedException", "UnauthorizedOperation":
+		return true
+	default:
+		return false
+	}
 }
 
 func draftPrompt(req DraftRequest) string {

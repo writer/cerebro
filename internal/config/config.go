@@ -76,6 +76,7 @@ type GraphAgentLLMConfig struct {
 	MaxTokens        int
 	Temperature      float64
 	OpenRouterAPIKey string
+	BedrockRegion    string
 }
 
 // OpenTelemetryConfig controls OTLP trace and metric export.
@@ -284,11 +285,12 @@ func Load() (Config, error) {
 			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
 		GraphAgentLLM: GraphAgentLLMConfig{
-			Provider:    strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_PROVIDER")),
-			Model:       strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL")),
-			SonnetModel: strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_SONNET")),
-			OpusModel:   strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_OPUS")),
-			HaikuModel:  strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU")),
+			Provider:      strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_PROVIDER")),
+			Model:         strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL")),
+			SonnetModel:   strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_SONNET")),
+			OpusModel:     strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_OPUS")),
+			HaikuModel:    strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU")),
+			BedrockRegion: strings.TrimSpace(os.Getenv("CEREBRO_BEDROCK_REGION")),
 		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),

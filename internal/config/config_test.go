@@ -107,6 +107,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "900")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "0.25")
 	t.Setenv("CEREBRO_OPENROUTER_API_KEY", "openrouter-test-key")
+	t.Setenv("CEREBRO_BEDROCK_REGION", "us-east-1")
 	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
 	t.Setenv("CEREBRO_OTEL_SERVICE_NAME", "cerebro-test")
 	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
@@ -172,6 +173,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.GraphAgentLLM.OpenRouterAPIKey != "openrouter-test-key" {
 		t.Fatal("GraphAgentLLM.OpenRouterAPIKey was not loaded")
+	}
+	if cfg.GraphAgentLLM.BedrockRegion != "us-east-1" {
+		t.Fatalf("GraphAgentLLM.BedrockRegion = %q, want us-east-1", cfg.GraphAgentLLM.BedrockRegion)
 	}
 	if !cfg.OTEL.Enabled || cfg.OTEL.Protocol != "grpc" || cfg.OTEL.ServiceName != "cerebro-test" {
 		t.Fatalf("OTEL = %#v, want enabled grpc config", cfg.OTEL)
@@ -268,6 +272,7 @@ func clearGraphAgentEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "")
 	t.Setenv("CEREBRO_OPENROUTER_API_KEY", "")
+	t.Setenv("CEREBRO_BEDROCK_REGION", "")
 }
 
 func clearOpenTelemetryEnv(t *testing.T) {
