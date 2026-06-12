@@ -532,23 +532,76 @@ def _find_open_graph_health_issue(repository: str, token: str, title: str) -> di
     return matches[0] if matches else None
 
 
-def _graph_health_issue_body(stack: str, status: int, category: str, artifact_name: str, run_url: str, *, degraded: bool) -> str:
+def _graph_health_missing_runtime_ids(diagnostics: str) -> list[str]:
+    runtime_ids: list[str] = []
+    for match in re.finditer(
+        r"missing graph ingest run history for \d+ declared runtime\(s\): (.*?)(?:; latest graph ingest run failed|$)",
+        diagnostics,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        runtime_ids.extend(value.strip() for value in re.split(r"[\s,]+", match.group(1)) if value.strip())
+    return sorted(set(runtime_ids))
+
+
+def _graph_health_failed_runtime_ids(diagnostics: str) -> list[str]:
+    runtime_ids = {
+        match.group(1)
+        for match in re.finditer(r"([A-Za-z0-9_.-]+):graph-ingest:\1(?::|$)", diagnostics)
+    }
+    return sorted(runtime_ids)
+
+
+def _graph_health_issue_diagnostic_summary(diagnostics: str) -> list[str]:
+    lines: list[str] = []
+    missing = _graph_health_missing_runtime_ids(diagnostics)
+    failed = _graph_health_failed_runtime_ids(diagnostics)
+    if missing:
+        sample = ", ".join(missing[:25])
+        suffix = f" (showing 25 of {len(missing)})" if len(missing) > 25 else ""
+        lines.extend(["", "### Missing ingest history", "", f"{sample}{suffix}"])
+    if failed:
+        lines.extend(["", "### Failed ingest runtimes", "", ", ".join(failed)])
+    detail = diagnostics.strip()
+    if detail:
+        detail = detail[-2500:]
+        lines.extend(["", "### Diagnostic tail", "", "```text", detail, "```"])
+    return lines
+
+
+def _graph_health_issue_body(
+    stack: str,
+    status: int,
+    category: str,
+    artifact_name: str,
+    run_url: str,
+    *,
+    degraded: bool,
+    diagnostics: str = "",
+) -> str:
     outcome = "degraded" if degraded else "blocked deployment"
-    return "\n".join(
-        [
-            f"Graph health verification {outcome} after an infrastructure deployment for `{stack}`.",
-            "",
-            f"- Category: `{category}`",
-            f"- Exit code: `{status}`",
-            f"- Workflow run: {run_url}",
-            f"- Artifact: `{artifact_name}`",
-            "",
-            "Please inspect the graph-health artifact and follow up on the degraded runtime or graph command.",
-        ]
-    )
+    lines = [
+        f"Graph health verification {outcome} after an infrastructure deployment for `{stack}`.",
+        "",
+        f"- Category: `{category}`",
+        f"- Exit code: `{status}`",
+        f"- Workflow run: {run_url}",
+        f"- Artifact: `{artifact_name}`",
+        "",
+        "Please inspect the graph-health artifact and follow up on the degraded runtime or graph command.",
+    ]
+    lines.extend(_graph_health_issue_diagnostic_summary(diagnostics))
+    return "\n".join(lines)
 
 
-def _create_graph_health_issue(stack: str, status: int, category: str, artifact_name: str, *, degraded: bool = True) -> None:
+def _create_graph_health_issue(
+    stack: str,
+    status: int,
+    category: str,
+    artifact_name: str,
+    *,
+    degraded: bool = True,
+    diagnostics: str = "",
+) -> None:
     token = os.environ.get("GITHUB_TOKEN")
     repository = os.environ.get("GITHUB_REPOSITORY")
     run_id = os.environ.get("GITHUB_RUN_ID")
@@ -558,7 +611,7 @@ def _create_graph_health_issue(stack: str, status: int, category: str, artifact_
     run_url = f"https://github.com/{repository}/actions/runs/{run_id}"
     outcome = "degraded" if degraded else "blocked deployment"
     title = f"Graph health {outcome} for {stack}"
-    body = _graph_health_issue_body(stack, status, category, artifact_name, run_url, degraded=degraded)
+    body = _graph_health_issue_body(stack, status, category, artifact_name, run_url, degraded=degraded, diagnostics=diagnostics)
     try:
         existing_issues = _find_open_graph_health_issues(repository, token, title)
         if existing_issues:
@@ -722,11 +775,18 @@ def main(argv: list[str] | None = None) -> int:
             _write_github_output(args.github_output, graph_health_degraded="true", graph_health_degradation_category=category)
             _report_graph_health_degradation(stack, graph_status, category)
             if args.graph_health_issue:
-                _create_graph_health_issue(stack, graph_status, category, args.graph_health_artifact_name)
+                _create_graph_health_issue(stack, graph_status, category, args.graph_health_artifact_name, diagnostics=graph_diagnostics)
             return 0
         _write_github_output(args.github_output, graph_health_degraded="false", graph_health_degradation_category="", graph_health_blocked="true")
         if args.graph_health_issue:
-            _create_graph_health_issue(stack, graph_status, category or "blocking_graph_health_failure", args.graph_health_artifact_name, degraded=False)
+            _create_graph_health_issue(
+                stack,
+                graph_status,
+                category or "blocking_graph_health_failure",
+                args.graph_health_artifact_name,
+                degraded=False,
+                diagnostics=graph_diagnostics,
+            )
         return graph_status
     _write_github_output(args.github_output, graph_health_degraded="false", graph_health_degradation_category="")
     if args.graph_health and args.graph_health_issue:

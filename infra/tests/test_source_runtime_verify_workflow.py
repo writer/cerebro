@@ -7,6 +7,7 @@ import unittest
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "source-runtime-verify.yml"
 INFRA_DEPLOY_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "infra-deploy.yml"
 DRIFT_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "source-runtime-drift.yml"
+BACKFILL_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "source-runtime-backfill.yml"
 
 
 class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
@@ -60,6 +61,14 @@ class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
         self.assertNotIn("--exclude-source-id panopticon", manual_workflow)
         self.assertNotIn("--exclude-source-id panopticon", infra_workflow)
         self.assertNotIn("--exclude-source-id panopticon", drift_workflow)
+
+    def test_backfill_workflow_uses_planner_and_graph_ingest_verification(self) -> None:
+        workflow = BACKFILL_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("scripts/plan_graph_backfill.py", workflow)
+        self.assertIn("source-runtime-backfill-plan.tsv", workflow)
+        self.assertIn("--format commands", workflow)
+        self.assertIn("environment: production", workflow)
 
 
 if __name__ == "__main__":

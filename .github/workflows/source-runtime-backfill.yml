@@ -1,0 +1,177 @@
+name: Source Runtime Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: AWS stack to backfill
+        required: true
+        default: sec-dev
+        type: choice
+        options:
+          - sec-dev
+          - go-prod
+      mode:
+        description: Plan only, dry-run target discovery, or run source runtimes
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - dry-run
+          - run
+      runtime_ids:
+        description: Newline, comma, or space-separated runtime IDs
+        required: true
+        type: string
+      target_concurrency:
+        description: Maximum runtime targets per source verifier
+        required: false
+        default: '4'
+        type: string
+      run_page_limit:
+        description: Optional page_limit override for run mode
+        required: false
+        default: ''
+        type: string
+      run_graph_page_limit:
+        description: Optional graph_page_limit override for run mode
+        required: false
+        default: ''
+        type: string
+      run_event_limit:
+        description: Optional event_limit override for run mode
+        required: false
+        default: ''
+        type: string
+      stop_running_before_run:
+        description: Stop active matching runtime tasks before run mode
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: source-runtime-backfill-${{ github.event.inputs.stack }}
+  cancel-in-progress: false
+
+jobs:
+  backfill-sec-dev:
+    name: Backfill sec-dev source runtimes
+    runs-on: ubuntu-latest
+    if: github.event.inputs.stack == 'sec-dev'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+      - name: Configure AWS credentials (sec-dev)
+        if: github.event.inputs.mode != 'plan'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+      - name: Plan and run backfill
+        shell: bash
+        working-directory: infra
+        env:
+          MODE: ${{ github.event.inputs.mode }}
+          RUNTIME_IDS: ${{ github.event.inputs.runtime_ids }}
+          TARGET_CONCURRENCY: ${{ github.event.inputs.target_concurrency }}
+          RUN_PAGE_LIMIT: ${{ github.event.inputs.run_page_limit }}
+          RUN_GRAPH_PAGE_LIMIT: ${{ github.event.inputs.run_graph_page_limit }}
+          RUN_EVENT_LIMIT: ${{ github.event.inputs.run_event_limit }}
+          STOP_RUNNING_BEFORE_RUN: ${{ github.event.inputs.stop_running_before_run }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${RUNTIME_IDS}" > runtime-ids.txt
+          planner=(uv run python scripts/plan_graph_backfill.py --stack-file aws/Pulumi.sec-dev.yaml --runtime-id-file runtime-ids.txt --target-concurrency "${TARGET_CONCURRENCY}")
+          if [ -n "${RUN_PAGE_LIMIT}" ]; then planner+=(--run-page-limit "${RUN_PAGE_LIMIT}"); fi
+          if [ -n "${RUN_GRAPH_PAGE_LIMIT}" ]; then planner+=(--run-graph-page-limit "${RUN_GRAPH_PAGE_LIMIT}"); fi
+          if [ -n "${RUN_EVENT_LIMIT}" ]; then planner+=(--run-event-limit "${RUN_EVENT_LIMIT}"); fi
+          if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then planner+=(--stop-running-before-run); fi
+          "${planner[@]}" --format tsv > source-runtime-backfill-plan.tsv
+          "${planner[@]}" --format commands --mode "${MODE}" > source-runtime-backfill.sh
+          cat source-runtime-backfill-plan.tsv
+          cat source-runtime-backfill.sh
+          if [ "${MODE}" != "plan" ]; then bash source-runtime-backfill.sh; fi
+      - name: Upload backfill plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-runtime-backfill-sec-dev
+          path: |
+            infra/source-runtime-backfill-plan.tsv
+            infra/source-runtime-backfill.sh
+
+  backfill-go-prod:
+    name: Backfill go-prod source runtimes
+    runs-on: ubuntu-latest
+    if: github.event.inputs.stack == 'go-prod'
+    environment: production
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+      - name: Configure AWS credentials (sec-prod)
+        if: github.event.inputs.mode != 'plan'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+      - name: Plan and run backfill
+        shell: bash
+        working-directory: infra
+        env:
+          MODE: ${{ github.event.inputs.mode }}
+          RUNTIME_IDS: ${{ github.event.inputs.runtime_ids }}
+          TARGET_CONCURRENCY: ${{ github.event.inputs.target_concurrency }}
+          RUN_PAGE_LIMIT: ${{ github.event.inputs.run_page_limit }}
+          RUN_GRAPH_PAGE_LIMIT: ${{ github.event.inputs.run_graph_page_limit }}
+          RUN_EVENT_LIMIT: ${{ github.event.inputs.run_event_limit }}
+          STOP_RUNNING_BEFORE_RUN: ${{ github.event.inputs.stop_running_before_run }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${RUNTIME_IDS}" > runtime-ids.txt
+          planner=(uv run python scripts/plan_graph_backfill.py --stack-file aws/Pulumi.go-prod.yaml --runtime-id-file runtime-ids.txt --target-concurrency "${TARGET_CONCURRENCY}")
+          if [ -n "${RUN_PAGE_LIMIT}" ]; then planner+=(--run-page-limit "${RUN_PAGE_LIMIT}"); fi
+          if [ -n "${RUN_GRAPH_PAGE_LIMIT}" ]; then planner+=(--run-graph-page-limit "${RUN_GRAPH_PAGE_LIMIT}"); fi
+          if [ -n "${RUN_EVENT_LIMIT}" ]; then planner+=(--run-event-limit "${RUN_EVENT_LIMIT}"); fi
+          if [ "${STOP_RUNNING_BEFORE_RUN}" = "true" ]; then planner+=(--stop-running-before-run); fi
+          "${planner[@]}" --format tsv > source-runtime-backfill-plan.tsv
+          "${planner[@]}" --format commands --mode "${MODE}" > source-runtime-backfill.sh
+          cat source-runtime-backfill-plan.tsv
+          cat source-runtime-backfill.sh
+          if [ "${MODE}" != "plan" ]; then bash source-runtime-backfill.sh; fi
+      - name: Upload backfill plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-runtime-backfill-go-prod
+          path: |
+            infra/source-runtime-backfill-plan.tsv
+            infra/source-runtime-backfill.sh

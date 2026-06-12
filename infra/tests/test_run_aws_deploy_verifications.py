@@ -456,6 +456,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             "blocking_graph_health_failure",
             "graph-health-sec-dev",
             degraded=False,
+            diagnostics="ERROR: graph integrity failed 1 checks: open_findings_missing_primary_has_finding_edge=1",
         )
 
     def test_graph_integrity_failure_repairs_then_reruns_health(self) -> None:
@@ -579,7 +580,28 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertIn("::warning::Graph health verification degraded after deployment", stdout.getvalue())
-        create_issue.assert_called_once_with("go-prod", 23, "stale_ingest_run", "graph-health-go-prod")
+        create_issue.assert_called_once_with(
+            "go-prod",
+            23,
+            "stale_ingest_run",
+            "graph-health-go-prod",
+            diagnostics="ERROR: latest graph ingest run is stale-running for 1 runtime(s): writer-runtime:graph-ingest:writer-runtime:20260601T000000Z:status=running",
+        )
+
+    def test_graph_health_issue_body_includes_runtime_diagnostics(self) -> None:
+        body = run_aws_deploy_verifications._graph_health_issue_body(
+            "go-prod",
+            1,
+            "missing_ingest_run_history",
+            "graph-health-go-prod",
+            "https://github.com/WriterInternal/cerebro/actions/runs/1",
+            degraded=True,
+            diagnostics="ERROR: missing graph ingest run history for 2 declared runtime(s): runtime-a, runtime-b",
+        )
+
+        self.assertIn("### Missing ingest history", body)
+        self.assertIn("runtime-a, runtime-b", body)
+        self.assertIn("### Diagnostic tail", body)
 
     def test_graph_degradation_updates_existing_followup_issue(self) -> None:
         requests = []
