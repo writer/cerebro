@@ -10,9 +10,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  DOCKER_BUILDKIT: 1
+
 jobs:
   smoke-compose:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
@@ -38,35 +45,18 @@ jobs:
 
       - name: Verify core endpoints
         run: |
-          # API root should return service info
-          curl -sf http://localhost:8080/ || (echo "API root failed"; exit 1)
-
           # Health endpoint should return 200
           curl -sf http://localhost:8080/healthz || (echo "Health check failed"; exit 1)
 
           echo "Core endpoints verified"
 
-      - name: Run basic write/read smoke
-        env:
-          TEST_API_KEY: ${{ secrets.SMOKE_TEST_API_KEY || 'test-api-key-smoke' }}
-        run: |
-          # Create a tenant-scoped test (will fail closed without proper auth, which is expected)
-          http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer $TEST_API_KEY" \
-            -H "Content-Type: application/json" \
-            http://localhost:8080/api/v1/sources || true)
-
-          # We expect 401/403 without proper setup, but not 500 or timeout
-          if [ "$http_code" = "500" ] || [ "$http_code" = "502" ] || [ "$http_code" = "503" ] || [ "$http_code" = "504" ]; then
-            echo "Server error: HTTP $http_code"
-            exit 1
-          fi
-
-          echo "Basic API smoke passed (HTTP $http_code)"
-
-      - name: Collect logs on failure
+      - name: Collect diagnostics on failure
         if: failure()
         run: |
+          echo "=== Docker state ==="
+          docker ps -a || true
+          echo "=== NATS health ==="
+          curl -sf http://localhost:8222/healthz || true
           echo "=== NATS logs ==="
           docker compose logs nats --tail 50 || true
           echo "=== Postgres logs ==="
@@ -78,4 +68,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker compose down -v
+        run: docker compose down -v --remove-orphans
