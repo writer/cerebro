@@ -18,3 +18,17 @@ func TestCloseNilStore(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 }
+
+func TestSchemaStatementsChecksumChangesWithDDL(t *testing.T) {
+	first := schemaStatementsChecksum([]string{"CREATE TABLE example (id text)"})
+	second := schemaStatementsChecksum([]string{"CREATE TABLE example (id text, name text)"})
+	if first == "" {
+		t.Fatal("schemaStatementsChecksum() returned empty checksum")
+	}
+	if first == second {
+		t.Fatal("schemaStatementsChecksum() did not change after DDL changed")
+	}
+	if got := schemaStatementsChecksum([]string{"  CREATE TABLE example (id text)  "}); got != first {
+		t.Fatalf("schemaStatementsChecksum() = %q, want stable whitespace-normalized checksum %q", got, first)
+	}
+}

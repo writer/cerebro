@@ -35,6 +35,8 @@ const (
 	relationCanImpersonate     = "can_impersonate"
 	relationCanReach           = "can_reach"
 	relationContains           = "contains"
+	relationConfersCapability  = "confers_capability"
+	relationGrantsEntitlement  = "grants_entitlement"
 	relationHasClassification  = "has_classification"
 	relationHasDNSRecord       = "has_dns_record"
 	relationHasEvidence        = "has_evidence"

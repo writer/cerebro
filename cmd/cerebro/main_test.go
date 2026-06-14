@@ -39,6 +39,40 @@ func TestRunDeployRejectsUnsupportedSubcommand(t *testing.T) {
 	}
 }
 
+func TestValidateServeConfigRequiresAuthMaterial(t *testing.T) {
+	err := validateServeConfig(appconfig.Config{
+		Auth:      appconfig.AuthConfig{Enabled: true},
+		RateLimit: appconfig.RateLimitConfig{Enabled: true},
+	})
+	if !errors.Is(err, errServeAuthMaterialRequired) {
+		t.Fatalf("validateServeConfig() error = %v, want errServeAuthMaterialRequired", err)
+	}
+}
+
+func TestValidateServeConfigRejectsDisabledRateLimitOutsideDevMode(t *testing.T) {
+	err := validateServeConfig(appconfig.Config{
+		Auth: appconfig.AuthConfig{
+			Enabled: true,
+			APIKeys: []appconfig.APIKey{{
+				Key:       "token",
+				Principal: "ci",
+				TenantID:  "writer",
+			}},
+		},
+		RateLimit: appconfig.RateLimitConfig{Enabled: false},
+	})
+	if !errors.Is(err, errServeRateLimitDisabled) {
+		t.Fatalf("validateServeConfig() error = %v, want errServeRateLimitDisabled", err)
+	}
+}
+
+func TestValidateServeConfigAllowsDevModeOptOut(t *testing.T) {
+	err := validateServeConfig(appconfig.Config{DevMode: true})
+	if err != nil {
+		t.Fatalf("validateServeConfig(dev mode) error = %v", err)
+	}
+}
+
 func TestWritePreflightReceiptJSONRedactsToBoundedDetail(t *testing.T) {
 	receipt := preflightReceipt{
 		Kind:   "cerebro.deploy_preflight",

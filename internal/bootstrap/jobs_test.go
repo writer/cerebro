@@ -2,6 +2,11 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -35,5 +40,37 @@ func TestNewCachesJobServiceForAsyncLifecycle(t *testing.T) {
 	second := app.jobService()
 	if first != second {
 		t.Fatal("jobService() returned different instances")
+	}
+}
+
+func TestWriteJobErrorSanitizesInternalErrors(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeJobError(recorder, errors.New("postgres query failed: secret DSN"))
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "internal server error" {
+		t.Fatalf("error body = %q, want sanitized internal server error", body["error"])
+	}
+}
+
+func TestWriteJobErrorKeepsClientErrorsActionable(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeJobError(recorder, fmt.Errorf("%w: missing tenant_id", platformjobs.ErrInvalidRequest))
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] == "" || body["error"] == "bad request" {
+		t.Fatalf("error body = %q, want actionable client error", body["error"])
 	}
 }

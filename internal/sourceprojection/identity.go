@@ -2,6 +2,7 @@ package sourceprojection
 
 import (
 	"strings"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -459,9 +460,134 @@ func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, profile id
 		})
 	}
 	if subjectURN != "" && appURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, appURN, relationAssignedTo, map[string]string{"event_id": event.GetId()}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, appURN, relationAssignedTo, identityEventLinkAttributes(event)))
+	}
+	entitlementURN, capabilityURN := addIdentityAppEntitlement(entities, links, tenantID, event, profile, appURN, attributes)
+	if capabilityURN != "" && entitlementURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), entitlementURN, capabilityURN, relationConfersCapability, identityEventLinkAttributes(event)))
 	}
 	return identityProjectionResult(entities, links)
+}
+
+func addIdentityAppEntitlement(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, appURN string, attributes map[string]string) (string, string) {
+	appID := firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"])
+	if appURN == "" || appID == "" {
+		return "", ""
+	}
+	entitlementID := firstNonEmpty(attributes["entitlement_id"], attributes["entitlement"], attributes["scope"], "app_assignment:"+appID)
+	entitlementURN := projectionURN(tenantID, profile.Provider+"_entitlement", entitlementID)
+	if entitlementURN == "" {
+		return "", ""
+	}
+	appName := firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["client_id"], appID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        entitlementURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: profile.entityType("entitlement"),
+		Label:      firstNonEmpty(attributes["entitlement_name"], attributes["scope"], appName+" access", entitlementID),
+		Attributes: map[string]string{
+			"app_id":         appID,
+			"entitlement_id": entitlementID,
+			"scope":          strings.TrimSpace(attributes["scope"]),
+			"status":         strings.TrimSpace(attributes["status"]),
+		},
+	})
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), appURN, entitlementURN, relationGrantsEntitlement, identityEventLinkAttributes(event)))
+	capabilityID := identityAppCapabilityID(attributes, appName, entitlementID)
+	capabilityURN := addIdentityCapability(entities, tenantID, event.GetSourceId(), capabilityID, identityCapabilityLabel(capabilityID), map[string]string{"source": profile.Provider})
+	return entitlementURN, capabilityURN
+}
+
+func addIdentityRoleEntitlement(entities map[string]*ports.ProjectedEntity, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, roleURN string, roleID string, privileged bool, attributes map[string]string) (string, string) {
+	if roleURN == "" || roleID == "" {
+		return "", ""
+	}
+	entitlementID := firstNonEmpty(attributes["entitlement_id"], attributes["entitlement"], "admin_role:"+roleID)
+	entitlementURN := projectionURN(tenantID, profile.Provider+"_entitlement", entitlementID)
+	if entitlementURN == "" {
+		return "", ""
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        entitlementURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: profile.entityType("entitlement"),
+		Label:      firstNonEmpty(attributes["entitlement_name"], attributes["role_name"], attributes["role_type"], roleID),
+		Attributes: map[string]string{
+			"entitlement_id": entitlementID,
+			"is_admin":       boolString(privileged),
+			"role_id":        roleID,
+			"role_type":      strings.TrimSpace(attributes["role_type"]),
+		},
+	})
+	capabilityID := firstNonEmpty(attributes["capability"], "identity_admin")
+	if !privileged {
+		capabilityID = firstNonEmpty(attributes["capability"], "identity_role")
+	}
+	capabilityURN := addIdentityCapability(entities, tenantID, event.GetSourceId(), capabilityID, identityCapabilityLabel(capabilityID), map[string]string{"source": profile.Provider})
+	return entitlementURN, capabilityURN
+}
+
+func addIdentityCapability(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, capabilityID string, label string, attributes map[string]string) string {
+	capabilityID = normalizeIdentityCapabilityID(capabilityID)
+	if capabilityID == "" {
+		return ""
+	}
+	capabilityURN := projectionURN(tenantID, "privileged_capability", capabilityID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        capabilityURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "privileged.capability",
+		Label:      firstNonEmpty(label, capabilityID),
+		Attributes: attributes,
+	})
+	return capabilityURN
+}
+
+func identityAppCapabilityID(attributes map[string]string, appName string, entitlementID string) string {
+	if explicit := strings.TrimSpace(attributes["capability"]); explicit != "" {
+		return explicit
+	}
+	text := strings.ToLower(appName + " " + entitlementID)
+	if strings.Contains(text, "admin") || strings.Contains(text, "administrator") || strings.Contains(text, "root") {
+		return "cloud_admin"
+	}
+	return "app_access"
+}
+
+func normalizeIdentityCapabilityID(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, " ", "_")
+	value = strings.ReplaceAll(value, "-", "_")
+	for strings.Contains(value, "__") {
+		value = strings.ReplaceAll(value, "__", "_")
+	}
+	return strings.Trim(value, "_")
+}
+
+func identityCapabilityLabel(capabilityID string) string {
+	switch normalizeIdentityCapabilityID(capabilityID) {
+	case "app_access":
+		return "Application access"
+	case "cloud_admin":
+		return "Cloud administrator"
+	case "identity_admin":
+		return "Identity administrator"
+	case "identity_role":
+		return "Identity role"
+	default:
+		return strings.TrimSpace(capabilityID)
+	}
+}
+
+func identityEventLinkAttributes(event *cerebrov1.EventEnvelope) map[string]string {
+	attributes := map[string]string{"event_id": event.GetId()}
+	if occurred := event.GetOccurredAt().AsTime(); !occurred.IsZero() {
+		attributes["at"] = occurred.UTC().Format(time.RFC3339Nano)
+	}
+	return attributes
 }
 
 func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -515,7 +641,14 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, roleURN, profile, attributes, roleKind, roleID)
 	}
 	if subjectURN != "" && roleURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relation, map[string]string{"event_id": event.GetId()}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relation, identityEventLinkAttributes(event)))
+	}
+	entitlementURN, capabilityURN := addIdentityRoleEntitlement(entities, tenantID, event, profile, roleURN, roleID, privileged, attributes)
+	if roleURN != "" && entitlementURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, entitlementURN, relationGrantsEntitlement, identityEventLinkAttributes(event)))
+	}
+	if entitlementURN != "" && capabilityURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), entitlementURN, capabilityURN, relationConfersCapability, identityEventLinkAttributes(event)))
 	}
 	return identityProjectionResult(entities, links)
 }

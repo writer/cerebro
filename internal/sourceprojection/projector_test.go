@@ -2861,6 +2861,76 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	assertProjectedLinkMissing(t, state, gcpUserURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
 }
 
+func TestProjectOktaEffectiveEntitlementGraph(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.June, 14, 12, 0, 0, 0, time.UTC)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:         "okta-group-app-assignment",
+			TenantId:   "writer",
+			SourceId:   "okta",
+			Kind:       "okta.app_assignment",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"app_id":       "app-admin",
+				"app_name":     "AWS Admin Console",
+				"scope":        "AdministratorAccess",
+				"status":       "ACTIVE",
+				"subject_id":   "grp-security",
+				"subject_name": "Security Engineering",
+				"subject_type": "group",
+			},
+		},
+		{
+			Id:         "okta-admin-role",
+			TenantId:   "writer",
+			SourceId:   "okta",
+			Kind:       "okta.admin_role",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"role_id":       "SUPER_ADMIN",
+				"role_name":     "Super Administrator",
+				"role_type":     "SUPER_ADMIN",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "00u-admin",
+				"subject_type":  "user",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	groupURN := "urn:cerebro:writer:okta_group:grp-security"
+	appURN := "urn:cerebro:writer:okta_application:app-admin"
+	appEntitlementURN := "urn:cerebro:writer:okta_entitlement:AdministratorAccess"
+	cloudAdminCapabilityURN := "urn:cerebro:writer:privileged_capability:cloud_admin"
+	assertProjectedLink(t, state, groupURN, relationAssignedTo, appURN)
+	assertProjectedLink(t, state, appURN, relationGrantsEntitlement, appEntitlementURN)
+	assertProjectedLink(t, state, appEntitlementURN, relationConfersCapability, cloudAdminCapabilityURN)
+	link := state.links[appURN+"|"+relationGrantsEntitlement+"|"+appEntitlementURN]
+	if link.Attributes["event_id"] != "okta-group-app-assignment" || link.Attributes["at"] != occurred.Format(time.RFC3339Nano) {
+		t.Fatalf("entitlement link attributes = %#v, want source event context", link.Attributes)
+	}
+
+	userURN := "urn:cerebro:writer:okta_user:00u-admin"
+	roleURN := "urn:cerebro:writer:okta_admin_role:SUPER_ADMIN"
+	roleEntitlementURN := "urn:cerebro:writer:okta_entitlement:admin_role:SUPER_ADMIN"
+	identityAdminCapabilityURN := "urn:cerebro:writer:privileged_capability:identity_admin"
+	assertProjectedLink(t, state, userURN, relationCanAdmin, roleURN)
+	assertProjectedLink(t, state, roleURN, relationGrantsEntitlement, roleEntitlementURN)
+	assertProjectedLink(t, state, roleEntitlementURN, relationConfersCapability, identityAdminCapabilityURN)
+	if entity := state.entities[appEntitlementURN]; entity == nil || entity.EntityType != "okta.entitlement" {
+		t.Fatalf("app entitlement entity missing or wrong type: %#v", entity)
+	}
+	if entity := state.entities[cloudAdminCapabilityURN]; entity == nil || entity.EntityType != "privileged.capability" {
+		t.Fatalf("capability entity missing or wrong type: %#v", entity)
+	}
+}
+
 func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

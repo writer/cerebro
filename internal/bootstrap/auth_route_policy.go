@@ -14,37 +14,38 @@ const (
 )
 
 type httpAuthRoutePolicy struct {
-	Method string
-	Exact  string
-	Prefix string
-	Suffix string
-	Scope  string
-	Static bool
+	Method    string
+	Exact     string
+	Prefix    string
+	Suffix    string
+	Scope     string
+	Static    bool
+	AdminOnly bool
 }
 
 var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Exact: "/api/v1/mcp", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/metrics", Scope: scopeCosmoSecurityRead, Static: true},
-	{Method: http.MethodPost, Prefix: "/reports/", Suffix: "/runs", Static: true},
-	{Method: http.MethodPost, Exact: "/platform/knowledge/decisions", Static: true},
-	{Method: http.MethodPost, Exact: "/platform/knowledge/actions", Static: true},
-	{Method: http.MethodPost, Exact: "/platform/knowledge/actions/recommendation", Static: true},
-	{Method: http.MethodPost, Exact: "/platform/knowledge/outcomes", Static: true},
-	{Method: http.MethodPost, Exact: "/platform/workflow/replay", Static: true},
+	{Method: http.MethodPost, Prefix: "/reports/", Suffix: "/runs", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Exact: "/platform/knowledge/decisions", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Exact: "/platform/knowledge/actions", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Exact: "/platform/knowledge/actions/recommendation", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Exact: "/platform/knowledge/outcomes", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Exact: "/platform/workflow/replay", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/sources", Scope: scopeCosmoSecurityRead},
-	{Method: http.MethodGet, Prefix: "/sources/", Static: true},
+	{Method: http.MethodGet, Prefix: "/sources/", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/reports", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Exact: "/finding-rules", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Exact: "/endpoint-vulnerability-findings", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Exact: "/source-runtimes", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Prefix: "/source-runtimes/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Prefix: "/findings/", Scope: scopeCosmoSecurityRead},
-	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/resolve", Static: true},
-	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/suppress", Static: true},
-	{Method: http.MethodPut, Prefix: "/findings/", Suffix: "/assign", Static: true},
-	{Method: http.MethodPut, Prefix: "/findings/", Suffix: "/due", Static: true},
-	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/notes", Static: true},
-	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/tickets", Static: true},
+	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/resolve", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/suppress", Static: true, AdminOnly: true},
+	{Method: http.MethodPut, Prefix: "/findings/", Suffix: "/assign", Static: true, AdminOnly: true},
+	{Method: http.MethodPut, Prefix: "/findings/", Suffix: "/due", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/notes", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/tickets", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Prefix: "/finding-candidates/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodPost, Prefix: "/finding-candidates/", Suffix: "/promote", Scope: scopeFindingCandidatePromote},
 	{Method: http.MethodPost, Prefix: "/finding-candidates/", Suffix: "/reject", Scope: scopeFindingCandidatePromote},
@@ -69,21 +70,21 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Prefix: "/platform/graph/ingest-runs/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Prefix: "/platform/endpoints/", Suffix: "/vulnerability-findings", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Prefix: "/report-runs/", Scope: scopeCosmoSecurityRead},
-	{Method: http.MethodPost, Exact: "/platform/jobs", Static: true},
+	{Method: http.MethodPost, Exact: "/platform/jobs", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/platform/jobs", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/platform/jobs/", Scope: scopeCosmoSecurityRead},
-	{Method: http.MethodPost, Prefix: "/platform/jobs/", Suffix: "/cancel", Static: true},
+	{Method: http.MethodPost, Prefix: "/platform/jobs/", Suffix: "/cancel", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/platform/runtime-response/capabilities", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/runtime-response/blocklist", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/platform/runtime-response/actions", Scope: scopeRuntimeResponseWrite, Static: true},
 	{Method: http.MethodPost, Prefix: "/platform/runtime-response/blocklist/", Suffix: "/revoke", Scope: scopeRuntimeResponseWrite},
-	{Method: http.MethodPut, Prefix: "/source-runtimes/", Static: true},
-	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/sync", Static: true},
-	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/graph-ingest-runs", Static: true},
-	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/claims", Static: true},
-	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/finding-candidates/evaluate", Static: true},
-	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/finding-rules/evaluate", Static: true},
-	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/findings/evaluate", Static: true},
+	{Method: http.MethodPut, Prefix: "/source-runtimes/", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/sync", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/graph-ingest-runs", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/claims", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/finding-candidates/evaluate", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/finding-rules/evaluate", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/source-runtimes/", Suffix: "/findings/evaluate", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Exact: "/platform/devices/enroll", Scope: deviceauth.ScopeDevicesEnroll, Static: true},
 	{Method: http.MethodPost, Exact: "/platform/devices/token", Scope: deviceauth.ScopeDevicesToken, Static: true},
 	{Method: http.MethodPost, Exact: "/platform/devices/bootstrap-tokens", Scope: deviceauth.ScopeDevicesBootstrapWrite, Static: true},
