@@ -639,12 +639,21 @@ message ReplayWorkflowEventsRequest {
   uint32 limit = 4;
 }
 
+// WorkflowReplayError describes one replayed event that failed projection.
+message WorkflowReplayError {
+  string event_id = 1;
+  string kind = 2;
+  string error = 3;
+}
+
 // ReplayWorkflowEventsResponse returns graph projection counts from one replay pass.
 message ReplayWorkflowEventsResponse {
   uint32 events_read = 1;
   uint32 events_projected = 2;
   uint32 entities_projected = 3;
   uint32 links_projected = 4;
+  uint32 events_failed = 5;
+  repeated WorkflowReplayError errors = 6;
 }
 
 // GraphEntity is the normalized graph node view exposed by the first query surface.

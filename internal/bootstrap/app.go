@@ -3977,7 +3977,24 @@ func workflowReplayResponse(result *workflowprojection.ReplayResult) *cerebrov1.
 		EventsProjected:   result.EventsProjected,
 		EntitiesProjected: result.EntitiesProjected,
 		LinksProjected:    result.LinksProjected,
+		EventsFailed:      result.EventsFailed,
+		Errors:            workflowReplayErrors(result.Errors),
 	}
+}
+
+func workflowReplayErrors(errors []workflowprojection.ReplayError) []*cerebrov1.WorkflowReplayError {
+	if len(errors) == 0 {
+		return nil
+	}
+	items := make([]*cerebrov1.WorkflowReplayError, 0, len(errors))
+	for _, replayErr := range errors {
+		items = append(items, &cerebrov1.WorkflowReplayError{
+			EventId: replayErr.EventID,
+			Kind:    replayErr.Kind,
+			Error:   replayErr.Error,
+		})
+	}
+	return items
 }
 
 func graphNeighborhoodResponse(neighborhood *ports.EntityNeighborhood) *cerebrov1.GetEntityNeighborhoodResponse {
