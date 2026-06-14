@@ -6260,7 +6260,14 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDecisionRecordedEvent() error = %v", err)
 	}
-	appendLog := &recordingAppendLog{replayEvents: []*cerebrov1.EventEnvelope{decisionEvent}}
+	poisonEvent := &cerebrov1.EventEnvelope{
+		Id:         "event-poison",
+		TenantId:   "writer",
+		Kind:       workflowevents.EventKindKnowledgeDecisionRecorded,
+		Payload:    []byte("{not-json"),
+		Attributes: map[string]string{"workflow_kind": "knowledge_decision"},
+	}
+	appendLog := &recordingAppendLog{replayEvents: []*cerebrov1.EventEnvelope{poisonEvent, decisionEvent}}
 	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  appendLog,
@@ -6295,8 +6302,15 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&replayPayload); err != nil {
 		t.Fatalf("decode ReplayWorkflowEventsResponse: %v", err)
 	}
-	if replayPayload["events_read"] != float64(1) || replayPayload["events_projected"] != float64(1) {
+	if replayPayload["events_read"] != float64(2) || replayPayload["events_projected"] != float64(1) {
 		t.Fatalf("replay counts = read:%v projected:%v, want 1/1", replayPayload["events_read"], replayPayload["events_projected"])
+	}
+	if replayPayload["events_failed"] != float64(1) {
+		t.Fatalf("events_failed = %v, want 1", replayPayload["events_failed"])
+	}
+	errorSamples, ok := replayPayload["errors"].([]any)
+	if !ok || len(errorSamples) != 1 {
+		t.Fatalf("errors = %#v, want one sample", replayPayload["errors"])
 	}
 	if _, ok := graphStore.entities[decisionID]; !ok {
 		t.Fatalf("decision entity %q missing after replay", decisionID)
@@ -6321,13 +6335,19 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	connectResp, err := client.ReplayWorkflowEvents(context.Background(), connect.NewRequest(&cerebrov1.ReplayWorkflowEventsRequest{
 		KindPrefix: "workflow.v1.knowledge.",
 		TenantId:   "writer",
-		Limit:      1,
+		Limit:      2,
 	}))
 	if err != nil {
 		t.Fatalf("ReplayWorkflowEvents() error = %v", err)
 	}
 	if got := connectResp.Msg.GetEntitiesProjected(); got != 1 {
 		t.Fatalf("ReplayWorkflowEvents().EntitiesProjected = %d, want 1", got)
+	}
+	if got := connectResp.Msg.GetEventsFailed(); got != 1 {
+		t.Fatalf("ReplayWorkflowEvents().EventsFailed = %d, want 1", got)
+	}
+	if got := connectResp.Msg.GetErrors(); len(got) != 1 || got[0].GetEventId() != "event-poison" {
+		t.Fatalf("ReplayWorkflowEvents().Errors = %+v, want event-poison sample", got)
 	}
 	if len(appendLog.replayRequests) != 2 {
 		t.Fatalf("len(replayRequests) = %d, want 2", len(appendLog.replayRequests))
