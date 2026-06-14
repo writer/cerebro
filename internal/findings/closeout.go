@@ -330,12 +330,19 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			if getErr != nil {
 				return nil, fmt.Errorf("load existing closeout_run %q: %w", runID, getErr)
 			}
+			if strings.TrimSpace(existing.Status) == "failed" {
+				return s.executeCloseoutRun(ctx, req, selector, runID, actor, reason, batchSize, existing.AppliedCount, existing.ProposedCount, false)
+			}
 			return s.closeoutResultFromRunRecord(context.WithoutCancel(ctx), existing)
 		}
 		return nil, fmt.Errorf("insert closeout_run %q: %w", runID, insertErr)
 	}
 
-	result = &CloseoutResult{RunID: runID}
+	return s.executeCloseoutRun(ctx, req, selector, runID, actor, reason, batchSize, 0, 0, true)
+}
+
+func (s *Service) executeCloseoutRun(ctx context.Context, req CloseoutRequest, selector CloseoutSelector, runID, actor, reason string, batchSize int, initialApplied int, initialProposed int, heartbeat bool) (result *CloseoutResult, err error) {
+	result = &CloseoutResult{RunID: runID, AppliedCount: initialApplied, ProposedCount: initialProposed}
 	finishBackground := func(status, errMessage string, applied int) {
 		bgCtx := context.WithoutCancel(ctx)
 		_ = s.closeoutStore.FinishCloseoutRun(bgCtx, ports.CloseoutRunFinish{
@@ -353,7 +360,7 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			err = fmt.Errorf("closeout panicked: %v", rec)
 		}
 	}()
-	if !req.DryRun {
+	if heartbeat && !req.DryRun {
 		stopHeartbeat := s.startCloseoutRunHeartbeat(ctx, runID)
 		defer stopHeartbeat()
 	}
@@ -364,7 +371,7 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		return nil, fmt.Errorf("list closeout candidates: %w", listErr)
 	}
 	result.Proposed = proposed
-	result.ProposedCount = len(proposed)
+	result.ProposedCount = maxInt(initialProposed, initialApplied+len(proposed))
 
 	if req.DryRun {
 		finishErr := s.closeoutStore.FinishCloseoutRun(context.WithoutCancel(ctx), ports.CloseoutRunFinish{
@@ -380,7 +387,7 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		return result, nil
 	}
 
-	applied := 0
+	applied := initialApplied
 	perRuleApplied := map[string]int{}
 	for start, batchIndex := 0, 0; start < len(proposed); start, batchIndex = start+batchSize, batchIndex+1 {
 		end := start + batchSize
@@ -432,6 +439,13 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		return result, fmt.Errorf("finish closeout_run %q: %w", runID, finishErr)
 	}
 	return result, nil
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.FindingRecord, runID, actor, reason string) (bool, error) {

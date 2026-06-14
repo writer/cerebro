@@ -766,8 +766,10 @@ func TestTombstoneFindingsBulk_DuplicateRunIDReloadsPersistedRun(t *testing.T) {
 	}
 }
 
-func TestTombstoneFindingsBulk_DuplicateRunIDReloadsPersistedFailedRun(t *testing.T) {
+func TestTombstoneFindingsBulk_DuplicateRunIDRetriesPersistedFailedRun(t *testing.T) {
 	fx := newCloseoutFixture(t)
+	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFinding("f-2", "open", fx.now.Add(-72*time.Hour), nil)
 
 	const runID = "run-duplicate-failed-1"
 	const priorFailure = "previous closeout failed while writing the audit summary"
@@ -793,34 +795,58 @@ func TestTombstoneFindingsBulk_DuplicateRunIDReloadsPersistedFailedRun(t *testin
 	}
 
 	result, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
-	if err == nil {
-		t.Fatalf("duplicate failed closeout_run returned nil error; result=%+v", result)
-	}
-	if !errors.Is(err, ErrCloseoutRunFailed) {
-		t.Fatalf("duplicate failed closeout error = %v, want ErrCloseoutRunFailed", err)
-	}
-	var failedErr *CloseoutRunFailedError
-	if !errors.As(err, &failedErr) {
-		t.Fatalf("duplicate failed closeout error = %T, want CloseoutRunFailedError", err)
-	}
-	if failedErr.ErrorMessage != priorFailure {
-		t.Fatalf("CloseoutRunFailedError.ErrorMessage = %q, want %q", failedErr.ErrorMessage, priorFailure)
-	}
-	if result == nil {
-		t.Fatal("duplicate failed closeout_run returned nil result")
+	if err != nil {
+		t.Fatalf("duplicate failed closeout retry error = %v", err)
 	}
 	if result.RunID != runID {
 		t.Fatalf("result.RunID = %q, want %q", result.RunID, runID)
 	}
-	if len(result.BatchErrors) != 1 {
-		t.Fatalf("BatchErrors len = %d, want 1", len(result.BatchErrors))
+	if result.ProposedCount != 2 || result.AppliedCount != 2 {
+		t.Fatalf("retry counts = proposed %d applied %d, want 2/2", result.ProposedCount, result.AppliedCount)
 	}
-	var batchErr *CloseoutRunFailedError
-	if !errors.As(result.BatchErrors[0], &batchErr) {
-		t.Fatalf("BatchErrors[0] = %T, want CloseoutRunFailedError", result.BatchErrors[0])
+	run, getErr := fx.closeout.GetCloseoutRun(context.Background(), runID)
+	if getErr != nil {
+		t.Fatalf("GetCloseoutRun() error = %v", getErr)
 	}
-	if batchErr.ErrorMessage != priorFailure {
-		t.Fatalf("BatchErrors[0].ErrorMessage = %q, want %q", batchErr.ErrorMessage, priorFailure)
+	if run.Status != "succeeded" || run.ErrorMessage != "" {
+		t.Fatalf("closeout_run after retry = status %q err %q, want succeeded/no error", run.Status, run.ErrorMessage)
+	}
+}
+
+func TestTombstoneFindingsBulk_DuplicateFailedRunContinuesRemainingWork(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFinding("f-2", "open", fx.now.Add(-72*time.Hour), nil)
+	fx.appendLog.err = errors.New("workflow append failed")
+
+	const runID = "run-duplicate-failed-remaining-1"
+	first, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err == nil {
+		t.Fatalf("first closeout returned nil error; result=%+v", first)
+	}
+	if first == nil || first.AppliedCount != 1 {
+		t.Fatalf("first AppliedCount = %+v, want one committed tombstone", first)
+	}
+	run, getErr := fx.closeout.GetCloseoutRun(context.Background(), runID)
+	if getErr != nil {
+		t.Fatalf("GetCloseoutRun() after first error: %v", getErr)
+	}
+	if run.Status != "failed" || run.AppliedCount != 1 {
+		t.Fatalf("failed run = status %q applied %d, want failed/1", run.Status, run.AppliedCount)
+	}
+
+	fx.appendLog.err = nil
+	second, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err != nil {
+		t.Fatalf("retry closeout error = %v", err)
+	}
+	if second.AppliedCount != 2 || second.ProposedCount != 2 {
+		t.Fatalf("retry counts = proposed %d applied %d, want 2/2", second.ProposedCount, second.AppliedCount)
+	}
+	for _, id := range []string{"f-1", "f-2"} {
+		if !fx.store.findings[id].Tombstoned {
+			t.Fatalf("%s not tombstoned after retry", id)
+		}
 	}
 }
 
