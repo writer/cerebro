@@ -234,7 +234,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	}(r.Context())
 	wg.Wait()
 	close(errs)
-	if err := <-errs; err != nil {
+	if err := joinGRCErrors(errs); err != nil {
 		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
@@ -271,6 +271,14 @@ func grcDashboardPreviewLimitFor(limit uint32) uint32 {
 		return grcDashboardPreviewLimit
 	}
 	return limit
+}
+
+func joinGRCErrors(errs <-chan error) error {
+	var joined error
+	for err := range errs {
+		joined = errors.Join(joined, err)
+	}
+	return joined
 }
 
 func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {

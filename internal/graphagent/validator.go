@@ -55,6 +55,7 @@ type ValidatorOptions struct {
 	MaxRows           int
 	AllNodesScanLimit int
 	Explain           bool
+	DisableExplain    bool
 }
 
 type Validator struct {
@@ -68,6 +69,13 @@ func NewValidator(store ports.GraphQueryStore, options ValidatorOptions) *Valida
 	}
 	if options.AllNodesScanLimit <= 0 {
 		options.AllNodesScanLimit = defaultAllNodesScanLimit
+	}
+	if !options.DisableExplain && store != nil {
+		if _, ok := store.(interface {
+			ExplainReadCypher(context.Context, ports.CypherQueryRequest) (*ports.CypherPlan, error)
+		}); ok {
+			options.Explain = true
+		}
 	}
 	return &Validator{store: store, options: options}
 }
