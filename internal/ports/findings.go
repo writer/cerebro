@@ -209,6 +209,10 @@ type FindingTombstoneEvent struct {
 // implementations MUST translate that database conflict into ErrCloseoutRunInFlight.
 type CloseoutRunStore interface {
 	InsertCloseoutRun(ctx context.Context, run CloseoutRunInsert) error
+	// RetryFailedCloseoutRun atomically flips a failed closeout_run back to
+	// running so retries re-acquire the singleton-running lock. Implementations
+	// MUST translate the singleton lock conflict into ErrCloseoutRunInFlight.
+	RetryFailedCloseoutRun(ctx context.Context, runID string, heartbeatAt time.Time) error
 	FinishCloseoutRun(ctx context.Context, finish CloseoutRunFinish) error
 	GetCloseoutRun(ctx context.Context, runID string) (*CloseoutRunRecord, error)
 	// RefreshCloseoutRunHeartbeat updates heartbeat_at for a currently running

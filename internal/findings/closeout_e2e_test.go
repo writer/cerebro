@@ -648,7 +648,7 @@ func TestTombstoneOneFinding_WorkflowEmitFailureAfterCommit(t *testing.T) {
 	}
 }
 
-func TestCloseout_DuplicateRunWithFailedStatusReturnsError(t *testing.T) {
+func TestCloseout_DuplicateRunWithFailedStatusRetriesRemainingWork(t *testing.T) {
 	ctx := context.Background()
 	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
 	defer dsnCleanup()
@@ -658,8 +658,10 @@ func TestCloseout_DuplicateRunWithFailedStatusReturnsError(t *testing.T) {
 	runtimeID := fmt.Sprintf("runtime-duplicate-failed-%d", nonce)
 	ruleID := "rule-critical-resource-deleted"
 	runID := fmt.Sprintf("run-duplicate-failed-%d", nonce)
+	findingID := fmt.Sprintf("finding-duplicate-failed-%d", nonce)
 	priorFailure := fmt.Sprintf("prior closeout failure persisted for duplicate run %d", nonce)
 	cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+	seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
 
 	startedAt := time.Now().UTC().Truncate(time.Microsecond)
 	if err := store.InsertCloseoutRun(ctx, ports.CloseoutRunInsert{
@@ -685,42 +687,25 @@ func TestCloseout_DuplicateRunWithFailedStatusReturnsError(t *testing.T) {
 
 	service := closeoutAtomicService(store, &recordingAppendLog{}, tenantID, runtimeID)
 	result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
-	if err == nil {
-		t.Fatalf("duplicate failed closeout_run returned nil error; result=%+v", result)
+	if err != nil {
+		t.Fatalf("duplicate failed closeout retry error = %v", err)
 	}
-	if !errors.Is(err, findings.ErrCloseoutRunFailed) {
-		t.Fatalf("duplicate failed closeout error = %v, want ErrCloseoutRunFailed", err)
-	}
-	var failedErr *findings.CloseoutRunFailedError
-	if !errors.As(err, &failedErr) {
-		t.Fatalf("duplicate failed closeout error = %T, want CloseoutRunFailedError", err)
-	}
-	if failedErr.ErrorMessage != priorFailure {
-		t.Fatalf("CloseoutRunFailedError.ErrorMessage = %q, want %q", failedErr.ErrorMessage, priorFailure)
-	}
-	if result == nil {
-		t.Fatal("duplicate failed closeout_run returned nil result")
-	}
-	if len(result.BatchErrors) != 1 {
-		t.Fatalf("BatchErrors len = %d, want 1", len(result.BatchErrors))
-	}
-	var batchErr *findings.CloseoutRunFailedError
-	if !errors.As(result.BatchErrors[0], &batchErr) {
-		t.Fatalf("BatchErrors[0] = %T, want CloseoutRunFailedError", result.BatchErrors[0])
-	}
-	if batchErr.ErrorMessage != priorFailure {
-		t.Fatalf("BatchErrors[0].ErrorMessage = %q, want %q", batchErr.ErrorMessage, priorFailure)
+	if result == nil || result.ProposedCount != 1 || result.AppliedCount != 1 {
+		t.Fatalf("duplicate failed closeout retry result=%+v, want 1/1 counts", result)
 	}
 
 	var status, errorMessage string
 	if err := rawDB.QueryRowContext(ctx, `SELECT status, error_message FROM closeout_run WHERE run_id = $1`, runID).Scan(&status, &errorMessage); err != nil {
 		t.Fatalf("read closeout_run after duplicate retry: %v", err)
 	}
-	if status != "failed" {
-		t.Fatalf("closeout_run.status = %q, want failed", status)
+	if status != "succeeded" {
+		t.Fatalf("closeout_run.status = %q, want succeeded", status)
 	}
-	if errorMessage != priorFailure {
-		t.Fatalf("closeout_run.error_message = %q, want %q", errorMessage, priorFailure)
+	if errorMessage != "" {
+		t.Fatalf("closeout_run.error_message = %q, want empty", errorMessage)
+	}
+	if !tombstonedFromDB(t, ctx, rawDB, findingID) {
+		t.Fatalf("finding %q was not tombstoned by duplicate failed run retry", findingID)
 	}
 }
 
@@ -1202,6 +1187,29 @@ func (s *stubCloseoutStore) InsertCloseoutRun(_ context.Context, run ports.Close
 		HeartbeatAt:  heartbeatAt,
 		DryRun:       run.DryRun,
 	}
+	return nil
+}
+
+func (s *stubCloseoutStore) RetryFailedCloseoutRun(_ context.Context, runID string, heartbeatAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok || existing.Status != "failed" {
+		return ports.ErrCloseoutRunAlreadyExists
+	}
+	for _, run := range s.runs {
+		if run.RunID != runID && run.Status == "running" {
+			return ports.ErrCloseoutRunInFlight
+		}
+	}
+	refreshedAt := heartbeatAt.UTC()
+	if refreshedAt.IsZero() {
+		refreshedAt = time.Now().UTC()
+	}
+	existing.Status = "running"
+	existing.FinishedAt = time.Time{}
+	existing.HeartbeatAt = refreshedAt
+	existing.ErrorMessage = ""
 	return nil
 }
 

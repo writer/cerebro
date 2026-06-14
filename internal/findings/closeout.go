@@ -330,12 +330,49 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			if getErr != nil {
 				return nil, fmt.Errorf("load existing closeout_run %q: %w", runID, getErr)
 			}
+			if strings.TrimSpace(existing.Status) == "failed" {
+				initialProposed, initialPerRule, reloadErr := s.reloadCloseoutAppliedFindings(context.WithoutCancel(ctx), existing)
+				if reloadErr != nil {
+					return nil, reloadErr
+				}
+				initialApplied := closeoutPerRuleAppliedTotal(initialPerRule)
+				if initialApplied == 0 {
+					initialApplied = existing.AppliedCount
+				}
+				initialPerRule = closeoutPerRuleWithFallback(initialPerRule, selector, initialApplied)
+				retryErr := s.closeoutStore.RetryFailedCloseoutRun(ctx, runID, time.Now().UTC())
+				if retryErr != nil && errors.Is(retryErr, ports.ErrCloseoutRunInFlight) {
+					cutoff := time.Now().UTC().Add(-closeoutStaleRunCutoff)
+					broken, breakErr := s.closeoutStore.BreakStaleRunningCloseoutRuns(ctx, cutoff, "stale closeout_run reclaimed by retry "+runID)
+					if breakErr == nil && broken > 0 {
+						retryErr = s.closeoutStore.RetryFailedCloseoutRun(ctx, runID, time.Now().UTC())
+					}
+				}
+				if retryErr != nil {
+					if errors.Is(retryErr, ports.ErrCloseoutRunInFlight) {
+						return nil, fmt.Errorf("%w: %s", ErrCloseoutAnotherRunning, retryErr.Error())
+					}
+					if errors.Is(retryErr, ports.ErrCloseoutRunAlreadyExists) {
+						current, currentErr := s.closeoutStore.GetCloseoutRun(context.WithoutCancel(ctx), runID)
+						if currentErr != nil {
+							return nil, fmt.Errorf("load existing closeout_run %q after retry race: %w", runID, currentErr)
+						}
+						return s.closeoutResultFromRunRecord(context.WithoutCancel(ctx), current)
+					}
+					return nil, fmt.Errorf("retry closeout_run %q: %w", runID, retryErr)
+				}
+				return s.executeCloseoutRun(ctx, req, selector, runID, actor, reason, batchSize, initialApplied, existing.ProposedCount, initialPerRule, initialProposed, true)
+			}
 			return s.closeoutResultFromRunRecord(context.WithoutCancel(ctx), existing)
 		}
 		return nil, fmt.Errorf("insert closeout_run %q: %w", runID, insertErr)
 	}
 
-	result = &CloseoutResult{RunID: runID}
+	return s.executeCloseoutRun(ctx, req, selector, runID, actor, reason, batchSize, 0, 0, nil, nil, true)
+}
+
+func (s *Service) executeCloseoutRun(ctx context.Context, req CloseoutRequest, selector CloseoutSelector, runID, actor, reason string, batchSize int, initialApplied int, initialProposed int, initialPerRule []CloseoutPerRuleCount, initialProposedRecords []*ports.FindingRecord, heartbeat bool) (result *CloseoutResult, err error) {
+	result = &CloseoutResult{RunID: runID, AppliedCount: initialApplied, ProposedCount: initialProposed}
 	finishBackground := func(status, errMessage string, applied int) {
 		bgCtx := context.WithoutCancel(ctx)
 		_ = s.closeoutStore.FinishCloseoutRun(bgCtx, ports.CloseoutRunFinish{
@@ -353,18 +390,18 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			err = fmt.Errorf("closeout panicked: %v", rec)
 		}
 	}()
-	if !req.DryRun {
+	if heartbeat && !req.DryRun {
 		stopHeartbeat := s.startCloseoutRunHeartbeat(ctx, runID)
 		defer stopHeartbeat()
 	}
 
 	proposed, listErr := s.listCloseoutCandidates(ctx, selector)
 	if listErr != nil {
-		finishBackground("failed", listErr.Error(), 0)
+		finishBackground("failed", listErr.Error(), initialApplied)
 		return nil, fmt.Errorf("list closeout candidates: %w", listErr)
 	}
-	result.Proposed = proposed
-	result.ProposedCount = len(proposed)
+	result.Proposed = append(append([]*ports.FindingRecord(nil), initialProposedRecords...), proposed...)
+	result.ProposedCount = maxInt(initialProposed, initialApplied+len(proposed))
 
 	if req.DryRun {
 		finishErr := s.closeoutStore.FinishCloseoutRun(context.WithoutCancel(ctx), ports.CloseoutRunFinish{
@@ -380,8 +417,8 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		return result, nil
 	}
 
-	applied := 0
-	perRuleApplied := map[string]int{}
+	applied := initialApplied
+	perRuleApplied := closeoutPerRuleCountsMap(initialPerRule)
 	for start, batchIndex := 0, 0; start < len(proposed); start, batchIndex = start+batchSize, batchIndex+1 {
 		end := start + batchSize
 		if end > len(proposed) {
@@ -432,6 +469,46 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		return result, fmt.Errorf("finish closeout_run %q: %w", runID, finishErr)
 	}
 	return result, nil
+}
+
+func closeoutPerRuleCountsMap(counts []CloseoutPerRuleCount) map[string]int {
+	out := map[string]int{}
+	for _, count := range counts {
+		ruleID := strings.TrimSpace(count.RuleID)
+		if ruleID == "" || count.Applied <= 0 {
+			continue
+		}
+		out[ruleID] += count.Applied
+	}
+	return out
+}
+
+func closeoutPerRuleAppliedTotal(counts []CloseoutPerRuleCount) int {
+	total := 0
+	for _, count := range counts {
+		if count.Applied > 0 {
+			total += count.Applied
+		}
+	}
+	return total
+}
+
+func closeoutPerRuleWithFallback(counts []CloseoutPerRuleCount, selector CloseoutSelector, applied int) []CloseoutPerRuleCount {
+	if len(counts) != 0 || applied <= 0 {
+		return counts
+	}
+	ruleIDs := expandCloseoutRuleIDs(selector)
+	if len(ruleIDs) != 1 {
+		return counts
+	}
+	return []CloseoutPerRuleCount{{RuleID: ruleIDs[0], Applied: applied}}
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.FindingRecord, runID, actor, reason string) (bool, error) {
