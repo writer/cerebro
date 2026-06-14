@@ -418,7 +418,7 @@ func TestLoadRejectsDeviceAuthEnabledWithoutCurrentKID(t *testing.T) {
 	}
 }
 
-func TestLoadDevModeRequiresExplicitAckOutsideDebug(t *testing.T) {
+func TestLoadDevModeRequiresExplicitAck(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_DEV_MODE", "true")
 

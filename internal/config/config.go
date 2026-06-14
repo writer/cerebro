@@ -290,8 +290,8 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if devMode && !devModeAck && !strings.EqualFold(strings.TrimSpace(os.Getenv("LOG_LEVEL")), "debug") {
-		return Config{}, fmt.Errorf("CEREBRO_DEV_MODE requires LOG_LEVEL=debug or CEREBRO_DEV_MODE_ACK=1")
+	if devMode && !devModeAck {
+		return Config{}, fmt.Errorf("CEREBRO_DEV_MODE requires CEREBRO_DEV_MODE_ACK=1")
 	}
 	cfg := Config{
 		HTTPAddr:        strings.TrimSpace(os.Getenv("CEREBRO_HTTP_ADDR")),

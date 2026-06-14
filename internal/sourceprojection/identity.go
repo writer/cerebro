@@ -494,7 +494,7 @@ func addIdentityAppEntitlement(entities map[string]*ports.ProjectedEntity, links
 		},
 	})
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), appURN, entitlementURN, relationGrantsEntitlement, identityEventLinkAttributes(event)))
-	capabilityID := identityAppCapabilityID(attributes, appName, entitlementID)
+	capabilityID := identityAppCapabilityID(attributes, entitlementID)
 	capabilityURN := addIdentityCapability(entities, tenantID, event.GetSourceId(), capabilityID, identityCapabilityLabel(capabilityID), map[string]string{"source": profile.Provider})
 	return entitlementURN, capabilityURN
 }
@@ -546,12 +546,12 @@ func addIdentityCapability(entities map[string]*ports.ProjectedEntity, tenantID 
 	return capabilityURN
 }
 
-func identityAppCapabilityID(attributes map[string]string, appName string, entitlementID string) string {
+func identityAppCapabilityID(attributes map[string]string, entitlementID string) string {
 	if explicit := strings.TrimSpace(attributes["capability"]); explicit != "" {
 		return explicit
 	}
-	text := strings.ToLower(appName + " " + entitlementID)
-	if strings.Contains(text, "admin") || strings.Contains(text, "administrator") || strings.Contains(text, "root") {
+	switch normalizeIdentifier(entitlementID) {
+	case "admin", "administrator", "administratoraccess", "owner", "root", "superadmin", "globaladmin", "globaladministrator":
 		return "cloud_admin"
 	}
 	return "app_access"
@@ -584,7 +584,8 @@ func identityCapabilityLabel(capabilityID string) string {
 
 func identityEventLinkAttributes(event *cerebrov1.EventEnvelope) map[string]string {
 	attributes := map[string]string{"event_id": event.GetId()}
-	if occurred := event.GetOccurredAt().AsTime(); !occurred.IsZero() {
+	if occurredAt := event.GetOccurredAt(); occurredAt != nil && occurredAt.IsValid() {
+		occurred := occurredAt.AsTime()
 		attributes["at"] = occurred.UTC().Format(time.RFC3339Nano)
 	}
 	return attributes

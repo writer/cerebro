@@ -32,3 +32,14 @@ func TestSchemaStatementsChecksumChangesWithDDL(t *testing.T) {
 		t.Fatalf("schemaStatementsChecksum() = %q, want stable whitespace-normalized checksum %q", got, first)
 	}
 }
+
+func TestSchemaMigrationRecordUsesStableLabelVersion(t *testing.T) {
+	version, first := schemaMigrationRecord("projection", []string{"CREATE TABLE example (id text)"})
+	againVersion, second := schemaMigrationRecord("projection", []string{"CREATE TABLE example (id text, name text)"})
+	if version != "ensure:projection" || againVersion != version {
+		t.Fatalf("schemaMigrationRecord versions = %q, %q", version, againVersion)
+	}
+	if first == second {
+		t.Fatal("schemaMigrationRecord checksum did not change after additive DDL changed")
+	}
+}

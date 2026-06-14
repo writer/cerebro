@@ -93,10 +93,7 @@ func (s *Store) ensureStatements(ctx context.Context, ready *bool, label string,
 	if err := s.ensureSchemaMigrationsLocked(ctx); err != nil {
 		return err
 	}
-	version, checksum, err := s.validateSchemaMigrationLocked(ctx, label, statements)
-	if err != nil {
-		return err
-	}
+	version, checksum := schemaMigrationRecord(label, statements)
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("ensure %s tables: %w", label, err)
@@ -127,21 +124,10 @@ func (s *Store) ensureSchemaMigrationsLocked(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) validateSchemaMigrationLocked(ctx context.Context, label string, statements []string) (string, string, error) {
+func schemaMigrationRecord(label string, statements []string) (string, string) {
 	version := "ensure:" + strings.TrimSpace(label)
 	checksum := schemaStatementsChecksum(statements)
-	var existing string
-	err := s.db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = $1`, version).Scan(&existing)
-	switch {
-	case err == nil:
-		if existing != checksum {
-			return "", "", fmt.Errorf("schema migration %q checksum changed; add a new migration instead of mutating applied DDL", version)
-		}
-	case errors.Is(err, sql.ErrNoRows):
-	default:
-		return "", "", fmt.Errorf("read schema migration %q: %w", version, err)
-	}
-	return version, checksum, nil
+	return version, checksum
 }
 
 func (s *Store) markSchemaMigrationLocked(ctx context.Context, version string, checksum string) error {
@@ -151,7 +137,10 @@ func (s *Store) markSchemaMigrationLocked(ctx context.Context, version string, c
 	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO schema_migrations (version, checksum)
 VALUES ($1, $2)
-ON CONFLICT (version) DO NOTHING`, version, checksum); err != nil {
+ON CONFLICT (version) DO UPDATE
+SET checksum = EXCLUDED.checksum,
+	applied_at = now()
+WHERE schema_migrations.checksum <> EXCLUDED.checksum`, version, checksum); err != nil {
 		return fmt.Errorf("record schema migration %q: %w", version, err)
 	}
 	return nil

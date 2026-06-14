@@ -2931,6 +2931,57 @@ func TestProjectOktaEffectiveEntitlementGraph(t *testing.T) {
 	}
 }
 
+func TestProjectOktaEntitlementOmitsAtWhenOccurredAtUnset(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "okta-app-assignment-no-time",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.app_assignment",
+		Attributes: map[string]string{
+			"app_id":       "app-prod",
+			"app_name":     "Production Console",
+			"subject_id":   "00u-admin",
+			"subject_type": "user",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	link := state.links["urn:cerebro:writer:okta_application:app-prod|"+relationGrantsEntitlement+"|urn:cerebro:writer:okta_entitlement:app_assignment:app-prod"]
+	if link == nil {
+		t.Fatal("app entitlement link missing")
+	}
+	if _, ok := link.Attributes["at"]; ok {
+		t.Fatalf("link at attribute = %q, want omitted for unset OccurredAt", link.Attributes["at"])
+	}
+}
+
+func TestProjectOktaReadOnlyAdminNamedAppDoesNotInferCloudAdmin(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "okta-readonly-admin-app",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.app_assignment",
+		Attributes: map[string]string{
+			"app_id":       "app-view",
+			"app_name":     "Admin View",
+			"scope":        "read_only",
+			"subject_id":   "00u-analyst",
+			"subject_type": "user",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	entitlementURN := "urn:cerebro:writer:okta_entitlement:read_only"
+	assertProjectedLink(t, state, entitlementURN, relationConfersCapability, "urn:cerebro:writer:privileged_capability:app_access")
+	assertProjectedLinkMissing(t, state, entitlementURN, relationConfersCapability, "urn:cerebro:writer:privileged_capability:cloud_admin")
+}
+
 func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
