@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -33,13 +34,17 @@ const (
 type Runner func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error)
 
 type Service struct {
-	store   ports.JobStore
-	runners map[string]Runner
-	now     func() time.Time
+	store        ports.JobStore
+	runners      map[string]Runner
+	now          func() time.Time
+	nextAsyncID  uint64
+	asyncCancels map[uint64]context.CancelFunc
+	wg           sync.WaitGroup
+	mu           sync.Mutex
 }
 
 func New(store ports.JobStore) *Service {
-	return &Service{store: store, runners: map[string]Runner{}, now: func() time.Time { return time.Now().UTC() }}
+	return &Service{store: store, runners: map[string]Runner{}, now: func() time.Time { return time.Now().UTC() }, asyncCancels: map[uint64]context.CancelFunc{}}
 }
 
 func (s *Service) WithRunner(kind string, runner Runner) *Service {
@@ -82,7 +87,7 @@ func (s *Service) Create(ctx context.Context, request ports.CreateJobRequest) (*
 	return job, created, nil
 }
 
-func (s *Service) StartAsync(parent context.Context, job *ports.Job) {
+func (s *Service) StartAsync(ctx context.Context, job *ports.Job) { //nolint:contextcheck // Async jobs intentionally outlive request cancellation while preserving context values.
 	if s == nil || job == nil {
 		return
 	}
@@ -90,10 +95,59 @@ func (s *Service) StartAsync(parent context.Context, job *ports.Job) {
 	if runner == nil {
 		return
 	}
-	ctx := context.WithoutCancel(parent)
+	if ctx == nil {
+		return
+	}
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	s.mu.Lock()
+	s.nextAsyncID++
+	asyncID := s.nextAsyncID
+	if s.asyncCancels == nil {
+		s.asyncCancels = map[uint64]context.CancelFunc{}
+	}
+	s.asyncCancels[asyncID] = cancel
+	s.wg.Add(1)
+	s.mu.Unlock()
 	go func() {
-		_ = s.Run(ctx, job.ID)
+		defer func() {
+			cancel()
+			s.mu.Lock()
+			delete(s.asyncCancels, asyncID)
+			s.mu.Unlock()
+			s.wg.Done()
+		}()
+		_ = s.Run(runCtx, job.ID)
 	}()
+}
+
+func (s *Service) Wait(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(s.asyncCancels))
+	for _, cancel := range s.asyncCancels {
+		cancels = append(cancels, cancel)
+	}
+	s.mu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	var ctxDone <-chan struct{}
+	if ctx != nil {
+		ctxDone = ctx.Done()
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctxDone:
+		return ctx.Err()
+	}
 }
 
 func (s *Service) Run(ctx context.Context, jobID string) (err error) {

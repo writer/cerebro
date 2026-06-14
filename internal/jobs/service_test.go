@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -83,6 +84,44 @@ func TestRunRecoversRunnerPanicAndMarksJobFailed(t *testing.T) {
 	}
 	if len(store.events) < 2 || store.events[len(store.events)-1].Type != "failed" {
 		t.Fatalf("events = %#v, want final failed event", store.events)
+	}
+}
+
+func TestStartAsyncDetachesFromRequestAndWaitCancelsJob(t *testing.T) {
+	store := newMemoryJobStore()
+	service := New(store)
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	service.WithRunner(KindReportRun, func(ctx context.Context, _ *ports.Job, _ *Service) (map[string]any, map[string]string, error) {
+		close(started)
+		<-ctx.Done()
+		close(cancelled)
+		return nil, nil, ctx.Err()
+	})
+	job, created, err := service.Create(context.Background(), ports.CreateJobRequest{Kind: KindReportRun})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if !created {
+		t.Fatal("created = false, want true")
+	}
+	requestCtx, requestCancel := context.WithCancel(context.Background())
+	requestCancel()
+	service.StartAsync(requestCtx, job)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("async job did not start after request context cancellation")
+	}
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), time.Second)
+	defer waitCancel()
+	if err := service.Wait(waitCtx); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	select {
+	case <-cancelled:
+	default:
+		t.Fatal("runner did not observe service cancellation")
 	}
 }
 
