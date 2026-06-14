@@ -459,6 +459,10 @@ func (s *heartbeatObservingCloseoutStore) InsertCloseoutRun(ctx context.Context,
 	return s.inner.InsertCloseoutRun(ctx, run)
 }
 
+func (s *heartbeatObservingCloseoutStore) RetryFailedCloseoutRun(ctx context.Context, runID string, heartbeatAt time.Time) error {
+	return s.inner.RetryFailedCloseoutRun(ctx, runID, heartbeatAt)
+}
+
 func (s *heartbeatObservingCloseoutStore) FinishCloseoutRun(ctx context.Context, finish ports.CloseoutRunFinish) error {
 	return s.inner.FinishCloseoutRun(ctx, finish)
 }

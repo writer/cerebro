@@ -61,6 +61,29 @@ func (s *stubCloseoutStore) InsertCloseoutRun(_ context.Context, run ports.Close
 	return nil
 }
 
+func (s *stubCloseoutStore) RetryFailedCloseoutRun(_ context.Context, runID string, heartbeatAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok || existing.Status != "failed" {
+		return ports.ErrCloseoutRunAlreadyExists
+	}
+	for _, run := range s.runs {
+		if run.RunID != runID && run.Status == "running" {
+			return ports.ErrCloseoutRunInFlight
+		}
+	}
+	refreshedAt := heartbeatAt.UTC()
+	if refreshedAt.IsZero() {
+		refreshedAt = time.Now().UTC()
+	}
+	existing.Status = "running"
+	existing.FinishedAt = time.Time{}
+	existing.HeartbeatAt = refreshedAt
+	existing.ErrorMessage = ""
+	return nil
+}
+
 func (s *stubCloseoutStore) FinishCloseoutRun(_ context.Context, finish ports.CloseoutRunFinish) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -843,10 +866,67 @@ func TestTombstoneFindingsBulk_DuplicateFailedRunContinuesRemainingWork(t *testi
 	if second.AppliedCount != 2 || second.ProposedCount != 2 {
 		t.Fatalf("retry counts = proposed %d applied %d, want 2/2", second.ProposedCount, second.AppliedCount)
 	}
+	wantPerRule := []CloseoutPerRuleCount{{RuleID: fx.ruleID, Applied: 2}}
+	if !reflect.DeepEqual(second.PerRule, wantPerRule) {
+		t.Fatalf("retry PerRule = %+v, want %+v", second.PerRule, wantPerRule)
+	}
+	summary := BuildCloseoutSummary(second, CloseoutSummaryInputs{Selector: fx.request(runID, false).Selector})
+	if summary.AppliedCount != closeoutPerRuleAppliedTotal(summary.PerRule) {
+		t.Fatalf("summary applied_count = %d, sum(per_rule.applied) = %d", summary.AppliedCount, closeoutPerRuleAppliedTotal(summary.PerRule))
+	}
 	for _, id := range []string{"f-1", "f-2"} {
 		if !fx.store.findings[id].Tombstoned {
 			t.Fatalf("%s not tombstoned after retry", id)
 		}
+	}
+}
+
+func TestTombstoneFindingsBulk_DuplicateFailedRunReacquiresSingletonLock(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
+
+	const runID = "run-duplicate-failed-lock-1"
+	if err := fx.closeout.InsertCloseoutRun(context.Background(), ports.CloseoutRunInsert{
+		RunID:        runID,
+		Actor:        "operator@writer.com",
+		SelectorJSON: []byte(`{"tenant_id":"tenant-a","rule_ids":["rule-critical-resource-deleted"],"statuses":["open"]}`),
+		DryRun:       false,
+		StartedAt:    fx.now,
+		HeartbeatAt:  fx.now,
+	}); err != nil {
+		t.Fatalf("seed failed closeout_run: %v", err)
+	}
+	if err := fx.closeout.FinishCloseoutRun(context.Background(), ports.CloseoutRunFinish{
+		RunID:         runID,
+		Status:        "failed",
+		ErrorMessage:  "first attempt failed",
+		ProposedCount: 1,
+		AppliedCount:  0,
+		FinishedAt:    fx.now.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("mark closeout_run failed: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := fx.closeout.InsertCloseoutRun(context.Background(), ports.CloseoutRunInsert{
+		RunID:        "run-blocking-fresh",
+		Actor:        "operator@writer.com",
+		SelectorJSON: []byte(`{"tenant_id":"tenant-a","rule_ids":["rule-critical-resource-deleted"],"statuses":["open"]}`),
+		DryRun:       false,
+		StartedAt:    now,
+		HeartbeatAt:  now,
+	}); err != nil {
+		t.Fatalf("seed fresh running closeout_run: %v", err)
+	}
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err == nil {
+		t.Fatalf("retry while another run is active returned nil error; result=%+v", result)
+	}
+	if !errors.Is(err, ErrCloseoutAnotherRunning) {
+		t.Fatalf("retry error = %v, want ErrCloseoutAnotherRunning", err)
+	}
+	if fx.store.findings["f-1"].Tombstoned {
+		t.Fatal("retry tombstoned finding without re-acquiring singleton lock")
 	}
 }
 
@@ -1169,6 +1249,13 @@ func (s *ctxAwareCloseoutStore) InsertCloseoutRun(ctx context.Context, run ports
 		return err
 	}
 	return s.inner.InsertCloseoutRun(ctx, run)
+}
+
+func (s *ctxAwareCloseoutStore) RetryFailedCloseoutRun(ctx context.Context, runID string, heartbeatAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.inner.RetryFailedCloseoutRun(ctx, runID, heartbeatAt)
 }
 
 func (s *ctxAwareCloseoutStore) FinishCloseoutRun(ctx context.Context, finish ports.CloseoutRunFinish) error {

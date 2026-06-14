@@ -72,6 +72,49 @@ func (s *Store) InsertCloseoutRun(ctx context.Context, run ports.CloseoutRunInse
 	return fmt.Errorf("insert closeout_run %q: %w", runID, err)
 }
 
+// RetryFailedCloseoutRun re-acquires the singleton-running closeout lock for a
+// previously failed run_id before retrying its remaining work.
+func (s *Store) RetryFailedCloseoutRun(ctx context.Context, runID string, heartbeatAt time.Time) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return err
+	}
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return errors.New("closeout run id is required")
+	}
+	heartbeatAt = heartbeatAt.UTC()
+	if heartbeatAt.IsZero() {
+		heartbeatAt = time.Now().UTC()
+	}
+	result, err := s.db.ExecContext(ctx, `
+        UPDATE closeout_run
+        SET status = 'running',
+            heartbeat_at = $2,
+            finished_at = NULL,
+            error_message = ''
+        WHERE run_id = $1 AND status = 'failed'`,
+		runID,
+		heartbeatAt,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+			(strings.Contains(pgErr.ConstraintName, "closeout_run_singleton_running_idx") ||
+				strings.Contains(pgErr.Message, "closeout_run_singleton_running_idx")) {
+			return ports.ErrCloseoutRunInFlight
+		}
+		return fmt.Errorf("retry closeout_run %q: %w", runID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err == nil && affected == 0 {
+		return ports.ErrCloseoutRunAlreadyExists
+	}
+	return nil
+}
+
 // FinishCloseoutRun marks one closeout_run row as completed (succeeded|failed).
 func (s *Store) FinishCloseoutRun(ctx context.Context, finish ports.CloseoutRunFinish) error {
 	if s == nil || s.db == nil {

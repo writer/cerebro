@@ -1190,6 +1190,29 @@ func (s *stubCloseoutStore) InsertCloseoutRun(_ context.Context, run ports.Close
 	return nil
 }
 
+func (s *stubCloseoutStore) RetryFailedCloseoutRun(_ context.Context, runID string, heartbeatAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok || existing.Status != "failed" {
+		return ports.ErrCloseoutRunAlreadyExists
+	}
+	for _, run := range s.runs {
+		if run.RunID != runID && run.Status == "running" {
+			return ports.ErrCloseoutRunInFlight
+		}
+	}
+	refreshedAt := heartbeatAt.UTC()
+	if refreshedAt.IsZero() {
+		refreshedAt = time.Now().UTC()
+	}
+	existing.Status = "running"
+	existing.FinishedAt = time.Time{}
+	existing.HeartbeatAt = refreshedAt
+	existing.ErrorMessage = ""
+	return nil
+}
+
 func (s *stubCloseoutStore) FinishCloseoutRun(_ context.Context, finish ports.CloseoutRunFinish) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
