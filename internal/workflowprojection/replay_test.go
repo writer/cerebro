@@ -188,3 +188,52 @@ func TestReplayDefaultPrefixesPreserveChronologyAcrossCanonicalAndWorkflowEvents
 		t.Fatalf("tombstoned finding link %q was resurrected", linkKey)
 	}
 }
+
+func TestReplayRecordsPoisonEventErrorsAndContinues(t *testing.T) {
+	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	goodEvent, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
+		TenantID:     "writer",
+		DecisionID:   "urn:cerebro:writer:decision:decision-1",
+		DecisionType: "finding-triage",
+		Status:       "approved",
+		TargetIDs:    []string{targetURN},
+		SourceSystem: "findings",
+		ObservedAt:   "2026-04-27T12:00:00Z",
+		ValidFrom:    "2026-04-27T12:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewDecisionRecordedEvent() error = %v", err)
+	}
+	poisonEvent := &cerebrov1.EventEnvelope{
+		Id:       "event-poison",
+		TenantId: "writer",
+		Kind:     workflowevents.EventKindKnowledgeDecisionRecorded,
+		Payload:  []byte("{not-json"),
+	}
+	graph := &projectionRecorder{}
+	result, err := NewReplayer(&eventReplayer{events: []*cerebrov1.EventEnvelope{poisonEvent, goodEvent}}, graph).Replay(context.Background(), ReplayRequest{TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if got := result.EventsRead; got != 2 {
+		t.Fatalf("EventsRead = %d, want 2", got)
+	}
+	if got := result.EventsProjected; got != 1 {
+		t.Fatalf("EventsProjected = %d, want 1", got)
+	}
+	if got := result.EventsFailed; got != 1 {
+		t.Fatalf("EventsFailed = %d, want 1", got)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("len(Errors) = %d, want 1", len(result.Errors))
+	}
+	if result.Errors[0].EventID != "event-poison" || result.Errors[0].Kind != workflowevents.EventKindKnowledgeDecisionRecorded {
+		t.Fatalf("error sample = %+v", result.Errors[0])
+	}
+	if result.Errors[0].Error == "" {
+		t.Fatal("error sample message is empty")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:decision:decision-1|targets|"+targetURN]; !ok {
+		t.Fatal("later valid event was not projected after poison event")
+	}
+}

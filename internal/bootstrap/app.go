@@ -2998,56 +2998,74 @@ func sensitiveSourceConfigKey(key string) bool {
 	return value == "key"
 }
 
-func writeSourceError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, sourceops.ErrSourceNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, sourceops.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
+type bootstrapErrorMapping struct {
+	match      func(error) bool
+	httpStatus int
+	code       connect.Code
+}
+
+func matchesAnyError(targets ...error) func(error) bool {
+	return func(err error) bool {
+		for _, target := range targets {
+			if errors.Is(err, target) {
+				return true
+			}
+		}
+		return false
 	}
+}
+
+func mappedHTTPStatusCode(err error, mappings []bootstrapErrorMapping) int {
+	if errors.Is(err, errTenantForbidden) {
+		return http.StatusForbidden
+	}
+	for _, mapping := range mappings {
+		if mapping.match != nil && mapping.match(err) {
+			return mapping.httpStatus
+		}
+	}
+	return http.StatusInternalServerError
+}
+
+func writeMappedBootstrapError(w http.ResponseWriter, err error, mappings []bootstrapErrorMapping) {
+	statusCode := mappedHTTPStatusCode(err, mappings)
 	http.Error(w, http.StatusText(statusCode), statusCode)
+}
+
+func mappedConnectError(err error, mappings []bootstrapErrorMapping) error {
+	for _, mapping := range mappings {
+		if mapping.match != nil && mapping.match(err) {
+			return connect.NewError(mapping.code, err)
+		}
+	}
+	return defaultConnectError(err)
+}
+
+var sourceErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(sourceops.ErrSourceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(sourceops.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+}
+
+var reportErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(reports.ErrReportNotFound, ports.ErrReportRunNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(reports.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(reports.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+}
+
+func writeSourceError(w http.ResponseWriter, err error) {
+	writeMappedBootstrapError(w, err, sourceErrorMappings)
 }
 
 func writeReportError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, reports.ErrReportNotFound), errors.Is(err, ports.ErrReportRunNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, reports.ErrRuntimeUnavailable):
-		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, reports.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
-	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	writeMappedBootstrapError(w, err, reportErrorMappings)
 }
 
 func reportConnectError(err error) error {
-	switch {
-	case errors.Is(err, reports.ErrReportNotFound), errors.Is(err, ports.ErrReportRunNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, reports.ErrRuntimeUnavailable):
-		return connect.NewError(connect.CodeUnavailable, err)
-	case errors.Is(err, reports.ErrInvalidRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	default:
-		return defaultConnectError(err)
-	}
+	return mappedConnectError(err, reportErrorMappings)
 }
 
 func sourceConnectError(err error) error {
-	switch {
-	case errors.Is(err, sourceops.ErrSourceNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, sourceops.ErrInvalidRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	default:
-		return defaultConnectError(err)
-	}
+	return mappedConnectError(err, sourceErrorMappings)
 }
 
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
@@ -3977,7 +3995,24 @@ func workflowReplayResponse(result *workflowprojection.ReplayResult) *cerebrov1.
 		EventsProjected:   result.EventsProjected,
 		EntitiesProjected: result.EntitiesProjected,
 		LinksProjected:    result.LinksProjected,
+		EventsFailed:      result.EventsFailed,
+		Errors:            workflowReplayErrors(result.Errors),
 	}
+}
+
+func workflowReplayErrors(errors []workflowprojection.ReplayError) []*cerebrov1.WorkflowReplayError {
+	if len(errors) == 0 {
+		return nil
+	}
+	items := make([]*cerebrov1.WorkflowReplayError, 0, len(errors))
+	for _, replayErr := range errors {
+		items = append(items, &cerebrov1.WorkflowReplayError{
+			EventId: replayErr.EventID,
+			Kind:    replayErr.Kind,
+			Error:   replayErr.Error,
+		})
+	}
+	return items
 }
 
 func graphNeighborhoodResponse(neighborhood *ports.EntityNeighborhood) *cerebrov1.GetEntityNeighborhoodResponse {

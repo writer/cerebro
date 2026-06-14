@@ -596,6 +596,8 @@ func grcTelemetryErrorKind(err error) string {
 		return "not_found"
 	case errors.Is(err, graphagent.ErrLLMAuthenticationFailed):
 		return "llm_authentication_failed"
+	case errors.Is(err, graphagent.ErrLLMAccessDenied):
+		return "llm_access_denied"
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
