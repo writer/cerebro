@@ -306,6 +306,7 @@ func clearDeviceAuthEnv(t *testing.T) {
 	t.Setenv("CEREBRO_DEVICE_AUTH_TOKEN_BURST", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_DPOP_PROOF_TTL", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", "")
+	t.Setenv("CEREBRO_REPLICA_COUNT", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_RISK_ELEVATED", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_RISK_HIGH", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED", "")
@@ -354,6 +355,17 @@ func TestLoadRejectsDeviceAuthMultipleReplicasWithoutSharedDPoPReplay(t *testing
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "true")
 	t.Setenv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", "2")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsDeviceAuthGenericMultipleReplicasWithoutSharedDPoPReplay(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_REPLICA_COUNT", "2")
 
 	_, err := Load()
 	if err == nil {

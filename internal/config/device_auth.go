@@ -61,11 +61,8 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 	if cfg.DPoPProofTTL, err = parseDurationEnv("CEREBRO_DEVICE_AUTH_DPOP_PROOF_TTL", 60*time.Second); err != nil {
 		return DeviceAuthConfig{}, err
 	}
-	if cfg.ReplicaCount, err = parseIntEnv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", 1); err != nil {
+	if cfg.ReplicaCount, err = loadDeviceAuthReplicaCount(); err != nil {
 		return DeviceAuthConfig{}, err
-	}
-	if cfg.ReplicaCount <= 0 {
-		return DeviceAuthConfig{}, fmt.Errorf("CEREBRO_DEVICE_AUTH_REPLICA_COUNT must be greater than zero")
 	}
 	if cfg.RiskElevatedThreshold, err = parseIntEnv("CEREBRO_DEVICE_AUTH_RISK_ELEVATED", 30); err != nil {
 		return DeviceAuthConfig{}, err
@@ -110,6 +107,27 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func loadDeviceAuthReplicaCount() (int, error) {
+	deviceAuthReplicas, err := parseIntEnv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", 1)
+	if err != nil {
+		return 0, err
+	}
+	if deviceAuthReplicas <= 0 {
+		return 0, fmt.Errorf("CEREBRO_DEVICE_AUTH_REPLICA_COUNT must be greater than zero")
+	}
+	replicas, err := parseIntEnv("CEREBRO_REPLICA_COUNT", 1)
+	if err != nil {
+		return 0, err
+	}
+	if replicas <= 0 {
+		return 0, fmt.Errorf("CEREBRO_REPLICA_COUNT must be greater than zero")
+	}
+	if replicas > deviceAuthReplicas {
+		return replicas, nil
+	}
+	return deviceAuthReplicas, nil
 }
 
 func parseDeviceAuthSigningKeys(raw string) ([]DeviceAuthSigningKey, error) {
