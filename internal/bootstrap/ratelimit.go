@@ -15,6 +15,7 @@ import (
 // exemptions for health and metadata endpoints.
 type rateLimiter struct {
 	config          config.RateLimitConfig
+	originConfig    config.RequestOriginConfig
 	limiters        map[string]*rate.Limiter
 	mu              sync.RWMutex
 	cleanupInterval time.Duration
@@ -23,14 +24,15 @@ type rateLimiter struct {
 
 // newRateLimiter creates a global rate limiter with the provided configuration.
 // cleanupInterval defaults to 5 minutes; override only in tests before calling.
-func newRateLimiter(cfg config.RateLimitConfig) *rateLimiter {
-	return newRateLimiterWithInterval(cfg, 5*time.Minute)
+func newRateLimiter(cfg config.RateLimitConfig, originCfg config.RequestOriginConfig) *rateLimiter {
+	return newRateLimiterWithInterval(cfg, originCfg, 5*time.Minute)
 }
 
 // newRateLimiterWithInterval creates a rate limiter with a custom cleanup interval.
-func newRateLimiterWithInterval(cfg config.RateLimitConfig, cleanupInterval time.Duration) *rateLimiter {
+func newRateLimiterWithInterval(cfg config.RateLimitConfig, originCfg config.RequestOriginConfig, cleanupInterval time.Duration) *rateLimiter {
 	rl := &rateLimiter{
 		config:          cfg,
+		originConfig:    originCfg,
 		limiters:        make(map[string]*rate.Limiter),
 		cleanupInterval: cleanupInterval,
 		lastAccess:      make(map[string]time.Time),
@@ -78,9 +80,15 @@ func (rl *rateLimiter) isExemptPath(path string) bool {
 }
 
 // clientIP extracts the client IP from the request, respecting X-Forwarded-For
-// when behind trusted proxies.
+// when behind trusted proxies. Uses the operator-configured RequestOriginConfig
+// to apply TrustedProxyCount/TrustedProxyCIDRs hardening consistently with
+// the auth/OAuth layers.
 func (rl *rateLimiter) clientIP(r *http.Request) string {
-	ip := remoteIPForRateLimit(r)
+	if r == nil {
+		return "unknown"
+	}
+	origin := resolveRequestOrigin(r, rl.originConfig)
+	ip := firstNonEmpty(origin.ClientIP, "unknown")
 	// Strip port if present
 	host, _, err := net.SplitHostPort(ip)
 	if err == nil {
@@ -130,12 +138,14 @@ func (rl *rateLimiter) cleanupStaleLimiters() {
 }
 
 // rateLimitMiddleware creates a rate limiting middleware from configuration.
-func rateLimitMiddleware(cfg config.RateLimitConfig) func(http.Handler) http.Handler {
+// The originCfg parameter provides the operator-configured RequestOriginConfig
+// for consistent IP resolution with the auth/OAuth layers.
+func rateLimitMiddleware(cfg config.RateLimitConfig, originCfg config.RequestOriginConfig) func(http.Handler) http.Handler {
 	if !cfg.Enabled {
 		return func(next http.Handler) http.Handler {
 			return next
 		}
 	}
-	rl := newRateLimiter(cfg)
+	rl := newRateLimiter(cfg, originCfg)
 	return rl.middleware
 }

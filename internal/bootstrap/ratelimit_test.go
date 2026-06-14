@@ -16,7 +16,7 @@ func TestRateLimiterAllowsRequestsUnderLimit(t *testing.T) {
 		BurstSize:         10,
 		ExemptPaths:       []string{"/health"},
 	}
-	rl := newRateLimiter(cfg)
+	rl := newRateLimiter(cfg, config.RequestOriginConfig{})
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -40,7 +40,7 @@ func TestRateLimiterExemptsHealthPaths(t *testing.T) {
 		BurstSize:         1,
 		ExemptPaths:       []string{"/health", "/healthz"},
 	}
-	rl := newRateLimiter(cfg)
+	rl := newRateLimiter(cfg, config.RequestOriginConfig{})
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -64,7 +64,7 @@ func TestRateLimiterExemptsWellKnownPaths(t *testing.T) {
 		BurstSize:         1,
 		ExemptPaths:       []string{"/.well-known/"},
 	}
-	rl := newRateLimiter(cfg)
+	rl := newRateLimiter(cfg, config.RequestOriginConfig{})
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -87,7 +87,7 @@ func TestRateLimiterDisabledPassesThrough(t *testing.T) {
 		RequestsPerSecond: 1,
 		BurstSize:         1,
 	}
-	rl := newRateLimiter(cfg)
+	rl := newRateLimiter(cfg, config.RequestOriginConfig{})
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -111,7 +111,7 @@ func TestRateLimiterPerClientIsolation(t *testing.T) {
 		BurstSize:         5,
 		ExemptPaths:       []string{},
 	}
-	rl := newRateLimiter(cfg)
+	rl := newRateLimiter(cfg, config.RequestOriginConfig{})
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -143,6 +143,41 @@ func TestRateLimiterPerClientIsolation(t *testing.T) {
 	}
 }
 
+func TestRateLimiterUsesConfiguredRequestOriginTrust(t *testing.T) {
+	cfg := config.RateLimitConfig{
+		Enabled:           true,
+		RequestsPerSecond: 1,
+		BurstSize:         1,
+		ExemptPaths:       []string{},
+	}
+	originCfg := config.RequestOriginConfig{
+		TrustedProxyCIDRs: []string{"192.0.2.0/24"},
+	}
+	rl := newRateLimiter(cfg, originCfg)
+
+	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req1 := httptest.NewRequest("GET", "/api/test", nil)
+	req1.RemoteAddr = "10.0.1.20:443"
+	req1.Header.Set("X-Forwarded-For", "198.51.100.1")
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first request status = %d, want 200", rec1.Code)
+	}
+
+	req2 := httptest.NewRequest("GET", "/api/test", nil)
+	req2.RemoteAddr = "10.0.1.20:443"
+	req2.Header.Set("X-Forwarded-For", "198.51.100.2")
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("spoofed forwarded-for request status = %d, want 429", rec2.Code)
+	}
+}
+
 func TestRateLimiterCleanupRemovesStaleLimiters(t *testing.T) {
 	cfg := config.RateLimitConfig{
 		Enabled:           true,
@@ -151,7 +186,7 @@ func TestRateLimiterCleanupRemovesStaleLimiters(t *testing.T) {
 		ExemptPaths:       []string{},
 	}
 	// Use constructor with custom cleanup interval to avoid data race
-	rl := newRateLimiterWithInterval(cfg, 100*time.Millisecond)
+	rl := newRateLimiterWithInterval(cfg, config.RequestOriginConfig{}, 100*time.Millisecond)
 
 	// Make a request to create a limiter
 	rec := httptest.NewRecorder()
