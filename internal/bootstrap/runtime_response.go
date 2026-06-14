@@ -157,5 +157,5 @@ func writeRuntimeResponseError(w http.ResponseWriter, err error) {
 	case errors.Is(err, errTenantForbidden):
 		status = http.StatusForbidden
 	}
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	writeJSON(w, status, map[string]string{"error": safeHTTPErrorMessage(status, err)})
 }

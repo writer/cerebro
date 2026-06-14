@@ -18,3 +18,28 @@ func TestCloseNilStore(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 }
+
+func TestSchemaStatementsChecksumChangesWithDDL(t *testing.T) {
+	first := schemaStatementsChecksum([]string{"CREATE TABLE example (id text)"})
+	second := schemaStatementsChecksum([]string{"CREATE TABLE example (id text, name text)"})
+	if first == "" {
+		t.Fatal("schemaStatementsChecksum() returned empty checksum")
+	}
+	if first == second {
+		t.Fatal("schemaStatementsChecksum() did not change after DDL changed")
+	}
+	if got := schemaStatementsChecksum([]string{"  CREATE TABLE example (id text)  "}); got != first {
+		t.Fatalf("schemaStatementsChecksum() = %q, want stable whitespace-normalized checksum %q", got, first)
+	}
+}
+
+func TestSchemaMigrationRecordUsesStableLabelVersion(t *testing.T) {
+	version, first := schemaMigrationRecord("projection", []string{"CREATE TABLE example (id text)"})
+	againVersion, second := schemaMigrationRecord("projection", []string{"CREATE TABLE example (id text, name text)"})
+	if version != "ensure:projection" || againVersion != version {
+		t.Fatalf("schemaMigrationRecord versions = %q, %q", version, againVersion)
+	}
+	if first == second {
+		t.Fatal("schemaMigrationRecord checksum did not change after additive DDL changed")
+	}
+}

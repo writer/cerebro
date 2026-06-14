@@ -12,6 +12,9 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_HTTP_ADDR", "")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
 	t.Setenv("CEREBRO_IMAGE_TAG", "")
+	t.Setenv("CEREBRO_DEV_MODE", "")
+	t.Setenv("CEREBRO_DEV_MODE_ACK", "")
+	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
@@ -40,6 +43,10 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "")
+	t.Setenv("CEREBRO_RATE_LIMIT_ENABLED", "")
+	t.Setenv("CEREBRO_RATE_LIMIT_RPS", "")
+	t.Setenv("CEREBRO_RATE_LIMIT_BURST", "")
+	t.Setenv("CEREBRO_RATE_LIMIT_EXEMPT_PATHS", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -68,8 +75,14 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.OTEL.Enabled || cfg.OTEL.Protocol != "http/protobuf" || cfg.OTEL.TraceSampleRate != 1 || cfg.OTEL.MetricInterval != time.Minute {
 		t.Fatalf("OTEL defaults = %#v", cfg.OTEL)
 	}
-	if cfg.Auth.Enabled {
-		t.Fatal("Auth.Enabled = true, want false")
+	if !cfg.Auth.Enabled {
+		t.Fatal("Auth.Enabled = false, want true safe default")
+	}
+	if !cfg.RateLimit.Enabled {
+		t.Fatal("RateLimit.Enabled = false, want true safe default")
+	}
+	if cfg.StateStore.PostgresMaxOpenConns != defaultPostgresMaxOpenConns || cfg.StateStore.PostgresMaxIdleConns != defaultPostgresMaxIdleConns || cfg.StateStore.PostgresConnMaxLifetime != defaultPostgresConnMaxLifetime || cfg.StateStore.PostgresConnMaxIdleTime != defaultPostgresConnMaxIdleTime {
+		t.Fatalf("StateStore Postgres pool defaults = %#v", cfg.StateStore)
 	}
 	if cfg.Auth.DeviceAuth.ReplicaCount != 1 {
 		t.Fatalf("DeviceAuth.ReplicaCount = %d, want 1", cfg.Auth.DeviceAuth.ReplicaCount)
@@ -83,6 +96,9 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_HTTP_ADDR", "127.0.0.1:9000")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("CEREBRO_IMAGE_TAG", "v9.9.9")
+	t.Setenv("CEREBRO_DEV_MODE", "")
+	t.Setenv("CEREBRO_DEV_MODE_ACK", "")
+	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
@@ -128,6 +144,10 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://api.writer.com")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 192.168.0.0/16")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "1")
+	t.Setenv("CEREBRO_RATE_LIMIT_ENABLED", "true")
+	t.Setenv("CEREBRO_RATE_LIMIT_RPS", "42.5")
+	t.Setenv("CEREBRO_RATE_LIMIT_BURST", "60")
+	t.Setenv("CEREBRO_RATE_LIMIT_EXEMPT_PATHS", "/health,/ready")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -192,6 +212,12 @@ func TestLoadFromEnv(t *testing.T) {
 	if !cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = false, want true")
 	}
+	if !cfg.RateLimit.Enabled || cfg.RateLimit.RequestsPerSecond != 42.5 || cfg.RateLimit.BurstSize != 60 {
+		t.Fatalf("RateLimit = %#v", cfg.RateLimit)
+	}
+	if got := cfg.RateLimit.ExemptPaths; len(got) != 2 || got[0] != "/health" || got[1] != "/ready" {
+		t.Fatalf("RateLimit.ExemptPaths = %#v", got)
+	}
 	if got := cfg.Auth.RequestOrigin.PublicOrigin; got != "https://api.writer.com" {
 		t.Fatalf("PublicOrigin = %q, want https://api.writer.com", got)
 	}
@@ -230,6 +256,9 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_HTTP_ADDR", "")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
 	t.Setenv("CEREBRO_IMAGE_TAG", "")
+	t.Setenv("CEREBRO_DEV_MODE", "")
+	t.Setenv("CEREBRO_DEV_MODE_ACK", "")
+	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
@@ -258,6 +287,10 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "")
+	t.Setenv("CEREBRO_RATE_LIMIT_ENABLED", "")
+	t.Setenv("CEREBRO_RATE_LIMIT_RPS", "")
+	t.Setenv("CEREBRO_RATE_LIMIT_BURST", "")
+	t.Setenv("CEREBRO_RATE_LIMIT_EXEMPT_PATHS", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 }
@@ -385,13 +418,34 @@ func TestLoadRejectsDeviceAuthEnabledWithoutCurrentKID(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {
+func TestLoadDevModeRequiresExplicitAck(t *testing.T) {
 	clearDependencyEnv(t)
-	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
-	t.Setenv("CEREBRO_API_KEYS", "")
+	t.Setenv("CEREBRO_DEV_MODE", "true")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadDevModeDisablesAuthAndRateLimit(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEV_MODE", "true")
+	t.Setenv("CEREBRO_DEV_MODE_ACK", "true")
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_RATE_LIMIT_ENABLED", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.DevMode {
+		t.Fatal("DevMode = false, want true")
+	}
+	if cfg.Auth.Enabled {
+		t.Fatal("Auth.Enabled = true, want false in dev mode")
+	}
+	if cfg.RateLimit.Enabled {
+		t.Fatal("RateLimit.Enabled = true, want false in dev mode")
 	}
 }
 
@@ -601,8 +655,9 @@ func TestLoadRejectsMCPOAuthWithoutProductionRequirements(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
 		unset string
+		value string
 	}{
-		{name: "api auth", unset: "CEREBRO_API_AUTH_ENABLED"},
+		{name: "api auth", unset: "CEREBRO_API_AUTH_ENABLED", value: "false"},
 		{name: "public origin", unset: "CEREBRO_PUBLIC_ORIGIN"},
 		{name: "state store", unset: "CEREBRO_POSTGRES_DSN"},
 		{name: "capability secret", unset: "CEREBRO_CAPABILITY_TOKEN_SECRETS"},
@@ -622,7 +677,7 @@ func TestLoadRejectsMCPOAuthWithoutProductionRequirements(t *testing.T) {
 			t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "writer-secret")
 			t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI", "https://cerebro.example/oauth/callback")
 			t.Setenv("CEREBRO_MCP_OAUTH_SECURITY_GROUPS", "secops")
-			t.Setenv(tt.unset, "")
+			t.Setenv(tt.unset, tt.value)
 
 			if _, err := Load(); err == nil {
 				t.Fatal("Load() error = nil, want MCP OAuth production requirement error")

@@ -2,6 +2,10 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -66,5 +70,21 @@ func TestRecordRuntimeResponseWorkflowAppendsActionEvent(t *testing.T) {
 	}
 	if payload.Metadata["source_job_id"] != entry.SourceJobID {
 		t.Fatalf("source_job_id metadata = %v, want %q", payload.Metadata["source_job_id"], entry.SourceJobID)
+	}
+}
+
+func TestWriteRuntimeResponseErrorSanitizesRuntimeUnavailable(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeRuntimeResponseError(recorder, fmt.Errorf("%w: endpoint token secret leaked", runtimeresponse.ErrRuntimeUnavailable))
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", recorder.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "service unavailable" {
+		t.Fatalf("error body = %q, want sanitized service unavailable", body["error"])
 	}
 }

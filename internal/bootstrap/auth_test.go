@@ -23,3 +23,22 @@ func TestTenantAllowedUsesExplicitGlobalAllowlistForUnscopedPrincipal(t *testing
 		t.Fatal("tenantAllowed() = true for tenant outside global allowlist, want false")
 	}
 }
+
+func TestAccessAuditCredentialTier(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		principal authPrincipal
+		want      string
+	}{
+		{name: "admin api key", principal: authPrincipal{AuthMode: "api_key"}, want: "admin"},
+		{name: "scoped token", principal: authPrincipal{AuthMode: "api_key", Scopes: []string{scopeCosmoSecurityRead}}, want: "scoped"},
+		{name: "device", principal: authPrincipal{AuthMode: "device_jwt", Scopes: []string{scopeCosmoSecurityRead}}, want: "device"},
+		{name: "anonymous", principal: authPrincipal{}, want: ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := accessAuditCredentialTier(tt.principal); got != tt.want {
+				t.Fatalf("accessAuditCredentialTier() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

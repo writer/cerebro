@@ -18,6 +18,13 @@ const defaultShutdownTimeout = 10 * time.Second
 const defaultJetStreamSubjectPrefix = "events"
 
 const (
+	defaultPostgresMaxOpenConns    = 25
+	defaultPostgresMaxIdleConns    = 5
+	defaultPostgresConnMaxLifetime = 5 * time.Minute
+	defaultPostgresConnMaxIdleTime = time.Minute
+)
+
+const (
 	AppendLogDriverJetStream = "jetstream"
 	StateStoreDriverPostgres = "postgres"
 	GraphStoreDriverNeo4j    = "neo4j"
@@ -30,6 +37,7 @@ type Config struct {
 	HTTPAddr        string
 	ShutdownTimeout time.Duration
 	ImageTag        string
+	DevMode         bool
 	AppendLog       AppendLogConfig
 	StateStore      StateStoreConfig
 	GraphStore      GraphStoreConfig
@@ -274,10 +282,22 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	devMode, err := parseBoolEnv("CEREBRO_DEV_MODE")
+	if err != nil {
+		return Config{}, err
+	}
+	devModeAck, err := parseBoolEnv("CEREBRO_DEV_MODE_ACK")
+	if err != nil {
+		return Config{}, err
+	}
+	if devMode && !devModeAck {
+		return Config{}, fmt.Errorf("CEREBRO_DEV_MODE requires CEREBRO_DEV_MODE_ACK=1")
+	}
 	cfg := Config{
 		HTTPAddr:        strings.TrimSpace(os.Getenv("CEREBRO_HTTP_ADDR")),
 		ShutdownTimeout: defaultShutdownTimeout,
 		ImageTag:        strings.TrimSpace(os.Getenv("CEREBRO_IMAGE_TAG")),
+		DevMode:         devMode,
 		AppendLog: AppendLogConfig{
 			Driver:                 strings.TrimSpace(os.Getenv("CEREBRO_APPEND_LOG_DRIVER")),
 			JetStreamURL:           strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_URL")),
@@ -321,11 +341,14 @@ func Load() (Config, error) {
 			},
 		},
 	}
-	authEnabled, err := parseBoolEnv("CEREBRO_API_AUTH_ENABLED")
+	authEnabled, err := parseBoolEnvDefault("CEREBRO_API_AUTH_ENABLED", !cfg.DevMode)
 	if err != nil {
 		return Config{}, err
 	}
 	cfg.Auth.Enabled = authEnabled
+	if cfg.DevMode {
+		cfg.Auth.Enabled = false
+	}
 	otelEnabled, err := parseBoolEnv("CEREBRO_OTEL_ENABLED")
 	if err != nil {
 		return Config{}, err
@@ -403,6 +426,7 @@ func Load() (Config, error) {
 	if cfg.StateStore.PostgresConnMaxIdleTime, err = parseDurationEnv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", 0); err != nil {
 		return Config{}, err
 	}
+	cfg.StateStore = ApplyPostgresPoolDefaults(cfg.StateStore)
 	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
 		return Config{}, err
 	}
@@ -462,9 +486,6 @@ func Load() (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_GRAPH_STORE_DRIVER %q", cfg.GraphStore.Driver)
 	}
-	if cfg.Auth.Enabled && len(cfg.Auth.APIKeys) == 0 && len(cfg.Auth.APICredentials) == 0 && len(cfg.Auth.CapabilityTokenSecrets) == 0 {
-		return Config{}, fmt.Errorf("CEREBRO_API_KEYS, CEREBRO_API_CREDENTIALS_JSON, or CEREBRO_CAPABILITY_TOKEN_SECRETS is required when CEREBRO_API_AUTH_ENABLED=true")
-	}
 	if cfg.Auth.MCPOAuth.Enabled {
 		if !cfg.Auth.Enabled {
 			return Config{}, fmt.Errorf("CEREBRO_API_AUTH_ENABLED=true is required when CEREBRO_MCP_OAUTH_ENABLED=true")
@@ -481,8 +502,11 @@ func Load() (Config, error) {
 	}
 
 	// Rate limiting configuration
-	if cfg.RateLimit.Enabled, err = parseBoolEnv("CEREBRO_RATE_LIMIT_ENABLED"); err != nil {
+	if cfg.RateLimit.Enabled, err = parseBoolEnvDefault("CEREBRO_RATE_LIMIT_ENABLED", !cfg.DevMode); err != nil {
 		return Config{}, err
+	}
+	if cfg.DevMode {
+		cfg.RateLimit.Enabled = false
 	}
 	if cfg.RateLimit.RequestsPerSecond, err = parseFloatEnv("CEREBRO_RATE_LIMIT_RPS", 100); err != nil {
 		return Config{}, err
@@ -496,6 +520,29 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
+	if cfg.PostgresMaxOpenConns == 0 {
+		cfg.PostgresMaxOpenConns = defaultPostgresMaxOpenConns
+	}
+	if cfg.PostgresMaxIdleConns == 0 {
+		cfg.PostgresMaxIdleConns = defaultPostgresMaxIdleConns
+	}
+	if cfg.PostgresMaxIdleConns > cfg.PostgresMaxOpenConns {
+		cfg.PostgresMaxIdleConns = cfg.PostgresMaxOpenConns
+	}
+	if cfg.PostgresConnMaxLifetime == 0 {
+		cfg.PostgresConnMaxLifetime = defaultPostgresConnMaxLifetime
+	}
+	if cfg.PostgresConnMaxIdleTime == 0 {
+		cfg.PostgresConnMaxIdleTime = defaultPostgresConnMaxIdleTime
+	}
+	return cfg
+}
+
+func (cfg AuthConfig) HasCredentialMaterial() bool {
+	return len(cfg.APIKeys) > 0 || len(cfg.APICredentials) > 0 || len(cfg.CapabilityTokenSecrets) > 0
 }
 
 func validateRequestOriginConfig(cfg RequestOriginConfig) error {
@@ -541,6 +588,13 @@ func parseBoolEnv(name string) (bool, error) {
 	default:
 		return false, fmt.Errorf("%s must be a boolean", name)
 	}
+}
+
+func parseBoolEnvDefault(name string, defaultValue bool) (bool, error) {
+	if !envHasValue(name) {
+		return defaultValue, nil
+	}
+	return parseBoolEnv(name)
 }
 
 func parseIntEnv(name string, defaultValue int) (int, error) {

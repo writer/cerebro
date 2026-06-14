@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	cerebrov1connect "github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 )
 
 func TestPlatformHTTPRoutesHaveAuthPolicies(t *testing.T) {
@@ -29,8 +31,8 @@ func TestPlatformHTTPRoutesHaveAuthPolicies(t *testing.T) {
 		if !routePolicyPathMatches(policy, path) {
 			t.Fatalf("%s %s has no matching auth route policy", method, route)
 		}
-		if policy.Scope == "" && !policy.Static {
-			t.Fatalf("%s %s auth policy must declare a scope or be explicitly static", method, route)
+		if policy.Scope == "" && !policy.AdminOnly {
+			t.Fatalf("%s %s auth policy must declare a scope or be explicitly admin-only", method, route)
 		}
 	}
 }
@@ -48,6 +50,20 @@ func TestConnectProceduresHaveAuthPolicies(t *testing.T) {
 		if !connectProcedurePolicyKnown(procedure) {
 			t.Fatalf("%s has no explicit Connect auth policy", procedure)
 		}
+	}
+}
+
+func TestWriteHTTPRoutePolicyIsExplicitAdminOnly(t *testing.T) {
+	policy := httpRoutePolicyFor("POST", "/findings/finding-1/resolve")
+	if !policy.AdminOnly || policy.Scope != "" {
+		t.Fatalf("resolve finding policy = %#v, want explicit admin-only decision", policy)
+	}
+}
+
+func TestWriteConnectProcedurePolicyIsExplicitAdminOnly(t *testing.T) {
+	policy := connectProcedurePolicyFor(cerebrov1connect.BootstrapServiceResolveFindingProcedure)
+	if !policy.AdminOnly || policy.Scope != "" {
+		t.Fatalf("ResolveFinding policy = %#v, want explicit admin-only decision", policy)
 	}
 }
 

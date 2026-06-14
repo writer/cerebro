@@ -35,6 +35,12 @@ func (e usageError) Error() string {
 	return string(e)
 }
 
+var (
+	errServeAuthDisabled         = errors.New("api authentication disabled")
+	errServeAuthMaterialRequired = errors.New("api authentication material required")
+	errServeRateLimitDisabled    = errors.New("api rate limiting disabled")
+)
+
 func sanitizeLogValue(value string) string {
 	return strings.NewReplacer("\n", " ", "\r", " ").Replace(value)
 }
@@ -87,6 +93,12 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	if err := validateServeConfig(cfg); err != nil {
+		return err
+	}
+	if cfg.DevMode {
+		log.Print("WARN DEV MODE: API authentication and rate limiting are disabled")
+	}
 	closeTelemetry, err := configureOpenTelemetry(context.Background(), cfg)
 	if err != nil {
 		return fmt.Errorf("configure telemetry: %w", err)
@@ -138,6 +150,22 @@ func serve() error {
 		waitForStartupJobs(shutdownCtx, grcWarmupDone, riskBackfillDone)
 		return nil
 	}
+}
+
+func validateServeConfig(cfg appconfig.Config) error {
+	if cfg.DevMode {
+		return nil
+	}
+	if !cfg.Auth.Enabled {
+		return fmt.Errorf("%w; set CEREBRO_DEV_MODE=1 and CEREBRO_DEV_MODE_ACK=1 only for local development", errServeAuthDisabled)
+	}
+	if !cfg.Auth.HasCredentialMaterial() {
+		return fmt.Errorf("%w; configure CEREBRO_API_KEYS, CEREBRO_API_CREDENTIALS_JSON, or CEREBRO_CAPABILITY_TOKEN_SECRETS, or set CEREBRO_DEV_MODE=1 and CEREBRO_DEV_MODE_ACK=1 only for local development", errServeAuthMaterialRequired)
+	}
+	if !cfg.RateLimit.Enabled {
+		return fmt.Errorf("%w; set CEREBRO_DEV_MODE=1 and CEREBRO_DEV_MODE_ACK=1 only for local development", errServeRateLimitDisabled)
+	}
+	return nil
 }
 
 func configureOpenTelemetry(ctx context.Context, cfg appconfig.Config) (telemetry.ShutdownFunc, error) {
