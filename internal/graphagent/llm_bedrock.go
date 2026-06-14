@@ -60,6 +60,18 @@ func (e *BedrockAccessDeniedError) Unwrap() error {
 	return ErrLLMAccessDenied
 }
 
+type BedrockInvocationError struct {
+	cause error
+}
+
+func (e *BedrockInvocationError) Error() string {
+	return ErrRuntimeUnavailable.Error() + ": bedrock invocation failed"
+}
+
+func (e *BedrockInvocationError) Unwrap() []error {
+	return []error{ErrRuntimeUnavailable, e.cause}
+}
+
 func NewBedrockLLMClient(ctx context.Context, llmConfig BedrockConfig) (*BedrockLLMClient, error) {
 	client := llmConfig.Runtime
 	if client == nil {
@@ -209,7 +221,7 @@ func classifyBedrockInvokeError(err error) error {
 	if errors.As(err, &apiErr) && bedrockAccessDeniedCode(apiErr.ErrorCode()) {
 		return &BedrockAccessDeniedError{Code: apiErr.ErrorCode()}
 	}
-	return fmt.Errorf("invoke Bedrock model: %w", err)
+	return &BedrockInvocationError{cause: err}
 }
 
 func bedrockAccessDeniedCode(code string) bool {

@@ -32,11 +32,12 @@ func (s *stubBedrockRuntime) Converse(_ context.Context, input *bedrockruntime.C
 }
 
 type stubBedrockAPIError struct {
-	code string
+	code    string
+	message string
 }
 
 func (e stubBedrockAPIError) Error() string {
-	return e.code
+	return e.code + ": " + e.ErrorMessage()
 }
 
 func (e stubBedrockAPIError) ErrorCode() string {
@@ -44,6 +45,9 @@ func (e stubBedrockAPIError) ErrorCode() string {
 }
 
 func (e stubBedrockAPIError) ErrorMessage() string {
+	if strings.TrimSpace(e.message) != "" {
+		return e.message
+	}
 	return "denied"
 }
 
@@ -128,6 +132,34 @@ func TestBedrockLLMClient_AccessDeniedClassification(t *testing.T) {
 	}
 	if strings.Contains(fmt.Sprint(err), "arn:aws") {
 		t.Fatalf("access error leaked ARN: %v", err)
+	}
+}
+
+func TestBedrockLLMClient_SanitizesGenericProviderErrors(t *testing.T) {
+	runtime := &stubBedrockRuntime{err: stubBedrockAPIError{
+		code:    "ResourceNotFoundException",
+		message: "model arn:aws:bedrock:us-east-1:123456789012:inference-profile/private-model not found; RequestID: req-123",
+	}}
+	client, err := NewBedrockLLMClient(context.Background(), BedrockConfig{DefaultModel: "us.anthropic.claude-sonnet-4-6", Runtime: runtime})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.Summarize(context.Background(), SummarizeRequest{TenantID: "test", Question: "hello"})
+	if err == nil {
+		t.Fatal("expected provider error")
+	}
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("error = %v, want ErrRuntimeUnavailable", err)
+	}
+	var invocationErr *BedrockInvocationError
+	if !errors.As(err, &invocationErr) {
+		t.Fatalf("error = %T, want BedrockInvocationError", err)
+	}
+	for _, forbidden := range []string{"arn:aws", "req-123", "ResourceNotFoundException", "private-model"} {
+		if strings.Contains(err.Error(), forbidden) {
+			t.Fatalf("sanitized error leaked %q: %v", forbidden, err)
+		}
 	}
 }
 
