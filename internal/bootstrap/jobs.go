@@ -42,6 +42,13 @@ type jobEventListResponse struct {
 }
 
 func (a *App) jobService() *platformjobs.Service {
+	if a != nil && a.services.jobs != nil {
+		return a.services.jobs
+	}
+	return a.newJobService()
+}
+
+func (a *App) newJobService() *platformjobs.Service {
 	service := platformjobs.New(jobStore(a.deps.StateStore))
 	service.WithRunner(platformjobs.KindSourceRuntimeSync, a.runSourceRuntimeSyncJob)
 	service.WithRunner(platformjobs.KindSourceRuntimeOrchestrate, a.runSourceRuntimeOrchestrateJob)

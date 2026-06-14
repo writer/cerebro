@@ -69,6 +69,78 @@ func TestCoordinationGraphRuleQueryOrdersFindingsBeforeSlice(t *testing.T) {
 	}
 }
 
+func TestReviewCoordinationGraphRulesHaveDirectCoverage(t *testing.T) {
+	tests := []struct {
+		name         string
+		rule         Rule
+		sourceID     string
+		family       string
+		querySnippet string
+	}{
+		{name: "github org owner", rule: newGitHubOrgOwnerConcentrationRule(), sourceID: "github", family: "org_inventory", querySnippet: `"role":"admin"`},
+		{name: "github programmatic credential", rule: newGitHubProgrammaticCredentialReviewRule(), sourceID: "github", family: "audit", querySnippet: `"resource_type":"personal_access_token"`},
+		{name: "github self-hosted runner", rule: newGitHubSelfHostedRunnerReviewRule(), sourceID: "github", family: "audit", querySnippet: `"runner_ephemeral":"true"`},
+		{name: "okta oauth public client", rule: newOktaOAuthPublicClientReviewRule(), sourceID: "okta", family: "application", querySnippet: `"oauth_public_client":"true"`},
+		{name: "okta weak authenticator", rule: newOktaAuthenticatorWeakFactorRule(), sourceID: "okta", family: "authenticator", querySnippet: `"key":"sms"`},
+		{name: "okta threat insight", rule: newOktaThreatInsightNotBlockingRule(), sourceID: "okta", family: "threat_insight", querySnippet: `"action":"block"`},
+		{name: "sentinelone stale agent", rule: newSentinelOneAgentNotUpToDateRule(), sourceID: "sentinelone", family: "agent", querySnippet: `"is_up_to_date":"false"`},
+		{name: "sentinelone unmitigated threat", rule: newSentinelOneUnmitigatedThreatRule(), sourceID: "sentinelone", family: "threat", querySnippet: `"mitigation_status":"not_mitigated"`},
+		{name: "cloud current public exposure", rule: newCloudPublicResourceExposureGraphRule(), sourceID: "aws", family: "resource_exposure", querySnippet: `"internet_exposed":"true"`},
+		{name: "graph aws eni link missing", rule: newGraphAWSEC2ENILinkMissingRule(), sourceID: "graph", querySnippet: "attached_instance_id"},
+		{name: "graph orphan node", rule: newGraphOrphanNonFindingNodeRule(), sourceID: "graph", querySnippet: "entity.entity_type <> 'finding'"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			graphRule, ok := tt.rule.(GraphRule)
+			if !ok {
+				t.Fatalf("rule %T is not a GraphRule", tt.rule)
+			}
+			runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", TenantId: "writer", SourceId: tt.sourceID, Config: map[string]string{"family": tt.family}}
+			if !tt.rule.SupportsRuntime(runtime) {
+				t.Fatalf("SupportsRuntime(%s/%s) = false, want true", tt.sourceID, tt.family)
+			}
+			query := graphRule.QueryFor(runtime)
+			if query.Query == "" {
+				t.Fatal("QueryFor() returned empty query")
+			}
+			if query.Params["tenant_id"] != "writer" {
+				t.Fatalf("tenant_id param = %#v, want writer", query.Params["tenant_id"])
+			}
+			if query.Params["row_limit"] != int64(coordinationGraphRowLimit) || query.RowLimit != coordinationGraphRowLimit {
+				t.Fatalf("row limit = params:%#v request:%d, want %d", query.Params["row_limit"], query.RowLimit, coordinationGraphRowLimit)
+			}
+			if !strings.Contains(query.Query, "LIMIT $row_limit") {
+				t.Fatalf("query missing LIMIT $row_limit: %s", query.Query)
+			}
+			if !strings.Contains(query.Query, tt.querySnippet) {
+				t.Fatalf("query missing critical predicate %q: %s", tt.querySnippet, query.Query)
+			}
+			findings, err := graphRule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{{Values: map[string]any{
+				"primary_urn":     "urn:cerebro:writer:resource:one",
+				"primary_label":   "Resource One",
+				"primary_type":    "resource",
+				"fingerprint_key": "urn:cerebro:writer:resource:one",
+				"summary":         "review finding",
+				"resource_urns":   []any{"urn:cerebro:writer:resource:one"},
+				"evidence":        []any{},
+			}}})
+			if err != nil {
+				t.Fatalf("EvaluateRows() error = %v", err)
+			}
+			if len(findings) != 1 {
+				t.Fatalf("len(findings) = %d, want 1", len(findings))
+			}
+			if findings[0].RuleID != tt.rule.Spec().GetId() {
+				t.Fatalf("RuleID = %q, want %q", findings[0].RuleID, tt.rule.Spec().GetId())
+			}
+			if findings[0].TenantID != "writer" || findings[0].RuntimeID != "runtime-1" {
+				t.Fatalf("finding scope = tenant %q runtime %q", findings[0].TenantID, findings[0].RuntimeID)
+			}
+		})
+	}
+}
+
 func TestCoordinationGraphRuleEvaluateRowsBuildsFinding(t *testing.T) {
 	rule := newGRCSourceConcentratedOpenFindingsRule().(GraphRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-integration", TenantId: "writer", SourceId: "grc", Config: map[string]string{"family": "integration"}}

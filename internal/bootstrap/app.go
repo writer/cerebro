@@ -32,6 +32,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
+	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/mcpoauth"
 	"github.com/writer/cerebro/internal/observability"
@@ -67,9 +68,23 @@ type App struct {
 	dpopVerifier          *deviceauth.DPoPVerifier
 	riskScorer            *risk.Scorer
 	observationStore      risk.ObservationStore
+	services              appServices
 	mcpOAuthService       *mcpoauth.Service
 	mcpOAuthRegisterLimit *deviceauth.TokenBucket
 	oauthEndpointLimit    *deviceauth.TokenBucket
+}
+
+type appServices struct {
+	sourceOps      *sourceops.Service
+	reports        *reports.Service
+	runtimeOps     *sourceruntime.Service
+	claims         *claims.Service
+	findings       *findings.Service
+	knowledgeOps   *knowledge.Service
+	graphQueries   *graphquery.Service
+	graphIngestOps *graphingest.Service
+	workflowReplay *workflowprojection.Replayer
+	jobs           *platformjobs.Service
 }
 
 type bootstrapService struct {
@@ -183,6 +198,16 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		}
 		app.mcpOAuthService = service
 	}
+	app.services.sourceOps = newSourceService(app.sources)
+	app.services.reports = app.newReportService()
+	app.services.runtimeOps = newRuntimeService(app.deps, app.sources)
+	app.services.claims = app.newClaimService()
+	app.services.findings = app.newFindingService()
+	app.services.knowledgeOps = app.newKnowledgeService()
+	app.services.graphQueries = app.newGraphQueryService()
+	app.services.graphIngestOps = newGraphIngestService(app.deps, app.sources)
+	app.services.workflowReplay = app.newWorkflowReplayService()
+	app.services.jobs = app.newJobService()
 	mux := http.NewServeMux()
 	app.mux = mux
 	app.registerRoutes(mux, cfg, deps, sources)
@@ -218,7 +243,13 @@ func (a *App) ListenAndServe() error {
 
 // Shutdown gracefully stops the bootstrap HTTP server.
 func (a *App) Shutdown(ctx context.Context) error {
-	return a.server.Shutdown(ctx)
+	if err := a.server.Shutdown(ctx); err != nil {
+		return err
+	}
+	if a.services.jobs != nil {
+		return a.services.jobs.Wait(ctx)
+	}
+	return nil
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -2722,10 +2753,20 @@ func boolQueryParam(r *http.Request, key string) (bool, error) {
 }
 
 func (a *App) sourceService() *sourceops.Service {
+	if a != nil && a.services.sourceOps != nil {
+		return a.services.sourceOps
+	}
 	return newSourceService(a.sources)
 }
 
 func (a *App) reportService() *reports.Service {
+	if a != nil && a.services.reports != nil {
+		return a.services.reports
+	}
+	return a.newReportService()
+}
+
+func (a *App) newReportService() *reports.Service {
 	return reports.New(
 		findingStore(a.deps.StateStore),
 		graphQueryStore(a.deps.GraphStore),
@@ -2734,6 +2775,9 @@ func (a *App) reportService() *reports.Service {
 }
 
 func (a *App) runtimeService() *sourceruntime.Service {
+	if a != nil && a.services.runtimeOps != nil {
+		return a.services.runtimeOps
+	}
 	return newRuntimeService(a.deps, a.sources)
 }
 
@@ -2782,6 +2826,13 @@ func authorizeRuntimeConfigEnvReferences(ctx context.Context, sourceID string, v
 }
 
 func (a *App) claimService() *claims.Service {
+	if a != nil && a.services.claims != nil {
+		return a.services.claims
+	}
+	return a.newClaimService()
+}
+
+func (a *App) newClaimService() *claims.Service {
 	return claims.New(
 		sourceRuntimeStore(a.deps.StateStore),
 		claimStore(a.deps.StateStore),
@@ -2791,6 +2842,13 @@ func (a *App) claimService() *claims.Service {
 }
 
 func (a *App) findingService() *findings.Service {
+	if a != nil && a.services.findings != nil {
+		return a.services.findings
+	}
+	return a.newFindingService()
+}
+
+func (a *App) newFindingService() *findings.Service {
 	return findings.New(
 		sourceRuntimeStore(a.deps.StateStore),
 		eventReplayer(a.deps.AppendLog),
@@ -2830,6 +2888,13 @@ func (a *App) BackfillFindingRisk(ctx context.Context) error {
 }
 
 func (a *App) knowledgeService() *knowledge.Service {
+	if a != nil && a.services.knowledgeOps != nil {
+		return a.services.knowledgeOps
+	}
+	return a.newKnowledgeService()
+}
+
+func (a *App) newKnowledgeService() *knowledge.Service {
 	return knowledge.New(
 		graphQueryStore(a.deps.GraphStore),
 		sourceProjectionGraphStore(a.deps.GraphStore),
@@ -2837,14 +2902,31 @@ func (a *App) knowledgeService() *knowledge.Service {
 }
 
 func (a *App) graphQueryService() *graphquery.Service {
+	if a != nil && a.services.graphQueries != nil {
+		return a.services.graphQueries
+	}
+	return a.newGraphQueryService()
+}
+
+func (a *App) newGraphQueryService() *graphquery.Service {
 	return graphquery.New(graphQueryStore(a.deps.GraphStore))
 }
 
 func (a *App) graphIngestService() *graphingest.Service {
+	if a != nil && a.services.graphIngestOps != nil {
+		return a.services.graphIngestOps
+	}
 	return newGraphIngestService(a.deps, a.sources)
 }
 
 func (a *App) workflowReplayService() *workflowprojection.Replayer {
+	if a != nil && a.services.workflowReplay != nil {
+		return a.services.workflowReplay
+	}
+	return a.newWorkflowReplayService()
+}
+
+func (a *App) newWorkflowReplayService() *workflowprojection.Replayer {
 	return workflowprojection.NewReplayer(
 		eventReplayer(a.deps.AppendLog),
 		sourceProjectionGraphStore(a.deps.GraphStore),
