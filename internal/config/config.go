@@ -36,6 +36,16 @@ type Config struct {
 	GraphAgentLLM   GraphAgentLLMConfig
 	Auth            AuthConfig
 	OTEL            OpenTelemetryConfig
+	RateLimit       RateLimitConfig
+}
+
+// RateLimitConfig controls global API rate limiting.
+type RateLimitConfig struct {
+	Enabled           bool
+	RequestsPerSecond float64
+	BurstSize         int
+	// ExemptPaths are route patterns that bypass rate limiting (e.g., health, metrics)
+	ExemptPaths []string
 }
 
 // AppendLogConfig selects and configures the append-log driver.
@@ -469,6 +479,22 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("CEREBRO_CAPABILITY_TOKEN_SECRETS is required when CEREBRO_MCP_OAUTH_ENABLED=true")
 		}
 	}
+
+	// Rate limiting configuration
+	if cfg.RateLimit.Enabled, err = parseBoolEnv("CEREBRO_RATE_LIMIT_ENABLED"); err != nil {
+		return Config{}, err
+	}
+	if cfg.RateLimit.RequestsPerSecond, err = parseFloatEnv("CEREBRO_RATE_LIMIT_RPS", 100); err != nil {
+		return Config{}, err
+	}
+	if cfg.RateLimit.BurstSize, err = parseIntEnv("CEREBRO_RATE_LIMIT_BURST", 150); err != nil {
+		return Config{}, err
+	}
+	cfg.RateLimit.ExemptPaths = parseCSV(os.Getenv("CEREBRO_RATE_LIMIT_EXEMPT_PATHS"))
+	if len(cfg.RateLimit.ExemptPaths) == 0 {
+		cfg.RateLimit.ExemptPaths = []string{"/health", "/healthz", "/livez", "/metrics", "/.well-known/"}
+	}
+
 	return cfg, nil
 }
 
