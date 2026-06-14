@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,9 +14,27 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestJoinGRCErrorsPreservesAllFailures(t *testing.T) {
+	errA := fmt.Errorf("%w: evidence", graphquery.ErrRuntimeUnavailable)
+	errB := fmt.Errorf("%w: aggregate", ports.ErrFindingNotFound)
+	errs := make(chan error, 2)
+	errs <- errA
+	errs <- errB
+	close(errs)
+
+	err := joinGRCErrors(errs)
+	if !errors.Is(err, graphquery.ErrRuntimeUnavailable) {
+		t.Fatalf("joined error = %v, want runtime unavailable", err)
+	}
+	if !errors.Is(err, ports.ErrFindingNotFound) {
+		t.Fatalf("joined error = %v, want finding not found", err)
+	}
+}
 
 func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)

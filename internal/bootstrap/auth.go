@@ -790,7 +790,7 @@ func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID stri
 		return containsAuthValue(principal.AllowedTenants, tenantID)
 	}
 	if len(cfg.AllowedTenants) == 0 {
-		return true
+		return false
 	}
 	return containsAuthValue(cfg.AllowedTenants, tenantID)
 }

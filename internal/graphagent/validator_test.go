@@ -400,6 +400,26 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 }
 
+func TestValidatorDefaultsToExplainWhenStoreSupportsPlans(t *testing.T) {
+	store := &validatorStore{plan: &ports.CypherPlan{Root: &ports.CypherPlanNode{
+		Operator:  "AllNodesScan",
+		Arguments: map[string]any{"EstimatedRows": 2_000_001},
+	}}}
+	validator := NewValidator(store, ValidatorOptions{AllNodesScanLimit: 1_000_000})
+	result, _, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS urn
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if result.OK {
+		t.Fatalf("Validate() ok = true, want false")
+	}
+	if len(store.requests) != 1 {
+		t.Fatalf("EXPLAIN requests = %d, want 1", len(store.requests))
+	}
+}
+
 type validatorStore struct {
 	requests []ports.CypherQueryRequest
 	rows     []ports.CypherRow

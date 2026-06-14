@@ -90,6 +90,19 @@ func TestConcreteStoresStayAtWiringBoundary(t *testing.T) {
 	})
 }
 
+func TestPlatformSecurityNamespaceBoundary(t *testing.T) {
+	root := repoRoot(t)
+	routes, err := os.ReadFile(filepath.Join(root, "internal", "bootstrap", "routes.go"))
+	if err != nil {
+		t.Fatalf("read routes.go: %v", err)
+	}
+	for _, forbidden := range []string{"/platform/security", "/security/platform"} {
+		if strings.Contains(string(routes), forbidden) {
+			t.Fatalf("routes.go contains %q; platform and security namespaces must stay separate", forbidden)
+		}
+	}
+}
+
 func forEachProductionGoFile(t *testing.T, root string, visit func(path string, imports []string)) {
 	t.Helper()
 	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
