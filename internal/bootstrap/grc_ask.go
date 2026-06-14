@@ -141,6 +141,9 @@ func askRuntimeErrorCode(err error) string {
 	if errors.Is(err, graphagent.ErrLLMAuthenticationFailed) {
 		return "llm_authentication_failed"
 	}
+	if errors.Is(err, graphagent.ErrLLMAccessDenied) {
+		return "llm_access_denied"
+	}
 	return "ask_failed"
 }
 

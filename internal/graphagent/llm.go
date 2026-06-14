@@ -57,6 +57,7 @@ type LLMConfig struct {
 	SonnetModel string
 	OpusModel   string
 	HaikuModel  string
+	Region      string
 	MaxTokens   int
 	Temperature float64
 }
@@ -85,6 +86,7 @@ func NewLLMClientWithSecrets(ctx context.Context, cfg LLMConfigWithSecrets) (LLM
 			SonnetModel:  cfg.SonnetModel,
 			OpusModel:    cfg.OpusModel,
 			HaikuModel:   cfg.HaikuModel,
+			Region:       cfg.Region,
 			MaxTokens:    cfg.MaxTokens,
 			Temperature:  cfg.Temperature,
 		})
