@@ -3068,64 +3068,63 @@ func sourceConnectError(err error) error {
 	return mappedConnectError(err, sourceErrorMappings)
 }
 
+var sourceRuntimeErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(ports.ErrSourceRuntimeNotFound, sourceops.ErrSourceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(sourceruntime.ErrSyncInProgress), httpStatus: http.StatusConflict, code: connect.CodeAborted},
+	{match: matchesAnyError(sourceruntime.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(sourceruntime.ErrInvalidRequest, graphquery.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+}
+
+var claimErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(ports.ErrSourceRuntimeNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(claims.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(claims.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+}
+
+var findingErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(ports.ErrSourceRuntimeNotFound, findings.ErrRuleNotFound, ports.ErrFindingNotFound, ports.ErrFindingCandidateNotFound, ports.ErrFindingEvaluationRunNotFound, ports.ErrFindingEvidenceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(findings.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(findings.ErrRuleSelectionRequired, findings.ErrRuleUnsupported, findings.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+	{match: matchesAnyError(findings.ErrRuleUnavailable), httpStatus: http.StatusPreconditionFailed, code: connect.CodeFailedPrecondition},
+}
+
+var knowledgeErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(ports.ErrGraphEntityNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(knowledge.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(knowledge.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+}
+
+var graphQueryErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(ports.ErrGraphEntityNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(graphquery.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(graphquery.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+}
+
+var graphIngestErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(graphingest.ErrRunNotFound, ports.ErrSourceRuntimeNotFound, sourceops.ErrSourceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(graphingest.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(graphingest.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+}
+
+var workflowReplayErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(workflowprojection.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+}
+
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, sourceruntime.ErrSyncInProgress):
-		statusCode = http.StatusConflict
-	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
-		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, sourceruntime.ErrInvalidRequest), errors.Is(err, graphquery.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
-	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	writeMappedBootstrapError(w, err, sourceRuntimeErrorMappings)
 }
 
 func sourceRuntimeConnectError(err error) error {
-	switch {
-	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, sourceruntime.ErrSyncInProgress):
-		return connect.NewError(connect.CodeAborted, err)
-	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
-		return connect.NewError(connect.CodeUnavailable, err)
-	case errors.Is(err, sourceruntime.ErrInvalidRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	default:
-		return defaultConnectError(err)
-	}
+	return mappedConnectError(err, sourceRuntimeErrorMappings)
 }
 
 func writeClaimError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, claims.ErrRuntimeUnavailable):
-		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, claims.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
-	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	writeMappedBootstrapError(w, err, claimErrorMappings)
 }
 
 func claimConnectError(err error) error {
-	switch {
-	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, claims.ErrRuntimeUnavailable):
-		return connect.NewError(connect.CodeUnavailable, err)
-	case errors.Is(err, claims.ErrInvalidRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	default:
-		return defaultConnectError(err)
-	}
+	return mappedConnectError(err, claimErrorMappings)
 }
 
 func defaultConnectErrorCode(err error) connect.Code {
@@ -3150,162 +3149,43 @@ func defaultConnectError(err error) error {
 }
 
 func findingConnectError(err error) error {
-	switch {
-	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
-		errors.Is(err, findings.ErrRuleNotFound),
-		errors.Is(err, ports.ErrFindingNotFound),
-		errors.Is(err, ports.ErrFindingCandidateNotFound),
-		errors.Is(err, ports.ErrFindingEvaluationRunNotFound),
-		errors.Is(err, ports.ErrFindingEvidenceNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, findings.ErrRuleSelectionRequired),
-		errors.Is(err, findings.ErrRuleUnsupported),
-		errors.Is(err, findings.ErrInvalidRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	case errors.Is(err, findings.ErrRuleUnavailable):
-		return connect.NewError(connect.CodeFailedPrecondition, err)
-	case errors.Is(err, findings.ErrRuntimeUnavailable):
-		return connect.NewError(connect.CodeUnavailable, err)
-	default:
-		return defaultConnectError(err)
-	}
+	return mappedConnectError(err, findingErrorMappings)
 }
 
 func knowledgeConnectError(err error) error {
-	switch {
-	case errors.Is(err, ports.ErrGraphEntityNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, knowledge.ErrInvalidRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
-		return connect.NewError(connect.CodeUnavailable, err)
-	default:
-		return defaultConnectError(err)
-	}
+	return mappedConnectError(err, knowledgeErrorMappings)
 }
 
 func graphQueryConnectError(err error) error {
-	switch {
-	case errors.Is(err, ports.ErrGraphEntityNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
-		return connect.NewError(connect.CodeUnavailable, err)
-	case errors.Is(err, graphquery.ErrInvalidRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	default:
-		return defaultConnectError(err)
-	}
+	return mappedConnectError(err, graphQueryErrorMappings)
 }
 
 func graphIngestConnectError(err error) error {
-	switch {
-	case errors.Is(err, graphingest.ErrRunNotFound),
-		errors.Is(err, ports.ErrSourceRuntimeNotFound),
-		errors.Is(err, sourceops.ErrSourceNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, graphingest.ErrRuntimeUnavailable):
-		return connect.NewError(connect.CodeUnavailable, err)
-	case errors.Is(err, graphingest.ErrInvalidRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	default:
-		return defaultConnectError(err)
-	}
+	return mappedConnectError(err, graphIngestErrorMappings)
 }
 
 func workflowReplayConnectError(err error) error {
-	if errors.Is(err, workflowprojection.ErrRuntimeUnavailable) {
-		return connect.NewError(connect.CodeUnavailable, err)
-	}
-	return defaultConnectError(err)
+	return mappedConnectError(err, workflowReplayErrorMappings)
 }
 
 func writeFindingError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, findings.ErrRuleNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, ports.ErrFindingNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, ports.ErrFindingEvaluationRunNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, ports.ErrFindingEvidenceNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, findings.ErrRuntimeUnavailable):
-		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, findings.ErrRuleSelectionRequired), errors.Is(err, findings.ErrRuleUnsupported), errors.Is(err, findings.ErrInvalidRequest):
-		statusCode = http.StatusBadRequest
-	case errors.Is(err, findings.ErrRuleUnavailable):
-		statusCode = http.StatusPreconditionFailed
-	case errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
-	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	writeMappedBootstrapError(w, err, findingErrorMappings)
 }
 
 func writeKnowledgeError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, ports.ErrGraphEntityNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, knowledge.ErrInvalidRequest):
-		statusCode = http.StatusBadRequest
-	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
-		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
-	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	writeMappedBootstrapError(w, err, knowledgeErrorMappings)
 }
 
 func writeGraphQueryError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, ports.ErrGraphEntityNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
-		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, graphquery.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
-	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	writeMappedBootstrapError(w, err, graphQueryErrorMappings)
 }
 
 func writeGraphIngestError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, graphingest.ErrRunNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
-		statusCode = http.StatusNotFound
-	case errors.Is(err, graphingest.ErrRuntimeUnavailable):
-		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, graphingest.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
-	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	writeMappedBootstrapError(w, err, graphIngestErrorMappings)
 }
 
 func writeWorkflowReplayError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, workflowprojection.ErrRuntimeUnavailable):
-		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, errInvalidHTTPRequest):
-		statusCode = http.StatusBadRequest
-	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	writeMappedBootstrapError(w, err, workflowReplayErrorMappings)
 }
 
 func timestampValue(value *timestamppb.Timestamp) time.Time {
