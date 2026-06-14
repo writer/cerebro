@@ -7,26 +7,32 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
 	"github.com/writer/cerebro/internal/config"
+	"golang.org/x/time/rate"
 )
 
 // rateLimiter implements per-IP token bucket rate limiting with configurable
 // exemptions for health and metadata endpoints.
 type rateLimiter struct {
-	config     config.RateLimitConfig
-	limiters   map[string]*rate.Limiter
-	mu         sync.RWMutex
+	config          config.RateLimitConfig
+	limiters        map[string]*rate.Limiter
+	mu              sync.RWMutex
 	cleanupInterval time.Duration
-	lastAccess map[string]time.Time
+	lastAccess      map[string]time.Time
 }
 
 // newRateLimiter creates a global rate limiter with the provided configuration.
+// cleanupInterval defaults to 5 minutes; override only in tests before calling.
 func newRateLimiter(cfg config.RateLimitConfig) *rateLimiter {
+	return newRateLimiterWithInterval(cfg, 5*time.Minute)
+}
+
+// newRateLimiterWithInterval creates a rate limiter with a custom cleanup interval.
+func newRateLimiterWithInterval(cfg config.RateLimitConfig, cleanupInterval time.Duration) *rateLimiter {
 	rl := &rateLimiter{
 		config:          cfg,
 		limiters:        make(map[string]*rate.Limiter),
-		cleanupInterval:   5 * time.Minute,
+		cleanupInterval: cleanupInterval,
 		lastAccess:      make(map[string]time.Time),
 	}
 	// Start background cleanup of stale limiters

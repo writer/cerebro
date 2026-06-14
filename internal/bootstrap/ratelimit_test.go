@@ -134,8 +134,7 @@ func TestRateLimiterPerClientIsolation(t *testing.T) {
 	// Different IP should still have full burst available
 	for i := 0; i < 5; i++ {
 		rec2 := httptest.NewRecorder()
-		req2 := httptest.NewRecorder().Result().Request
-		req2 = httptest.NewRequest("GET", "/api/test", nil)
+		req2 := httptest.NewRequest("GET", "/api/test", nil)
 		req2.RemoteAddr = "192.168.1.2:1234"
 		handler.ServeHTTP(rec2, req2)
 		if rec2.Code != http.StatusOK {
@@ -151,8 +150,8 @@ func TestRateLimiterCleanupRemovesStaleLimiters(t *testing.T) {
 		BurstSize:         10,
 		ExemptPaths:       []string{},
 	}
-	rl := newRateLimiter(cfg)
-	rl.cleanupInterval = 100 * time.Millisecond
+	// Use constructor with custom cleanup interval to avoid data race
+	rl := newRateLimiterWithInterval(cfg, 100*time.Millisecond)
 
 	// Make a request to create a limiter
 	rec := httptest.NewRecorder()
@@ -170,7 +169,7 @@ func TestRateLimiterCleanupRemovesStaleLimiters(t *testing.T) {
 		t.Fatal("expected limiter to exist after request")
 	}
 
-	// Manually trigger cleanup with old cutoff
+	// Manually set old access time and trigger cleanup
 	rl.mu.Lock()
 	rl.lastAccess["192.168.1.1"] = time.Now().Add(-15 * time.Minute)
 	rl.mu.Unlock()

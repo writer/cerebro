@@ -41,9 +41,9 @@ type Config struct {
 
 // RateLimitConfig controls global API rate limiting.
 type RateLimitConfig struct {
-	Enabled      bool
+	Enabled           bool
 	RequestsPerSecond float64
-	BurstSize    int
+	BurstSize         int
 	// ExemptPaths are route patterns that bypass rate limiting (e.g., health, metrics)
 	ExemptPaths []string
 }
