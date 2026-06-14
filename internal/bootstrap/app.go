@@ -211,12 +211,12 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	mux := http.NewServeMux()
 	app.mux = mux
 	app.registerRoutes(mux, cfg, deps, sources)
-	app.handler = observability.Middleware(authMiddleware(cfg.Auth, AuthDependencies{
+	app.handler = observability.Middleware(rateLimitMiddleware(cfg.RateLimit)(authMiddleware(cfg.Auth, AuthDependencies{
 		DeviceVerifier: app.deviceVerifier,
 		DPoPVerifier:   app.dpopVerifier,
 		RiskScorer:     app.riskScorer,
 		Observations:   app.observationStore,
-	}, mux))
+	}, mux)))
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.handler,
