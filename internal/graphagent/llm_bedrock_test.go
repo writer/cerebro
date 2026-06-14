@@ -156,8 +156,9 @@ func TestBedrockLLMClient_SanitizesGenericProviderErrors(t *testing.T) {
 	if !errors.As(err, &invocationErr) {
 		t.Fatalf("error = %T, want BedrockInvocationError", err)
 	}
+	sanitized := fmt.Sprint(err)
 	for _, forbidden := range []string{"arn:aws", "req-123", "ResourceNotFoundException", "private-model"} {
-		if strings.Contains(err.Error(), forbidden) {
+		if strings.Contains(sanitized, forbidden) {
 			t.Fatalf("sanitized error leaked %q: %v", forbidden, err)
 		}
 	}
