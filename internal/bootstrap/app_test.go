@@ -6874,8 +6874,8 @@ func TestReportEndpoints(t *testing.T) {
 		t.Fatalf("decode /reports response: %v", err)
 	}
 	reportsPayload, ok := listPayload["reports"].([]any)
-	if !ok || len(reportsPayload) != 2 {
-		t.Fatalf("/reports payload = %#v, want 2 entries", listPayload["reports"])
+	if !ok || len(reportsPayload) != 3 {
+		t.Fatalf("/reports payload = %#v, want 3 entries", listPayload["reports"])
 	}
 
 	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=writer&runtime_ids=writer-okta-audit&graph_limit=2", nil)
@@ -6971,8 +6971,8 @@ func TestReportEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListReportDefinitions() error = %v", err)
 	}
-	if len(listReportsResp.Msg.GetReports()) != 2 {
-		t.Fatalf("len(ListReportDefinitions.Reports) = %d, want 2", len(listReportsResp.Msg.GetReports()))
+	if len(listReportsResp.Msg.GetReports()) != 3 {
+		t.Fatalf("len(ListReportDefinitions.Reports) = %d, want 3", len(listReportsResp.Msg.GetReports()))
 	}
 	runReportResp, err := client.RunReport(context.Background(), connect.NewRequest(&cerebrov1.RunReportRequest{
 		ReportId: "finding-summary",

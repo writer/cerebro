@@ -111,15 +111,21 @@ These reads stay generic and source-agnostic. Rules populate persisted findings;
 
 ### 6. Reporting
 
-Reports such as `finding-summary` operate on persisted findings instead of on raw source logic.
+Reports such as `finding-summary`, `risk-delta`, and `risk-action-plan` operate on persisted findings instead of on raw source logic. `risk-action-plan` is backed by the shared `internal/riskplan` engine, which ranks remediation candidates by reusing the bounded `risk-delta` simulation path and returns typed score breakdowns, expected reduction, effort, ownership, evidence quality, prior outcome signals, and optional plan diffs. It recommends next-best actions without executing remediation or introducing a new store.
 
 Why:
 
 - reporting should summarize durable state
 - rules should emit findings
 - reports should consume findings
+- action planning should remain an explainable, read-only plan over current findings and graph evidence
 
 That separation keeps the platform layered cleanly.
+
+The same planner engine is exposed to MCP clients through read-only tools:
+
+- `cerebro.risk.actions.list` returns a bounded ranked plan with the typed candidate contract.
+- `cerebro.risk.actions.explain` returns the full explanation for one candidate ID, including score breakdown, risk delta, effort, ownership, evidence quality, and outcome-learning signals.
 
 ## Public Platform Surfaces
 

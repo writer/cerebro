@@ -25,6 +25,8 @@ const (
 	findingSummaryReportName         = "Finding Summary"
 	riskDeltaReportID                = "risk-delta"
 	riskDeltaReportName              = "Risk Delta"
+	riskActionPlanReportID           = "risk-action-plan"
+	riskActionPlanReportName         = "Risk Action Plan"
 	findingSummaryReportStatus       = "completed"
 	reportParameterTenantID          = "tenant_id"
 	reportParameterRuntimeIDs        = "runtime_ids"
@@ -75,6 +77,7 @@ func (s *Service) List() *cerebrov1.ListReportDefinitionsResponse {
 		Reports: []*cerebrov1.ReportDefinition{
 			findingSummaryDefinition(),
 			riskDeltaDefinition(),
+			riskActionPlanDefinition(),
 		},
 	}
 }
@@ -104,6 +107,8 @@ func (s *Service) Run(ctx context.Context, request *cerebrov1.RunReportRequest) 
 		result, err = s.runFindingSummary(ctx, parameters)
 	case riskDeltaReportID:
 		result, err = s.runRiskDelta(ctx, parameters)
+	case riskActionPlanReportID:
+		result, err = s.runRiskActionPlan(ctx, parameters)
 	default:
 		err = fmt.Errorf("%w: %s", ErrReportNotFound, reportID)
 	}
@@ -632,6 +637,8 @@ func reportDefinition(reportID string) (*cerebrov1.ReportDefinition, error) {
 		return findingSummaryDefinition(), nil
 	case riskDeltaReportID:
 		return riskDeltaDefinition(), nil
+	case riskActionPlanReportID:
+		return riskActionPlanDefinition(), nil
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrReportNotFound, reportID)
 	}
