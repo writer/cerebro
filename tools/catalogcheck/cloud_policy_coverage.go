@@ -263,6 +263,7 @@ var minimumCloudCoverageDimensions = map[string][]string{
 		"compute_firewall",
 		"compute_instance",
 		"compute_network",
+		"compute_route",
 		"compute_subnetwork",
 		"container_registry",
 		"container_vulnerability",

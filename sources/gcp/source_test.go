@@ -84,6 +84,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall"},
 		{family: familyComputeInstance, kind: "gcp.compute_instance"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network"},
+		{family: familyComputeRoute, kind: "gcp.compute_route"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork"},
 		{family: familyDNSManagedZone, kind: "gcp.dns_managed_zone"},
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set"},
@@ -288,6 +289,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyContainerRegistry, kind: "gcp.container_registry", attr: "iam_bindings_count", want: "1"},
 		{family: familyContainerVuln, kind: "gcp.container_vulnerability", attr: "vulnerability_id", want: "CVE-2026-4242"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
+		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall", attr: "source_ranges", want: "0.0.0.0/0"},
 		{family: familyComputeDisk, kind: "gcp.compute_disk", attr: "disk_type", want: "pd-balanced"},
@@ -766,6 +768,11 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/iam.serviceAccountTokenCreator", "members": []string{"user:admin@writer.com"}}}})
 		case "/compute/v1/projects/writer-prod/global/networks":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "net-1", "name": "default", "selfLink": "projects/writer-prod/global/networks/default", "description": "default network", "autoCreateSubnetworks": false, "routingConfig": map[string]string{"routingMode": "REGIONAL"}, "labels": map[string]string{"env": "prod"}}}})
+		case "/compute/v1/projects/writer-prod/global/routes":
+			if got := r.URL.Query().Get("maxResults"); got != "10" {
+				t.Fatalf("compute routes maxResults = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "route-1", "name": "default-route-internet", "selfLink": "projects/writer-prod/global/routes/default-route-internet", "description": "default internet route", "network": "projects/writer-prod/global/networks/default", "destRange": "0.0.0.0/0", "priority": 1000, "tags": []string{"web"}, "nextHopGateway": "projects/writer-prod/global/gateways/default-internet-gateway", "routeType": "STATIC", "routeStatus": "ACTIVE", "creationTimestamp": "2026-04-23T00:00:00Z"}}})
 		case "/compute/v1/projects/writer-prod/global/firewalls":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "fw-1", "name": "allow-web", "network": "global/networks/default", "direction": "INGRESS", "sourceRanges": []string{"0.0.0.0/0"}, "allowed": []map[string]any{{"IPProtocol": "tcp", "ports": []string{"443"}}}}}})
 		case "/v1/groups:lookup":
