@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -288,7 +289,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set", attr: "records_count", want: "1"},
 		{family: familyGKENodePool, kind: "gcp.gke_node_pool", attr: "auto_upgrade", want: "true"},
 		{family: familyGCSBucket, kind: "gcp.gcs_bucket", attr: "versioning_enabled", want: "true"},
-		{family: familyGCSObject, kind: "gcp.gcs_object", attr: "acl_readers", want: "allUsers"},
+		{family: familyGCSObject, kind: "gcp.gcs_object", attr: "content_findings", want: "pii,secret"},
 		{family: familySecret, kind: "gcp.secret_manager_secret", attr: "rotation_enabled", want: "true"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key", attr: "protection_level", want: "HSM"},
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink", attr: "exclusions_count", want: "1"},
@@ -333,9 +334,9 @@ func TestReadLiveGCSObjectPaginatesWithinBucket(t *testing.T) {
 			}
 			switch r.URL.Query().Get("pageToken") {
 			case "":
-				writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data/first.txt/1", "name": "first.txt", "bucket": "data", "generation": "1"}}, "nextPageToken": "objects-2"})
+				writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data/first.bin/1", "name": "first.bin", "bucket": "data", "generation": "1", "contentType": "application/octet-stream"}}, "nextPageToken": "objects-2"})
 			case "objects-2":
-				writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data/second.txt/2", "name": "second.txt", "bucket": "data", "generation": "2"}}})
+				writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data/second.bin/2", "name": "second.bin", "bucket": "data", "generation": "2", "contentType": "application/octet-stream"}}})
 			default:
 				t.Fatalf("unexpected storage object pageToken %q", r.URL.Query().Get("pageToken"))
 			}
@@ -361,11 +362,49 @@ func TestReadLiveGCSObjectPaginatesWithinBucket(t *testing.T) {
 	if len(pull.Events) != 2 {
 		t.Fatalf("len(events) = %d, want 2", len(pull.Events))
 	}
-	if got := pull.Events[0].Attributes["object_name"]; got != "first.txt" {
-		t.Fatalf("first object_name = %q, want first.txt", got)
+	if got := pull.Events[0].Attributes["object_name"]; got != "first.bin" {
+		t.Fatalf("first object_name = %q, want first.bin", got)
 	}
-	if got := pull.Events[1].Attributes["object_name"]; got != "second.txt" {
-		t.Fatalf("second object_name = %q, want second.txt", got)
+	if got := pull.Events[1].Attributes["object_name"]; got != "second.bin" {
+		t.Fatalf("second object_name = %q, want second.bin", got)
+	}
+}
+
+func TestReadLiveGCSObjectInspectsContentWithoutPersistingSample(t *testing.T) {
+	server := httptest.NewServer(newGCPAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyGCSObject,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyGCSObject, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Attributes["content_inspected"]; got != "true" {
+		t.Fatalf("content_inspected = %q, want true", got)
+	}
+	if got := event.Attributes["content_findings"]; got != "pii,secret" {
+		t.Fatalf("content_findings = %q, want pii,secret", got)
+	}
+	if got := event.Attributes["content_contains_secrets"]; got != "true" {
+		t.Fatalf("content_contains_secrets = %q, want true", got)
+	}
+	if got := event.Attributes["content_inspection_truncated"]; got != "false" {
+		t.Fatalf("content_inspection_truncated = %q, want false", got)
+	}
+	payload := string(event.Payload)
+	if strings.Contains(payload, "abcdefghijklmnopqrstuvwxyz") || strings.Contains(payload, "admin@example.com") {
+		t.Fatalf("payload persisted raw object content sample: %s", payload)
 	}
 }
 
@@ -807,6 +846,20 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("storage object projection = %q, want full", got)
 			}
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data/training.csv/1770000000000000", "name": "training.csv", "bucket": "data", "generation": "1770000000000000", "contentType": "text/csv", "storageClass": "STANDARD", "size": "42", "kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/storage", "timeCreated": "2026-04-23T00:00:00Z", "updated": "2026-04-24T00:00:00Z", "metadata": map[string]string{"data_classification": "restricted", "pii": "true"}, "acl": []map[string]string{{"entity": "allUsers", "role": "READER"}, {"entity": "user-ml-admin@writer.com", "role": "OWNER", "email": "ml-admin@writer.com"}}}}})
+		case "/storage/v1/b/data/o/training.csv":
+			if got := r.URL.Query().Get("alt"); got != "media" {
+				t.Fatalf("storage object media alt = %q, want media", got)
+			}
+			if got := r.URL.Query().Get("generation"); got != "1770000000000000" {
+				t.Fatalf("storage object media generation = %q, want 1770000000000000", got)
+			}
+			if got := r.Header.Get("Range"); got != "bytes=0-65535" {
+				t.Fatalf("storage object media Range = %q, want bytes=0-65535", got)
+			}
+			w.Header().Set("Content-Type", "text/csv")
+			w.Header().Set("Content-Range", "bytes 0-64/65")
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write([]byte("email,token\nadmin@example.com,api_key=abcdefghijklmnopqrstuvwxyz\n"))
 		case "/v1/projects/writer-prod/secrets":
 			writeJSON(t, w, map[string]any{"secrets": []map[string]any{{"name": "projects/writer-prod/secrets/api-key", "labels": map[string]string{"env": "prod"}, "expireTime": "2027-04-23T00:00:00Z", "replication": map[string]any{"userManaged": map[string]any{"replicas": []map[string]any{{"location": "us-central1", "customerManagedEncryption": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/secrets"}}}}}, "rotation": map[string]string{"nextRotationTime": "2026-05-23T00:00:00Z", "rotationPeriod": "2592000s"}}}})
 		case "/v1/projects/writer-prod/locations/us/keyRings/prod/cryptoKeys":

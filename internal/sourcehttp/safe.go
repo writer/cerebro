@@ -1,6 +1,7 @@
 package sourcehttp
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -156,6 +157,26 @@ func NormalizeRequestPath(sourceID string, raw string) (string, error) {
 		return "", fmt.Errorf("%s request path must start with /", sourceID)
 	}
 	return value, nil
+}
+
+func NewRequest(ctx context.Context, sourceID string, baseURL string, allowLoopback bool, method string, requestPath string, query url.Values, body []byte) (*http.Request, error) {
+	baseURL, _, err := NormalizeBaseURL(sourceID, baseURL, allowLoopback)
+	if err != nil {
+		return nil, err
+	}
+	path, err := NormalizeRequestPath(sourceID, requestPath)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build request %s: %w", requestPath, err)
+	}
+	return req, nil
 }
 
 func SameOriginAbsoluteURL(sourceID string, baseURL string, raw string) (string, error) {
@@ -387,6 +408,24 @@ func IsLoopbackHost(host string) bool {
 
 func ReadLimitedBody(body io.Reader) ([]byte, error) {
 	return ReadLimitedBodyWithLimit(body, MaxBodyBytes)
+}
+
+func ResponseBodyTruncated(statusCode int, contentRange string, bytesRead int, maxBytes int) bool {
+	if maxBytes <= 0 || statusCode != http.StatusPartialContent {
+		return false
+	}
+	contentRange = strings.TrimSpace(contentRange)
+	slash := strings.LastIndex(contentRange, "/")
+	if slash >= 0 && slash+1 < len(contentRange) {
+		totalText := strings.TrimSpace(contentRange[slash+1:])
+		if totalText != "*" {
+			total, err := strconv.ParseInt(totalText, 10, 64)
+			if err == nil {
+				return total > int64(bytesRead)
+			}
+		}
+	}
+	return bytesRead >= maxBytes
 }
 
 func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, options RetryOptions) (ResponseBody, error) {

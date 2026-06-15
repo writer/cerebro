@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -94,6 +95,29 @@ func TestSameOriginAbsoluteURLRejectsHostChanges(t *testing.T) {
 	}
 }
 
+func TestNewRequestNormalizesOriginPathQueryAndBody(t *testing.T) {
+	req, err := NewRequest(context.Background(), "test_source", "https://api.example.com", false, http.MethodPost, "/v1/items", url.Values{"page": {"1"}}, []byte("payload"))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	if got := req.URL.String(); got != "https://api.example.com/v1/items?page=1" {
+		t.Fatalf("URL = %q, want normalized endpoint with query", got)
+	}
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(request body) error = %v", err)
+	}
+	if string(body) != "payload" {
+		t.Fatalf("body = %q, want payload", string(body))
+	}
+	if _, err := NewRequest(context.Background(), "test_source", "https://127.0.0.1", false, http.MethodGet, "/v1/items", nil, nil); err == nil {
+		t.Fatal("NewRequest() error = nil, want unsafe base_url rejection")
+	}
+	if _, err := NewRequest(context.Background(), "test_source", "https://api.example.com", false, http.MethodGet, "https://evil.example/v1", nil, nil); err == nil {
+		t.Fatal("NewRequest() error = nil, want absolute request path rejection")
+	}
+}
+
 func TestReadLimitedBodyRejectsOversizedResponse(t *testing.T) {
 	_, err := ReadLimitedBody(strings.NewReader(strings.Repeat("x", MaxBodyBytes+1)))
 	if err == nil {
@@ -105,6 +129,28 @@ func TestReadLimitedBodyWithLimitRejectsCustomOversizedResponse(t *testing.T) {
 	_, err := ReadLimitedBodyWithLimit(strings.NewReader("abcdef"), 5)
 	if err == nil {
 		t.Fatal("ReadLimitedBodyWithLimit() error = nil, want oversized response error")
+	}
+}
+
+func TestResponseBodyTruncatedUsesContentRangeTotal(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		statusCode   int
+		contentRange string
+		bytesRead    int
+		maxBytes     int
+		want         bool
+	}{
+		{name: "complete partial response", statusCode: http.StatusPartialContent, contentRange: "bytes 0-64/65", bytesRead: 65, maxBytes: 65536, want: false},
+		{name: "truncated partial response", statusCode: http.StatusPartialContent, contentRange: "bytes 0-65535/70000", bytesRead: 65536, maxBytes: 65536, want: true},
+		{name: "non partial response", statusCode: http.StatusOK, contentRange: "", bytesRead: 65536, maxBytes: 65536, want: false},
+		{name: "unknown total falls back to max", statusCode: http.StatusPartialContent, contentRange: "bytes 0-65535/*", bytesRead: 65536, maxBytes: 65536, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ResponseBodyTruncated(tt.statusCode, tt.contentRange, tt.bytesRead, tt.maxBytes); got != tt.want {
+				t.Fatalf("ResponseBodyTruncated() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

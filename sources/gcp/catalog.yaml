@@ -205,9 +205,8 @@ coverage_contract:
       type: entity_family
       title: Cloud Storage objects
       families: [gcs_object]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [object content inspection]
     - id: gke_cluster
       type: entity_family
       title: GKE clusters
