@@ -111,13 +111,14 @@ These reads stay generic and source-agnostic. Rules populate persisted findings;
 
 ### 6. Reporting
 
-Reports such as `finding-summary` operate on persisted findings instead of on raw source logic.
+Reports such as `finding-summary`, `risk-delta`, and `risk-action-plan` operate on persisted findings instead of on raw source logic. `risk-action-plan` ranks remediation candidates by reusing the bounded `risk-delta` simulation path; it recommends next-best actions without executing remediation or introducing a new store.
 
 Why:
 
 - reporting should summarize durable state
 - rules should emit findings
 - reports should consume findings
+- action planning should remain an explainable report over current findings and graph evidence
 
 That separation keeps the platform layered cleanly.
 
