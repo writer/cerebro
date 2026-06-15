@@ -51,3 +51,223 @@ runtime_families:
   - service_account
   - service_account_impersonation
   - service_account_key
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: gcp
+  dimensions:
+    - id: aiplatform_dataset
+      type: entity_family
+      title: Vertex AI datasets
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [dataset IAM and public sharing detail]
+    - id: aiplatform_endpoint
+      type: entity_family
+      title: Vertex AI endpoints
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [endpoint public access and deployed model detail]
+    - id: artifact_registry_repository
+      type: entity_family
+      title: Artifact Registry repositories
+      families: [artifact_registry_repository]
+      support: supported
+      high_value: true
+    - id: artifact_registry_image
+      type: entity_family
+      title: Artifact Registry images
+      families: [artifact_registry_image]
+      support: supported
+      high_value: true
+    - id: audit
+      type: audit_event
+      title: GCP audit logs
+      families: [audit]
+      support: supported
+      high_value: true
+    - id: bigquery_dataset
+      type: entity_family
+      title: BigQuery datasets
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [dataset ACL and CMEK detail]
+    - id: cloud_function
+      type: entity_family
+      title: Cloud Functions
+      families: [cloud_function]
+      support: supported
+      high_value: true
+    - id: cloud_ids_endpoint
+      type: entity_family
+      title: Cloud IDS endpoints
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [notification configuration and threat log routing detail]
+    - id: cloud_run_revision
+      type: entity_family
+      title: Cloud Run revisions
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [revision service account and image detail]
+    - id: cloud_run_service
+      type: entity_family
+      title: Cloud Run services
+      families: [cloud_run_service]
+      support: supported
+      high_value: true
+    - id: cloud_sql_instance
+      type: entity_family
+      title: Cloud SQL instances
+      families: [cloud_sql_instance]
+      support: supported
+      high_value: true
+    - id: compute_disk
+      type: entity_family
+      title: Compute disks
+      families: [compute_disk]
+      support: supported
+      high_value: true
+    - id: compute_firewall
+      type: entity_family
+      title: Compute firewall rules
+      families: [compute_firewall]
+      support: supported
+      high_value: true
+    - id: compute_instance
+      type: entity_family
+      title: Compute instances
+      families: [compute_instance]
+      support: supported
+      high_value: true
+    - id: compute_network
+      type: entity_family
+      title: Compute networks
+      families: [compute_network]
+      support: supported
+      high_value: true
+    - id: compute_subnetwork
+      type: entity_family
+      title: Compute subnetworks
+      families: [compute_subnetwork]
+      support: supported
+      high_value: true
+    - id: container_vulnerability
+      type: entity_family
+      title: Container image vulnerabilities
+      families: [artifact_registry_image]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [per-CVE occurrence severity, active state, discovered_at, fixed package versions]
+    - id: container_registry
+      type: entity_family
+      title: Container Registry registries
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [legacy Container Registry repository detail]
+    - id: dns_managed_zone
+      type: entity_family
+      title: Cloud DNS managed zones
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [DNSSEC and recordset detail]
+    - id: gcs_bucket
+      type: entity_family
+      title: Cloud Storage buckets
+      families: [gcs_bucket]
+      support: supported
+      high_value: true
+    - id: gcs_object
+      type: entity_family
+      title: Cloud Storage objects
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [object-level ACLs and content inspection]
+    - id: gke_cluster
+      type: entity_family
+      title: GKE clusters
+      families: [gke_cluster]
+      support: supported
+      high_value: true
+    - id: gke_node_pool
+      type: entity_family
+      title: GKE node pools
+      families: [gke_cluster]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [dedicated node pool entities and node config detail]
+    - id: group
+      type: entity_family
+      title: Cloud Identity groups
+      families: [group]
+      support: supported
+      high_value: true
+    - id: group_membership
+      type: relationship
+      title: Cloud Identity group memberships
+      families: [group_membership]
+      support: supported
+      high_value: true
+    - id: iam_role_assignment
+      type: app_entitlement
+      title: IAM policy bindings
+      families: [iam_role_assignment]
+      support: supported
+      high_value: true
+    - id: kms_key
+      type: entity_family
+      title: Cloud KMS keys
+      families: [kms_key]
+      support: supported
+      high_value: true
+    - id: logging_project_sink
+      type: entity_family
+      title: Cloud Logging project sinks
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [sink inclusion and exclusion filters]
+    - id: resourcemanager_project
+      type: entity_family
+      title: Resource Manager projects
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [project-level service and org-policy detail]
+    - id: resource_exposure
+      type: relationship
+      title: GCP public resource exposure
+      families: [resource_exposure]
+      support: supported
+      high_value: true
+    - id: secret_manager_secret
+      type: entity_family
+      title: Secret Manager secrets
+      families: [secret_manager_secret]
+      support: supported
+      high_value: true
+    - id: service_account
+      type: entity_family
+      title: Service accounts
+      families: [service_account]
+      support: supported
+      high_value: true
+    - id: service_account_impersonation
+      type: relationship
+      title: Service account impersonation bindings
+      families: [service_account_impersonation]
+      support: supported
+      high_value: true
+    - id: service_account_key
+      type: entity_family
+      title: Service account keys
+      families: [service_account_key]
+      support: supported
+      high_value: true

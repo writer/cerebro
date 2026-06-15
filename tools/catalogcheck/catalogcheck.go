@@ -50,6 +50,11 @@ func checkRepository(root string) ([]issue, error) {
 		return nil, err
 	}
 	issues = append(issues, sourceIssues...)
+	coverageIssues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, coverageIssues...)
 	issues = append(issues, checkFindingRuleMetadata()...)
 	issues = append(issues, checkCorrelationCatalog()...)
 	sort.Slice(issues, func(i int, j int) bool {

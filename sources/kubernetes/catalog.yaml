@@ -76,3 +76,76 @@ event_contracts:
       - service_account_name
       - cloud_provider
       - target_id
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: kubernetes
+  dimensions:
+    - id: clusters
+      type: entity_family
+      title: Kubernetes clusters
+      families: [cluster]
+      support: supported
+      high_value: true
+    - id: namespaces
+      type: entity_family
+      title: Kubernetes namespaces
+      families: [namespace]
+      support: supported
+      high_value: true
+    - id: ingresses
+      type: entity_family
+      title: Kubernetes ingresses
+      families: [workload]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [dedicated ingress entities and TLS rule expansion]
+    - id: nodes
+      type: entity_family
+      title: Kubernetes nodes
+      families: [cluster]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [dedicated node entities and kubelet posture fields]
+    - id: pods
+      type: entity_family
+      title: Kubernetes pods
+      families: [pod]
+      support: supported
+      high_value: true
+    - id: service_accounts
+      type: entity_family
+      title: Kubernetes service accounts
+      families: [service_account]
+      support: supported
+      high_value: true
+    - id: services
+      type: entity_family
+      title: Kubernetes services
+      families: [workload]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [dedicated service entities and external IP details]
+    - id: workloads
+      type: entity_family
+      title: Kubernetes workloads
+      families: [workload]
+      support: supported
+      high_value: true
+    - id: workload_identity_bindings
+      type: relationship
+      title: Kubernetes workload identity bindings
+      families: [workload_identity_binding]
+      support: supported
+      high_value: true
+    - id: rbac_roles
+      type: app_entitlement
+      title: Kubernetes RBAC roles
+      support: planned
+      high_value: true
+      known_unsupported_fields: [Role and ClusterRole rules]
+    - id: rbac_bindings
+      type: relationship
+      title: Kubernetes RBAC bindings
+      support: planned
+      high_value: true
+      known_unsupported_fields: [RoleBinding and ClusterRoleBinding subjects]
