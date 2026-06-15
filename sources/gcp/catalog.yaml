@@ -17,6 +17,7 @@ emitted_kinds:
   - gcp.cloud_sql_instance
   - gcp.container_registry
   - gcp.container_vulnerability
+  - gcp.compute_backend_service
   - gcp.compute_disk
   - gcp.compute_firewall
   - gcp.compute_forwarding_rule
@@ -62,6 +63,7 @@ runtime_families:
   - cloud_sql_instance
   - container_registry
   - container_vulnerability
+  - compute_backend_service
   - compute_disk
   - compute_firewall
   - compute_forwarding_rule
@@ -165,6 +167,12 @@ coverage_contract:
       type: entity_family
       title: Cloud SQL instances
       families: [cloud_sql_instance]
+      support: supported
+      high_value: true
+    - id: compute_backend_service
+      type: entity_family
+      title: Compute backend services
+      families: [compute_backend_service]
       support: supported
       high_value: true
     - id: compute_disk

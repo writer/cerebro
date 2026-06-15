@@ -80,6 +80,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance"},
 		{family: familyContainerRegistry, kind: "gcp.container_registry"},
 		{family: familyContainerVuln, kind: "gcp.container_vulnerability"},
+		{family: familyComputeBackendService, kind: "gcp.compute_backend_service"},
 		{family: familyComputeDisk, kind: "gcp.compute_disk"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall"},
 		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule"},
@@ -289,6 +290,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance", attr: "backup_enabled", want: "true"},
 		{family: familyContainerRegistry, kind: "gcp.container_registry", attr: "iam_bindings_count", want: "1"},
 		{family: familyContainerVuln, kind: "gcp.container_vulnerability", attr: "vulnerability_id", want: "CVE-2026-4242"},
+		{family: familyComputeBackendService, kind: "gcp.compute_backend_service", attr: "health_checks_count", want: "1"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
@@ -816,6 +818,11 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"id": "writer-prod:analytics", "selfLink": "https://bigquery.googleapis.com/bigquery/v2/projects/writer-prod/datasets/analytics", "datasetReference": map[string]string{"projectId": "writer-prod", "datasetId": "analytics"}, "friendlyName": "Analytics", "description": "prod analytics dataset", "location": "US", "labels": map[string]string{"env": "prod"}, "access": []map[string]string{{"role": "READER", "specialGroup": "projectReaders"}, {"role": "OWNER", "userByEmail": "data-owner@writer.com"}}, "defaultEncryptionConfiguration": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"}, "creationTime": "1770000000000", "lastModifiedTime": "1770003600000"})
 		case "/compute/v1/projects/writer-prod/aggregated/instances":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"instances": []map[string]any{{"id": "123456789", "name": "web-1", "zone": "projects/writer-prod/zones/us-central1-a", "machineType": "projects/writer-prod/zones/us-central1-a/machineTypes/e2-medium", "status": "RUNNING", "labels": map[string]string{"env": "prod"}, "tags": map[string]any{"items": []string{"web"}}, "networkInterfaces": []map[string]any{{"network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "networkIP": "10.0.0.5", "accessConfigs": []map[string]any{{"type": "ONE_TO_ONE_NAT", "natIP": "34.1.2.3"}}}}, "serviceAccounts": []map[string]any{{"email": "vm@writer-prod.iam.gserviceaccount.com"}}, "disks": []map[string]any{{"boot": true, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vm"}}}}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/backendServices":
+			if got := r.URL.Query().Get("maxResults"); got != "10" {
+				t.Fatalf("backend services maxResults = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"backendServices": []map[string]any{{"id": "bs-1", "name": "prod-backend", "selfLink": "projects/writer-prod/global/backendServices/prod-backend", "description": "prod https backend", "protocol": "HTTPS", "portName": "https", "loadBalancingScheme": "EXTERNAL_MANAGED", "sessionAffinity": "NONE", "localityLbPolicy": "ROUND_ROBIN", "timeoutSec": 30, "enableCDN": true, "healthChecks": []string{"projects/writer-prod/global/healthChecks/prod-hc"}, "backends": []map[string]any{{"group": "projects/writer-prod/zones/us-central1-a/instanceGroups/prod-mig", "balancingMode": "UTILIZATION", "capacityScaler": 1.0, "maxUtilization": 0.8}}, "connectionDraining": map[string]int{"drainingTimeoutSec": 300}, "logConfig": map[string]any{"enable": true, "sampleRate": 1.0}, "iap": map[string]bool{"enabled": true}, "securityPolicy": "projects/writer-prod/global/securityPolicies/prod-armor", "network": "projects/writer-prod/global/networks/default", "customRequestHeaders": []string{"X-Forwarded-Proto:{client_protocol}"}, "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/subnetworks":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"subnetworks": []map[string]any{{"id": "subnet-1", "name": "default", "selfLink": "projects/writer-prod/regions/us-central1/subnetworks/default", "network": "projects/writer-prod/global/networks/default", "region": "projects/writer-prod/regions/us-central1", "ipCidrRange": "10.0.0.0/24", "privateIpGoogleAccess": true, "purpose": "PRIVATE", "stackType": "IPV4_ONLY", "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/disks":
