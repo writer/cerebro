@@ -421,6 +421,48 @@ type ComputeNetworkRoutingConfig struct {
 	RoutingMode string `json:"routingMode"`
 }
 
+type ComputeRouteRecord struct {
+	ID                            string          `json:"id"`
+	Name                          string          `json:"name"`
+	SelfLink                      string          `json:"selfLink"`
+	Description                   string          `json:"description"`
+	Network                       string          `json:"network"`
+	DestRange                     string          `json:"destRange"`
+	Priority                      int             `json:"priority"`
+	Tags                          []string        `json:"tags"`
+	NextHopGateway                string          `json:"nextHopGateway"`
+	NextHopInstance               string          `json:"nextHopInstance"`
+	NextHopIP                     string          `json:"nextHopIp"`
+	NextHopVPNGateway             string          `json:"nextHopVpnGateway"`
+	NextHopVPNTunnel              string          `json:"nextHopVpnTunnel"`
+	NextHopILB                    string          `json:"nextHopIlb"`
+	NextHopNetwork                string          `json:"nextHopNetwork"`
+	NextHopPeering                string          `json:"nextHopPeering"`
+	NextHopHub                    string          `json:"nextHopHub"`
+	NextHopInterconnectAttachment string          `json:"nextHopInterconnectAttachment"`
+	RouteType                     string          `json:"routeType"`
+	RouteStatus                   string          `json:"routeStatus"`
+	NextHopOrigin                 string          `json:"nextHopOrigin"`
+	NextHopMed                    int             `json:"nextHopMed"`
+	CreationTimestamp             string          `json:"creationTimestamp"`
+	Raw                           json.RawMessage `json:"-"`
+}
+
+type ComputeSubnetworkRecord struct {
+	ID                    string            `json:"id"`
+	Name                  string            `json:"name"`
+	SelfLink              string            `json:"selfLink"`
+	Network               string            `json:"network"`
+	Region                string            `json:"region"`
+	IPCIDRRange           string            `json:"ipCidrRange"`
+	PrivateIPGoogleAccess bool              `json:"privateIpGoogleAccess"`
+	Purpose               string            `json:"purpose"`
+	Role                  string            `json:"role"`
+	StackType             string            `json:"stackType"`
+	Labels                map[string]string `json:"labels"`
+	Raw                   json.RawMessage   `json:"-"`
+}
+
 type ComputeDiskRecord struct {
 	ID                string                   `json:"id"`
 	Name              string                   `json:"name"`
@@ -1520,6 +1562,57 @@ func ComputeNetworkEvent(settings Settings, record ComputeNetworkRecord) (*primi
 	return sourceEvent(settings, "gcp-compute-network-"+resourceID, "gcp.compute_network", "gcp/compute_network/v1", payload, attributes)
 }
 
+func ComputeRouteEvent(settings Settings, record ComputeRouteRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	nextHopType, nextHopURL, nextHop := computeRouteNextHop(record)
+	defaultRoute := record.DestRange == "0.0.0.0/0" || record.DestRange == "::/0"
+	internetEgress := defaultRoute && strings.Contains(nextHopURL, "default-internet-gateway")
+	attributes := cloudResourceAttributes(settings, "compute_route", resourceID, record.Name, "compute_route", "global", nil)
+	attributes["description"] = record.Description
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["destination_range"] = record.DestRange
+	attributes["dest_range"] = record.DestRange
+	attributes["priority"] = strconv.Itoa(record.Priority)
+	attributes["route_type"] = record.RouteType
+	attributes["route_status"] = record.RouteStatus
+	attributes["status"] = record.RouteStatus
+	attributes["target_tags"] = strings.Join(record.Tags, ",")
+	attributes["next_hop_type"] = nextHopType
+	attributes["next_hop"] = nextHop
+	attributes["next_hop_url"] = nextHopURL
+	attributes["next_hop_ip"] = record.NextHopIP
+	attributes["next_hop_origin"] = record.NextHopOrigin
+	if record.NextHopMed != 0 {
+		attributes["next_hop_med"] = strconv.Itoa(record.NextHopMed)
+	}
+	attributes["default_route"] = boolString(defaultRoute)
+	attributes["internet_egress"] = boolString(internetEgress)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-route-"+resourceID, "gcp.compute_route", "gcp/compute_route/v1", payload, attributes)
+}
+
+func ComputeSubnetworkEvent(settings Settings, record ComputeSubnetworkRecord) (*primitives.Event, error) {
+	location := lastPathSegment(record.Region)
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	attributes := cloudResourceAttributes(settings, "compute_subnetwork", resourceID, record.Name, "compute_subnetwork", location, record.Labels)
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["ip_cidr_range"] = record.IPCIDRRange
+	attributes["private_ip_google_access"] = boolString(record.PrivateIPGoogleAccess)
+	attributes["purpose"] = record.Purpose
+	attributes["role"] = record.Role
+	attributes["stack_type"] = record.StackType
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-subnetwork-"+resourceID, "gcp.compute_subnetwork", "gcp/compute_subnetwork/v1", payload, attributes)
+}
+
 func ComputeDiskEvent(settings Settings, record ComputeDiskRecord) (*primitives.Event, error) {
 	location := lastPathSegment(firstNonEmpty(record.Zone, record.Region))
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
@@ -2208,6 +2301,31 @@ func cloudSchedulerTarget(record CloudSchedulerJobRecord) cloudSchedulerTargetSu
 		return cloudSchedulerTargetSummary{Type: "app_engine", Target: target, URI: record.AppEngineHTTPTarget.RelativeURI, Method: record.AppEngineHTTPTarget.HTTPMethod}
 	}
 	return cloudSchedulerTargetSummary{}
+}
+
+func computeRouteNextHop(record ComputeRouteRecord) (string, string, string) {
+	for _, candidate := range []struct {
+		kind string
+		url  string
+	}{
+		{kind: "gateway", url: record.NextHopGateway},
+		{kind: "instance", url: record.NextHopInstance},
+		{kind: "vpn_gateway", url: record.NextHopVPNGateway},
+		{kind: "vpn_tunnel", url: record.NextHopVPNTunnel},
+		{kind: "ilb", url: record.NextHopILB},
+		{kind: "network", url: record.NextHopNetwork},
+		{kind: "peering", url: record.NextHopPeering},
+		{kind: "hub", url: record.NextHopHub},
+		{kind: "interconnect_attachment", url: record.NextHopInterconnectAttachment},
+	} {
+		if candidate.url != "" {
+			return candidate.kind, candidate.url, lastPathSegment(candidate.url)
+		}
+	}
+	if record.NextHopIP != "" {
+		return "ip", record.NextHopIP, record.NextHopIP
+	}
+	return "", "", ""
 }
 
 type iamSummary struct {

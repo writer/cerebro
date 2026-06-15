@@ -53,6 +53,7 @@ const (
 	familyComputeFirewall                        = "compute_firewall"
 	familyComputeInstance                        = "compute_instance"
 	familyComputeNetwork                         = "compute_network"
+	familyComputeRoute                           = "compute_route"
 	familyComputeSubnetwork                      = "compute_subnetwork"
 	familyDNSManagedZone                         = "dns_managed_zone"
 	familyDNSRecordSet                           = "dns_record_set"
@@ -225,21 +226,6 @@ type computeDisk struct {
 
 type diskEncryptionKey struct {
 	KMSKeyName string `json:"kmsKeyName"`
-}
-
-type computeSubnetworkRecord struct {
-	ID                    string            `json:"id"`
-	Name                  string            `json:"name"`
-	SelfLink              string            `json:"selfLink"`
-	Network               string            `json:"network"`
-	Region                string            `json:"region"`
-	IPCIDRRange           string            `json:"ipCidrRange"`
-	PrivateIPGoogleAccess bool              `json:"privateIpGoogleAccess"`
-	Purpose               string            `json:"purpose"`
-	Role                  string            `json:"role"`
-	StackType             string            `json:"stackType"`
-	Labels                map[string]string `json:"labels"`
-	raw                   json.RawMessage
 }
 
 type firewallRecord struct {
@@ -471,12 +457,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_network:%s", tenantID(settings), firstNonEmpty(network.SelfLink, network.ID, network.Name)), nil
 			},
 		}),
-		gcpFamily(s, gcpFamilyOptions[computeSubnetworkRecord]{
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeRouteRecord]{Name: familyComputeRoute, Label: "gcp compute routes", List: listComputeRoutes, Event: gcpCloudEvent(gcpcloud.ComputeRouteEvent), URN: func(settings settings, route gcpcloud.ComputeRouteRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_route:%s", tenantID(settings), firstNonEmpty(route.SelfLink, route.ID, route.Name)), nil
+		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSubnetworkRecord]{
 			Name:  familyComputeSubnetwork,
 			Label: "gcp compute subnetworks",
 			List:  listComputeSubnetworks,
-			Event: computeSubnetworkEvent,
-			URN: func(settings settings, subnetwork computeSubnetworkRecord) (string, error) {
+			Event: gcpCloudEvent(gcpcloud.ComputeSubnetworkEvent),
+			URN: func(settings settings, subnetwork gcpcloud.ComputeSubnetworkRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_subnetwork:%s", tenantID(settings), firstNonEmpty(subnetwork.SelfLink, subnetwork.ID, subnetwork.Name)), nil
 			},
 		}),
@@ -757,7 +746,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -794,7 +783,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_disk, compute_firewall, compute_instance, compute_network, compute_subnetwork, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, service_usage_service, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_disk, compute_firewall, compute_instance, compute_network, compute_route, compute_subnetwork, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, service_usage_service, or service_account_key")
 	}
 	return settings, nil
 }
@@ -1056,7 +1045,21 @@ func listComputeNetworks(ctx context.Context, source *Source, settings settings,
 	return records, response.NextPageToken, err
 }
 
-func listComputeSubnetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]computeSubnetworkRecord, string, error) {
+func listComputeRoutes(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeRouteRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response pageResponse
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/routes"
+	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.Items, "gcp compute route", func(record *gcpcloud.ComputeRouteRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
+func listComputeSubnetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeSubnetworkRecord, string, error) {
 	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
 	addQuery(query, pageToken)
 	var response computeAggregatedListResponse
@@ -1065,8 +1068,8 @@ func listComputeSubnetworks(ctx context.Context, source *Source, settings settin
 		return nil, "", err
 	}
 	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.Subnetworks }, "region")
-	records, err := decodeRecords(rawRecords, "gcp compute subnetwork", func(record *computeSubnetworkRecord, raw json.RawMessage) {
-		record.raw = append(json.RawMessage(nil), raw...)
+	records, err := decodeRecords(rawRecords, "gcp compute subnetwork", func(record *gcpcloud.ComputeSubnetworkRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
 }
@@ -1752,24 +1755,6 @@ func computeInstanceEvent(settings settings, record computeInstanceRecord) (*pri
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-compute-instance-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_instance", "gcp/compute_instance/v1", payload, attributes, time.Now().UTC())
-}
-
-func computeSubnetworkEvent(settings settings, record computeSubnetworkRecord) (*primitives.Event, error) {
-	location := shortLocation(record.Region)
-	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
-	attributes := cloudResourceAttributes(settings, familyComputeSubnetwork, resourceID, record.Name, "compute_subnetwork", location, record.Labels)
-	attributes["network"] = lastPathSegment(record.Network)
-	attributes["network_url"] = record.Network
-	attributes["ip_cidr_range"] = record.IPCIDRRange
-	attributes["private_ip_google_access"] = boolString(record.PrivateIPGoogleAccess)
-	attributes["purpose"] = record.Purpose
-	attributes["role"] = record.Role
-	attributes["stack_type"] = record.StackType
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "gcp-compute-subnetwork-"+resourceID, "gcp.compute_subnetwork", "gcp/compute_subnetwork/v1", payload, attributes, time.Now().UTC())
 }
 
 func computeFirewallEvent(settings settings, record firewallRecord) (*primitives.Event, error) {

@@ -21,6 +21,7 @@ emitted_kinds:
   - gcp.compute_firewall
   - gcp.compute_instance
   - gcp.compute_network
+  - gcp.compute_route
   - gcp.compute_subnetwork
   - gcp.dns_managed_zone
   - gcp.dns_record_set
@@ -64,6 +65,7 @@ runtime_families:
   - compute_firewall
   - compute_instance
   - compute_network
+  - compute_route
   - compute_subnetwork
   - dns_managed_zone
   - dns_record_set
@@ -185,6 +187,12 @@ coverage_contract:
       type: entity_family
       title: Compute networks
       families: [compute_network]
+      support: supported
+      high_value: true
+    - id: compute_route
+      type: entity_family
+      title: Compute routes
+      families: [compute_route]
       support: supported
       high_value: true
     - id: compute_subnetwork
