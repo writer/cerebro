@@ -176,6 +176,22 @@ func TestAnalyzeDeduplicatesStoredAndRecomputedRiskFactorsPerFinding(t *testing.
 	t.Fatalf("risk factors = %#v, want external_exposure factor", factors)
 }
 
+func TestAddRiskFactorCountsUniqueEvidenceRefs(t *testing.T) {
+	seed := newAggregatedSeed("candidate", CandidateSeed{})
+	seed.addRiskFactor(ports.FindingRiskFactor{
+		FactorID:     "external_exposure",
+		EvidenceRefs: []string{"attribute:internet_exposed", " attribute:internet_exposed ", "attribute:public"},
+	})
+
+	if seed.EvidenceRefCount != 2 {
+		t.Fatalf("EvidenceRefCount = %d, want 2 unique evidence refs", seed.EvidenceRefCount)
+	}
+	factor := seed.RiskFactors["external_exposure"]
+	if factor == nil || len(factor.EvidenceRefs) != 2 {
+		t.Fatalf("factor evidence refs = %#v, want two unique refs", factor)
+	}
+}
+
 func TestAnalyzeCanIncludeUnscoredPlanningBlockers(t *testing.T) {
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 	plan := Analyze([]*ports.FindingRecord{{

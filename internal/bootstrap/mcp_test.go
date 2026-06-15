@@ -1509,6 +1509,88 @@ func TestMCPRiskActionsListAndExplain(t *testing.T) {
 	}
 }
 
+func TestMCPRiskActionsDerivesTenantFromRuntimeID(t *testing.T) {
+	now := time.Now().UTC()
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws": {Id: "writer-aws", SourceId: "aws", TenantId: "writer"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"cloud-public-prod-secrets": {
+				ID:           "cloud-public-prod-secrets",
+				TenantID:     "writer",
+				RuntimeID:    "writer-aws",
+				RuleID:       "cloud-public-resource-exposure",
+				Title:        "Cloud Public Resource Exposure",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				FindingRisk: ports.FindingRisk{
+					RiskScore:       90,
+					ConfidenceScore: 92,
+					RiskReasons:     []string{"external_exposure"},
+					RiskFactors: []ports.FindingRiskFactor{
+						{FactorID: "external_exposure", Category: "likelihood", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:internet_exposed"}},
+					},
+				},
+				Attributes: map[string]string{
+					"action":               "public_network_ingress",
+					"internet_exposed":     "true",
+					"primary_resource_urn": "urn:cerebro:writer:aws_secret_store:prod-secrets",
+					"resource_name":        "prod-secrets",
+				},
+				LastObservedAt: now,
+			},
+		},
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			AllowedTenants: []string{"writer"},
+			APIKeys: []config.APIKey{{
+				Key:       "test-key",
+				Principal: "tester",
+			}},
+		},
+	}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.risk.actions.list",
+			"arguments": map[string]any{
+				"runtime_id": "writer-aws",
+				"status":     "open",
+				"limit":      5,
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("risk.actions.list error = %#v", response["error"])
+	}
+	if response["result"].(map[string]any)["isError"] == true {
+		t.Fatalf("risk.actions.list tool error = %#v", response["result"])
+	}
+	content := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	plan := content["plan"].(map[string]any)
+	if plan["tenant_id"] != "writer" {
+		t.Fatalf("plan.tenant_id = %#v, want writer", plan["tenant_id"])
+	}
+	candidates := content["action_candidates"].([]any)
+	if len(candidates) != 1 {
+		t.Fatalf("action_candidates = %#v, want one candidate", candidates)
+	}
+	if store.findingListRequest.TenantID != "writer" || store.findingListRequest.RuntimeID != "writer-aws" {
+		t.Fatalf("finding list request = %#v, want tenant/runtime scoped request", store.findingListRequest)
+	}
+}
+
 func TestMCPRiskSummaryCountsAllMatchingFindingsBeyondReturnedLimit(t *testing.T) {
 	now := time.Now().UTC()
 	store := &stubRuntimeStore{

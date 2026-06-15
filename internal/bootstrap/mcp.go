@@ -1022,10 +1022,26 @@ func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mc
 	}
 	if len(runtimeIDs) > 0 {
 		runtimeStore := sourceRuntimeStore(app.deps.StateStore)
+		runtimeTenantID := ""
+		mixedRuntimeTenants := false
 		for _, runtimeID := range runtimeIDs {
-			if err := authorizeSourceRuntimeIDTenant(r.Context(), runtimeStore, runtimeID); err != nil {
+			resolvedTenantID, err := sourceRuntimeTenantID(r.Context(), runtimeStore, runtimeID, false)
+			if err != nil {
 				return mcpRiskActionPlanResult{}, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 			}
+			if tenantID != "" || resolvedTenantID == "" {
+				continue
+			}
+			if runtimeTenantID == "" {
+				runtimeTenantID = resolvedTenantID
+				continue
+			}
+			if runtimeTenantID != resolvedTenantID {
+				mixedRuntimeTenants = true
+			}
+		}
+		if tenantID == "" && !mixedRuntimeTenants {
+			tenantID = runtimeTenantID
 		}
 	}
 	if tenantID == "" && len(runtimeIDs) == 0 && requiresTenantFilter(r.Context()) {

@@ -280,8 +280,12 @@ func (s *aggregatedCandidateSeed) addRiskFactor(factor ports.FindingRiskFactor) 
 	entry.Count++
 	entry.WeightTotal += factor.Weight
 	for _, ref := range factor.EvidenceRefs {
-		if strings.TrimSpace(ref) != "" {
-			entry.EvidenceRefs[strings.TrimSpace(ref)] = struct{}{}
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		if _, ok := entry.EvidenceRefs[ref]; !ok {
+			entry.EvidenceRefs[ref] = struct{}{}
 			s.EvidenceRefCount++
 		}
 	}
