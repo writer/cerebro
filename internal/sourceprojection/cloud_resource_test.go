@@ -481,6 +481,14 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			public:       true,
 		},
 		{
+			name:         "public rds db snapshot",
+			kind:         "aws.rds_db_snapshot",
+			resourceID:   "arn:aws:rds:us-east-1:123456789012:snapshot:orders-public-snapshot",
+			resourceType: "rds_db_snapshot",
+			entityType:   "aws.rds.db.snapshot",
+			public:       true,
+		},
+		{
 			name:         "datasync task",
 			kind:         "aws.datasync_task",
 			resourceID:   "arn:aws:datasync:us-east-1:123456789012:task/task-123",

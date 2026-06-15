@@ -112,6 +112,7 @@ emitted_kinds:
   - aws.opensearch_serverless_collection
   - aws.opensearch_serverless_security_policy
   - aws.public_endpoint
+  - aws.rds_db_snapshot
   - aws.rds_instance
   - aws.redshift_cluster
   - aws.resource_exposure
@@ -249,6 +250,7 @@ runtime_families:
   - opensearch_serverless_security_policy
   - organizations_root
   - public_endpoint
+  - rds_db_snapshot
   - rds_instance
   - redshift_cluster
   - resource_exposure
@@ -669,10 +671,9 @@ coverage_contract:
     - id: rds_db_snapshot
       type: entity_family
       title: AWS RDS DB snapshots
-      families: [asset_metadata]
-      support: partial
+      families: [rds_db_snapshot]
+      support: supported
       high_value: true
-      known_unsupported_fields: [public restore attributes and encryption detail]
     - id: rds_instance
       type: entity_family
       title: AWS RDS instances

@@ -781,6 +781,13 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  - localId: rds-db-snapshot
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: rds_db_snapshot
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
   - localId: rds-instance
     config:
       account_id: env:AWS_ACCOUNT_ID

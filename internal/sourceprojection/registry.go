@@ -171,6 +171,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.opensearch_serverless_collection":          awsCloudResourceProjections,
 	"aws.opensearch_serverless_security_policy":     awsCloudResourceProjections,
 	"aws.public_endpoint":                           awsPublicEndpointProjections,
+	"aws.rds_db_snapshot":                           awsCloudResourceProjections,
 	"aws.rds_instance":                              awsCloudResourceProjections,
 	"aws.redshift_cluster":                          awsCloudResourceProjections,
 	"aws.resource_exposure":                         awsResourceExposureProjections,

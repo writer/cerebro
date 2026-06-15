@@ -51,6 +51,12 @@ type awsRDSInstance struct {
 	Tags     map[string]string
 }
 
+type awsRDSDBSnapshot struct {
+	Snapshot   rdstypes.DBSnapshot
+	Attributes []rdstypes.DBSnapshotAttribute
+	Tags       map[string]string
+}
+
 type awsKMSKey struct {
 	Metadata        kmstypes.KeyMetadata
 	Tags            map[string]string
@@ -141,6 +147,32 @@ func listRDSInstances(ctx context.Context, clients awsClients, _ settings, curso
 	records := make([]awsRDSInstance, 0, len(out.DBInstances))
 	for _, instance := range out.DBInstances {
 		records = append(records, awsRDSInstance{Instance: instance, Tags: rdsTagMap(instance.TagList)})
+	}
+	return records, awssdk.ToString(out.Marker), nil
+}
+
+func listRDSDBSnapshots(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsRDSDBSnapshot, string, error) {
+	out, err := clients.rds.DescribeDBSnapshots(ctx, &rds.DescribeDBSnapshotsInput{
+		Marker:     stringPtr(cursor),
+		MaxRecords: awssdk.Int32(boundedAWSPageSizeInt32(limit, 20, 100)),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsRDSDBSnapshot, 0, len(out.DBSnapshots))
+	for _, snapshot := range out.DBSnapshots {
+		record := awsRDSDBSnapshot{Snapshot: snapshot, Tags: rdsTagMap(snapshot.TagList)}
+		snapshotID := awssdk.ToString(snapshot.DBSnapshotIdentifier)
+		if snapshotID != "" {
+			attr, err := clients.rds.DescribeDBSnapshotAttributes(ctx, &rds.DescribeDBSnapshotAttributesInput{DBSnapshotIdentifier: awssdk.String(snapshotID)})
+			if err != nil && !optionalAWSError(err, "DBSnapshotNotFound", "DBSnapshotNotFoundFault", "InvalidDBSnapshotState", "InvalidDBSnapshotStateFault", "AccessDeniedException") {
+				return nil, "", fmt.Errorf("describe rds db snapshot attributes %q for %s: %w", snapshotID, settings.accountID, err)
+			}
+			if err == nil && attr.DBSnapshotAttributesResult != nil {
+				record.Attributes = attr.DBSnapshotAttributesResult.DBSnapshotAttributes
+			}
+		}
+		records = append(records, record)
 	}
 	return records, awssdk.ToString(out.Marker), nil
 }
@@ -327,6 +359,41 @@ func rdsInstanceEvent(settings settings, record awsRDSInstance) (*primitives.Eve
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-rds-instance-"+firstNonEmpty(arn, name), "aws.rds_instance", "aws/rds_instance/v1", payload, attributes, firstTime(instance.InstanceCreateTime))
+}
+
+func rdsDBSnapshotEvent(settings settings, record awsRDSDBSnapshot) (*primitives.Event, error) {
+	snapshot := record.Snapshot
+	arn := awssdk.ToString(snapshot.DBSnapshotArn)
+	name := awssdk.ToString(snapshot.DBSnapshotIdentifier)
+	restoreValues := rdsDBSnapshotAttributeValues(record.Attributes, "restore")
+	public := slices.Contains(restoreValues, "all")
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyRDSDBSnapshot, firstNonEmpty(arn, name), name, "rds_db_snapshot", record.Tags)
+	attributes["arn"] = arn
+	attributes["allocated_storage_gib"] = int32AttrString(snapshot.AllocatedStorage)
+	attributes["availability_zone"] = awssdk.ToString(snapshot.AvailabilityZone)
+	attributes["backups"] = boolString(true)
+	attributes["db_instance_identifier"] = awssdk.ToString(snapshot.DBInstanceIdentifier)
+	attributes["db_snapshot_identifier"] = name
+	attributes["engine"] = awssdk.ToString(snapshot.Engine)
+	attributes["engine_version"] = awssdk.ToString(snapshot.EngineVersion)
+	attributes["encryption"] = boolString(awssdk.ToBool(snapshot.Encrypted))
+	attributes["internet_exposed"] = boolString(public)
+	attributes["kms_key_id"] = awssdk.ToString(snapshot.KmsKeyId)
+	attributes["percent_progress"] = int32AttrString(snapshot.PercentProgress)
+	attributes["public"] = boolString(public)
+	attributes["restore"] = strings.Join(restoreValues, ",")
+	attributes["snapshot_type"] = awssdk.ToString(snapshot.SnapshotType)
+	attributes["source_db_snapshot_identifier"] = awssdk.ToString(snapshot.SourceDBSnapshotIdentifier)
+	attributes["source_region"] = awssdk.ToString(snapshot.SourceRegion)
+	attributes["state"] = awssdk.ToString(snapshot.Status)
+	attributes["storage_encryption_type"] = string(snapshot.StorageEncryptionType)
+	attributes["storage_type"] = awssdk.ToString(snapshot.StorageType)
+	attributes["vpc_id"] = awssdk.ToString(snapshot.VpcId)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "snapshot": snapshot, "attributes": record.Attributes, "tags": record.Tags})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-rds-db-snapshot-"+firstNonEmpty(arn, name), "aws.rds_db_snapshot", "aws/rds_db_snapshot/v1", payload, attributes, firstTime(snapshot.SnapshotCreateTime, snapshot.OriginalSnapshotCreateTime))
 }
 
 func kmsKeyEvent(settings settings, record awsKMSKey) (*primitives.Event, error) {
@@ -542,6 +609,15 @@ func rdsTagMap(tags []rdstypes.Tag) map[string]string {
 		}
 	}
 	return out
+}
+
+func rdsDBSnapshotAttributeValues(attributes []rdstypes.DBSnapshotAttribute, name string) []string {
+	for _, attribute := range attributes {
+		if strings.EqualFold(strings.TrimSpace(awssdk.ToString(attribute.AttributeName)), name) {
+			return cleanStrings(attribute.AttributeValues)
+		}
+	}
+	return nil
 }
 
 func kmsTagMap(tags []kmstypes.Tag) map[string]string {
