@@ -94,6 +94,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyGroupMember, config: map[string]string{"group_key": "security@writer.com"}, kind: "gcp.group_membership"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key"},
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink"},
+		{family: familyOrgPolicy, kind: "gcp.org_policy"},
 		{family: familyPubSubSubscription, kind: "gcp.pubsub_subscription"},
 		{family: familyPubSubTopic, kind: "gcp.pubsub_topic"},
 		{family: familyResourceExposure, kind: "gcp.resource_exposure"},
@@ -103,6 +104,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation"},
 		{family: familySecret, kind: "gcp.secret_manager_secret"},
 		{family: familyAudit, kind: "gcp.audit"},
+		{family: familyServiceUsageService, kind: "gcp.service_usage_service"},
 		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -295,11 +297,13 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familySecret, kind: "gcp.secret_manager_secret", attr: "rotation_enabled", want: "true"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key", attr: "protection_level", want: "HSM"},
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink", attr: "exclusions_count", want: "1"},
+		{family: familyOrgPolicy, kind: "gcp.org_policy", attr: "constraint", want: "iam.disableServiceAccountKeyCreation"},
 		{family: familyPubSubSubscription, kind: "gcp.pubsub_subscription", attr: "dead_letter_topic_name", want: "dead-letter"},
 		{family: familyPubSubTopic, kind: "gcp.pubsub_topic", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/pubsub"},
 		{family: familyResourceProject, kind: "gcp.resourcemanager_project", attr: "enabled_services_count", want: "2"},
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository", attr: "immutable_tags", want: "true"},
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image", attr: "digest", want: "sha256:abc"},
+		{family: familyServiceUsageService, kind: "gcp.service_usage_service", attr: "service_name", want: "bigquery.googleapis.com"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"base_url": server.URL, "family": tt.family, "project_id": "writer-prod", "token": "test-token"}
@@ -895,9 +899,13 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/pubsub.subscriber", "members": []string{"serviceAccount:worker@writer-prod.iam.gserviceaccount.com"}}}})
 		case "/v1/projects/writer-prod":
 			writeJSON(t, w, map[string]any{"projectNumber": "123456789", "projectId": "writer-prod", "name": "Writer Prod", "lifecycleState": "ACTIVE", "labels": map[string]string{"env": "prod"}, "createTime": "2026-04-23T00:00:00Z", "parent": map[string]string{"type": "organization", "id": "1234"}})
-		case "/v1/projects/123456789/services":
+		case "/v1/projects/writer-prod/services", "/v1/projects/123456789/services":
 			if got := r.URL.Query().Get("filter"); got != "state:ENABLED" {
 				t.Fatalf("service usage filter = %q, want state:ENABLED", got)
+			}
+			if r.URL.Path == "/v1/projects/writer-prod/services" {
+				writeJSON(t, w, map[string]any{"services": []map[string]any{{"name": "projects/writer-prod/services/bigquery.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "bigquery.googleapis.com", "title": "BigQuery API"}}}})
+				return
 			}
 			writeJSON(t, w, map[string]any{"services": []map[string]any{{"name": "projects/123456789/services/bigquery.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "bigquery.googleapis.com", "title": "BigQuery API"}}, {"name": "projects/123456789/services/aiplatform.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "aiplatform.googleapis.com", "title": "Vertex AI API"}}}})
 		case "/v2/projects/writer-prod/policies":
