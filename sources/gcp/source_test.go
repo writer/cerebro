@@ -88,6 +88,10 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule"},
 		{family: familyComputeHealthCheck, kind: "gcp.compute_health_check"},
 		{family: familyComputeInstance, kind: "gcp.compute_instance"},
+		{family: familyComputeInstanceGroup, kind: "gcp.compute_instance_group"},
+		{family: familyComputeInstanceGroupMgr, kind: "gcp.compute_instance_group_manager"},
+		{family: familyComputeInstanceTemplate, kind: "gcp.compute_instance_template"},
+		{family: familyComputeNetworkEndpointGroup, kind: "gcp.compute_network_endpoint_group"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network"},
 		{family: familyComputeRoute, kind: "gcp.compute_route"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy"},
@@ -306,6 +310,10 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeBackendBucket, kind: "gcp.compute_backend_bucket", attr: "edge_security_policy", want: "prod-edge-armor"},
 		{family: familyComputeBackendService, kind: "gcp.compute_backend_service", attr: "health_checks_count", want: "1"},
 		{family: familyComputeHealthCheck, kind: "gcp.compute_health_check", attr: "request_path", want: "/healthz"},
+		{family: familyComputeInstanceGroup, kind: "gcp.compute_instance_group", attr: "named_ports", want: "http:80"},
+		{family: familyComputeInstanceGroupMgr, kind: "gcp.compute_instance_group_manager", attr: "instance_template", want: "prod-template"},
+		{family: familyComputeInstanceTemplate, kind: "gcp.compute_instance_template", attr: "service_account_email", want: "vm@writer-prod.iam.gserviceaccount.com"},
+		{family: familyComputeNetworkEndpointGroup, kind: "gcp.compute_network_endpoint_group", attr: "network_endpoint_type", want: "GCE_VM_IP_PORT"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy", attr: "rules_count", want: "3"},
@@ -838,6 +846,44 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"id": "writer-prod:analytics", "selfLink": "https://bigquery.googleapis.com/bigquery/v2/projects/writer-prod/datasets/analytics", "datasetReference": map[string]string{"projectId": "writer-prod", "datasetId": "analytics"}, "friendlyName": "Analytics", "description": "prod analytics dataset", "location": "US", "labels": map[string]string{"env": "prod"}, "access": []map[string]string{{"role": "READER", "specialGroup": "projectReaders"}, {"role": "OWNER", "userByEmail": "data-owner@writer.com"}}, "defaultEncryptionConfiguration": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"}, "creationTime": "1770000000000", "lastModifiedTime": "1770003600000"})
 		case "/compute/v1/projects/writer-prod/aggregated/instances":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"instances": []map[string]any{{"id": "123456789", "name": "web-1", "zone": "projects/writer-prod/zones/us-central1-a", "machineType": "projects/writer-prod/zones/us-central1-a/machineTypes/e2-medium", "status": "RUNNING", "labels": map[string]string{"env": "prod"}, "tags": map[string]any{"items": []string{"web"}}, "networkInterfaces": []map[string]any{{"network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "networkIP": "10.0.0.5", "accessConfigs": []map[string]any{{"type": "ONE_TO_ONE_NAT", "natIP": "34.1.2.3"}}}}, "serviceAccounts": []map[string]any{{"email": "vm@writer-prod.iam.gserviceaccount.com"}}, "disks": []map[string]any{{"boot": true, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vm"}}}}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/instanceGroups":
+			requireQuery(t, r, "maxResults", "10", "instance groups")
+			requireQuery(t, r, "returnPartialSuccess", "true", "instance groups")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"instanceGroups": []map[string]any{{
+				"id": "ig-1", "name": "prod-mig", "selfLink": "projects/writer-prod/zones/us-central1-a/instanceGroups/prod-mig", "description": "prod backend group",
+				"zone": "projects/writer-prod/zones/us-central1-a", "network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default",
+				"namedPorts": []map[string]any{{"name": "http", "port": 80}}, "size": 3,
+			}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/instanceGroupManagers":
+			requireQuery(t, r, "maxResults", "10", "instance group managers")
+			requireQuery(t, r, "returnPartialSuccess", "true", "instance group managers")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"instanceGroupManagers": []map[string]any{{
+				"id": "igm-1", "name": "prod-mig", "selfLink": "projects/writer-prod/zones/us-central1-a/instanceGroupManagers/prod-mig", "description": "prod managed backend",
+				"zone": "projects/writer-prod/zones/us-central1-a", "baseInstanceName": "prod-web", "instanceTemplate": "projects/writer-prod/global/instanceTemplates/prod-template", "targetSize": 3,
+				"namedPorts": []map[string]any{{"name": "http", "port": 80}}, "autoHealingPolicies": []map[string]any{{"healthCheck": "projects/writer-prod/global/healthChecks/prod-hc", "initialDelaySec": 60}},
+				"currentActions": map[string]any{"none": 3}, "status": map[string]any{"isStable": true, "versionTarget": map[string]bool{"isReached": true}},
+				"updatePolicy": map[string]string{"type": "PROACTIVE", "minimalAction": "REPLACE", "replacementMethod": "SUBSTITUTE"}, "distributionPolicy": map[string]any{"zones": []map[string]string{{"zone": "projects/writer-prod/zones/us-central1-a"}}},
+			}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/instanceTemplates":
+			requireQuery(t, r, "maxResults", "10", "instance templates")
+			requireQuery(t, r, "returnPartialSuccess", "true", "instance templates")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"instanceTemplates": []map[string]any{{
+				"id": "it-1", "name": "prod-template", "selfLink": "projects/writer-prod/global/instanceTemplates/prod-template", "description": "prod backend template",
+				"properties": map[string]any{
+					"machineType": "e2-medium", "labels": map[string]string{"env": "prod"}, "tags": map[string]any{"items": []string{"web"}},
+					"networkInterfaces": []map[string]any{{"network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "accessConfigs": []map[string]any{{"type": "ONE_TO_ONE_NAT"}}}},
+					"serviceAccounts":   []map[string]any{{"email": "vm@writer-prod.iam.gserviceaccount.com"}}, "disks": []map[string]any{{"boot": true, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vm"}}},
+					"shieldedInstanceConfig": map[string]bool{"enableSecureBoot": true, "enableIntegrityMonitoring": true},
+				},
+			}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/networkEndpointGroups":
+			requireQuery(t, r, "maxResults", "10", "network endpoint groups")
+			requireQuery(t, r, "returnPartialSuccess", "true", "network endpoint groups")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"networkEndpointGroups": []map[string]any{{
+				"id": "neg-1", "name": "prod-neg", "selfLink": "projects/writer-prod/zones/us-central1-a/networkEndpointGroups/prod-neg", "description": "prod backend endpoints",
+				"zone": "projects/writer-prod/zones/us-central1-a", "network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default",
+				"networkEndpointType": "GCE_VM_IP_PORT", "defaultPort": 8080, "size": 3, "annotations": map[string]string{"env": "prod"},
+			}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/backendServices":
 			requireQuery(t, r, "maxResults", "10", "backend services")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"backendServices": []map[string]any{{"id": "bs-1", "name": "prod-backend", "selfLink": "projects/writer-prod/global/backendServices/prod-backend", "description": "prod https backend", "protocol": "HTTPS", "portName": "https", "loadBalancingScheme": "EXTERNAL_MANAGED", "sessionAffinity": "NONE", "localityLbPolicy": "ROUND_ROBIN", "timeoutSec": 30, "enableCDN": true, "healthChecks": []string{"projects/writer-prod/global/healthChecks/prod-hc"}, "backends": []map[string]any{{"group": "projects/writer-prod/zones/us-central1-a/instanceGroups/prod-mig", "balancingMode": "UTILIZATION", "capacityScaler": 1.0, "maxUtilization": 0.8}}, "connectionDraining": map[string]int{"drainingTimeoutSec": 300}, "logConfig": map[string]any{"enable": true, "sampleRate": 1.0}, "iap": map[string]bool{"enabled": true}, "securityPolicy": "projects/writer-prod/global/securityPolicies/prod-armor", "network": "projects/writer-prod/global/networks/default", "customRequestHeaders": []string{"X-Forwarded-Proto:{client_protocol}"}, "labels": map[string]string{"env": "prod"}}}}}})
