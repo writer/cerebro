@@ -466,6 +466,13 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  - localId: guardduty-detector
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: guardduty_detector
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
   - localId: guardduty-finding
     config:
       account_id: env:AWS_ACCOUNT_ID

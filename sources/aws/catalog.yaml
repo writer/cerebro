@@ -68,6 +68,7 @@ emitted_kinds:
   - aws.cloudfront_public_key
   - aws.cloudfront_response_headers_policy
   - aws.effective_permission
+  - aws.guardduty_detector
   - aws.guardduty_finding
   - aws.eventbridge_archive
   - aws.eventbridge_event_bus
@@ -203,6 +204,7 @@ runtime_families:
   - cloudfront_public_key
   - cloudfront_response_headers_policy
   - effective_permission
+  - guardduty_detector
   - guardduty_finding
   - eventbridge_archive
   - eventbridge_event_bus
@@ -526,10 +528,9 @@ coverage_contract:
     - id: guardduty_detector
       type: entity_family
       title: AWS GuardDuty detectors
-      families: [asset_metadata]
-      support: partial
+      families: [guardduty_detector]
+      support: supported
       high_value: true
-      known_unsupported_fields: [regional detector enablement and finding export settings]
     - id: guardduty_finding
       type: entity_family
       title: AWS GuardDuty findings

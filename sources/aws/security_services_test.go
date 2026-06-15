@@ -49,7 +49,15 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 			Recording: true,
 		}},
 		guardDutyDetectorIDs: []string{"detector-1"},
-		guardDutyFindingIDs:  map[string][]string{"detector-1": {"gd-finding-1"}},
+		guardDutyDetectors: map[string]guardduty.GetDetectorOutput{"detector-1": {
+			CreatedAt:                  awssdk.String("2026-04-23T00:00:00Z"),
+			Features:                   []guarddutytypes.DetectorFeatureConfigurationResult{{Name: guarddutytypes.DetectorFeatureResultS3DataEvents, Status: guarddutytypes.FeatureStatusEnabled}},
+			FindingPublishingFrequency: guarddutytypes.FindingPublishingFrequencyFifteenMinutes,
+			ServiceRole:                awssdk.String("arn:aws:iam::123456789012:role/aws-guardduty"),
+			Status:                     guarddutytypes.DetectorStatusEnabled,
+			UpdatedAt:                  awssdk.String("2026-04-23T00:00:00Z"),
+		}},
+		guardDutyFindingIDs: map[string][]string{"detector-1": {"gd-finding-1"}},
 		guardDutyFindings: map[string]guarddutytypes.Finding{"gd-finding-1": {
 			AccountId: awssdk.String("123456789012"),
 			Arn:       awssdk.String("arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1"),
@@ -144,6 +152,7 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 	}{
 		{family: familyAccessAnalyzer, kind: "aws.access_analyzer", attr: "status", want: "ACTIVE"},
 		{family: familyConfigRecorder, kind: "aws.config_recorder", attr: "recording", want: "true"},
+		{family: familyGuardDutyDetector, kind: "aws.guardduty_detector", attr: "status", want: "ENABLED"},
 		{family: familyGuardDutyFinding, kind: "aws.guardduty_finding", attr: "affected_resource_id", want: "i-123"},
 		{family: familySecurityHubFinding, kind: "aws.securityhub_finding", attr: "affected_resource_id", want: "arn:aws:s3:::prod-data"},
 		{family: familyInspector2Finding, kind: "aws.inspector2_finding", attr: "affected_resource_type", want: "AWS_EC2_INSTANCE"},
@@ -174,6 +183,24 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 	}
 	if fake.lastWAFV2Scope != wafv2types.ScopeCloudfront {
 		t.Fatalf("wafv2 scope = %q, want CLOUDFRONT", fake.lastWAFV2Scope)
+	}
+}
+
+func TestReadAWSGuardDutyDetectorMissingEmitsDisabled(t *testing.T) {
+	source := newSecurityTestSource(t, &fakeAWSSecurityServices{})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyGuardDutyDetector}), nil)
+	if err != nil {
+		t.Fatalf("Read(guardduty_detector) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Attributes["status"]; got != "DISABLED" {
+		t.Fatalf("status = %q, want DISABLED", got)
+	}
+	if got := event.Attributes["missing"]; got != "true" {
+		t.Fatalf("missing = %q, want true", got)
 	}
 }
 
@@ -244,6 +271,7 @@ type fakeAWSSecurityServices struct {
 	configRecorders              []configtypes.ConfigurationRecorder
 	configStatuses               []configtypes.ConfigurationRecorderStatus
 	guardDutyDetectorIDs         []string
+	guardDutyDetectors           map[string]guardduty.GetDetectorOutput
 	guardDutyFindingIDs          map[string][]string
 	guardDutyFindings            map[string]guarddutytypes.Finding
 	securityHubFindings          []securityhubtypes.AwsSecurityFinding
@@ -278,6 +306,11 @@ type fakeGuardDutySecurity struct {
 
 func (f fakeGuardDutySecurity) ListDetectors(context.Context, *guardduty.ListDetectorsInput, ...func(*guardduty.Options)) (*guardduty.ListDetectorsOutput, error) {
 	return &guardduty.ListDetectorsOutput{DetectorIds: f.fake.guardDutyDetectorIDs}, nil
+}
+
+func (f fakeGuardDutySecurity) GetDetector(_ context.Context, input *guardduty.GetDetectorInput, _ ...func(*guardduty.Options)) (*guardduty.GetDetectorOutput, error) {
+	detector := f.fake.guardDutyDetectors[awssdk.ToString(input.DetectorId)]
+	return &detector, nil
 }
 
 func (f fakeGuardDutySecurity) ListFindings(_ context.Context, input *guardduty.ListFindingsInput, _ ...func(*guardduty.Options)) (*guardduty.ListFindingsOutput, error) {
