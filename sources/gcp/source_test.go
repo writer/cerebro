@@ -273,7 +273,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeInstance, kind: "gcp.compute_instance", attr: "service_account_email", want: "vm@writer-prod.iam.gserviceaccount.com"},
 		{family: familyGKECluster, kind: "gcp.gke_cluster", attr: "network_tags", want: "gke"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"},
-		{family: familyCloudIDSEndpoint, kind: "gcp.cloud_ids_endpoint", attr: "severity", want: "HIGH"},
+		{family: familyCloudIDSEndpoint, kind: "gcp.cloud_ids_endpoint", attr: "threat_log_routed", want: "true"},
 		{family: familyCloudRunRevision, kind: "gcp.cloud_run_revision", attr: "runtime_identity", want: "run@writer-prod.iam.gserviceaccount.com"},
 		{family: familyCloudRunService, kind: "gcp.cloud_run_service", attr: "internet_exposed", want: "true"},
 		{family: familyCloudFunction, kind: "gcp.cloud_function", attr: "runtime_identity", want: "fn@writer-prod.iam.gserviceaccount.com"},
@@ -366,6 +366,80 @@ func TestReadLiveGCSObjectPaginatesWithinBucket(t *testing.T) {
 	}
 	if got := pull.Events[1].Attributes["object_name"]; got != "second.txt" {
 		t.Fatalf("second object_name = %q, want second.txt", got)
+	}
+}
+
+func TestReadLiveCloudIDSEndpointPaginatesLogSinkEnrichment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/projects/writer-prod/locations/-/endpoints":
+			if got := r.URL.Query().Get("pageSize"); got != "1" {
+				t.Fatalf("cloud ids pageSize = %q, want 1", got)
+			}
+			writeJSON(t, w, map[string]any{"endpoints": []map[string]any{{
+				"name":                   "projects/writer-prod/locations/us-central1-a/endpoints/prod-ids",
+				"network":                "projects/writer-prod/global/networks/default",
+				"endpointForwardingRule": "https://www.googleapis.com/compute/v1/projects/writer-prod/regions/us-central1/forwardingRules/prod-ids-ilb",
+				"endpointIp":             "10.3.0.5",
+				"severity":               "HIGH",
+				"state":                  "READY",
+				"trafficLogs":            true,
+			}}})
+		case "/v2/projects/writer-prod/sinks":
+			if got := r.URL.Query().Get("pageSize"); got != "1" {
+				t.Fatalf("logging sink pageSize = %q, want 1", got)
+			}
+			switch r.URL.Query().Get("pageToken") {
+			case "":
+				writeJSON(t, w, map[string]any{"sinks": []map[string]any{{
+					"name":        "ids-threat-other-endpoint",
+					"destination": "pubsub.googleapis.com/projects/writer-prod/topics/security-alerts",
+					"filter":      `resource.labels.id="prod-ids-extra" AND logName="projects/writer-prod/logs/ids.googleapis.com%2Fthreat"`,
+				}}, "nextPageToken": "sinks-2"})
+			case "sinks-2":
+				writeJSON(t, w, map[string]any{"sinks": []map[string]any{{
+					"name":        "ids-threat",
+					"destination": "pubsub.googleapis.com/projects/writer-prod/topics/security-alerts",
+					"filter":      `resource.labels.id="prod-ids" AND logName="projects/writer-prod/logs/ids.googleapis.com%2Fthreat"`,
+				}}})
+			default:
+				t.Fatalf("unexpected logging sink pageToken %q", r.URL.Query().Get("pageToken"))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyCloudIDSEndpoint,
+		"per_page":   "1",
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyCloudIDSEndpoint, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	attributes := pull.Events[0].Attributes
+	if got := attributes["log_sinks_count"]; got != "1" {
+		t.Fatalf("log_sinks_count = %q, want 1", got)
+	}
+	if got := attributes["threat_log_routed"]; got != "true" {
+		t.Fatalf("threat_log_routed = %q, want true", got)
+	}
+	if got := attributes["traffic_log_routed"]; got != "false" {
+		t.Fatalf("traffic_log_routed = %q, want false", got)
+	}
+	if got := attributes["notification_configured"]; got != "true" {
+		t.Fatalf("notification_configured = %q, want true", got)
 	}
 }
 
@@ -741,7 +815,7 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			if got := r.URL.Query().Get("pageSize"); got != "10" {
 				t.Fatalf("logging sink pageSize = %q, want 10", got)
 			}
-			writeJSON(t, w, map[string]any{"sinks": []map[string]any{{"name": "security-sink", "resourceName": "projects/writer-prod/sinks/security-sink", "description": "security export", "destination": "bigquery.googleapis.com/projects/writer-prod/datasets/security_logs", "filter": "severity>=ERROR", "disabled": false, "writerIdentity": "serviceAccount:writer-prod@gcp-sa-logging.iam.gserviceaccount.com", "includeChildren": false, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "exclusions": []map[string]any{{"name": "debug", "filter": "severity<ERROR", "disabled": false}}, "bigqueryOptions": map[string]bool{"usePartitionedTables": true, "usesTimestampColumnPartitioning": true}}}})
+			writeJSON(t, w, map[string]any{"sinks": []map[string]any{{"name": "ids-threat", "resourceName": "projects/writer-prod/sinks/ids-threat", "description": "cloud ids threat export", "destination": "pubsub.googleapis.com/projects/writer-prod/topics/security-alerts", "filter": `logName="projects/writer-prod/logs/ids.googleapis.com%2Fthreat"`, "disabled": false, "writerIdentity": "serviceAccount:writer-prod@gcp-sa-logging.iam.gserviceaccount.com", "includeChildren": false, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "exclusions": []map[string]any{{"name": "debug", "filter": "severity<ERROR", "disabled": false}}}}})
 		case "/v1/projects/writer-prod":
 			writeJSON(t, w, map[string]any{"projectNumber": "123456789", "projectId": "writer-prod", "name": "Writer Prod", "lifecycleState": "ACTIVE", "labels": map[string]string{"env": "prod"}, "createTime": "2026-04-23T00:00:00Z", "parent": map[string]string{"type": "organization", "id": "1234"}})
 		case "/v1/projects/123456789/services":
