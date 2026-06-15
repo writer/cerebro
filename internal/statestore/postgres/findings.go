@@ -1937,6 +1937,7 @@ func findingBackfillRisk(record *ports.FindingRecord, now time.Time) ports.Findi
 		LikelihoodLevel:  risk.LikelihoodLevel,
 		ImpactLevel:      risk.ImpactLevel,
 		RiskReasons:      risk.Reasons,
+		RiskFactors:      risk.Factors,
 		RiskModelVersion: risk.RiskModelVersion,
 	}
 }
@@ -1953,6 +1954,9 @@ func findingRiskAttributesForUpdate(risk ports.FindingRisk, sourceSeverity strin
 	attributes["impact_level"] = strings.TrimSpace(risk.ImpactLevel)
 	attributes["risk_model_version"] = strings.TrimSpace(risk.RiskModelVersion)
 	attributes["risk_reasons"] = strings.Join(risk.RiskReasons, ",")
+	if factorsJSON := findingrisk.RiskFactorsJSON(risk.RiskFactors); factorsJSON != "" {
+		attributes[findingrisk.FindingRiskFactorsAttribute] = factorsJSON
+	}
 	return attributes
 }
 
@@ -2381,6 +2385,7 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 	if err := json.Unmarshal([]byte(r.AttributesJSON), &attributes); err != nil {
 		return nil, fmt.Errorf("decode finding attributes: %w", err)
 	}
+	riskFactors := findingrisk.ParseRiskFactors(attributes[findingrisk.FindingRiskFactorsAttribute])
 	severity := strings.TrimSpace(r.Severity)
 	if effectiveSeverity := strings.TrimSpace(attributes[findingrisk.FindingEffectiveSeverityAttribute]); effectiveSeverity != "" {
 		severity = effectiveSeverity
@@ -2403,6 +2408,7 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 			LikelihoodLevel:  r.LikelihoodLevel,
 			ImpactLevel:      r.ImpactLevel,
 			RiskReasons:      riskReasons,
+			RiskFactors:      riskFactors,
 			RiskModelVersion: r.RiskModelVersion,
 		},
 		ResourceURNs:      resourceURNs,

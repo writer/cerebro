@@ -856,6 +856,7 @@ func cloneFindingRecord(finding *ports.FindingRecord) *ports.FindingRecord {
 	cloned.ControlRefs = append([]ports.FindingControlRef(nil), finding.ControlRefs...)
 	cloned.GraphEvidenceRows = cloneGraphEvidenceRows(finding.GraphEvidenceRows)
 	cloned.RiskReasons = append([]string(nil), finding.RiskReasons...)
+	cloned.RiskFactors = append([]ports.FindingRiskFactor(nil), finding.RiskFactors...)
 	cloned.Notes = append([]ports.FindingNote(nil), finding.Notes...)
 	cloned.Tickets = append([]ports.FindingTicket(nil), finding.Tickets...)
 	if finding.Attributes != nil {

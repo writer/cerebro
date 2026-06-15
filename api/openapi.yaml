@@ -3588,6 +3588,10 @@ components:
             type: string
         risk_model_version:
           type: string
+        risk_factors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingRiskFactor'
         attributes:
           type: object
           additionalProperties:
@@ -3608,6 +3612,27 @@ components:
         last_observed_at:
           type: string
           format: date-time
+    FindingRiskFactor:
+      type: object
+      properties:
+        factor_id:
+          type: string
+        weight:
+          type: integer
+        severity_contribution:
+          type: string
+          enum: [high, medium, low, reduces_risk, none]
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        observed_at:
+          type: string
+          format: date-time
+        category:
+          type: string
+        suppression_scope:
+          type: string
     FindingEvidence:
       type: object
       properties:

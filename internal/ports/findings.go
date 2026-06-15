@@ -48,7 +48,19 @@ type FindingRisk struct {
 	LikelihoodLevel  string
 	ImpactLevel      string
 	RiskReasons      []string
+	RiskFactors      []FindingRiskFactor
 	RiskModelVersion string
+}
+
+// FindingRiskFactor links one scoring factor to evidence used to derive it.
+type FindingRiskFactor struct {
+	FactorID             string    `json:"factor_id"`
+	Category             string    `json:"category"`
+	Weight               int       `json:"weight"`
+	SeverityContribution string    `json:"severity_contribution"`
+	EvidenceRefs         []string  `json:"evidence_refs"`
+	ObservedAt           time.Time `json:"observed_at,omitempty"`
+	SuppressionScope     string    `json:"suppression_scope,omitempty"`
 }
 
 // FindingTombstone captures the durable tombstone state for one finding row.

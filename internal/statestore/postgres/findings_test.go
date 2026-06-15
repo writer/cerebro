@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	findingrisk "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -189,15 +190,31 @@ func TestFindingBackfillRiskUsesRuntimeScorerSignals(t *testing.T) {
 	if risk.RiskModelVersion != "likelihood-impact-v2" {
 		t.Fatalf("findingBackfillRisk().RiskModelVersion = %q, want likelihood-impact-v2", risk.RiskModelVersion)
 	}
+	if len(risk.RiskFactors) == 0 {
+		t.Fatal("findingBackfillRisk().RiskFactors is empty, want evidence-backed factors")
+	}
 }
 
 func TestFindingRiskAttributesForUpdateIncludesEffectiveSeverity(t *testing.T) {
-	attributes := findingRiskAttributesForUpdate(ports.FindingRisk{RiskScore: 72}, "low")
+	attributes := findingRiskAttributesForUpdate(ports.FindingRisk{
+		RiskScore: 72,
+		RiskFactors: []ports.FindingRiskFactor{{
+			FactorID:             "external_exposure",
+			Category:             "likelihood",
+			Weight:               35,
+			SeverityContribution: "high",
+			EvidenceRefs:         []string{"attribute:internet_exposed"},
+			SuppressionScope:     "factor:external_exposure",
+		}},
+	}, "low")
 	if got := attributes["effective_severity"]; got != "HIGH" {
 		t.Fatalf("effective_severity = %q, want HIGH", got)
 	}
 	if got := attributes["source_severity"]; got != "LOW" {
 		t.Fatalf("source_severity = %q, want LOW", got)
+	}
+	if got := attributes[findingrisk.FindingRiskFactorsAttribute]; !strings.Contains(got, `"factor_id":"external_exposure"`) {
+		t.Fatalf("risk factors attribute = %q, want external_exposure JSON", got)
 	}
 }
 
