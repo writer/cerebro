@@ -52,6 +52,7 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 		{family: familyAppService, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.app_service"},
 		{family: familyApplication, kind: "azure.application"},
 		{family: familyAssetMetadata, config: map[string]string{"subscription_id": "sub-1"}, kind: "asset.data_sensitivity"},
+		{family: "cognitive_services_account", config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.cognitive_services_account"},
 		{family: familyContainerRegistry, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.container_registry"},
 		{family: familyCosmosAccount, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.cosmos_account"},
 		{family: familyCredential, kind: "azure.credential"},
@@ -195,6 +196,8 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 		{family: familyKeyVaultKey, kind: "azure.key_vault_key", attr: "recovery_level", want: "Recoverable+Purgeable"},
 		{family: familyKeyVaultSecret, kind: "azure.key_vault_secret", attr: "content_type", want: "connection-string"},
 		{family: familyCosmosAccount, kind: "azure.cosmos_account", attr: "local_auth_disabled", want: "true"},
+		{family: "cognitive_services_account", kind: "azure.cognitive_services_account", attr: "kind", want: "OpenAI"},
+		{family: "cognitive_services_account", kind: "azure.cognitive_services_account", attr: "public_network_access", want: "Enabled"},
 		{family: familyContainerRegistry, kind: "azure.container_registry", attr: "admin_user_enabled", want: "false"},
 		{family: familyActivityLog, kind: "azure.activity_log", attr: "actor_email", want: "admin@writer.com"},
 		{family: familyResourceExposure, kind: "azure.resource_exposure", attr: "internet_exposed", want: "true"},
@@ -456,6 +459,8 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "name": "owner-role", "properties": map[string]any{"roleName": "Owner", "type": "BuiltInRole"}})
 		case "/subscriptions/sub-1/resources":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/data", "name": "data", "type": "Microsoft.Storage/storageAccounts", "location": "eastus", "tags": map[string]string{"data_classification": "restricted", "owner": "security@writer.com", "tier": "critical", "pii": "true", "env": "prod"}}}})
+		case "/subscriptions/sub-1/providers/Microsoft.CognitiveServices/accounts":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.CognitiveServices/accounts/openai-prod", "name": "openai-prod", "type": "Microsoft.CognitiveServices/accounts", "kind": "OpenAI", "location": "eastus", "sku": map[string]any{"name": "S0", "tier": "Standard"}, "identity": map[string]any{"type": "SystemAssigned", "principalId": "openai-principal-1", "tenantId": "tenant-1"}, "tags": map[string]string{"owner": "ai@writer.com", "team": "ai", "env": "prod"}, "properties": map[string]any{"publicNetworkAccess": "Enabled", "provisioningState": "Succeeded", "customSubDomainName": "openai-prod"}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Compute/virtualMachines":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1", "name": "vm1", "type": "Microsoft.Compute/virtualMachines", "location": "eastus", "identity": map[string]any{"type": "SystemAssigned", "principalId": "vm-principal-1", "tenantId": "tenant-1"}, "tags": map[string]string{"owner": "platform@writer.com", "team": "platform", "env": "prod"}, "properties": map[string]any{"hardwareProfile": map[string]any{"vmSize": "Standard_D2s_v5"}, "osProfile": map[string]any{"computerName": "vm1", "adminUsername": "azureuser"}, "storageProfile": map[string]any{"osDisk": map[string]any{"osType": "Linux"}}, "securityProfile": map[string]any{"encryptionAtHost": true}, "diagnosticsProfile": map[string]any{"bootDiagnostics": map[string]any{"enabled": true}}, "networkProfile": map[string]any{"networkInterfaces": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/networkInterfaces/vm1-nic"}}}}}}})
 		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/networkInterfaces/vm1-nic":

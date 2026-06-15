@@ -180,6 +180,40 @@ func TestProjectAzureCloudResourceMetadataLinksManagedIdentitiesAndResourceGroup
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, userIdentityURN)
 }
 
+func TestProjectAzureCognitiveServicesAccountLinksPublicExposure(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceID := "/subscriptions/sub-1/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/openai-prod"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "azure-openai-prod",
+		TenantId: "writer",
+		SourceId: "azure",
+		Kind:     "azure.cognitive_services_account",
+		Attributes: map[string]string{
+			"kind":                  "OpenAI",
+			"public_network_access": "Enabled",
+			"resource_group":        "rg-ai",
+			"resource_id":           resourceID,
+			"resource_name":         "openai-prod",
+			"resource_provider":     "azure",
+			"resource_type":         "Microsoft.CognitiveServices/accounts",
+			"subscription_id":       "sub-1",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:azure_cognitive_services_account:" + resourceID
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "azure.cognitive.services.account" {
+		t.Fatalf("azure cognitive services account entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:azure_resource_group:sub-1:rg-ai")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_public_principal:public_internet", relationCanReach, resourceURN)
+}
+
 func TestProjectAWSDataResourceLinksNetworkAndElastiCacheContext(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
