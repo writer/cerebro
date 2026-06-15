@@ -348,7 +348,7 @@ func TestConnectorDetailSummarizesOperationsWithoutConfig(t *testing.T) {
 			LastSyncedAt: timestamppb.New(now),
 			Config: map[string]string{
 				"family":                           "audit",
-				"token":                            "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN",
+				"internal_marker":                  "runtime-config-marker",
 				runtimeRecordsAcceptedConfigKey:    "42",
 				runtimeRecordsRejectedConfigKey:    "1",
 				runtimeEntitiesProjectedConfigKey:  "40",
@@ -429,8 +429,8 @@ func TestConnectorDetailSummarizesOperationsWithoutConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal decoded payload: %v", err)
 	}
-	if strings.Contains(string(encoded), "CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN") || strings.Contains(string(encoded), "env:") {
-		t.Fatalf("connector detail leaked credential reference: %s", encoded)
+	if strings.Contains(string(encoded), "runtime-config-marker") {
+		t.Fatalf("connector detail leaked runtime config: %s", encoded)
 	}
 }
 
