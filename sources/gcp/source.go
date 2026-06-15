@@ -32,58 +32,56 @@ import (
 var catalogFS embed.FS
 
 const (
-	defaultFamily                                         = familyAudit
-	defaultPageSize                                       = 10
-	gcsObjectContentSampleBytes                           = 64 << 10
-	maxPageSize                                           = 200
-	familyAssetMetadata                                   = "asset_metadata"
-	familyAIDataset                                       = "aiplatform_dataset"
-	familyAIEndpoint                                      = "aiplatform_endpoint"
-	familyArtifactImage                                   = "artifact_registry_image"
-	familyArtifactRepo                                    = "artifact_registry_repository"
-	familyAudit                                           = "audit"
-	familyBigQueryDataset                                 = "bigquery_dataset"
-	familyCloudFunction                                   = "cloud_function"
-	familyCloudIDSEndpoint                                = "cloud_ids_endpoint"
-	familyCloudSchedulerJob                               = "cloud_scheduler_job"
-	familyCloudRunRevision                                = "cloud_run_revision"
-	familyCloudRunService                                 = "cloud_run_service"
-	familyCloudSQLInstance                                = "cloud_sql_instance"
-	familyContainerRegistry, familyContainerVuln          = "container_registry", "container_vulnerability"
-	familyComputeAddress, familyComputeBackendBucket      = "compute_address", "compute_backend_bucket"
-	familyComputeBackendService, familyComputeDisk        = "compute_backend_service", "compute_disk"
-	familyComputeFirewall                                 = "compute_firewall"
-	familyComputeForwardingRule, familyComputeHealthCheck = "compute_forwarding_rule", "compute_health_check"
-	familyComputeInstance                                 = "compute_instance"
-	familyComputeNetwork                                  = "compute_network"
-	familyComputeRoute                                    = "compute_route"
-	familyComputeSecurityPolicy                           = "compute_security_policy"
-	familyComputeSSLCertificate                           = "compute_ssl_certificate"
-	familyComputeSubnetwork                               = "compute_subnetwork"
-	familyComputeTargetHTTPProxy                          = "compute_target_http_proxy"
-	familyComputeTargetHTTPSProxy                         = "compute_target_https_proxy"
-	familyComputeURLMap                                   = "compute_url_map"
-	familyDNSManagedZone                                  = "dns_managed_zone"
-	familyDNSRecordSet                                    = "dns_record_set"
-	familyEffectivePermission                             = "effective_permission"
-	familyGCSBucket, familyGCSObject                      = "gcs_bucket", "gcs_object"
-	familyGKECluster                                      = "gke_cluster"
-	familyGKENodePool                                     = "gke_node_pool"
-	familyGroup, familyGroupMember                        = "group", "group_membership"
-	familyKMSKey                                          = "kms_key"
-	familyLoggingSink                                     = "logging_project_sink"
-	familyOrgPolicy                                       = "org_policy"
-	familyPubSubSubscription                              = "pubsub_subscription"
-	familyPubSubTopic                                     = "pubsub_topic"
-	familyResourceProject                                 = "resourcemanager_project"
-	familyRoleAssign                                      = "iam_role_assignment"
-	familyResourceExposure                                = "resource_exposure"
-	familySAImpersonation                                 = "service_account_impersonation"
-	familyServiceAcct                                     = "service_account"
-	familyServiceUsageService                             = "service_usage_service"
-	familySAKey                                           = "service_account_key"
-	gcpCloudPlatformScope                                 = "https://www.googleapis.com/auth/cloud-platform"
-	familySecret                                          = "secret_manager_secret"
+	defaultFamily                                               = familyAudit
+	defaultPageSize                                             = 10
+	gcsObjectContentSampleBytes                                 = 64 << 10
+	maxPageSize                                                 = 200
+	familyAssetMetadata                                         = "asset_metadata"
+	familyAIDataset                                             = "aiplatform_dataset"
+	familyAIEndpoint                                            = "aiplatform_endpoint"
+	familyArtifactImage                                         = "artifact_registry_image"
+	familyArtifactRepo                                          = "artifact_registry_repository"
+	familyAudit                                                 = "audit"
+	familyBigQueryDataset                                       = "bigquery_dataset"
+	familyCloudFunction                                         = "cloud_function"
+	familyCloudIDSEndpoint                                      = "cloud_ids_endpoint"
+	familyCloudSchedulerJob                                     = "cloud_scheduler_job"
+	familyCloudRunRevision                                      = "cloud_run_revision"
+	familyCloudRunService                                       = "cloud_run_service"
+	familyCloudSQLInstance                                      = "cloud_sql_instance"
+	familyContainerRegistry, familyContainerVuln                = "container_registry", "container_vulnerability"
+	familyComputeAddress, familyComputeBackendBucket            = "compute_address", "compute_backend_bucket"
+	familyComputeBackendService, familyComputeDisk              = "compute_backend_service", "compute_disk"
+	familyComputeFirewall, familyComputeInstance                = "compute_firewall", "compute_instance"
+	familyComputeForwardingRule, familyComputeHealthCheck       = "compute_forwarding_rule", "compute_health_check"
+	familyComputeNetwork, familyComputeRoute                    = "compute_network", "compute_route"
+	familyComputeSecurityPolicy, familyComputeSSLPolicy         = "compute_security_policy", "compute_ssl_policy"
+	familyComputeSSLCertificate, familyComputeSubnetwork        = "compute_ssl_certificate", "compute_subnetwork"
+	familyComputeTargetGRPCProxy                                = "compute_target_grpc_proxy"
+	familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy = "compute_target_http_proxy", "compute_target_https_proxy"
+	familyComputeTargetSSLProxy, familyComputeTargetTCPProxy    = "compute_target_ssl_proxy", "compute_target_tcp_proxy"
+	familyComputeURLMap                                         = "compute_url_map"
+	familyDNSManagedZone                                        = "dns_managed_zone"
+	familyDNSRecordSet                                          = "dns_record_set"
+	familyEffectivePermission                                   = "effective_permission"
+	familyGCSBucket, familyGCSObject                            = "gcs_bucket", "gcs_object"
+	familyGKECluster                                            = "gke_cluster"
+	familyGKENodePool                                           = "gke_node_pool"
+	familyGroup, familyGroupMember                              = "group", "group_membership"
+	familyKMSKey                                                = "kms_key"
+	familyLoggingSink                                           = "logging_project_sink"
+	familyOrgPolicy                                             = "org_policy"
+	familyPubSubSubscription                                    = "pubsub_subscription"
+	familyPubSubTopic                                           = "pubsub_topic"
+	familyResourceProject                                       = "resourcemanager_project"
+	familyRoleAssign                                            = "iam_role_assignment"
+	familyResourceExposure                                      = "resource_exposure"
+	familySAImpersonation                                       = "service_account_impersonation"
+	familyServiceAcct                                           = "service_account"
+	familyServiceUsageService                                   = "service_usage_service"
+	familySAKey                                                 = "service_account_key"
+	gcpCloudPlatformScope                                       = "https://www.googleapis.com/auth/cloud-platform"
+	familySecret                                                = "secret_manager_secret"
 )
 
 // Source reads GCP IAM, Cloud Identity, and Cloud Audit surfaces.
@@ -162,7 +160,9 @@ type computeScopedResources struct {
 	Instances          []json.RawMessage `json:"instances"`
 	SecurityPolicies   []json.RawMessage `json:"securityPolicies"`
 	SSLCertificates    []json.RawMessage `json:"sslCertificates"`
+	SSLPolicies        []json.RawMessage `json:"sslPolicies"`
 	Subnetworks        []json.RawMessage `json:"subnetworks"`
+	TargetTCPProxies   []json.RawMessage `json:"targetTcpProxies"`
 	TargetHTTPProxies  []json.RawMessage `json:"targetHttpProxies"`
 	TargetHTTPSProxies []json.RawMessage `json:"targetHttpsProxies"`
 	URLMaps            []json.RawMessage `json:"urlMaps"`
@@ -413,9 +413,13 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeRouteRecord]{Name: familyComputeRoute, Label: "gcp compute routes", List: listComputeRoutes, Event: gcpCloudEvent(gcpcloud.ComputeRouteEvent), URN: gcpResourceURN[gcpcloud.ComputeRouteRecord]("gcp_compute_route")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSecurityPolicyRecord]{Name: familyComputeSecurityPolicy, Label: "gcp compute security policies", List: listComputeSecurityPolicies, Event: gcpCloudEvent(gcpcloud.ComputeSecurityPolicyEvent), URN: gcpResourceURN[gcpcloud.ComputeSecurityPolicyRecord]("gcp_compute_security_policy")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSSLCertificateRecord]{Name: familyComputeSSLCertificate, Label: "gcp compute ssl certificates", List: listComputeSSLCertificates, Event: gcpCloudEvent(gcpcloud.ComputeSSLCertificateEvent), URN: gcpResourceURN[gcpcloud.ComputeSSLCertificateRecord]("gcp_compute_ssl_certificate")}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSSLPolicyRecord]{Name: familyComputeSSLPolicy, Label: "gcp compute ssl policies", List: listComputeSSLPolicies, Event: gcpCloudEvent(gcpcloud.ComputeSSLPolicyEvent), URN: gcpResourceURN[gcpcloud.ComputeSSLPolicyRecord]("gcp_compute_ssl_policy")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSubnetworkRecord]{Name: familyComputeSubnetwork, Label: "gcp compute subnetworks", List: listComputeSubnetworks, Event: gcpCloudEvent(gcpcloud.ComputeSubnetworkEvent), URN: gcpResourceURN[gcpcloud.ComputeSubnetworkRecord]("gcp_compute_subnetwork")}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeTargetGRPCProxyRecord]{Name: familyComputeTargetGRPCProxy, Label: "gcp compute target grpc proxies", List: listComputeTargetGRPCProxies, Event: gcpCloudEvent(gcpcloud.ComputeTargetGRPCProxyEvent), URN: gcpResourceURN[gcpcloud.ComputeTargetGRPCProxyRecord]("gcp_compute_target_grpc_proxy")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeTargetHTTPProxyRecord]{Name: familyComputeTargetHTTPProxy, Label: "gcp compute target http proxies", List: listComputeTargetHTTPProxies, Event: gcpCloudEvent(gcpcloud.ComputeTargetHTTPProxyEvent), URN: gcpResourceURN[gcpcloud.ComputeTargetHTTPProxyRecord]("gcp_compute_target_http_proxy")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeTargetHTTPSProxyRecord]{Name: familyComputeTargetHTTPSProxy, Label: "gcp compute target https proxies", List: listComputeTargetHTTPSProxies, Event: gcpCloudEvent(gcpcloud.ComputeTargetHTTPSProxyEvent), URN: gcpResourceURN[gcpcloud.ComputeTargetHTTPSProxyRecord]("gcp_compute_target_https_proxy")}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeTargetSSLProxyRecord]{Name: familyComputeTargetSSLProxy, Label: "gcp compute target ssl proxies", List: listComputeTargetSSLProxies, Event: gcpCloudEvent(gcpcloud.ComputeTargetSSLProxyEvent), URN: gcpResourceURN[gcpcloud.ComputeTargetSSLProxyRecord]("gcp_compute_target_ssl_proxy")}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeTargetTCPProxyRecord]{Name: familyComputeTargetTCPProxy, Label: "gcp compute target tcp proxies", List: listComputeTargetTCPProxies, Event: gcpCloudEvent(gcpcloud.ComputeTargetTCPProxyEvent), URN: gcpResourceURN[gcpcloud.ComputeTargetTCPProxyRecord]("gcp_compute_target_tcp_proxy")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeURLMapRecord]{Name: familyComputeURLMap, Label: "gcp compute url maps", List: listComputeURLMaps, Event: gcpCloudEvent(gcpcloud.ComputeURLMapEvent), URN: gcpResourceURN[gcpcloud.ComputeURLMapRecord]("gcp_compute_url_map")}),
 		gcpFamily(s, gcpFamilyOptions[firewallRecord]{
 			Name:  familyComputeFirewall,
@@ -687,7 +691,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSubnetwork, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeURLMap, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeURLMap, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -724,7 +728,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_disk, compute_firewall, compute_instance, compute_network, compute_route, compute_subnetwork, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, service_usage_service, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_address, compute_backend_bucket, compute_backend_service, compute_disk, compute_firewall, compute_forwarding_rule, compute_health_check, compute_instance, compute_network, compute_route, compute_security_policy, compute_ssl_certificate, compute_ssl_policy, compute_subnetwork, compute_target_grpc_proxy, compute_target_http_proxy, compute_target_https_proxy, compute_target_ssl_proxy, compute_target_tcp_proxy, compute_url_map, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, service_usage_service, or service_account_key")
 	}
 	return settings, nil
 }
@@ -994,20 +998,14 @@ func computeGlobalLister[T any](collection, label string, extraQuery url.Values)
 }
 
 var (
-	listComputeBackendServices    = computeAggregatedLister[gcpcloud.ComputeBackendServiceRecord]("backendServices", "gcp compute backend service", func(scoped computeScopedResources) []json.RawMessage { return scoped.BackendServices }, "", nil)
-	listComputeBackendBuckets     = computeGlobalLister[gcpcloud.ComputeBackendBucketRecord]("backendBuckets", "gcp compute backend bucket", url.Values{"returnPartialSuccess": {"true"}})
-	listComputeAddresses          = computeAggregatedLister[gcpcloud.ComputeAddressRecord]("addresses", "gcp compute address", func(scoped computeScopedResources) []json.RawMessage { return scoped.Addresses }, "", url.Values{"returnPartialSuccess": {"true"}})
-	listComputeSecurityPolicies   = computeAggregatedLister[gcpcloud.ComputeSecurityPolicyRecord]("securityPolicies", "gcp compute security policy", func(scoped computeScopedResources) []json.RawMessage { return scoped.SecurityPolicies }, "", url.Values{"returnPartialSuccess": {"true"}})
-	listComputeSSLCertificates    = computeAggregatedLister[gcpcloud.ComputeSSLCertificateRecord]("sslCertificates", "gcp compute ssl certificate", func(scoped computeScopedResources) []json.RawMessage { return scoped.SSLCertificates }, "", url.Values{"returnPartialSuccess": {"true"}})
-	listComputeTargetHTTPProxies  = computeAggregatedLister[gcpcloud.ComputeTargetHTTPProxyRecord]("targetHttpProxies", "gcp compute target http proxy", func(scoped computeScopedResources) []json.RawMessage { return scoped.TargetHTTPProxies }, "", url.Values{"returnPartialSuccess": {"true"}})
-	listComputeTargetHTTPSProxies = computeAggregatedLister[gcpcloud.ComputeTargetHTTPSProxyRecord]("targetHttpsProxies", "gcp compute target https proxy", func(scoped computeScopedResources) []json.RawMessage {
-		return scoped.TargetHTTPSProxies
-	}, "", url.Values{"returnPartialSuccess": {"true"}})
-	listComputeHealthChecks = computeAggregatedLister[gcpcloud.ComputeHealthCheckRecord]("healthChecks", "gcp compute health check", func(scoped computeScopedResources) []json.RawMessage { return scoped.HealthChecks }, "", url.Values{"returnPartialSuccess": {"true"}})
-	listComputeURLMaps      = computeAggregatedLister[gcpcloud.ComputeURLMapRecord]("urlMaps", "gcp compute url map", func(scoped computeScopedResources) []json.RawMessage { return scoped.URLMaps }, "", url.Values{"returnPartialSuccess": {"true"}})
-	listComputeNetworks     = computeGlobalLister[gcpcloud.ComputeNetworkRecord]("networks", "gcp compute network", nil)
-	listComputeRoutes       = computeGlobalLister[gcpcloud.ComputeRouteRecord]("routes", "gcp compute route", nil)
-	listComputeFirewalls    = computeGlobalLister[firewallRecord]("firewalls", "gcp compute firewall", nil)
+	listComputeBackendServices, listComputeBackendBuckets      = computeAggregatedLister[gcpcloud.ComputeBackendServiceRecord]("backendServices", "gcp compute backend service", func(scoped computeScopedResources) []json.RawMessage { return scoped.BackendServices }, "", nil), computeGlobalLister[gcpcloud.ComputeBackendBucketRecord]("backendBuckets", "gcp compute backend bucket", url.Values{"returnPartialSuccess": {"true"}})
+	listComputeAddresses, listComputeSecurityPolicies          = computeAggregatedLister[gcpcloud.ComputeAddressRecord]("addresses", "gcp compute address", func(scoped computeScopedResources) []json.RawMessage { return scoped.Addresses }, "", url.Values{"returnPartialSuccess": {"true"}}), computeAggregatedLister[gcpcloud.ComputeSecurityPolicyRecord]("securityPolicies", "gcp compute security policy", func(scoped computeScopedResources) []json.RawMessage { return scoped.SecurityPolicies }, "", url.Values{"returnPartialSuccess": {"true"}})
+	listComputeSSLCertificates, listComputeSSLPolicies         = computeAggregatedLister[gcpcloud.ComputeSSLCertificateRecord]("sslCertificates", "gcp compute ssl certificate", func(scoped computeScopedResources) []json.RawMessage { return scoped.SSLCertificates }, "", url.Values{"returnPartialSuccess": {"true"}}), computeAggregatedLister[gcpcloud.ComputeSSLPolicyRecord]("sslPolicies", "gcp compute ssl policy", func(scoped computeScopedResources) []json.RawMessage { return scoped.SSLPolicies }, "", url.Values{"returnPartialSuccess": {"true"}})
+	listComputeTargetGRPCProxies, listComputeTargetHTTPProxies = computeGlobalLister[gcpcloud.ComputeTargetGRPCProxyRecord]("targetGrpcProxies", "gcp compute target grpc proxy", nil), computeAggregatedLister[gcpcloud.ComputeTargetHTTPProxyRecord]("targetHttpProxies", "gcp compute target http proxy", func(scoped computeScopedResources) []json.RawMessage { return scoped.TargetHTTPProxies }, "", url.Values{"returnPartialSuccess": {"true"}})
+	listComputeTargetHTTPSProxies, listComputeTargetSSLProxies = computeAggregatedLister[gcpcloud.ComputeTargetHTTPSProxyRecord]("targetHttpsProxies", "gcp compute target https proxy", func(scoped computeScopedResources) []json.RawMessage { return scoped.TargetHTTPSProxies }, "", url.Values{"returnPartialSuccess": {"true"}}), computeGlobalLister[gcpcloud.ComputeTargetSSLProxyRecord]("targetSslProxies", "gcp compute target ssl proxy", nil)
+	listComputeTargetTCPProxies, listComputeHealthChecks       = computeAggregatedLister[gcpcloud.ComputeTargetTCPProxyRecord]("targetTcpProxies", "gcp compute target tcp proxy", func(scoped computeScopedResources) []json.RawMessage { return scoped.TargetTCPProxies }, "", url.Values{"returnPartialSuccess": {"true"}}), computeAggregatedLister[gcpcloud.ComputeHealthCheckRecord]("healthChecks", "gcp compute health check", func(scoped computeScopedResources) []json.RawMessage { return scoped.HealthChecks }, "", url.Values{"returnPartialSuccess": {"true"}})
+	listComputeURLMaps, listComputeNetworks, listComputeRoutes = computeAggregatedLister[gcpcloud.ComputeURLMapRecord]("urlMaps", "gcp compute url map", func(scoped computeScopedResources) []json.RawMessage { return scoped.URLMaps }, "", url.Values{"returnPartialSuccess": {"true"}}), computeGlobalLister[gcpcloud.ComputeNetworkRecord]("networks", "gcp compute network", nil), computeGlobalLister[gcpcloud.ComputeRouteRecord]("routes", "gcp compute route", nil)
+	listComputeFirewalls                                       = computeGlobalLister[firewallRecord]("firewalls", "gcp compute firewall", nil)
 )
 
 func listComputeSubnetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeSubnetworkRecord, string, error) {

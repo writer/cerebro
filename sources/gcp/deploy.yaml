@@ -172,6 +172,13 @@ runtimes:
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE
       wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: compute-ssl-policy
+    config:
+      family: compute_ssl_policy
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-forwarding-rule
     config:
       family: compute_forwarding_rule
@@ -200,9 +207,30 @@ runtimes:
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE
       wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: compute-target-grpc-proxy
+    config:
+      family: compute_target_grpc_proxy
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-target-https-proxy
     config:
       family: compute_target_https_proxy
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: compute-target-ssl-proxy
+    config:
+      family: compute_target_ssl_proxy
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: compute-target-tcp-proxy
+    config:
+      family: compute_target_tcp_proxy
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE
