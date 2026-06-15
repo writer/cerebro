@@ -51,6 +51,7 @@ const (
 	familyContainerRegistry, familyContainerVuln = "container_registry", "container_vulnerability"
 	familyComputeDisk                            = "compute_disk"
 	familyComputeFirewall                        = "compute_firewall"
+	familyComputeForwardingRule                  = "compute_forwarding_rule"
 	familyComputeInstance                        = "compute_instance"
 	familyComputeNetwork                         = "compute_network"
 	familyComputeRoute                           = "compute_route"
@@ -146,9 +147,10 @@ type computeAggregatedListResponse struct {
 }
 
 type computeScopedResources struct {
-	Disks       []json.RawMessage `json:"disks"`
-	Instances   []json.RawMessage `json:"instances"`
-	Subnetworks []json.RawMessage `json:"subnetworks"`
+	Disks           []json.RawMessage `json:"disks"`
+	ForwardingRules []json.RawMessage `json:"forwardingRules"`
+	Instances       []json.RawMessage `json:"instances"`
+	Subnetworks     []json.RawMessage `json:"subnetworks"`
 }
 
 type serviceAccountRecord = gcpcloud.ServiceAccountRecord
@@ -228,24 +230,8 @@ type diskEncryptionKey struct {
 	KMSKeyName string `json:"kmsKeyName"`
 }
 
-type firewallRecord struct {
-	ID                    string            `json:"id"`
-	Name                  string            `json:"name"`
-	Network               string            `json:"network"`
-	Direction             string            `json:"direction"`
-	Disabled              bool              `json:"disabled"`
-	SourceRanges          []string          `json:"sourceRanges"`
-	Allowed               []firewallAllowed `json:"allowed"`
-	TargetTags            []string          `json:"targetTags"`
-	TargetServiceAccounts []string          `json:"targetServiceAccounts"`
-	raw                   json.RawMessage
-}
-
-type firewallAllowed struct {
-	IPProtocol string   `json:"IPProtocol"`
-	Ports      []string `json:"ports"`
-}
-
+type firewallRecord = gcpcloud.ComputeFirewallRecord
+type firewallAllowed = gcpcloud.ComputeFirewallAllowed
 type serviceAccountImpersonationRecord = gcpcloud.ServiceAccountImpersonationRecord
 type auditRecord = gcpcloud.AuditRecord
 
@@ -473,9 +459,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyComputeFirewall,
 			Label: "gcp compute firewall rules",
 			List:  listComputeFirewalls,
-			Event: computeFirewallEvent,
+			Event: gcpCloudEvent(gcpcloud.ComputeFirewallEvent),
 			URN: func(settings settings, firewall firewallRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_firewall:%s", tenantID(settings), firstNonEmpty(firewall.ID, firewall.Name)), nil
+			},
+		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeForwardingRuleRecord]{
+			Name:  familyComputeForwardingRule,
+			Label: "gcp compute forwarding rules",
+			List:  listComputeForwardingRules,
+			Event: gcpCloudEvent(gcpcloud.ComputeForwardingRuleEvent),
+			URN: func(settings settings, rule gcpcloud.ComputeForwardingRuleRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_forwarding_rule:%s", tenantID(settings), firstNonEmpty(rule.SelfLink, rule.ID, rule.Name)), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeDiskRecord]{
@@ -746,7 +741,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -1083,7 +1078,22 @@ func listComputeFirewalls(ctx context.Context, source *Source, settings settings
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Items, "gcp compute firewall", func(record *firewallRecord, raw json.RawMessage) {
-		record.raw = append(json.RawMessage(nil), raw...)
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
+func listComputeForwardingRules(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeForwardingRuleRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response computeAggregatedListResponse
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/forwardingRules"
+	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.ForwardingRules }, "")
+	records, err := decodeRecords(rawRecords, "gcp compute forwarding rule", func(record *gcpcloud.ComputeForwardingRuleRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
 }
@@ -1641,7 +1651,7 @@ func listResourceExposures(ctx context.Context, source *Source, settings setting
 	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	firewalls, err := decodeRecords(response.Items, "gcp firewall", func(record *firewallRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	firewalls, err := decodeRecords(response.Items, "gcp firewall", func(record *firewallRecord, raw json.RawMessage) { record.Raw = append(json.RawMessage(nil), raw...) })
 	if err != nil {
 		return nil, "", err
 	}
@@ -1757,25 +1767,6 @@ func computeInstanceEvent(settings settings, record computeInstanceRecord) (*pri
 	return sourceEvent(settings, "gcp-compute-instance-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_instance", "gcp/compute_instance/v1", payload, attributes, time.Now().UTC())
 }
 
-func computeFirewallEvent(settings settings, record firewallRecord) (*primitives.Event, error) {
-	allowed := firewallPrimaryAllowed(record)
-	attributes := cloudResourceAttributes(settings, familyComputeFirewall, firstNonEmpty(record.ID, record.Name), record.Name, "compute_firewall", "global", nil)
-	attributes["network"] = lastPathSegment(record.Network)
-	attributes["network_url"] = record.Network
-	attributes["direction"] = record.Direction
-	attributes["disabled"] = boolString(record.Disabled)
-	attributes["source_ranges"] = strings.Join(record.SourceRanges, ",")
-	attributes["target_tags"] = strings.Join(record.TargetTags, ",")
-	attributes["target_service_accounts"] = strings.Join(record.TargetServiceAccounts, ",")
-	attributes["protocol"] = allowed.IPProtocol
-	attributes["ports"] = strings.Join(allowed.Ports, ",")
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "gcp-compute-firewall-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_firewall", "gcp/compute_firewall/v1", payload, attributes, time.Now().UTC())
-}
-
 func gcpCloudSettings(settings settings) gcpcloud.Settings {
 	return gcpcloud.Settings{ProjectID: settings.projectID, TenantID: tenantID(settings), Location: settings.location, CustomerID: settings.customerID, GroupKey: settings.groupKey, ServiceAccountEmail: settings.serviceAccountEmail}
 }
@@ -1820,7 +1811,7 @@ func resourceExposureEvent(settings settings, record firewallRecord) (*primitive
 		"scope":             record.Network,
 		"source_cidr":       sourceCIDR,
 	}
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.projectID})
 	if err != nil {
 		return nil, err
 	}

@@ -19,6 +19,7 @@ emitted_kinds:
   - gcp.container_vulnerability
   - gcp.compute_disk
   - gcp.compute_firewall
+  - gcp.compute_forwarding_rule
   - gcp.compute_instance
   - gcp.compute_network
   - gcp.compute_route
@@ -63,6 +64,7 @@ runtime_families:
   - container_vulnerability
   - compute_disk
   - compute_firewall
+  - compute_forwarding_rule
   - compute_instance
   - compute_network
   - compute_route
@@ -175,6 +177,12 @@ coverage_contract:
       type: entity_family
       title: Compute firewall rules
       families: [compute_firewall]
+      support: supported
+      high_value: true
+    - id: compute_forwarding_rule
+      type: entity_family
+      title: Compute forwarding rules
+      families: [compute_forwarding_rule]
       support: supported
       high_value: true
     - id: compute_instance

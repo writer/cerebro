@@ -82,6 +82,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyContainerVuln, kind: "gcp.container_vulnerability"},
 		{family: familyComputeDisk, kind: "gcp.compute_disk"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall"},
+		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule"},
 		{family: familyComputeInstance, kind: "gcp.compute_instance"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network"},
 		{family: familyComputeRoute, kind: "gcp.compute_route"},
@@ -292,6 +293,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall", attr: "source_ranges", want: "0.0.0.0/0"},
+		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule", attr: "internet_exposed", want: "true"},
 		{family: familyComputeDisk, kind: "gcp.compute_disk", attr: "disk_type", want: "pd-balanced"},
 		{family: familyDNSManagedZone, kind: "gcp.dns_managed_zone", attr: "dnssec_enabled", want: "true"},
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set", attr: "records_count", want: "1"},
@@ -775,6 +777,11 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "route-1", "name": "default-route-internet", "selfLink": "projects/writer-prod/global/routes/default-route-internet", "description": "default internet route", "network": "projects/writer-prod/global/networks/default", "destRange": "0.0.0.0/0", "priority": 1000, "tags": []string{"web"}, "nextHopGateway": "projects/writer-prod/global/gateways/default-internet-gateway", "routeType": "STATIC", "routeStatus": "ACTIVE", "creationTimestamp": "2026-04-23T00:00:00Z"}}})
 		case "/compute/v1/projects/writer-prod/global/firewalls":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "fw-1", "name": "allow-web", "network": "global/networks/default", "direction": "INGRESS", "sourceRanges": []string{"0.0.0.0/0"}, "allowed": []map[string]any{{"IPProtocol": "tcp", "ports": []string{"443"}}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/forwardingRules":
+			if got := r.URL.Query().Get("maxResults"); got != "10" {
+				t.Fatalf("forwarding rules maxResults = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"forwardingRules": []map[string]any{{"id": "fr-1", "name": "prod-https", "selfLink": "projects/writer-prod/regions/us-central1/forwardingRules/prod-https", "description": "prod https frontend", "region": "projects/writer-prod/regions/us-central1", "IPAddress": "203.0.113.20", "IPProtocol": "TCP", "ipVersion": "IPV4", "loadBalancingScheme": "EXTERNAL_MANAGED", "portRange": "443-443", "ports": []string{"443"}, "networkTier": "PREMIUM", "target": "projects/writer-prod/regions/us-central1/targetHttpsProxies/prod-https-proxy", "network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "labels": map[string]string{"env": "prod"}}}}}})
 		case "/v1/groups:lookup":
 			if got := r.URL.Query().Get("groupKey.id"); got != "security@writer.com" {
 				t.Fatalf("groupKey.id = %q, want security@writer.com", got)
