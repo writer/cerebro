@@ -9,6 +9,7 @@ emitted_kinds:
   - gcp.artifact_registry_repository
   - gcp.audit
   - gcp.bigquery_dataset
+  - gcp.bigquery_table
   - gcp.bigtable_instance
   - gcp.bigtable_table
   - gcp.certificate_manager_certificate
@@ -20,7 +21,9 @@ emitted_kinds:
   - gcp.cloud_scheduler_job
   - gcp.cloud_run_revision
   - gcp.cloud_run_service
+  - gcp.cloud_sql_database
   - gcp.cloud_sql_instance
+  - gcp.cloud_sql_user
   - gcp.container_registry
   - gcp.container_vulnerability
   - gcp.compute_address
@@ -77,6 +80,7 @@ emitted_kinds:
   - gcp.resourcemanager_project
   - gcp.resource_exposure
   - gcp.secret_manager_secret
+  - gcp.secret_manager_version
   - gcp.service_account
   - gcp.service_account_impersonation
   - gcp.service_account_key
@@ -92,6 +96,7 @@ runtime_families:
   - artifact_registry_repository
   - audit
   - bigquery_dataset
+  - bigquery_table
   - bigtable_instance
   - bigtable_table
   - certificate_manager_certificate
@@ -103,7 +108,9 @@ runtime_families:
   - cloud_scheduler_job
   - cloud_run_revision
   - cloud_run_service
+  - cloud_sql_database
   - cloud_sql_instance
+  - cloud_sql_user
   - container_registry
   - container_vulnerability
   - compute_address
@@ -160,6 +167,7 @@ runtime_families:
   - resourcemanager_project
   - resource_exposure
   - secret_manager_secret
+  - secret_manager_version
   - service_account
   - service_account_impersonation
   - service_account_key
@@ -205,6 +213,12 @@ coverage_contract:
       type: entity_family
       title: BigQuery datasets
       families: [bigquery_dataset]
+      support: supported
+      high_value: true
+    - id: bigquery_table
+      type: entity_family
+      title: BigQuery tables
+      families: [bigquery_table]
       support: supported
       high_value: true
     - id: bigtable_instance
@@ -277,6 +291,18 @@ coverage_contract:
       type: entity_family
       title: Cloud SQL instances
       families: [cloud_sql_instance]
+      support: supported
+      high_value: true
+    - id: cloud_sql_database
+      type: entity_family
+      title: Cloud SQL databases
+      families: [cloud_sql_database]
+      support: supported
+      high_value: true
+    - id: cloud_sql_user
+      type: entity_family
+      title: Cloud SQL users
+      families: [cloud_sql_user]
       support: supported
       high_value: true
     - id: compute_address
@@ -601,6 +627,12 @@ coverage_contract:
       type: entity_family
       title: Secret Manager secrets
       families: [secret_manager_secret]
+      support: supported
+      high_value: true
+    - id: secret_manager_version
+      type: entity_family
+      title: Secret Manager versions
+      families: [secret_manager_version]
       support: supported
       high_value: true
     - id: service_account

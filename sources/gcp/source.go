@@ -41,7 +41,7 @@ const (
 	familyArtifactImage                                                                                                                                                                                  = "artifact_registry_image"
 	familyArtifactRepo                                                                                                                                                                                   = "artifact_registry_repository"
 	familyAudit                                                                                                                                                                                          = "audit"
-	familyBigQueryDataset, familyBigtableInstance, familyBigtableTable                                                                                                                                   = "bigquery_dataset", "bigtable_instance", "bigtable_table"
+	familyBigQueryDataset, familyBigQueryTable, familyBigtableInstance, familyBigtableTable                                                                                                              = "bigquery_dataset", "bigquery_table", "bigtable_instance", "bigtable_table"
 	familyCertificateManagerCertificate                                                                                                                                                                  = "certificate_manager_certificate"
 	familyCertificateManagerCertificateMap                                                                                                                                                               = "certificate_manager_certificate_map"
 	familyCertificateManagerCertificateMapEntry                                                                                                                                                          = "certificate_manager_certificate_map_entry"
@@ -51,7 +51,7 @@ const (
 	familyCloudSchedulerJob                                                                                                                                                                              = "cloud_scheduler_job"
 	familyCloudRunRevision                                                                                                                                                                               = "cloud_run_revision"
 	familyCloudRunService                                                                                                                                                                                = "cloud_run_service"
-	familyCloudSQLInstance                                                                                                                                                                               = "cloud_sql_instance"
+	familyCloudSQLDatabase, familyCloudSQLInstance, familyCloudSQLUser                                                                                                                                   = "cloud_sql_database", "cloud_sql_instance", "cloud_sql_user"
 	familyContainerRegistry, familyContainerVuln                                                                                                                                                         = "container_registry", "container_vulnerability"
 	familyComputeAddress, familyComputeBackendBucket                                                                                                                                                     = "compute_address", "compute_backend_bucket"
 	familyComputeBackendService, familyComputeDisk                                                                                                                                                       = "compute_backend_service", "compute_disk"
@@ -83,7 +83,7 @@ const (
 	familyServiceUsageService, familySpannerDatabase, familySpannerInstance                                                                                                                              = "service_usage_service", "spanner_database", "spanner_instance"
 	familySAKey                                                                                                                                                                                          = "service_account_key"
 	gcpCloudPlatformScope                                                                                                                                                                                = "https://www.googleapis.com/auth/cloud-platform"
-	familySecret                                                                                                                                                                                         = "secret_manager_secret"
+	familySecret, familySecretVersion                                                                                                                                                                    = "secret_manager_secret", "secret_manager_version"
 	familyVPCAccessConnector                                                                                                                                                                             = "vpc_access_connector"
 )
 
@@ -361,6 +361,9 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_bigquery_dataset:%s", tenantID(settings), firstNonEmpty(dataset.ID, dataset.DatasetReference.DatasetID)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.BigQueryTableRecord]{Name: familyBigQueryTable, Label: "gcp bigquery tables", List: listBigQueryTables, Event: gcpCloudEvent(gcpcloud.BigQueryTableEvent), URN: func(settings settings, table gcpcloud.BigQueryTableRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_bigquery_table:%s", tenantID(settings), gcpcloud.BigQueryTableResourceID(settings.projectID, table)), nil
+		}}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.BigtableInstanceRecord]{Name: familyBigtableInstance, Label: "gcp bigtable instances", List: listBigtableInstances, Event: gcpCloudEvent(gcpcloud.BigtableInstanceEvent), URN: gcpResourceURN[gcpcloud.BigtableInstanceRecord]("gcp_bigtable_instance")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.BigtableTableRecord]{Name: familyBigtableTable, Label: "gcp bigtable tables", List: listBigtableTables, Event: gcpCloudEvent(gcpcloud.BigtableTableEvent), URN: gcpResourceURN[gcpcloud.BigtableTableRecord]("gcp_bigtable_table")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.CertificateManagerCertificateRecord]{Name: familyCertificateManagerCertificate, Label: "gcp certificate manager certificates", List: listCertificateManagerCertificates, Event: gcpCloudEvent(gcpcloud.CertificateManagerCertificateEvent), URN: gcpResourceURN[gcpcloud.CertificateManagerCertificateRecord]("gcp_certificate_manager_certificate")}),
@@ -415,6 +418,12 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_sql_instance:%s", tenantID(settings), firstNonEmpty(instance.SelfLink, instance.Name)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudSQLDatabaseRecord]{Name: familyCloudSQLDatabase, Label: "gcp cloud sql databases", List: listCloudSQLDatabases, Event: gcpCloudEvent(gcpcloud.CloudSQLDatabaseEvent), URN: func(settings settings, database gcpcloud.CloudSQLDatabaseRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_sql_database:%s", tenantID(settings), gcpcloud.CloudSQLDatabaseResourceID(settings.projectID, database)), nil
+		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudSQLUserRecord]{Name: familyCloudSQLUser, Label: "gcp cloud sql users", List: listCloudSQLUsers, Event: gcpCloudEvent(gcpcloud.CloudSQLUserEvent), URN: func(settings settings, user gcpcloud.CloudSQLUserRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_sql_user:%s", tenantID(settings), gcpcloud.CloudSQLUserResourceID(settings.projectID, user)), nil
+		}}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ContainerVulnerabilityRecord]{
 			Name:  familyContainerVuln,
 			Label: "gcp container vulnerabilities",
@@ -666,6 +675,9 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_secret_manager_secret:%s", tenantID(settings), secret.Name), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.SecretVersionRecord]{Name: familySecretVersion, Label: "gcp secret manager versions", List: listSecretVersions, Event: gcpCloudEvent(gcpcloud.SecretVersionEvent), URN: func(settings settings, version gcpcloud.SecretVersionRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_secret_manager_version:%s", tenantID(settings), version.Name), nil
+		}}),
 	)
 }
 
@@ -739,7 +751,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyBigtableInstance, familyBigtableTable, familyCertificateManagerCertificate, familyCertificateManagerCertificateMap, familyCertificateManagerCertificateMapEntry, familyCertificateManagerDNSAuthorization, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeExternalVPNGateway, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeInstanceGroup, familyComputeInstanceGroupMgr, familyComputeInstanceTemplate, familyComputeInterconnect, familyComputeInterconnectAttachment, familyComputeNetworkEndpointGroup, familyComputeNetworkFirewallPolicy, familyComputeNetwork, familyComputePacketMirroring, familyComputeRoute, familyComputeRouter, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeTargetVPNGateway, familyComputeURLMap, familyComputeVPNGateway, familyComputeVPNTunnel, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingMetric, familyLoggingSink, familyMonitoringAlertPolicy, familyMonitoringNotificationChannel, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService, familySpannerDatabase, familySpannerInstance, familyVPCAccessConnector:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyBigQueryTable, familyBigtableInstance, familyBigtableTable, familyCertificateManagerCertificate, familyCertificateManagerCertificateMap, familyCertificateManagerCertificateMapEntry, familyCertificateManagerDNSAuthorization, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLDatabase, familyCloudSQLInstance, familyCloudSQLUser, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeExternalVPNGateway, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeInstanceGroup, familyComputeInstanceGroupMgr, familyComputeInstanceTemplate, familyComputeInterconnect, familyComputeInterconnectAttachment, familyComputeNetworkEndpointGroup, familyComputeNetworkFirewallPolicy, familyComputeNetwork, familyComputePacketMirroring, familyComputeRoute, familyComputeRouter, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeTargetVPNGateway, familyComputeURLMap, familyComputeVPNGateway, familyComputeVPNTunnel, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingMetric, familyLoggingSink, familyMonitoringAlertPolicy, familyMonitoringNotificationChannel, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familySecretVersion, familyServiceAcct, familyServiceUsageService, familySpannerDatabase, familySpannerInstance, familyVPCAccessConnector:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -776,7 +788,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, bigtable_instance, bigtable_table, certificate_manager_certificate, certificate_manager_certificate_map, certificate_manager_certificate_map_entry, certificate_manager_dns_authorization, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_address, compute_backend_bucket, compute_backend_service, compute_disk, compute_external_vpn_gateway, compute_firewall, compute_forwarding_rule, compute_health_check, compute_instance, compute_instance_group, compute_instance_group_manager, compute_instance_template, compute_interconnect, compute_interconnect_attachment, compute_network_endpoint_group, compute_network_firewall_policy, compute_network, compute_packet_mirroring, compute_route, compute_router, compute_security_policy, compute_ssl_certificate, compute_ssl_policy, compute_subnetwork, compute_target_grpc_proxy, compute_target_http_proxy, compute_target_https_proxy, compute_target_ssl_proxy, compute_target_tcp_proxy, compute_target_vpn_gateway, compute_url_map, compute_vpn_gateway, compute_vpn_tunnel, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_metric, logging_project_sink, monitoring_alert_policy, monitoring_notification_channel, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, service_usage_service, spanner_database, spanner_instance, vpc_access_connector, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, bigquery_table, bigtable_instance, bigtable_table, certificate_manager_certificate, certificate_manager_certificate_map, certificate_manager_certificate_map_entry, certificate_manager_dns_authorization, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_database, cloud_sql_instance, cloud_sql_user, compute_address, compute_backend_bucket, compute_backend_service, compute_disk, compute_external_vpn_gateway, compute_firewall, compute_forwarding_rule, compute_health_check, compute_instance, compute_instance_group, compute_instance_group_manager, compute_instance_template, compute_interconnect, compute_interconnect_attachment, compute_network_endpoint_group, compute_network_firewall_policy, compute_network, compute_packet_mirroring, compute_route, compute_router, compute_security_policy, compute_ssl_certificate, compute_ssl_policy, compute_subnetwork, compute_target_grpc_proxy, compute_target_http_proxy, compute_target_https_proxy, compute_target_ssl_proxy, compute_target_tcp_proxy, compute_target_vpn_gateway, compute_url_map, compute_vpn_gateway, compute_vpn_tunnel, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_metric, logging_project_sink, monitoring_alert_policy, monitoring_notification_channel, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, secret_manager_version, service_account, service_account_impersonation, service_usage_service, spanner_database, spanner_instance, vpc_access_connector, or service_account_key")
 	}
 	return settings, nil
 }
@@ -992,6 +1004,17 @@ func listBigQueryDatasets(ctx context.Context, source *Source, settings settings
 	return records, response.NextPageToken, nil
 }
 
+func listBigQueryTables(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.BigQueryTableRecord, string, error) {
+	datasets, next, err := listBigQueryDatasets(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records, err := gcpcloud.CollectBigQueryTables(settings.projectID, datasets, limit, func(path string, query url.Values, target any) error {
+		return gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, bigQueryBaseURL, http.MethodGet, path, query, nil, target))
+	})
+	return records, next, err
+}
+
 func listBigtableInstances(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.BigtableInstanceRecord, string, error) {
 	return listPagedRecords[gcpcloud.BigtableInstanceRecord, gcpcloud.BigtablePageResponse](ctx, source, settings, pageToken, limit, bigtableAdminBaseURL, "/v2/projects/"+url.PathEscape(settings.projectID)+"/instances", "", "gcp bigtable instance", func(response gcpcloud.BigtablePageResponse) []json.RawMessage { return response.Instances }, true, false, nil)
 }
@@ -1001,11 +1024,8 @@ func listBigtableTables(ctx context.Context, source *Source, settings settings, 
 	if err != nil {
 		return nil, "", err
 	}
-	records, err := gcpcloud.CollectChildPages(instances, func(instance gcpcloud.BigtableInstanceRecord) string { return instance.Name }, func(instance gcpcloud.BigtableInstanceRecord, tablePageToken string) ([]gcpcloud.BigtableTableRecord, string, error) {
-		path := "/v2/" + gcpcloud.EscapePathSegments(instance.Name) + "/tables"
-		return listPagedRecords[gcpcloud.BigtableTableRecord, gcpcloud.BigtablePageResponse](ctx, source, settings, tablePageToken, limit, bigtableAdminBaseURL, path, "", "gcp bigtable table", func(response gcpcloud.BigtablePageResponse) []json.RawMessage { return response.Tables }, true, false, url.Values{"view": {"FULL"}})
-	}, func(record *gcpcloud.BigtableTableRecord, instance gcpcloud.BigtableInstanceRecord) {
-		record.InstanceName = instance.Name
+	records, err := gcpcloud.CollectBigtableTables(instances, limit, func(path string, query url.Values, target any) error {
+		return gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, bigtableAdminBaseURL, http.MethodGet, path, query, nil, target))
 	})
 	return records, next, err
 }
@@ -1421,6 +1441,34 @@ func listCloudSQLInstances(ctx context.Context, source *Source, settings setting
 	return records, response.NextPageToken, err
 }
 
+func listCloudSQLDatabases(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.CloudSQLDatabaseRecord, string, error) {
+	instances, next, err := listCloudSQLInstances(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records, err := gcpcloud.CollectCloudSQLChildRecords(settings.projectID, "databases", "gcp cloud sql database", instances, limit, func(path string, query url.Values, target any) error {
+		return gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, sqlBaseURL, http.MethodGet, path, query, nil, target))
+	}, func(record *gcpcloud.CloudSQLDatabaseRecord, instance gcpcloud.CloudSQLInstanceRecord) {
+		record.InstanceName = instance.Name
+		record.InstanceRegion = instance.Region
+	})
+	return records, next, err
+}
+
+func listCloudSQLUsers(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.CloudSQLUserRecord, string, error) {
+	instances, next, err := listCloudSQLInstances(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records, err := gcpcloud.CollectCloudSQLChildRecords(settings.projectID, "users", "gcp cloud sql user", instances, limit, func(path string, query url.Values, target any) error {
+		return gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, sqlBaseURL, http.MethodGet, path, query, nil, target))
+	}, func(record *gcpcloud.CloudSQLUserRecord, instance gcpcloud.CloudSQLInstanceRecord) {
+		record.InstanceName = instance.Name
+		record.InstanceRegion = instance.Region
+	})
+	return records, next, err
+}
+
 func listGCSBuckets(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.GCSBucketRecord, string, error) {
 	query := url.Values{"project": {settings.projectID}, "maxResults": {strconv.Itoa(limit)}}
 	gcpcloud.AddPageToken(query, pageToken)
@@ -1489,6 +1537,17 @@ func listSecrets(ctx context.Context, source *Source, settings settings, pageTok
 		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
+}
+
+func listSecretVersions(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.SecretVersionRecord, string, error) {
+	secrets, next, err := listSecrets(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records, err := gcpcloud.CollectSecretVersions(secrets, limit, func(path string, query url.Values, target any) error {
+		return gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, secretManagerBaseURL, http.MethodGet, path, query, nil, target))
+	})
+	return records, next, err
 }
 
 func listKMSKeys(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.KMSKeyRecord, string, error) {
@@ -1671,11 +1730,8 @@ func listSpannerDatabases(ctx context.Context, source *Source, settings settings
 	if err != nil {
 		return nil, "", err
 	}
-	records, err := gcpcloud.CollectChildPages(instances, func(instance gcpcloud.SpannerInstanceRecord) string { return instance.Name }, func(instance gcpcloud.SpannerInstanceRecord, databasePageToken string) ([]gcpcloud.SpannerDatabaseRecord, string, error) {
-		path := "/v1/" + gcpcloud.EscapePathSegments(instance.Name) + "/databases"
-		return listPagedRecords[gcpcloud.SpannerDatabaseRecord, gcpcloud.SpannerPageResponse](ctx, source, settings, databasePageToken, limit, spannerBaseURL, path, "pageSize", "gcp spanner database", func(response gcpcloud.SpannerPageResponse) []json.RawMessage { return response.Databases }, true, false, nil)
-	}, func(record *gcpcloud.SpannerDatabaseRecord, instance gcpcloud.SpannerInstanceRecord) {
-		record.InstanceName = instance.Name
+	records, err := gcpcloud.CollectSpannerDatabases(instances, limit, func(path string, query url.Values, target any) error {
+		return gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, spannerBaseURL, http.MethodGet, path, query, nil, target))
 	})
 	return records, next, err
 }
