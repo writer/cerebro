@@ -196,6 +196,7 @@ func (a *App) runSourceRuntimeSyncJob(ctx context.Context, job *ports.Job, _ *pl
 	if err != nil {
 		return nil, nil, err
 	}
+	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeGraph, grcCacheScopeInventory)
 	return protoToMap(response), nil, nil
 }
 
@@ -248,6 +249,7 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 	if graphResult.Run.ID != "" {
 		refs["graph_ingest_run_id"] = graphResult.Run.ID
 	}
+	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeGraph, grcCacheScopeInventory)
 	return result, refs, nil
 }
 
@@ -264,6 +266,7 @@ func (a *App) runGraphIngestRuntimeJob(ctx context.Context, job *ports.Job, _ *p
 	if err != nil {
 		return nil, nil, err
 	}
+	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeGraph, grcCacheScopeRuntime, grcCacheScopeInventory)
 	refs := map[string]string{}
 	if result.Run.ID != "" {
 		refs["graph_ingest_run_id"] = result.Run.ID
@@ -290,6 +293,7 @@ func (a *App) runFindingRulesEvaluateJob(ctx context.Context, job *ports.Job, _ 
 	if err != nil {
 		return nil, nil, err
 	}
+	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	payload, err := json.Marshal(result)
 	if err != nil {
 		return nil, nil, err
@@ -312,6 +316,7 @@ func (a *App) runFindingsEvaluateJob(ctx context.Context, job *ports.Job, _ *pla
 	if err != nil {
 		return nil, nil, err
 	}
+	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	return protoToMap(findingResponse(result)), nil, nil
 }
 

@@ -1253,7 +1253,13 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"CREATE CONSTRAINT cerebro_checkpoint_id IF NOT EXISTS FOR (c:IngestCheckpoint) REQUIRE c.id IS UNIQUE",
 		"CREATE CONSTRAINT cerebro_ingest_run_id IF NOT EXISTS FOR (r:IngestRun) REQUIRE r.id IS UNIQUE",
 		"CREATE INDEX cerebro_entity_tenant_runtime IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.runtime_id)",
+		"CREATE INDEX cerebro_entity_tenant_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.entity_type)",
+		"CREATE INDEX cerebro_entity_tenant_source IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id)",
+		"CREATE INDEX cerebro_entity_tenant_source_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id, e.entity_type)",
+		"CREATE INDEX cerebro_entity_tenant_label IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.label)",
 		"CREATE INDEX cerebro_relation_tenant_runtime IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.runtime_id)",
+		"CREATE INDEX cerebro_relation_tenant_relation IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.relation)",
+		"CREATE FULLTEXT INDEX cerebro_entity_inventory_fulltext IF NOT EXISTS FOR (e:Entity) ON EACH [e.urn, e.label, e.entity_type, e.attributes_json]",
 	}
 	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		for _, statement := range statements {

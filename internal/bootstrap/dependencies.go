@@ -10,6 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
 	graphstoreneo4j "github.com/writer/cerebro/internal/graphstore/neo4j"
+	"github.com/writer/cerebro/internal/querycache"
 	statestorepostgres "github.com/writer/cerebro/internal/statestore/postgres"
 )
 
@@ -80,6 +81,31 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		return fail(err)
 	}
 	if err := pingDependency(ctx, "graph store", deps.GraphStore); err != nil {
+		return fail(err)
+	}
+	switch cfg.Cache.Driver {
+	case "", config.CacheDriverOff:
+	case config.CacheDriverMemory:
+		deps.QueryCache = querycache.NewMemory(querycache.Options{
+			Namespace:       cfg.Cache.Namespace,
+			MaxPayloadBytes: cfg.Cache.MaxPayloadBytes,
+		})
+	case config.CacheDriverRedis, config.CacheDriverValkey:
+		cache, err := querycache.OpenRedis(cfg.Cache.URL, querycache.Options{
+			Namespace:       cfg.Cache.Namespace,
+			MaxPayloadBytes: cfg.Cache.MaxPayloadBytes,
+		})
+		if err != nil {
+			return fail(fmt.Errorf("open query cache: %w", err))
+		}
+		deps.QueryCache = cache
+		closers = append(closers, func(closeCtx context.Context) error {
+			return cache.Close(closeCtx)
+		})
+	default:
+		return fail(fmt.Errorf("unsupported cache driver %q", cfg.Cache.Driver))
+	}
+	if err := pingDependency(ctx, "query cache", deps.QueryCache); err != nil {
 		return fail(err)
 	}
 	if graphAgentLLMConfigured(cfg.GraphAgentLLM) {
