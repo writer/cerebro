@@ -376,6 +376,7 @@ func (a *App) handleUpdateGRCResourceScope(w http.ResponseWriter, r *http.Reques
 		writeGRCError(w, err)
 		return
 	}
+	a.bumpGRCCacheVersions(r.Context(), tenantID, grcCacheScopeInventory)
 	writeJSON(w, http.StatusOK, grcInventoryScopeUpdateResponse{Scope: record, GeneratedAt: time.Now().UTC()})
 }
 
@@ -440,6 +441,7 @@ func (a *App) handleCreateGRCInventoryAssetReport(w http.ResponseWriter, r *http
 		writeGRCError(w, err)
 		return
 	}
+	a.bumpGRCCacheVersions(r.Context(), tenantID, grcCacheScopeInventory)
 	writeJSON(w, http.StatusCreated, grcInventoryAssetReportResponse{Report: record, GeneratedAt: time.Now().UTC()})
 }
 
@@ -560,6 +562,7 @@ func (a *App) handleUpdateGRCInventoryAssetReportTriage(w http.ResponseWriter, r
 		writeGRCError(w, err)
 		return
 	}
+	a.bumpGRCCacheVersions(r.Context(), record.TenantID, grcCacheScopeInventory)
 	writeJSON(w, http.StatusOK, grcInventoryAssetReportResponse{Report: record, GeneratedAt: time.Now().UTC()})
 }
 

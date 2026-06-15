@@ -166,6 +166,12 @@ Core runtime and store variables:
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | JetStream subject prefix | `events` |
 | `CEREBRO_STATE_STORE_DRIVER` | state-store driver; supported value: `postgres` | unset |
 | `CEREBRO_POSTGRES_DSN` | Postgres DSN | unset |
+| `CEREBRO_CACHE_MODE` | optional query-cache driver; supported: `off`, `memory`, `redis`, `valkey` | inferred from `CEREBRO_CACHE_URL`, otherwise `off` |
+| `CEREBRO_CACHE_URL` | Redis/Valkey URL for shared GRC query caching | unset |
+| `CEREBRO_CACHE_NAMESPACE` | cache key namespace, useful per environment | `cerebro` |
+| `CEREBRO_CACHE_DEFAULT_TTL` | default fresh TTL for cacheable GRC reads | `30s` |
+| `CEREBRO_CACHE_STALE_TTL` | stale-if-error window for cacheable GRC reads | `5m` |
+| `CEREBRO_CACHE_MAX_PAYLOAD_BYTES` | maximum response payload eligible for caching | `1048576` |
 | `CEREBRO_CONNECTOR_CREDENTIAL_KEY` | high-entropy key used to seal Cerebro-managed connector credentials in the state store | unset |
 | `CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY` | RSA private key used to decrypt browser-submitted connector credentials; all replicas must share the same key | unset |
 | `CEREBRO_GRAPH_STORE_DRIVER` | graph-store driver; supported value: `neo4j` | unset |

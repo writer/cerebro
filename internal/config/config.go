@@ -29,6 +29,10 @@ const (
 	AppendLogDriverJetStream = "jetstream"
 	StateStoreDriverPostgres = "postgres"
 	GraphStoreDriverNeo4j    = "neo4j"
+	CacheDriverOff           = "off"
+	CacheDriverMemory        = "memory"
+	CacheDriverRedis         = "redis"
+	CacheDriverValkey        = "valkey"
 )
 
 var (
@@ -46,6 +50,7 @@ type Config struct {
 	StateStore           StateStoreConfig
 	GraphStore           GraphStoreConfig
 	GraphAgentLLM        GraphAgentLLMConfig
+	Cache                CacheConfig
 	Auth                 AuthConfig
 	ConnectorCredentials ConnectorCredentialConfig
 	OTEL                 OpenTelemetryConfig
@@ -87,6 +92,16 @@ type GraphStoreConfig struct {
 	Neo4jPassword     string
 	Neo4jDatabase     string
 	Neo4jQueryTimeout time.Duration
+}
+
+// CacheConfig controls optional shared query/response caching.
+type CacheConfig struct {
+	Driver          string
+	URL             string
+	Namespace       string
+	DefaultTTL      time.Duration
+	StaleTTL        time.Duration
+	MaxPayloadBytes int
 }
 
 // GraphAgentLLMConfig selects and configures the graph ask LLM adapter.
@@ -345,6 +360,11 @@ func Load() (Config, error) {
 			Neo4jPassword: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_PASSWORD")),
 			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
+		Cache: CacheConfig{
+			Driver:    strings.ToLower(strings.TrimSpace(os.Getenv("CEREBRO_CACHE_MODE"))),
+			URL:       strings.TrimSpace(os.Getenv("CEREBRO_CACHE_URL")),
+			Namespace: strings.TrimSpace(os.Getenv("CEREBRO_CACHE_NAMESPACE")),
+		},
 		GraphAgentLLM: GraphAgentLLMConfig{
 			Provider:      strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_PROVIDER")),
 			Model:         strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL")),
@@ -464,6 +484,45 @@ func Load() (Config, error) {
 	cfg.StateStore = ApplyPostgresPoolDefaults(cfg.StateStore)
 	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
 		return Config{}, err
+	}
+	if cfg.Cache.DefaultTTL, err = parseDurationEnv("CEREBRO_CACHE_DEFAULT_TTL", 30*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.Cache.StaleTTL, err = parseDurationEnv("CEREBRO_CACHE_STALE_TTL", 5*time.Minute); err != nil {
+		return Config{}, err
+	}
+	if cfg.Cache.MaxPayloadBytes, err = parseIntEnv("CEREBRO_CACHE_MAX_PAYLOAD_BYTES", 1<<20); err != nil {
+		return Config{}, err
+	}
+	if cfg.Cache.MaxPayloadBytes <= 0 {
+		return Config{}, fmt.Errorf("CEREBRO_CACHE_MAX_PAYLOAD_BYTES must be greater than zero")
+	}
+	if cfg.Cache.Namespace == "" {
+		cfg.Cache.Namespace = "cerebro"
+	}
+	if enabled, err := parseBoolEnv("CEREBRO_CACHE_ENABLED"); err != nil {
+		return Config{}, err
+	} else if envHasValue("CEREBRO_CACHE_ENABLED") && !enabled {
+		cfg.Cache.Driver = CacheDriverOff
+	} else if envHasValue("CEREBRO_CACHE_ENABLED") && enabled && cfg.Cache.Driver == "" {
+		cfg.Cache.Driver = CacheDriverRedis
+	}
+	if cfg.Cache.Driver == "" {
+		if cfg.Cache.URL != "" {
+			cfg.Cache.Driver = CacheDriverRedis
+		} else {
+			cfg.Cache.Driver = CacheDriverOff
+		}
+	}
+	switch cfg.Cache.Driver {
+	case CacheDriverOff:
+	case CacheDriverMemory:
+	case CacheDriverRedis, CacheDriverValkey:
+		if cfg.Cache.URL == "" {
+			return Config{}, fmt.Errorf("CEREBRO_CACHE_URL is required when CEREBRO_CACHE_MODE=%q", cfg.Cache.Driver)
+		}
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_CACHE_MODE %q", cfg.Cache.Driver)
 	}
 	cfg.GraphAgentLLM.OpenRouterAPIKey = strings.TrimSpace(os.Getenv("CEREBRO_OPENROUTER_API_KEY"))
 	if raw, ok := os.LookupEnv("CEREBRO_SHUTDOWN_TIMEOUT"); ok && strings.TrimSpace(raw) != "" {

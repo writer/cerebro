@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -68,22 +69,22 @@ func (app *App) registerReportRoutes(mux *http.ServeMux) {
 }
 
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {
-	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.handleGRCDashboard)
+	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCDashboard))
 	registerHTTPRoute(mux, "POST /grc/ask", routeSurfacePlatformHTTP, app.handleGRCAsk)
-	registerHTTPRoute(mux, "GET /grc/findings", routeSurfacePlatformHTTP, app.handleGRCFindings)
-	registerHTTPRoute(mux, "GET /grc/controls", routeSurfacePlatformHTTP, app.handleGRCControls)
-	registerHTTPRoute(mux, "GET /grc/evidence", routeSurfacePlatformHTTP, app.handleGRCEvidence)
-	registerHTTPRoute(mux, "GET /grc/inventory/categories", routeSurfacePlatformHTTP, app.handleGRCInventoryCategories)
-	registerHTTPRoute(mux, "GET /grc/inventory/assets", routeSurfacePlatformHTTP, app.handleGRCInventoryAssets)
-	registerHTTPRoute(mux, "GET /grc/inventory/assets/detail", routeSurfacePlatformHTTP, app.handleGRCInventoryAssetDetail)
-	registerHTTPRoute(mux, "GET /grc/inventory/resource-scope", routeSurfacePlatformHTTP, app.handleGRCResourceScope)
+	registerHTTPRoute(mux, "GET /grc/findings", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("findings", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCFindings))
+	registerHTTPRoute(mux, "GET /grc/controls", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("controls", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCControls))
+	registerHTTPRoute(mux, "GET /grc/evidence", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("evidence", time.Minute, grcCacheScopeEvidence, grcCacheScopeFindings, grcCacheScopeRuntime), app.handleGRCEvidence))
+	registerHTTPRoute(mux, "GET /grc/inventory/categories", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.categories", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory), app.handleGRCInventoryCategories))
+	registerHTTPRoute(mux, "GET /grc/inventory/assets", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.assets", 2*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssets))
+	registerHTTPRoute(mux, "GET /grc/inventory/assets/detail", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset.detail", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssetDetail))
+	registerHTTPRoute(mux, "GET /grc/inventory/resource-scope", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.resource_scope", time.Minute, grcCacheScopeInventory, grcCacheScopeGraph), app.handleGRCResourceScope))
 	registerHTTPRoute(mux, "POST /grc/inventory/resource-scope", routeSurfacePlatformHTTP, app.handleUpdateGRCResourceScope)
-	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports", routeSurfacePlatformHTTP, app.handleListGRCInventoryAssetReports)
+	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset_reports", time.Minute, grcCacheScopeInventory), app.handleListGRCInventoryAssetReports))
 	registerHTTPRoute(mux, "POST /grc/inventory/asset-reports", routeSurfacePlatformHTTP, app.handleCreateGRCInventoryAssetReport)
-	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports/{reportID}", routeSurfacePlatformHTTP, app.handleGetGRCInventoryAssetReport)
+	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports/{reportID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset_report", time.Minute, grcCacheScopeInventory), app.handleGetGRCInventoryAssetReport))
 	registerHTTPRoute(mux, "PATCH /grc/inventory/asset-reports/{reportID}/triage", routeSurfacePlatformHTTP, app.handleUpdateGRCInventoryAssetReportTriage)
-	registerHTTPRoute(mux, "GET /grc/entities/{entityID}/impact", routeSurfacePlatformHTTP, app.handleGRCEntityImpact)
-	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}", routeSurfacePlatformHTTP, app.handleGRCAuditPacket)
+	registerHTTPRoute(mux, "GET /grc/entities/{entityID}/impact", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("entity.impact", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCEntityImpact))
+	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("audit.packet", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCAuditPacket))
 }
 
 func (app *App) registerFindingRoutes(mux *http.ServeMux) {

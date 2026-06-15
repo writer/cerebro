@@ -28,6 +28,13 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_POSTGRES_MAX_IDLE_CONNS` | Go default | Optional `database/sql` maximum idle connections. |
 | `CEREBRO_POSTGRES_CONN_MAX_LIFETIME` | Go default | Optional maximum lifetime for pooled Postgres connections. |
 | `CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME` | Go default | Optional maximum idle time for pooled Postgres connections. |
+| `CEREBRO_CACHE_MODE` | inferred | Optional query-cache driver. Supported: `off`, `memory`, `redis`, `valkey`. |
+| `CEREBRO_CACHE_URL` | unset | Redis/Valkey URL. Setting this infers `redis` unless `CEREBRO_CACHE_MODE` is set. |
+| `CEREBRO_CACHE_NAMESPACE` | `cerebro` | Cache key namespace. Use a distinct value per environment. |
+| `CEREBRO_CACHE_DEFAULT_TTL` | `30s` | Default fresh TTL for cacheable GRC read responses. |
+| `CEREBRO_CACHE_STALE_TTL` | `5m` | Additional stale-if-error window for cacheable GRC read responses. |
+| `CEREBRO_CACHE_MAX_PAYLOAD_BYTES` | `1048576` | Maximum response payload size eligible for caching. |
+| `CEREBRO_CACHE_ENABLED` | unset | Compatibility boolean. `false` forces `off`; `true` with no mode selects `redis`. |
 | `CEREBRO_GRAPH_STORE_DRIVER` | inferred | Graph-store driver. Supported: `neo4j`. |
 | `CEREBRO_NEO4J_URI` | unset | Neo4j/Aura URI. Setting this infers `neo4j`. |
 | `CEREBRO_NEO4J_USERNAME` | unset | Neo4j/Aura username. |

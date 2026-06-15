@@ -38,6 +38,7 @@ import (
 	"github.com/writer/cerebro/internal/mcpoauth"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/querycache"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -54,6 +55,7 @@ type Dependencies struct {
 	StateStore    ports.StateStore
 	GraphStore    ports.GraphStore
 	GraphAgentLLM graphagent.LLMClient
+	QueryCache    querycache.Cache
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
@@ -75,6 +77,7 @@ type App struct {
 	mcpOAuthRegisterLimit *deviceauth.TokenBucket
 	oauthEndpointLimit    *deviceauth.TokenBucket
 	connectorTransitKey   *connectorcredentials.TransitKey
+	queryCacheGroup       queryCacheRefreshGroup
 }
 
 type appServices struct {
@@ -430,6 +433,7 @@ func (a *App) handleResolveFinding(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, err)
 		return
 	}
+	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.ResolveFindingResponse{
 		Finding: findingMessage(finding),
 	})
@@ -454,6 +458,7 @@ func (a *App) handleSuppressFinding(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, err)
 		return
 	}
+	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.SuppressFindingResponse{
 		Finding: findingMessage(finding),
 	})
@@ -478,6 +483,7 @@ func (a *App) handleAssignFinding(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, err)
 		return
 	}
+	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.AssignFindingResponse{
 		Finding: findingMessage(finding),
 	})
@@ -503,6 +509,7 @@ func (a *App) handleSetFindingDueDate(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, err)
 		return
 	}
+	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.SetFindingDueDateResponse{
 		Finding: findingMessage(finding),
 	})
@@ -524,6 +531,7 @@ func (a *App) handleAddFindingNote(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, err)
 		return
 	}
+	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.AddFindingNoteResponse{
 		Finding: findingMessage(finding),
 	})
@@ -551,6 +559,7 @@ func (a *App) handleLinkFindingTicket(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, err)
 		return
 	}
+	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.LinkFindingTicketResponse{
 		Finding: findingMessage(finding),
 	})
@@ -1153,6 +1162,7 @@ func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request
 		writeGraphIngestError(w, err)
 		return
 	}
+	bumpGRCCacheForRuntime(r.Context(), a.deps, request.GetRuntimeId(), grcCacheScopeGraph, grcCacheScopeRuntime, grcCacheScopeInventory)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.RunGraphIngestRuntimeResponse{
 		Result: graphIngestRunResultMessage(result),
 	})
@@ -1249,6 +1259,7 @@ func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
 		writeSourceRuntimeError(w, err)
 		return
 	}
+	bumpGRCCacheForRuntime(r.Context(), a.deps, request.GetRuntime().GetId(), grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeInventory)
 	writeProtoJSON(w, http.StatusOK, response)
 }
 
@@ -1439,6 +1450,7 @@ func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 		writeClaimError(w, err)
 		return
 	}
+	bumpGRCCacheForRuntime(r.Context(), a.deps, request.GetRuntimeId(), grcCacheScopeGraph, grcCacheScopeInventory)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.WriteClaimsResponse{
 		ClaimsWritten:          response.ClaimsWritten,
 		EntitiesUpserted:       response.EntitiesUpserted,
@@ -1472,6 +1484,7 @@ func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http
 		writeFindingError(w, err)
 		return
 	}
+	bumpGRCCacheForRuntime(r.Context(), a.deps, request.GetId(), grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	writeProtoJSON(w, http.StatusOK, findingResponse(response))
 }
 
@@ -1509,6 +1522,7 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 		writeFindingError(w, err)
 		return
 	}
+	bumpGRCCacheForRuntime(r.Context(), a.deps, request.GetId(), grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	writeProtoJSON(w, http.StatusOK, findingRulesResponse(response))
 }
 
@@ -1711,6 +1725,7 @@ func (a *App) handlePromoteFindingCandidate(w http.ResponseWriter, r *http.Reque
 		writeFindingError(w, err)
 		return
 	}
+	a.bumpGRCCacheForFinding(r.Context(), response.Finding)
 	writeProtoJSON(w, http.StatusOK, promoteFindingCandidateResponse(response))
 }
 
@@ -1933,6 +1948,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
+	bumpGRCCacheForRuntime(ctx, s.deps, req.Msg.GetRuntime().GetId(), grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeInventory)
 	return connect.NewResponse(response), nil
 }
 
@@ -1977,6 +1993,7 @@ func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request
 	if err != nil {
 		return nil, claimConnectError(err)
 	}
+	bumpGRCCacheForRuntime(ctx, s.deps, req.Msg.GetRuntimeId(), grcCacheScopeGraph, grcCacheScopeInventory)
 	return connect.NewResponse(&cerebrov1.WriteClaimsResponse{
 		ClaimsWritten:          response.ClaimsWritten,
 		EntitiesUpserted:       response.EntitiesUpserted,
@@ -2157,6 +2174,7 @@ func (s *bootstrapService) PromoteFindingCandidate(ctx context.Context, req *con
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, response.Finding)
 	return connect.NewResponse(promoteFindingCandidateResponse(response)), nil
 }
 
@@ -2205,6 +2223,7 @@ func (s *bootstrapService) ResolveFinding(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
 	return connect.NewResponse(&cerebrov1.ResolveFindingResponse{Finding: findingMessage(finding)}), nil
 }
 
@@ -2223,6 +2242,7 @@ func (s *bootstrapService) SuppressFinding(ctx context.Context, req *connect.Req
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
 	return connect.NewResponse(&cerebrov1.SuppressFindingResponse{Finding: findingMessage(finding)}), nil
 }
 
@@ -2241,6 +2261,7 @@ func (s *bootstrapService) AssignFinding(ctx context.Context, req *connect.Reque
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
 	return connect.NewResponse(&cerebrov1.AssignFindingResponse{Finding: findingMessage(finding)}), nil
 }
 
@@ -2263,6 +2284,7 @@ func (s *bootstrapService) SetFindingDueDate(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
 	return connect.NewResponse(&cerebrov1.SetFindingDueDateResponse{Finding: findingMessage(finding)}), nil
 }
 
@@ -2281,6 +2303,7 @@ func (s *bootstrapService) AddFindingNote(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
 	return connect.NewResponse(&cerebrov1.AddFindingNoteResponse{Finding: findingMessage(finding)}), nil
 }
 
@@ -2305,6 +2328,7 @@ func (s *bootstrapService) LinkFindingTicket(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
 	return connect.NewResponse(&cerebrov1.LinkFindingTicketResponse{Finding: findingMessage(finding)}), nil
 }
 
@@ -2418,6 +2442,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForRuntime(ctx, s.deps, req.Msg.GetId(), grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	return connect.NewResponse(findingRulesResponse(response)), nil
 }
 
@@ -2440,6 +2465,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
+	bumpGRCCacheForRuntime(ctx, s.deps, req.Msg.GetId(), grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	return connect.NewResponse(findingResponse(response)), nil
 }
 
@@ -2603,6 +2629,7 @@ func (s *bootstrapService) RunGraphIngestRuntime(ctx context.Context, req *conne
 	if err != nil {
 		return nil, graphIngestConnectError(err)
 	}
+	bumpGRCCacheForRuntime(ctx, s.deps, req.Msg.GetRuntimeId(), grcCacheScopeGraph, grcCacheScopeRuntime, grcCacheScopeInventory)
 	return connect.NewResponse(&cerebrov1.RunGraphIngestRuntimeResponse{
 		Result: graphIngestRunResultMessage(result),
 	}), nil

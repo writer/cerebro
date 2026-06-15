@@ -27,6 +27,13 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", "")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", "")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "")
+	t.Setenv("CEREBRO_CACHE_MODE", "")
+	t.Setenv("CEREBRO_CACHE_URL", "")
+	t.Setenv("CEREBRO_CACHE_NAMESPACE", "")
+	t.Setenv("CEREBRO_CACHE_DEFAULT_TTL", "")
+	t.Setenv("CEREBRO_CACHE_STALE_TTL", "")
+	t.Setenv("CEREBRO_CACHE_MAX_PAYLOAD_BYTES", "")
+	t.Setenv("CEREBRO_CACHE_ENABLED", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
@@ -75,6 +82,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.StateStore.Driver != "" {
 		t.Fatalf("StateStore.Driver = %q, want empty", cfg.StateStore.Driver)
 	}
+	if cfg.Cache.Driver != CacheDriverOff || cfg.Cache.DefaultTTL != 30*time.Second || cfg.Cache.StaleTTL != 5*time.Minute || cfg.Cache.MaxPayloadBytes != 1<<20 {
+		t.Fatalf("Cache defaults = %#v", cfg.Cache)
+	}
 	if cfg.GraphStore.Driver != "" {
 		t.Fatalf("GraphStore.Driver = %q, want empty", cfg.GraphStore.Driver)
 	}
@@ -118,6 +128,13 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", "5")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", "30m")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "5m")
+	t.Setenv("CEREBRO_CACHE_MODE", CacheDriverValkey)
+	t.Setenv("CEREBRO_CACHE_URL", "rediss://cache.example.internal:6379")
+	t.Setenv("CEREBRO_CACHE_NAMESPACE", "cerebro:test")
+	t.Setenv("CEREBRO_CACHE_DEFAULT_TTL", "45s")
+	t.Setenv("CEREBRO_CACHE_STALE_TTL", "10m")
+	t.Setenv("CEREBRO_CACHE_MAX_PAYLOAD_BYTES", "2097152")
+	t.Setenv("CEREBRO_CACHE_ENABLED", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
 	t.Setenv("CEREBRO_NEO4J_URI", "neo4j+s://example.databases.neo4j.io")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
@@ -194,6 +211,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.StateStore.PostgresMaxOpenConns != 20 || cfg.StateStore.PostgresMaxIdleConns != 5 || cfg.StateStore.PostgresConnMaxLifetime != 30*time.Minute || cfg.StateStore.PostgresConnMaxIdleTime != 5*time.Minute {
 		t.Fatalf("StateStore pool config = %#v", cfg.StateStore)
+	}
+	if cfg.Cache.Driver != CacheDriverValkey || cfg.Cache.URL != "rediss://cache.example.internal:6379" || cfg.Cache.Namespace != "cerebro:test" || cfg.Cache.DefaultTTL != 45*time.Second || cfg.Cache.StaleTTL != 10*time.Minute || cfg.Cache.MaxPayloadBytes != 2097152 {
+		t.Fatalf("Cache config = %#v", cfg.Cache)
 	}
 	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
 		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
@@ -376,6 +396,13 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", "")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", "")
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "")
+	t.Setenv("CEREBRO_CACHE_MODE", "")
+	t.Setenv("CEREBRO_CACHE_URL", "")
+	t.Setenv("CEREBRO_CACHE_NAMESPACE", "")
+	t.Setenv("CEREBRO_CACHE_DEFAULT_TTL", "")
+	t.Setenv("CEREBRO_CACHE_STALE_TTL", "")
+	t.Setenv("CEREBRO_CACHE_MAX_PAYLOAD_BYTES", "")
+	t.Setenv("CEREBRO_CACHE_ENABLED", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
@@ -958,6 +985,41 @@ func TestLoadInfersDriversFromURLs(t *testing.T) {
 	}
 	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
 		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
+	}
+}
+
+func TestLoadInfersCacheDriverFromURL(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_CACHE_URL", "redis://127.0.0.1:6379")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Cache.Driver != CacheDriverRedis {
+		t.Fatalf("Cache.Driver = %q, want %q", cfg.Cache.Driver, CacheDriverRedis)
+	}
+	if cfg.Cache.Namespace != "cerebro" {
+		t.Fatalf("Cache.Namespace = %q, want cerebro", cfg.Cache.Namespace)
+	}
+}
+
+func TestLoadRejectsMissingCacheURL(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_CACHE_MODE", CacheDriverRedis)
+	t.Setenv("CEREBRO_CACHE_URL", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsUnsupportedCacheDriver(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_CACHE_MODE", "memcached")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
 	}
 }
 
