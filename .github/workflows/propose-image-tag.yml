@@ -347,6 +347,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           fi
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           promotion_mode="${APPLY_MODE}"
           if [ "${promotion_mode}" = "direct_push" ]; then
@@ -499,7 +500,7 @@ jobs:
             git add "infra/aws/Pulumi.sec-dev.yaml"
           fi
           git commit -m "${title}"
-          git push --force-with-lease "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:${branch}"
+          git push --force-with-lease origin "HEAD:${branch}"
 
           body="$(mktemp)"
           {
