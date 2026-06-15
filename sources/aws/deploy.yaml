@@ -1,0 +1,944 @@
+sourceId: aws
+secretKeys:
+  - AWS_ACCOUNT_ID
+  - AWS_REGION
+  - AWS_ROLE_ARN
+runtimes:
+  - localId: access-key
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: access_key
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: access-analyzer
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: access_analyzer
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: acm-certificate
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: acm_certificate
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: apprunner-service
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: apprunner_service
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: asset-metadata
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: asset_metadata
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: batch-compute-environment
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: batch_compute_environment
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: batch-job-queue
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: batch_job_queue
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: backup-vault
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: backup_vault
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: backup-plan
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: backup_plan
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: backup-protected-resource
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: backup_protected_resource
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: backup-recovery-point
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: backup_recovery_point
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudtrail
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudtrail
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: config-recorder
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: config_recorder
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: dynamodb-backup
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: dynamodb_backup
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: dynamodb-stream
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: dynamodb_stream
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: dynamodb-table
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: dynamodb_table
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: datasync-location
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: datasync_location
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: datasync-task
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: datasync_task
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: docdb-cluster
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: docdb_cluster
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: docdb-instance
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: docdb_instance
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ebs-snapshot
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ebs_snapshot
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ebs-volume
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ebs_volume
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: athena-data-catalog
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: athena_data_catalog
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: athena-workgroup
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: athena_workgroup
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudwatch-alarm
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudwatch_alarm
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudwatch-log-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudwatch_log_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ec2-instance
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ec2_instance
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: vpc
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: vpc
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: subnet
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: subnet
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: security-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: security_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: route-table
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: route_table
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: internet-gateway
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: internet_gateway
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: nat-gateway
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: nat_gateway
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: vpc-endpoint
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: vpc_endpoint
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ecr-repository
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ecr_repository
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ecs-service
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ecs_service
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ecs-task
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ecs_task
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ecs-task-definition
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ecs_task_definition
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: efs-access-point
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: efs_access_point
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: efs-file-system
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: efs_file_system
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: eks-cluster
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: eks_cluster
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: eks-nodegroup
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: eks_nodegroup
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: eks-fargate-profile
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: eks_fargate_profile
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: eks-pod-identity-association
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: eks_pod_identity_association
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: elasticache-cluster
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: elasticache_cluster
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: elasticache-replication-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: elasticache_replication_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: elasticache-subnet-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: elasticache_subnet_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: globalaccelerator-accelerator
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: globalaccelerator_accelerator
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: globalaccelerator-listener
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: globalaccelerator_listener
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: globalaccelerator-endpoint-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: globalaccelerator_endpoint_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: vpclattice-service
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: vpclattice_service
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: vpclattice-listener
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: vpclattice_listener
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: vpclattice-target-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: vpclattice_target_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: elbv2-load-balancer
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: elbv2_load_balancer
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: elbv2-listener
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: elbv2_listener
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: elbv2-target-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: elbv2_target_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: apigateway-stage
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: apigateway_stage
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: apigateway-route
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: apigateway_route
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: apigateway-integration
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: apigateway_integration
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudfront-distribution
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudfront_distribution
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudfront-origin-access-control
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudfront_origin_access_control
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudfront-key-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudfront_key_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudfront-public-key
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudfront_public_key
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudfront-response-headers-policy
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudfront_response_headers_policy
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: effective-permission
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: effective_permission
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: guardduty-finding
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: guardduty_finding
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: eventbridge-archive
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: eventbridge_archive
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: eventbridge-event-bus
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: eventbridge_event_bus
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: eventbridge-pipe
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: eventbridge_pipe
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: eventbridge-rule
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: eventbridge_rule
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: firehose-delivery-stream
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: firehose_delivery_stream
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: glue-crawler
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: glue_crawler
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: glue-database
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: glue_database
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: glue-job
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: glue_job
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: glue-table
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: glue_table
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-account-password-policy
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_account_password_policy
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-account-summary
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_account_summary
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-credential-report
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_credential_report
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-group-membership
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_group_membership
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-role
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_role
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-role-assignment
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_role_assignment
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-role-trust
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_role_trust
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: iam-user
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: iam_user
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: identity-center-account-assignment
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: identity_center_account_assignment
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: identity-center-permission-set
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: identity_center_permission_set
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: inspector2-finding
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: inspector2_finding
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: fsx-file-system
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: fsx_file_system
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: kms-key
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: kms_key
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: macie2-finding
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: macie2_finding
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: network-firewall
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: network_firewall
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: kinesis-stream
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: kinesis_stream
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: lakeformation-lf-tag
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: lakeformation_lf_tag
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: lakeformation-permission
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: lakeformation_permission
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: lakeformation-resource
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: lakeformation_resource
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: msk-cluster
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: msk_cluster
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: neptune-cluster
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: neptune_cluster
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: neptune-instance
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: neptune_instance
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: identitystore-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: identitystore_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: identitystore-group-membership
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: identitystore_group_membership
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: identitystore-user
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: identitystore_user
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: organizations-account
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: organizations_account
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: organizations-organizational-unit
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: organizations_organizational_unit
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: organizations-policy
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: organizations_policy
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: opensearch-domain
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: opensearch_domain
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: opensearch-serverless-collection
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: opensearch_serverless_collection
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: opensearch-serverless-security-policy
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: opensearch_serverless_security_policy
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: organizations-root
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: organizations_root
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: public-endpoint
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: public_endpoint
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: rds-instance
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: rds_instance
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: redshift-cluster
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: redshift_cluster
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: resource-exposure
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: resource_exposure
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: route53-resolver-endpoint
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: route53_resolver_endpoint
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: route53-resolver-rule
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: route53_resolver_rule
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: s3-access-point
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: s3_access_point
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: s3-bucket
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: s3_bucket
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: s3-multi-region-access-point
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: s3_multi_region_access_point
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: scheduler-schedule
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: scheduler_schedule
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: scheduler-schedule-group
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: scheduler_schedule_group
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: secret
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: secret
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: securityhub-finding
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: securityhub_finding
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: sns-topic
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: sns_topic
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: sqs-queue
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: sqs_queue
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ssm-association
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ssm_association
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ssm-document
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ssm_document
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ssm-managed-instance
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ssm_managed_instance
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: ssm-parameter
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ssm_parameter
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: stepfunctions-activity
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: stepfunctions_activity
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: stepfunctions-state-machine
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: stepfunctions_state_machine
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: sso-account-assignment
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: sso_account_assignment
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: sso-instance
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: sso_instance
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: sso-permission-set
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: sso_permission_set
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: wafv2-web-acl
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: wafv2_web_acl
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: lambda-function
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: lambda_function
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN

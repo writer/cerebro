@@ -2,6 +2,8 @@ sourceId: azure
 secretKeys:
   - AZURE_ARM_TOKEN
   - AZURE_GRAPH_TOKEN
+  - AZURE_GROUP_ID
+  - AZURE_SERVICE_PRINCIPAL_ID
   - AZURE_SUBSCRIPTION_ID
   - AZURE_TENANT_ID
 runtimes:
@@ -12,12 +14,26 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: activity-log-alert
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: activity_log_alert
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
   - localId: aks-cluster
     config:
       arm_token: env:AZURE_ARM_TOKEN
       family: aks_cluster
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: app-role-assignment
+    config:
+      family: app_role_assignment
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      service_principal_id: env:AZURE_SERVICE_PRINCIPAL_ID
       tenant_id: env:AZURE_TENANT_ID
   - localId: app-service
     config:
@@ -31,6 +47,20 @@ runtimes:
       family: application
       graph_token: env:AZURE_GRAPH_TOKEN
       per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: application-gateway
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: application_gateway
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: application-insight
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: application_insight
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
   - localId: asset-metadata
     config:
@@ -50,6 +80,13 @@ runtimes:
     config:
       arm_token: env:AZURE_ARM_TOKEN
       family: cosmos_account
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: databricks-workspace
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: databricks_workspace
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
@@ -91,6 +128,13 @@ runtimes:
       graph_token: env:AZURE_GRAPH_TOKEN
       per_page: "100"
       tenant_id: env:AZURE_TENANT_ID
+  - localId: group-membership
+    config:
+      family: group_membership
+      graph_token: env:AZURE_GRAPH_TOKEN
+      group_id: env:AZURE_GROUP_ID
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
   - localId: iam-role-assignment
     config:
       arm_token: env:AZURE_ARM_TOKEN
@@ -119,10 +163,31 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
-  - localId: virtual-network
+  - localId: load-balancer
     config:
       arm_token: env:AZURE_ARM_TOKEN
-      family: virtual_network
+      family: load_balancer
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: log-alert
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: log_alert
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: managed-disk
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: managed_disk
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: metric-alert-rule
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: metric_alert_rule
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
@@ -140,17 +205,31 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
-  - localId: managed-disk
-    config:
-      arm_token: env:AZURE_ARM_TOKEN
-      family: managed_disk
-      per_page: "100"
-      subscription_id: env:AZURE_SUBSCRIPTION_ID
-      tenant_id: env:AZURE_TENANT_ID
   - localId: resource-exposure
     config:
       arm_token: env:AZURE_ARM_TOKEN
       family: resource_exposure
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: role
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: role
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: route-table
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: route_table
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: security-contact
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: security_contact
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
@@ -164,6 +243,13 @@ runtimes:
     config:
       arm_token: env:AZURE_ARM_TOKEN
       family: sql_database
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: sql-managed-instance
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: sql_managed_instance
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
@@ -191,6 +277,20 @@ runtimes:
     config:
       arm_token: env:AZURE_ARM_TOKEN
       family: virtual_machine
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: virtual-machine-scale-set
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: virtual_machine_scale_set
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: virtual-network
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: virtual_network
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
