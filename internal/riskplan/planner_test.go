@@ -128,6 +128,54 @@ func TestAnalyzeRanksSimulatedCandidatesWithFirstClassSignals(t *testing.T) {
 	}
 }
 
+func TestAnalyzeDeduplicatesStoredAndRecomputedRiskFactorsPerFinding(t *testing.T) {
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	plan := Analyze([]*ports.FindingRecord{{
+		ID:           "cloud-public-prod-secrets",
+		TenantID:     "writer",
+		RuntimeID:    "writer-aws",
+		RuleID:       "cloud-public-resource-exposure",
+		Title:        "Cloud Public Resource Exposure",
+		Severity:     "HIGH",
+		Status:       "open",
+		ResourceURNs: []string{"urn:cerebro:writer:aws_secret_store:prod-secrets"},
+		FindingRisk: ports.FindingRisk{
+			RiskScore:       90,
+			ConfidenceScore: 92,
+			RiskReasons:     []string{"external_exposure"},
+			RiskFactors: []ports.FindingRiskFactor{
+				{FactorID: "external_exposure", Category: "likelihood", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:internet_exposed"}},
+			},
+		},
+		Attributes: map[string]string{
+			"action":               "public_network_ingress",
+			"internet_exposed":     "true",
+			"primary_resource_urn": "urn:cerebro:writer:aws_secret_store:prod-secrets",
+			"resource_name":        "prod-secrets",
+		},
+		LastObservedAt: now.Add(-2 * time.Hour),
+	}}, Options{
+		TenantID:   "writer",
+		RuntimeIDs: []string{"writer-aws"},
+		Now:        now,
+	})
+
+	if len(plan.ActionCandidates) == 0 {
+		t.Fatalf("ActionCandidates = nil, want public exposure candidate")
+	}
+	factors := plan.ActionCandidates[0].RiskFactors
+	for _, factor := range factors {
+		if factor.FactorID != "external_exposure" {
+			continue
+		}
+		if factor.Count != 1 || factor.WeightTotal != 35 {
+			t.Fatalf("external_exposure factor = %#v, want one contribution from the finding", factor)
+		}
+		return
+	}
+	t.Fatalf("risk factors = %#v, want external_exposure factor", factors)
+}
+
 func TestAnalyzeCanIncludeUnscoredPlanningBlockers(t *testing.T) {
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 	plan := Analyze([]*ports.FindingRecord{{
@@ -173,6 +221,23 @@ func TestAnalyzeCanIncludeUnscoredPlanningBlockers(t *testing.T) {
 	}
 	if evidence := byType[ActionTypeRefreshEvidence]; evidence.Evidence.Status != "limited" || evidence.Evidence.Freshness != "stale" {
 		t.Fatalf("refresh evidence candidate = %#v, want limited stale evidence", evidence)
+	}
+}
+
+func TestCompareCandidatesRanksNonSimulatedStatusesByScore(t *testing.T) {
+	unsupportedHigh := diffTestCandidate("unsupported-high", "Unsupported high", 100, 0, 0, SimulationStatusUnsupported)
+	noReductionLow := diffTestCandidate("no-reduction-low", "No reduction low", 10, 0, 0, SimulationStatusNoExpectedRisk)
+	unsupportedMid := diffTestCandidate("unsupported-mid", "Unsupported mid", 50, 0, 0, SimulationStatusUnsupported)
+	simulatedLow := diffTestCandidate("simulated-low", "Simulated low", 1, 0, 0, SimulationStatusSimulated)
+
+	if got := compareCandidates(unsupportedHigh, noReductionLow); got >= 0 {
+		t.Fatalf("compareCandidates(high unsupported, low no-reduction) = %d, want high priority first", got)
+	}
+	if got := compareCandidates(noReductionLow, unsupportedMid); got <= 0 {
+		t.Fatalf("compareCandidates(low no-reduction, mid unsupported) = %d, want priority tie-breaker across non-simulated statuses", got)
+	}
+	if got := compareCandidates(simulatedLow, unsupportedHigh); got >= 0 {
+		t.Fatalf("compareCandidates(simulated, unsupported) = %d, want simulated first", got)
 	}
 }
 

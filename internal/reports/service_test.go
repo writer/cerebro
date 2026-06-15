@@ -816,9 +816,10 @@ func TestRunRiskActionPlanReportIncludesUnscoredCandidatesAndDiff(t *testing.T) 
 		t.Fatalf("NewStruct(previousResult) error = %v", err)
 	}
 	reportStore := &stubReportStore{run: &cerebrov1.ReportRun{
-		Id:       "previous-plan",
-		ReportId: riskActionPlanReportID,
-		Result:   previousResult,
+		Id:         "previous-plan",
+		ReportId:   riskActionPlanReportID,
+		Parameters: map[string]string{reportParameterTenantID: "writer"},
+		Result:     previousResult,
 	}}
 	findingStore := &stubFindingStore{
 		findings: []*ports.FindingRecord{
@@ -887,6 +888,66 @@ func TestRunRiskActionPlanReportIncludesUnscoredCandidatesAndDiff(t *testing.T) 
 	plan := result["plan"].(map[string]any)
 	if plan["model_version"] != "risk-action-plan-v2" || plan["plan_diff"] == nil {
 		t.Fatalf("plan = %#v, want typed plan with diff", plan)
+	}
+}
+
+func TestRunRiskActionPlanReportRejectsCrossTenantPreviousRun(t *testing.T) {
+	previousResult, err := structpb.NewStruct(map[string]any{
+		"action_candidates": []any{
+			map[string]any{
+				"id":                "remove-public-exposure-urn-cerebro-other-service-billing",
+				"title":             "Remove public exposure from other tenant billing",
+				"target_urn":        "urn:cerebro:other:service:billing",
+				"priority_score":    100,
+				"simulation_status": "simulated",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStruct(previousResult) error = %v", err)
+	}
+	reportStore := &stubReportStore{run: &cerebrov1.ReportRun{
+		Id:         "previous-plan",
+		ReportId:   riskActionPlanReportID,
+		Parameters: map[string]string{reportParameterTenantID: "other"},
+		Result:     previousResult,
+	}}
+	findingStore := &stubFindingStore{
+		findings: []*ports.FindingRecord{
+			{
+				ID:           "ownerless-control-gap",
+				TenantID:     "writer",
+				RuntimeID:    "writer-grc",
+				RuleID:       "control-owner-missing",
+				Title:        "High risk control gap",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:service:payments"},
+				FindingRisk: ports.FindingRisk{
+					RiskScore:       82,
+					ConfidenceScore: 42,
+					RiskReasons:     []string{"crown_jewel"},
+				},
+				Attributes: map[string]string{
+					"primary_resource_urn": "urn:cerebro:writer:service:payments",
+					"resource_name":        "payments",
+				},
+				LastObservedAt: time.Now().UTC().Add(-45 * 24 * time.Hour),
+			},
+		},
+	}
+	service := New(findingStore, nil, reportStore)
+
+	_, err = service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: riskActionPlanReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:            "writer",
+			reportParameterRuntimeIDs:          "writer-grc",
+			reportParameterIncludeUnscored:     "true",
+			reportParameterPreviousReportRunID: "previous-plan",
+		},
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Run() error = %v, want %v", err, ErrInvalidRequest)
 	}
 }
 

@@ -67,7 +67,7 @@ func (s *Service) runRiskActionPlan(ctx context.Context, parameters map[string]s
 		return nil, fmt.Errorf("list findings for tenant %q runtimes %q: %w", tenantID, runtimeIDsCSV, err)
 	}
 	now := time.Now().UTC()
-	previousCandidates, err := s.previousRiskActionCandidates(ctx, strings.TrimSpace(parameters[reportParameterPreviousReportRunID]))
+	previousCandidates, err := s.previousRiskActionCandidates(ctx, tenantID, strings.TrimSpace(parameters[reportParameterPreviousReportRunID]))
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (s *Service) runRiskActionPlan(ctx context.Context, parameters map[string]s
 	return result, nil
 }
 
-func (s *Service) previousRiskActionCandidates(ctx context.Context, reportRunID string) ([]riskplan.Candidate, error) {
+func (s *Service) previousRiskActionCandidates(ctx context.Context, tenantID string, reportRunID string) ([]riskplan.Candidate, error) {
 	if reportRunID == "" {
 		return nil, nil
 	}
@@ -148,6 +148,9 @@ func (s *Service) previousRiskActionCandidates(ctx context.Context, reportRunID 
 	run, err := s.reportStore.GetReportRun(ctx, reportRunID)
 	if err != nil {
 		return nil, fmt.Errorf("load previous risk action plan report run %q: %w", reportRunID, err)
+	}
+	if runTenantID := strings.TrimSpace(run.GetParameters()[reportParameterTenantID]); runTenantID != strings.TrimSpace(tenantID) {
+		return nil, fmt.Errorf("%w: previous_report_run_id %q does not belong to tenant %q", ErrInvalidRequest, reportRunID, tenantID)
 	}
 	result := run.GetResult()
 	if result == nil {

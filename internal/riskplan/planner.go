@@ -240,9 +240,7 @@ func (s *aggregatedCandidateSeed) addFinding(finding *ports.FindingRecord, conte
 	for _, reason := range append(append([]string{}, finding.RiskReasons...), context.Reasons...) {
 		addStringSetValue(s.Reasons, reason)
 	}
-	for _, factor := range append(append([]ports.FindingRiskFactor{}, finding.RiskFactors...), context.Factors...) {
-		s.addRiskFactor(factor)
-	}
+	s.addRiskFactorsForFinding(finding.RiskFactors, context.Factors)
 	riskScore := finding.RiskScore
 	if riskScore == 0 {
 		riskScore = context.Score
@@ -286,6 +284,21 @@ func (s *aggregatedCandidateSeed) addRiskFactor(factor ports.FindingRiskFactor) 
 			entry.EvidenceRefs[strings.TrimSpace(ref)] = struct{}{}
 			s.EvidenceRefCount++
 		}
+	}
+}
+
+func (s *aggregatedCandidateSeed) addRiskFactorsForFinding(findingFactors []ports.FindingRiskFactor, contextFactors []ports.FindingRiskFactor) {
+	seen := map[string]struct{}{}
+	for _, factor := range append(append([]ports.FindingRiskFactor{}, findingFactors...), contextFactors...) {
+		factorID := strings.TrimSpace(factor.FactorID)
+		if factorID == "" {
+			continue
+		}
+		if _, ok := seen[factorID]; ok {
+			continue
+		}
+		seen[factorID] = struct{}{}
+		s.addRiskFactor(factor)
 	}
 }
 
@@ -639,14 +652,13 @@ func compareActionSeeds(left aggregatedCandidateSeed, right aggregatedCandidateS
 }
 
 func compareCandidates(left Candidate, right Candidate) int {
+	if left.SimulationStatus == SimulationStatusSimulated && right.SimulationStatus != SimulationStatusSimulated {
+		return -1
+	}
+	if right.SimulationStatus == SimulationStatusSimulated && left.SimulationStatus != SimulationStatusSimulated {
+		return 1
+	}
 	switch {
-	case left.SimulationStatus != right.SimulationStatus:
-		if left.SimulationStatus == SimulationStatusSimulated {
-			return -1
-		}
-		if right.SimulationStatus == SimulationStatusSimulated {
-			return 1
-		}
 	case left.PriorityScore > right.PriorityScore:
 		return -1
 	case left.PriorityScore < right.PriorityScore:
@@ -666,7 +678,6 @@ func compareCandidates(left Candidate, right Candidate) int {
 	default:
 		return 0
 	}
-	return 0
 }
 
 func actionCandidateID(seed aggregatedCandidateSeed) string {
