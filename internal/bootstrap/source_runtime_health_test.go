@@ -8,6 +8,9 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcecoverage"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -315,6 +318,69 @@ func TestRuntimeFreshnessFromHealthTreatsRunningGraphAsHealthy(t *testing.T) {
 	}
 }
 
+func TestSourceCoverageRecordsSurfacesBlindSpots(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	app := &App{sources: registry}
+
+	records := app.sourceCoverageRecords([]*cerebrov1.SourceRuntime{{
+		Id:           "okta-user",
+		SourceId:     "okta",
+		TenantId:     "writer",
+		LastSyncedAt: timestamppb.New(now),
+		Config:       map[string]string{"family": "user"},
+	}}, ports.SourceRuntimeFilter{TenantID: "writer", SourceID: "okta"}, now)
+
+	byDimension := map[string]sourcecoverage.Record{}
+	for _, record := range records {
+		byDimension[record.DimensionID] = record
+	}
+	if got := byDimension["users"].State; got != sourcecoverage.StateHealthy {
+		t.Fatalf("users state = %q, want healthy; records=%#v", got, records)
+	}
+	if got := byDimension["applications"].State; got != sourcecoverage.StateUnconfigured {
+		t.Fatalf("applications state = %q, want unconfigured; records=%#v", got, records)
+	}
+	if got := byDimension["remediation"].State; got != sourcecoverage.StateUnsupported {
+		t.Fatalf("remediation state = %q, want unsupported; records=%#v", got, records)
+	}
+	blindSpots := sourcecoverage.BlindSpots(records)
+	if len(blindSpots) != 2 {
+		t.Fatalf("len(BlindSpots()) = %d, want 2: %#v", len(blindSpots), blindSpots)
+	}
+}
+
+func TestRuntimeFreshnessIncludesCoverageBlindSpots(t *testing.T) {
+	health := sourceRuntimeHealthResponse{
+		GeneratedAt: "2026-06-15T00:00:00Z",
+		Coverage: []sourcecoverage.Record{{
+			SourceID:      "okta",
+			DimensionID:   "applications",
+			DimensionType: "entity_family",
+			Title:         "Applications",
+			State:         sourcecoverage.StateUnconfigured,
+			SupportLevel:  sourcecdk.CoverageSupportSupported,
+			HighValue:     true,
+			BlindSpot:     true,
+		}},
+	}
+
+	response := runtimeFreshnessFromHealth(health)
+
+	if response.Status != "degraded" {
+		t.Fatalf("Status = %q, want degraded", response.Status)
+	}
+	if len(response.CoverageBlindSpots) != 1 || response.CoverageBlindSpots[0].DimensionID != "applications" {
+		t.Fatalf("CoverageBlindSpots = %#v", response.CoverageBlindSpots)
+	}
+	if len(response.CoverageBlindSummary) != 1 || response.CoverageBlindSummary[0].BlindSpots != 1 {
+		t.Fatalf("CoverageBlindSummary = %#v", response.CoverageBlindSummary)
+	}
+}
+
 func FuzzRuntimeHealthConfigParsing(f *testing.F) {
 	f.Add("", "", "")
 	f.Add("3600", "7200", "passing")
@@ -343,6 +409,37 @@ func FuzzRuntimeHealthConfigParsing(f *testing.F) {
 			t.Fatalf("runtimeContractProbeState() = %q, want trimmed probe", got)
 		}
 	})
+}
+
+type sourceCoverageHealthSource struct{}
+
+func (sourceCoverageHealthSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "okta", Name: "Okta"}
+}
+
+func (sourceCoverageHealthSource) CoverageContract() sourcecdk.CoverageContract {
+	return sourcecdk.CoverageContract{
+		SourceID:        "okta",
+		OwnerDomain:     "identity",
+		AuthorityDomain: "okta",
+		Dimensions: []sourcecdk.CoverageDimension{
+			{ID: "users", Type: "entity_family", Title: "Users", Families: []string{"user"}, Support: sourcecdk.CoverageSupportSupported, HighValue: true},
+			{ID: "applications", Type: "entity_family", Title: "Applications", Families: []string{"application"}, Support: sourcecdk.CoverageSupportSupported, HighValue: true},
+			{ID: "remediation", Type: "remediation_state", Title: "Remediation lifecycle", Support: sourcecdk.CoverageSupportUnsupported, HighValue: true},
+		},
+	}
+}
+
+func (sourceCoverageHealthSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (sourceCoverageHealthSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (sourceCoverageHealthSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, nil
 }
 
 func FuzzSourceRuntimeHealthSummaries(f *testing.F) {

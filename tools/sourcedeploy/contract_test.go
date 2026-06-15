@@ -11,7 +11,26 @@ func TestRenderContractIncludesCatalogsSecretsFamiliesAndRoles(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	mkSource(t, root, "aws", "id: aws\nemitted_kinds:\n  - aws.public_endpoint\n  - aws.iam_role\n", "")
-	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n  - okta.user\n", `
+	mkSource(t, root, "okta", `id: okta
+emitted_kinds:
+  - okta.audit
+  - okta.user
+coverage_contract:
+  owner_domain: identity
+  authority_domain: okta
+  dimensions:
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+      high_value: true
+    - id: remediation
+      type: remediation_state
+      title: Remediation lifecycle
+      support: unsupported
+      known_unsupported_fields: [inline remediation state]
+`, `
 sourceId: okta
 secretKeys:
   - OKTA_API_TOKEN
@@ -81,6 +100,12 @@ runtimes:
 	}
 	if got := okta.SourceHealthReceipt["expected_cadence_seconds"]; got != float64(3600) {
 		t.Fatalf("source health receipt cadence = %v", got)
+	}
+	if okta.CoverageContract == nil || okta.CoverageContract.OwnerDomain != "identity" {
+		t.Fatalf("coverage contract = %#v, want identity coverage", okta.CoverageContract)
+	}
+	if len(okta.CoverageContract.Dimensions) != 2 || okta.CoverageContract.Dimensions[1].Support != "unsupported" {
+		t.Fatalf("coverage dimensions = %#v", okta.CoverageContract.Dimensions)
 	}
 }
 

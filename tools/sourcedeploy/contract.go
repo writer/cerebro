@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,13 +31,14 @@ type Contract struct {
 }
 
 type ContractSource struct {
-	SourceID                 string            `json:"source_id"`
-	EmittedKinds             []string          `json:"emitted_kinds,omitempty"`
-	SupportedFamilies        []string          `json:"supported_families,omitempty"`
-	RequiredSecrets          []string          `json:"required_secrets,omitempty"`
-	RoleAssumptionConfigKeys []string          `json:"role_assumption_config_keys,omitempty"`
-	SourceHealthReceipt      map[string]any    `json:"source_health_receipt,omitempty"`
-	Runtimes                 []ContractRuntime `json:"runtimes,omitempty"`
+	SourceID                 string                      `json:"source_id"`
+	EmittedKinds             []string                    `json:"emitted_kinds,omitempty"`
+	SupportedFamilies        []string                    `json:"supported_families,omitempty"`
+	RequiredSecrets          []string                    `json:"required_secrets,omitempty"`
+	RoleAssumptionConfigKeys []string                    `json:"role_assumption_config_keys,omitempty"`
+	SourceHealthReceipt      map[string]any              `json:"source_health_receipt,omitempty"`
+	CoverageContract         *sourcecdk.CoverageContract `json:"coverage_contract,omitempty"`
+	Runtimes                 []ContractRuntime           `json:"runtimes,omitempty"`
 }
 
 type ContractRuntime struct {
@@ -55,9 +57,10 @@ type RoleAssumption struct {
 }
 
 type contractCatalog struct {
-	ID              string   `yaml:"id"`
-	EmittedKinds    []string `yaml:"emitted_kinds"`
-	RuntimeFamilies []string `yaml:"runtime_families"`
+	ID              string                     `yaml:"id"`
+	EmittedKinds    []string                   `yaml:"emitted_kinds"`
+	RuntimeFamilies []string                   `yaml:"runtime_families"`
+	Coverage        sourcecdk.CoverageContract `yaml:"coverage_contract"`
 }
 
 func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptions) (Contract, error) {
@@ -95,6 +98,10 @@ func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptio
 		if err != nil {
 			return Contract{}, err
 		}
+		coverage, err := sourceCoverageContract(catalog)
+		if err != nil {
+			return Contract{}, err
+		}
 		sources = append(sources, ContractSource{
 			SourceID:                 catalog.ID,
 			EmittedKinds:             sortedStrings(catalog.EmittedKinds),
@@ -102,6 +109,7 @@ func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptio
 			RequiredSecrets:          sortedStrings(manifest.SecretKeys),
 			RoleAssumptionConfigKeys: roleAssumptionConfigKeys(catalog.ID),
 			SourceHealthReceipt:      receipt,
+			CoverageContract:         coverage,
 			Runtimes:                 runtimesBySource[catalog.ID],
 		})
 	}
@@ -145,6 +153,17 @@ func sourceHealthReceipt(sourcesRoot string, sourceID string) (map[string]any, e
 	}
 	receipt["source_id"] = sourceID
 	return receipt, nil
+}
+
+func sourceCoverageContract(catalog contractCatalog) (*sourcecdk.CoverageContract, error) {
+	contract, err := sourcecdk.NormalizeCoverageContract(catalog.ID, catalog.Coverage)
+	if err != nil {
+		return nil, err
+	}
+	if len(contract.Dimensions) == 0 {
+		return nil, nil
+	}
+	return &contract, nil
 }
 
 func discoverCatalogs(sourcesRoot string) ([]contractCatalog, error) {

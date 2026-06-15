@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -35,12 +36,14 @@ type grcScope struct {
 }
 
 type grcDashboardResponse struct {
-	Summary     grcSummary        `json:"summary"`
-	Findings    []grcFindingItem  `json:"findings"`
-	Controls    []grcControlItem  `json:"controls"`
-	Evidence    []grcEvidenceItem `json:"evidence"`
-	Connectors  []grcConnector    `json:"connectors"`
-	GeneratedAt time.Time         `json:"generated_at"`
+	Summary            grcSummary               `json:"summary"`
+	Findings           []grcFindingItem         `json:"findings"`
+	Controls           []grcControlItem         `json:"controls"`
+	Evidence           []grcEvidenceItem        `json:"evidence"`
+	Connectors         []grcConnector           `json:"connectors"`
+	CoverageBlindSpots []sourcecoverage.Record  `json:"coverage_blind_spots,omitempty"`
+	CoverageSummaries  []sourcecoverage.Summary `json:"coverage_summaries,omitempty"`
+	GeneratedAt        time.Time                `json:"generated_at"`
 }
 
 type grcSummary struct {
@@ -252,17 +255,21 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	findingItems := grcFindingItems(findings, runtimeSourceIDs, evidenceCounts)
 	evidenceItems := grcEvidenceItems(evidence, grcFindingTitleMap(findings))
 	controls := grcControlItems(findingItems, evidenceItems)
+	coverage := a.sourceCoverageRecords(runtimes, ports.SourceRuntimeFilter{TenantID: scope.TenantID, SourceID: scope.SourceID}, time.Now().UTC())
+	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "runtime_count", Value: len(runtimes)})
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "finding_count", Value: len(findingItems)})
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "evidence_count", Value: len(evidenceItems)})
 
 	writeJSON(w, http.StatusOK, grcDashboardResponse{
-		Summary:     grcBuildSummary(findingItems, controls, evidenceItems, runtimes, findingSummary, evidenceCount),
-		Findings:    grcLimitFindings(findingItems, 25),
-		Controls:    grcLimitControls(controls, 25),
-		Evidence:    grcLimitEvidence(evidenceItems, 25),
-		Connectors:  grcConnectorItems(runtimes),
-		GeneratedAt: time.Now().UTC(),
+		Summary:            grcBuildSummary(findingItems, controls, evidenceItems, runtimes, findingSummary, evidenceCount),
+		Findings:           grcLimitFindings(findingItems, 25),
+		Controls:           grcLimitControls(controls, 25),
+		Evidence:           grcLimitEvidence(evidenceItems, 25),
+		Connectors:         grcConnectorItems(runtimes),
+		CoverageBlindSpots: coverageBlindSpots,
+		CoverageSummaries:  sourcecoverage.Summaries(coverageBlindSpots),
+		GeneratedAt:        time.Now().UTC(),
 	})
 }
 

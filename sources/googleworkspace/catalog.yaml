@@ -7,3 +7,51 @@ emitted_kinds:
   - google_workspace.group_member
   - google_workspace.role_assignment
   - google_workspace.user
+coverage_contract:
+  owner_domain: identity
+  authority_domain: google_workspace
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: Admin audit events
+      families: [audit]
+      support: supported
+      high_value: true
+    - id: groups
+      type: entity_family
+      title: Groups
+      families: [group]
+      support: supported
+      high_value: true
+    - id: group_memberships
+      type: relationship
+      title: Group memberships
+      families: [group_member]
+      support: supported
+      high_value: true
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: partial
+      high_value: true
+      known_unsupported_fields:
+        - full Directory API deletion tombstones
+    - id: remediation_state
+      type: remediation_state
+      title: Remediation lifecycle state
+      support: unsupported
+      high_value: true
+      known_unsupported_fields:
+        - remediation workflow state
+    - id: role_assignments
+      type: app_entitlement
+      title: Role assignments
+      families: [role_assignment]
+      support: partial
+      high_value: true
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+      high_value: true

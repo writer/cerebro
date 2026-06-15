@@ -94,6 +94,11 @@ type EventContractProvider interface {
 	EventContracts() []EventContract
 }
 
+// CoverageContractProvider lets sources expose machine-readable collection coverage.
+type CoverageContractProvider interface {
+	CoverageContract() CoverageContract
+}
+
 // Registry indexes sources by their stable identifier.
 type Registry struct {
 	sources map[string]Source
@@ -122,6 +127,7 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 			return nil, fmt.Errorf("duplicate source id %q", id)
 		}
 		source = sourceWithCatalogEventContracts(source, id)
+		source = sourceWithCatalogCoverageContract(source, id)
 		indexed[id] = source
 	}
 	return &Registry{sources: indexed}, nil
@@ -148,6 +154,29 @@ func sourceWithCatalogEventContracts(source Source, sourceID string) Source {
 		return source
 	}
 	return &catalogContractSource{Source: source, contracts: contracts}
+}
+
+type catalogCoverageSource struct {
+	Source
+	coverage CoverageContract
+}
+
+func (s *catalogCoverageSource) CoverageContract() CoverageContract {
+	if s == nil {
+		return CoverageContract{}
+	}
+	return cloneCoverageContract(s.coverage)
+}
+
+func sourceWithCatalogCoverageContract(source Source, sourceID string) Source {
+	if _, ok := source.(CoverageContractProvider); ok {
+		return source
+	}
+	contract := catalogCoverageContractForSource(sourceID)
+	if contract == nil {
+		return source
+	}
+	return &catalogCoverageSource{Source: source, coverage: cloneCoverageContract(*contract)}
 }
 
 func sourceIsNil(source Source) bool {
@@ -187,4 +216,29 @@ func (r *Registry) List() []*cerebrov1.SourceSpec {
 		specs = append(specs, r.sources[id].Spec())
 	}
 	return specs
+}
+
+// CoverageContracts returns source coverage contracts sorted by source ID.
+func (r *Registry) CoverageContracts() []CoverageContract {
+	if r == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(r.sources))
+	for id := range r.sources {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	contracts := make([]CoverageContract, 0, len(ids))
+	for _, id := range ids {
+		provider, ok := r.sources[id].(CoverageContractProvider)
+		if !ok {
+			continue
+		}
+		contract := provider.CoverageContract()
+		if len(contract.Dimensions) == 0 {
+			continue
+		}
+		contracts = append(contracts, cloneCoverageContract(contract))
+	}
+	return contracts
 }

@@ -9,6 +9,62 @@ emitted_kinds:
   - github.org_member
   - github.pull_request
   - github.secret_scanning_alert
+coverage_contract:
+  owner_domain: source_control
+  authority_domain: github
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: Organization audit events
+      families: [audit]
+      support: supported
+      high_value: true
+    - id: code_security_alerts
+      type: entity_family
+      title: Code security alerts
+      families: [dependabot_alert, secret_scanning_alert]
+      support: supported
+      high_value: true
+    - id: fine_grained_permissions
+      type: app_entitlement
+      title: Fine-grained repository permissions
+      families: [org_inventory]
+      support: partial
+      high_value: true
+      known_unsupported_fields:
+        - branch-protection bypass actors
+        - repository rulesets
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: partial
+      high_value: true
+      known_unsupported_fields:
+        - org inventory snapshot deltas
+    - id: organization_members
+      type: entity_family
+      title: Organization members
+      families: [org_inventory]
+      support: supported
+      high_value: true
+    - id: pull_requests
+      type: lifecycle_state
+      title: Pull request lifecycle
+      families: [pull_request]
+      support: supported
+    - id: remediation_state
+      type: remediation_state
+      title: Remediation lifecycle state
+      support: unsupported
+      high_value: true
+      known_unsupported_fields:
+        - remediation workflow state
+    - id: repositories
+      type: entity_family
+      title: Repositories
+      families: [repository]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: github.audit
     schema_ref: github/audit/v1
