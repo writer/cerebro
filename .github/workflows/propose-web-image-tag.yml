@@ -295,6 +295,7 @@ jobs:
             -m "Image: ${WEB_GHCR_IMAGE}:${IMAGE_TAG}" \
             -m "Digest: ${IMAGE_DIGEST}"
 
+          git fetch origin "${branch}:refs/remotes/origin/${branch}" || true
           git push --force-with-lease origin "HEAD:${branch}"
 
           body="$(mktemp)"

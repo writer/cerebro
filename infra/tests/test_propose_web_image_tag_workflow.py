@@ -83,6 +83,7 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('git config user.name "${DEPLOY_APP_SLUG}[bot]"', workflow)
         self.assertIn('git config user.name "github-actions[bot]"', workflow)
         self.assertIn('git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"', workflow)
+        self.assertIn('git fetch origin "${branch}:refs/remotes/origin/${branch}" || true', workflow)
         self.assertIn('git push --force-with-lease origin "HEAD:${branch}"', workflow)
         self.assertNotIn('git push --force-with-lease "https://x-access-token:${GH_TOKEN}', workflow)
         self.assertIn("password: ${{ secrets.GITHUB_TOKEN }}", workflow)
