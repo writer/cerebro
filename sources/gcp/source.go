@@ -59,6 +59,7 @@ const (
 	familyComputeRoute                           = "compute_route"
 	familyComputeSecurityPolicy                  = "compute_security_policy"
 	familyComputeSubnetwork                      = "compute_subnetwork"
+	familyComputeURLMap                          = "compute_url_map"
 	familyDNSManagedZone                         = "dns_managed_zone"
 	familyDNSRecordSet                           = "dns_record_set"
 	familyEffectivePermission                    = "effective_permission"
@@ -157,6 +158,7 @@ type computeScopedResources struct {
 	Instances        []json.RawMessage `json:"instances"`
 	SecurityPolicies []json.RawMessage `json:"securityPolicies"`
 	Subnetworks      []json.RawMessage `json:"subnetworks"`
+	URLMaps          []json.RawMessage `json:"urlMaps"`
 }
 
 type serviceAccountRecord = gcpcloud.ServiceAccountRecord
@@ -391,39 +393,24 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeBackendServiceRecord]{Name: familyComputeBackendService, Label: "gcp compute backend services", List: listComputeBackendServices, Event: gcpCloudEvent(gcpcloud.ComputeBackendServiceEvent), URN: func(settings settings, service gcpcloud.ComputeBackendServiceRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_backend_service:%s", tenantID(settings), firstNonEmpty(service.SelfLink, service.ID, service.Name)), nil
 		}}),
-		gcpFamily(s, gcpFamilyOptions[computeInstanceRecord]{
-			Name:  familyComputeInstance,
-			Label: "gcp compute instances",
-			List:  listComputeInstances,
-			Event: gcpCloudEvent(gcpcloud.ComputeInstanceEvent),
-			URN: func(settings settings, instance computeInstanceRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_instance:%s", tenantID(settings), firstNonEmpty(instance.ID, instance.Name)), nil
-			},
-		}),
-		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeNetworkRecord]{
-			Name:  familyComputeNetwork,
-			Label: "gcp compute networks",
-			List:  listComputeNetworks,
-			Event: gcpCloudEvent(gcpcloud.ComputeNetworkEvent),
-			URN: func(settings settings, network gcpcloud.ComputeNetworkRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_network:%s", tenantID(settings), firstNonEmpty(network.SelfLink, network.ID, network.Name)), nil
-			},
-		}),
+		gcpFamily(s, gcpFamilyOptions[computeInstanceRecord]{Name: familyComputeInstance, Label: "gcp compute instances", List: listComputeInstances, Event: gcpCloudEvent(gcpcloud.ComputeInstanceEvent), URN: func(settings settings, instance computeInstanceRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_instance:%s", tenantID(settings), firstNonEmpty(instance.ID, instance.Name)), nil
+		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeNetworkRecord]{Name: familyComputeNetwork, Label: "gcp compute networks", List: listComputeNetworks, Event: gcpCloudEvent(gcpcloud.ComputeNetworkEvent), URN: func(settings settings, network gcpcloud.ComputeNetworkRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_network:%s", tenantID(settings), firstNonEmpty(network.SelfLink, network.ID, network.Name)), nil
+		}}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeRouteRecord]{Name: familyComputeRoute, Label: "gcp compute routes", List: listComputeRoutes, Event: gcpCloudEvent(gcpcloud.ComputeRouteEvent), URN: func(settings settings, route gcpcloud.ComputeRouteRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_route:%s", tenantID(settings), firstNonEmpty(route.SelfLink, route.ID, route.Name)), nil
 		}}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSecurityPolicyRecord]{Name: familyComputeSecurityPolicy, Label: "gcp compute security policies", List: listComputeSecurityPolicies, Event: gcpCloudEvent(gcpcloud.ComputeSecurityPolicyEvent), URN: func(settings settings, policy gcpcloud.ComputeSecurityPolicyRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_security_policy:%s", tenantID(settings), firstNonEmpty(policy.SelfLink, policy.ID, policy.Name)), nil
 		}}),
-		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSubnetworkRecord]{
-			Name:  familyComputeSubnetwork,
-			Label: "gcp compute subnetworks",
-			List:  listComputeSubnetworks,
-			Event: gcpCloudEvent(gcpcloud.ComputeSubnetworkEvent),
-			URN: func(settings settings, subnetwork gcpcloud.ComputeSubnetworkRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_subnetwork:%s", tenantID(settings), firstNonEmpty(subnetwork.SelfLink, subnetwork.ID, subnetwork.Name)), nil
-			},
-		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSubnetworkRecord]{Name: familyComputeSubnetwork, Label: "gcp compute subnetworks", List: listComputeSubnetworks, Event: gcpCloudEvent(gcpcloud.ComputeSubnetworkEvent), URN: func(settings settings, subnetwork gcpcloud.ComputeSubnetworkRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_subnetwork:%s", tenantID(settings), firstNonEmpty(subnetwork.SelfLink, subnetwork.ID, subnetwork.Name)), nil
+		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeURLMapRecord]{Name: familyComputeURLMap, Label: "gcp compute url maps", List: listComputeURLMaps, Event: gcpCloudEvent(gcpcloud.ComputeURLMapEvent), URN: func(settings settings, urlMap gcpcloud.ComputeURLMapRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_url_map:%s", tenantID(settings), firstNonEmpty(urlMap.SelfLink, urlMap.ID, urlMap.Name)), nil
+		}}),
 		gcpFamily(s, gcpFamilyOptions[firewallRecord]{
 			Name:  familyComputeFirewall,
 			Label: "gcp compute firewall rules",
@@ -710,7 +697,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendService, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSecurityPolicy, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendService, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSecurityPolicy, familyComputeSubnetwork, familyComputeURLMap, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -1009,6 +996,12 @@ func listComputeAddresses(ctx context.Context, source *Source, settings settings
 
 func listComputeSecurityPolicies(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeSecurityPolicyRecord, string, error) {
 	return listComputeAggregatedRecords(ctx, source, settings, pageToken, limit, "securityPolicies", "gcp compute security policy", func(scoped computeScopedResources) []json.RawMessage { return scoped.SecurityPolicies }, "", url.Values{"returnPartialSuccess": {"true"}}, func(record *gcpcloud.ComputeSecurityPolicyRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func listComputeURLMaps(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeURLMapRecord, string, error) {
+	return listComputeAggregatedRecords(ctx, source, settings, pageToken, limit, "urlMaps", "gcp compute url map", func(scoped computeScopedResources) []json.RawMessage { return scoped.URLMaps }, "", url.Values{"returnPartialSuccess": {"true"}}, func(record *gcpcloud.ComputeURLMapRecord, raw json.RawMessage) {
 		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 }

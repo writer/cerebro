@@ -27,6 +27,7 @@ emitted_kinds:
   - gcp.compute_route
   - gcp.compute_security_policy
   - gcp.compute_subnetwork
+  - gcp.compute_url_map
   - gcp.dns_managed_zone
   - gcp.dns_record_set
   - gcp.effective_permission
@@ -75,6 +76,7 @@ runtime_families:
   - compute_route
   - compute_security_policy
   - compute_subnetwork
+  - compute_url_map
   - dns_managed_zone
   - dns_record_set
   - effective_permission
@@ -231,6 +233,12 @@ coverage_contract:
       type: entity_family
       title: Compute subnetworks
       families: [compute_subnetwork]
+      support: supported
+      high_value: true
+    - id: compute_url_map
+      type: entity_family
+      title: Compute URL maps
+      families: [compute_url_map]
       support: supported
       high_value: true
     - id: container_vulnerability
