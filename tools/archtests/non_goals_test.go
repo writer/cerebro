@@ -82,7 +82,7 @@ func nonGoalsLooksLikeRepoPath(ref string) bool {
 		return true
 	}
 	switch ref {
-	case "AGENTS.md", "Makefile", "PLAN.md", "README.md":
+	case "AGENTS.md", "Makefile", "README.md":
 		return true
 	}
 	return false

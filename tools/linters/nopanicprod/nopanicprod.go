@@ -49,7 +49,7 @@ func run(pass *analysis.Pass) (any, error) {
 			pass.Report(analysis.Diagnostic{
 				Pos:     call.Pos(),
 				End:     call.End(),
-				Message: "panic is forbidden outside tests, init, and panicsafe; return an error or terminate at the edge instead. (see PLAN.md §7 sin #9)",
+				Message: "panic is forbidden outside tests, init, and panicsafe; return an error or terminate at the edge instead. (see docs/NON_GOALS.md)",
 			})
 			return true
 		})

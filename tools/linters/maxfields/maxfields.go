@@ -2,7 +2,7 @@
 // threshold (default 24) of fields. Exported + unexported + embedded
 // all count; a, b, c int counts as three.
 //
-// Sin #2 in PLAN.md §7. Large structs are the habitat of god-types:
+// Large structs are the habitat of god-types:
 // once a struct has 40+ fields it is almost always used as a bag for
 // unrelated concerns, and the lifetime of one field drags in the
 // lifetime of all the others.
@@ -79,7 +79,7 @@ func run(pass *analysis.Pass) (any, error) {
 					End: ts.End(),
 					Message: "struct " + ts.Name.Name + " declares " +
 						itoa(count) + " fields; max allowed is " + itoa(limit) +
-						". Split into smaller cohesive types. (see PLAN.md §7 sin #2)",
+						". Split into smaller cohesive types. (see docs/NON_GOALS.md)",
 				})
 			}
 		}

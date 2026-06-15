@@ -35,7 +35,7 @@ func run(pass *analysis.Pass) (any, error) {
 			pass.Report(analysis.Diagnostic{
 				Pos:     call.Pos(),
 				End:     call.End(),
-				Message: "context." + name + " is forbidden outside cmd/ and tests; accept a context from the caller instead. (see PLAN.md §7 sin #12)",
+				Message: "context." + name + " is forbidden outside cmd/ and tests; accept a context from the caller instead. (see docs/NON_GOALS.md)",
 			})
 		}
 		switch fun := call.Fun.(type) {

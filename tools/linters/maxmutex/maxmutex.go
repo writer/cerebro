@@ -1,7 +1,7 @@
 // Package maxmutex forbids a struct from declaring more than one
 // sync.Mutex or sync.RWMutex field.
 //
-// Sin #1 in PLAN.md §7. Multiple mutexes on one struct are an empirical
+// Multiple mutexes on one struct are an empirical
 // smell for god-structs with unrelated concerns: each additional mutex
 // makes lock-ordering bugs more likely and signals that the type should
 // be decomposed.
@@ -63,7 +63,7 @@ func run(pass *analysis.Pass) (any, error) {
 					Message: "struct " + ts.Name.Name + " declares " +
 						itoa(count) + " mutex fields; at most 1 is allowed. " +
 						"Split the type so each mutex protects a single cohesive concern. " +
-						"(see PLAN.md §7 sin #1)",
+						"(see docs/NON_GOALS.md)",
 					Related: locations,
 				})
 			}

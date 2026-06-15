@@ -7,8 +7,6 @@
 //
 // These patterns are fragile: upstream rewording silently breaks
 // control flow, and they skip typed-error tooling (errors.Is/As).
-//
-// Sin #5 in PLAN.md §7.
 package noerrstringmatch
 
 import (
@@ -86,7 +84,7 @@ func checkCall(pass *analysis.Pass, call *ast.CallExpr) {
 			pass.Report(analysis.Diagnostic{
 				Pos:     call.Pos(),
 				End:     call.End(),
-				Message: "matching on err.Error() is forbidden; use errors.Is / errors.As with a typed sentinel. (see PLAN.md §7 sin #5)",
+				Message: "matching on err.Error() is forbidden; use errors.Is / errors.As with a typed sentinel. (see docs/NON_GOALS.md)",
 			})
 			return
 		}
@@ -103,7 +101,7 @@ func checkBinary(pass *analysis.Pass, bin *ast.BinaryExpr) {
 		pass.Report(analysis.Diagnostic{
 			Pos:     bin.Pos(),
 			End:     bin.End(),
-			Message: "comparing err.Error() to a string is forbidden; use errors.Is / errors.As with a typed sentinel. (see PLAN.md §7 sin #5)",
+			Message: "comparing err.Error() to a string is forbidden; use errors.Is / errors.As with a typed sentinel. (see docs/NON_GOALS.md)",
 		})
 	}
 }
