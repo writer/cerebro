@@ -11,6 +11,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	findinganalysis "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type stubFindingStore struct {
@@ -791,6 +792,101 @@ func TestRunRiskActionPlanReportWithoutGraphStoreUsesFindingSignals(t *testing.T
 	}
 	if got := candidate["expected_risk_score_reduction"]; got.(float64) <= 0 {
 		t.Fatalf("expected risk reduction = %#v, want positive", got)
+	}
+}
+
+func TestRunRiskActionPlanReportIncludesUnscoredCandidatesAndDiff(t *testing.T) {
+	previousResult, err := structpb.NewStruct(map[string]any{
+		"action_candidates": []any{
+			map[string]any{
+				"id":                            "assign-owner-urn-cerebro-writer-service-payments",
+				"title":                         "Assign owner for payments",
+				"priority_score":                1,
+				"expected_risk_score_reduction": 0,
+				"simulation_status":             "unsupported",
+			},
+			map[string]any{
+				"id":             "removed-candidate",
+				"title":          "Removed candidate",
+				"priority_score": 10,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStruct(previousResult) error = %v", err)
+	}
+	reportStore := &stubReportStore{run: &cerebrov1.ReportRun{
+		Id:       "previous-plan",
+		ReportId: riskActionPlanReportID,
+		Result:   previousResult,
+	}}
+	findingStore := &stubFindingStore{
+		findings: []*ports.FindingRecord{
+			{
+				ID:           "ownerless-control-gap",
+				TenantID:     "writer",
+				RuntimeID:    "writer-grc",
+				RuleID:       "control-owner-missing",
+				Title:        "High risk control gap",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:service:payments"},
+				FindingRisk: ports.FindingRisk{
+					RiskScore:       82,
+					ConfidenceScore: 42,
+					RiskReasons:     []string{"crown_jewel"},
+				},
+				Attributes: map[string]string{
+					"primary_resource_urn": "urn:cerebro:writer:service:payments",
+					"resource_name":        "payments",
+				},
+				LastObservedAt: time.Now().UTC().Add(-45 * 24 * time.Hour),
+			},
+		},
+	}
+	service := New(findingStore, nil, reportStore)
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: riskActionPlanReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:            "writer",
+			reportParameterRuntimeIDs:          "writer-grc",
+			reportParameterIncludeUnscored:     "true",
+			reportParameterPreviousReportRunID: "previous-plan",
+			reportParameterCandidateLimit:      "5",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	result := response.GetRun().GetResult().AsMap()
+	if result[reportParameterIncludeUnscored] != true {
+		t.Fatalf("include_unscored = %#v, want true", result[reportParameterIncludeUnscored])
+	}
+	candidates, ok := result["action_candidates"].([]any)
+	if !ok || len(candidates) != 2 {
+		t.Fatalf("action_candidates = %#v, want two unscored candidates", result["action_candidates"])
+	}
+	types := map[string]bool{}
+	for _, raw := range candidates {
+		candidate := raw.(map[string]any)
+		if candidate["simulation_status"] != "unsupported" {
+			t.Fatalf("candidate = %#v, want unsupported status", candidate)
+		}
+		types[candidate["action_type"].(string)] = true
+	}
+	if !types["assign_owner"] || !types["refresh_evidence"] {
+		t.Fatalf("candidate types = %#v, want assign_owner and refresh_evidence", types)
+	}
+	planDiff, ok := result["plan_diff"].(map[string]any)
+	if !ok {
+		t.Fatalf("plan_diff = %#v, want object", result["plan_diff"])
+	}
+	if len(planDiff["added"].([]any)) != 1 || len(planDiff["changed"].([]any)) != 1 || len(planDiff["removed"].([]any)) != 1 {
+		t.Fatalf("plan_diff = %#v, want one added, changed, and removed candidate", planDiff)
+	}
+	plan := result["plan"].(map[string]any)
+	if plan["model_version"] != "risk-action-plan-v2" || plan["plan_diff"] == nil {
+		t.Fatalf("plan = %#v, want typed plan with diff", plan)
 	}
 }
 
