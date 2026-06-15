@@ -60,6 +60,20 @@ runtimes:
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE
       wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: bigtable-instance
+    config:
+      family: bigtable_instance
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: bigtable-table
+    config:
+      family: bigtable_table
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: certificate-manager-certificate
     config:
       family: certificate_manager_certificate
@@ -461,6 +475,27 @@ runtimes:
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE
       wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: logging-metric
+    config:
+      family: logging_metric
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: monitoring-alert-policy
+    config:
+      family: monitoring_alert_policy
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: monitoring-notification-channel
+    config:
+      family: monitoring_notification_channel
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: org-policy
     config:
       family: org_policy
@@ -513,6 +548,20 @@ runtimes:
   - localId: service-usage-service
     config:
       family: service_usage_service
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: spanner-database
+    config:
+      family: spanner_database
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: spanner-instance
+    config:
+      family: spanner_instance
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE

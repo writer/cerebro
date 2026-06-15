@@ -1735,6 +1735,14 @@ func (record CertificateManagerCertificateRecord) CerebroResourceID() string {
 	return record.Name
 }
 
+func (record BigtableInstanceRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record BigtableTableRecord) CerebroResourceID() string {
+	return record.Name
+}
+
 func (record CertificateManagerCertificateMapRecord) CerebroResourceID() string {
 	return record.Name
 }
@@ -1748,6 +1756,22 @@ func (record CertificateManagerDNSAuthorizationRecord) CerebroResourceID() strin
 }
 
 func (record VPCAccessConnectorRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record MonitoringAlertPolicyRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record MonitoringNotificationChannelRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record SpannerInstanceRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record SpannerDatabaseRecord) CerebroResourceID() string {
 	return record.Name
 }
 
@@ -2037,6 +2061,83 @@ type LoggingSinkBQOptions struct {
 	UsesTimestampColumnPartitioning bool `json:"usesTimestampColumnPartitioning"`
 }
 
+type MonitoringAlertPolicyRecord struct {
+	Name                 string                           `json:"name"`
+	DisplayName          string                           `json:"displayName"`
+	Documentation        MonitoringDocumentation          `json:"documentation"`
+	UserLabels           map[string]string                `json:"userLabels"`
+	Enabled              *bool                            `json:"enabled"`
+	Combiner             string                           `json:"combiner"`
+	Conditions           []MonitoringAlertPolicyCondition `json:"conditions"`
+	NotificationChannels []string                         `json:"notificationChannels"`
+	Severity             string                           `json:"severity"`
+	CreationRecord       MonitoringMutationRecord         `json:"creationRecord"`
+	MutationRecord       MonitoringMutationRecord         `json:"mutationRecord"`
+	Raw                  json.RawMessage                  `json:"-"`
+}
+
+type MonitoringDocumentation struct {
+	Content  string `json:"content"`
+	MimeType string `json:"mimeType"`
+	Subject  string `json:"subject"`
+}
+
+type MonitoringMutationRecord struct {
+	MutateTime string `json:"mutateTime"`
+	MutatedBy  string `json:"mutatedBy"`
+}
+
+type MonitoringAlertPolicyCondition struct {
+	Name                             string          `json:"name"`
+	DisplayName                      string          `json:"displayName"`
+	ConditionThreshold               json.RawMessage `json:"conditionThreshold"`
+	ConditionAbsent                  json.RawMessage `json:"conditionAbsent"`
+	ConditionMonitoringQueryLanguage json.RawMessage `json:"conditionMonitoringQueryLanguage"`
+	ConditionPrometheusQueryLanguage json.RawMessage `json:"conditionPrometheusQueryLanguage"`
+	ConditionMatchedLog              json.RawMessage `json:"conditionMatchedLog"`
+	ConditionSQL                     json.RawMessage `json:"conditionSql"`
+}
+
+type MonitoringNotificationChannelRecord struct {
+	Name               string                     `json:"name"`
+	Type               string                     `json:"type"`
+	DisplayName        string                     `json:"displayName"`
+	Description        string                     `json:"description"`
+	Labels             map[string]string          `json:"labels"`
+	UserLabels         map[string]string          `json:"userLabels"`
+	Enabled            *bool                      `json:"enabled"`
+	VerificationStatus string                     `json:"verificationStatus"`
+	SensitiveLabels    json.RawMessage            `json:"sensitiveLabels"`
+	CreationRecord     MonitoringMutationRecord   `json:"creationRecord"`
+	MutationRecords    []MonitoringMutationRecord `json:"mutationRecords"`
+	Raw                json.RawMessage            `json:"-"`
+}
+
+type LoggingMetricRecord struct {
+	Name             string                  `json:"name"`
+	Description      string                  `json:"description"`
+	Filter           string                  `json:"filter"`
+	Disabled         bool                    `json:"disabled"`
+	MetricDescriptor LoggingMetricDescriptor `json:"metricDescriptor"`
+	ValueExtractor   string                  `json:"valueExtractor"`
+	LabelExtractors  map[string]string       `json:"labelExtractors"`
+	BucketOptions    json.RawMessage         `json:"bucketOptions"`
+	CreateTime       string                  `json:"createTime"`
+	UpdateTime       string                  `json:"updateTime"`
+	Version          string                  `json:"version"`
+	Raw              json.RawMessage         `json:"-"`
+}
+
+type LoggingMetricDescriptor struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	MetricKind  string `json:"metricKind"`
+	ValueType   string `json:"valueType"`
+	Unit        string `json:"unit"`
+	DisplayName string `json:"displayName"`
+	Description string `json:"description"`
+}
+
 type PubSubTopicRecord struct {
 	Name                     string                     `json:"name"`
 	Labels                   map[string]string          `json:"labels"`
@@ -2163,6 +2264,34 @@ type BigQueryEncryptionConfig struct {
 	KMSKeyName string `json:"kmsKeyName"`
 }
 
+type BigtableInstanceRecord struct {
+	Name         string            `json:"name"`
+	DisplayName  string            `json:"displayName"`
+	State        string            `json:"state"`
+	Type         string            `json:"type"`
+	Labels       map[string]string `json:"labels"`
+	CreateTime   string            `json:"createTime"`
+	SatisfiesPZS bool              `json:"satisfiesPzs"`
+	Raw          json.RawMessage   `json:"-"`
+}
+
+type BigtableTableRecord struct {
+	Name                  string                     `json:"name"`
+	InstanceName          string                     `json:"-"`
+	ClusterStates         map[string]json.RawMessage `json:"clusterStates"`
+	ColumnFamilies        map[string]json.RawMessage `json:"columnFamilies"`
+	Granularity           string                     `json:"granularity"`
+	RestoreInfo           json.RawMessage            `json:"restoreInfo"`
+	DeletionProtection    bool                       `json:"deletionProtection"`
+	ChangeStreamConfig    BigtableChangeStreamConfig `json:"changeStreamConfig"`
+	AutomatedBackupPolicy json.RawMessage            `json:"automatedBackupPolicy"`
+	Raw                   json.RawMessage            `json:"-"`
+}
+
+type BigtableChangeStreamConfig struct {
+	RetentionPeriod string `json:"retentionPeriod"`
+}
+
 type CloudRunRevisionRecord struct {
 	Name                          string              `json:"name"`
 	UID                           string              `json:"uid"`
@@ -2281,6 +2410,49 @@ type ServiceUsageServiceRecord struct {
 type ServiceUsageConfig struct {
 	Name  string `json:"name"`
 	Title string `json:"title"`
+}
+
+type SpannerInstanceRecord struct {
+	Name                 string            `json:"name"`
+	Config               string            `json:"config"`
+	DisplayName          string            `json:"displayName"`
+	NodeCount            int               `json:"nodeCount"`
+	ProcessingUnits      int               `json:"processingUnits"`
+	State                string            `json:"state"`
+	Labels               map[string]string `json:"labels"`
+	EndpointURIs         []string          `json:"endpointUris"`
+	CreateTime           string            `json:"createTime"`
+	UpdateTime           string            `json:"updateTime"`
+	InstanceType         string            `json:"instanceType"`
+	AutoscalingConfig    json.RawMessage   `json:"autoscalingConfig"`
+	FreeInstanceMetadata json.RawMessage   `json:"freeInstanceMetadata"`
+	Raw                  json.RawMessage   `json:"-"`
+}
+
+type SpannerDatabaseRecord struct {
+	Name                   string                  `json:"name"`
+	InstanceName           string                  `json:"-"`
+	State                  string                  `json:"state"`
+	CreateTime             string                  `json:"createTime"`
+	RestoreInfo            json.RawMessage         `json:"restoreInfo"`
+	VersionRetentionPeriod string                  `json:"versionRetentionPeriod"`
+	EarliestVersionTime    string                  `json:"earliestVersionTime"`
+	EncryptionConfig       SpannerEncryptionConfig `json:"encryptionConfig"`
+	EncryptionInfo         []SpannerEncryptionInfo `json:"encryptionInfo"`
+	DatabaseDialect        string                  `json:"databaseDialect"`
+	EnableDropProtection   bool                    `json:"enableDropProtection"`
+	Reconciling            bool                    `json:"reconciling"`
+	Raw                    json.RawMessage         `json:"-"`
+}
+
+type SpannerEncryptionConfig struct {
+	EncryptionType string `json:"encryptionType"`
+	KMSKeyName     string `json:"kmsKeyName"`
+}
+
+type SpannerEncryptionInfo struct {
+	EncryptionType string `json:"encryptionType"`
+	KMSKeyVersion  string `json:"kmsKeyVersion"`
 }
 
 type OrgPolicyRecord struct {
@@ -4395,6 +4567,120 @@ func LoggingSinkEvent(settings Settings, record LoggingSinkRecord) (*primitives.
 	return sourceEvent(settings, "gcp-logging-project-sink-"+resourceID, "gcp.logging_project_sink", "gcp/logging_project_sink/v1", payload, attributes)
 }
 
+func MonitoringAlertPolicyEvent(settings Settings, record MonitoringAlertPolicyRecord) (*primitives.Event, error) {
+	conditionNames, conditionTypes := monitoringAlertConditionSummary(record.Conditions)
+	attributes := cloudResourceAttributes(settings, "monitoring_alert_policy", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "monitoring_alert_policy", "global", record.UserLabels)
+	attributes["display_name"] = record.DisplayName
+	attributes["combiner"] = record.Combiner
+	attributes["severity"] = record.Severity
+	attributes["conditions"] = strings.Join(conditionNames, ",")
+	attributes["conditions_count"] = strconv.Itoa(len(record.Conditions))
+	attributes["condition_types"] = strings.Join(conditionTypes, ",")
+	attributes["notification_channels"] = strings.Join(lastPathSegments(record.NotificationChannels), ",")
+	attributes["notification_channel_urls"] = strings.Join(record.NotificationChannels, ",")
+	attributes["notification_channels_count"] = strconv.Itoa(len(record.NotificationChannels))
+	attributes["documentation_subject"] = record.Documentation.Subject
+	attributes["documentation_mime_type"] = record.Documentation.MimeType
+	attributes["documentation_present"] = boolString(record.Documentation.Content != "" || record.Documentation.Subject != "")
+	attributes["created_at"] = record.CreationRecord.MutateTime
+	attributes["created_by"] = record.CreationRecord.MutatedBy
+	attributes["updated_at"] = record.MutationRecord.MutateTime
+	attributes["updated_by"] = record.MutationRecord.MutatedBy
+	if record.Enabled != nil {
+		attributes["enabled"] = boolString(*record.Enabled)
+		attributes["disabled"] = boolString(!*record.Enabled)
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-monitoring-alert-policy-"+record.Name, "gcp.monitoring_alert_policy", "gcp/monitoring_alert_policy/v1", payload, attributes)
+}
+
+func MonitoringNotificationChannelEvent(settings Settings, record MonitoringNotificationChannelRecord) (*primitives.Event, error) {
+	labels := record.UserLabels
+	if len(labels) == 0 {
+		labels = record.Labels
+	}
+	mutationRecord := latestMonitoringMutationRecord(record.MutationRecords)
+	attributes := cloudResourceAttributes(settings, "monitoring_notification_channel", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "monitoring_notification_channel", "global", labels)
+	attributes["display_name"] = record.DisplayName
+	attributes["description"] = record.Description
+	attributes["channel_type"] = record.Type
+	attributes["verification_status"] = record.VerificationStatus
+	attributes["sensitive_labels_present"] = boolString(len(record.SensitiveLabels) != 0)
+	attributes["created_at"] = record.CreationRecord.MutateTime
+	attributes["created_by"] = record.CreationRecord.MutatedBy
+	attributes["updated_at"] = mutationRecord.MutateTime
+	attributes["updated_by"] = mutationRecord.MutatedBy
+	if record.Enabled != nil {
+		attributes["enabled"] = boolString(*record.Enabled)
+		attributes["disabled"] = boolString(!*record.Enabled)
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-monitoring-notification-channel-"+record.Name, "gcp.monitoring_notification_channel", "gcp/monitoring_notification_channel/v1", payload, attributes)
+}
+
+func latestMonitoringMutationRecord(records []MonitoringMutationRecord) MonitoringMutationRecord {
+	if len(records) == 0 {
+		return MonitoringMutationRecord{}
+	}
+	latest := records[0]
+	for _, record := range records[1:] {
+		if monitoringMutationAfter(record, latest) {
+			latest = record
+		}
+	}
+	return latest
+}
+
+func monitoringMutationAfter(candidate, current MonitoringMutationRecord) bool {
+	candidateTime, candidateErr := time.Parse(time.RFC3339Nano, candidate.MutateTime)
+	currentTime, currentErr := time.Parse(time.RFC3339Nano, current.MutateTime)
+	if candidateErr == nil && currentErr == nil {
+		return candidateTime.After(currentTime)
+	}
+	return candidate.MutateTime > current.MutateTime
+}
+
+func LoggingMetricResourceName(projectID string, record LoggingMetricRecord) string {
+	metricName := firstNonEmpty(record.Name, lastPathSegment(record.MetricDescriptor.Name), record.MetricDescriptor.Type)
+	if strings.HasPrefix(metricName, "projects/") {
+		return metricName
+	}
+	return "projects/" + projectID + "/metrics/" + metricName
+}
+
+func LoggingMetricEvent(settings Settings, record LoggingMetricRecord) (*primitives.Event, error) {
+	metricResourceName := LoggingMetricResourceName(settings.ProjectID, record)
+	metricName := lastPathSegment(metricResourceName)
+	attributes := cloudResourceAttributes(settings, "logging_metric", metricResourceName, metricName, "logging_metric", "global", nil)
+	attributes["metric_name"] = metricName
+	attributes["description"] = record.Description
+	attributes["filter"] = record.Filter
+	attributes["disabled"] = boolString(record.Disabled)
+	attributes["enabled"] = boolString(!record.Disabled)
+	attributes["metric_descriptor_name"] = record.MetricDescriptor.Name
+	attributes["metric_type"] = record.MetricDescriptor.Type
+	attributes["metric_kind"] = record.MetricDescriptor.MetricKind
+	attributes["value_type"] = record.MetricDescriptor.ValueType
+	attributes["unit"] = record.MetricDescriptor.Unit
+	attributes["label_extractors_count"] = strconv.Itoa(len(record.LabelExtractors))
+	attributes["value_extractor_configured"] = boolString(record.ValueExtractor != "")
+	attributes["bucket_options_configured"] = boolString(len(record.BucketOptions) != 0)
+	attributes["version"] = record.Version
+	attributes["created_at"] = record.CreateTime
+	attributes["updated_at"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-logging-metric-"+metricName, "gcp.logging_metric", "gcp/logging_metric/v1", payload, attributes)
+}
+
 func PubSubTopicEvent(settings Settings, record PubSubTopicRecord) (*primitives.Event, error) {
 	iam := iamPolicySummary(record.IAMPolicy)
 	attributes := cloudResourceAttributes(settings, "pubsub_topic", record.Name, lastPathSegment(record.Name), "pubsub_topic", "global", record.Labels)
@@ -4499,6 +4785,45 @@ func BigQueryDatasetEvent(settings Settings, record BigQueryDatasetRecord) (*pri
 	return sourceEvent(settings, "gcp-bigquery-dataset-"+resourceID, "gcp.bigquery_dataset", "gcp/bigquery_dataset/v1", payload, attributes)
 }
 
+func BigtableInstanceEvent(settings Settings, record BigtableInstanceRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	attributes := cloudResourceAttributes(settings, "bigtable_instance", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "bigtable_instance", location, record.Labels)
+	attributes["display_name"] = record.DisplayName
+	attributes["state"] = record.State
+	attributes["status"] = record.State
+	attributes["instance_type"] = record.Type
+	attributes["type"] = record.Type
+	attributes["create_time"] = record.CreateTime
+	attributes["satisfies_pzs"] = boolString(record.SatisfiesPZS)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-bigtable-instance-"+record.Name, "gcp.bigtable_instance", "gcp/bigtable_instance/v1", payload, attributes)
+}
+
+func BigtableTableEvent(settings Settings, record BigtableTableRecord) (*primitives.Event, error) {
+	instanceName := firstNonEmpty(record.InstanceName, parentResourceName(record.Name, "tables"))
+	location := locationFromResourceName(instanceName)
+	attributes := cloudResourceAttributes(settings, "bigtable_table", record.Name, lastPathSegment(record.Name), "bigtable_table", location, nil)
+	attributes["instance_name"] = lastPathSegment(instanceName)
+	attributes["instance_url"] = instanceName
+	attributes["cluster_states_count"] = strconv.Itoa(len(record.ClusterStates))
+	attributes["clusters_count"] = strconv.Itoa(len(record.ClusterStates))
+	attributes["column_families_count"] = strconv.Itoa(len(record.ColumnFamilies))
+	attributes["granularity"] = record.Granularity
+	attributes["deletion_protection"] = boolString(record.DeletionProtection)
+	attributes["change_stream_enabled"] = boolString(record.ChangeStreamConfig.RetentionPeriod != "")
+	attributes["change_stream_retention_period"] = record.ChangeStreamConfig.RetentionPeriod
+	attributes["restore_configured"] = boolString(len(record.RestoreInfo) != 0)
+	attributes["automated_backup_policy_configured"] = boolString(len(record.AutomatedBackupPolicy) != 0)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"instance_name": instanceName, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-bigtable-table-"+record.Name, "gcp.bigtable_table", "gcp/bigtable_table/v1", payload, attributes)
+}
+
 func ContainerVulnerabilityEvent(settings Settings, record ContainerVulnerabilityRecord) (*primitives.Event, error) {
 	issue := firstContainerPackageIssue(record.Vulnerability.PackageIssue)
 	vulnerabilityID := vulnerabilityIDFromNote(record.NoteName)
@@ -4599,6 +4924,59 @@ func ServiceUsageServiceEvent(settings Settings, record ServiceUsageServiceRecor
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-service-usage-service-"+resourceID, "gcp.service_usage_service", "gcp/service_usage_service/v1", payload, attributes)
+}
+
+func SpannerInstanceEvent(settings Settings, record SpannerInstanceRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Config)
+	if location == "" {
+		location = locationFromResourceName(record.Name)
+	}
+	attributes := cloudResourceAttributes(settings, "spanner_instance", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "spanner_instance", location, record.Labels)
+	attributes["display_name"] = record.DisplayName
+	attributes["config"] = lastPathSegment(record.Config)
+	attributes["config_url"] = record.Config
+	attributes["node_count"] = strconv.Itoa(record.NodeCount)
+	attributes["processing_units"] = strconv.Itoa(record.ProcessingUnits)
+	attributes["state"] = record.State
+	attributes["status"] = record.State
+	attributes["instance_type"] = record.InstanceType
+	attributes["endpoint_uris"] = strings.Join(record.EndpointURIs, ",")
+	attributes["endpoint_uris_count"] = strconv.Itoa(len(record.EndpointURIs))
+	attributes["autoscaling_configured"] = boolString(len(record.AutoscalingConfig) != 0)
+	attributes["free_instance"] = boolString(len(record.FreeInstanceMetadata) != 0)
+	attributes["create_time"] = record.CreateTime
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-spanner-instance-"+record.Name, "gcp.spanner_instance", "gcp/spanner_instance/v1", payload, attributes)
+}
+
+func SpannerDatabaseEvent(settings Settings, record SpannerDatabaseRecord) (*primitives.Event, error) {
+	instanceName := firstNonEmpty(record.InstanceName, parentResourceName(record.Name, "databases"))
+	location := locationFromResourceName(instanceName)
+	encryptionType := firstNonEmpty(record.EncryptionConfig.EncryptionType, firstSpannerEncryptionType(record.EncryptionInfo))
+	attributes := cloudResourceAttributes(settings, "spanner_database", record.Name, lastPathSegment(record.Name), "spanner_database", location, nil)
+	attributes["instance_name"] = lastPathSegment(instanceName)
+	attributes["instance_url"] = instanceName
+	attributes["state"] = record.State
+	attributes["status"] = record.State
+	attributes["database_dialect"] = record.DatabaseDialect
+	attributes["drop_protection_enabled"] = boolString(record.EnableDropProtection)
+	attributes["reconciling"] = boolString(record.Reconciling)
+	attributes["version_retention_period"] = record.VersionRetentionPeriod
+	attributes["earliest_version_time"] = record.EarliestVersionTime
+	attributes["encryption_type"] = encryptionType
+	attributes["kms_key_name"] = record.EncryptionConfig.KMSKeyName
+	attributes["encryption_info_count"] = strconv.Itoa(len(record.EncryptionInfo))
+	attributes["restore_configured"] = boolString(len(record.RestoreInfo) != 0)
+	attributes["create_time"] = record.CreateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"instance_name": instanceName, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-spanner-database-"+record.Name, "gcp.spanner_database", "gcp/spanner_database/v1", payload, attributes)
 }
 
 func OrgPolicyEvent(settings Settings, record OrgPolicyRecord) (*primitives.Event, error) {
@@ -5645,6 +6023,37 @@ func loggingSinkExclusions(exclusions []LoggingSinkExclusion) ([]string, []strin
 	return names, filters, active
 }
 
+func monitoringAlertConditionSummary(conditions []MonitoringAlertPolicyCondition) ([]string, []string) {
+	names := make([]string, 0, len(conditions))
+	typeSeen := map[string]struct{}{}
+	for _, condition := range conditions {
+		if name := firstNonEmpty(condition.DisplayName, lastPathSegment(condition.Name)); name != "" {
+			names = append(names, name)
+		}
+		for _, conditionType := range []struct {
+			name string
+			raw  json.RawMessage
+		}{
+			{name: "threshold", raw: condition.ConditionThreshold},
+			{name: "absent", raw: condition.ConditionAbsent},
+			{name: "mql", raw: condition.ConditionMonitoringQueryLanguage},
+			{name: "promql", raw: condition.ConditionPrometheusQueryLanguage},
+			{name: "matched_log", raw: condition.ConditionMatchedLog},
+			{name: "sql", raw: condition.ConditionSQL},
+		} {
+			if len(conditionType.raw) != 0 {
+				typeSeen[conditionType.name] = struct{}{}
+			}
+		}
+	}
+	types := make([]string, 0, len(typeSeen))
+	for conditionType := range typeSeen {
+		types = append(types, conditionType)
+	}
+	sort.Strings(types)
+	return names, types
+}
+
 func loggingSinkDestinationType(destination string) string {
 	normalized := strings.ToLower(strings.TrimSpace(destination))
 	switch {
@@ -5758,6 +6167,23 @@ func unixMillisTime(value string) string {
 		return value
 	}
 	return time.UnixMilli(millis).UTC().Format(time.RFC3339)
+}
+
+func parentResourceName(name string, childCollection string) string {
+	marker := "/" + strings.Trim(childCollection, "/") + "/"
+	if index := strings.LastIndex(name, marker); index > 0 {
+		return name[:index]
+	}
+	return ""
+}
+
+func firstSpannerEncryptionType(values []SpannerEncryptionInfo) string {
+	for _, value := range values {
+		if strings.TrimSpace(value.EncryptionType) != "" {
+			return value.EncryptionType
+		}
+	}
+	return ""
 }
 
 func firstContainerPackageIssue(issues []ContainerVulnerabilityPackageIssue) ContainerVulnerabilityPackageIssue {

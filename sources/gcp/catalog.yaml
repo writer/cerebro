@@ -9,6 +9,8 @@ emitted_kinds:
   - gcp.artifact_registry_repository
   - gcp.audit
   - gcp.bigquery_dataset
+  - gcp.bigtable_instance
+  - gcp.bigtable_table
   - gcp.certificate_manager_certificate
   - gcp.certificate_manager_certificate_map
   - gcp.certificate_manager_certificate_map_entry
@@ -65,7 +67,10 @@ emitted_kinds:
   - gcp.group_membership
   - gcp.iam_role_assignment
   - gcp.kms_key
+  - gcp.logging_metric
   - gcp.logging_project_sink
+  - gcp.monitoring_alert_policy
+  - gcp.monitoring_notification_channel
   - gcp.org_policy
   - gcp.pubsub_subscription
   - gcp.pubsub_topic
@@ -76,6 +81,8 @@ emitted_kinds:
   - gcp.service_account_impersonation
   - gcp.service_account_key
   - gcp.service_usage_service
+  - gcp.spanner_database
+  - gcp.spanner_instance
   - gcp.vpc_access_connector
 runtime_families:
   - asset_metadata
@@ -85,6 +92,8 @@ runtime_families:
   - artifact_registry_repository
   - audit
   - bigquery_dataset
+  - bigtable_instance
+  - bigtable_table
   - certificate_manager_certificate
   - certificate_manager_certificate_map
   - certificate_manager_certificate_map_entry
@@ -141,7 +150,10 @@ runtime_families:
   - group_membership
   - iam_role_assignment
   - kms_key
+  - logging_metric
   - logging_project_sink
+  - monitoring_alert_policy
+  - monitoring_notification_channel
   - org_policy
   - pubsub_subscription
   - pubsub_topic
@@ -152,6 +164,8 @@ runtime_families:
   - service_account_impersonation
   - service_account_key
   - service_usage_service
+  - spanner_database
+  - spanner_instance
   - vpc_access_connector
 coverage_contract:
   owner_domain: cloud
@@ -191,6 +205,18 @@ coverage_contract:
       type: entity_family
       title: BigQuery datasets
       families: [bigquery_dataset]
+      support: supported
+      high_value: true
+    - id: bigtable_instance
+      type: entity_family
+      title: Bigtable instances
+      families: [bigtable_instance]
+      support: supported
+      high_value: true
+    - id: bigtable_table
+      type: entity_family
+      title: Bigtable tables
+      families: [bigtable_table]
       support: supported
       high_value: true
     - id: certificate_manager_certificate
@@ -523,6 +549,24 @@ coverage_contract:
       families: [logging_project_sink]
       support: supported
       high_value: true
+    - id: logging_metric
+      type: entity_family
+      title: Cloud Logging log-based metrics
+      families: [logging_metric]
+      support: supported
+      high_value: true
+    - id: monitoring_alert_policy
+      type: entity_family
+      title: Cloud Monitoring alert policies
+      families: [monitoring_alert_policy]
+      support: supported
+      high_value: true
+    - id: monitoring_notification_channel
+      type: entity_family
+      title: Cloud Monitoring notification channels
+      families: [monitoring_notification_channel]
+      support: supported
+      high_value: true
     - id: org_policy
       type: entity_family
       title: Organization Policy constraints
@@ -581,6 +625,18 @@ coverage_contract:
       type: entity_family
       title: Enabled Service Usage APIs
       families: [service_usage_service]
+      support: supported
+      high_value: true
+    - id: spanner_database
+      type: entity_family
+      title: Spanner databases
+      families: [spanner_database]
+      support: supported
+      high_value: true
+    - id: spanner_instance
+      type: entity_family
+      title: Spanner instances
+      families: [spanner_instance]
       support: supported
       high_value: true
     - id: vpc_access_connector
