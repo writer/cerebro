@@ -256,6 +256,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"gcp.compute_instance":                      gcpCloudResourceProjections,
 	"gcp.compute_network":                       gcpCloudResourceProjections,
 	"gcp.compute_route":                         gcpCloudResourceProjections,
+	"gcp.compute_security_policy":               gcpCloudResourceProjections,
 	"gcp.compute_subnetwork":                    gcpCloudResourceProjections,
 	"gcp.dns_managed_zone":                      gcpCloudResourceProjections,
 	"gcp.dns_record_set":                        gcpCloudResourceProjections,
