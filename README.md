@@ -214,7 +214,8 @@ git diff --check README.md
 - Deploy verification can check source runtime ECS runs, source role trust drift, graph health, and graph health regressions depending on the changed paths.
 - Scheduled/manual workflows maintain source runtime drift reports, graph health insight, and runtime/web image tag proposals.
 - `workflow_dispatch` supports manual deployment for `sec-dev`, `go-prod`, `gcp-dev`, and `gcp-prod`.
-- Release promotion workflows use a short-lived GitHub App installation token for automation branches, PRs, direct `sec-dev` promotion commits, and explicit deploy dispatches. Configure `CEREBRO_DEPLOY_APP_CLIENT_ID` as a repository variable and `CEREBRO_DEPLOY_APP_PRIVATE_KEY` as a repository secret; the App installation needs Actions write, Contents write, Pull requests write, Issues write, Checks read, and Commit statuses read for this repository.
+- Release promotion workflows use a short-lived, preflighted GitHub App installation token for automation branches and PRs. Trusted `sec-dev` release dispatches auto-merge their PRs only after required checks pass; the resulting normal `main` push runs deploys without direct branch writes or explicit deploy dispatches. Configure `CEREBRO_DEPLOY_APP_CLIENT_ID` as a repository variable and `CEREBRO_DEPLOY_APP_PRIVATE_KEY` as a repository secret; the App installation needs Contents write, Pull requests write, Issues write, Checks read, and Commit statuses read for this repository.
+- AWS `sec-dev` and `go-prod` deploy jobs create GitHub Deployment records and update them to `in_progress`, `success`, or `failure` around Pulumi and post-deploy verification.
 
 Common CI failure triage:
 

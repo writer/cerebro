@@ -4,8 +4,11 @@ import unittest
 from pathlib import Path
 
 
-WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "propose-image-tag.yml"
-INFRA_DEPLOY_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "infra-deploy.yml"
+ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW = ROOT / ".github" / "workflows" / "propose-image-tag.yml"
+INFRA_DEPLOY_WORKFLOW = ROOT / ".github" / "workflows" / "infra-deploy.yml"
+DEPLOY_APP_ACTION = ROOT / ".github" / "actions" / "deploy-app-token" / "action.yml"
+DEPLOYMENT_SCRIPT = ROOT / ".github" / "scripts" / "github-deployment-status.sh"
 
 
 class ProposeImageTagWorkflowTest(unittest.TestCase):
@@ -24,32 +27,34 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
             apply_step,
         )
 
-    def test_direct_push_refreshes_from_main_before_file_guard(self) -> None:
+    def test_trusted_sec_dev_release_uses_pr_auto_merge_not_main_push(self) -> None:
         apply_step = self._apply_step()
-        direct_push_block = apply_step.split('if [ "${APPLY_MODE}" = "direct_push" ]; then', 1)[1].split(
-            'if [ "${APPLY_MODE}" != "pull_request" ]; then',
-            1,
-        )[0]
 
-        self.assertLess(
-            direct_push_block.index("refresh_from_main_and_apply_update"),
-            direct_push_block.index('changed_files="$(git diff --name-only)"'),
-        )
+        self.assertNotIn('"HEAD:main"', apply_step)
+        self.assertNotIn("dispatch_and_require_run", apply_step)
+        self.assertIn('promotion_mode="trusted_sec_dev_release"', apply_step)
+        self.assertIn("apply_mode=direct_push is deprecated", apply_step)
+        self.assertIn("Trusted release promotion:", apply_step)
+        self.assertIn('gh pr merge "${pr_url}" --merge --delete-branch', apply_step)
 
     def test_release_automation_uses_deploy_app_token_not_pat(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
+        action = DEPLOY_APP_ACTION.read_text(encoding="utf-8")
         apply_step = self._apply_step()
 
         self.assertNotIn("CEREBRO_AUTORELEASE_TOKEN", workflow)
         self.assertIn("- name: Create deploy GitHub App token", workflow)
-        self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", workflow)
+        self.assertIn("uses: ./.github/actions/deploy-app-token", workflow)
         self.assertIn("client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}", workflow)
         self.assertIn("private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}", workflow)
-        self.assertIn("permission-actions: write", workflow)
-        self.assertIn("permission-contents: write", workflow)
-        self.assertIn("permission-pull-requests: write", workflow)
         self.assertIn("GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}", apply_step)
         self.assertIn('git config user.name "${DEPLOY_APP_SLUG}[bot]"', apply_step)
+        self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", action)
+        self.assertIn("Preflight deploy GitHub App token", action)
+        self.assertIn("gh api /installation/repositories", action)
+        self.assertIn("permission-contents: write", action)
+        self.assertIn("permission-pull-requests: write", action)
+        self.assertNotIn("permission-actions: write", action)
 
     def test_repository_dispatch_superseded_releases_skip_promotion(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -104,6 +109,7 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
 
         self.assertIn('release_is_still_latest "${pr_url}"', auto_merge_block)
         self.assertIn("wait_for_sec_dev_release", auto_merge_block)
+        self.assertIn("--event push", apply_step)
         self.assertLess(
             auto_merge_block.rindex('release_is_still_latest "${pr_url}"'),
             auto_merge_block.index("wait_for_sec_dev_release"),
@@ -123,11 +129,27 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
                 job_block = workflow.split(f"name: {job_name}", 1)[1].split("      - name: Install uv", 1)[0]
                 self.assertIn("fetch-depth: 0", job_block)
 
-    def test_sec_dev_autorelease_push_uses_explicit_deploy_dispatch(self) -> None:
+    def test_sec_dev_autorelease_uses_normal_push_deploys(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         deploy_block = workflow.split("  deploy-sec-dev-main:", 1)[1].split("  # Main merge: Pulumi up for go-prod stack", 1)[0]
 
-        self.assertIn("!startsWith(github.event.head_commit.message, 'chore: deploy sec-dev Cerebro ')", deploy_block)
+        self.assertNotIn("chore: deploy sec-dev Cerebro", deploy_block)
+
+    def test_aws_deploy_jobs_create_github_deployment_records(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        script = DEPLOYMENT_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn('gh api -X POST "repos/${GITHUB_REPOSITORY}/deployments"', script)
+        self.assertIn('gh api -X POST "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses"', script)
+        for job_marker, stack in (("  deploy-sec-dev-main:", "sec-dev"), ("  deploy-go-prod:", "go-prod")):
+            with self.subTest(stack=stack):
+                job_block = workflow.split(job_marker, 1)[1].split("\n  # ", 1)[0]
+                self.assertIn("deployments: write", job_block)
+                self.assertIn(f"Create GitHub deployment record ({stack})", job_block)
+                self.assertIn(f"Mark GitHub deployment in progress ({stack})", job_block)
+                self.assertIn(f"Complete GitHub deployment record ({stack})", job_block)
+                self.assertIn(".github/scripts/github-deployment-status.sh create", job_block)
+                self.assertIn(".github/scripts/github-deployment-status.sh status", job_block)
 
     def test_go_prod_deploy_skips_cosmo_canary_while_runtime_is_disabled(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
