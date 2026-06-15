@@ -37,18 +37,24 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("Trusted release promotion:", apply_step)
         self.assertIn('gh pr merge "${pr_url}" --merge --delete-branch', apply_step)
 
-    def test_release_automation_uses_deploy_app_token_not_pat(self) -> None:
+    def test_release_automation_prefers_deploy_app_token_with_pat_fallback(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         action = DEPLOY_APP_ACTION.read_text(encoding="utf-8")
         apply_step = self._apply_step()
 
-        self.assertNotIn("CEREBRO_AUTORELEASE_TOKEN", workflow)
+        self.assertIn("- name: Resolve release automation auth", workflow)
+        self.assertIn("CEREBRO_AUTORELEASE_TOKEN", workflow)
+        self.assertIn("mode=deploy_app", workflow)
+        self.assertIn("mode=autorelease_token", workflow)
         self.assertIn("- name: Create deploy GitHub App token", workflow)
+        self.assertIn("steps.release-auth.outputs.mode == 'deploy_app'", workflow)
         self.assertIn("uses: ./.github/actions/deploy-app-token", workflow)
         self.assertIn("client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}", workflow)
         self.assertIn("private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}", workflow)
-        self.assertIn("GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}", apply_step)
+        self.assertIn("GH_TOKEN: ${{ steps.deploy-app-token.outputs.token || secrets.CEREBRO_AUTORELEASE_TOKEN }}", apply_step)
+        self.assertIn("DEPLOY_AUTH_MODE: ${{ steps.release-auth.outputs.mode }}", apply_step)
         self.assertIn('git config user.name "${DEPLOY_APP_SLUG}[bot]"', apply_step)
+        self.assertIn('git config user.name "github-actions[bot]"', apply_step)
         self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", action)
         self.assertIn("Preflight deploy GitHub App token", action)
         self.assertIn("gh api /installation/repositories", action)
