@@ -1,0 +1,47 @@
+sourceId: grc
+secretKeys:
+  - GRC_CLIENT_ID
+  - GRC_CLIENT_SECRET
+runtimes:
+  - localId: person
+    config:
+      client_id: env:GRC_CLIENT_ID
+      client_secret: env:GRC_CLIENT_SECRET
+      family: person
+      per_page: "100"
+  - localId: user
+    config:
+      client_id: env:GRC_CLIENT_ID
+      client_secret: env:GRC_CLIENT_SECRET
+      family: user
+      per_page: "100"
+  - localId: control
+    config:
+      client_id: env:GRC_CLIENT_ID
+      client_secret: env:GRC_CLIENT_SECRET
+      family: control
+      per_page: "100"
+  - localId: control-test
+    config:
+      client_id: env:GRC_CLIENT_ID
+      client_secret: env:GRC_CLIENT_SECRET
+      family: control_test
+      per_page: "100"
+  - localId: integration
+    config:
+      client_id: env:GRC_CLIENT_ID
+      client_secret: env:GRC_CLIENT_SECRET
+      family: integration
+      per_page: "100"
+  - localId: vulnerability
+    config:
+      client_id: env:GRC_CLIENT_ID
+      client_secret: env:GRC_CLIENT_SECRET
+      family: vulnerability
+      per_page: "100"
+  - localId: vulnerable-asset
+    config:
+      client_id: env:GRC_CLIENT_ID
+      client_secret: env:GRC_CLIENT_SECRET
+      family: vulnerable_asset
+      per_page: "100"

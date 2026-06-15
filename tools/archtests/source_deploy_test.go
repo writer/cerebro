@@ -19,11 +19,14 @@ var requireDeployManifest = map[string]struct{}{
 	"gcp":              {},
 	"github":           {},
 	"google_workspace": {},
+	"grc":              {},
 	"kandji":           {},
 	"kolide":           {},
+	"kubernetes":       {},
 	"okta":             {},
 	"sentinelone":      {},
 	"trusted_endpoint": {},
+	"vulnview":         {},
 }
 
 func TestSourceDeployManifestsAreValid(t *testing.T) {

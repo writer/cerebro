@@ -1,0 +1,41 @@
+sourceId: vulnview
+secretKeys:
+  - VULNVIEW_CLIENT_ID
+  - VULNVIEW_CLIENT_SECRET
+  - VULNVIEW_OKTA_ISSUER
+runtimes:
+  - localId: site
+    config:
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: site
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: scan
+    config:
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: scan
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: vulnerability
+    config:
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: vulnerability
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: asset
+    config:
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: asset
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: dns-alert
+    config:
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: dns_alert
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
