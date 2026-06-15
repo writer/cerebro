@@ -196,7 +196,6 @@ jobs:
         env:
           DEPLOY_APP_CLIENT_ID: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
           DEPLOY_APP_PRIVATE_KEY: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
-          AUTORELEASE_TOKEN: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -206,17 +205,10 @@ jobs:
             exit 0
           fi
 
-          if [ -n "${AUTORELEASE_TOKEN}" ]; then
-            echo "mode=autorelease_token" >> "$GITHUB_OUTPUT"
-            echo "::warning::CEREBRO_DEPLOY_APP_CLIENT_ID/CEREBRO_DEPLOY_APP_PRIVATE_KEY are not configured; falling back to CEREBRO_AUTORELEASE_TOKEN."
-            exit 0
-          fi
-
-          echo "Release promotion requires either CEREBRO_DEPLOY_APP_CLIENT_ID plus CEREBRO_DEPLOY_APP_PRIVATE_KEY, or CEREBRO_AUTORELEASE_TOKEN." >&2
+          echo "Release promotion requires CEREBRO_DEPLOY_APP_CLIENT_ID plus CEREBRO_DEPLOY_APP_PRIVATE_KEY." >&2
           exit 1
 
       - name: Create deploy GitHub App token
-        if: steps.release-auth.outputs.mode == 'deploy_app'
         id: deploy-app-token
         uses: ./.github/actions/deploy-app-token
         with:
@@ -226,8 +218,7 @@ jobs:
       - name: Apply stack config update
         shell: bash
         env:
-          GH_TOKEN: ${{ steps.deploy-app-token.outputs.token || secrets.CEREBRO_AUTORELEASE_TOKEN }}
-          DEPLOY_AUTH_MODE: ${{ steps.release-auth.outputs.mode }}
+          GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
           DEPLOY_APP_SLUG: ${{ steps.deploy-app-token.outputs.app-slug }}
           APPLY_MODE: ${{ steps.inputs.outputs.mode }}
           EVENT_NAME: ${{ github.event_name }}
@@ -243,14 +234,9 @@ jobs:
             echo "No release promotion token resolved" >&2
             exit 1
           fi
-          if [ "${DEPLOY_AUTH_MODE}" = "deploy_app" ]; then
-            deploy_app_user_id="$(gh api "/users/${DEPLOY_APP_SLUG}[bot]" --jq .id)"
-            git config user.name "${DEPLOY_APP_SLUG}[bot]"
-            git config user.email "${deploy_app_user_id}+${DEPLOY_APP_SLUG}[bot]@users.noreply.github.com"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          fi
+          deploy_app_user_id="$(gh api "/users/${DEPLOY_APP_SLUG}[bot]" --jq .id)"
+          git config user.name "${DEPLOY_APP_SLUG}[bot]"
+          git config user.email "${deploy_app_user_id}+${DEPLOY_APP_SLUG}[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           safe_tag="$(printf '%s' "${IMAGE_TAG}" | tr -c 'A-Za-z0-9._-' '-')"
