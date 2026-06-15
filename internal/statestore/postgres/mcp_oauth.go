@@ -75,6 +75,14 @@ var ensureMCPOAuthStatements = []string{
 }
 
 func (s *Store) SaveOAuthClient(ctx context.Context, client mcpoauth.OAuthClient) error {
+	return s.saveOAuthClient(ctx, client, 0)
+}
+
+func (s *Store) SaveOAuthClientWithLimit(ctx context.Context, client mcpoauth.OAuthClient, maxClients int) error {
+	return s.saveOAuthClient(ctx, client, maxClients)
+}
+
+func (s *Store) saveOAuthClient(ctx context.Context, client mcpoauth.OAuthClient, maxClients int) error {
 	if err := s.ensureMCPOAuthTables(ctx); err != nil {
 		return err
 	}
@@ -82,17 +90,51 @@ func (s *Store) SaveOAuthClient(ctx context.Context, client mcpoauth.OAuthClient
 	if err != nil {
 		return fmt.Errorf("marshal mcp oauth client redirect URIs: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
-INSERT INTO mcp_oauth_clients (
-  client_id, client_secret, client_name, redirect_uris_json, public, created_at
-) VALUES ($1,$2,$3,$4::jsonb,$5,$6)`,
+	args := []any{
 		strings.TrimSpace(client.ClientID),
 		strings.TrimSpace(client.ClientSecret),
 		strings.TrimSpace(client.Name),
 		redirectURIs,
 		client.Public,
 		nullableUTC(client.CreatedAt),
-	)
+	}
+	if maxClients > 0 {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin save mcp oauth client: %w", err)
+		}
+		committed := false
+		defer func() {
+			if !committed {
+				_ = tx.Rollback()
+			}
+		}()
+		if _, err := tx.ExecContext(ctx, `LOCK TABLE mcp_oauth_clients IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+			return fmt.Errorf("lock mcp oauth clients: %w", err)
+		}
+		var count int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM mcp_oauth_clients`).Scan(&count); err != nil {
+			return fmt.Errorf("count mcp oauth clients: %w", err)
+		}
+		if count >= maxClients {
+			return mcpoauth.ErrOAuthClientLimitExceeded
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO mcp_oauth_clients (
+  client_id, client_secret, client_name, redirect_uris_json, public, created_at
+) VALUES ($1,$2,$3,$4::jsonb,$5,$6)`, args...); err != nil {
+			return fmt.Errorf("save mcp oauth client: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit save mcp oauth client: %w", err)
+		}
+		committed = true
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO mcp_oauth_clients (
+  client_id, client_secret, client_name, redirect_uris_json, public, created_at
+) VALUES ($1,$2,$3,$4::jsonb,$5,$6)`, args...)
 	if err != nil {
 		return fmt.Errorf("save mcp oauth client: %w", err)
 	}

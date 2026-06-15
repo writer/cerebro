@@ -176,6 +176,8 @@ const findingStatusReasonBackfillCollision findingStatusReason = "backfill_colli
 const (
 	tenantScopedFingerprintBackfillActor = "tenant_scoped_fingerprint_backfill"
 	tenantScopedFingerprintBackfillRunID = "tenant_scoped_fingerprint_backfill"
+	defaultFindingListLimit              = uint32(500)
+	maxFindingListLimit                  = uint32(500)
 )
 
 var errTenantScopedFingerprintBackfillRetry = errors.New("retry tenant-scoped fingerprint backfill")
@@ -803,12 +805,27 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, request ports.FindingSt
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding status event ids: %w", err)
 	}
+	expectedStatus := strings.TrimSpace(request.ExpectedStatus)
+	lastObservedBefore := request.LastObservedBefore.UTC()
 	if request.Tombstone != nil {
 		t := request.Tombstone
 		tombstonedAt := t.TombstonedAt.UTC()
 		if tombstonedAt.IsZero() {
 			tombstonedAt = updatedAt
 		}
+		args := []any{
+			findingID,
+			status,
+			statusReason,
+			updatedAt,
+			tombstonedAt,
+			strings.TrimSpace(t.By),
+			strings.TrimSpace(t.Reason),
+			strings.TrimSpace(t.RunID),
+			strings.TrimSpace(t.PriorStatus),
+			eventIDsJSON,
+		}
+		whereClause, args, preconditioned := findingStatusWhereClause(args, expectedStatus, lastObservedBefore)
 		var row findingRow
 		if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
@@ -833,26 +850,23 @@ SET status = $2,
       )
     END,
     updated_at = NOW()
-WHERE id = $1
-RETURNING `+findingSelectColumns,
-			findingID,
-			status,
-			statusReason,
-			updatedAt,
-			tombstonedAt,
-			strings.TrimSpace(t.By),
-			strings.TrimSpace(t.Reason),
-			strings.TrimSpace(t.RunID),
-			strings.TrimSpace(t.PriorStatus),
-			eventIDsJSON,
-		), &row); err != nil {
+`+whereClause+`
+RETURNING `+findingSelectColumns, args...), &row); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return nil, ports.ErrFindingNotFound
+				return nil, findingStatusNoRowsError(preconditioned)
 			}
 			return nil, fmt.Errorf("update finding %q tombstone status: %w", findingID, err)
 		}
 		return row.record()
 	}
+	args := []any{
+		findingID,
+		status,
+		statusReason,
+		updatedAt,
+		eventIDsJSON,
+	}
+	whereClause, args, preconditioned := findingStatusWhereClause(args, expectedStatus, lastObservedBefore)
 	var row findingRow
 	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
@@ -871,20 +885,37 @@ SET status = $2,
       )
     END,
     updated_at = NOW()
-WHERE id = $1
-RETURNING `+findingSelectColumns,
-		findingID,
-		status,
-		statusReason,
-		updatedAt,
-		eventIDsJSON,
-	), &row); err != nil {
+`+whereClause+`
+RETURNING `+findingSelectColumns, args...), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ports.ErrFindingNotFound
+			return nil, findingStatusNoRowsError(preconditioned)
 		}
 		return nil, fmt.Errorf("update finding %q status: %w", findingID, err)
 	}
 	return row.record()
+}
+
+func findingStatusWhereClause(args []any, expectedStatus string, lastObservedBefore time.Time) (string, []any, bool) {
+	where := "WHERE id = $1"
+	preconditioned := false
+	if expectedStatus = strings.TrimSpace(expectedStatus); expectedStatus != "" {
+		args = append(args, expectedStatus)
+		where += fmt.Sprintf("\n  AND status = $%d", len(args))
+		preconditioned = true
+	}
+	if !lastObservedBefore.IsZero() {
+		args = append(args, lastObservedBefore.UTC())
+		where += fmt.Sprintf("\n  AND last_observed_at < $%d", len(args))
+		preconditioned = true
+	}
+	return where, args, preconditioned
+}
+
+func findingStatusNoRowsError(preconditioned bool) error {
+	if preconditioned {
+		return ports.ErrFindingStatusPreconditionFailed
+	}
+	return ports.ErrFindingNotFound
 }
 
 // UpdateFindingAssignee updates or clears one persisted finding assignee.
@@ -1111,10 +1142,8 @@ SELECT ` + findingSelectColumns + `
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingOrderClause(request)
-	if request.Limit != 0 {
-		args = append(args, int64(request.Limit))
-		query += fmt.Sprintf(" LIMIT $%d", len(args))
-	}
+	args = append(args, int64(findingListLimit(request.Limit)))
+	query += fmt.Sprintf(" LIMIT $%d", len(args))
 	return query, args, nil
 }
 
@@ -1130,10 +1159,8 @@ SELECT id, tenant_id, runtime_id, rule_id, title, ` + findingEffectiveSeveritySQ
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingOrderClause(request)
-	if request.Limit != 0 {
-		args = append(args, int64(request.Limit))
-		query += fmt.Sprintf(" LIMIT $%d", len(args))
-	}
+	args = append(args, int64(findingListLimit(request.Limit)))
+	query += fmt.Sprintf(" LIMIT $%d", len(args))
 	return query, args, nil
 }
 
@@ -1156,6 +1183,10 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	addFindingSeverityFilter(&clauses, &args, request.Severity)
 	addFindingFilter(&clauses, &args, "status", request.Status)
 	addFindingFilter(&clauses, &args, "policy_id", request.PolicyID)
+	if !request.LastObservedBefore.IsZero() {
+		args = append(args, request.LastObservedBefore.UTC())
+		clauses = append(clauses, fmt.Sprintf("last_observed_at < $%d", len(args)))
+	}
 	if err := addFindingArrayContainsFilter(&clauses, &args, "resource_urns_json", request.ResourceURN); err != nil {
 		return nil, nil, err
 	}
@@ -1163,6 +1194,13 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 		return nil, nil, err
 	}
 	return clauses, args, nil
+}
+
+func findingListLimit(limit uint32) uint32 {
+	if limit == 0 || limit > maxFindingListLimit {
+		return defaultFindingListLimit
+	}
+	return limit
 }
 
 // SupportsTombstones reports whether the tombstone schema has been applied to the

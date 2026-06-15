@@ -3,6 +3,7 @@ package findings
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,8 @@ import (
 const ttlResolveLogEvent = "ttl.resolve"
 
 const ttlResolutionReasonPrefix = workflowevents.FindingStatusReasonTTLExpired + ":"
+
+const ttlResolverListLimit = uint32(500)
 
 // ttlClock is the per-Service "now" boundary used by the TTL sweeper. Tests
 // inject a fixed clock via Service.WithTTLClock so the sweeper can be exercised
@@ -116,46 +119,60 @@ func (s *Service) resolveTTLOpenFindings(ctx context.Context, tenantID string, r
 	}
 	now := s.ttlClockNow()
 	cutoff := now.Add(-ttl)
-	candidates, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
-		TenantID: tenantID,
-		RuleID:   id,
-		Status:   findingStatusOpen,
-	})
-	if err != nil {
-		return fmt.Errorf("list ttl candidates for rule %q: %w", id, err)
-	}
 	ttlLabel := formatTTLDuration(ttl)
 	reason := ttlResolutionReasonPrefix + ttlLabel
 	sink := s.ttlSink()
-	for _, finding := range candidates {
-		if finding == nil {
-			continue
-		}
-		if finding.Tombstoned {
-			continue
-		}
-		if !finding.LastObservedAt.Before(cutoff) {
-			continue
-		}
-		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
-			FindingID: strings.TrimSpace(finding.ID),
-			Status:    findingStatusResolved,
-			Reason:    reason,
-			UpdatedAt: now,
+	for {
+		candidates, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+			TenantID:           tenantID,
+			RuleID:             id,
+			Status:             findingStatusOpen,
+			LastObservedBefore: cutoff,
+			Limit:              ttlResolverListLimit,
 		})
 		if err != nil {
-			return fmt.Errorf("resolve ttl finding %q: %w", strings.TrimSpace(finding.ID), err)
+			return fmt.Errorf("list ttl candidates for rule %q: %w", id, err)
 		}
-		if err := s.recordFindingStatusWorkflow(ctx, updated, workflowevents.FindingStatusSourceStaleEvaluation); err != nil {
-			return fmt.Errorf("project ttl finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
+		if len(candidates) == 0 {
+			return nil
 		}
-		resolvedAt := updated.StatusUpdatedAt
-		if resolvedAt.IsZero() {
-			resolvedAt = now
+		for _, finding := range candidates {
+			if finding == nil {
+				continue
+			}
+			if finding.Tombstoned {
+				continue
+			}
+			if !finding.LastObservedAt.Before(cutoff) {
+				continue
+			}
+			updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
+				FindingID:          strings.TrimSpace(finding.ID),
+				Status:             findingStatusResolved,
+				Reason:             reason,
+				UpdatedAt:          now,
+				ExpectedStatus:     findingStatusOpen,
+				LastObservedBefore: cutoff,
+			})
+			if errors.Is(err, ports.ErrFindingStatusPreconditionFailed) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("resolve ttl finding %q: %w", strings.TrimSpace(finding.ID), err)
+			}
+			if err := s.recordFindingStatusWorkflow(ctx, updated, workflowevents.FindingStatusSourceStaleEvaluation); err != nil {
+				return fmt.Errorf("project ttl finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
+			}
+			resolvedAt := updated.StatusUpdatedAt
+			if resolvedAt.IsZero() {
+				resolvedAt = now
+			}
+			writeTTLResolveLog(sink, id, strings.TrimSpace(updated.ID), ttlLabel, resolvedAt)
 		}
-		writeTTLResolveLog(sink, id, strings.TrimSpace(updated.ID), ttlLabel, resolvedAt)
+		if len(candidates) < int(ttlResolverListLimit) {
+			return nil
+		}
 	}
-	return nil
 }
 
 func writeTTLResolveLog(sink io.Writer, ruleID, findingID, ttlLabel string, resolvedAt time.Time) {

@@ -31,7 +31,7 @@ const (
 	defaultState        = "open"
 	defaultFamily       = familyPullRequest
 	defaultAuditInclude = "all"
-	defaultAuditOrder   = "desc"
+	defaultAuditOrder   = "asc"
 	familyAudit         = "audit"
 	familyRepository    = "repository"
 	familyDependabot    = "dependabot_alert"

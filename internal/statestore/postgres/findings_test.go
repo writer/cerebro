@@ -222,11 +222,17 @@ func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	if !strings.Contains(query, "status = $3") {
 		t.Fatalf("findingListQuery() did not slot status at $3 when runtime is omitted: %s", query)
 	}
-	if got := len(args); got != 3 {
-		t.Fatalf("len(findingListQuery().args) = %d, want 3", got)
+	if !strings.Contains(query, "LIMIT $4") {
+		t.Fatalf("findingListQuery() did not apply default LIMIT at $4: %s", query)
+	}
+	if got := len(args); got != 4 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 4", got)
 	}
 	if got := args[1]; got != "identity-okta-deprovisioned-active-in-github" {
 		t.Fatalf("findingListQuery().args[1] = %#v, want rule id", got)
+	}
+	if got := args[3]; got != int64(defaultFindingListLimit) {
+		t.Fatalf("findingListQuery().args[3] = %#v, want default limit", got)
 	}
 }
 

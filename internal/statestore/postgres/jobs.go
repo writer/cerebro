@@ -184,59 +184,53 @@ func (s *Store) UpdateJob(ctx context.Context, id string, update ports.JobUpdate
 	if err := s.ensureJobTables(ctx); err != nil {
 		return nil, err
 	}
-	job, err := s.GetJob(ctx, id)
-	if err != nil {
-		return nil, err
+	args := []any{id}
+	setClauses := []string{}
+	addSet := func(column string, value any) {
+		args = append(args, value)
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", column, len(args)))
 	}
-	if strings.TrimSpace(update.Status) != "" {
-		job.Status = strings.TrimSpace(update.Status)
+	addJSONSet := func(column string, value string) {
+		args = append(args, value)
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d::jsonb", column, len(args)))
+	}
+	if status := strings.TrimSpace(update.Status); status != "" {
+		addSet("status", status)
 	}
 	if update.Progress != nil {
-		job.Progress = *update.Progress
+		addSet("progress_percent", *update.Progress)
 	}
 	if update.Message != "" {
-		job.Message = update.Message
+		addSet("message", update.Message)
 	}
 	if update.Error != "" {
-		job.Error = update.Error
+		addSet("error", update.Error)
 	}
 	if update.Result != nil {
-		job.Result = cloneMap(update.Result)
+		result, err := json.Marshal(cloneMap(update.Result))
+		if err != nil {
+			return nil, err
+		}
+		addJSONSet("result_json", string(result))
 	}
 	if update.ResultRefs != nil {
-		job.ResultRefs = cloneStringMap(update.ResultRefs)
+		refs, err := json.Marshal(cloneStringMap(update.ResultRefs))
+		if err != nil {
+			return nil, err
+		}
+		addJSONSet("result_refs_json", string(refs))
 	}
 	if update.StartedAt != nil {
-		job.StartedAt = update.StartedAt.UTC()
+		addSet("started_at", update.StartedAt.UTC())
 	}
 	if update.FinishedAt != nil {
-		job.FinishedAt = update.FinishedAt.UTC()
+		addSet("finished_at", update.FinishedAt.UTC())
 	}
 	if update.CancelRequested != nil {
-		job.CancelRequested = *update.CancelRequested
+		addSet("cancel_requested", *update.CancelRequested)
 	}
-	var cancelRequested any
-	if update.CancelRequested != nil {
-		cancelRequested = job.CancelRequested
-	}
-	result, err := json.Marshal(job.Result)
-	if err != nil {
-		return nil, err
-	}
-	refs, err := json.Marshal(job.ResultRefs)
-	if err != nil {
-		return nil, err
-	}
-	var started any
-	if !job.StartedAt.IsZero() {
-		started = job.StartedAt
-	}
-	var finished any
-	if !job.FinishedAt.IsZero() {
-		finished = job.FinishedAt
-	}
+	setClauses = append(setClauses, "updated_at = NOW()")
 	allowedStatuses := normalizeJobStatuses(update.AllowedStatuses)
-	args := []any{id, job.Status, job.Progress, job.Message, job.Error, string(result), string(refs), started, finished, cancelRequested}
 	clauses := []string{"id = $1"}
 	if len(allowedStatuses) > 0 {
 		placeholders := make([]string, 0, len(allowedStatuses))
@@ -248,11 +242,8 @@ func (s *Store) UpdateJob(ctx context.Context, id string, update ports.JobUpdate
 	}
 	resultExec, err := s.db.ExecContext(ctx, fmt.Sprintf(`
 UPDATE platform_jobs
-SET status = $2, progress_percent = $3, message = $4, error = $5,
-    result_json = $6::jsonb, result_refs_json = $7::jsonb,
-    started_at = COALESCE($8, started_at), finished_at = COALESCE($9, finished_at),
-    cancel_requested = COALESCE($10, cancel_requested), updated_at = NOW()
-WHERE %s`, strings.Join(clauses, " AND ")), args...)
+SET %s
+WHERE %s`, strings.Join(setClauses, ", "), strings.Join(clauses, " AND ")), args...)
 	if err != nil {
 		return nil, fmt.Errorf("update platform job %q: %w", id, err)
 	}

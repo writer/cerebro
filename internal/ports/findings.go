@@ -92,19 +92,20 @@ type FindingRecord struct {
 
 // ListFindingsRequest scopes one finding query.
 type ListFindingsRequest struct {
-	TenantID      string
-	RuntimeID     string
-	RuntimeIDs    []string
-	FindingID     string
-	RuleID        string
-	Severity      string
-	Status        string
-	ResourceURN   string
-	EventID       string
-	PolicyID      string
-	Limit         uint32
-	PriorityOrder bool
-	Order         FindingOrder
+	TenantID           string
+	RuntimeID          string
+	RuntimeIDs         []string
+	FindingID          string
+	RuleID             string
+	Severity           string
+	Status             string
+	ResourceURN        string
+	EventID            string
+	PolicyID           string
+	LastObservedBefore time.Time
+	Limit              uint32
+	PriorityOrder      bool
+	Order              FindingOrder
 }
 
 // FindingOrder controls persisted finding list sort order.
@@ -139,6 +140,10 @@ var ErrFindingEvaluationRunNotFound = errors.New("finding evaluation run not fou
 
 // ErrFindingNotFound indicates that a persisted finding does not exist.
 var ErrFindingNotFound = errors.New("finding not found")
+
+// ErrFindingStatusPreconditionFailed indicates that a conditional lifecycle
+// status mutation did not match the live row state.
+var ErrFindingStatusPreconditionFailed = errors.New("finding status precondition failed")
 
 // ErrFindingEvidenceNotFound indicates that persisted finding evidence does not exist.
 var ErrFindingEvidenceNotFound = errors.New("finding evidence not found")
@@ -295,12 +300,14 @@ type FindingTombstoneApply struct {
 
 // FindingStatusUpdate scopes one persisted finding lifecycle mutation.
 type FindingStatusUpdate struct {
-	FindingID string
-	Status    string
-	Reason    string
-	UpdatedAt time.Time
-	EventIDs  []string
-	Tombstone *FindingTombstoneApply
+	FindingID          string
+	Status             string
+	Reason             string
+	UpdatedAt          time.Time
+	EventIDs           []string
+	ExpectedStatus     string
+	LastObservedBefore time.Time
+	Tombstone          *FindingTombstoneApply
 }
 
 // FindingAssigneeUpdate scopes one persisted finding assignee mutation.

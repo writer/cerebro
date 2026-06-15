@@ -247,6 +247,12 @@ func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.
 	if !ok {
 		return nil, ports.ErrFindingNotFound
 	}
+	if expected := strings.TrimSpace(request.ExpectedStatus); expected != "" && strings.TrimSpace(finding.Status) != expected {
+		return nil, ports.ErrFindingStatusPreconditionFailed
+	}
+	if cutoff := request.LastObservedBefore.UTC(); !cutoff.IsZero() && !finding.LastObservedAt.Before(cutoff) {
+		return nil, ports.ErrFindingStatusPreconditionFailed
+	}
 	s.updateStatusCallCount++
 	s.updateStatusCalls = append(s.updateStatusCalls, request)
 	cloned := cloneFinding(finding)
@@ -5587,6 +5593,9 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 		return false
 	}
 	if request.PolicyID != "" && strings.TrimSpace(finding.PolicyID) != strings.TrimSpace(request.PolicyID) {
+		return false
+	}
+	if cutoff := request.LastObservedBefore.UTC(); !cutoff.IsZero() && !finding.LastObservedAt.Before(cutoff) {
 		return false
 	}
 	return true

@@ -16,6 +16,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 func TestSpecLoadsFromCatalog(t *testing.T) {
@@ -118,7 +119,7 @@ func TestParseSettings(t *testing.T) {
 	}
 }
 
-func TestPrivateEndpointAllowlistPermitsResolvedPrivatePanopticonHost(t *testing.T) {
+func TestPrivateEndpointAllowlistFailsClosedWhenCustomTransportCannotPin(t *testing.T) {
 	src := &Source{
 		lookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
 			return []net.IPAddr{{IP: net.ParseIP("10.20.0.10")}}, nil
@@ -132,10 +133,12 @@ func TestPrivateEndpointAllowlistPermitsResolvedPrivatePanopticonHost(t *testing
 	}
 	req, _ := http.NewRequest(http.MethodGet, "https://panopticon.internal.example/api/v2/alerts", nil)
 	resp, err := sourceHTTPClient(src, []string{"panopticon.internal.example"}).Do(req)
-	if err != nil {
-		t.Fatalf("Do() error = %v, want private endpoint allowed", err)
+	if resp != nil {
+		_ = resp.Body.Close()
 	}
-	_ = resp.Body.Close()
+	if !errors.Is(err, sourcehttp.ErrTransportPinningUnsupported) {
+		t.Fatalf("Do() error = %v, want pinned host dialing error", err)
+	}
 	req, _ = http.NewRequest(http.MethodGet, "https://panopticon.internal.example/api/v2/alerts", nil)
 	resp, err = sourceHTTPClient(src, nil).Do(req)
 	if resp != nil {

@@ -601,9 +601,13 @@ func parseCloseoutDuration(raw string) (time.Duration, error) {
 		return 0, errors.New("duration must be positive")
 	}
 	if strings.HasSuffix(raw, "d") {
-		days, err := strconv.Atoi(strings.TrimSuffix(raw, "d"))
+		const maxCloseoutDurationDays = int64(1<<63-1) / int64(24*time.Hour)
+		days, err := strconv.ParseInt(strings.TrimSuffix(raw, "d"), 10, 64)
 		if err != nil || days <= 0 {
 			return 0, fmt.Errorf("invalid day duration %q", raw)
+		}
+		if days > maxCloseoutDurationDays {
+			return 0, fmt.Errorf("day duration %q is too large", raw)
 		}
 		return time.Duration(days) * 24 * time.Hour, nil
 	}

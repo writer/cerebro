@@ -82,9 +82,15 @@ const (
 	statusBadRequest          = 400
 	statusUnauthorized        = 401
 	statusForbidden           = 403
+	statusTooManyRequests     = 429
 	statusInternalServerError = 500
 	statusBadGateway          = 502
+	maxDynamicOAuthClients    = 10000
 )
+
+type oauthClientLimitStore interface {
+	SaveOAuthClientWithLimit(ctx context.Context, client OAuthClient, maxClients int) error
+}
 
 type OAuthError struct {
 	Code        string
@@ -185,7 +191,15 @@ func (s *Service) RegisterClient(ctx context.Context, request ClientRegistration
 		Public:       clientSecret == "",
 		CreatedAt:    s.now().UTC(),
 	}
-	if err := s.store.SaveOAuthClient(ctx, client); err != nil {
+	if limitedStore, ok := s.store.(oauthClientLimitStore); ok {
+		err = limitedStore.SaveOAuthClientWithLimit(ctx, client, maxDynamicOAuthClients)
+	} else {
+		err = s.store.SaveOAuthClient(ctx, client)
+	}
+	if errors.Is(err, ErrOAuthClientLimitExceeded) {
+		return ClientRegistrationResponse{}, oauthError("too_many_clients", "dynamic client registration limit exceeded", statusTooManyRequests)
+	}
+	if err != nil {
 		return ClientRegistrationResponse{}, fmt.Errorf("mcpoauth: save dynamic client: %w", err)
 	}
 	response := ClientRegistrationResponse{

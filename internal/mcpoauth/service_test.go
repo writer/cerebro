@@ -109,6 +109,30 @@ func TestClientCredentialsAcceptsHashedClientSecret(t *testing.T) {
 	}
 }
 
+func TestRegisterClientEnforcesDynamicClientLimit(t *testing.T) {
+	store := &limitedClientStore{err: ErrOAuthClientLimitExceeded}
+	service, err := NewService(config.MCPOAuthConfig{
+		Resource:                  "https://cerebro.example/api/v1/mcp",
+		DynamicClientRegistration: true,
+	}, store, func(context.Context, AccessGrant, time.Duration, time.Time) (string, error) {
+		return "access-token", nil
+	}, WithOIDCProvider(stubOIDCProvider{}))
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	_, err = service.RegisterClient(context.Background(), ClientRegistrationRequest{
+		RedirectURIs: []string{"http://127.0.0.1:9876/callback"},
+	})
+	var oauthErr *OAuthError
+	if !errors.As(err, &oauthErr) || oauthErr.Code != "too_many_clients" || oauthErr.Status != statusTooManyRequests {
+		t.Fatalf("RegisterClient limit error = %v, want too_many_clients 429", err)
+	}
+	if store.maxClients != maxDynamicOAuthClients {
+		t.Fatalf("maxClients = %d, want %d", store.maxClients, maxDynamicOAuthClients)
+	}
+}
+
 func TestEntitlementForIdentityScopesTenantGrant(t *testing.T) {
 	service := &Service{cfg: config.MCPOAuthConfig{
 		Entitlements: []config.MCPOAuthEntitlement{{
@@ -163,6 +187,17 @@ func (s *replayRefreshStore) ConsumeOAuthRefreshToken(context.Context, [32]byte,
 func (s *replayRefreshStore) RevokeOAuthRefreshFamily(_ context.Context, familyID string) error {
 	s.revokedFamilies = append(s.revokedFamilies, familyID)
 	return nil
+}
+
+type limitedClientStore struct {
+	Store
+	err        error
+	maxClients int
+}
+
+func (s *limitedClientStore) SaveOAuthClientWithLimit(_ context.Context, _ OAuthClient, maxClients int) error {
+	s.maxClients = maxClients
+	return s.err
 }
 
 type stubOIDCProvider struct{}
