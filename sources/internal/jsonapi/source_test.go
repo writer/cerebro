@@ -196,6 +196,134 @@ func TestReadUsesConfiguredListKeys(t *testing.T) {
 	}
 }
 
+func TestReadResolvesPathParamsAndResultList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/accounts/account%2Fone/items" {
+			t.Fatalf("request path = %q, want /accounts/account%%2Fone/items", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]any{{
+				"id":   "item-1",
+				"name": "Item One",
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:       "item",
+		Path:       "/accounts/{account_id}/items",
+		PathParams: []string{"account_id"},
+		URNKind:    "item",
+		IDKeys:     []string{"id"},
+		ListKeys:   []string{"result"},
+		Attributes: map[string]string{"display_name": "name"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":  "writer",
+		"token":      "token-1",
+		"account_id": "account/one",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["display_name"]; got != "Item One" {
+		t.Fatalf("display_name = %q, want Item One", got)
+	}
+	if got := pull.Events[0].Attributes["account_id"]; got != "account/one" {
+		t.Fatalf("account_id = %q, want account/one", got)
+	}
+}
+
+func TestReadRequiresPathParamValue(t *testing.T) {
+	source := newCustomTestSource(t, "https://example.com", Family{
+		Name:       "item",
+		Path:       "/accounts/{account_id}/items",
+		PathParams: []string{"account_id"},
+		IDKeys:     []string{"id"},
+	})
+	_, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want missing account_id error")
+	}
+	var paramErr *pathParamError
+	if !errors.As(err, &paramErr) {
+		t.Fatalf("Read() error = %v, want pathParamError", err)
+	}
+	if paramErr.param != "account_id" {
+		t.Fatalf("path param = %q, want account_id", paramErr.param)
+	}
+}
+
+func TestReadUsesCursorParamAndResultInfoPages(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("per_page"); got != "1" {
+			t.Fatalf("per_page = %q, want 1", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "" {
+			t.Fatalf("limit = %q, want empty", got)
+		}
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result":      []map[string]any{{"id": "item-1"}},
+				"result_info": map[string]any{"page": 1, "total_pages": 2},
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result":      []map[string]any{{"id": "item-2"}},
+				"result_info": map[string]any{"page": 2, "total_pages": 2},
+			})
+		default:
+			t.Fatalf("page = %q, want empty or 2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "item",
+		Path:           "/items",
+		CursorParam:    "page",
+		URNKind:        "item",
+		IDKeys:         []string{"id"},
+		ListKeys:       []string{"result"},
+		PageSizeParams: []string{"per_page"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("page") != "2" {
+		t.Fatalf("requests = %#v, want second request with page=2", requests)
+	}
+}
+
 func TestReadSingletonObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

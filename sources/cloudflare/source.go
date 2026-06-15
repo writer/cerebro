@@ -28,13 +28,7 @@ func New() (*Source, error) {
 		DefaultFamily:   "account",
 		RequireTenantID: true,
 		TokenScheme:     "Bearer",
-		Families: []jsonapi.Family{
-			{Name: "account", Path: "/accounts", URNKind: "cloudflare_account", IDKeys: []string{"id"}, Attributes: map[string]string{"account_id": "id", "name": "name", "type": "type"}, StaticAttributes: map[string]string{"source_product": "cloudflare"}},
-			{Name: "member", Path: "/accounts/default/members", URNKind: "cloudflare_member", IDKeys: []string{"id"}, TimestampKeys: []string{"created_on", "modified_on"}, Attributes: map[string]string{"member_id": "id", "account_id": "account.id|account_id", "email": "user.email|email", "status": "status", "roles": "roles"}, StaticAttributes: map[string]string{"source_product": "cloudflare"}},
-			{Name: "role", Path: "/accounts/default/roles", URNKind: "cloudflare_role", IDKeys: []string{"id"}, Attributes: map[string]string{"role_id": "id", "name": "name", "description": "description", "permissions": "permissions"}, StaticAttributes: map[string]string{"source_product": "cloudflare"}},
-			{Name: "zone", Path: "/zones", URNKind: "cloudflare_zone", IDKeys: []string{"id"}, TimestampKeys: []string{"created_on", "modified_on"}, Attributes: map[string]string{"zone_id": "id", "account_id": "account.id|account_id", "name": "name", "status": "status", "type": "type", "paused": "paused"}, StaticAttributes: map[string]string{"source_product": "cloudflare"}},
-			{Name: "dns_record", Path: "/zones/default/dns_records", URNKind: "cloudflare_dns_record", IDKeys: []string{"id"}, TimestampKeys: []string{"created_on", "modified_on"}, Attributes: map[string]string{"record_id": "id", "zone_id": "zone_id", "name": "name", "type": "type", "content": "content", "proxied": "proxied"}, StaticAttributes: map[string]string{"source_product": "cloudflare"}},
-		},
+		Families:        cloudflareFamilies(),
 	})
 	if err != nil {
 		return nil, err
@@ -62,4 +56,172 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	return spec, nil
+}
+
+func cloudflareFamilies() []jsonapi.Family {
+	families := []jsonapi.Family{
+		{
+			Name:             "account",
+			Path:             "/accounts",
+			URNKind:          "cloudflare_account",
+			IDKeys:           []string{"id"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"account_id": "id", "name": "name", "type": "type"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "member",
+			Path:             "/accounts/{account_id}/members",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_member",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_on", "modified_on"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"member_id": "id", "account_id": "account.id|account_id", "email": "user.email|email", "status": "status", "roles": "roles"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "role",
+			Path:             "/accounts/{account_id}/roles",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_role",
+			IDKeys:           []string{"id"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"role_id": "id", "name": "name", "description": "description", "permissions": "permissions"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "zone",
+			Path:             "/zones",
+			URNKind:          "cloudflare_zone",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_on", "modified_on"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"zone_id": "id", "account_id": "account.id|account_id", "name": "name", "status": "status", "type": "type", "paused": "paused"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "dns_record",
+			Path:             "/zones/{zone_id}/dns_records",
+			PathParams:       []string{"zone_id"},
+			URNKind:          "cloudflare_dns_record",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_on", "modified_on"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"record_id": "id", "zone_id": "zone_id", "name": "name", "type": "type", "content": "content", "proxied": "proxied"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "audit_log",
+			Path:             "/accounts/{account_id}/audit_logs",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_audit_log",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"when", "timestamp"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"audit_id": "id", "account_id": "account.id|account_id", "action": "action.type|action", "actor_email": "actor.email", "actor_ip": "actor.ip", "resource_id": "resource.id", "resource_type": "resource.type", "zone_id": "zone.id|zone_id"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "account_ruleset",
+			Path:             "/accounts/{account_id}/rulesets",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_account_ruleset",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"last_updated"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"ruleset_id": "id", "account_id": "account_id", "name": "name", "kind": "kind", "phase": "phase", "version": "version", "last_updated": "last_updated"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "zone_ruleset",
+			Path:             "/zones/{zone_id}/rulesets",
+			PathParams:       []string{"zone_id"},
+			URNKind:          "cloudflare_zone_ruleset",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"last_updated"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"ruleset_id": "id", "zone_id": "zone_id", "name": "name", "kind": "kind", "phase": "phase", "version": "version", "last_updated": "last_updated"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "access_application",
+			Path:             "/accounts/{account_id}/access/apps",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_access_application",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_at", "updated_at"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"application_id": "id", "account_id": "account_id", "name": "name", "domain": "domain", "type": "type", "aud": "aud", "session_duration": "session_duration"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "access_group",
+			Path:             "/accounts/{account_id}/access/groups",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_access_group",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_at", "updated_at"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"group_id": "id", "account_id": "account_id", "name": "name"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "gateway_rule",
+			Path:             "/accounts/{account_id}/gateway/rules",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_gateway_rule",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_at", "updated_at"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"rule_id": "id", "account_id": "account_id", "name": "name", "action": "action", "traffic": "traffic", "enabled": "enabled", "precedence": "precedence"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "worker_script",
+			Path:             "/accounts/{account_id}/workers/scripts",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_worker_script",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_on", "modified_on"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"script_id": "id", "account_id": "account_id", "created_on": "created_on", "modified_on": "modified_on", "compatibility_date": "compatibility_date", "tags": "tags"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "load_balancer",
+			Path:             "/zones/{zone_id}/load_balancers",
+			PathParams:       []string{"zone_id"},
+			URNKind:          "cloudflare_load_balancer",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_on", "modified_on"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"load_balancer_id": "id", "zone_id": "zone_id", "name": "name", "fallback_pool": "fallback_pool", "default_pools": "default_pools", "enabled": "enabled", "proxied": "proxied", "steering_policy": "steering_policy"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+		{
+			Name:             "load_balancer_pool",
+			Path:             "/accounts/{account_id}/load_balancers/pools",
+			PathParams:       []string{"account_id"},
+			URNKind:          "cloudflare_load_balancer_pool",
+			IDKeys:           []string{"id"},
+			TimestampKeys:    []string{"created_on", "modified_on"},
+			ListKeys:         cloudflareResultListKeys(),
+			Attributes:       map[string]string{"pool_id": "id", "account_id": "account_id", "name": "name", "enabled": "enabled", "origins": "origins", "check_regions": "check_regions", "minimum_origins": "minimum_origins"},
+			StaticAttributes: cloudflareStaticAttributes(),
+		},
+	}
+	for i := range families {
+		families[i].CursorParam = "page"
+		families[i].PageSizeParams = []string{"per_page"}
+	}
+	return families
+}
+
+func cloudflareResultListKeys() []string {
+	return []string{"result"}
+}
+
+func cloudflareStaticAttributes() map[string]string {
+	return map[string]string{"source_product": "cloudflare"}
 }

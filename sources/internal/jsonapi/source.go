@@ -33,6 +33,8 @@ const (
 type Family struct {
 	Name             string
 	Path             string
+	PathParams       []string
+	CursorParam      string
 	URNKind          string
 	IDKeys           []string
 	TimestampKeys    []string
@@ -79,6 +81,7 @@ type settings struct {
 	host                     string
 	token                    string
 	path                     string
+	pathParams               map[string]string
 	query                    url.Values
 	perPage                  int
 	privateEndpointAllowlist []string
@@ -222,6 +225,11 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		resolved.perPage = perPage
 	}
 	path := firstNonEmpty(configValue(cfg, resolved.family+"_path"), configValue(cfg, "path"), family.Path)
+	path, pathParams, err := resolvePathParams(s.options.SourceID, path, cfg, family.PathParams)
+	if err != nil {
+		return resolved, err
+	}
+	resolved.pathParams = pathParams
 	resolved.path, err = sourcehttp.NormalizeRequestPath(s.options.SourceID, path)
 	if err != nil {
 		return resolved, err
@@ -246,7 +254,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		query.Set(param, strconv.Itoa(pageSize))
 	}
 	if cursor := strings.TrimSpace(cursor); cursor != "" {
-		query.Set("cursor", cursor)
+		query.Set(cursorParam(family), cursor)
 	}
 	var body json.RawMessage
 	if err := s.getJSON(ctx, settings, query, &body); err != nil {
@@ -283,6 +291,13 @@ func pageSizeParams(family Family) []string {
 		return []string{"limit", "per_page"}
 	}
 	return params
+}
+
+func cursorParam(family Family) string {
+	if param := strings.TrimSpace(family.CursorParam); param != "" {
+		return param
+	}
+	return "cursor"
 }
 
 func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Values {
@@ -451,7 +466,7 @@ func responseCursor(object map[string]json.RawMessage) string {
 			return value
 		}
 	}
-	for _, key := range []string{"pagination", "page", "pageInfo", "meta"} {
+	for _, key := range []string{"pagination", "page", "pageInfo", "meta", "result_info", "resultInfo"} {
 		var nested map[string]any
 		if err := json.Unmarshal(object[key], &nested); err != nil {
 			continue
@@ -461,8 +476,56 @@ func responseCursor(object map[string]json.RawMessage) string {
 				return value
 			}
 		}
+		if value := nextPageCursor(nested); value != "" {
+			return value
+		}
 	}
 	return ""
+}
+
+func nextPageCursor(values map[string]any) string {
+	page, ok := intValue(values["page"])
+	if !ok {
+		return ""
+	}
+	totalPages, ok := intValue(firstAny(values["total_pages"], values["totalPages"]))
+	if !ok || page < 1 || page >= totalPages {
+		return ""
+	}
+	return strconv.Itoa(page + 1)
+}
+
+func firstAny(values ...any) any {
+	for _, value := range values {
+		if valueString(value) != "" {
+			return value
+		}
+	}
+	return nil
+}
+
+func intValue(value any) (int, bool) {
+	switch typed := value.(type) {
+	case json.Number:
+		parsed, err := strconv.Atoi(strings.TrimSpace(typed.String()))
+		return parsed, err == nil
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+		return parsed, err == nil
+	case float64:
+		parsed := int(typed)
+		return parsed, typed == float64(parsed)
+	case float32:
+		parsed := int(typed)
+		return parsed, typed == float32(parsed)
+	case int:
+		return typed, true
+	case int64, int32, uint, uint64, uint32:
+		parsed, err := strconv.Atoi(fmt.Sprint(typed))
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
@@ -532,7 +595,7 @@ func eventFromRecord(sourceID string, settings settings, family Family, record r
 		OccurredAt: timestamppb.New(occurredAt),
 		SchemaRef:  sourceID + "/" + family.Name + "/v1",
 		Payload:    cloneRaw(record.Raw),
-		Attributes: attributesFor(sourceID, family, record),
+		Attributes: attributesFor(sourceID, settings, family, record),
 	}
 }
 
@@ -542,12 +605,15 @@ func eventID(sourceID string, settings settings, family string, recordID string)
 	return strings.Join(parts, "-")
 }
 
-func attributesFor(sourceID string, family Family, record record) map[string]string {
+func attributesFor(sourceID string, settings settings, family Family, record record) map[string]string {
 	attrs := map[string]string{
 		"external_id":     record.ID,
 		"family":          family.Name,
 		"provider":        sourceID,
 		"source_provider": sourceID,
+	}
+	for key, value := range settings.pathParams {
+		addAttribute(attrs, key, value)
 	}
 	for key, value := range family.StaticAttributes {
 		addAttribute(attrs, key, value)
@@ -598,6 +664,15 @@ type responseError struct {
 
 func (e *responseError) Error() string { return e.message }
 
+type pathParamError struct {
+	sourceID string
+	param    string
+}
+
+func (e *pathParamError) Error() string {
+	return fmt.Sprintf("%s path parameter %q is required", e.sourceID, e.param)
+}
+
 func decodeResponseError(sourceID string, statusCode int, body []byte) error {
 	message := strings.TrimSpace(string(body))
 	var payload map[string]any
@@ -630,6 +705,33 @@ func familyNames(options Options) []string {
 		names = append(names, strings.TrimSpace(family.Name))
 	}
 	return names
+}
+
+func resolvePathParams(sourceID string, path string, cfg sourcecdk.Config, params []string) (string, map[string]string, error) {
+	resolved := strings.TrimSpace(path)
+	values := map[string]string{}
+	for _, param := range params {
+		param = strings.TrimSpace(param)
+		if param == "" {
+			continue
+		}
+		token := "{" + param + "}"
+		value := configValue(cfg, param)
+		if value != "" {
+			values[param] = value
+		}
+		if !strings.Contains(resolved, token) {
+			continue
+		}
+		if value == "" {
+			return "", nil, &pathParamError{sourceID: sourceID, param: param}
+		}
+		resolved = strings.ReplaceAll(resolved, token, url.PathEscape(value))
+	}
+	if len(params) > 0 && strings.Contains(resolved, "{") && strings.Contains(resolved, "}") {
+		return "", nil, fmt.Errorf("%s path contains unresolved path parameter in %q", sourceID, resolved)
+	}
+	return resolved, values, nil
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {

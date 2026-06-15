@@ -1,0 +1,88 @@
+sourceId: cloudflare
+secretKeys:
+  - CLOUDFLARE_ACCOUNT_ID
+  - CLOUDFLARE_API_TOKEN
+  - CLOUDFLARE_ZONE_ID
+runtimes:
+  - localId: account
+    config:
+      family: account
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: access-application
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: access_application
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: access-group
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: access_group
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: account-ruleset
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: account_ruleset
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: audit-log
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: audit_log
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: dns-record
+    config:
+      family: dns_record
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+      zone_id: env:CLOUDFLARE_ZONE_ID
+  - localId: gateway-rule
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: gateway_rule
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: load-balancer
+    config:
+      family: load_balancer
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+      zone_id: env:CLOUDFLARE_ZONE_ID
+  - localId: load-balancer-pool
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: load_balancer_pool
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: member
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: member
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: role
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: role
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: worker-script
+    config:
+      account_id: env:CLOUDFLARE_ACCOUNT_ID
+      family: worker_script
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: zone
+    config:
+      family: zone
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+  - localId: zone-ruleset
+    config:
+      family: zone_ruleset
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+      zone_id: env:CLOUDFLARE_ZONE_ID
