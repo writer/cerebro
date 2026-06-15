@@ -125,6 +125,16 @@ type BigtablePageResponse struct {
 	Tables    []json.RawMessage `json:"tables"`
 }
 
+type BigQueryTablesPageResponse struct {
+	NextPage
+	Tables []json.RawMessage `json:"tables"`
+}
+
+type CloudSQLItemsPageResponse struct {
+	NextPage
+	Items []json.RawMessage `json:"items"`
+}
+
 type LoggingMetricsPageResponse struct {
 	NextPage
 	Metrics []json.RawMessage `json:"metrics"`
@@ -140,6 +150,11 @@ type SpannerPageResponse struct {
 	NextPage
 	Instances []json.RawMessage `json:"instances"`
 	Databases []json.RawMessage `json:"databases"`
+}
+
+type SecretManagerPageResponse struct {
+	NextPage
+	Versions []json.RawMessage `json:"versions"`
 }
 
 type PageTokenResponse interface {
@@ -186,4 +201,111 @@ func CollectChildPages[P any, C any](parents []P, parentName func(P) string, lis
 		records = append(records, children...)
 	}
 	return records, nil
+}
+
+type PathFetcher func(path string, query url.Values, target any) error
+
+func CollectBigQueryTables(projectID string, datasets []BigQueryDatasetRecord, limit int, fetch PathFetcher) ([]BigQueryTableRecord, error) {
+	return CollectChildPages(datasets, func(dataset BigQueryDatasetRecord) string { return dataset.DatasetReference.DatasetID }, func(dataset BigQueryDatasetRecord, pageToken string) ([]BigQueryTableRecord, string, error) {
+		datasetID := dataset.DatasetReference.DatasetID
+		query := url.Values{"maxResults": {fmt.Sprint(limit)}}
+		AddPageToken(query, pageToken)
+		var response BigQueryTablesPageResponse
+		path := "/bigquery/v2/projects/" + url.PathEscape(projectID) + "/datasets/" + url.PathEscape(datasetID) + "/tables"
+		if err := fetch(path, query, &response); err != nil {
+			return nil, "", err
+		}
+		tables, err := DecodeRecords(response.Tables, "gcp bigquery table", SaveRawField[BigQueryTableRecord])
+		if err != nil {
+			return nil, "", err
+		}
+		for index := range tables {
+			tables[index].DatasetID = datasetID
+			tables[index].DatasetLocation = dataset.Location
+			tableID := tables[index].TableReference.TableID
+			if strings.TrimSpace(tableID) == "" {
+				continue
+			}
+			var raw json.RawMessage
+			if err := fetch(path+"/"+url.PathEscape(tableID), nil, &raw); err != nil {
+				return nil, "", err
+			}
+			if len(raw) == 0 {
+				continue
+			}
+			var detailed BigQueryTableRecord
+			if err := json.Unmarshal(raw, &detailed); err != nil {
+				return nil, "", fmt.Errorf("decode gcp bigquery table detail: %w", err)
+			}
+			detailed.DatasetID = datasetID
+			detailed.DatasetLocation = dataset.Location
+			detailed.Raw = append(json.RawMessage(nil), raw...)
+			tables[index] = detailed
+		}
+		return tables, response.NextPageToken, nil
+	}, func(record *BigQueryTableRecord, dataset BigQueryDatasetRecord) {
+		record.DatasetID = dataset.DatasetReference.DatasetID
+		record.DatasetLocation = dataset.Location
+	})
+}
+
+func CollectBigtableTables(instances []BigtableInstanceRecord, limit int, fetch PathFetcher) ([]BigtableTableRecord, error) {
+	return CollectChildPages(instances, func(instance BigtableInstanceRecord) string { return instance.Name }, func(instance BigtableInstanceRecord, pageToken string) ([]BigtableTableRecord, string, error) {
+		query := url.Values{"view": {"FULL"}}
+		AddPageToken(query, pageToken)
+		var response BigtablePageResponse
+		if err := fetch("/v2/"+EscapePathSegments(instance.Name)+"/tables", query, &response); err != nil {
+			return nil, "", err
+		}
+		tables, err := DecodeRecords(response.Tables, "gcp bigtable table", SaveRawField[BigtableTableRecord])
+		return tables, response.NextPageToken, err
+	}, func(record *BigtableTableRecord, instance BigtableInstanceRecord) {
+		record.InstanceName = instance.Name
+	})
+}
+
+func CollectCloudSQLChildRecords[T any](projectID, collection, label string, instances []CloudSQLInstanceRecord, limit int, fetch PathFetcher, attach func(*T, CloudSQLInstanceRecord)) ([]T, error) {
+	return CollectChildPages(instances, func(instance CloudSQLInstanceRecord) string { return instance.Name }, func(instance CloudSQLInstanceRecord, pageToken string) ([]T, string, error) {
+		query := url.Values{"maxResults": {fmt.Sprint(limit)}}
+		AddPageToken(query, pageToken)
+		var response CloudSQLItemsPageResponse
+		path := "/sql/v1beta4/projects/" + url.PathEscape(projectID) + "/instances/" + url.PathEscape(instance.Name) + "/" + strings.Trim(collection, "/")
+		if err := fetch(path, query, &response); err != nil {
+			return nil, "", err
+		}
+		records, err := DecodeRecords(response.Items, label, SaveRawField[T])
+		return records, response.NextPageToken, err
+	}, attach)
+}
+
+func CollectSpannerDatabases(instances []SpannerInstanceRecord, limit int, fetch PathFetcher) ([]SpannerDatabaseRecord, error) {
+	return CollectChildPages(instances, func(instance SpannerInstanceRecord) string { return instance.Name }, func(instance SpannerInstanceRecord, pageToken string) ([]SpannerDatabaseRecord, string, error) {
+		query := url.Values{"pageSize": {fmt.Sprint(limit)}}
+		AddPageToken(query, pageToken)
+		var response SpannerPageResponse
+		if err := fetch("/v1/"+EscapePathSegments(instance.Name)+"/databases", query, &response); err != nil {
+			return nil, "", err
+		}
+		databases, err := DecodeRecords(response.Databases, "gcp spanner database", SaveRawField[SpannerDatabaseRecord])
+		return databases, response.NextPageToken, err
+	}, func(record *SpannerDatabaseRecord, instance SpannerInstanceRecord) {
+		record.InstanceName = instance.Name
+	})
+}
+
+func CollectSecretVersions(secrets []SecretRecord, limit int, fetch PathFetcher) ([]SecretVersionRecord, error) {
+	return CollectChildPages(secrets, func(secret SecretRecord) string { return secret.Name }, func(secret SecretRecord, pageToken string) ([]SecretVersionRecord, string, error) {
+		query := url.Values{"pageSize": {fmt.Sprint(limit)}}
+		AddPageToken(query, pageToken)
+		var response SecretManagerPageResponse
+		path := "/v1/" + EscapePathSegments(secret.Name) + "/versions"
+		if err := fetch(path, query, &response); err != nil {
+			return nil, "", err
+		}
+		versions, err := DecodeRecords(response.Versions, "gcp secret version", SaveRawField[SecretVersionRecord])
+		return versions, response.NextPageToken, err
+	}, func(record *SecretVersionRecord, secret SecretRecord) {
+		record.SecretName = secret.Name
+		record.SecretLocation = SecretLocation(secret)
+	})
 }

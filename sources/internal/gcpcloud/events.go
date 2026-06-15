@@ -514,6 +514,32 @@ type CloudSQLInstanceRecord struct {
 	Raw                        json.RawMessage          `json:"-"`
 }
 
+type CloudSQLDatabaseRecord struct {
+	Name           string          `json:"name"`
+	Instance       string          `json:"instance"`
+	Project        string          `json:"project"`
+	SelfLink       string          `json:"selfLink"`
+	Charset        string          `json:"charset"`
+	Collation      string          `json:"collation"`
+	Etag           string          `json:"etag"`
+	InstanceName   string          `json:"-"`
+	InstanceRegion string          `json:"-"`
+	Raw            json.RawMessage `json:"-"`
+}
+
+type CloudSQLUserRecord struct {
+	Name           string          `json:"name"`
+	Host           string          `json:"host"`
+	Instance       string          `json:"instance"`
+	Project        string          `json:"project"`
+	Type           string          `json:"type"`
+	Etag           string          `json:"etag"`
+	PasswordPolicy json.RawMessage `json:"passwordPolicy"`
+	InstanceName   string          `json:"-"`
+	InstanceRegion string          `json:"-"`
+	Raw            json.RawMessage `json:"-"`
+}
+
 type CloudSQLSettings struct {
 	ActivationPolicy    string                  `json:"activationPolicy"`
 	AvailabilityType    string                  `json:"availabilityType"`
@@ -1954,6 +1980,20 @@ type SecretRecord struct {
 	Raw         json.RawMessage   `json:"-"`
 }
 
+type SecretVersionRecord struct {
+	Name                           string          `json:"name"`
+	State                          string          `json:"state"`
+	CreateTime                     string          `json:"createTime"`
+	DestroyTime                    string          `json:"destroyTime"`
+	ScheduledDestroyTime           string          `json:"scheduledDestroyTime"`
+	Etag                           string          `json:"etag"`
+	ClientSpecifiedPayloadChecksum bool            `json:"clientSpecifiedPayloadChecksum"`
+	ReplicationStatus              json.RawMessage `json:"replicationStatus"`
+	SecretName                     string          `json:"-"`
+	SecretLocation                 string          `json:"-"`
+	Raw                            json.RawMessage `json:"-"`
+}
+
 type SecretReplication struct {
 	Automatic   SecretAutomaticReplication   `json:"automatic"`
 	UserManaged SecretUserManagedReplication `json:"userManaged"`
@@ -2258,6 +2298,50 @@ type BigQueryDatasetAccess struct {
 	View         json.RawMessage `json:"view"`
 	Routine      json.RawMessage `json:"routine"`
 	Dataset      json.RawMessage `json:"dataset"`
+}
+
+type BigQueryTableRecord struct {
+	ID                      string                   `json:"id"`
+	SelfLink                string                   `json:"selfLink"`
+	TableReference          BigQueryTableReference   `json:"tableReference"`
+	FriendlyName            string                   `json:"friendlyName"`
+	Description             string                   `json:"description"`
+	Type                    string                   `json:"type"`
+	Labels                  map[string]string        `json:"labels"`
+	Schema                  json.RawMessage          `json:"schema"`
+	TimePartitioning        BigQueryTimePartitioning `json:"timePartitioning"`
+	RangePartitioning       json.RawMessage          `json:"rangePartitioning"`
+	Clustering              BigQueryClustering       `json:"clustering"`
+	EncryptionConfiguration BigQueryEncryptionConfig `json:"encryptionConfiguration"`
+	CreationTime            string                   `json:"creationTime"`
+	ExpirationTime          string                   `json:"expirationTime"`
+	LastModifiedTime        string                   `json:"lastModifiedTime"`
+	NumBytes                string                   `json:"numBytes"`
+	NumLongTermBytes        string                   `json:"numLongTermBytes"`
+	NumRows                 string                   `json:"numRows"`
+	ExternalDataConfig      json.RawMessage          `json:"externalDataConfiguration"`
+	StreamingBuffer         json.RawMessage          `json:"streamingBuffer"`
+	View                    json.RawMessage          `json:"view"`
+	DatasetID               string                   `json:"-"`
+	DatasetLocation         string                   `json:"-"`
+	Raw                     json.RawMessage          `json:"-"`
+}
+
+type BigQueryTableReference struct {
+	ProjectID string `json:"projectId"`
+	DatasetID string `json:"datasetId"`
+	TableID   string `json:"tableId"`
+}
+
+type BigQueryTimePartitioning struct {
+	Type          string `json:"type"`
+	Field         string `json:"field"`
+	ExpirationMS  string `json:"expirationMs"`
+	RequireFilter bool   `json:"requirePartitionFilter"`
+}
+
+type BigQueryClustering struct {
+	Fields []string `json:"fields"`
 }
 
 type BigQueryEncryptionConfig struct {
@@ -3125,6 +3209,61 @@ func CloudSQLInstanceEvent(settings Settings, record CloudSQLInstanceRecord) (*p
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-cloud-sql-instance-"+firstNonEmpty(record.SelfLink, record.Name), "gcp.cloud_sql_instance", "gcp/cloud_sql_instance/v1", payload, attributes)
+}
+
+func CloudSQLDatabaseResourceID(projectID string, record CloudSQLDatabaseRecord) string {
+	if strings.TrimSpace(record.SelfLink) != "" {
+		return strings.TrimSpace(record.SelfLink)
+	}
+	project := firstNonEmpty(record.Project, projectID)
+	instance := firstNonEmpty(record.Instance, record.InstanceName)
+	return strings.Trim(strings.Join([]string{project, "instances", instance, "databases", record.Name}, "/"), "/")
+}
+
+func CloudSQLDatabaseEvent(settings Settings, record CloudSQLDatabaseRecord) (*primitives.Event, error) {
+	resourceID := CloudSQLDatabaseResourceID(settings.ProjectID, record)
+	instanceName := firstNonEmpty(record.Instance, record.InstanceName)
+	attributes := cloudResourceAttributes(settings, "cloud_sql_database", resourceID, record.Name, "cloud_sql_database", record.InstanceRegion, nil)
+	attributes["project_id"] = firstNonEmpty(record.Project, settings.ProjectID)
+	attributes["instance_name"] = instanceName
+	attributes["database_name"] = record.Name
+	attributes["charset"] = record.Charset
+	attributes["collation"] = record.Collation
+	attributes["etag"] = record.Etag
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"instance_name": instanceName, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-cloud-sql-database-"+resourceID, "gcp.cloud_sql_database", "gcp/cloud_sql_database/v1", payload, attributes)
+}
+
+func CloudSQLUserResourceID(projectID string, record CloudSQLUserRecord) string {
+	project := firstNonEmpty(record.Project, projectID)
+	instance := firstNonEmpty(record.Instance, record.InstanceName)
+	parts := []string{project, "instances", instance, "users", record.Name}
+	if strings.TrimSpace(record.Host) != "" {
+		parts = append(parts, "hosts", record.Host)
+	}
+	return strings.Trim(strings.Join(parts, "/"), "/")
+}
+
+func CloudSQLUserEvent(settings Settings, record CloudSQLUserRecord) (*primitives.Event, error) {
+	resourceID := CloudSQLUserResourceID(settings.ProjectID, record)
+	instanceName := firstNonEmpty(record.Instance, record.InstanceName)
+	attributes := cloudResourceAttributes(settings, "cloud_sql_user", resourceID, record.Name, "cloud_sql_user", record.InstanceRegion, nil)
+	attributes["project_id"] = firstNonEmpty(record.Project, settings.ProjectID)
+	attributes["instance_name"] = instanceName
+	attributes["user_name"] = record.Name
+	attributes["host"] = record.Host
+	attributes["user_type"] = record.Type
+	attributes["type"] = record.Type
+	attributes["etag"] = record.Etag
+	attributes["password_policy_configured"] = boolString(len(record.PasswordPolicy) != 0)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"instance_name": instanceName, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-cloud-sql-user-"+resourceID, "gcp.cloud_sql_user", "gcp/cloud_sql_user/v1", payload, attributes)
 }
 
 func ComputeInstanceEvent(settings Settings, record ComputeInstanceRecord) (*primitives.Event, error) {
@@ -4452,6 +4591,31 @@ func SecretEvent(settings Settings, record SecretRecord) (*primitives.Event, err
 	return sourceEvent(settings, "gcp-secret-manager-secret-"+record.Name, "gcp.secret_manager_secret", "gcp/secret_manager_secret/v1", payload, attributes)
 }
 
+func SecretVersionEvent(settings Settings, record SecretVersionRecord) (*primitives.Event, error) {
+	secretName := firstNonEmpty(record.SecretName, parentResourceName(record.Name, "versions"))
+	versionID := lastPathSegment(record.Name)
+	attributes := cloudResourceAttributes(settings, "secret_manager_version", record.Name, versionID, "secret_manager_version", record.SecretLocation, nil)
+	attributes["secret_name"] = lastPathSegment(secretName)
+	attributes["secret_url"] = secretName
+	attributes["version_id"] = versionID
+	attributes["state"] = record.State
+	attributes["status"] = record.State
+	attributes["enabled"] = boolString(strings.EqualFold(record.State, "ENABLED"))
+	attributes["disabled"] = boolString(strings.EqualFold(record.State, "DISABLED"))
+	attributes["destroyed"] = boolString(strings.EqualFold(record.State, "DESTROYED"))
+	attributes["create_time"] = record.CreateTime
+	attributes["destroy_time"] = record.DestroyTime
+	attributes["scheduled_destroy_time"] = record.ScheduledDestroyTime
+	attributes["etag"] = record.Etag
+	attributes["client_specified_payload_checksum"] = boolString(record.ClientSpecifiedPayloadChecksum)
+	attributes["replication_status_present"] = boolString(len(record.ReplicationStatus) != 0)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID, "secret_name": secretName})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-secret-manager-version-"+record.Name, "gcp.secret_manager_version", "gcp/secret_manager_version/v1", payload, attributes)
+}
+
 func KMSKeyEvent(settings Settings, record KMSKeyRecord, keyRing string) (*primitives.Event, error) {
 	location := locationFromResourceName(record.Name)
 	attributes := cloudResourceAttributes(settings, "kms_key", record.Name, lastPathSegment(record.Name), "kms_key", location, record.Labels)
@@ -4783,6 +4947,57 @@ func BigQueryDatasetEvent(settings Settings, record BigQueryDatasetRecord) (*pri
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-bigquery-dataset-"+resourceID, "gcp.bigquery_dataset", "gcp/bigquery_dataset/v1", payload, attributes)
+}
+
+func BigQueryTableResourceID(projectID string, record BigQueryTableRecord) string {
+	if strings.TrimSpace(record.ID) != "" {
+		return strings.TrimSpace(record.ID)
+	}
+	datasetID := firstNonEmpty(record.TableReference.DatasetID, record.DatasetID)
+	tableID := record.TableReference.TableID
+	if datasetID != "" && tableID != "" {
+		return strings.TrimSpace(projectID) + ":" + datasetID + "." + tableID
+	}
+	return tableID
+}
+
+func BigQueryTableEvent(settings Settings, record BigQueryTableRecord) (*primitives.Event, error) {
+	resourceID := BigQueryTableResourceID(settings.ProjectID, record)
+	datasetID := firstNonEmpty(record.TableReference.DatasetID, record.DatasetID)
+	tableID := firstNonEmpty(record.TableReference.TableID, lastPathSegment(resourceID))
+	attributes := cloudResourceAttributes(settings, "bigquery_table", resourceID, tableID, "bigquery_table", record.DatasetLocation, record.Labels)
+	attributes["dataset_id"] = datasetID
+	attributes["table_id"] = tableID
+	attributes["friendly_name"] = record.FriendlyName
+	attributes["description"] = record.Description
+	attributes["self_link"] = record.SelfLink
+	attributes["table_type"] = record.Type
+	attributes["type"] = record.Type
+	attributes["kms_key_name"] = record.EncryptionConfiguration.KMSKeyName
+	attributes["encryption_enabled"] = boolString(record.EncryptionConfiguration.KMSKeyName != "")
+	attributes["partitioned"] = boolString(record.TimePartitioning.Type != "" || len(record.RangePartitioning) != 0)
+	attributes["time_partitioning_type"] = record.TimePartitioning.Type
+	attributes["time_partitioning_field"] = record.TimePartitioning.Field
+	attributes["require_partition_filter"] = boolString(record.TimePartitioning.RequireFilter)
+	attributes["partition_expiration_ms"] = record.TimePartitioning.ExpirationMS
+	attributes["range_partitioned"] = boolString(len(record.RangePartitioning) != 0)
+	attributes["clustered"] = boolString(len(record.Clustering.Fields) != 0)
+	attributes["clustering_fields"] = strings.Join(record.Clustering.Fields, ",")
+	attributes["schema_configured"] = boolString(len(record.Schema) != 0)
+	attributes["external_data_configured"] = boolString(len(record.ExternalDataConfig) != 0)
+	attributes["streaming_buffer_present"] = boolString(len(record.StreamingBuffer) != 0)
+	attributes["view_configured"] = boolString(len(record.View) != 0)
+	attributes["created_at"] = unixMillisTime(record.CreationTime)
+	attributes["updated_at"] = unixMillisTime(record.LastModifiedTime)
+	attributes["expiration_time"] = unixMillisTime(record.ExpirationTime)
+	attributes["num_bytes"] = record.NumBytes
+	attributes["num_long_term_bytes"] = record.NumLongTermBytes
+	attributes["num_rows"] = record.NumRows
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"dataset_id": datasetID, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-bigquery-table-"+resourceID, "gcp.bigquery_table", "gcp/bigquery_table/v1", payload, attributes)
 }
 
 func BigtableInstanceEvent(settings Settings, record BigtableInstanceRecord) (*primitives.Event, error) {
@@ -6306,6 +6521,10 @@ func secretLocation(record SecretRecord) string {
 		return record.Replication.UserManaged.Replicas[0].Location
 	}
 	return "global"
+}
+
+func SecretLocation(record SecretRecord) string {
+	return secretLocation(record)
 }
 
 func secretKMSKey(record SecretRecord) string {
