@@ -4623,9 +4623,18 @@ func MonitoringNotificationChannelEvent(settings Settings, record MonitoringNoti
 	return sourceEvent(settings, "gcp-monitoring-notification-channel-"+record.Name, "gcp.monitoring_notification_channel", "gcp/monitoring_notification_channel/v1", payload, attributes)
 }
 
-func LoggingMetricEvent(settings Settings, record LoggingMetricRecord) (*primitives.Event, error) {
+func LoggingMetricResourceName(projectID string, record LoggingMetricRecord) string {
 	metricName := firstNonEmpty(record.Name, lastPathSegment(record.MetricDescriptor.Name), record.MetricDescriptor.Type)
-	attributes := cloudResourceAttributes(settings, "logging_metric", "projects/"+settings.ProjectID+"/metrics/"+metricName, metricName, "logging_metric", "global", nil)
+	if strings.HasPrefix(metricName, "projects/") {
+		return metricName
+	}
+	return "projects/" + projectID + "/metrics/" + metricName
+}
+
+func LoggingMetricEvent(settings Settings, record LoggingMetricRecord) (*primitives.Event, error) {
+	metricResourceName := LoggingMetricResourceName(settings.ProjectID, record)
+	metricName := lastPathSegment(metricResourceName)
+	attributes := cloudResourceAttributes(settings, "logging_metric", metricResourceName, metricName, "logging_metric", "global", nil)
 	attributes["metric_name"] = metricName
 	attributes["description"] = record.Description
 	attributes["filter"] = record.Filter

@@ -563,7 +563,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.LoggingMetricRecord]{Name: familyLoggingMetric, Label: "gcp cloud logging metrics", List: listLoggingMetrics, Event: gcpCloudEvent(gcpcloud.LoggingMetricEvent), URN: func(settings settings, metric gcpcloud.LoggingMetricRecord) (string, error) {
-			return fmt.Sprintf("urn:cerebro:%s:gcp_logging_metric:%s", tenantID(settings), firstNonEmpty(metric.Name, metric.MetricDescriptor.Name, metric.MetricDescriptor.Type)), nil
+			return fmt.Sprintf("urn:cerebro:%s:gcp_logging_metric:%s", tenantID(settings), gcpcloud.LoggingMetricResourceName(settings.projectID, metric)), nil
 		}}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.MonitoringAlertPolicyRecord]{Name: familyMonitoringAlertPolicy, Label: "gcp monitoring alert policies", List: listMonitoringAlertPolicies, Event: gcpCloudEvent(gcpcloud.MonitoringAlertPolicyEvent), URN: gcpResourceURN[gcpcloud.MonitoringAlertPolicyRecord]("gcp_monitoring_alert_policy")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.MonitoringNotificationChannelRecord]{Name: familyMonitoringNotificationChannel, Label: "gcp monitoring notification channels", List: listMonitoringNotificationChannels, Event: gcpCloudEvent(gcpcloud.MonitoringNotificationChannelEvent), URN: gcpResourceURN[gcpcloud.MonitoringNotificationChannelRecord]("gcp_monitoring_notification_channel")}),
