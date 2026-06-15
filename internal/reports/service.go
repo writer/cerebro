@@ -193,6 +193,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	controlCounts := make(map[string]*controlCountEntry, len(findings))
 	resourceCounts := make(map[string]int, len(findings))
 	riskCounts := make(map[string]int, len(findings))
+	riskFactorCounts := make(map[string]*riskFactorCountEntry, len(findings))
 	noteCount := 0
 	notedFindingCount := 0
 	ticketCount := 0
@@ -265,6 +266,23 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 			riskCounts[reportRiskLevel(finding.RiskScore)]++
 		}
 		if len(finding.Notes) != 0 {
+			for _, factor := range finding.RiskFactors {
+				factorID := strings.TrimSpace(factor.FactorID)
+				if factorID == "" {
+					continue
+				}
+				entry := riskFactorCounts[factorID]
+				if entry == nil {
+					entry = &riskFactorCountEntry{
+						FactorID:             factorID,
+						Category:             strings.TrimSpace(factor.Category),
+						SeverityContribution: strings.TrimSpace(factor.SeverityContribution),
+					}
+					riskFactorCounts[factorID] = entry
+				}
+				entry.Count++
+				entry.WeightTotal += factor.Weight
+			}
 			notedFindingCount++
 			noteCount += len(finding.Notes)
 		}
@@ -314,6 +332,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		"ticket_count":            ticketCount,
 		"resource_counts":         countEntries(resourceCounts, "resource_urn"),
 		"risk_counts":             countEntries(riskCounts, "risk_level"),
+		"risk_factor_counts":      riskFactorCountEntries(riskFactorCounts),
 		"top_risk_findings":       topRiskFindingEntries(findings, 10),
 		"exposure_analysis":       exposureAnalysis,
 		"graph_evidence_status":   graphEvidenceStatus,
@@ -722,6 +741,14 @@ type controlCountEntry struct {
 	Count         int
 }
 
+type riskFactorCountEntry struct {
+	FactorID             string
+	Category             string
+	SeverityContribution string
+	Count                int
+	WeightTotal          int
+}
+
 func countEntries(counts map[string]int, keyName string) []any {
 	entries := sortedCountEntries(counts)
 	values := make([]any, 0, len(entries))
@@ -785,6 +812,7 @@ func topRiskFindingEntries(findings []*ports.FindingRecord, limit int) []any {
 			"impact_score":     finding.ImpactScore,
 			"risk_level":       reportRiskLevel(finding.RiskScore),
 			"risk_reasons":     reportStringValues(finding.RiskReasons),
+			"risk_factors":     reportRiskFactors(finding.RiskFactors),
 		})
 	}
 	return values
@@ -814,6 +842,43 @@ func reportStringValues(values []string) []any {
 		converted = append(converted, value)
 	}
 	return converted
+}
+
+func reportRiskFactors(factors []ports.FindingRiskFactor) []any {
+	if len(factors) == 0 {
+		return []any{}
+	}
+	entries := append([]ports.FindingRiskFactor(nil), factors...)
+	slices.SortFunc(entries, func(left ports.FindingRiskFactor, right ports.FindingRiskFactor) int {
+		switch {
+		case left.Weight > right.Weight:
+			return -1
+		case left.Weight < right.Weight:
+			return 1
+		case left.FactorID < right.FactorID:
+			return -1
+		case left.FactorID > right.FactorID:
+			return 1
+		default:
+			return 0
+		}
+	})
+	values := make([]any, 0, len(entries))
+	for _, factor := range entries {
+		entry := map[string]any{
+			"factor_id":             factor.FactorID,
+			"category":              factor.Category,
+			"weight":                factor.Weight,
+			"severity_contribution": factor.SeverityContribution,
+			"evidence_refs":         reportStringValues(factor.EvidenceRefs),
+			"suppression_scope":     factor.SuppressionScope,
+		}
+		if !factor.ObservedAt.IsZero() {
+			entry["observed_at"] = factor.ObservedAt.UTC().Format(time.RFC3339Nano)
+		}
+		values = append(values, entry)
+	}
+	return values
 }
 
 func reportRiskLevel(score int) string {
@@ -852,6 +917,21 @@ func controlCountEntries(counts map[string]*controlCountEntry) []any {
 			"framework_name": entry.FrameworkName,
 			"control_id":     entry.ControlID,
 			"count":          entry.Count,
+		})
+	}
+	return values
+}
+
+func riskFactorCountEntries(counts map[string]*riskFactorCountEntry) []any {
+	entries := sortedRiskFactorCountEntries(counts)
+	values := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		values = append(values, map[string]any{
+			"factor_id":             entry.FactorID,
+			"category":              entry.Category,
+			"severity_contribution": entry.SeverityContribution,
+			"count":                 entry.Count,
+			"weight_total":          entry.WeightTotal,
 		})
 	}
 	return values
@@ -929,6 +1009,32 @@ func sortedControlCountEntries(counts map[string]*controlCountEntry) []*controlC
 		case left.ControlID < right.ControlID:
 			return -1
 		case left.ControlID > right.ControlID:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return entries
+}
+
+func sortedRiskFactorCountEntries(counts map[string]*riskFactorCountEntry) []*riskFactorCountEntry {
+	entries := make([]*riskFactorCountEntry, 0, len(counts))
+	for _, entry := range counts {
+		entries = append(entries, entry)
+	}
+	slices.SortFunc(entries, func(left *riskFactorCountEntry, right *riskFactorCountEntry) int {
+		switch {
+		case left.Count > right.Count:
+			return -1
+		case left.Count < right.Count:
+			return 1
+		case left.WeightTotal > right.WeightTotal:
+			return -1
+		case left.WeightTotal < right.WeightTotal:
+			return 1
+		case left.FactorID < right.FactorID:
+			return -1
+		case left.FactorID > right.FactorID:
 			return 1
 		default:
 			return 0

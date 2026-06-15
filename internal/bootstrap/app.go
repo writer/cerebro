@@ -3715,6 +3715,7 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		ImpactLevel:       finding.ImpactLevel,
 		RiskReasons:       append([]string(nil), finding.RiskReasons...),
 		RiskModelVersion:  finding.RiskModelVersion,
+		RiskFactors:       findingRiskFactorMessages(finding.RiskFactors),
 		Attributes:        make(map[string]string, len(finding.Attributes)),
 		Assignee:          finding.Assignee,
 		StatusReason:      finding.StatusReason,
@@ -3735,6 +3736,25 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		message.LastObservedAt = timestamppb.New(finding.LastObservedAt)
 	}
 	return message
+}
+
+func findingRiskFactorMessages(factors []ports.FindingRiskFactor) []*cerebrov1.FindingRiskFactor {
+	messages := make([]*cerebrov1.FindingRiskFactor, 0, len(factors))
+	for _, factor := range factors {
+		message := &cerebrov1.FindingRiskFactor{
+			FactorId:             factor.FactorID,
+			Weight:               boundedInt32(factor.Weight),
+			SeverityContribution: factor.SeverityContribution,
+			EvidenceRefs:         append([]string(nil), factor.EvidenceRefs...),
+			Category:             factor.Category,
+			SuppressionScope:     factor.SuppressionScope,
+		}
+		if !factor.ObservedAt.IsZero() {
+			message.ObservedAt = timestamppb.New(factor.ObservedAt)
+		}
+		messages = append(messages, message)
+	}
+	return messages
 }
 
 func findingControlRefMessages(values []ports.FindingControlRef) []*cerebrov1.FindingControlRef {

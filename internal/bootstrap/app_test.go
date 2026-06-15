@@ -6949,6 +6949,35 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	return sourcecdk.NewRegistry(source, okta, sdk)
 }
 
+func TestFindingMessageIncludesRiskFactors(t *testing.T) {
+	observedAt := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	message := findingMessage(&ports.FindingRecord{
+		ID: "finding-risk-factor",
+		FindingRisk: ports.FindingRisk{
+			RiskFactors: []ports.FindingRiskFactor{{
+				FactorID:             "external_exposure",
+				Category:             "likelihood",
+				Weight:               35,
+				SeverityContribution: "high",
+				EvidenceRefs:         []string{"attribute:internet_exposed"},
+				ObservedAt:           observedAt,
+				SuppressionScope:     "factor:external_exposure",
+			}},
+		},
+	})
+
+	if len(message.GetRiskFactors()) != 1 {
+		t.Fatalf("len(RiskFactors) = %d, want 1", len(message.GetRiskFactors()))
+	}
+	factor := message.GetRiskFactors()[0]
+	if factor.GetFactorId() != "external_exposure" || factor.GetWeight() != 35 {
+		t.Fatalf("risk factor = %#v, want external_exposure weight 35", factor)
+	}
+	if factor.GetObservedAt().AsTime() != observedAt {
+		t.Fatalf("ObservedAt = %v, want %v", factor.GetObservedAt().AsTime(), observedAt)
+	}
+}
+
 type bootstrapTokenSource struct {
 	id         string
 	checkToken string
@@ -7026,6 +7055,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	tickets := make([]ports.FindingTicket, len(finding.Tickets))
 	copy(tickets, finding.Tickets)
 	riskReasons := append([]string(nil), finding.RiskReasons...)
+	riskFactors := append([]ports.FindingRiskFactor(nil), finding.RiskFactors...)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -7064,6 +7094,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			LikelihoodLevel:  finding.LikelihoodLevel,
 			ImpactLevel:      finding.ImpactLevel,
 			RiskReasons:      riskReasons,
+			RiskFactors:      riskFactors,
 			RiskModelVersion: finding.RiskModelVersion,
 		},
 		Attributes:      attributes,

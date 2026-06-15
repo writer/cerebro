@@ -42,6 +42,7 @@ func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, 
 	}
 	effectiveSeverity := EffectiveSeverityFromRiskScore(record.RiskScore)
 	record.RiskReasons = uniqueSortedStrings(append(record.RiskReasons, evaluation.Reasons...))
+	record.RiskFactors = uniqueRiskFactors(append(record.RiskFactors, evaluation.Factors...))
 	setRiskStringAttribute(record.Attributes, FindingEffectiveSeverityAttribute, effectiveSeverity)
 	setRiskAttribute(record.Attributes, "risk_score", record.RiskScore)
 	setRiskAttribute(record.Attributes, "likelihood_score", record.LikelihoodScore)
@@ -52,6 +53,9 @@ func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, 
 	setRiskStringAttribute(record.Attributes, "risk_model_version", record.RiskModelVersion)
 	if len(record.RiskReasons) != 0 {
 		record.Attributes["risk_reasons"] = strings.Join(record.RiskReasons, ",")
+	}
+	if factorsJSON := RiskFactorsJSON(record.RiskFactors); factorsJSON != "" {
+		record.Attributes[FindingRiskFactorsAttribute] = factorsJSON
 	}
 	return record
 }
@@ -67,6 +71,7 @@ func recomputeFindingRisk(record *ports.FindingRecord, now time.Time) *ports.Fin
 	record.LikelihoodLevel = ""
 	record.ImpactLevel = ""
 	record.RiskReasons = nil
+	record.RiskFactors = nil
 	record.RiskModelVersion = ""
 	if record.Attributes != nil {
 		delete(record.Attributes, "risk_score")
@@ -76,6 +81,7 @@ func recomputeFindingRisk(record *ports.FindingRecord, now time.Time) *ports.Fin
 		delete(record.Attributes, "likelihood_level")
 		delete(record.Attributes, "impact_level")
 		delete(record.Attributes, "risk_reasons")
+		delete(record.Attributes, FindingRiskFactorsAttribute)
 		delete(record.Attributes, "risk_model_version")
 		delete(record.Attributes, FindingEffectiveSeverityAttribute)
 	}
@@ -97,6 +103,9 @@ func findingRiskAttributes(record *ports.FindingRecord) map[string]string {
 	attributes["impact_level"] = strings.TrimSpace(record.ImpactLevel)
 	attributes["risk_model_version"] = strings.TrimSpace(record.RiskModelVersion)
 	attributes["risk_reasons"] = strings.Join(record.RiskReasons, ",")
+	if factorsJSON := RiskFactorsJSON(record.RiskFactors); factorsJSON != "" {
+		attributes[FindingRiskFactorsAttribute] = factorsJSON
+	}
 	return attributes
 }
 

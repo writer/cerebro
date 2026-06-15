@@ -53,6 +53,17 @@ message GraphEvidenceRow {
   repeated GraphEvidencePath paths = 3;
 }
 
+// FindingRiskFactor explains one scoring contributor and its supporting material.
+message FindingRiskFactor {
+  string factor_id = 1;
+  int32 weight = 2;
+  string severity_contribution = 3;
+  repeated string evidence_refs = 4;
+  google.protobuf.Timestamp observed_at = 5;
+  string category = 6;
+  string suppression_scope = 7;
+}
+
 // FindingEvidenceObservation captures one observed occurrence of a deduplicated evidence record.
 message FindingEvidenceObservation {
   string run_id = 1;
@@ -155,6 +166,7 @@ message Finding {
   string impact_level = 32;
   repeated string risk_reasons = 33;
   string risk_model_version = 34;
+  repeated FindingRiskFactor risk_factors = 35;
 }
 
 // FindingCandidateRun is the durable audit envelope for one non-production candidate evaluation.

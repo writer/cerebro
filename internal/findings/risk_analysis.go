@@ -41,15 +41,16 @@ type FindingExposureAnalysisReport struct {
 
 // FindingRiskContext captures contextual scoring signals for one finding or correlated group.
 type FindingRiskContext struct {
-	Score             int      `json:"score"`
-	EffectiveSeverity string   `json:"effective_severity,omitempty"`
-	LikelihoodScore   int      `json:"likelihood_score"`
-	ImpactScore       int      `json:"impact_score"`
-	ConfidenceScore   int      `json:"confidence_score"`
-	LikelihoodLevel   string   `json:"likelihood_level,omitempty"`
-	ImpactLevel       string   `json:"impact_level,omitempty"`
-	RiskModelVersion  string   `json:"risk_model_version,omitempty"`
-	Reasons           []string `json:"reasons,omitempty"`
+	Score             int                       `json:"score"`
+	EffectiveSeverity string                    `json:"effective_severity,omitempty"`
+	LikelihoodScore   int                       `json:"likelihood_score"`
+	ImpactScore       int                       `json:"impact_score"`
+	ConfidenceScore   int                       `json:"confidence_score"`
+	LikelihoodLevel   string                    `json:"likelihood_level,omitempty"`
+	ImpactLevel       string                    `json:"impact_level,omitempty"`
+	RiskModelVersion  string                    `json:"risk_model_version,omitempty"`
+	Reasons           []string                  `json:"reasons,omitempty"`
+	Factors           []ports.FindingRiskFactor `json:"risk_factors,omitempty"`
 }
 
 // FindingEvidenceBundle is a compact, source-agnostic evidence summary for a finding group or path.
@@ -624,6 +625,7 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 	impact = clampScore(impact)
 	confidence = clampScore(confidence)
 	riskScore := productRiskScore(likelihood, impact)
+	reasons = uniqueSortedStrings(reasons)
 	return FindingRiskContext{
 		Score:             riskScore,
 		EffectiveSeverity: EffectiveSeverityFromRiskScore(riskScore),
@@ -633,7 +635,8 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 		LikelihoodLevel:   riskLevelFromScore(likelihood),
 		ImpactLevel:       riskLevelFromScore(impact),
 		RiskModelVersion:  defaultFindingRiskModelVersion,
-		Reasons:           uniqueSortedStrings(reasons),
+		Reasons:           reasons,
+		Factors:           riskFactorsFromReasons(reasons, finding, now),
 	}
 }
 
@@ -769,7 +772,8 @@ func riskContextForFindings(findings []*ports.FindingRecord) FindingRiskContext 
 		score += context.Score
 		reasons = append(reasons, context.Reasons...)
 	}
-	return FindingRiskContext{Score: score, Reasons: uniqueSortedStrings(reasons)}
+	reasons = uniqueSortedStrings(reasons)
+	return FindingRiskContext{Score: score, Reasons: reasons}
 }
 
 func newFindingEvidenceBundle(findings []*ports.FindingRecord) FindingEvidenceBundle {

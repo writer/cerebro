@@ -273,6 +273,53 @@ func TestAnalyzeFindingRiskContextUsesGenericSignals(t *testing.T) {
 	if context.LikelihoodLevel == "" || context.ImpactLevel == "" || context.RiskModelVersion == "" {
 		t.Fatalf("Risk metadata = %#v, want levels and model version", context)
 	}
+	byID := map[string]ports.FindingRiskFactor{}
+	for _, factor := range context.Factors {
+		byID[factor.FactorID] = factor
+	}
+	for _, factorID := range []string{"critical_asset", "external_exposure", "known_exploited", "epss_high"} {
+		factor := byID[factorID]
+		if factor.FactorID == "" {
+			t.Fatalf("risk factors = %#v, want factor %q", context.Factors, factorID)
+		}
+		if len(factor.EvidenceRefs) == 0 {
+			t.Fatalf("risk factor %q evidence refs empty: %#v", factorID, factor)
+		}
+		if factor.SuppressionScope != "factor:"+factorID {
+			t.Fatalf("risk factor %q suppression scope = %q", factorID, factor.SuppressionScope)
+		}
+	}
+}
+
+func TestFindingRiskFactorsDoNotChangeFindingFingerprint(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	baseline := compoundRiskFinding("finding-risk-factor-baseline", "identity-risk", "HIGH", "", "", "urn:cerebro:writer:okta_user:00u1", "")
+	baseline.Fingerprint = "stable-user-fingerprint"
+	baseline.LastObservedAt = now
+	baseline.Attributes["internet_exposed"] = "true"
+	enrichedBaseline := enrichFindingRisk(baseline, nil, now)
+
+	changed := compoundRiskFinding("finding-risk-factor-changed", "identity-risk", "HIGH", "", "", "urn:cerebro:writer:okta_user:00u1", "")
+	changed.Fingerprint = "stable-user-fingerprint"
+	changed.LastObservedAt = now
+	changed.Attributes["internet_exposed"] = "false"
+	enrichedChanged := enrichFindingRisk(changed, nil, now)
+
+	if enrichedBaseline.Fingerprint != "stable-user-fingerprint" || enrichedChanged.Fingerprint != "stable-user-fingerprint" {
+		t.Fatalf("fingerprints = %q/%q, want stable-user-fingerprint", enrichedBaseline.Fingerprint, enrichedChanged.Fingerprint)
+	}
+	if !stringSliceContains(enrichedBaseline.RiskReasons, "external_exposure") {
+		t.Fatalf("baseline risk reasons = %#v, want external_exposure", enrichedBaseline.RiskReasons)
+	}
+	if stringSliceContains(enrichedChanged.RiskReasons, "external_exposure") {
+		t.Fatalf("changed risk reasons = %#v, want no external_exposure", enrichedChanged.RiskReasons)
+	}
+	if enrichedBaseline.Attributes[FindingRiskFactorsAttribute] == enrichedChanged.Attributes[FindingRiskFactorsAttribute] {
+		t.Fatalf("risk factor JSON did not change with factor input: %q", enrichedBaseline.Attributes[FindingRiskFactorsAttribute])
+	}
+	if factors := ParseRiskFactors(enrichedBaseline.Attributes[FindingRiskFactorsAttribute]); len(factors) == 0 {
+		t.Fatalf("ParseRiskFactors(%q) returned no factors", enrichedBaseline.Attributes[FindingRiskFactorsAttribute])
+	}
 }
 
 func TestEffectiveSeverityFromRiskScore(t *testing.T) {

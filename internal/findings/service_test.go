@@ -5442,6 +5442,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			LikelihoodLevel:  finding.LikelihoodLevel,
 			ImpactLevel:      finding.ImpactLevel,
 			RiskReasons:      append([]string(nil), finding.RiskReasons...),
+			RiskFactors:      append([]ports.FindingRiskFactor(nil), finding.RiskFactors...),
 			RiskModelVersion: finding.RiskModelVersion,
 		},
 		ResourceURNs:      resourceURNs,

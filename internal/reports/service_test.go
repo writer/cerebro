@@ -197,10 +197,21 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 				Status:       "open",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
 				FindingRisk: ports.FindingRisk{
-					RiskScore:        80,
-					LikelihoodScore:  85,
-					ImpactScore:      75,
-					RiskReasons:      []string{"active", "external_exposure"},
+					RiskScore:       80,
+					LikelihoodScore: 85,
+					ImpactScore:     75,
+					RiskReasons:     []string{"active", "external_exposure"},
+					RiskFactors: []ports.FindingRiskFactor{
+						{
+							FactorID:             "external_exposure",
+							Category:             "likelihood",
+							Weight:               35,
+							SeverityContribution: "high",
+							EvidenceRefs:         []string{"attribute:internet_exposed"},
+							ObservedAt:           time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC),
+							SuppressionScope:     "factor:external_exposure",
+						},
+					},
 					RiskModelVersion: "likelihood-impact-v2",
 				},
 				Attributes: map[string]string{
@@ -385,6 +396,21 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	riskReasons, ok := topRiskFinding["risk_reasons"].([]any)
 	if !ok || len(riskReasons) != 2 {
 		t.Fatalf("top risk reasons = %#v, want serialized reasons", topRiskFinding["risk_reasons"])
+	}
+	riskFactors, ok := topRiskFinding["risk_factors"].([]any)
+	if !ok || len(riskFactors) != 1 {
+		t.Fatalf("top risk factors = %#v, want one serialized factor", topRiskFinding["risk_factors"])
+	}
+	riskFactorCounts, ok := result["risk_factor_counts"].([]any)
+	if !ok || len(riskFactorCounts) != 1 {
+		t.Fatalf("Run().Run.Result[risk_factor_counts] = %#v, want 1 entry", result["risk_factor_counts"])
+	}
+	riskFactorCount, ok := riskFactorCounts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("risk factor count entry = %#v, want object", riskFactorCounts[0])
+	}
+	if got := riskFactorCount["factor_id"]; got != "external_exposure" {
+		t.Fatalf("risk factor count factor_id = %#v, want external_exposure", got)
 	}
 	exposureAnalysis, ok := result["exposure_analysis"].(map[string]any)
 	if !ok {
@@ -805,6 +831,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			LikelihoodLevel:  finding.LikelihoodLevel,
 			ImpactLevel:      finding.ImpactLevel,
 			RiskReasons:      append([]string(nil), finding.RiskReasons...),
+			RiskFactors:      append([]ports.FindingRiskFactor(nil), finding.RiskFactors...),
 			RiskModelVersion: finding.RiskModelVersion,
 		},
 		Attributes:      cloneAttributes(finding.Attributes),
