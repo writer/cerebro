@@ -28,3 +28,21 @@ runtimes:
       family: application
       per_page: "200"
       token: env:OKTA_API_TOKEN
+  - localId: authenticator
+    config:
+      domain: env:OKTA_DOMAIN
+      family: authenticator
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: policy-rule
+    config:
+      domain: env:OKTA_DOMAIN
+      family: policy_rule
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: threat-insight
+    config:
+      domain: env:OKTA_DOMAIN
+      family: threat_insight
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
