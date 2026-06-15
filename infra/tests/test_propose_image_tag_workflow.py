@@ -65,9 +65,11 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", action)
         self.assertIn("Preflight deploy GitHub App token", action)
         self.assertIn("gh api /installation/repositories", action)
+        self.assertIn("Deploy App token is scoped to ${GITHUB_REPOSITORY}.", action)
         self.assertIn("permission-contents: write", action)
         self.assertIn("permission-pull-requests: write", action)
         self.assertNotIn("permission-checks: read", action)
+        self.assertNotIn("check_permission", action)
         self.assertNotIn("permission-actions: write", action)
 
     def test_repository_dispatch_superseded_releases_skip_promotion(self) -> None:

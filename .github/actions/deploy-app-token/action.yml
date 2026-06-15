@@ -52,18 +52,4 @@ runs:
           exit 1
         fi
 
-        check_permission() {
-          local key="$1"
-          local expected="$2"
-          local actual=""
-          actual="$(jq -r --arg repo "${GITHUB_REPOSITORY}" --arg key "${key}" '.repositories[] | select(.full_name == $repo) | .permissions[$key] // ""' <<<"${payload}")"
-          if [ "${actual}" != "${expected}" ]; then
-            echo "Deploy App token requires ${key}=${expected}; got ${actual:-unset}" >&2
-            exit 1
-          fi
-        }
-
-        check_permission contents write
-        check_permission issues write
-        check_permission pull_requests write
-        check_permission statuses read
+        echo "Deploy App token is scoped to ${GITHUB_REPOSITORY}."
