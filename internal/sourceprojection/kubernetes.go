@@ -138,6 +138,141 @@ func kubernetesWorkloadIdentityBindingProjections(event *cerebrov1.EventEnvelope
 	return identityProjectionResult(entities, links)
 }
 
+func kubernetesRBACRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	roleURN := kubernetesRBACRoleURN(tenantID, attributes)
+	namespaceURN := kubernetesExplicitNamespaceURN(tenantID, attributes)
+	clusterURN := kubernetesClusterURN(tenantID, attributes)
+	if roleURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        roleURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "kubernetes.rbac_role",
+			Label:      firstNonEmpty(attributes["role_name"], attributes["resource_name"], attributes["name"]),
+			Attributes: map[string]string{
+				"cluster_id":   strings.TrimSpace(attributes["cluster_id"]),
+				"cluster_name": strings.TrimSpace(attributes["cluster_name"]),
+				"namespace":    strings.TrimSpace(attributes["namespace"]),
+				"resources":    strings.TrimSpace(attributes["resources"]),
+				"role_kind":    strings.TrimSpace(attributes["role_kind"]),
+				"role_name":    firstNonEmpty(attributes["role_name"], attributes["resource_name"], attributes["name"]),
+				"role_scope":   kubernetesRBACScope(attributes),
+				"rules":        strings.TrimSpace(attributes["rules"]),
+				"verbs":        strings.TrimSpace(attributes["verbs"]),
+			},
+		})
+	}
+	addKubernetesCluster(entities, tenantID, event.GetSourceId(), attributes, clusterURN)
+	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), attributes, namespaceURN)
+	if roleURN != "" {
+		if kubernetesRBACScope(attributes) == "namespace" && namespaceURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		} else if clusterURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)
+	return identityProjectionResult(entities, links)
+}
+
+func kubernetesRBACBindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	bindingURN := kubernetesRBACBindingURN(tenantID, attributes)
+	roleURN := kubernetesRBACBindingRoleURN(tenantID, attributes)
+	namespaceURN := kubernetesExplicitNamespaceURN(tenantID, attributes)
+	clusterURN := kubernetesClusterURN(tenantID, attributes)
+	if bindingURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        bindingURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "kubernetes.rbac_binding",
+			Label:      firstNonEmpty(attributes["binding_name"], attributes["resource_name"], attributes["name"]),
+			Attributes: map[string]string{
+				"binding_kind":  strings.TrimSpace(attributes["binding_kind"]),
+				"binding_name":  firstNonEmpty(attributes["binding_name"], attributes["resource_name"], attributes["name"]),
+				"binding_scope": kubernetesRBACScope(attributes),
+				"cluster_id":    strings.TrimSpace(attributes["cluster_id"]),
+				"cluster_name":  strings.TrimSpace(attributes["cluster_name"]),
+				"namespace":     strings.TrimSpace(attributes["namespace"]),
+				"role_kind":     strings.TrimSpace(attributes["role_kind"]),
+				"role_name":     strings.TrimSpace(attributes["role_name"]),
+				"subject_refs":  strings.TrimSpace(attributes["subject_refs"]),
+			},
+		})
+	}
+	if roleURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        roleURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "kubernetes.rbac_role",
+			Label:      strings.TrimSpace(attributes["role_name"]),
+			Attributes: map[string]string{
+				"cluster_id":   strings.TrimSpace(attributes["cluster_id"]),
+				"cluster_name": strings.TrimSpace(attributes["cluster_name"]),
+				"namespace":    kubernetesRBACRoleNamespace(attributes),
+				"role_kind":    strings.TrimSpace(attributes["role_kind"]),
+				"role_name":    strings.TrimSpace(attributes["role_name"]),
+			},
+		})
+	}
+	addKubernetesCluster(entities, tenantID, event.GetSourceId(), attributes, clusterURN)
+	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), attributes, namespaceURN)
+	if bindingURN != "" && roleURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), bindingURN, roleURN, relationAttachedTo, map[string]string{"event_id": event.GetId(), "match_type": "kubernetes_rbac_binding_role"}))
+	}
+	if bindingURN != "" {
+		if kubernetesRBACScope(attributes) == "namespace" && namespaceURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), bindingURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		} else if clusterURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), bindingURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+	for _, subject := range parseKubernetesRBACSubjectRefs(attributes["subject_refs"]) {
+		subjectURN := kubernetesRBACSubjectURN(tenantID, attributes, subject)
+		if subjectURN == "" {
+			continue
+		}
+		addKubernetesRBACSubjectEntity(entities, tenantID, event.GetSourceId(), attributes, subject, subjectURN)
+		if roleURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relationAssignedTo, map[string]string{
+				"binding_kind": strings.TrimSpace(attributes["binding_kind"]),
+				"binding_name": strings.TrimSpace(attributes["binding_name"]),
+				"event_id":     event.GetId(),
+				"match_type":   "kubernetes_rbac_binding_subject",
+			}))
+		}
+		if normalizeIdentifier(subject.Kind) == "serviceaccount" || normalizeIdentifier(subject.Kind) == "service_account" {
+			subjectNamespaceURN := kubernetesRBACSubjectNamespaceURN(tenantID, attributes, subject)
+			if subjectNamespaceURN != "" {
+				subjectNamespaceAttrs := cloneAttributes(attributes)
+				subjectNamespaceAttrs["namespace"] = kubernetesRBACSubjectNamespace(attributes, subject)
+				addKubernetesNamespace(entities, tenantID, event.GetSourceId(), subjectNamespaceAttrs, subjectNamespaceURN)
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, subjectNamespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+				if clusterURN != "" {
+					addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectNamespaceURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+				}
+			}
+		}
+	}
+	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)
+	return identityProjectionResult(entities, links)
+}
+
 func addKubernetesCluster(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attributes map[string]string, clusterURN string) {
 	if clusterURN == "" {
 		return
@@ -206,6 +341,13 @@ func kubernetesNamespaceURN(tenantID string, attributes map[string]string) strin
 	return projectionURN(tenantID, "kubernetes_namespace", clusterID, firstNonEmpty(attributes["namespace"], "default"))
 }
 
+func kubernetesExplicitNamespaceURN(tenantID string, attributes map[string]string) string {
+	if strings.TrimSpace(attributes["namespace"]) == "" {
+		return ""
+	}
+	return kubernetesNamespaceURN(tenantID, attributes)
+}
+
 func kubernetesWorkloadURN(tenantID string, attributes map[string]string) string {
 	clusterID := kubernetesClusterIdentity(attributes)
 	if clusterID == "" {
@@ -220,6 +362,42 @@ func kubernetesWorkloadURN(tenantID string, attributes map[string]string) string
 		return ""
 	}
 	return projectionURN(tenantID, "kubernetes_workload", clusterID, firstNonEmpty(attributes["namespace"], "default"), workloadID)
+}
+
+func kubernetesRBACRoleURN(tenantID string, attributes map[string]string) string {
+	clusterID := kubernetesClusterIdentity(attributes)
+	roleName := firstNonEmpty(attributes["role_name"], attributes["resource_name"], attributes["name"])
+	roleKind := firstNonEmpty(attributes["role_kind"], "Role")
+	if clusterID == "" || roleName == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "kubernetes_rbac_role", clusterID, roleKind, firstNonEmpty(kubernetesRBACRoleNamespace(attributes), "cluster"), roleName)
+}
+
+func kubernetesRBACBindingURN(tenantID string, attributes map[string]string) string {
+	clusterID := kubernetesClusterIdentity(attributes)
+	bindingName := firstNonEmpty(attributes["binding_name"], attributes["resource_name"], attributes["name"])
+	bindingKind := firstNonEmpty(attributes["binding_kind"], "RoleBinding")
+	if clusterID == "" || bindingName == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "kubernetes_rbac_binding", clusterID, bindingKind, firstNonEmpty(strings.TrimSpace(attributes["namespace"]), "cluster"), bindingName)
+}
+
+func kubernetesRBACBindingRoleURN(tenantID string, attributes map[string]string) string {
+	roleName := strings.TrimSpace(attributes["role_name"])
+	if roleName == "" {
+		return ""
+	}
+	roleAttrs := cloneAttributes(attributes)
+	roleAttrs["role_name"] = roleName
+	roleAttrs["role_kind"] = firstNonEmpty(attributes["role_kind"], "Role")
+	if !strings.EqualFold(roleAttrs["role_kind"], "ClusterRole") {
+		roleAttrs["namespace"] = firstNonEmpty(attributes["namespace"], "default")
+	} else {
+		roleAttrs["namespace"] = ""
+	}
+	return kubernetesRBACRoleURN(tenantID, roleAttrs)
 }
 
 func kubernetesClusterIdentity(attributes map[string]string) string {
@@ -269,4 +447,132 @@ func kubernetesCloudAccountID(attributes map[string]string) string {
 			attributes["project_id"],
 		)
 	}
+}
+
+type kubernetesRBACSubjectRef struct {
+	Kind      string
+	Namespace string
+	Name      string
+}
+
+func parseKubernetesRBACSubjectRefs(raw string) []kubernetesRBACSubjectRef {
+	refs := []kubernetesRBACSubjectRef{}
+	for _, part := range strings.Split(raw, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		kind, value, ok := strings.Cut(part, ":")
+		if !ok {
+			continue
+		}
+		namespace := ""
+		name := strings.TrimSpace(value)
+		if isKubernetesServiceAccountKind(kind) {
+			if before, after, found := strings.Cut(name, "/"); found {
+				namespace = strings.TrimSpace(before)
+				name = strings.TrimSpace(after)
+			}
+		}
+		if strings.TrimSpace(kind) == "" || name == "" {
+			continue
+		}
+		refs = append(refs, kubernetesRBACSubjectRef{Kind: strings.TrimSpace(kind), Namespace: namespace, Name: name})
+	}
+	return refs
+}
+
+func isKubernetesServiceAccountKind(kind string) bool {
+	normalized := normalizeIdentifier(kind)
+	return normalized == "serviceaccount" || normalized == "service_account"
+}
+
+func kubernetesRBACSubjectNamespace(attributes map[string]string, subject kubernetesRBACSubjectRef) string {
+	if !isKubernetesServiceAccountKind(subject.Kind) {
+		return ""
+	}
+	return firstNonEmpty(subject.Namespace, attributes["namespace"], "default")
+}
+
+func kubernetesRBACSubjectNamespaceURN(tenantID string, attributes map[string]string, subject kubernetesRBACSubjectRef) string {
+	namespace := kubernetesRBACSubjectNamespace(attributes, subject)
+	if namespace == "" {
+		return ""
+	}
+	subjectNamespaceAttrs := cloneAttributes(attributes)
+	subjectNamespaceAttrs["namespace"] = namespace
+	return kubernetesNamespaceURN(tenantID, subjectNamespaceAttrs)
+}
+
+func kubernetesRBACSubjectURN(tenantID string, attributes map[string]string, subject kubernetesRBACSubjectRef) string {
+	clusterID := kubernetesClusterIdentity(attributes)
+	if clusterID == "" || strings.TrimSpace(subject.Name) == "" {
+		return ""
+	}
+	switch normalizeIdentifier(subject.Kind) {
+	case "serviceaccount", "service_account":
+		return projectionURN(tenantID, "kubernetes_service_account", clusterID, kubernetesRBACSubjectNamespace(attributes, subject), subject.Name)
+	case "group":
+		return projectionURN(tenantID, "kubernetes_group", clusterID, subject.Name)
+	default:
+		return projectionURN(tenantID, "kubernetes_user", clusterID, subject.Name)
+	}
+}
+
+func addKubernetesRBACSubjectEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attributes map[string]string, subject kubernetesRBACSubjectRef, subjectURN string) {
+	clusterID := kubernetesClusterIdentity(attributes)
+	switch normalizeIdentifier(subject.Kind) {
+	case "serviceaccount", "service_account":
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        subjectURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: "kubernetes.service_account",
+			Label:      subject.Name,
+			Attributes: map[string]string{
+				"cluster_id":           clusterID,
+				"cluster_name":         strings.TrimSpace(attributes["cluster_name"]),
+				"namespace":            kubernetesRBACSubjectNamespace(attributes, subject),
+				"service_account_name": subject.Name,
+			},
+		})
+	case "group":
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        subjectURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: "kubernetes.group",
+			Label:      subject.Name,
+			Attributes: map[string]string{"cluster_id": clusterID, "cluster_name": strings.TrimSpace(attributes["cluster_name"]), "group_name": subject.Name},
+		})
+	default:
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        subjectURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: "kubernetes.user",
+			Label:      subject.Name,
+			Attributes: map[string]string{"cluster_id": clusterID, "cluster_name": strings.TrimSpace(attributes["cluster_name"]), "user_name": subject.Name},
+		})
+	}
+}
+
+func kubernetesRBACRoleNamespace(attributes map[string]string) string {
+	if strings.EqualFold(firstNonEmpty(attributes["role_kind"], "Role"), "ClusterRole") {
+		return ""
+	}
+	return strings.TrimSpace(attributes["namespace"])
+}
+
+func kubernetesRBACScope(attributes map[string]string) string {
+	if bindingKind := strings.TrimSpace(attributes["binding_kind"]); bindingKind != "" {
+		if strings.EqualFold(bindingKind, "ClusterRoleBinding") || strings.TrimSpace(attributes["namespace"]) == "" {
+			return "cluster"
+		}
+		return "namespace"
+	}
+	if strings.TrimSpace(attributes["namespace"]) == "" || strings.EqualFold(firstNonEmpty(attributes["role_kind"], "Role"), "ClusterRole") {
+		return "cluster"
+	}
+	return "namespace"
 }

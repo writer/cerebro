@@ -6,6 +6,8 @@ emitted_kinds:
   - kubernetes.namespace
   - kubernetes.pod
   - kubernetes.container
+  - kubernetes.rbac_binding
+  - kubernetes.rbac_role
   - kubernetes.service_account
   - kubernetes.workload
   - kubernetes.workload_identity_binding
@@ -45,6 +47,27 @@ event_contracts:
     required_payload_fields:
       - container_name
       - pod_uid
+  - kind: kubernetes.rbac_binding
+    schema_ref: kubernetes/rbac_binding/v1
+    required_attributes:
+      - cluster_id
+      - binding_name
+      - binding_kind
+      - role_name
+    required_payload_fields:
+      - name
+      - binding_kind
+      - role_ref
+  - kind: kubernetes.rbac_role
+    schema_ref: kubernetes/rbac_role/v1
+    required_attributes:
+      - cluster_id
+      - role_name
+      - role_kind
+    required_payload_fields:
+      - name
+      - role_kind
+      - rules
   - kind: kubernetes.service_account
     schema_ref: kubernetes/service_account/v1
     required_attributes:
