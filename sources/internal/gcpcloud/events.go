@@ -773,6 +773,58 @@ type ComputeTargetHTTPSProxyRecord struct {
 	Raw                     json.RawMessage `json:"-"`
 }
 
+type ComputeTargetSSLProxyRecord struct {
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	SelfLink        string          `json:"selfLink"`
+	Description     string          `json:"description"`
+	Service         string          `json:"service"`
+	SSLCertificates []string        `json:"sslCertificates"`
+	CertificateMap  string          `json:"certificateMap"`
+	SSLPolicy       string          `json:"sslPolicy"`
+	ProxyHeader     string          `json:"proxyHeader"`
+	Raw             json.RawMessage `json:"-"`
+}
+
+type ComputeTargetTCPProxyRecord struct {
+	ID                  string          `json:"id"`
+	Name                string          `json:"name"`
+	SelfLink            string          `json:"selfLink"`
+	Description         string          `json:"description"`
+	Service             string          `json:"service"`
+	ProxyHeader         string          `json:"proxyHeader"`
+	ProxyBind           bool            `json:"proxyBind"`
+	LoadBalancingScheme string          `json:"loadBalancingScheme"`
+	Region              string          `json:"region"`
+	Raw                 json.RawMessage `json:"-"`
+}
+
+type ComputeTargetGRPCProxyRecord struct {
+	ID                   string          `json:"id"`
+	Name                 string          `json:"name"`
+	SelfLink             string          `json:"selfLink"`
+	Description          string          `json:"description"`
+	URLMap               string          `json:"urlMap"`
+	ValidateForProxyless bool            `json:"validateForProxyless"`
+	Fingerprint          string          `json:"fingerprint"`
+	Raw                  json.RawMessage `json:"-"`
+}
+
+type ComputeSSLPolicyRecord struct {
+	ID                     string          `json:"id"`
+	Name                   string          `json:"name"`
+	SelfLink               string          `json:"selfLink"`
+	Description            string          `json:"description"`
+	Profile                string          `json:"profile"`
+	MinTLSVersion          string          `json:"minTlsVersion"`
+	EnabledFeatures        []string        `json:"enabledFeatures"`
+	CustomFeatures         []string        `json:"customFeatures"`
+	PostQuantumKeyExchange string          `json:"postQuantumKeyExchange"`
+	Fingerprint            string          `json:"fingerprint"`
+	Region                 string          `json:"region"`
+	Raw                    json.RawMessage `json:"-"`
+}
+
 type ComputeSSLCertificateRecord struct {
 	ID                      string                           `json:"id"`
 	Name                    string                           `json:"name"`
@@ -965,6 +1017,22 @@ func (record ComputeTargetHTTPProxyRecord) CerebroResourceID() string {
 }
 
 func (record ComputeTargetHTTPSProxyRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeTargetSSLProxyRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeTargetTCPProxyRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeTargetGRPCProxyRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeSSLPolicyRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
 }
 
@@ -2379,6 +2447,100 @@ func ComputeTargetHTTPSProxyEvent(settings Settings, record ComputeTargetHTTPSPr
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-compute-target-https-proxy-"+resourceID, "gcp.compute_target_https_proxy", "gcp/compute_target_https_proxy/v1", payload, attributes)
+}
+
+func ComputeTargetSSLProxyEvent(settings Settings, record ComputeTargetSSLProxyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	certificates := lastPathSegments(record.SSLCertificates)
+	attributes := cloudResourceAttributes(settings, "compute_target_ssl_proxy", resourceID, record.Name, "compute_target_ssl_proxy", "global", nil)
+	attributes["description"] = record.Description
+	attributes["protocol"] = "SSL"
+	attributes["backend_service"] = lastPathSegment(record.Service)
+	attributes["backend_service_url"] = record.Service
+	attributes["service"] = lastPathSegment(record.Service)
+	attributes["service_url"] = record.Service
+	attributes["ssl_certificates"] = strings.Join(certificates, ",")
+	attributes["ssl_certificate_urls"] = strings.Join(record.SSLCertificates, ",")
+	attributes["ssl_certificates_count"] = strconv.Itoa(len(record.SSLCertificates))
+	attributes["certificate_map"] = lastPathSegment(record.CertificateMap)
+	attributes["certificate_map_url"] = record.CertificateMap
+	attributes["certificates_configured"] = boolString(len(record.SSLCertificates) != 0 || record.CertificateMap != "")
+	attributes["ssl_policy"] = lastPathSegment(record.SSLPolicy)
+	attributes["ssl_policy_url"] = record.SSLPolicy
+	attributes["proxy_header"] = record.ProxyHeader
+	attributes["tls_enabled"] = "true"
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-target-ssl-proxy-"+resourceID, "gcp.compute_target_ssl_proxy", "gcp/compute_target_ssl_proxy/v1", payload, attributes)
+}
+
+func ComputeTargetTCPProxyEvent(settings Settings, record ComputeTargetTCPProxyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	external := computeBackendServiceExternal(record.LoadBalancingScheme)
+	attributes := cloudResourceAttributes(settings, "compute_target_tcp_proxy", resourceID, record.Name, "compute_target_tcp_proxy", location, nil)
+	attributes["description"] = record.Description
+	attributes["protocol"] = "TCP"
+	attributes["backend_service"] = lastPathSegment(record.Service)
+	attributes["backend_service_url"] = record.Service
+	attributes["service"] = lastPathSegment(record.Service)
+	attributes["service_url"] = record.Service
+	attributes["proxy_header"] = record.ProxyHeader
+	attributes["proxy_bind"] = boolString(record.ProxyBind)
+	attributes["load_balancing_scheme"] = record.LoadBalancingScheme
+	attributes["scheme"] = record.LoadBalancingScheme
+	attributes["external_load_balancing"] = boolString(external)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-target-tcp-proxy-"+resourceID, "gcp.compute_target_tcp_proxy", "gcp/compute_target_tcp_proxy/v1", payload, attributes)
+}
+
+func ComputeTargetGRPCProxyEvent(settings Settings, record ComputeTargetGRPCProxyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	attributes := cloudResourceAttributes(settings, "compute_target_grpc_proxy", resourceID, record.Name, "compute_target_grpc_proxy", "global", nil)
+	attributes["description"] = record.Description
+	attributes["protocol"] = "GRPC"
+	attributes["url_map"] = lastPathSegment(record.URLMap)
+	attributes["url_map_url"] = record.URLMap
+	attributes["validate_for_proxyless"] = boolString(record.ValidateForProxyless)
+	attributes["proxyless_validation"] = boolString(record.ValidateForProxyless)
+	attributes["fingerprint"] = record.Fingerprint
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-target-grpc-proxy-"+resourceID, "gcp.compute_target_grpc_proxy", "gcp/compute_target_grpc_proxy/v1", payload, attributes)
+}
+
+func ComputeSSLPolicyEvent(settings Settings, record ComputeSSLPolicyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	attributes := cloudResourceAttributes(settings, "compute_ssl_policy", resourceID, record.Name, "compute_ssl_policy", location, nil)
+	attributes["description"] = record.Description
+	attributes["profile"] = record.Profile
+	attributes["min_tls_version"] = record.MinTLSVersion
+	attributes["enabled_features"] = strings.Join(record.EnabledFeatures, ",")
+	attributes["enabled_features_count"] = strconv.Itoa(len(record.EnabledFeatures))
+	attributes["custom_features"] = strings.Join(record.CustomFeatures, ",")
+	attributes["custom_features_count"] = strconv.Itoa(len(record.CustomFeatures))
+	attributes["custom_profile"] = boolString(strings.EqualFold(record.Profile, "CUSTOM"))
+	attributes["post_quantum_key_exchange"] = record.PostQuantumKeyExchange
+	attributes["fingerprint"] = record.Fingerprint
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-ssl-policy-"+resourceID, "gcp.compute_ssl_policy", "gcp/compute_ssl_policy/v1", payload, attributes)
 }
 
 func ComputeSSLCertificateEvent(settings Settings, record ComputeSSLCertificateRecord) (*primitives.Event, error) {

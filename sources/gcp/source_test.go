@@ -92,9 +92,13 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyComputeRoute, kind: "gcp.compute_route"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy"},
 		{family: familyComputeSSLCertificate, kind: "gcp.compute_ssl_certificate"},
+		{family: familyComputeSSLPolicy, kind: "gcp.compute_ssl_policy"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork"},
+		{family: familyComputeTargetGRPCProxy, kind: "gcp.compute_target_grpc_proxy"},
 		{family: familyComputeTargetHTTPProxy, kind: "gcp.compute_target_http_proxy"},
 		{family: familyComputeTargetHTTPSProxy, kind: "gcp.compute_target_https_proxy"},
+		{family: familyComputeTargetSSLProxy, kind: "gcp.compute_target_ssl_proxy"},
+		{family: familyComputeTargetTCPProxy, kind: "gcp.compute_target_tcp_proxy"},
 		{family: familyComputeURLMap, kind: "gcp.compute_url_map"},
 		{family: familyDNSManagedZone, kind: "gcp.dns_managed_zone"},
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set"},
@@ -306,9 +310,13 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy", attr: "rules_count", want: "3"},
 		{family: familyComputeSSLCertificate, kind: "gcp.compute_ssl_certificate", attr: "managed_status", want: "ACTIVE"},
+		{family: familyComputeSSLPolicy, kind: "gcp.compute_ssl_policy", attr: "min_tls_version", want: "TLS_1_2"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
+		{family: familyComputeTargetGRPCProxy, kind: "gcp.compute_target_grpc_proxy", attr: "validate_for_proxyless", want: "true"},
 		{family: familyComputeTargetHTTPProxy, kind: "gcp.compute_target_http_proxy", attr: "url_map", want: "prod-url-map"},
 		{family: familyComputeTargetHTTPSProxy, kind: "gcp.compute_target_https_proxy", attr: "ssl_certificates", want: "prod-cert"},
+		{family: familyComputeTargetSSLProxy, kind: "gcp.compute_target_ssl_proxy", attr: "ssl_policy", want: "modern"},
+		{family: familyComputeTargetTCPProxy, kind: "gcp.compute_target_tcp_proxy", attr: "backend_service", want: "prod-tcp-backend"},
 		{family: familyComputeURLMap, kind: "gcp.compute_url_map", attr: "backend_services", want: "prod-backend,api-backend,canary-backend"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall", attr: "source_ranges", want: "0.0.0.0/0"},
 		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule", attr: "internet_exposed", want: "true"},
@@ -849,6 +857,13 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			requireQuery(t, r, "maxResults", "10", "ssl certificates")
 			requireQuery(t, r, "returnPartialSuccess", "true", "ssl certificates")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"sslCertificates": []map[string]any{{"id": "cert-1", "name": "prod-cert", "selfLink": "projects/writer-prod/global/sslCertificates/prod-cert", "description": "prod managed cert", "type": "MANAGED", "managed": map[string]any{"domains": []string{"app.writer.example"}, "status": "ACTIVE", "domainStatus": map[string]string{"app.writer.example": "ACTIVE"}}, "subjectAlternativeNames": []string{"app.writer.example"}, "expireTime": "2026-12-31T23:59:59Z"}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/sslPolicies":
+			requireQuery(t, r, "maxResults", "10", "ssl policies")
+			requireQuery(t, r, "returnPartialSuccess", "true", "ssl policies")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"sslPolicies": []map[string]any{{"id": "ssl-policy-1", "name": "modern", "selfLink": "projects/writer-prod/global/sslPolicies/modern", "description": "modern external lb tls", "profile": "MODERN", "minTlsVersion": "TLS_1_2", "enabledFeatures": []string{"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"}, "customFeatures": []string{"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"}, "postQuantumKeyExchange": "ENABLED", "fingerprint": "sslpolicyfp"}}}}})
+		case "/compute/v1/projects/writer-prod/global/targetGrpcProxies":
+			requireQuery(t, r, "maxResults", "10", "target grpc proxies")
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "tgrp-1", "name": "prod-grpc-proxy", "selfLink": "projects/writer-prod/global/targetGrpcProxies/prod-grpc-proxy", "description": "prod grpc proxy", "urlMap": "projects/writer-prod/global/urlMaps/prod-url-map", "validateForProxyless": true, "fingerprint": "grpcfp"}}})
 		case "/compute/v1/projects/writer-prod/aggregated/targetHttpProxies":
 			requireQuery(t, r, "maxResults", "10", "target http proxies")
 			requireQuery(t, r, "returnPartialSuccess", "true", "target http proxies")
@@ -857,6 +872,13 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			requireQuery(t, r, "maxResults", "10", "target https proxies")
 			requireQuery(t, r, "returnPartialSuccess", "true", "target https proxies")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"targetHttpsProxies": []map[string]any{{"id": "thsp-1", "name": "prod-https-proxy", "selfLink": "projects/writer-prod/global/targetHttpsProxies/prod-https-proxy", "description": "prod https proxy", "urlMap": "projects/writer-prod/global/urlMaps/prod-url-map", "sslCertificates": []string{"projects/writer-prod/global/sslCertificates/prod-cert"}, "certificateMap": "//certificatemanager.googleapis.com/projects/writer-prod/locations/global/certificateMaps/prod-map", "quicOverride": "ENABLE", "sslPolicy": "projects/writer-prod/global/sslPolicies/modern", "serverTlsPolicy": "projects/writer-prod/locations/global/serverTlsPolicies/prod-server-tls", "authorizationPolicy": "projects/writer-prod/locations/global/authorizationPolicies/prod-authz", "httpKeepAliveTimeoutSec": 610, "fingerprint": "httpsfp"}}}}})
+		case "/compute/v1/projects/writer-prod/global/targetSslProxies":
+			requireQuery(t, r, "maxResults", "10", "target ssl proxies")
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "tsp-1", "name": "prod-ssl-proxy", "selfLink": "projects/writer-prod/global/targetSslProxies/prod-ssl-proxy", "description": "prod ssl proxy", "service": "projects/writer-prod/global/backendServices/prod-ssl-backend", "sslCertificates": []string{"projects/writer-prod/global/sslCertificates/prod-cert"}, "certificateMap": "//certificatemanager.googleapis.com/projects/writer-prod/locations/global/certificateMaps/prod-map", "sslPolicy": "projects/writer-prod/global/sslPolicies/modern", "proxyHeader": "PROXY_V1"}}})
+		case "/compute/v1/projects/writer-prod/aggregated/targetTcpProxies":
+			requireQuery(t, r, "maxResults", "10", "target tcp proxies")
+			requireQuery(t, r, "returnPartialSuccess", "true", "target tcp proxies")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"targetTcpProxies": []map[string]any{{"id": "ttp-1", "name": "prod-tcp-proxy", "selfLink": "projects/writer-prod/global/targetTcpProxies/prod-tcp-proxy", "description": "prod tcp proxy", "service": "projects/writer-prod/global/backendServices/prod-tcp-backend", "proxyHeader": "PROXY_V1", "proxyBind": true, "loadBalancingScheme": "EXTERNAL_MANAGED"}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/healthChecks":
 			requireQuery(t, r, "maxResults", "10", "health checks")
 			requireQuery(t, r, "returnPartialSuccess", "true", "health checks")
