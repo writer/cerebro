@@ -273,12 +273,26 @@ jobs:
 
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Create deploy GitHub App token
+        if: steps.latest.outputs.superseded != 'true' && steps.update.outputs.changed == 'true'
+        id: deploy-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
+          permission-actions: write
+          permission-checks: read
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+          permission-statuses: read
+
       - name: Apply stack config update
         if: steps.latest.outputs.superseded != 'true' && steps.update.outputs.changed == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN || github.token }}
-          AUTORELEASE_TOKEN_CONFIGURED: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN != '' }}
+          GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
+          DEPLOY_APP_SLUG: ${{ steps.deploy-app-token.outputs.app-slug }}
           STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
           APPLY_MODE: ${{ github.event.client_payload.apply_mode || 'pull_request' }}
           EVENT_NAME: ${{ github.event_name }}
@@ -298,8 +312,9 @@ jobs:
           branch="automation/cerebro-image-${STACK_NAME}-${safe_tag}"
           title="chore: bump ${STACK_NAME} Cerebro image to ${IMAGE_TAG}"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          deploy_app_user_id="$(gh api "/users/${DEPLOY_APP_SLUG}[bot]" --jq .id)"
+          git config user.name "${DEPLOY_APP_SLUG}[bot]"
+          git config user.email "${deploy_app_user_id}+${DEPLOY_APP_SLUG}[bot]@users.noreply.github.com"
 
           refresh_from_main_and_apply_update() {
             local target_config="infra/aws/Pulumi.${STACK_NAME}.yaml"
@@ -432,10 +447,6 @@ jobs:
             fi
             if [ "${EVENT_NAME}" != "repository_dispatch" ]; then
               echo "direct_push is reserved for signed public release dispatches" >&2
-              exit 1
-            fi
-            if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
-              echo "CEREBRO_AUTORELEASE_TOKEN is required for direct_push so the push triggers deploy workflows" >&2
               exit 1
             fi
 
@@ -613,10 +624,6 @@ jobs:
             }
 
             if [ "${STACK_NAME}" != "go-prod" ] || [ "${APPLY_MODE}" != "pull_request" ]; then
-              return 0
-            fi
-            if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
-              echo "::notice::CEREBRO_AUTORELEASE_TOKEN is not configured; leaving ${pr_url} for manual merge."
               return 0
             fi
             if ! trusted_auto_merge_source; then

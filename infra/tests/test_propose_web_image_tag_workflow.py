@@ -58,12 +58,26 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
 
         self.assertIn('STACK_NAME}" != "sec-dev"', direct_push_block)
         self.assertIn('EVENT_NAME}" != "repository_dispatch"', direct_push_block)
-        self.assertIn("CEREBRO_AUTORELEASE_TOKEN is required for direct_push", direct_push_block)
         self.assertIn('"HEAD:main"', direct_push_block)
         self.assertIn("dispatch_and_require_run ci.yml", direct_push_block)
         self.assertIn("dispatch_and_require_run infra-deploy.yml -f environment=", direct_push_block)
         self.assertIn('conclusion}" != "success"', workflow)
         self.assertIn("completed successfully", workflow)
+
+    def test_release_automation_uses_deploy_app_token_not_pat(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertNotIn("CEREBRO_AUTORELEASE_TOKEN", workflow)
+        self.assertIn("- name: Create deploy GitHub App token", workflow)
+        self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", workflow)
+        self.assertIn("client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}", workflow)
+        self.assertIn("private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}", workflow)
+        self.assertIn("permission-actions: write", workflow)
+        self.assertIn("permission-contents: write", workflow)
+        self.assertIn("permission-pull-requests: write", workflow)
+        self.assertIn("GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}", workflow)
+        self.assertIn('git config user.name "${DEPLOY_APP_SLUG}[bot]"', workflow)
+        self.assertIn("password: ${{ secrets.GITHUB_TOKEN }}", workflow)
 
     def test_ci_mirrors_public_web_image(self) -> None:
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")

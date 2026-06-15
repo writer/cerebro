@@ -36,6 +36,21 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
             direct_push_block.index('changed_files="$(git diff --name-only)"'),
         )
 
+    def test_release_automation_uses_deploy_app_token_not_pat(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        apply_step = self._apply_step()
+
+        self.assertNotIn("CEREBRO_AUTORELEASE_TOKEN", workflow)
+        self.assertIn("- name: Create deploy GitHub App token", workflow)
+        self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", workflow)
+        self.assertIn("client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}", workflow)
+        self.assertIn("private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}", workflow)
+        self.assertIn("permission-actions: write", workflow)
+        self.assertIn("permission-contents: write", workflow)
+        self.assertIn("permission-pull-requests: write", workflow)
+        self.assertIn("GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}", apply_step)
+        self.assertIn('git config user.name "${DEPLOY_APP_SLUG}[bot]"', apply_step)
+
     def test_repository_dispatch_superseded_releases_skip_promotion(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
 
