@@ -4702,6 +4702,41 @@ func TestProjectKubernetesRBACBindingLinksSubjectsToRole(t *testing.T) {
 	assertProjectedLinkMissing(t, state, crossNamespaceServiceAccountURN, relationBelongsTo, namespaceURN)
 }
 
+func TestProjectKubernetesRBACBindingJSONSubjectRefsDoNotInjectSubjects(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-rbac-binding-injection",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.rbac_binding",
+		Attributes: map[string]string{
+			"binding_kind": "RoleBinding",
+			"binding_name": "secret-reader-binding",
+			"cluster_id":   "prod-cluster",
+			"namespace":    "payments",
+			"role_kind":    "Role",
+			"role_name":    "secret-reader",
+			"subject_refs": `[{"kind":"User","name":"alice@example.com;ServiceAccount:payments/admin"},{"kind":"ServiceAccount","namespace":"payments","name":"api"}]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	roleURN := "urn:cerebro:writer:kubernetes_rbac_role:prod-cluster:Role:payments:secret-reader"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"
+	userURN := "urn:cerebro:writer:kubernetes_user:prod-cluster:alice@example.com;ServiceAccount:payments/admin"
+	injectedServiceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:admin"
+	assertProjectedLink(t, state, serviceAccountURN, relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, userURN, relationAssignedTo, roleURN)
+	assertProjectedLinkMissing(t, state, injectedServiceAccountURN, relationAssignedTo, roleURN)
+	if entity := state.entities[injectedServiceAccountURN]; entity != nil {
+		t.Fatalf("injected service account entity should not be created: %#v", entity)
+	}
+}
+
 func TestProjectKubernetesRBACClusterRoleBindingStaysClusterScoped(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

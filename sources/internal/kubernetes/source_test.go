@@ -2,6 +2,7 @@ package kubernetesinternal
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -72,6 +73,40 @@ func TestReadRBACRolesEmitsRolesAndClusterRoles(t *testing.T) {
 	}
 }
 
+func TestReadRBACRoleWithoutRulesEmitsEmptyRulesArray(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.clientFactory = func(settings) (clientset, error) {
+		return fake.NewSimpleClientset(
+			&rbacv1.Role{
+				ObjectMeta: metav1.ObjectMeta{Name: "empty-role", Namespace: "payments", UID: types.UID("role-empty")},
+			},
+		), nil
+	}
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"tenant_id": "writer", "family": familyRBACRole, "kubeconfig_path": "/tmp/kubeconfig", "cluster_id": "prod-cluster"}), nil)
+	if err != nil {
+		t.Fatalf("Read(rbac_role) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	var payload struct {
+		Rules []rbacv1.PolicyRule `json:"rules"`
+	}
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload.Rules == nil {
+		t.Fatalf("payload rules = nil, want empty array; payload=%s", string(pull.Events[0].Payload))
+	}
+	if len(payload.Rules) != 0 {
+		t.Fatalf("len(payload.Rules) = %d, want 0", len(payload.Rules))
+	}
+}
+
 func TestReadRBACBindingsEmitsBindingsAndSubjects(t *testing.T) {
 	source, err := New()
 	if err != nil {
@@ -107,11 +142,25 @@ func TestReadRBACBindingsEmitsBindingsAndSubjects(t *testing.T) {
 	if binding.Kind != "kubernetes.rbac_binding" || binding.Attributes["binding_kind"] != "RoleBinding" || binding.Attributes["role_name"] != "secret-reader" {
 		t.Fatalf("binding event = %#v", binding)
 	}
-	if got := binding.Attributes["subject_refs"]; got != "ServiceAccount:payments/api;User:alice@example.com;User:arn:aws:sts::123456789012:assumed-role/Admin/alice@example.com" {
-		t.Fatalf("subject_refs = %q, want service account and slash-bearing user refs", got)
+	wantRefs := []rbacSubjectRef{
+		{Kind: "ServiceAccount", Namespace: "payments", Name: "api"},
+		{Kind: "User", Name: "alice@example.com"},
+		{Kind: "User", Name: "arn:aws:sts::123456789012:assumed-role/Admin/alice@example.com"},
+	}
+	var gotRefs []rbacSubjectRef
+	if err := json.Unmarshal([]byte(binding.Attributes["subject_refs"]), &gotRefs); err != nil {
+		t.Fatalf("unmarshal subject_refs: %v", err)
+	}
+	if !reflect.DeepEqual(gotRefs, wantRefs) {
+		t.Fatalf("subject_refs = %#v, want %#v", gotRefs, wantRefs)
 	}
 	clusterBinding := pull.Events[1]
-	if clusterBinding.Attributes["binding_kind"] != "ClusterRoleBinding" || clusterBinding.Attributes["subject_refs"] != "Group:system:masters" {
+	var gotClusterRefs []rbacSubjectRef
+	if err := json.Unmarshal([]byte(clusterBinding.Attributes["subject_refs"]), &gotClusterRefs); err != nil {
+		t.Fatalf("unmarshal cluster subject_refs: %v", err)
+	}
+	wantClusterRefs := []rbacSubjectRef{{Kind: "Group", Name: "system:masters"}}
+	if clusterBinding.Attributes["binding_kind"] != "ClusterRoleBinding" || !reflect.DeepEqual(gotClusterRefs, wantClusterRefs) {
 		t.Fatalf("cluster binding event = %#v", clusterBinding)
 	}
 }

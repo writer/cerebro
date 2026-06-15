@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"encoding/json"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -450,12 +451,22 @@ func kubernetesCloudAccountID(attributes map[string]string) string {
 }
 
 type kubernetesRBACSubjectRef struct {
-	Kind      string
-	Namespace string
-	Name      string
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name"`
 }
 
 func parseKubernetesRBACSubjectRefs(raw string) []kubernetesRBACSubjectRef {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if strings.HasPrefix(raw, "[") {
+		var refs []kubernetesRBACSubjectRef
+		if err := json.Unmarshal([]byte(raw), &refs); err == nil {
+			return normalizeKubernetesRBACSubjectRefs(refs)
+		}
+	}
 	refs := []kubernetesRBACSubjectRef{}
 	for _, part := range strings.Split(raw, ";") {
 		part = strings.TrimSpace(part)
@@ -478,6 +489,22 @@ func parseKubernetesRBACSubjectRefs(raw string) []kubernetesRBACSubjectRef {
 			continue
 		}
 		refs = append(refs, kubernetesRBACSubjectRef{Kind: strings.TrimSpace(kind), Namespace: namespace, Name: name})
+	}
+	return refs
+}
+
+func normalizeKubernetesRBACSubjectRefs(values []kubernetesRBACSubjectRef) []kubernetesRBACSubjectRef {
+	refs := make([]kubernetesRBACSubjectRef, 0, len(values))
+	for _, value := range values {
+		ref := kubernetesRBACSubjectRef{
+			Kind:      strings.TrimSpace(value.Kind),
+			Namespace: strings.TrimSpace(value.Namespace),
+			Name:      strings.TrimSpace(value.Name),
+		}
+		if ref.Kind == "" || ref.Name == "" {
+			continue
+		}
+		refs = append(refs, ref)
 	}
 	return refs
 }

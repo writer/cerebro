@@ -753,13 +753,17 @@ type kubernetesRBACBinding struct {
 
 func (s *Source) rbacRoleEvent(st settings, role kubernetesRBACRole) (*primitives.Event, error) {
 	attrs := rbacRoleAttributes(st, role)
+	rules := role.Rules
+	if rules == nil {
+		rules = []rbacv1.PolicyRule{}
+	}
 	payload := map[string]any{
 		"uid":        role.UID,
 		"name":       role.Name,
 		"namespace":  role.Namespace,
 		"role_kind":  role.Kind,
 		"role_scope": rbacScope(role.Namespace),
-		"rules":      role.Rules,
+		"rules":      rules,
 	}
 	id := "kubernetes-rbac-role-" + stableID(st.clusterIdentity()+"/"+role.Kind+"/"+role.Namespace+"/"+role.Name+"/"+role.UID)
 	return s.event(st, id, "kubernetes.rbac_role", "kubernetes/rbac_role/v1", payload, attrs, objectTime(role.Created, s.now()))
@@ -803,7 +807,7 @@ func rbacBindingAttributes(st settings, binding kubernetesRBACBinding) map[strin
 	attrs["role_kind"] = binding.RoleRef.Kind
 	attrs["role_name"] = binding.RoleRef.Name
 	attrs["subject_count"] = strconv.Itoa(len(binding.Subjects))
-	attrs["subject_refs"] = strings.Join(rbacSubjectRefs(binding.Subjects, binding.Namespace), ";")
+	attrs["subject_refs"] = rbacSubjectRefsAttribute(binding.Subjects, binding.Namespace)
 	attrs["subject_kinds"] = strings.Join(rbacSubjectValues(binding.Subjects, func(subject rbacv1.Subject) string { return subject.Kind }), ",")
 	attrs["subject_names"] = strings.Join(rbacSubjectValues(binding.Subjects, func(subject rbacv1.Subject) string {
 		return subject.Name
@@ -1068,20 +1072,46 @@ func rbacRuleValues(rules []rbacv1.PolicyRule, field func(rbacv1.PolicyRule) []s
 	return values
 }
 
-func rbacSubjectRefs(subjects []rbacv1.Subject, bindingNamespace string) []string {
-	values := make([]string, 0, len(subjects))
+type rbacSubjectRef struct {
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name"`
+}
+
+func rbacSubjectRefsAttribute(subjects []rbacv1.Subject, bindingNamespace string) string {
+	refs := rbacSubjectRefs(subjects, bindingNamespace)
+	raw, _ := json.Marshal(refs)
+	return string(raw)
+}
+
+func rbacSubjectRefs(subjects []rbacv1.Subject, bindingNamespace string) []rbacSubjectRef {
+	values := make([]rbacSubjectRef, 0, len(subjects))
 	for _, subject := range subjects {
 		namespace := subject.Namespace
 		if subject.Kind == "ServiceAccount" {
 			namespace = firstNonEmpty(namespace, bindingNamespace, "default")
 		}
-		if strings.TrimSpace(namespace) == "" {
-			values = append(values, fmt.Sprintf("%s:%s", subject.Kind, subject.Name))
+		ref := rbacSubjectRef{
+			Kind: strings.TrimSpace(subject.Kind),
+			Name: strings.TrimSpace(subject.Name),
+		}
+		if strings.TrimSpace(namespace) != "" {
+			ref.Namespace = strings.TrimSpace(namespace)
+		}
+		if ref.Kind == "" || ref.Name == "" {
 			continue
 		}
-		values = append(values, fmt.Sprintf("%s:%s/%s", subject.Kind, namespace, subject.Name))
+		values = append(values, ref)
 	}
-	sort.Strings(values)
+	sort.Slice(values, func(i int, j int) bool {
+		if values[i].Kind != values[j].Kind {
+			return values[i].Kind < values[j].Kind
+		}
+		if values[i].Namespace != values[j].Namespace {
+			return values[i].Namespace < values[j].Namespace
+		}
+		return values[i].Name < values[j].Name
+	})
 	return values
 }
 
