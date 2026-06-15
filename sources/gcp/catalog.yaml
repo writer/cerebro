@@ -14,6 +14,7 @@ emitted_kinds:
   - gcp.cloud_run_revision
   - gcp.cloud_run_service
   - gcp.cloud_sql_instance
+  - gcp.container_registry
   - gcp.container_vulnerability
   - gcp.compute_disk
   - gcp.compute_firewall
@@ -51,6 +52,7 @@ runtime_families:
   - cloud_run_revision
   - cloud_run_service
   - cloud_sql_instance
+  - container_registry
   - container_vulnerability
   - compute_disk
   - compute_firewall
@@ -185,10 +187,9 @@ coverage_contract:
     - id: container_registry
       type: entity_family
       title: Container Registry registries
-      families: [asset_metadata]
-      support: partial
+      families: [container_registry]
+      support: supported
       high_value: true
-      known_unsupported_fields: [legacy Container Registry repository detail]
     - id: dns_managed_zone
       type: entity_family
       title: Cloud DNS managed zones
