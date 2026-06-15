@@ -65,6 +65,8 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyAIDataset, kind: "gcp.aiplatform_dataset"},
+		{family: familyAIEndpoint, kind: "gcp.aiplatform_endpoint"},
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image"},
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset"},
@@ -83,6 +85,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyDNSManagedZone, kind: "gcp.dns_managed_zone"},
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set"},
 		{family: familyGCSBucket, kind: "gcp.gcs_bucket"},
+		{family: familyGCSObject, kind: "gcp.gcs_object"},
 		{family: familyGKECluster, kind: "gcp.gke_cluster"},
 		{family: familyGKENodePool, kind: "gcp.gke_node_pool"},
 		{family: familyGroup, config: map[string]string{"customer_id": "C01"}, kind: "gcp.group"},
@@ -264,6 +267,8 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		attr   string
 		want   string
 	}{
+		{family: familyAIDataset, config: map[string]string{"location": "us-central1"}, kind: "gcp.aiplatform_dataset", attr: "public", want: "true"},
+		{family: familyAIEndpoint, config: map[string]string{"location": "us-central1"}, kind: "gcp.aiplatform_endpoint", attr: "deployed_models_count", want: "1"},
 		{family: familyComputeInstance, kind: "gcp.compute_instance", attr: "service_account_email", want: "vm@writer-prod.iam.gserviceaccount.com"},
 		{family: familyGKECluster, kind: "gcp.gke_cluster", attr: "network_tags", want: "gke"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"},
@@ -281,10 +286,11 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set", attr: "records_count", want: "1"},
 		{family: familyGKENodePool, kind: "gcp.gke_node_pool", attr: "auto_upgrade", want: "true"},
 		{family: familyGCSBucket, kind: "gcp.gcs_bucket", attr: "versioning_enabled", want: "true"},
+		{family: familyGCSObject, kind: "gcp.gcs_object", attr: "acl_readers", want: "allUsers"},
 		{family: familySecret, kind: "gcp.secret_manager_secret", attr: "rotation_enabled", want: "true"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key", attr: "protection_level", want: "HSM"},
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink", attr: "exclusions_count", want: "1"},
-		{family: familyResourceProject, kind: "gcp.resourcemanager_project", attr: "lifecycle_state", want: "ACTIVE"},
+		{family: familyResourceProject, kind: "gcp.resourcemanager_project", attr: "enabled_services_count", want: "2"},
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository", attr: "immutable_tags", want: "true"},
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image", attr: "digest", want: "sha256:abc"},
 	} {
@@ -307,6 +313,121 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadLiveGCSObjectPaginatesWithinBucket(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/storage/v1/b":
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data", "name": "data", "location": "US"}}})
+		case "/storage/v1/b/data/o":
+			if got := r.URL.Query().Get("maxResults"); got != "1" {
+				t.Fatalf("storage object maxResults = %q, want 1", got)
+			}
+			if got := r.URL.Query().Get("projection"); got != "full" {
+				t.Fatalf("storage object projection = %q, want full", got)
+			}
+			switch r.URL.Query().Get("pageToken") {
+			case "":
+				writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data/first.txt/1", "name": "first.txt", "bucket": "data", "generation": "1"}}, "nextPageToken": "objects-2"})
+			case "objects-2":
+				writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data/second.txt/2", "name": "second.txt", "bucket": "data", "generation": "2"}}})
+			default:
+				t.Fatalf("unexpected storage object pageToken %q", r.URL.Query().Get("pageToken"))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyGCSObject,
+		"per_page":   "1",
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyGCSObject, err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["object_name"]; got != "first.txt" {
+		t.Fatalf("first object_name = %q, want first.txt", got)
+	}
+	if got := pull.Events[1].Attributes["object_name"]; got != "second.txt" {
+		t.Fatalf("second object_name = %q, want second.txt", got)
+	}
+}
+
+func TestReadLiveResourceManagerProjectPaginatesEnrichment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/projects/writer-prod":
+			writeJSON(t, w, map[string]any{"projectNumber": "123", "projectId": "writer-prod", "name": "Writer Prod", "lifecycleState": "ACTIVE"})
+		case "/v1/projects/123/services":
+			if got := r.URL.Query().Get("pageSize"); got != "1" {
+				t.Fatalf("service usage pageSize = %q, want 1", got)
+			}
+			if got := r.URL.Query().Get("filter"); got != "state:ENABLED" {
+				t.Fatalf("service usage filter = %q, want state:ENABLED", got)
+			}
+			switch r.URL.Query().Get("pageToken") {
+			case "":
+				writeJSON(t, w, map[string]any{"services": []map[string]any{{"name": "projects/123/services/bigquery.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "bigquery.googleapis.com"}}}, "nextPageToken": "services-2"})
+			case "services-2":
+				writeJSON(t, w, map[string]any{"services": []map[string]any{{"name": "projects/123/services/aiplatform.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "aiplatform.googleapis.com"}}}})
+			default:
+				t.Fatalf("unexpected service usage pageToken %q", r.URL.Query().Get("pageToken"))
+			}
+		case "/v2/projects/writer-prod/policies":
+			if got := r.URL.Query().Get("pageSize"); got != "1" {
+				t.Fatalf("org policy pageSize = %q, want 1", got)
+			}
+			switch r.URL.Query().Get("pageToken") {
+			case "":
+				enforce := true
+				writeJSON(t, w, map[string]any{"policies": []map[string]any{{"name": "projects/writer-prod/policies/iam.disableServiceAccountKeyCreation", "spec": map[string]any{"rules": []map[string]any{{"enforce": enforce}}}}}, "nextPageToken": "policies-2"})
+			case "policies-2":
+				writeJSON(t, w, map[string]any{"policies": []map[string]any{{"name": "projects/writer-prod/policies/constraints/storage.publicAccessPrevention", "spec": map[string]any{"rules": []map[string]any{{"denyAll": true}}}}}})
+			default:
+				t.Fatalf("unexpected org policy pageToken %q", r.URL.Query().Get("pageToken"))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyResourceProject,
+		"per_page":   "1",
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyResourceProject, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["enabled_services_count"]; got != "2" {
+		t.Fatalf("enabled_services_count = %q, want 2", got)
+	}
+	if got := pull.Events[0].Attributes["org_policies_count"]; got != "2" {
+		t.Fatalf("org_policies_count = %q, want 2", got)
 	}
 }
 
@@ -355,6 +476,8 @@ func TestReadLiveGCPDisabledOptionalServicesReturnEmpty(t *testing.T) {
 		family string
 		path   string
 	}{
+		{family: familyAIDataset, path: "/v1/projects/writer-prod/locations/-/datasets"},
+		{family: familyAIEndpoint, path: "/v1/projects/writer-prod/locations/-/endpoints"},
 		{family: familyBigQueryDataset, path: "/bigquery/v2/projects/writer-prod/datasets"},
 		{family: familyGKECluster, path: "/v1/projects/writer-prod/locations/-/clusters"},
 		{family: familyCloudIDSEndpoint, path: "/v1/projects/writer-prod/locations/-/endpoints"},
@@ -531,6 +654,20 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/owner", "members": []string{"serviceAccount:sa@writer-prod.iam.gserviceaccount.com"}}}})
 		case "/v1/projects/writer-prod:searchAllResources":
 			writeJSON(t, w, map[string]any{"results": []map[string]any{{"name": "//storage.googleapis.com/projects/_/buckets/data", "assetType": "storage.googleapis.com/Bucket", "displayName": "data", "location": "us", "labels": map[string]string{"data_classification": "restricted", "owner": "security@writer.com", "tier": "critical", "pii": "true", "env": "prod"}}}})
+		case "/v1/projects/writer-prod/locations/us-central1/datasets":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("vertex datasets pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"datasets": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/datasets/123", "displayName": "training", "metadataSchemaUri": "gs://google-cloud-aiplatform/schema/dataset/metadata/image_1.0.0.yaml", "labels": map[string]string{"env": "prod"}, "encryptionSpec": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vertex"}, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z"}}})
+		case "/v1/projects/writer-prod/locations/us-central1/datasets/123:getIamPolicy":
+			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/aiplatform.viewer", "members": []string{"allUsers"}}, {"role": "roles/aiplatform.admin", "members": []string{"user:ml-admin@writer.com"}}}})
+		case "/v1/projects/writer-prod/locations/us-central1/endpoints":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("vertex endpoints pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"endpoints": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/endpoints/456", "displayName": "prod-model", "labels": map[string]string{"env": "prod"}, "network": "projects/writer-prod/global/networks/default", "privateServiceConnectConfig": map[string]any{"enablePrivateServiceConnect": true, "projectAllowlist": []string{"writer-prod"}}, "deployedModels": []map[string]any{{"id": "deployed-1", "model": "projects/writer-prod/locations/us-central1/models/789", "displayName": "classifier", "serviceAccount": "vertex@writer-prod.iam.gserviceaccount.com", "enableAccessLogging": true, "enableContainerLogging": true, "machineSpec": map[string]any{"machineType": "n1-standard-4"}}}, "trafficSplit": map[string]int{"deployed-1": 100}, "encryptionSpec": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vertex"}, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z"}}})
+		case "/v1/projects/writer-prod/locations/us-central1/endpoints/456:getIamPolicy":
+			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/aiplatform.user", "members": []string{"serviceAccount:vertex@writer-prod.iam.gserviceaccount.com"}}}})
 		case "/bigquery/v2/projects/writer-prod/datasets":
 			if got := r.URL.Query().Get("maxResults"); got != "10" {
 				t.Fatalf("bigquery maxResults = %q, want 10", got)
@@ -582,6 +719,11 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("storage project = %q, want writer-prod", got)
 			}
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data", "name": "data", "location": "US", "storageClass": "STANDARD", "labels": map[string]string{"env": "prod"}, "encryption": map[string]string{"defaultKmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/storage"}, "versioning": map[string]bool{"enabled": true}, "iamConfiguration": map[string]any{"uniformBucketLevelAccess": map[string]bool{"enabled": true}, "publicAccessPrevention": "enforced"}}}})
+		case "/storage/v1/b/data/o":
+			if got := r.URL.Query().Get("projection"); got != "full" {
+				t.Fatalf("storage object projection = %q, want full", got)
+			}
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data/training.csv/1770000000000000", "name": "training.csv", "bucket": "data", "generation": "1770000000000000", "contentType": "text/csv", "storageClass": "STANDARD", "size": "42", "kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/storage", "timeCreated": "2026-04-23T00:00:00Z", "updated": "2026-04-24T00:00:00Z", "metadata": map[string]string{"data_classification": "restricted", "pii": "true"}, "acl": []map[string]string{{"entity": "allUsers", "role": "READER"}, {"entity": "user-ml-admin@writer.com", "role": "OWNER", "email": "ml-admin@writer.com"}}}}})
 		case "/v1/projects/writer-prod/secrets":
 			writeJSON(t, w, map[string]any{"secrets": []map[string]any{{"name": "projects/writer-prod/secrets/api-key", "labels": map[string]string{"env": "prod"}, "expireTime": "2027-04-23T00:00:00Z", "replication": map[string]any{"userManaged": map[string]any{"replicas": []map[string]any{{"location": "us-central1", "customerManagedEncryption": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/secrets"}}}}}, "rotation": map[string]string{"nextRotationTime": "2026-05-23T00:00:00Z", "rotationPeriod": "2592000s"}}}})
 		case "/v1/projects/writer-prod/locations/us/keyRings/prod/cryptoKeys":
@@ -593,6 +735,14 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"sinks": []map[string]any{{"name": "security-sink", "resourceName": "projects/writer-prod/sinks/security-sink", "description": "security export", "destination": "bigquery.googleapis.com/projects/writer-prod/datasets/security_logs", "filter": "severity>=ERROR", "disabled": false, "writerIdentity": "serviceAccount:writer-prod@gcp-sa-logging.iam.gserviceaccount.com", "includeChildren": false, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "exclusions": []map[string]any{{"name": "debug", "filter": "severity<ERROR", "disabled": false}}, "bigqueryOptions": map[string]bool{"usePartitionedTables": true, "usesTimestampColumnPartitioning": true}}}})
 		case "/v1/projects/writer-prod":
 			writeJSON(t, w, map[string]any{"projectNumber": "123456789", "projectId": "writer-prod", "name": "Writer Prod", "lifecycleState": "ACTIVE", "labels": map[string]string{"env": "prod"}, "createTime": "2026-04-23T00:00:00Z", "parent": map[string]string{"type": "organization", "id": "1234"}})
+		case "/v1/projects/123456789/services":
+			if got := r.URL.Query().Get("filter"); got != "state:ENABLED" {
+				t.Fatalf("service usage filter = %q, want state:ENABLED", got)
+			}
+			writeJSON(t, w, map[string]any{"services": []map[string]any{{"name": "projects/123456789/services/bigquery.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "bigquery.googleapis.com", "title": "BigQuery API"}}, {"name": "projects/123456789/services/aiplatform.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "aiplatform.googleapis.com", "title": "Vertex AI API"}}}})
+		case "/v2/projects/writer-prod/policies":
+			enforce := true
+			writeJSON(t, w, map[string]any{"policies": []map[string]any{{"name": "projects/writer-prod/policies/iam.disableServiceAccountKeyCreation", "spec": map[string]any{"rules": []map[string]any{{"enforce": enforce}}}}}})
 		case "/v1/projects/writer-prod/locations/-/repositories":
 			writeJSON(t, w, map[string]any{"repositories": []map[string]any{{"name": "projects/writer-prod/locations/us/repositories/app", "format": "DOCKER", "mode": "STANDARD_REPOSITORY", "kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/artifacts", "labels": map[string]string{"env": "prod"}, "dockerConfig": map[string]bool{"immutableTags": true}}}})
 		case "/v1/projects/writer-prod/locations/us/repositories/app/dockerImages":
