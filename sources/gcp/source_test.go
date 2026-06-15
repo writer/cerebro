@@ -87,6 +87,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyComputeInstance, kind: "gcp.compute_instance"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network"},
 		{family: familyComputeRoute, kind: "gcp.compute_route"},
+		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork"},
 		{family: familyDNSManagedZone, kind: "gcp.dns_managed_zone"},
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set"},
@@ -293,6 +294,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeBackendService, kind: "gcp.compute_backend_service", attr: "health_checks_count", want: "1"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
+		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy", attr: "rules_count", want: "3"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall", attr: "source_ranges", want: "0.0.0.0/0"},
 		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule", attr: "internet_exposed", want: "true"},
@@ -823,6 +825,14 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("backend services maxResults = %q, want 10", got)
 			}
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"backendServices": []map[string]any{{"id": "bs-1", "name": "prod-backend", "selfLink": "projects/writer-prod/global/backendServices/prod-backend", "description": "prod https backend", "protocol": "HTTPS", "portName": "https", "loadBalancingScheme": "EXTERNAL_MANAGED", "sessionAffinity": "NONE", "localityLbPolicy": "ROUND_ROBIN", "timeoutSec": 30, "enableCDN": true, "healthChecks": []string{"projects/writer-prod/global/healthChecks/prod-hc"}, "backends": []map[string]any{{"group": "projects/writer-prod/zones/us-central1-a/instanceGroups/prod-mig", "balancingMode": "UTILIZATION", "capacityScaler": 1.0, "maxUtilization": 0.8}}, "connectionDraining": map[string]int{"drainingTimeoutSec": 300}, "logConfig": map[string]any{"enable": true, "sampleRate": 1.0}, "iap": map[string]bool{"enabled": true}, "securityPolicy": "projects/writer-prod/global/securityPolicies/prod-armor", "network": "projects/writer-prod/global/networks/default", "customRequestHeaders": []string{"X-Forwarded-Proto:{client_protocol}"}, "labels": map[string]string{"env": "prod"}}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/securityPolicies":
+			if got := r.URL.Query().Get("maxResults"); got != "10" {
+				t.Fatalf("security policies maxResults = %q, want 10", got)
+			}
+			if got := r.URL.Query().Get("returnPartialSuccess"); got != "true" {
+				t.Fatalf("security policies returnPartialSuccess = %q, want true", got)
+			}
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"securityPolicies": []map[string]any{{"id": "sp-1", "name": "prod-armor", "selfLink": "projects/writer-prod/global/securityPolicies/prod-armor", "description": "prod cloud armor policy", "type": "CLOUD_ARMOR", "fingerprint": "abc123", "rules": []map[string]any{{"priority": 1000, "action": "deny(403)", "description": "block sqli", "match": map[string]any{"expr": map[string]string{"expression": "evaluatePreconfiguredWaf('sqli-v33-stable')"}}}, {"priority": 2000, "action": "throttle", "preview": true, "description": "rate limit broad traffic", "match": map[string]any{"versionedExpr": "SRC_IPS_V1", "config": map[string]any{"srcIpRanges": []string{"0.0.0.0/0"}}}}, {"priority": 2147483647, "action": "allow", "description": "default allow", "match": map[string]any{"versionedExpr": "SRC_IPS_V1", "config": map[string]any{"srcIpRanges": []string{"0.0.0.0/0"}}}}}, "adaptiveProtectionConfig": map[string]any{"layer7DdosDefenseConfig": map[string]bool{"enable": true}}, "advancedOptionsConfig": map[string]any{"jsonParsing": "STANDARD", "logLevel": "VERBOSE", "userIpRequestHeaders": []string{"X-Forwarded-For"}}, "associations": []map[string]any{{"name": "prod-backend", "attachmentId": "projects/writer-prod/global/backendServices/prod-backend", "securityPolicyId": "sp-1", "shortName": "prod-armor"}}, "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/subnetworks":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"subnetworks": []map[string]any{{"id": "subnet-1", "name": "default", "selfLink": "projects/writer-prod/regions/us-central1/subnetworks/default", "network": "projects/writer-prod/global/networks/default", "region": "projects/writer-prod/regions/us-central1", "ipCidrRange": "10.0.0.0/24", "privateIpGoogleAccess": true, "purpose": "PRIVATE", "stackType": "IPV4_ONLY", "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/disks":

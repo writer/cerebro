@@ -497,6 +497,67 @@ type ComputeBackendServiceIAP struct {
 	Enabled bool `json:"enabled"`
 }
 
+type ComputeSecurityPolicyRecord struct {
+	ID                       string                                  `json:"id"`
+	Name                     string                                  `json:"name"`
+	SelfLink                 string                                  `json:"selfLink"`
+	Description              string                                  `json:"description"`
+	Region                   string                                  `json:"region"`
+	Type                     string                                  `json:"type"`
+	Fingerprint              string                                  `json:"fingerprint"`
+	Rules                    []ComputeSecurityPolicyRule             `json:"rules"`
+	AdaptiveProtectionConfig ComputeSecurityPolicyAdaptiveProtection `json:"adaptiveProtectionConfig"`
+	AdvancedOptionsConfig    ComputeSecurityPolicyAdvancedOptions    `json:"advancedOptionsConfig"`
+	Associations             []ComputeSecurityPolicyAssociation      `json:"associations"`
+	Labels                   map[string]string                       `json:"labels"`
+	Raw                      json.RawMessage                         `json:"-"`
+}
+
+type ComputeSecurityPolicyRule struct {
+	Priority    int                        `json:"priority"`
+	Description string                     `json:"description"`
+	Action      string                     `json:"action"`
+	Preview     bool                       `json:"preview"`
+	Match       ComputeSecurityPolicyMatch `json:"match"`
+}
+
+type ComputeSecurityPolicyMatch struct {
+	VersionedExpr string                           `json:"versionedExpr"`
+	Config        ComputeSecurityPolicyMatchConfig `json:"config"`
+	Expr          ComputeSecurityPolicyExpr        `json:"expr"`
+}
+
+type ComputeSecurityPolicyMatchConfig struct {
+	SrcIPRanges []string `json:"srcIpRanges"`
+}
+
+type ComputeSecurityPolicyExpr struct {
+	Expression string `json:"expression"`
+}
+
+type ComputeSecurityPolicyAdaptiveProtection struct {
+	Layer7DDoSDefenseConfig ComputeSecurityPolicyLayer7DDoSDefense `json:"layer7DdosDefenseConfig"`
+}
+
+type ComputeSecurityPolicyLayer7DDoSDefense struct {
+	Enable bool `json:"enable"`
+}
+
+type ComputeSecurityPolicyAdvancedOptions struct {
+	JSONParsing          string   `json:"jsonParsing"`
+	LogLevel             string   `json:"logLevel"`
+	UserIPRequestHeaders []string `json:"userIpRequestHeaders"`
+}
+
+type ComputeSecurityPolicyAssociation struct {
+	Name             string   `json:"name"`
+	AttachmentID     string   `json:"attachmentId"`
+	ExcludedProjects []string `json:"excludedProjects"`
+	ExcludedFolders  []string `json:"excludedFolders"`
+	SecurityPolicyID string   `json:"securityPolicyId"`
+	ShortName        string   `json:"shortName"`
+}
+
 type ComputeNetworkRecord struct {
 	ID                    string                      `json:"id"`
 	Name                  string                      `json:"name"`
@@ -1757,6 +1818,46 @@ func ComputeBackendServiceEvent(settings Settings, record ComputeBackendServiceR
 	return sourceEvent(settings, "gcp-compute-backend-service-"+resourceID, "gcp.compute_backend_service", "gcp/compute_backend_service/v1", payload, attributes)
 }
 
+func ComputeSecurityPolicyEvent(settings Settings, record ComputeSecurityPolicyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	rules := computeSecurityPolicyRules(record.Rules)
+	associatedNames, associatedURLs := computeSecurityPolicyAssociations(record.Associations)
+	attributes := cloudResourceAttributes(settings, "compute_security_policy", resourceID, record.Name, "compute_security_policy", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["security_policy_type"] = record.Type
+	attributes["policy_type"] = record.Type
+	attributes["fingerprint"] = record.Fingerprint
+	attributes["rules_count"] = strconv.Itoa(len(record.Rules))
+	attributes["preview_rules_count"] = strconv.Itoa(rules.previewCount)
+	attributes["allow_rules_count"] = strconv.Itoa(rules.allowCount)
+	attributes["deny_rules_count"] = strconv.Itoa(rules.denyCount)
+	attributes["throttle_rules_count"] = strconv.Itoa(rules.throttleCount)
+	attributes["rate_based_ban_rules_count"] = strconv.Itoa(rules.rateBasedBanCount)
+	attributes["redirect_rules_count"] = strconv.Itoa(rules.redirectCount)
+	attributes["custom_expression_rules_count"] = strconv.Itoa(rules.customExpressionCount)
+	attributes["default_rule_action"] = rules.defaultAction
+	attributes["rule_actions"] = strings.Join(rules.actions, ",")
+	attributes["versioned_expressions"] = strings.Join(rules.versionedExpressions, ",")
+	attributes["source_ip_ranges"] = strings.Join(rules.sourceIPRanges, ",")
+	attributes["custom_expressions"] = strings.Join(rules.customExpressions, "\n")
+	attributes["adaptive_protection_enabled"] = boolString(record.AdaptiveProtectionConfig.Layer7DDoSDefenseConfig.Enable)
+	attributes["json_parsing"] = record.AdvancedOptionsConfig.JSONParsing
+	attributes["log_level"] = record.AdvancedOptionsConfig.LogLevel
+	attributes["user_ip_request_headers"] = strings.Join(record.AdvancedOptionsConfig.UserIPRequestHeaders, ",")
+	attributes["associations_count"] = strconv.Itoa(len(record.Associations))
+	attributes["associated_resources"] = strings.Join(associatedNames, ",")
+	attributes["associated_resource_urls"] = strings.Join(associatedURLs, ",")
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-security-policy-"+resourceID, "gcp.compute_security_policy", "gcp/compute_security_policy/v1", payload, attributes)
+}
+
 func ComputeNetworkEvent(settings Settings, record ComputeNetworkRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	attributes := cloudResourceAttributes(settings, "compute_network", resourceID, record.Name, "compute_network", "global", record.Labels)
@@ -2656,6 +2757,81 @@ func computeBackendServiceBackends(backends []ComputeBackendServiceBackend) ([]s
 		}
 	}
 	return names, urls, modes, failoverCount
+}
+
+type computeSecurityPolicyRuleSummary struct {
+	actions               []string
+	versionedExpressions  []string
+	sourceIPRanges        []string
+	customExpressions     []string
+	defaultAction         string
+	previewCount          int
+	allowCount            int
+	denyCount             int
+	throttleCount         int
+	rateBasedBanCount     int
+	redirectCount         int
+	customExpressionCount int
+}
+
+func computeSecurityPolicyRules(rules []ComputeSecurityPolicyRule) computeSecurityPolicyRuleSummary {
+	summary := computeSecurityPolicyRuleSummary{}
+	defaultPriority := -1
+	for _, rule := range rules {
+		action := strings.TrimSpace(rule.Action)
+		normalizedAction := strings.ToLower(action)
+		if action != "" {
+			summary.actions = appendUnique(summary.actions, action)
+		}
+		switch {
+		case normalizedAction == "allow":
+			summary.allowCount++
+		case strings.HasPrefix(normalizedAction, "deny"):
+			summary.denyCount++
+		case strings.HasPrefix(normalizedAction, "throttle"):
+			summary.throttleCount++
+		case strings.HasPrefix(normalizedAction, "rate_based_ban"):
+			summary.rateBasedBanCount++
+		case strings.HasPrefix(normalizedAction, "redirect"):
+			summary.redirectCount++
+		}
+		if rule.Preview {
+			summary.previewCount++
+		}
+		if rule.Priority > defaultPriority {
+			defaultPriority = rule.Priority
+			summary.defaultAction = action
+		}
+		if versionedExpression := strings.TrimSpace(rule.Match.VersionedExpr); versionedExpression != "" {
+			summary.versionedExpressions = appendUnique(summary.versionedExpressions, versionedExpression)
+		}
+		for _, sourceIPRange := range rule.Match.Config.SrcIPRanges {
+			if sourceIPRange = strings.TrimSpace(sourceIPRange); sourceIPRange != "" {
+				summary.sourceIPRanges = appendUnique(summary.sourceIPRanges, sourceIPRange)
+			}
+		}
+		if expression := strings.TrimSpace(rule.Match.Expr.Expression); expression != "" {
+			summary.customExpressions = append(summary.customExpressions, expression)
+			summary.customExpressionCount++
+		}
+	}
+	return summary
+}
+
+func computeSecurityPolicyAssociations(associations []ComputeSecurityPolicyAssociation) ([]string, []string) {
+	names := make([]string, 0, len(associations))
+	urls := make([]string, 0, len(associations))
+	for _, association := range associations {
+		if association.AttachmentID != "" {
+			urls = append(urls, association.AttachmentID)
+			names = append(names, firstNonEmpty(association.Name, lastPathSegment(association.AttachmentID)))
+			continue
+		}
+		if association.Name != "" {
+			names = append(names, association.Name)
+		}
+	}
+	return names, urls
 }
 
 func lastPathSegments(values []string) []string {

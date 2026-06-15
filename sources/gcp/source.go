@@ -56,6 +56,7 @@ const (
 	familyComputeInstance                        = "compute_instance"
 	familyComputeNetwork                         = "compute_network"
 	familyComputeRoute                           = "compute_route"
+	familyComputeSecurityPolicy                  = "compute_security_policy"
 	familyComputeSubnetwork                      = "compute_subnetwork"
 	familyDNSManagedZone                         = "dns_managed_zone"
 	familyDNSRecordSet                           = "dns_record_set"
@@ -148,11 +149,12 @@ type computeAggregatedListResponse struct {
 }
 
 type computeScopedResources struct {
-	BackendServices []json.RawMessage `json:"backendServices"`
-	Disks           []json.RawMessage `json:"disks"`
-	ForwardingRules []json.RawMessage `json:"forwardingRules"`
-	Instances       []json.RawMessage `json:"instances"`
-	Subnetworks     []json.RawMessage `json:"subnetworks"`
+	BackendServices  []json.RawMessage `json:"backendServices"`
+	Disks            []json.RawMessage `json:"disks"`
+	ForwardingRules  []json.RawMessage `json:"forwardingRules"`
+	Instances        []json.RawMessage `json:"instances"`
+	SecurityPolicies []json.RawMessage `json:"securityPolicies"`
+	Subnetworks      []json.RawMessage `json:"subnetworks"`
 }
 
 type serviceAccountRecord = gcpcloud.ServiceAccountRecord
@@ -411,6 +413,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeRouteRecord]{Name: familyComputeRoute, Label: "gcp compute routes", List: listComputeRoutes, Event: gcpCloudEvent(gcpcloud.ComputeRouteEvent), URN: func(settings settings, route gcpcloud.ComputeRouteRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_compute_route:%s", tenantID(settings), firstNonEmpty(route.SelfLink, route.ID, route.Name)), nil
 		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSecurityPolicyRecord]{
+			Name:  familyComputeSecurityPolicy,
+			Label: "gcp compute security policies",
+			List:  listComputeSecurityPolicies,
+			Event: gcpCloudEvent(gcpcloud.ComputeSecurityPolicyEvent),
+			URN: func(settings settings, policy gcpcloud.ComputeSecurityPolicyRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_security_policy:%s", tenantID(settings), firstNonEmpty(policy.SelfLink, policy.ID, policy.Name)), nil
+			},
+		}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeSubnetworkRecord]{
 			Name:  familyComputeSubnetwork,
 			Label: "gcp compute subnetworks",
@@ -706,7 +717,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeBackendService, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeBackendService, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSecurityPolicy, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -992,18 +1003,15 @@ func listComputeInstances(ctx context.Context, source *Source, settings settings
 }
 
 func listComputeBackendServices(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeBackendServiceRecord, string, error) {
-	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
-	addQuery(query, pageToken)
-	var response computeAggregatedListResponse
-	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/backendServices"
-	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
-		return nil, "", err
-	}
-	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.BackendServices }, "")
-	records, err := decodeRecords(rawRecords, "gcp compute backend service", func(record *gcpcloud.ComputeBackendServiceRecord, raw json.RawMessage) {
+	return listComputeAggregatedRecords(ctx, source, settings, pageToken, limit, "backendServices", "gcp compute backend service", func(scoped computeScopedResources) []json.RawMessage { return scoped.BackendServices }, "", nil, func(record *gcpcloud.ComputeBackendServiceRecord, raw json.RawMessage) {
 		record.Raw = append(json.RawMessage(nil), raw...)
 	})
-	return records, response.NextPageToken, err
+}
+
+func listComputeSecurityPolicies(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeSecurityPolicyRecord, string, error) {
+	return listComputeAggregatedRecords(ctx, source, settings, pageToken, limit, "securityPolicies", "gcp compute security policy", func(scoped computeScopedResources) []json.RawMessage { return scoped.SecurityPolicies }, "", url.Values{"returnPartialSuccess": {"true"}}, func(record *gcpcloud.ComputeSecurityPolicyRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
 }
 
 func listComputeNetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeNetworkRecord, string, error) {
@@ -1035,18 +1043,9 @@ func listComputeRoutes(ctx context.Context, source *Source, settings settings, p
 }
 
 func listComputeSubnetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeSubnetworkRecord, string, error) {
-	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
-	addQuery(query, pageToken)
-	var response computeAggregatedListResponse
-	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/subnetworks"
-	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
-		return nil, "", err
-	}
-	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.Subnetworks }, "region")
-	records, err := decodeRecords(rawRecords, "gcp compute subnetwork", func(record *gcpcloud.ComputeSubnetworkRecord, raw json.RawMessage) {
+	return listComputeAggregatedRecords(ctx, source, settings, pageToken, limit, "subnetworks", "gcp compute subnetwork", func(scoped computeScopedResources) []json.RawMessage { return scoped.Subnetworks }, "region", nil, func(record *gcpcloud.ComputeSubnetworkRecord, raw json.RawMessage) {
 		record.Raw = append(json.RawMessage(nil), raw...)
 	})
-	return records, response.NextPageToken, err
 }
 
 func listComputeFirewalls(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]firewallRecord, string, error) {
@@ -1064,32 +1063,29 @@ func listComputeFirewalls(ctx context.Context, source *Source, settings settings
 }
 
 func listComputeForwardingRules(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeForwardingRuleRecord, string, error) {
-	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
-	addQuery(query, pageToken)
-	var response computeAggregatedListResponse
-	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/forwardingRules"
-	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
-		return nil, "", err
-	}
-	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.ForwardingRules }, "")
-	records, err := decodeRecords(rawRecords, "gcp compute forwarding rule", func(record *gcpcloud.ComputeForwardingRuleRecord, raw json.RawMessage) {
+	return listComputeAggregatedRecords(ctx, source, settings, pageToken, limit, "forwardingRules", "gcp compute forwarding rule", func(scoped computeScopedResources) []json.RawMessage { return scoped.ForwardingRules }, "", nil, func(record *gcpcloud.ComputeForwardingRuleRecord, raw json.RawMessage) {
 		record.Raw = append(json.RawMessage(nil), raw...)
 	})
-	return records, response.NextPageToken, err
 }
 
 func listComputeDisks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeDiskRecord, string, error) {
+	return listComputeAggregatedRecords(ctx, source, settings, pageToken, limit, "disks", "gcp compute disk", func(scoped computeScopedResources) []json.RawMessage { return scoped.Disks }, "", nil, func(record *gcpcloud.ComputeDiskRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func listComputeAggregatedRecords[T any](ctx context.Context, source *Source, settings settings, pageToken string, limit int, collection string, label string, selectRecords func(computeScopedResources) []json.RawMessage, scopeField string, extraQuery url.Values, saveRaw func(*T, json.RawMessage)) ([]T, string, error) {
 	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	for key, values := range extraQuery {
+		query[key] = append(query[key], values...)
+	}
 	addQuery(query, pageToken)
 	var response computeAggregatedListResponse
-	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/disks"
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/" + collection
 	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.Disks }, "")
-	records, err := decodeRecords(rawRecords, "gcp compute disk", func(record *gcpcloud.ComputeDiskRecord, raw json.RawMessage) {
-		record.Raw = append(json.RawMessage(nil), raw...)
-	})
+	records, err := decodeRecords(computeAggregatedRawRecords(response.Items, selectRecords, scopeField), label, saveRaw)
 	return records, response.NextPageToken, err
 }
 
