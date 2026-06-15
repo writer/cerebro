@@ -17,6 +17,7 @@ emitted_kinds:
   - gcp.cloud_sql_instance
   - gcp.container_registry
   - gcp.container_vulnerability
+  - gcp.compute_address
   - gcp.compute_backend_service
   - gcp.compute_disk
   - gcp.compute_firewall
@@ -64,6 +65,7 @@ runtime_families:
   - cloud_sql_instance
   - container_registry
   - container_vulnerability
+  - compute_address
   - compute_backend_service
   - compute_disk
   - compute_firewall
@@ -169,6 +171,12 @@ coverage_contract:
       type: entity_family
       title: Cloud SQL instances
       families: [cloud_sql_instance]
+      support: supported
+      high_value: true
+    - id: compute_address
+      type: entity_family
+      title: Compute addresses
+      families: [compute_address]
       support: supported
       high_value: true
     - id: compute_backend_service
