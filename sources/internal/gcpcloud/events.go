@@ -30,6 +30,8 @@ type Settings struct {
 	ServiceAccountEmail string
 }
 
+type PayloadValues map[string]any
+
 func ComputeAggregatedRawRecords[T any](items map[string]T, get func(T) []json.RawMessage, scopeField string) []json.RawMessage {
 	rawRecords := make([]json.RawMessage, 0)
 	for scope, scoped := range items {
@@ -387,6 +389,113 @@ type CloudSchedulerOIDCToken struct {
 type CloudSchedulerJobsResponse struct {
 	Jobs          []json.RawMessage `json:"jobs"`
 	NextPageToken string            `json:"nextPageToken"`
+}
+
+type CertificateManagerCertificateRecord struct {
+	Name            string                                       `json:"name"`
+	Description     string                                       `json:"description"`
+	CreateTime      string                                       `json:"createTime"`
+	UpdateTime      string                                       `json:"updateTime"`
+	Labels          map[string]string                            `json:"labels"`
+	SelfManaged     CertificateManagerSelfManagedCertificate     `json:"selfManaged"`
+	Managed         CertificateManagerManagedCertificate         `json:"managed"`
+	ManagedIdentity CertificateManagerManagedIdentityCertificate `json:"managedIdentity"`
+	SanDNSNames     []string                                     `json:"sanDnsnames"`
+	PEMCertificate  string                                       `json:"pemCertificate"`
+	ExpireTime      string                                       `json:"expireTime"`
+	Scope           string                                       `json:"scope"`
+	UsedBy          []CertificateManagerUsedBy                   `json:"usedBy"`
+	Raw             json.RawMessage                              `json:"-"`
+}
+
+type CertificateManagerSelfManagedCertificate struct {
+	PEMCertificate string `json:"pemCertificate"`
+	PEMPrivateKey  string `json:"pemPrivateKey"`
+}
+
+type CertificateManagerManagedCertificate struct {
+	Domains                  []string                                     `json:"domains"`
+	DNSAuthorizations        []string                                     `json:"dnsAuthorizations"`
+	IssuanceConfig           string                                       `json:"issuanceConfig"`
+	State                    string                                       `json:"state"`
+	ProvisioningIssue        CertificateManagerProvisioningIssue          `json:"provisioningIssue"`
+	AuthorizationAttemptInfo []CertificateManagerAuthorizationAttemptInfo `json:"authorizationAttemptInfo"`
+}
+
+type CertificateManagerManagedIdentityCertificate struct {
+	Identity          string                              `json:"identity"`
+	State             string                              `json:"state"`
+	ProvisioningIssue CertificateManagerProvisioningIssue `json:"provisioningIssue"`
+}
+
+type CertificateManagerProvisioningIssue struct {
+	Reason  string `json:"reason"`
+	Details string `json:"details"`
+}
+
+type CertificateManagerAuthorizationAttemptInfo struct {
+	Domain        string `json:"domain"`
+	State         string `json:"state"`
+	FailureReason string `json:"failureReason"`
+	Details       string `json:"details"`
+	AttemptTime   string `json:"attemptTime"`
+}
+
+type CertificateManagerUsedBy struct {
+	Name string `json:"name"`
+}
+
+type CertificateManagerCertificateMapRecord struct {
+	Name        string                         `json:"name"`
+	Description string                         `json:"description"`
+	CreateTime  string                         `json:"createTime"`
+	UpdateTime  string                         `json:"updateTime"`
+	Labels      map[string]string              `json:"labels"`
+	GCLBTargets []CertificateManagerGCLBTarget `json:"gclbTargets"`
+	Raw         json.RawMessage                `json:"-"`
+}
+
+type CertificateManagerGCLBTarget struct {
+	TargetHTTPSProxy string                       `json:"targetHttpsProxy"`
+	TargetSSLProxy   string                       `json:"targetSslProxy"`
+	IPConfigs        []CertificateManagerIPConfig `json:"ipConfigs"`
+}
+
+type CertificateManagerIPConfig struct {
+	IPAddress string `json:"ipAddress"`
+	Ports     []int  `json:"ports"`
+}
+
+type CertificateManagerCertificateMapEntryRecord struct {
+	Name           string            `json:"name"`
+	Description    string            `json:"description"`
+	CreateTime     string            `json:"createTime"`
+	UpdateTime     string            `json:"updateTime"`
+	Labels         map[string]string `json:"labels"`
+	Hostname       string            `json:"hostname"`
+	Matcher        string            `json:"matcher"`
+	Certificates   []string          `json:"certificates"`
+	State          string            `json:"state"`
+	CertificateMap string            `json:"-"`
+	Raw            json.RawMessage   `json:"-"`
+}
+
+type CertificateManagerDNSAuthorizationRecord struct {
+	Name              string                              `json:"name"`
+	Description       string                              `json:"description"`
+	CreateTime        string                              `json:"createTime"`
+	UpdateTime        string                              `json:"updateTime"`
+	Labels            map[string]string                   `json:"labels"`
+	Domain            string                              `json:"domain"`
+	DNSResourceRecord CertificateManagerDNSResourceRecord `json:"dnsResourceRecord"`
+	Type              string                              `json:"type"`
+	Raw               json.RawMessage                     `json:"-"`
+}
+
+type CertificateManagerDNSResourceRecord struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Data string `json:"data"`
 }
 
 type CloudSQLInstanceRecord struct {
@@ -1478,6 +1587,26 @@ type ComputeDiskEncryptionKey struct {
 	KMSKeyName string `json:"kmsKeyName"`
 }
 
+type VPCAccessConnectorRecord struct {
+	Name              string                   `json:"name"`
+	Network           string                   `json:"network"`
+	IPCIDRRange       string                   `json:"ipCidrRange"`
+	State             string                   `json:"state"`
+	MinThroughput     int                      `json:"minThroughput"`
+	MaxThroughput     int                      `json:"maxThroughput"`
+	ConnectedProjects []string                 `json:"connectedProjects"`
+	Subnet            VPCAccessConnectorSubnet `json:"subnet"`
+	MachineType       string                   `json:"machineType"`
+	MinInstances      int                      `json:"minInstances"`
+	MaxInstances      int                      `json:"maxInstances"`
+	Raw               json.RawMessage          `json:"-"`
+}
+
+type VPCAccessConnectorSubnet struct {
+	Name      string `json:"name"`
+	ProjectID string `json:"projectId"`
+}
+
 func (record ComputeAddressRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name, record.Address)
 }
@@ -1600,6 +1729,26 @@ func (record ComputeSSLPolicyRecord) CerebroResourceID() string {
 
 func (record ComputeURLMapRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record CertificateManagerCertificateRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record CertificateManagerCertificateMapRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record CertificateManagerCertificateMapEntryRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record CertificateManagerDNSAuthorizationRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record VPCAccessConnectorRecord) CerebroResourceID() string {
+	return record.Name
 }
 
 type GKEClusterRecord struct {
@@ -2596,6 +2745,143 @@ func CloudFunctionEvent(settings Settings, record CloudFunctionRecord) (*primiti
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-cloud-function-"+record.Name, "gcp.cloud_function", "gcp/cloud_function/v1", payload, attributes)
+}
+
+func CertificateManagerCertificateEvent(settings Settings, record CertificateManagerCertificateRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	certificateType := certificateManagerCertificateType(record)
+	usedBy := certificateManagerUsedByNames(record.UsedBy)
+	attemptDomains, attemptStates, attemptFailures := certificateManagerAuthorizationAttemptSummary(record.Managed.AuthorizationAttemptInfo)
+	attributes := cloudResourceAttributes(settings, "certificate_manager_certificate", record.Name, lastPathSegment(record.Name), "certificate_manager_certificate", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["certificate_type"] = certificateType
+	attributes["type"] = certificateType
+	attributes["managed"] = boolString(certificateType == "MANAGED")
+	attributes["self_managed"] = boolString(certificateType == "SELF_MANAGED")
+	attributes["managed_identity"] = boolString(certificateType == "MANAGED_IDENTITY")
+	attributes["managed_state"] = firstNonEmpty(record.Managed.State, record.ManagedIdentity.State)
+	attributes["managed_identity_id"] = record.ManagedIdentity.Identity
+	attributes["managed_identity_state"] = record.ManagedIdentity.State
+	attributes["managed_identity_provisioning_issue_reason"] = record.ManagedIdentity.ProvisioningIssue.Reason
+	attributes["managed_domains"] = strings.Join(record.Managed.Domains, ",")
+	attributes["managed_domains_count"] = strconv.Itoa(len(record.Managed.Domains))
+	attributes["dns_authorizations"] = strings.Join(lastPathSegments(record.Managed.DNSAuthorizations), ",")
+	attributes["dns_authorization_urls"] = strings.Join(record.Managed.DNSAuthorizations, ",")
+	attributes["dns_authorizations_count"] = strconv.Itoa(len(record.Managed.DNSAuthorizations))
+	attributes["issuance_config"] = lastPathSegment(record.Managed.IssuanceConfig)
+	attributes["issuance_config_url"] = record.Managed.IssuanceConfig
+	attributes["provisioning_issue_reason"] = record.Managed.ProvisioningIssue.Reason
+	attributes["authorization_attempt_domains"] = strings.Join(attemptDomains, ",")
+	attributes["authorization_attempt_states"] = strings.Join(attemptStates, ",")
+	attributes["authorization_failure_reasons"] = strings.Join(attemptFailures, ",")
+	attributes["san_dns_names"] = strings.Join(record.SanDNSNames, ",")
+	attributes["sans"] = strings.Join(record.SanDNSNames, ",")
+	attributes["san_count"] = strconv.Itoa(len(record.SanDNSNames))
+	attributes["scope"] = record.Scope
+	attributes["expire_time"] = record.ExpireTime
+	attributes["used_by"] = strings.Join(lastPathSegments(usedBy), ",")
+	attributes["used_by_urls"] = strings.Join(usedBy, ",")
+	attributes["used_by_count"] = strconv.Itoa(len(usedBy))
+	attributes["tls_enabled"] = "true"
+	attributes["create_time"] = record.CreateTime
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-certificate-manager-certificate-"+record.Name, "gcp.certificate_manager_certificate", "gcp/certificate_manager_certificate/v1", payload, attributes)
+}
+
+func CertificateManagerCertificateMapEvent(settings Settings, record CertificateManagerCertificateMapRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	httpsProxies, sslProxies, ipAddresses, ports := certificateManagerGCLBTargets(record.GCLBTargets)
+	attributes := cloudResourceAttributes(settings, "certificate_manager_certificate_map", record.Name, lastPathSegment(record.Name), "certificate_manager_certificate_map", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["target_https_proxies"] = strings.Join(lastPathSegments(httpsProxies), ",")
+	attributes["target_https_proxy_urls"] = strings.Join(httpsProxies, ",")
+	attributes["target_ssl_proxies"] = strings.Join(lastPathSegments(sslProxies), ",")
+	attributes["target_ssl_proxy_urls"] = strings.Join(sslProxies, ",")
+	attributes["gclb_targets_count"] = strconv.Itoa(len(record.GCLBTargets))
+	attributes["ip_addresses"] = strings.Join(ipAddresses, ",")
+	attributes["ports"] = strings.Join(ports, ",")
+	attributes["internet_exposed"] = boolString(len(ipAddresses) != 0)
+	attributes["public"] = boolString(len(ipAddresses) != 0)
+	attributes["tls_enabled"] = "true"
+	attributes["create_time"] = record.CreateTime
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-certificate-manager-certificate-map-"+record.Name, "gcp.certificate_manager_certificate_map", "gcp/certificate_manager_certificate_map/v1", payload, attributes)
+}
+
+func CertificateManagerCertificateMapEntryEvent(settings Settings, record CertificateManagerCertificateMapEntryRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	certificates := lastPathSegments(record.Certificates)
+	attributes := cloudResourceAttributes(settings, "certificate_manager_certificate_map_entry", record.Name, lastPathSegment(record.Name), "certificate_manager_certificate_map_entry", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["certificate_map"] = lastPathSegment(record.CertificateMap)
+	attributes["certificate_map_url"] = record.CertificateMap
+	attributes["hostname"] = record.Hostname
+	attributes["matcher"] = record.Matcher
+	attributes["primary"] = boolString(strings.EqualFold(record.Matcher, "PRIMARY"))
+	attributes["state"] = record.State
+	attributes["serving"] = boolString(strings.EqualFold(record.State, "ACTIVE"))
+	attributes["certificates"] = strings.Join(certificates, ",")
+	attributes["certificate_urls"] = strings.Join(record.Certificates, ",")
+	attributes["certificates_count"] = strconv.Itoa(len(record.Certificates))
+	attributes["tls_enabled"] = boolString(len(record.Certificates) != 0)
+	attributes["create_time"] = record.CreateTime
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"certificate_map": record.CertificateMap, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-certificate-manager-certificate-map-entry-"+record.Name, "gcp.certificate_manager_certificate_map_entry", "gcp/certificate_manager_certificate_map_entry/v1", payload, attributes)
+}
+
+func CertificateManagerDNSAuthorizationEvent(settings Settings, record CertificateManagerDNSAuthorizationRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	attributes := cloudResourceAttributes(settings, "certificate_manager_dns_authorization", record.Name, lastPathSegment(record.Name), "certificate_manager_dns_authorization", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["domain_name"] = record.Domain
+	attributes["authorization_type"] = record.Type
+	attributes["dns_record_name"] = record.DNSResourceRecord.Name
+	attributes["dns_record_type"] = record.DNSResourceRecord.Type
+	attributes["dns_record_data"] = record.DNSResourceRecord.Data
+	attributes["dns_challenge_configured"] = boolString(record.DNSResourceRecord.Name != "" && record.DNSResourceRecord.Data != "")
+	attributes["create_time"] = record.CreateTime
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-certificate-manager-dns-authorization-"+record.Name, "gcp.certificate_manager_dns_authorization", "gcp/certificate_manager_dns_authorization/v1", payload, attributes)
+}
+
+func VPCAccessConnectorEvent(settings Settings, record VPCAccessConnectorRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	attributes := cloudResourceAttributes(settings, "vpc_access_connector", record.Name, lastPathSegment(record.Name), "vpc_access_connector", location, nil)
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["ip_cidr_range"] = record.IPCIDRRange
+	attributes["state"] = record.State
+	attributes["ready"] = boolString(strings.EqualFold(record.State, "READY"))
+	attributes["machine_type"] = record.MachineType
+	attributes["min_instances"] = strconv.Itoa(record.MinInstances)
+	attributes["max_instances"] = strconv.Itoa(record.MaxInstances)
+	attributes["min_throughput_mbps"] = strconv.Itoa(record.MinThroughput)
+	attributes["max_throughput_mbps"] = strconv.Itoa(record.MaxThroughput)
+	attributes["connected_projects"] = strings.Join(record.ConnectedProjects, ",")
+	attributes["connected_projects_count"] = strconv.Itoa(len(record.ConnectedProjects))
+	attributes["subnet"] = record.Subnet.Name
+	attributes["subnet_project_id"] = record.Subnet.ProjectID
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-vpc-access-connector-"+record.Name, "gcp.vpc_access_connector", "gcp/vpc_access_connector/v1", payload, attributes)
 }
 
 func CloudSchedulerJobEvent(settings Settings, record CloudSchedulerJobRecord) (*primitives.Event, error) {
@@ -5254,6 +5540,68 @@ func cloudRunAllowsAllIngress(value string) bool {
 	return normalized == "INGRESS_TRAFFIC_ALL" || normalized == "ALLOW_ALL" || normalized == "ALL"
 }
 
+func certificateManagerCertificateType(record CertificateManagerCertificateRecord) string {
+	switch {
+	case certificateManagerManagedIdentityConfigured(record.ManagedIdentity):
+		return "MANAGED_IDENTITY"
+	case len(record.Managed.Domains) != 0 || len(record.Managed.DNSAuthorizations) != 0 || record.Managed.State != "":
+		return "MANAGED"
+	case record.SelfManaged.PEMCertificate != "":
+		return "SELF_MANAGED"
+	default:
+		return ""
+	}
+}
+
+func certificateManagerManagedIdentityConfigured(identity CertificateManagerManagedIdentityCertificate) bool {
+	return strings.TrimSpace(identity.Identity) != "" ||
+		strings.TrimSpace(identity.State) != "" ||
+		strings.TrimSpace(identity.ProvisioningIssue.Reason) != "" ||
+		strings.TrimSpace(identity.ProvisioningIssue.Details) != ""
+}
+
+func certificateManagerUsedByNames(usedBy []CertificateManagerUsedBy) []string {
+	names := make([]string, 0, len(usedBy))
+	for _, usage := range usedBy {
+		if strings.TrimSpace(usage.Name) != "" {
+			names = append(names, usage.Name)
+		}
+	}
+	return names
+}
+
+func certificateManagerAuthorizationAttemptSummary(attempts []CertificateManagerAuthorizationAttemptInfo) ([]string, []string, []string) {
+	domains := make([]string, 0, len(attempts))
+	states := make([]string, 0, len(attempts))
+	failures := make([]string, 0, len(attempts))
+	for _, attempt := range attempts {
+		domains = appendUnique(domains, attempt.Domain)
+		states = appendUnique(states, attempt.State)
+		failures = appendUnique(failures, attempt.FailureReason)
+	}
+	return domains, states, failures
+}
+
+func certificateManagerGCLBTargets(targets []CertificateManagerGCLBTarget) ([]string, []string, []string, []string) {
+	httpsProxies := make([]string, 0, len(targets))
+	sslProxies := make([]string, 0, len(targets))
+	ipAddresses := make([]string, 0)
+	ports := make([]string, 0)
+	for _, target := range targets {
+		httpsProxies = appendUnique(httpsProxies, target.TargetHTTPSProxy)
+		sslProxies = appendUnique(sslProxies, target.TargetSSLProxy)
+		for _, config := range target.IPConfigs {
+			ipAddresses = appendUnique(ipAddresses, config.IPAddress)
+			for _, port := range config.Ports {
+				if port > 0 {
+					ports = appendUnique(ports, strconv.Itoa(port))
+				}
+			}
+		}
+	}
+	return httpsProxies, sslProxies, ipAddresses, ports
+}
+
 func artifactRepositoryName(value string) string {
 	parts := strings.Split(strings.Trim(value, "/"), "/")
 	for index, part := range parts {
@@ -5598,6 +5946,10 @@ func payloadWithRaw(raw json.RawMessage, values map[string]any) ([]byte, error) 
 	return json.Marshal(payload)
 }
 
+func PayloadWithRaw(raw json.RawMessage, values PayloadValues) ([]byte, error) {
+	return payloadWithRaw(raw, values)
+}
+
 func sourceEvent(settings Settings, id string, kind string, schemaRef string, payload []byte, attributes map[string]string) (*primitives.Event, error) {
 	return sourceEventAt(settings, id, kind, schemaRef, payload, attributes, time.Now().UTC())
 }
@@ -5632,11 +5984,35 @@ func labelLookup(labels map[string]string, keys ...string) string {
 	return ""
 }
 
+func LabelLookup(labels map[string]string, keys ...string) string {
+	return labelLookup(labels, keys...)
+}
+
 func normalizeLabelKey(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.ReplaceAll(value, "-", "_")
 	value = strings.ReplaceAll(value, " ", "_")
 	return value
+}
+
+func CriticalityFromLabels(labels map[string]string) string {
+	for _, value := range labels {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		switch normalized {
+		case "critical", "high", "tier0", "tier_0", "tier-0", "crown_jewel", "crown-jewel":
+			return "critical"
+		}
+	}
+	return ""
+}
+
+func CrownJewelFromLabels(labels map[string]string) bool {
+	for _, key := range []string{"crown_jewel", "crown-jewel", "tier0", "tier_0", "business_critical"} {
+		if value := strings.ToLower(labelLookup(labels, key)); value == "true" || value == "yes" || value == "1" || value == "critical" {
+			return true
+		}
+	}
+	return strings.EqualFold(CriticalityFromLabels(labels), "critical")
 }
 
 func boolString(value bool) string {
@@ -5701,6 +6077,10 @@ func locationFromResourceName(value string) string {
 	return ""
 }
 
+func LocationFromResourceName(value string) string {
+	return locationFromResourceName(value)
+}
+
 func lastPathSegment(value string) string {
 	value = strings.Trim(strings.TrimSpace(value), "/")
 	if value == "" {
@@ -5708,6 +6088,18 @@ func lastPathSegment(value string) string {
 	}
 	parts := strings.Split(value, "/")
 	return parts[len(parts)-1]
+}
+
+func LastPathSegment(value string) string {
+	return lastPathSegment(value)
+}
+
+func EscapePathSegments(value string) string {
+	parts := strings.Split(strings.Trim(value, "/"), "/")
+	for index, part := range parts {
+		parts[index] = url.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
 }
 
 func firstNonEmpty(values ...string) string {
@@ -5729,9 +6121,24 @@ func trimEmptyAttributes(attributes map[string]string) {
 	}
 }
 
+func TrimEmptyAttributes(attributes map[string]string) {
+	trimEmptyAttributes(attributes)
+}
+
 func sanitizeEventID(value string) string {
 	value = strings.ReplaceAll(value, " ", "-")
 	value = strings.ReplaceAll(value, "/", "-")
 	value = strings.ReplaceAll(value, ":", "-")
 	return strings.Trim(value, "-")
+}
+
+func SanitizeEventID(value string) string {
+	return sanitizeEventID(value)
+}
+
+func SanitizeURNPart(value string) string {
+	value = strings.ReplaceAll(value, ":", "_")
+	value = strings.ReplaceAll(value, "/", "_")
+	value = strings.ReplaceAll(value, " ", "_")
+	return strings.Trim(value, "_")
 }

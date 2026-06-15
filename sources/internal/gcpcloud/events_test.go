@@ -69,3 +69,31 @@ func TestInspectGCSObjectContentSampleUsesWholeWordClassification(t *testing.T) 
 		t.Fatalf("DataClassification = %q, want confidential", inspection.DataClassification)
 	}
 }
+
+func TestCertificateManagerCertificateEventDetectsManagedIdentity(t *testing.T) {
+	event, err := CertificateManagerCertificateEvent(Settings{ProjectID: "writer-prod", TenantID: "writer-prod"}, CertificateManagerCertificateRecord{
+		Name: "projects/writer-prod/locations/global/certificates/workload",
+		ManagedIdentity: CertificateManagerManagedIdentityCertificate{
+			Identity: "spiffe://writer.example/workload/api",
+			State:    "ACTIVE",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CertificateManagerCertificateEvent() error = %v", err)
+	}
+	if got := event.Attributes["certificate_type"]; got != "MANAGED_IDENTITY" {
+		t.Fatalf("certificate_type = %q, want MANAGED_IDENTITY", got)
+	}
+	if got := event.Attributes["managed_identity"]; got != "true" {
+		t.Fatalf("managed_identity = %q, want true", got)
+	}
+	if got := event.Attributes["managed"]; got != "false" {
+		t.Fatalf("managed = %q, want false", got)
+	}
+	if got := event.Attributes["managed_identity_id"]; got != "spiffe://writer.example/workload/api" {
+		t.Fatalf("managed_identity_id = %q, want SPIFFE identity", got)
+	}
+	if got := event.Attributes["managed_state"]; got != "ACTIVE" {
+		t.Fatalf("managed_state = %q, want ACTIVE", got)
+	}
+}

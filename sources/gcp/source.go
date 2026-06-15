@@ -43,6 +43,10 @@ const (
 	familyArtifactRepo                                                                                                                                                                                   = "artifact_registry_repository"
 	familyAudit                                                                                                                                                                                          = "audit"
 	familyBigQueryDataset                                                                                                                                                                                = "bigquery_dataset"
+	familyCertificateManagerCertificate                                                                                                                                                                  = "certificate_manager_certificate"
+	familyCertificateManagerCertificateMap                                                                                                                                                               = "certificate_manager_certificate_map"
+	familyCertificateManagerCertificateMapEntry                                                                                                                                                          = "certificate_manager_certificate_map_entry"
+	familyCertificateManagerDNSAuthorization                                                                                                                                                             = "certificate_manager_dns_authorization"
 	familyCloudFunction                                                                                                                                                                                  = "cloud_function"
 	familyCloudIDSEndpoint                                                                                                                                                                               = "cloud_ids_endpoint"
 	familyCloudSchedulerJob                                                                                                                                                                              = "cloud_scheduler_job"
@@ -82,6 +86,7 @@ const (
 	familySAKey                                                                                                                                                                                          = "service_account_key"
 	gcpCloudPlatformScope                                                                                                                                                                                = "https://www.googleapis.com/auth/cloud-platform"
 	familySecret                                                                                                                                                                                         = "secret_manager_secret"
+	familyVPCAccessConnector                                                                                                                                                                             = "vpc_access_connector"
 )
 
 // Source reads GCP IAM, Cloud Identity, and Cloud Audit surfaces.
@@ -134,6 +139,19 @@ type pageResponse struct {
 	Occurrences   []json.RawMessage `json:"occurrences"`
 	Sinks         []json.RawMessage `json:"sinks"`
 	DockerImages  []json.RawMessage `json:"dockerImages"`
+	NextPageToken string            `json:"nextPageToken"`
+}
+
+type certificateManagerPageResponse struct {
+	Certificates          []json.RawMessage `json:"certificates"`
+	CertificateMaps       []json.RawMessage `json:"certificateMaps"`
+	CertificateMapEntries []json.RawMessage `json:"certificateMapEntries"`
+	DNSAuthorizations     []json.RawMessage `json:"dnsAuthorizations"`
+	NextPageToken         string            `json:"nextPageToken"`
+}
+
+type vpcAccessPageResponse struct {
+	Connectors    []json.RawMessage `json:"connectors"`
 	NextPageToken string            `json:"nextPageToken"`
 }
 
@@ -333,7 +351,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				if err := gcpCheck(ctx, source, settings, listAuditRecords, "gcp audit logs"); err != nil {
 					return nil, err
 				}
-				return parseGCPURNs(fmt.Sprintf("urn:cerebro:%s:gcp_project:%s", settings.projectID, settings.projectID))
+				return gcpcloud.ParseURNs(fmt.Sprintf("urn:cerebro:%s:gcp_project:%s", settings.projectID, settings.projectID))
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.BigQueryDatasetRecord]{
@@ -345,6 +363,10 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_bigquery_dataset:%s", tenantID(settings), firstNonEmpty(dataset.ID, dataset.DatasetReference.DatasetID)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CertificateManagerCertificateRecord]{Name: familyCertificateManagerCertificate, Label: "gcp certificate manager certificates", List: listCertificateManagerCertificates, Event: gcpCloudEvent(gcpcloud.CertificateManagerCertificateEvent), URN: gcpResourceURN[gcpcloud.CertificateManagerCertificateRecord]("gcp_certificate_manager_certificate")}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CertificateManagerCertificateMapRecord]{Name: familyCertificateManagerCertificateMap, Label: "gcp certificate manager certificate maps", List: listCertificateManagerCertificateMaps, Event: gcpCloudEvent(gcpcloud.CertificateManagerCertificateMapEvent), URN: gcpResourceURN[gcpcloud.CertificateManagerCertificateMapRecord]("gcp_certificate_manager_certificate_map")}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CertificateManagerCertificateMapEntryRecord]{Name: familyCertificateManagerCertificateMapEntry, Label: "gcp certificate manager certificate map entries", List: listCertificateManagerCertificateMapEntries, Event: gcpCloudEvent(gcpcloud.CertificateManagerCertificateMapEntryEvent), URN: gcpResourceURN[gcpcloud.CertificateManagerCertificateMapEntryRecord]("gcp_certificate_manager_certificate_map_entry")}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CertificateManagerDNSAuthorizationRecord]{Name: familyCertificateManagerDNSAuthorization, Label: "gcp certificate manager dns authorizations", List: listCertificateManagerDNSAuthorizations, Event: gcpCloudEvent(gcpcloud.CertificateManagerDNSAuthorizationEvent), URN: gcpResourceURN[gcpcloud.CertificateManagerDNSAuthorizationRecord]("gcp_certificate_manager_dns_authorization")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudFunctionRecord]{
 			Name:  familyCloudFunction,
 			Label: "gcp cloud functions",
@@ -465,7 +487,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			List:  listDNSRecordSets,
 			Event: gcpCloudEvent(gcpcloud.DNSRecordSetEvent),
 			URN: func(settings settings, recordSet gcpcloud.DNSRecordSetRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_dns_record_set:%s:%s:%s", tenantID(settings), sanitizeURNPart(recordSet.ManagedZoneName), sanitizeURNPart(recordSet.Name), sanitizeURNPart(recordSet.Type)), nil
+				return fmt.Sprintf("urn:cerebro:%s:gcp_dns_record_set:%s:%s:%s", tenantID(settings), gcpcloud.SanitizeURNPart(recordSet.ManagedZoneName), gcpcloud.SanitizeURNPart(recordSet.Name), gcpcloud.SanitizeURNPart(recordSet.Type)), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[groupRecord]{
@@ -501,7 +523,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			List:  listGCSObjects,
 			Event: gcpCloudEvent(gcpcloud.GCSObjectEvent),
 			URN: func(settings settings, object gcpcloud.GCSObjectRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_gcs_object:%s:%s", tenantID(settings), sanitizeURNPart(object.Bucket), sanitizeURNPart(firstNonEmpty(object.Name, object.ID))), nil
+				return fmt.Sprintf("urn:cerebro:%s:gcp_gcs_object:%s:%s", tenantID(settings), gcpcloud.SanitizeURNPart(object.Bucket), gcpcloud.SanitizeURNPart(firstNonEmpty(object.Name, object.ID))), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.GKEClusterRecord]{
@@ -576,7 +598,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			List:  listRoleAssignments,
 			Event: gcpCloudEvent(gcpcloud.RoleAssignmentEvent),
 			URN: func(settings settings, assignment roleAssignmentRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_iam_role_assignment:%s:%s", tenantID(settings), sanitizeURNPart(assignment.Member), sanitizeURNPart(assignment.Role)), nil
+				return fmt.Sprintf("urn:cerebro:%s:gcp_iam_role_assignment:%s:%s", tenantID(settings), gcpcloud.SanitizeURNPart(assignment.Member), gcpcloud.SanitizeURNPart(assignment.Role)), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[roleAssignmentRecord]{
@@ -585,7 +607,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			List:  listRoleAssignments,
 			Event: gcpCloudEvent(gcpcloud.EffectivePermissionEvent),
 			URN: func(settings settings, assignment roleAssignmentRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_effective_permission:%s:%s", tenantID(settings), sanitizeURNPart(assignment.Member), sanitizeURNPart(assignment.Role)), nil
+				return fmt.Sprintf("urn:cerebro:%s:gcp_effective_permission:%s:%s", tenantID(settings), gcpcloud.SanitizeURNPart(assignment.Member), gcpcloud.SanitizeURNPart(assignment.Role)), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[firewallRecord]{
@@ -603,7 +625,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			List:  listServiceAccountImpersonation,
 			Event: serviceAccountImpersonationEvent,
 			URN: func(settings settings, binding serviceAccountImpersonationRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account_impersonation:%s:%s", tenantID(settings), sanitizeURNPart(binding.Member), sanitizeURNPart(binding.Role)), nil
+				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account_impersonation:%s:%s", tenantID(settings), gcpcloud.SanitizeURNPart(binding.Member), gcpcloud.SanitizeURNPart(binding.Role)), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[serviceAccountRecord]{
@@ -618,6 +640,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.ServiceUsageServiceRecord]{Name: familyServiceUsageService, Label: "gcp service usage services", List: listServiceUsageServices, Event: gcpCloudEvent(gcpcloud.ServiceUsageServiceEvent), URN: func(settings settings, service gcpcloud.ServiceUsageServiceRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_service_usage_service:%s", tenantID(settings), firstNonEmpty(service.Name, service.Config.Name)), nil
 		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.VPCAccessConnectorRecord]{Name: familyVPCAccessConnector, Label: "gcp serverless vpc access connectors", List: listVPCAccessConnectors, Event: gcpCloudEvent(gcpcloud.VPCAccessConnectorEvent), URN: gcpResourceURN[gcpcloud.VPCAccessConnectorRecord]("gcp_vpc_access_connector")}),
 		gcpFamily(s, gcpFamilyOptions[serviceAccountKeyRecord]{
 			Name:  familySAKey,
 			Label: "gcp service account keys",
@@ -709,7 +732,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeExternalVPNGateway, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeInstanceGroup, familyComputeInstanceGroupMgr, familyComputeInstanceTemplate, familyComputeInterconnect, familyComputeInterconnectAttachment, familyComputeNetworkEndpointGroup, familyComputeNetworkFirewallPolicy, familyComputeNetwork, familyComputePacketMirroring, familyComputeRoute, familyComputeRouter, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeTargetVPNGateway, familyComputeURLMap, familyComputeVPNGateway, familyComputeVPNTunnel, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCertificateManagerCertificate, familyCertificateManagerCertificateMap, familyCertificateManagerCertificateMapEntry, familyCertificateManagerDNSAuthorization, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeExternalVPNGateway, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeInstanceGroup, familyComputeInstanceGroupMgr, familyComputeInstanceTemplate, familyComputeInterconnect, familyComputeInterconnectAttachment, familyComputeNetworkEndpointGroup, familyComputeNetworkFirewallPolicy, familyComputeNetwork, familyComputePacketMirroring, familyComputeRoute, familyComputeRouter, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeTargetVPNGateway, familyComputeURLMap, familyComputeVPNGateway, familyComputeVPNTunnel, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService, familyVPCAccessConnector:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -746,7 +769,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_address, compute_backend_bucket, compute_backend_service, compute_disk, compute_external_vpn_gateway, compute_firewall, compute_forwarding_rule, compute_health_check, compute_instance, compute_instance_group, compute_instance_group_manager, compute_instance_template, compute_interconnect, compute_interconnect_attachment, compute_network_endpoint_group, compute_network_firewall_policy, compute_network, compute_packet_mirroring, compute_route, compute_router, compute_security_policy, compute_ssl_certificate, compute_ssl_policy, compute_subnetwork, compute_target_grpc_proxy, compute_target_http_proxy, compute_target_https_proxy, compute_target_ssl_proxy, compute_target_tcp_proxy, compute_target_vpn_gateway, compute_url_map, compute_vpn_gateway, compute_vpn_tunnel, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, service_usage_service, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, certificate_manager_certificate, certificate_manager_certificate_map, certificate_manager_certificate_map_entry, certificate_manager_dns_authorization, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_address, compute_backend_bucket, compute_backend_service, compute_disk, compute_external_vpn_gateway, compute_firewall, compute_forwarding_rule, compute_health_check, compute_instance, compute_instance_group, compute_instance_group_manager, compute_instance_template, compute_interconnect, compute_interconnect_attachment, compute_network_endpoint_group, compute_network_firewall_policy, compute_network, compute_packet_mirroring, compute_route, compute_router, compute_security_policy, compute_ssl_certificate, compute_ssl_policy, compute_subnetwork, compute_target_grpc_proxy, compute_target_http_proxy, compute_target_https_proxy, compute_target_ssl_proxy, compute_target_tcp_proxy, compute_target_vpn_gateway, compute_url_map, compute_vpn_gateway, compute_vpn_tunnel, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, service_usage_service, vpc_access_connector, or service_account_key")
 	}
 	return settings, nil
 }
@@ -915,7 +938,7 @@ func listAIEndpoints(ctx context.Context, source *Source, settings settings, pag
 
 func lookupAIResourcePolicy(ctx context.Context, source *Source, settings settings, resourceName string) (gcpcloud.IAMPolicy, error) {
 	var policy gcpcloud.IAMPolicy
-	path := "/v1/" + escapePathSegments(resourceName) + ":getIamPolicy"
+	path := "/v1/" + gcpcloud.EscapePathSegments(resourceName) + ":getIamPolicy"
 	if err := getJSON(ctx, source, settings, aiPlatformBaseURL, http.MethodPost, path, nil, map[string]any{}, &policy); err != nil {
 		if gcpcloud.OptionalEnrichmentErr(err) == nil {
 			return gcpcloud.IAMPolicy{}, nil
@@ -960,6 +983,89 @@ func listBigQueryDatasets(ctx context.Context, source *Source, settings settings
 		records[index] = detailed
 	}
 	return records, response.NextPageToken, nil
+}
+
+func listCertificateManagerCertificates(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.CertificateManagerCertificateRecord, string, error) {
+	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	if strings.TrimSpace(settings.filter) != "" {
+		query.Set("filter", settings.filter)
+	}
+	var response certificateManagerPageResponse
+	location := firstNonEmpty(settings.location, "-")
+	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/certificates"
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, certificateManagerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.Certificates, "gcp certificate manager certificate", saveRawField[gcpcloud.CertificateManagerCertificateRecord])
+	return records, response.NextPageToken, err
+}
+
+func listCertificateManagerCertificateMaps(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.CertificateManagerCertificateMapRecord, string, error) {
+	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	if strings.TrimSpace(settings.filter) != "" {
+		query.Set("filter", settings.filter)
+	}
+	var response certificateManagerPageResponse
+	location := firstNonEmpty(settings.location, "-")
+	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/certificateMaps"
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, certificateManagerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.CertificateMaps, "gcp certificate manager certificate map", saveRawField[gcpcloud.CertificateManagerCertificateMapRecord])
+	return records, response.NextPageToken, err
+}
+
+func listCertificateManagerCertificateMapEntries(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.CertificateManagerCertificateMapEntryRecord, string, error) {
+	maps, next, err := listCertificateManagerCertificateMaps(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]gcpcloud.CertificateManagerCertificateMapEntryRecord, 0)
+	for _, certificateMap := range maps {
+		if strings.TrimSpace(certificateMap.Name) == "" {
+			continue
+		}
+		entries, err := gcpcloud.CollectPages(func(entryPageToken string) ([]gcpcloud.CertificateManagerCertificateMapEntryRecord, string, error) {
+			query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+			addQuery(query, entryPageToken)
+			if strings.TrimSpace(settings.filter) != "" {
+				query.Set("filter", settings.filter)
+			}
+			var response certificateManagerPageResponse
+			path := "/v1/" + gcpcloud.EscapePathSegments(certificateMap.Name) + "/certificateMapEntries"
+			if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, certificateManagerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+				return nil, "", err
+			}
+			entries, err := decodeRecords(response.CertificateMapEntries, "gcp certificate manager certificate map entry", func(record *gcpcloud.CertificateManagerCertificateMapEntryRecord, raw json.RawMessage) {
+				record.CertificateMap = certificateMap.Name
+				record.Raw = append(json.RawMessage(nil), raw...)
+			})
+			return entries, response.NextPageToken, err
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		records = append(records, entries...)
+	}
+	return records, next, nil
+}
+
+func listCertificateManagerDNSAuthorizations(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.CertificateManagerDNSAuthorizationRecord, string, error) {
+	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	if strings.TrimSpace(settings.filter) != "" {
+		query.Set("filter", settings.filter)
+	}
+	var response certificateManagerPageResponse
+	location := firstNonEmpty(settings.location, "-")
+	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/dnsAuthorizations"
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, certificateManagerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.DNSAuthorizations, "gcp certificate manager dns authorization", saveRawField[gcpcloud.CertificateManagerDNSAuthorizationRecord])
+	return records, response.NextPageToken, err
 }
 
 func listComputeInstances(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]computeInstanceRecord, string, error) {
@@ -1118,11 +1224,11 @@ func listGKENodePools(ctx context.Context, source *Source, settings settings, pa
 	}
 	records := make([]gcpcloud.GKENodePoolRecord, 0)
 	for _, cluster := range clusters {
-		clusterName := lastPathSegment(cluster.Name)
+		clusterName := gcpcloud.LastPathSegment(cluster.Name)
 		if clusterName == "" {
 			continue
 		}
-		location := firstNonEmpty(cluster.Location, locationFromResourceName(cluster.SelfLink), settings.location)
+		location := firstNonEmpty(cluster.Location, gcpcloud.LocationFromResourceName(cluster.SelfLink), settings.location)
 		var response pageResponse
 		path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/clusters/" + url.PathEscape(clusterName) + "/nodePools"
 		if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, nil, nil, &response)); err != nil {
@@ -1195,13 +1301,13 @@ func listCloudRunRevisions(ctx context.Context, source *Source, settings setting
 		}
 		query := url.Values{"pageSize": {strconv.Itoa(limit)}}
 		var response pageResponse
-		path := "/v2/" + escapePathSegments(service.Name) + "/revisions"
+		path := "/v2/" + gcpcloud.EscapePathSegments(service.Name) + "/revisions"
 		if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 			return nil, "", err
 		}
 		revisions, err := decodeRecords(response.Revisions, "gcp cloud run revision", func(record *gcpcloud.CloudRunRevisionRecord, raw json.RawMessage) {
 			record.ServiceName = service.Name
-			record.ServiceLocation = locationFromResourceName(service.Name)
+			record.ServiceLocation = gcpcloud.LocationFromResourceName(service.Name)
 			record.Raw = append(json.RawMessage(nil), raw...)
 		})
 		if err != nil {
@@ -1223,6 +1329,19 @@ func listCloudFunctions(ctx context.Context, source *Source, settings settings, 
 	records, err := decodeRecords(response.Functions, "gcp cloud function", func(record *gcpcloud.CloudFunctionRecord, raw json.RawMessage) {
 		record.Raw = append(json.RawMessage(nil), raw...)
 	})
+	return records, response.NextPageToken, err
+}
+
+func listVPCAccessConnectors(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.VPCAccessConnectorRecord, string, error) {
+	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response vpcAccessPageResponse
+	location := firstNonEmpty(settings.location, "-")
+	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/connectors"
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, vpcAccessBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.Connectors, "gcp serverless vpc access connector", saveRawField[gcpcloud.VPCAccessConnectorRecord])
 	return records, response.NextPageToken, err
 }
 
@@ -1455,7 +1574,7 @@ func attachPubSubSubscriptionIAMPolicies(ctx context.Context, source *Source, se
 
 func getPubSubIAMPolicy(ctx context.Context, source *Source, settings settings, resourceName string) (gcpcloud.IAMPolicy, error) {
 	var policy gcpcloud.IAMPolicy
-	path := "/v1/" + escapePathSegments(resourceName) + ":getIamPolicy"
+	path := "/v1/" + gcpcloud.EscapePathSegments(resourceName) + ":getIamPolicy"
 	if err := getJSON(ctx, source, settings, pubSubBaseURL, http.MethodPost, path, nil, map[string]any{"options": map[string]int{"requestedPolicyVersion": 3}}, &policy); err != nil {
 		return gcpcloud.IAMPolicy{}, err
 	}
@@ -1538,7 +1657,7 @@ func listArtifactImages(ctx context.Context, source *Source, settings settings, 
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
 	addQuery(query, pageToken)
 	var response pageResponse
-	path := "/v1/" + escapePathSegments(settings.artifactRepository) + "/dockerImages"
+	path := "/v1/" + gcpcloud.EscapePathSegments(settings.artifactRepository) + "/dockerImages"
 	if err := getJSON(ctx, source, settings, artifactRegistryBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
@@ -1612,30 +1731,30 @@ func assetMetadataEvent(settings settings, record assetMetadataRecord) (*primiti
 	resourceID := firstNonEmpty(record.Name, record.DisplayName)
 	resourceType := firstNonEmpty(record.AssetType, "resource")
 	attributes := map[string]string{
-		"asset_criticality":   firstNonEmpty(labelLookup(labels, "asset_criticality", "business_criticality", "criticality", "tier"), criticalityFromLabels(labels)),
-		"contains_pci":        labelLookup(labels, "contains_pci", "pci"),
-		"contains_phi":        labelLookup(labels, "contains_phi", "phi"),
-		"contains_pii":        labelLookup(labels, "contains_pii", "pii"),
-		"contains_secrets":    labelLookup(labels, "contains_secrets", "secrets"),
-		"crown_jewel":         boolString(crownJewelFromLabels(labels)),
-		"data_classification": labelLookup(labels, "data_classification", "data-classification", "classification", "sensitivity", "data_sensitivity"),
+		"asset_criticality":   firstNonEmpty(gcpcloud.LabelLookup(labels, "asset_criticality", "business_criticality", "criticality", "tier"), gcpcloud.CriticalityFromLabels(labels)),
+		"contains_pci":        gcpcloud.LabelLookup(labels, "contains_pci", "pci"),
+		"contains_phi":        gcpcloud.LabelLookup(labels, "contains_phi", "phi"),
+		"contains_pii":        gcpcloud.LabelLookup(labels, "contains_pii", "pii"),
+		"contains_secrets":    gcpcloud.LabelLookup(labels, "contains_secrets", "secrets"),
+		"crown_jewel":         strconv.FormatBool(gcpcloud.CrownJewelFromLabels(labels)),
+		"data_classification": gcpcloud.LabelLookup(labels, "data_classification", "data-classification", "classification", "sensitivity", "data_sensitivity"),
 		"description":         record.Description,
 		"domain":              tenantID(settings),
-		"environment":         labelLookup(labels, "environment", "env", "stage"),
+		"environment":         gcpcloud.LabelLookup(labels, "environment", "env", "stage"),
 		"gcp_project_id":      settings.projectID,
-		"internet_exposed":    labelLookup(labels, "internet_exposed", "internet-exposed", "externally_exposed", "external_exposure"),
-		"owner":               labelLookup(labels, "owner", "application_owner", "business_owner", "service_owner"),
+		"internet_exposed":    gcpcloud.LabelLookup(labels, "internet_exposed", "internet-exposed", "externally_exposed", "external_exposure"),
+		"owner":               gcpcloud.LabelLookup(labels, "owner", "application_owner", "business_owner", "service_owner"),
 		"project_id":          settings.projectID,
-		"public":              labelLookup(labels, "public", "public_access"),
+		"public":              gcpcloud.LabelLookup(labels, "public", "public_access"),
 		"region":              record.Location,
 		"resource_id":         resourceID,
 		"resource_name":       firstNonEmpty(record.DisplayName, resourceID),
 		"resource_provider":   "gcp",
 		"resource_type":       resourceType,
 		"source_provider":     "gcp",
-		"team":                labelLookup(labels, "team", "squad", "group"),
+		"team":                gcpcloud.LabelLookup(labels, "team", "squad", "group"),
 	}
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	payload, err := gcpcloud.PayloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
 	if err != nil {
 		return nil, err
 	}
@@ -1686,7 +1805,7 @@ func resourceExposureEvent(settings settings, record firewallRecord) (*primitive
 		"scope":             record.Network,
 		"source_cidr":       sourceCIDR,
 	}
-	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.projectID})
+	payload, err := gcpcloud.PayloadWithRaw(record.Raw, map[string]any{"project_id": settings.projectID})
 	if err != nil {
 		return nil, err
 	}
@@ -1701,39 +1820,9 @@ func auditEvent(settings settings, record auditRecord) (*primitives.Event, error
 	return gcpcloud.AuditEvent(gcpCloudSettings(settings), record)
 }
 
-func locationFromResourceName(value string) string {
-	parts := strings.Split(strings.Trim(value, "/"), "/")
-	for index, part := range parts {
-		if part == "locations" && index+1 < len(parts) {
-			return parts[index+1]
-		}
-		if part == "zones" && index+1 < len(parts) {
-			return parts[index+1]
-		}
-	}
-	return ""
-}
-
-func lastPathSegment(value string) string {
-	value = strings.Trim(strings.TrimSpace(value), "/")
-	if value == "" {
-		return ""
-	}
-	parts := strings.Split(value, "/")
-	return parts[len(parts)-1]
-}
-
-func escapePathSegments(value string) string {
-	parts := strings.Split(strings.Trim(value, "/"), "/")
-	for index, part := range parts {
-		parts[index] = url.PathEscape(part)
-	}
-	return strings.Join(parts, "/")
-}
-
 func sourceEvent(settings settings, id string, kind string, schemaRef string, payload []byte, attributes map[string]string, occurredAt time.Time) (*primitives.Event, error) {
-	trimEmptyAttributes(attributes)
-	return &primitives.Event{Id: sanitizeEventID(id), TenantId: tenantID(settings), SourceId: "gcp", Kind: kind, OccurredAt: timestamppb.New(occurredAt.UTC()), SchemaRef: schemaRef, Payload: payload, Attributes: attributes}, nil
+	gcpcloud.TrimEmptyAttributes(attributes)
+	return &primitives.Event{Id: gcpcloud.SanitizeEventID(id), TenantId: tenantID(settings), SourceId: "gcp", Kind: kind, OccurredAt: timestamppb.New(occurredAt.UTC()), SchemaRef: schemaRef, Payload: payload, Attributes: attributes}, nil
 }
 
 func getJSON(ctx context.Context, source *Source, settings settings, defaultBaseURL func() string, method string, requestPath string, query url.Values, body any, target any) error {
@@ -1932,37 +2021,7 @@ func gcpURNsFor[T any](settings settings, records []T, render func(settings, T) 
 		}
 		values = append(values, rawURN)
 	}
-	return parseGCPURNs(values...)
-}
-
-func parseGCPURNs(values ...string) ([]sourcecdk.URN, error) {
-	urns := make([]sourcecdk.URN, 0, len(values))
-	for _, value := range values {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		urn, err := sourcecdk.ParseURN(value)
-		if err != nil {
-			return nil, err
-		}
-		urns = append(urns, urn)
-	}
-	return urns, nil
-}
-
-func payloadWithRaw(raw json.RawMessage, values map[string]any) ([]byte, error) {
-	payload := map[string]any{}
-	for key, value := range values {
-		payload[key] = value
-	}
-	if len(raw) != 0 {
-		var decoded any
-		if err := json.Unmarshal(raw, &decoded); err != nil {
-			return nil, err
-		}
-		payload["raw"] = decoded
-	}
-	return json.Marshal(payload)
+	return gcpcloud.ParseURNs(values...)
 }
 
 func firewallPublicIngress(record firewallRecord) bool {
@@ -1997,90 +2056,8 @@ func impersonationRole(value string) bool {
 		normalized == "roles/iam.workloadidentityuser"
 }
 
-func boolString(value bool) string {
-	return strconv.FormatBool(value)
-}
-
 func tenantID(settings settings) string {
 	return firstNonEmpty(settings.projectID, settings.customerID, settings.groupKey)
-}
-
-func aiPlatformBaseURL() string        { return "https://aiplatform.googleapis.com" }
-func artifactRegistryBaseURL() string  { return "https://artifactregistry.googleapis.com" }
-func bigQueryBaseURL() string          { return "https://bigquery.googleapis.com" }
-func cloudAssetBaseURL() string        { return "https://cloudasset.googleapis.com" }
-func cloudSchedulerBaseURL() string    { return "https://cloudscheduler.googleapis.com" }
-func computeBaseURL() string           { return "https://www.googleapis.com" }
-func containerAnalysisBaseURL() string { return "https://containeranalysis.googleapis.com" }
-func containerBaseURL() string         { return "https://container.googleapis.com" }
-func dnsBaseURL() string               { return "https://dns.googleapis.com" }
-func functionsBaseURL() string         { return "https://cloudfunctions.googleapis.com" }
-func identityBaseURL() string          { return "https://cloudidentity.googleapis.com" }
-func idsBaseURL() string               { return "https://ids.googleapis.com" }
-func kmsBaseURL() string               { return "https://cloudkms.googleapis.com" }
-func loggingBaseURL() string           { return "https://logging.googleapis.com" }
-func orgPolicyBaseURL() string         { return "https://orgpolicy.googleapis.com" }
-func pubSubBaseURL() string            { return "https://pubsub.googleapis.com" }
-func resourceManagerBaseURL() string   { return "https://cloudresourcemanager.googleapis.com" }
-func runBaseURL() string               { return "https://run.googleapis.com" }
-func secretManagerBaseURL() string     { return "https://secretmanager.googleapis.com" }
-func serviceBaseURL() string           { return "https://iam.googleapis.com" }
-func serviceUsageBaseURL() string      { return "https://serviceusage.googleapis.com" }
-func sqlBaseURL() string               { return "https://sqladmin.googleapis.com" }
-func storageBaseURL() string           { return "https://storage.googleapis.com" }
-
-func addQuery(query url.Values, value string) {
-	if strings.TrimSpace(value) != "" {
-		query.Set("pageToken", strings.TrimSpace(value))
-	}
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
-}
-
-func labelLookup(labels map[string]string, keys ...string) string {
-	if len(labels) == 0 {
-		return ""
-	}
-	normalized := map[string]string{}
-	for key, value := range labels {
-		normalized[normalizeLabelKey(key)] = value
-	}
-	for _, key := range keys {
-		if value := strings.TrimSpace(normalized[normalizeLabelKey(key)]); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func normalizeLabelKey(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	value = strings.ReplaceAll(value, "-", "_")
-	value = strings.ReplaceAll(value, " ", "_")
-	return value
-}
-
-func criticalityFromLabels(labels map[string]string) string {
-	for _, value := range labels {
-		normalized := strings.ToLower(strings.TrimSpace(value))
-		switch normalized {
-		case "critical", "high", "tier0", "tier_0", "tier-0", "crown_jewel", "crown-jewel":
-			return "critical"
-		}
-	}
-	return ""
-}
-
-func crownJewelFromLabels(labels map[string]string) bool {
-	for _, key := range []string{"crown_jewel", "crown-jewel", "tier0", "tier_0", "business_critical"} {
-		if value := strings.ToLower(labelLookup(labels, key)); value == "true" || value == "yes" || value == "1" || value == "critical" {
-			return true
-		}
-	}
-	return strings.EqualFold(criticalityFromLabels(labels), "critical")
 }
 
 func firstNonEmpty(values ...string) string {
@@ -2092,26 +2069,39 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func trimEmptyAttributes(attributes map[string]string) {
-	for key, value := range attributes {
-		if strings.TrimSpace(value) == "" {
-			delete(attributes, key)
-			continue
-		}
-		attributes[key] = strings.TrimSpace(value)
+func aiPlatformBaseURL() string         { return "https://aiplatform.googleapis.com" }
+func artifactRegistryBaseURL() string   { return "https://artifactregistry.googleapis.com" }
+func bigQueryBaseURL() string           { return "https://bigquery.googleapis.com" }
+func certificateManagerBaseURL() string { return "https://certificatemanager.googleapis.com" }
+func cloudAssetBaseURL() string         { return "https://cloudasset.googleapis.com" }
+func cloudSchedulerBaseURL() string     { return "https://cloudscheduler.googleapis.com" }
+func computeBaseURL() string            { return "https://www.googleapis.com" }
+func containerAnalysisBaseURL() string  { return "https://containeranalysis.googleapis.com" }
+func containerBaseURL() string          { return "https://container.googleapis.com" }
+func dnsBaseURL() string                { return "https://dns.googleapis.com" }
+func functionsBaseURL() string          { return "https://cloudfunctions.googleapis.com" }
+func identityBaseURL() string           { return "https://cloudidentity.googleapis.com" }
+func idsBaseURL() string                { return "https://ids.googleapis.com" }
+func kmsBaseURL() string                { return "https://cloudkms.googleapis.com" }
+func loggingBaseURL() string            { return "https://logging.googleapis.com" }
+func orgPolicyBaseURL() string          { return "https://orgpolicy.googleapis.com" }
+func pubSubBaseURL() string             { return "https://pubsub.googleapis.com" }
+func resourceManagerBaseURL() string    { return "https://cloudresourcemanager.googleapis.com" }
+func runBaseURL() string                { return "https://run.googleapis.com" }
+func secretManagerBaseURL() string      { return "https://secretmanager.googleapis.com" }
+func serviceBaseURL() string            { return "https://iam.googleapis.com" }
+func serviceUsageBaseURL() string       { return "https://serviceusage.googleapis.com" }
+func sqlBaseURL() string                { return "https://sqladmin.googleapis.com" }
+func storageBaseURL() string            { return "https://storage.googleapis.com" }
+func vpcAccessBaseURL() string          { return "https://vpcaccess.googleapis.com" }
+
+func addQuery(query url.Values, value string) {
+	if strings.TrimSpace(value) != "" {
+		query.Set("pageToken", strings.TrimSpace(value))
 	}
 }
 
-func sanitizeEventID(value string) string {
-	value = strings.ReplaceAll(value, " ", "-")
-	value = strings.ReplaceAll(value, "/", "-")
-	value = strings.ReplaceAll(value, ":", "-")
-	return strings.Trim(value, "-")
-}
-
-func sanitizeURNPart(value string) string {
-	value = strings.ReplaceAll(value, ":", "_")
-	value = strings.ReplaceAll(value, "/", "_")
-	value = strings.ReplaceAll(value, " ", "_")
-	return strings.Trim(value, "_")
+func configValue(cfg sourcecdk.Config, key string) string {
+	value, _ := cfg.Lookup(key)
+	return strings.TrimSpace(value)
 }

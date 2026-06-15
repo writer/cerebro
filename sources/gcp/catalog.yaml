@@ -9,6 +9,10 @@ emitted_kinds:
   - gcp.artifact_registry_repository
   - gcp.audit
   - gcp.bigquery_dataset
+  - gcp.certificate_manager_certificate
+  - gcp.certificate_manager_certificate_map
+  - gcp.certificate_manager_certificate_map_entry
+  - gcp.certificate_manager_dns_authorization
   - gcp.cloud_function
   - gcp.cloud_ids_endpoint
   - gcp.cloud_scheduler_job
@@ -72,6 +76,7 @@ emitted_kinds:
   - gcp.service_account_impersonation
   - gcp.service_account_key
   - gcp.service_usage_service
+  - gcp.vpc_access_connector
 runtime_families:
   - asset_metadata
   - aiplatform_dataset
@@ -80,6 +85,10 @@ runtime_families:
   - artifact_registry_repository
   - audit
   - bigquery_dataset
+  - certificate_manager_certificate
+  - certificate_manager_certificate_map
+  - certificate_manager_certificate_map_entry
+  - certificate_manager_dns_authorization
   - cloud_function
   - cloud_ids_endpoint
   - cloud_scheduler_job
@@ -143,6 +152,7 @@ runtime_families:
   - service_account_impersonation
   - service_account_key
   - service_usage_service
+  - vpc_access_connector
 coverage_contract:
   owner_domain: cloud
   authority_domain: gcp
@@ -181,6 +191,30 @@ coverage_contract:
       type: entity_family
       title: BigQuery datasets
       families: [bigquery_dataset]
+      support: supported
+      high_value: true
+    - id: certificate_manager_certificate
+      type: entity_family
+      title: Certificate Manager certificates
+      families: [certificate_manager_certificate]
+      support: supported
+      high_value: true
+    - id: certificate_manager_certificate_map
+      type: entity_family
+      title: Certificate Manager certificate maps
+      families: [certificate_manager_certificate_map]
+      support: supported
+      high_value: true
+    - id: certificate_manager_certificate_map_entry
+      type: entity_family
+      title: Certificate Manager certificate map entries
+      families: [certificate_manager_certificate_map_entry]
+      support: supported
+      high_value: true
+    - id: certificate_manager_dns_authorization
+      type: entity_family
+      title: Certificate Manager DNS authorizations
+      families: [certificate_manager_dns_authorization]
       support: supported
       high_value: true
     - id: cloud_function
@@ -547,5 +581,11 @@ coverage_contract:
       type: entity_family
       title: Enabled Service Usage APIs
       families: [service_usage_service]
+      support: supported
+      high_value: true
+    - id: vpc_access_connector
+      type: entity_family
+      title: Serverless VPC Access connectors
+      families: [vpc_access_connector]
       support: supported
       high_value: true
