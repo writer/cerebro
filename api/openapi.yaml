@@ -152,7 +152,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog with runtime counts, credential capability state, and source resource scope options.
+          description: Connector catalog with runtime counts, credential capability state, backend-advertised connection methods, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
@@ -166,7 +166,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog entry, runtime health summary, safe connection summaries with typed scope policies, and recent activity.
+          description: Connector catalog entry, runtime health summary, setup guidance, safe connection summaries with typed scope policies, resource scope support notes, and recent activity.
         '404':
           description: Connector source was not found.
   /connectors/{sourceID}/activity:
@@ -226,7 +226,7 @@ paths:
                   default: false
                 auth_method:
                   type: string
-                  description: Backend-advertised connection method selected from /connectors connection_methods metadata.
+                  description: Backend-advertised connection method selected from /connectors connection_methods metadata. Method metadata can include prerequisites, setup steps, command snippets, product groups, deployment guides, region guidance, and security notes; clients must treat these as user-facing setup guidance and still submit only this closed-set id.
                   default: encrypted_submission
                   enum:
                     - encrypted_submission

@@ -170,24 +170,77 @@ type connectorFieldView struct {
 }
 
 type connectorConnectionMethodView struct {
-	ID                string               `json:"id"`
-	Label             string               `json:"label"`
-	Description       string               `json:"description"`
-	CredentialStores  []string             `json:"credential_stores,omitempty"`
-	ConfigFields      []connectorFieldView `json:"config_fields,omitempty"`
-	CredentialFields  []connectorFieldView `json:"credential_fields,omitempty"`
-	RequiresSecrets   bool                 `json:"requires_secrets"`
-	Saveable          bool                 `json:"saveable"`
-	UnavailableReason string               `json:"unavailable_reason,omitempty"`
+	ID                string                         `json:"id"`
+	Label             string                         `json:"label"`
+	ShortLabel        string                         `json:"short_label,omitempty"`
+	Category          string                         `json:"category,omitempty"`
+	Description       string                         `json:"description"`
+	CredentialStores  []string                       `json:"credential_stores,omitempty"`
+	ConfigFields      []connectorFieldView           `json:"config_fields,omitempty"`
+	CredentialFields  []connectorFieldView           `json:"credential_fields,omitempty"`
+	RequiresSecrets   bool                           `json:"requires_secrets"`
+	Recommended       bool                           `json:"recommended,omitempty"`
+	Saveable          bool                           `json:"saveable"`
+	UnavailableReason string                         `json:"unavailable_reason,omitempty"`
+	Prerequisites     []connectorPrerequisiteView    `json:"prerequisites,omitempty"`
+	Steps             []connectorSetupStepView       `json:"steps,omitempty"`
+	Commands          []string                       `json:"commands,omitempty"`
+	ProductGroups     []connectorProductGroupView    `json:"product_groups,omitempty"`
+	DeploymentGuides  []connectorDeploymentGuideView `json:"deployment_guides,omitempty"`
+	RegionGuidance    *connectorRegionGuidanceView   `json:"region_guidance,omitempty"`
+	SecurityNotes     []string                       `json:"security_notes,omitempty"`
+}
+
+type connectorPrerequisiteView struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+type connectorSetupStepView struct {
+	ID          string   `json:"id"`
+	Label       string   `json:"label"`
+	Description string   `json:"description,omitempty"`
+	Commands    []string `json:"commands,omitempty"`
+}
+
+type connectorProductGroupView struct {
+	ID             string   `json:"id"`
+	Label          string   `json:"label"`
+	Description    string   `json:"description,omitempty"`
+	Families       []string `json:"families,omitempty"`
+	DefaultEnabled bool     `json:"default_enabled,omitempty"`
+	Required       bool     `json:"required,omitempty"`
+	PermissionNote string   `json:"permission_note,omitempty"`
+	CostNote       string   `json:"cost_note,omitempty"`
+}
+
+type connectorDeploymentGuideView struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Language    string `json:"language,omitempty"`
+	Description string `json:"description,omitempty"`
+	Body        string `json:"body,omitempty"`
+}
+
+type connectorRegionGuidanceView struct {
+	DefaultRegion       string   `json:"default_region,omitempty"`
+	Examples            []string `json:"examples,omitempty"`
+	SupportsGlobal      bool     `json:"supports_global,omitempty"`
+	SupportsMultiRegion bool     `json:"supports_multi_region,omitempty"`
+	Description         string   `json:"description,omitempty"`
 }
 
 type connectorScopeOptionView struct {
-	ID        string   `json:"id"`
-	Label     string   `json:"label"`
-	Type      string   `json:"type"`
-	Families  []string `json:"families,omitempty"`
-	Support   string   `json:"support,omitempty"`
-	HighValue bool     `json:"high_value,omitempty"`
+	ID                     string   `json:"id"`
+	Label                  string   `json:"label"`
+	Type                   string   `json:"type"`
+	Families               []string `json:"families,omitempty"`
+	Support                string   `json:"support,omitempty"`
+	HighValue              bool     `json:"high_value,omitempty"`
+	KnownUnsupportedFields []string `json:"known_unsupported_fields,omitempty"`
+	Notes                  []string `json:"notes,omitempty"`
 }
 
 type connectorConnectionRequest struct {
@@ -649,12 +702,14 @@ func connectorScopeOptionsFromCoverage(contract sourcecdk.CoverageContract) []co
 			continue
 		}
 		options = append(options, connectorScopeOptionView{
-			ID:        dimension.ID,
-			Label:     dimension.Title,
-			Type:      dimension.Type,
-			Families:  append([]string{}, dimension.Families...),
-			Support:   dimension.Support,
-			HighValue: dimension.HighValue,
+			ID:                     dimension.ID,
+			Label:                  dimension.Title,
+			Type:                   dimension.Type,
+			Families:               append([]string{}, dimension.Families...),
+			Support:                dimension.Support,
+			HighValue:              dimension.HighValue,
+			KnownUnsupportedFields: append([]string{}, dimension.KnownUnsupportedFields...),
+			Notes:                  append([]string{}, dimension.Notes...),
 		})
 	}
 	sort.Slice(options, func(i, j int) bool {
@@ -1348,7 +1403,9 @@ func connectorConnectionMethods(sourceID string, stores []connectorStoreView) []
 		{
 			ID:                connectorAuthMethodEncryptedSubmission,
 			Label:             "Encrypted browser submission",
-			Description:       "Submit one encrypted credential payload to Cerebro Vault.",
+			ShortLabel:        "Manual",
+			Category:          "Direct",
+			Description:       "Submit one encrypted credential payload to Cerebro Vault, then store only a sealed credential reference on the runtime.",
 			CredentialStores:  []string{defaultConnectorCredentialStoreID},
 			ConfigFields:      connectorConfigFields(sourceID, connectorAuthMethodEncryptedSubmission),
 			CredentialFields:  connectorCredentialFields(sourceID, connectorAuthMethodEncryptedSubmission),
@@ -1359,6 +1416,8 @@ func connectorConnectionMethods(sourceID string, stores []connectorStoreView) []
 		{
 			ID:                connectorAuthMethodEnvironmentManaged,
 			Label:             "Environment-managed reference",
+			ShortLabel:        "Env",
+			Category:          "Reference",
 			Description:       "Store env-backed credential references for deployment-side resolution.",
 			CredentialStores:  []string{connectorStoreEnvironmentManaged},
 			ConfigFields:      connectorConfigFields(sourceID, connectorAuthMethodEnvironmentManaged),
@@ -1369,6 +1428,8 @@ func connectorConnectionMethods(sourceID string, stores []connectorStoreView) []
 		{
 			ID:                connectorAuthMethodInfisicalCLI,
 			Label:             "Infisical CLI handoff",
+			ShortLabel:        "Infisical",
+			Category:          "SSO handoff",
 			Description:       "Use Infisical SSO/CLI to populate deployment env references consumed by Cerebro.",
 			CredentialStores:  []string{connectorStoreEnvironmentManaged},
 			ConfigFields:      connectorConfigFields(sourceID, connectorAuthMethodInfisicalCLI),
@@ -1379,6 +1440,8 @@ func connectorConnectionMethods(sourceID string, stores []connectorStoreView) []
 		{
 			ID:                connectorAuthMethodExternalReference,
 			Label:             "External secret-store reference",
+			ShortLabel:        "Store ref",
+			Category:          "Reference",
 			Description:       "Select an operator-managed secret store and save only server-resolvable references.",
 			CredentialStores:  externalStores,
 			ConfigFields:      connectorConfigFields(sourceID, connectorAuthMethodExternalReference),
@@ -1391,14 +1454,444 @@ func connectorConnectionMethods(sourceID string, stores []connectorStoreView) []
 		methods = append([]connectorConnectionMethodView{{
 			ID:                connectorAuthMethodAWSSSOProfile,
 			Label:             "AWS IAM Identity Center profile",
-			Description:       "Use AWS CLI SSO and save a deployment-managed profile/role runtime.",
+			ShortLabel:        "AWS SSO",
+			Category:          "Recommended",
+			Description:       "Use AWS CLI SSO and save a deployment-managed profile/role runtime. No long-lived AWS key is entered in the browser.",
 			CredentialStores:  []string{connectorStoreEnvironmentManaged},
 			ConfigFields:      connectorConfigFields(sourceID, connectorAuthMethodAWSSSOProfile),
+			Recommended:       true,
 			Saveable:          environmentAvailable,
 			UnavailableReason: connectorUnavailableReason(environmentAvailable, "Environment-managed AWS profiles are unavailable."),
 		}}, methods...)
 	}
+	for index := range methods {
+		methods[index] = connectorMethodWithGuidance(sourceID, methods[index])
+	}
 	return methods
+}
+
+func connectorMethodWithGuidance(sourceID string, method connectorConnectionMethodView) connectorConnectionMethodView {
+	normalizedSourceID := strings.TrimSpace(sourceID)
+	if method.ShortLabel == "" {
+		method.ShortLabel = connectorMethodShortLabel(method.ID)
+	}
+	if method.Category == "" {
+		method.Category = "Connection"
+	}
+	method.Prerequisites = connectorPrerequisites(normalizedSourceID)
+	method.Steps = connectorSetupSteps(normalizedSourceID, method.ID)
+	method.Commands = connectorSetupCommands(normalizedSourceID, method.ID)
+	method.ProductGroups = connectorProductGroups(normalizedSourceID)
+	method.DeploymentGuides = connectorDeploymentGuides(normalizedSourceID, method.ID)
+	method.RegionGuidance = connectorRegionGuidance(normalizedSourceID)
+	method.SecurityNotes = connectorSecurityNotes(normalizedSourceID, method.ID)
+	return method
+}
+
+func connectorMethodShortLabel(methodID string) string {
+	switch methodID {
+	case connectorAuthMethodAWSSSOProfile:
+		return "AWS SSO"
+	case connectorAuthMethodInfisicalCLI:
+		return "Infisical"
+	case connectorAuthMethodEnvironmentManaged:
+		return "Env"
+	case connectorAuthMethodExternalReference:
+		return "Store ref"
+	default:
+		return "Manual"
+	}
+}
+
+func connectorPrerequisites(sourceID string) []connectorPrerequisiteView {
+	common := []connectorPrerequisiteView{
+		{
+			ID:          "backend_store",
+			Label:       "Backend credential store selected",
+			Description: "The selected store is resolved by Cerebro on the server side.",
+			Required:    true,
+		},
+		{
+			ID:          "source_validation",
+			Label:       "Source check passes before save",
+			Description: "Cerebro validates the source config and credential path before persisting the runtime.",
+			Required:    true,
+		},
+	}
+	switch sourceID {
+	case "aws":
+		return append([]connectorPrerequisiteView{
+			{
+				ID:          "aws_admin",
+				Label:       "AWS IAM permissions available",
+				Description: "An AWS administrator or automation role can create the read-only role and attach required policies.",
+				Required:    true,
+			},
+			{
+				ID:          "aws_role",
+				Label:       "Read-only role can be assumed",
+				Description: "The runtime role allows the Cerebro deployment principal and optional external ID.",
+				Required:    true,
+			},
+			{
+				ID:          "aws_regions",
+				Label:       "Regions selected",
+				Description: "Global IAM and Organizations data is handled separately from regional service families.",
+				Required:    true,
+			},
+		}, common...)
+	case "gcp":
+		return append([]connectorPrerequisiteView{
+			{
+				ID:          "gcp_project",
+				Label:       "Project or scanner project selected",
+				Description: "The source requires a project ID for project-scoped families.",
+				Required:    true,
+			},
+			{
+				ID:          "gcp_identity",
+				Label:       "Service account or workload identity configured",
+				Description: "Use a token or workload identity federation reference resolved outside the browser.",
+				Required:    true,
+			},
+		}, common...)
+	default:
+		return common
+	}
+}
+
+func connectorSetupSteps(sourceID string, methodID string) []connectorSetupStepView {
+	switch sourceID {
+	case "aws":
+		return awsConnectorSetupSteps(methodID)
+	case "gcp":
+		return gcpConnectorSetupSteps(methodID)
+	default:
+		return []connectorSetupStepView{
+			{
+				ID:          "choose_method",
+				Label:       "Choose authentication path",
+				Description: "Select a backend-advertised method and credential store.",
+			},
+			{
+				ID:          "enter_config",
+				Label:       "Add non-secret runtime config",
+				Description: "Submit required identifiers and references only.",
+			},
+			{
+				ID:          "validate",
+				Label:       "Test and save",
+				Description: "Run a check-only validation before saving the runtime.",
+			},
+		}
+	}
+}
+
+func awsConnectorSetupSteps(methodID string) []connectorSetupStepView {
+	steps := []connectorSetupStepView{
+		{
+			ID:          "account",
+			Label:       "Choose account model",
+			Description: "Connect one AWS account per runtime. Organization families can be enabled when this account has Organizations read permissions.",
+		},
+		{
+			ID:          "products",
+			Label:       "Select resource groups",
+			Description: "Resource groups map to runtime families and can be scoped out before source reads.",
+		},
+		{
+			ID:          "permissions",
+			Label:       "Create read-only access",
+			Description: "Attach AWS SecurityAudit and the additional read actions required by enabled families.",
+		},
+		{
+			ID:          "regions",
+			Label:       "Choose regions",
+			Description: "Set the default region and keep global families explicit with include_global.",
+		},
+		{
+			ID:          "validate",
+			Label:       "Validate, then save",
+			Description: "Cerebro runs the source Check path with resolved credentials before storing the runtime.",
+		},
+	}
+	if methodID == connectorAuthMethodAWSSSOProfile {
+		steps[2].Commands = []string{
+			"aws configure sso --profile cerebro-aws",
+			"aws sso login --profile cerebro-aws",
+			"aws sts get-caller-identity --profile cerebro-aws",
+		}
+	}
+	return steps
+}
+
+func gcpConnectorSetupSteps(methodID string) []connectorSetupStepView {
+	steps := []connectorSetupStepView{
+		{
+			ID:          "project",
+			Label:       "Choose project scope",
+			Description: "Provide the project ID used for project-scoped GCP families.",
+		},
+		{
+			ID:          "identity",
+			Label:       "Configure identity",
+			Description: "Use workload identity federation, a service account reference, or a short-lived token resolved server-side.",
+		},
+		{
+			ID:          "apis",
+			Label:       "Enable required APIs",
+			Description: "Enable IAM, Cloud Asset, STS, IAM Credentials, and the product APIs for selected families.",
+		},
+		{
+			ID:          "scope",
+			Label:       "Select resource groups",
+			Description: "Turn off resource classes that should not be fetched for this runtime.",
+		},
+		{
+			ID:          "validate",
+			Label:       "Validate, then save",
+			Description: "Cerebro verifies the selected source family before persisting the runtime.",
+		},
+	}
+	if methodID == connectorAuthMethodInfisicalCLI {
+		steps[1].Commands = []string{
+			"infisical login",
+			"infisical run --env=<env> --path=/cerebro/connectors/gcp -- <start-cerebro>",
+		}
+	}
+	return steps
+}
+
+func connectorSetupCommands(sourceID string, methodID string) []string {
+	switch methodID {
+	case connectorAuthMethodAWSSSOProfile:
+		return []string{
+			"aws configure sso --profile cerebro-aws",
+			"aws sso login --profile cerebro-aws",
+			"aws sts get-caller-identity --profile cerebro-aws",
+		}
+	case connectorAuthMethodInfisicalCLI:
+		return []string{
+			"infisical login status --json",
+			"infisical login",
+			"infisical run --env=<env> --path=/cerebro/connectors/" + connectorEnvComponentLower(sourceID) + " -- <start-cerebro>",
+		}
+	default:
+		return nil
+	}
+}
+
+func connectorProductGroups(sourceID string) []connectorProductGroupView {
+	switch sourceID {
+	case "aws":
+		return []connectorProductGroupView{
+			{
+				ID:             "core",
+				Label:          "Core AWS inventory",
+				Description:    "IAM, networking, compute, storage, database, logging, and exposure families.",
+				Families:       []string{"cloudtrail", "iam_role", "iam_user", "ec2_instance", "s3_bucket", "security_group", "rds_instance", "kms_key"},
+				DefaultEnabled: true,
+				Required:       true,
+				PermissionNote: "Start with AWS SecurityAudit and add read-only actions for enabled families that are not covered by the managed policy.",
+			},
+			{
+				ID:             "identity_center",
+				Label:          "IAM Identity Center",
+				Description:    "Identity Center users, groups, permission sets, and account assignments.",
+				Families:       []string{"identity_center_account_assignment", "identity_center_permission_set", "identitystore_user", "identitystore_group", "identitystore_group_membership", "sso_instance", "sso_permission_set", "sso_account_assignment"},
+				DefaultEnabled: false,
+				PermissionNote: "Requires sso-admin, identitystore, and Organizations read permissions.",
+			},
+			{
+				ID:             "organization",
+				Label:          "AWS Organizations",
+				Description:    "Accounts, organizational units, roots, and policies visible to the configured account.",
+				Families:       []string{"organizations_account", "organizations_organizational_unit", "organizations_policy", "organizations_root"},
+				DefaultEnabled: false,
+				PermissionNote: "Requires Organizations read access from the management or delegated administrator account.",
+			},
+			{
+				ID:             "security_findings",
+				Label:          "Security and vulnerability findings",
+				Description:    "Inspector, GuardDuty, Security Hub, and Macie finding families.",
+				Families:       []string{"inspector2_finding", "guardduty_finding", "securityhub_finding", "macie2_finding"},
+				DefaultEnabled: false,
+				PermissionNote: "Requires the provider services to be enabled and readable in the selected account and region.",
+				CostNote:       "Provider-side scanning services may have their own cost and enablement model.",
+			},
+		}
+	case "gcp":
+		return []connectorProductGroupView{
+			{
+				ID:             "core",
+				Label:          "Core GCP inventory",
+				Description:    "Compute, storage, IAM, network, project, and service account families.",
+				Families:       []string{"resourcemanager_project", "compute_instance", "compute_firewall", "gcs_bucket", "service_account", "iam_role_assignment"},
+				DefaultEnabled: true,
+				Required:       true,
+				PermissionNote: "Grant least-privilege read roles to the scanner service account or workload identity principal.",
+			},
+			{
+				ID:             "audit",
+				Label:          "Cloud audit logs",
+				Description:    "Cloud Audit log records scoped to the configured project.",
+				Families:       []string{"audit"},
+				DefaultEnabled: true,
+				PermissionNote: "Requires logging read access and audit log retention in the project.",
+			},
+			{
+				ID:             "container_security",
+				Label:          "Container and artifact security",
+				Description:    "Artifact Registry, Container Registry, GKE, and container vulnerability families.",
+				Families:       []string{"artifact_registry_repository", "artifact_registry_image", "container_registry", "container_vulnerability", "gke_cluster", "gke_node_pool"},
+				DefaultEnabled: false,
+				PermissionNote: "Requires Artifact Registry, Container Analysis, and Kubernetes Engine read permissions.",
+			},
+		}
+	default:
+		return nil
+	}
+}
+
+func connectorDeploymentGuides(sourceID string, methodID string) []connectorDeploymentGuideView {
+	switch sourceID {
+	case "aws":
+		return []connectorDeploymentGuideView{
+			{
+				ID:          "aws_cli",
+				Label:       "AWS CLI validation",
+				Language:    "shell",
+				Description: "Use after the role/profile exists to confirm the caller identity.",
+				Body: strings.Join([]string{
+					"aws sts get-caller-identity --profile <profile>",
+					"aws iam get-account-summary --profile <profile>",
+					"aws cloudtrail describe-trails --region <region> --profile <profile>",
+				}, "\n"),
+			},
+			{
+				ID:          "aws_trust_policy",
+				Label:       "Role trust policy shape",
+				Language:    "json",
+				Description: "Create a role that can be assumed by the Cerebro deployment principal. Replace placeholders outside this UI.",
+				Body:        awsTrustPolicyGuide(),
+			},
+			{
+				ID:          "aws_role_commands",
+				Label:       "Role setup commands",
+				Language:    "shell",
+				Description: "Attach AWS SecurityAudit and any additional read-only policy needed by selected resource groups.",
+				Body: strings.Join([]string{
+					"aws iam create-role --role-name CerebroConnectorReadOnly --assume-role-policy-document file://trust-policy.json",
+					"aws iam attach-role-policy --role-name CerebroConnectorReadOnly --policy-arn arn:aws:iam::aws:policy/SecurityAudit",
+					"aws iam attach-role-policy --role-name CerebroConnectorReadOnly --policy-arn arn:aws:iam::<account-id>:policy/CerebroAdditionalReadOnly",
+				}, "\n"),
+			},
+		}
+	case "gcp":
+		return []connectorDeploymentGuideView{
+			{
+				ID:          "gcp_api_enablement",
+				Label:       "API enablement",
+				Language:    "shell",
+				Description: "Enable the baseline APIs before validating a project-scoped runtime.",
+				Body: strings.Join([]string{
+					"gcloud services enable cloudasset.googleapis.com iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com",
+					"gcloud services enable logging.googleapis.com cloudresourcemanager.googleapis.com serviceusage.googleapis.com",
+				}, "\n"),
+			},
+			{
+				ID:          "gcp_wif",
+				Label:       "Workload identity handoff",
+				Language:    "shell",
+				Description: "Use deployment automation to create the pool/provider and inject only references into Cerebro.",
+				Body: strings.Join([]string{
+					"gcloud iam workload-identity-pools create cerebro-connectors --location=global --display-name=\"Cerebro connectors\"",
+					"gcloud iam service-accounts create cerebro-connector --display-name=\"Cerebro connector reader\"",
+					"gcloud projects add-iam-policy-binding <project-id> --member=serviceAccount:<service-account-email> --role=roles/viewer",
+				}, "\n"),
+			},
+		}
+	default:
+		if methodID == connectorAuthMethodInfisicalCLI {
+			return []connectorDeploymentGuideView{{
+				ID:          "infisical",
+				Label:       "Infisical environment handoff",
+				Language:    "shell",
+				Description: "Authenticate outside the browser and inject secret values into the server process.",
+				Body: strings.Join([]string{
+					"infisical login",
+					"infisical run --env=<env> --path=/cerebro/connectors/<source> -- <start-cerebro>",
+				}, "\n"),
+			}}
+		}
+		return nil
+	}
+}
+
+func awsTrustPolicyGuide() string {
+	return `{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "<cerebro-deployment-principal-arn>"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "<external-id>"
+        }
+      }
+    }
+  ]
+}`
+}
+
+func connectorRegionGuidance(sourceID string) *connectorRegionGuidanceView {
+	switch sourceID {
+	case "aws":
+		return &connectorRegionGuidanceView{
+			DefaultRegion:       "us-east-1",
+			Examples:            []string{"us-east-1", "us-west-2", "eu-west-1"},
+			SupportsGlobal:      true,
+			SupportsMultiRegion: true,
+			Description:         "Create one runtime per account/family/region set as needed. Global IAM and Organizations families should keep include_global enabled unless intentionally scoped out.",
+		}
+	case "gcp":
+		return &connectorRegionGuidanceView{
+			DefaultRegion:       "global",
+			Examples:            []string{"global", "us-central1", "europe-west1"},
+			SupportsGlobal:      true,
+			SupportsMultiRegion: true,
+			Description:         "Most GCP families are project-scoped. Location-specific families can use location config when required by the source family.",
+		}
+	default:
+		return nil
+	}
+}
+
+func connectorSecurityNotes(sourceID string, methodID string) []string {
+	notes := []string{
+		"Connection checks run before save and do not return secret values.",
+		"Credential fields are redacted from runtime responses.",
+		"Resource scope policy is non-secret and can skip families before source reads.",
+	}
+	if methodID != connectorAuthMethodEncryptedSubmission {
+		notes = append(notes, "Reference-backed methods save only server-resolvable references, not secret material.")
+	}
+	switch sourceID {
+	case "aws":
+		notes = append(notes, "Prefer role assumption or AWS SSO over long-lived access keys.")
+	case "gcp":
+		notes = append(notes, "Prefer workload identity federation or service account references over browser-submitted tokens.")
+	}
+	return notes
+}
+
+func connectorEnvComponentLower(value string) string {
+	component := strings.ToLower(connectorEnvComponent(value))
+	return strings.ReplaceAll(component, "_", "-")
 }
 
 func connectorUnavailableReason(available bool, reason string) string {
