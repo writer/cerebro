@@ -330,8 +330,13 @@ func parseDMARCReportAddresses(raw string) []string {
 
 func spfTerminalPolicy(record string) string {
 	fields := strings.Fields(strings.ToLower(record))
+	hasRedirect := false
 	for i := len(fields) - 1; i >= 0; i-- {
 		field := strings.TrimSpace(fields[i])
+		if strings.HasPrefix(field, "redirect=") && strings.TrimSpace(strings.TrimPrefix(field, "redirect=")) != "" {
+			hasRedirect = true
+			continue
+		}
 		if !strings.HasSuffix(field, "all") {
 			continue
 		}
@@ -347,6 +352,9 @@ func spfTerminalPolicy(record string) string {
 		default:
 			return "all"
 		}
+	}
+	if hasRedirect {
+		return "redirect"
 	}
 	return ""
 }

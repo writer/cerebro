@@ -102,6 +102,30 @@ func TestEvaluateDoesNotMarkPermissiveSPFAsHealthy(t *testing.T) {
 	}
 }
 
+func TestEvaluateAcceptsSPFRedirectPolicy(t *testing.T) {
+	resolver := fakeResolver{
+		txt: map[string][]string{
+			"redirect.example.com":                    {"v=spf1 redirect=_spf.example.net"},
+			"_dmarc.redirect.example.com":             {"v=DMARC1; p=reject; rua=mailto:dmarc@redirect.example.com"},
+			"default._domainkey.redirect.example.com": {"v=DKIM1; p=" + base64.StdEncoding.EncodeToString(make([]byte, 256))},
+		},
+		mx: map[string][]*net.MX{"redirect.example.com": {{Host: "mx.example.com.", Pref: 10}}},
+	}
+	health := Evaluate(context.Background(), resolver, "redirect.example.com", nil)
+	if health.Status != StatusHealthy {
+		t.Fatalf("Status = %q for SPF redirect policy, want HEALTHY; issues=%+v", health.Status, health.Issues)
+	}
+	if health.SPFPolicy != "redirect" {
+		t.Fatalf("SPFPolicy = %q, want redirect", health.SPFPolicy)
+	}
+	if findIssueCode(health.Issues, "spf_no_terminal_policy") {
+		t.Fatalf("SPF redirect policy should not receive spf_no_terminal_policy; issues=%+v", health.Issues)
+	}
+	if health.SPFLookupCount != 1 {
+		t.Fatalf("SPFLookupCount = %d, want redirect lookup counted", health.SPFLookupCount)
+	}
+}
+
 func TestEvaluateRejectsInvalidDMARCPolicyValue(t *testing.T) {
 	resolver := fakeResolver{
 		txt: map[string][]string{
