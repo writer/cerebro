@@ -18,10 +18,12 @@ emitted_kinds:
   - gcp.container_registry
   - gcp.container_vulnerability
   - gcp.compute_address
+  - gcp.compute_backend_bucket
   - gcp.compute_backend_service
   - gcp.compute_disk
   - gcp.compute_firewall
   - gcp.compute_forwarding_rule
+  - gcp.compute_health_check
   - gcp.compute_instance
   - gcp.compute_network
   - gcp.compute_route
@@ -70,10 +72,12 @@ runtime_families:
   - container_registry
   - container_vulnerability
   - compute_address
+  - compute_backend_bucket
   - compute_backend_service
   - compute_disk
   - compute_firewall
   - compute_forwarding_rule
+  - compute_health_check
   - compute_instance
   - compute_network
   - compute_route
@@ -187,6 +191,12 @@ coverage_contract:
       families: [compute_address]
       support: supported
       high_value: true
+    - id: compute_backend_bucket
+      type: entity_family
+      title: Compute backend buckets
+      families: [compute_backend_bucket]
+      support: supported
+      high_value: true
     - id: compute_backend_service
       type: entity_family
       title: Compute backend services
@@ -209,6 +219,12 @@ coverage_contract:
       type: entity_family
       title: Compute forwarding rules
       families: [compute_forwarding_rule]
+      support: supported
+      high_value: true
+    - id: compute_health_check
+      type: entity_family
+      title: Compute health checks
+      families: [compute_health_check]
       support: supported
       high_value: true
     - id: compute_instance

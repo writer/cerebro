@@ -82,9 +82,11 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyContainerVuln, kind: "gcp.container_vulnerability"},
 		{family: familyComputeBackendService, kind: "gcp.compute_backend_service"},
 		{family: familyComputeAddress, kind: "gcp.compute_address"},
+		{family: familyComputeBackendBucket, kind: "gcp.compute_backend_bucket"},
 		{family: familyComputeDisk, kind: "gcp.compute_disk"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall"},
 		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule"},
+		{family: familyComputeHealthCheck, kind: "gcp.compute_health_check"},
 		{family: familyComputeInstance, kind: "gcp.compute_instance"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network"},
 		{family: familyComputeRoute, kind: "gcp.compute_route"},
@@ -297,7 +299,9 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyContainerRegistry, kind: "gcp.container_registry", attr: "iam_bindings_count", want: "1"},
 		{family: familyContainerVuln, kind: "gcp.container_vulnerability", attr: "vulnerability_id", want: "CVE-2026-4242"},
 		{family: familyComputeAddress, kind: "gcp.compute_address", attr: "internet_exposed", want: "true"},
+		{family: familyComputeBackendBucket, kind: "gcp.compute_backend_bucket", attr: "edge_security_policy", want: "prod-edge-armor"},
 		{family: familyComputeBackendService, kind: "gcp.compute_backend_service", attr: "health_checks_count", want: "1"},
+		{family: familyComputeHealthCheck, kind: "gcp.compute_health_check", attr: "request_path", want: "/healthz"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy", attr: "rules_count", want: "3"},
@@ -829,6 +833,10 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 		case "/compute/v1/projects/writer-prod/aggregated/backendServices":
 			requireQuery(t, r, "maxResults", "10", "backend services")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"backendServices": []map[string]any{{"id": "bs-1", "name": "prod-backend", "selfLink": "projects/writer-prod/global/backendServices/prod-backend", "description": "prod https backend", "protocol": "HTTPS", "portName": "https", "loadBalancingScheme": "EXTERNAL_MANAGED", "sessionAffinity": "NONE", "localityLbPolicy": "ROUND_ROBIN", "timeoutSec": 30, "enableCDN": true, "healthChecks": []string{"projects/writer-prod/global/healthChecks/prod-hc"}, "backends": []map[string]any{{"group": "projects/writer-prod/zones/us-central1-a/instanceGroups/prod-mig", "balancingMode": "UTILIZATION", "capacityScaler": 1.0, "maxUtilization": 0.8}}, "connectionDraining": map[string]int{"drainingTimeoutSec": 300}, "logConfig": map[string]any{"enable": true, "sampleRate": 1.0}, "iap": map[string]bool{"enabled": true}, "securityPolicy": "projects/writer-prod/global/securityPolicies/prod-armor", "network": "projects/writer-prod/global/networks/default", "customRequestHeaders": []string{"X-Forwarded-Proto:{client_protocol}"}, "labels": map[string]string{"env": "prod"}}}}}})
+		case "/compute/v1/projects/writer-prod/global/backendBuckets":
+			requireQuery(t, r, "maxResults", "10", "backend buckets")
+			requireQuery(t, r, "returnPartialSuccess", "true", "backend buckets")
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "bb-1", "name": "prod-static-bucket", "selfLink": "projects/writer-prod/global/backendBuckets/prod-static-bucket", "description": "prod static assets backend", "bucketName": "writer-prod-static", "enableCdn": true, "cdnPolicy": map[string]any{"signedUrlKeyNames": []string{"prod-key"}, "signedUrlCacheMaxAgeSec": "3600", "requestCoalescing": true, "cacheMode": "CACHE_ALL_STATIC", "defaultTtl": 3600, "maxTtl": 86400, "clientTtl": 600, "negativeCaching": true, "negativeCachingPolicy": []map[string]any{{"code": 404, "ttl": 120}}, "serveWhileStale": 86400, "bypassCacheOnRequestHeaders": []map[string]string{{"headerName": "Authorization"}}, "cacheKeyPolicy": map[string]any{"queryStringWhitelist": []string{"v"}, "includeHttpHeaders": []string{"Accept-Language"}}}, "customResponseHeaders": []string{"X-Content-Type-Options:nosniff"}, "edgeSecurityPolicy": "projects/writer-prod/global/securityPolicies/prod-edge-armor", "compressionMode": "AUTOMATIC", "loadBalancingScheme": "EXTERNAL_MANAGED", "usedBy": []map[string]string{{"reference": "projects/writer-prod/global/urlMaps/prod-url-map"}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/addresses":
 			requireQuery(t, r, "maxResults", "10", "addresses")
 			requireQuery(t, r, "returnPartialSuccess", "true", "addresses")
@@ -849,6 +857,10 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			requireQuery(t, r, "maxResults", "10", "target https proxies")
 			requireQuery(t, r, "returnPartialSuccess", "true", "target https proxies")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"targetHttpsProxies": []map[string]any{{"id": "thsp-1", "name": "prod-https-proxy", "selfLink": "projects/writer-prod/global/targetHttpsProxies/prod-https-proxy", "description": "prod https proxy", "urlMap": "projects/writer-prod/global/urlMaps/prod-url-map", "sslCertificates": []string{"projects/writer-prod/global/sslCertificates/prod-cert"}, "certificateMap": "//certificatemanager.googleapis.com/projects/writer-prod/locations/global/certificateMaps/prod-map", "quicOverride": "ENABLE", "sslPolicy": "projects/writer-prod/global/sslPolicies/modern", "serverTlsPolicy": "projects/writer-prod/locations/global/serverTlsPolicies/prod-server-tls", "authorizationPolicy": "projects/writer-prod/locations/global/authorizationPolicies/prod-authz", "httpKeepAliveTimeoutSec": 610, "fingerprint": "httpsfp"}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/healthChecks":
+			requireQuery(t, r, "maxResults", "10", "health checks")
+			requireQuery(t, r, "returnPartialSuccess", "true", "health checks")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"healthChecks": []map[string]any{{"id": "hc-1", "name": "prod-hc", "selfLink": "projects/writer-prod/global/healthChecks/prod-hc", "description": "prod http health check", "checkIntervalSec": 5, "timeoutSec": 5, "healthyThreshold": 2, "unhealthyThreshold": 3, "type": "HTTP", "httpHealthCheck": map[string]any{"port": 8080, "portSpecification": "USE_FIXED_PORT", "host": "app.writer.example", "requestPath": "/healthz", "proxyHeader": "NONE", "response": "ok"}, "sourceRegions": []string{"us-central1", "us-east1", "us-west1"}, "logConfig": map[string]bool{"enable": true}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/subnetworks":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"subnetworks": []map[string]any{{"id": "subnet-1", "name": "default", "selfLink": "projects/writer-prod/regions/us-central1/subnetworks/default", "network": "projects/writer-prod/global/networks/default", "region": "projects/writer-prod/regions/us-central1", "ipCidrRange": "10.0.0.0/24", "privateIpGoogleAccess": true, "purpose": "PRIVATE", "stackType": "IPV4_ONLY", "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/urlMaps":

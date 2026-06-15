@@ -472,6 +472,56 @@ type ComputeAddressRecord struct {
 	Raw              json.RawMessage   `json:"-"`
 }
 
+type ComputeBackendBucketRecord struct {
+	ID                    string                          `json:"id"`
+	Name                  string                          `json:"name"`
+	SelfLink              string                          `json:"selfLink"`
+	Description           string                          `json:"description"`
+	BucketName            string                          `json:"bucketName"`
+	EnableCDN             bool                            `json:"enableCdn"`
+	CDNPolicy             ComputeBackendBucketCDNPolicy   `json:"cdnPolicy"`
+	CustomResponseHeaders []string                        `json:"customResponseHeaders"`
+	EdgeSecurityPolicy    string                          `json:"edgeSecurityPolicy"`
+	CompressionMode       string                          `json:"compressionMode"`
+	LoadBalancingScheme   string                          `json:"loadBalancingScheme"`
+	Region                string                          `json:"region"`
+	UsedBy                []ComputeBackendBucketReference `json:"usedBy"`
+	Raw                   json.RawMessage                 `json:"-"`
+}
+
+type ComputeBackendBucketCDNPolicy struct {
+	SignedURLKeyNames     []string                                   `json:"signedUrlKeyNames"`
+	SignedURLCacheMaxAge  string                                     `json:"signedUrlCacheMaxAgeSec"`
+	RequestCoalescing     bool                                       `json:"requestCoalescing"`
+	CacheMode             string                                     `json:"cacheMode"`
+	DefaultTTL            int                                        `json:"defaultTtl"`
+	MaxTTL                int                                        `json:"maxTtl"`
+	ClientTTL             int                                        `json:"clientTtl"`
+	NegativeCaching       bool                                       `json:"negativeCaching"`
+	NegativeCachingPolicy []ComputeBackendBucketNegativeCachingEntry `json:"negativeCachingPolicy"`
+	ServeWhileStale       int                                        `json:"serveWhileStale"`
+	BypassCacheOnHeaders  []ComputeBackendBucketRequestHeader        `json:"bypassCacheOnRequestHeaders"`
+	CacheKeyPolicy        ComputeBackendBucketCacheKeyPolicy         `json:"cacheKeyPolicy"`
+}
+
+type ComputeBackendBucketNegativeCachingEntry struct {
+	Code int `json:"code"`
+	TTL  int `json:"ttl"`
+}
+
+type ComputeBackendBucketRequestHeader struct {
+	HeaderName string `json:"headerName"`
+}
+
+type ComputeBackendBucketCacheKeyPolicy struct {
+	QueryStringWhitelist []string `json:"queryStringWhitelist"`
+	IncludeHTTPHeaders   []string `json:"includeHttpHeaders"`
+}
+
+type ComputeBackendBucketReference struct {
+	Reference string `json:"reference"`
+}
+
 type ComputeBackendServiceRecord struct {
 	ID                   string                                  `json:"id"`
 	Name                 string                                  `json:"name"`
@@ -518,6 +568,45 @@ type ComputeBackendServiceLogConfig struct {
 
 type ComputeBackendServiceIAP struct {
 	Enabled bool `json:"enabled"`
+}
+
+type ComputeHealthCheckRecord struct {
+	ID                 string                  `json:"id"`
+	Name               string                  `json:"name"`
+	SelfLink           string                  `json:"selfLink"`
+	Description        string                  `json:"description"`
+	CheckIntervalSec   int                     `json:"checkIntervalSec"`
+	TimeoutSec         int                     `json:"timeoutSec"`
+	UnhealthyThreshold int                     `json:"unhealthyThreshold"`
+	HealthyThreshold   int                     `json:"healthyThreshold"`
+	Type               string                  `json:"type"`
+	TCPHealthCheck     ComputeHealthCheckProbe `json:"tcpHealthCheck"`
+	SSLHealthCheck     ComputeHealthCheckProbe `json:"sslHealthCheck"`
+	HTTPHealthCheck    ComputeHealthCheckProbe `json:"httpHealthCheck"`
+	HTTPSHealthCheck   ComputeHealthCheckProbe `json:"httpsHealthCheck"`
+	HTTP2HealthCheck   ComputeHealthCheckProbe `json:"http2HealthCheck"`
+	GRPCHealthCheck    ComputeHealthCheckProbe `json:"grpcHealthCheck"`
+	GRPCTLSHealthCheck ComputeHealthCheckProbe `json:"grpcTlsHealthCheck"`
+	SourceRegions      []string                `json:"sourceRegions"`
+	Region             string                  `json:"region"`
+	LogConfig          ComputeHealthCheckLog   `json:"logConfig"`
+	Raw                json.RawMessage         `json:"-"`
+}
+
+type ComputeHealthCheckProbe struct {
+	Port              int    `json:"port"`
+	PortName          string `json:"portName"`
+	PortSpecification string `json:"portSpecification"`
+	Request           string `json:"request"`
+	Response          string `json:"response"`
+	ProxyHeader       string `json:"proxyHeader"`
+	Host              string `json:"host"`
+	RequestPath       string `json:"requestPath"`
+	GRPCServiceName   string `json:"grpcServiceName"`
+}
+
+type ComputeHealthCheckLog struct {
+	Enable bool `json:"enable"`
 }
 
 type ComputeSecurityPolicyRecord struct {
@@ -831,6 +920,10 @@ func (record ComputeAddressRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name, record.Address)
 }
 
+func (record ComputeBackendBucketRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name, record.BucketName)
+}
+
 func (record ComputeBackendServiceRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
 }
@@ -840,6 +933,10 @@ func (record ComputeDiskRecord) CerebroResourceID() string {
 }
 
 func (record ComputeForwardingRuleRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeHealthCheckRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
 }
 
@@ -2019,6 +2116,57 @@ func ComputeAddressEvent(settings Settings, record ComputeAddressRecord) (*primi
 	return sourceEvent(settings, "gcp-compute-address-"+resourceID, "gcp.compute_address", "gcp/compute_address/v1", payload, attributes)
 }
 
+func ComputeBackendBucketEvent(settings Settings, record ComputeBackendBucketRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name, record.BucketName)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	usedByNames, usedByURLs := computeBackendBucketUsedBy(record.UsedBy)
+	negativeCachingCodes := computeBackendBucketNegativeCachingCodes(record.CDNPolicy.NegativeCachingPolicy)
+	attributes := cloudResourceAttributes(settings, "compute_backend_bucket", resourceID, record.Name, "compute_backend_bucket", location, nil)
+	attributes["description"] = record.Description
+	attributes["bucket_name"] = record.BucketName
+	attributes["storage_bucket"] = record.BucketName
+	attributes["cdn_enabled"] = boolString(record.EnableCDN)
+	attributes["cache_mode"] = record.CDNPolicy.CacheMode
+	attributes["signed_url_keys_count"] = strconv.Itoa(len(record.CDNPolicy.SignedURLKeyNames))
+	attributes["signed_url_cache_max_age_sec"] = record.CDNPolicy.SignedURLCacheMaxAge
+	attributes["request_coalescing"] = boolString(record.CDNPolicy.RequestCoalescing)
+	if record.CDNPolicy.DefaultTTL != 0 {
+		attributes["default_ttl_sec"] = strconv.Itoa(record.CDNPolicy.DefaultTTL)
+	}
+	if record.CDNPolicy.MaxTTL != 0 {
+		attributes["max_ttl_sec"] = strconv.Itoa(record.CDNPolicy.MaxTTL)
+	}
+	if record.CDNPolicy.ClientTTL != 0 {
+		attributes["client_ttl_sec"] = strconv.Itoa(record.CDNPolicy.ClientTTL)
+	}
+	attributes["negative_caching"] = boolString(record.CDNPolicy.NegativeCaching)
+	attributes["negative_caching_policy_count"] = strconv.Itoa(len(record.CDNPolicy.NegativeCachingPolicy))
+	attributes["negative_caching_codes"] = strings.Join(negativeCachingCodes, ",")
+	if record.CDNPolicy.ServeWhileStale != 0 {
+		attributes["serve_while_stale_sec"] = strconv.Itoa(record.CDNPolicy.ServeWhileStale)
+	}
+	attributes["bypass_cache_headers_count"] = strconv.Itoa(len(record.CDNPolicy.BypassCacheOnHeaders))
+	attributes["cache_key_query_whitelist_count"] = strconv.Itoa(len(record.CDNPolicy.CacheKeyPolicy.QueryStringWhitelist))
+	attributes["cache_key_include_headers_count"] = strconv.Itoa(len(record.CDNPolicy.CacheKeyPolicy.IncludeHTTPHeaders))
+	attributes["custom_response_headers_count"] = strconv.Itoa(len(record.CustomResponseHeaders))
+	attributes["edge_security_policy"] = lastPathSegment(record.EdgeSecurityPolicy)
+	attributes["edge_security_policy_url"] = record.EdgeSecurityPolicy
+	attributes["compression_mode"] = record.CompressionMode
+	attributes["load_balancing_scheme"] = record.LoadBalancingScheme
+	attributes["scheme"] = record.LoadBalancingScheme
+	attributes["used_by"] = strings.Join(usedByNames, ",")
+	attributes["used_by_urls"] = strings.Join(usedByURLs, ",")
+	attributes["used_by_count"] = strconv.Itoa(len(record.UsedBy))
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-backend-bucket-"+resourceID, "gcp.compute_backend_bucket", "gcp/compute_backend_bucket/v1", payload, attributes)
+}
+
 func ComputeBackendServiceEvent(settings Settings, record ComputeBackendServiceRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	location := lastPathSegment(record.Region)
@@ -2061,6 +2209,42 @@ func ComputeBackendServiceEvent(settings Settings, record ComputeBackendServiceR
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-compute-backend-service-"+resourceID, "gcp.compute_backend_service", "gcp/compute_backend_service/v1", payload, attributes)
+}
+
+func ComputeHealthCheckEvent(settings Settings, record ComputeHealthCheckRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	healthCheckType, probe := computeHealthCheckProbe(record)
+	attributes := cloudResourceAttributes(settings, "compute_health_check", resourceID, record.Name, "compute_health_check", location, nil)
+	attributes["description"] = record.Description
+	attributes["type"] = healthCheckType
+	attributes["protocol"] = healthCheckType
+	attributes["check_interval_sec"] = strconv.Itoa(record.CheckIntervalSec)
+	attributes["timeout_sec"] = strconv.Itoa(record.TimeoutSec)
+	attributes["healthy_threshold"] = strconv.Itoa(record.HealthyThreshold)
+	attributes["unhealthy_threshold"] = strconv.Itoa(record.UnhealthyThreshold)
+	if probe.Port != 0 {
+		attributes["port"] = strconv.Itoa(probe.Port)
+	}
+	attributes["port_name"] = probe.PortName
+	attributes["port_specification"] = probe.PortSpecification
+	attributes["host"] = probe.Host
+	attributes["request_path"] = probe.RequestPath
+	attributes["proxy_header"] = probe.ProxyHeader
+	attributes["grpc_service_name"] = probe.GRPCServiceName
+	attributes["request_configured"] = boolString(probe.Request != "")
+	attributes["response_configured"] = boolString(probe.Response != "")
+	attributes["source_regions"] = strings.Join(record.SourceRegions, ",")
+	attributes["source_regions_count"] = strconv.Itoa(len(record.SourceRegions))
+	attributes["logging_enabled"] = boolString(record.LogConfig.Enable)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-health-check-"+resourceID, "gcp.compute_health_check", "gcp/compute_health_check/v1", payload, attributes)
 }
 
 func ComputeSecurityPolicyEvent(settings Settings, record ComputeSecurityPolicyRecord) (*primitives.Event, error) {
@@ -3131,6 +3315,72 @@ func computeBackendServiceBackends(backends []ComputeBackendServiceBackend) ([]s
 func computeAddressExternal(addressType string) bool {
 	normalized := strings.ToUpper(strings.TrimSpace(addressType))
 	return normalized == "" || normalized == "EXTERNAL"
+}
+
+func computeBackendBucketUsedBy(references []ComputeBackendBucketReference) ([]string, []string) {
+	names := make([]string, 0, len(references))
+	urls := make([]string, 0, len(references))
+	for _, usedBy := range references {
+		reference := strings.TrimSpace(usedBy.Reference)
+		if reference == "" {
+			continue
+		}
+		urls = append(urls, reference)
+		names = append(names, lastPathSegment(reference))
+	}
+	return names, urls
+}
+
+func computeBackendBucketNegativeCachingCodes(policies []ComputeBackendBucketNegativeCachingEntry) []string {
+	codes := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		if policy.Code != 0 {
+			codes = append(codes, strconv.Itoa(policy.Code))
+		}
+	}
+	sort.Strings(codes)
+	return codes
+}
+
+func computeHealthCheckProbe(record ComputeHealthCheckRecord) (string, ComputeHealthCheckProbe) {
+	switch strings.ToUpper(strings.TrimSpace(record.Type)) {
+	case "TCP":
+		return "TCP", record.TCPHealthCheck
+	case "SSL":
+		return "SSL", record.SSLHealthCheck
+	case "HTTP":
+		return "HTTP", record.HTTPHealthCheck
+	case "HTTPS":
+		return "HTTPS", record.HTTPSHealthCheck
+	case "HTTP2":
+		return "HTTP2", record.HTTP2HealthCheck
+	case "GRPC":
+		return "GRPC", record.GRPCHealthCheck
+	case "GRPC_TLS":
+		return "GRPC_TLS", record.GRPCTLSHealthCheck
+	}
+	switch {
+	case computeHealthCheckProbeConfigured(record.TCPHealthCheck):
+		return "TCP", record.TCPHealthCheck
+	case computeHealthCheckProbeConfigured(record.SSLHealthCheck):
+		return "SSL", record.SSLHealthCheck
+	case computeHealthCheckProbeConfigured(record.HTTPHealthCheck):
+		return "HTTP", record.HTTPHealthCheck
+	case computeHealthCheckProbeConfigured(record.HTTPSHealthCheck):
+		return "HTTPS", record.HTTPSHealthCheck
+	case computeHealthCheckProbeConfigured(record.HTTP2HealthCheck):
+		return "HTTP2", record.HTTP2HealthCheck
+	case computeHealthCheckProbeConfigured(record.GRPCHealthCheck):
+		return "GRPC", record.GRPCHealthCheck
+	case computeHealthCheckProbeConfigured(record.GRPCTLSHealthCheck):
+		return "GRPC_TLS", record.GRPCTLSHealthCheck
+	default:
+		return record.Type, ComputeHealthCheckProbe{}
+	}
+}
+
+func computeHealthCheckProbeConfigured(probe ComputeHealthCheckProbe) bool {
+	return probe.Port != 0 || probe.PortName != "" || probe.PortSpecification != "" || probe.Request != "" || probe.Response != "" || probe.ProxyHeader != "" || probe.Host != "" || probe.RequestPath != "" || probe.GRPCServiceName != ""
 }
 
 type computeSecurityPolicyRuleSummary struct {
