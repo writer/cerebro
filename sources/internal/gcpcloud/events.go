@@ -1,6 +1,7 @@
 package gcpcloud
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/url"
 	"regexp"
@@ -27,6 +28,41 @@ type Settings struct {
 	CustomerID          string
 	GroupKey            string
 	ServiceAccountEmail string
+}
+
+func ComputeAggregatedRawRecords[T any](items map[string]T, get func(T) []json.RawMessage, scopeField string) []json.RawMessage {
+	rawRecords := make([]json.RawMessage, 0)
+	for scope, scoped := range items {
+		field := computeAggregatedScopeField(scope, scopeField)
+		fieldNeedle := []byte(`"` + field + `"`)
+		for _, raw := range get(scoped) {
+			if len(raw) == 0 {
+				continue
+			}
+			rawRecords = append(rawRecords, raw)
+			if field != "" && scope != "" && !bytes.Contains(raw, fieldNeedle) {
+				var withScope map[string]any
+				if err := json.Unmarshal(raw, &withScope); err == nil {
+					withScope[field] = scope
+					if patched, err := json.Marshal(withScope); err == nil {
+						rawRecords[len(rawRecords)-1] = patched
+					}
+				}
+			}
+		}
+	}
+	return rawRecords
+}
+
+func computeAggregatedScopeField(scope string, fallback string) string {
+	switch {
+	case strings.HasPrefix(scope, "regions/"):
+		return "region"
+	case strings.HasPrefix(scope, "zones/"):
+		return "zone"
+	default:
+		return fallback
+	}
 }
 
 type ServiceAccountRecord struct {
@@ -718,6 +754,177 @@ type ComputeNEGAppEngine struct {
 	URLMask string `json:"urlMask"`
 }
 
+type ComputeRouterRecord struct {
+	ID                          string                 `json:"id"`
+	Name                        string                 `json:"name"`
+	SelfLink                    string                 `json:"selfLink"`
+	Description                 string                 `json:"description"`
+	Region                      string                 `json:"region"`
+	Network                     string                 `json:"network"`
+	NCCGateway                  string                 `json:"nccGateway"`
+	Interfaces                  []ComputeRouterIface   `json:"interfaces"`
+	BGPPeers                    []ComputeRouterBGPPeer `json:"bgpPeers"`
+	BGP                         ComputeRouterBGP       `json:"bgp"`
+	NATs                        []ComputeRouterNAT     `json:"nats"`
+	EncryptedInterconnectRouter bool                   `json:"encryptedInterconnectRouter"`
+	Raw                         json.RawMessage        `json:"-"`
+}
+
+type ComputeRouterIface struct {
+	Name                         string `json:"name"`
+	IPRange                      string `json:"ipRange"`
+	PrivateIPAddress             string `json:"privateIpAddress"`
+	Subnetwork                   string `json:"subnetwork"`
+	LinkedVPNTunnel              string `json:"linkedVpnTunnel"`
+	LinkedInterconnectAttachment string `json:"linkedInterconnectAttachment"`
+	ManagementType               string `json:"managementType"`
+}
+
+type ComputeRouterBGPPeer struct {
+	Name                       string `json:"name"`
+	InterfaceName              string `json:"interfaceName"`
+	IPAddress                  string `json:"ipAddress"`
+	PeerIPAddress              string `json:"peerIpAddress"`
+	PeerASN                    int64  `json:"peerAsn"`
+	AdvertiseMode              string `json:"advertiseMode"`
+	AdvertisedRoutePriority    int    `json:"advertisedRoutePriority"`
+	Enable                     string `json:"enable"`
+	EnableIPv4                 bool   `json:"enableIpv4"`
+	EnableIPv6                 bool   `json:"enableIpv6"`
+	RouterApplianceInstance    string `json:"routerApplianceInstance"`
+	ManagementType             string `json:"managementType"`
+	MD5AuthenticationKeyName   string `json:"md5AuthenticationKeyName"`
+	CustomLearnedRoutePriority int    `json:"customLearnedRoutePriority"`
+}
+
+type ComputeRouterBGP struct {
+	ASN               int64    `json:"asn"`
+	AdvertiseMode     string   `json:"advertiseMode"`
+	AdvertisedGroups  []string `json:"advertisedGroups"`
+	KeepaliveInterval int      `json:"keepaliveInterval"`
+	IdentifierRange   string   `json:"identifierRange"`
+}
+
+type ComputeRouterNAT struct {
+	Name                          string                       `json:"name"`
+	Type                          string                       `json:"type"`
+	NATIPAllocateOption           string                       `json:"natIpAllocateOption"`
+	SourceSubnetworkIPRangesToNAT string                       `json:"sourceSubnetworkIpRangesToNat"`
+	NATIPs                        []string                     `json:"natIps"`
+	DrainNATIPs                   []string                     `json:"drainNatIps"`
+	MinPortsPerVM                 int                          `json:"minPortsPerVm"`
+	MaxPortsPerVM                 int                          `json:"maxPortsPerVm"`
+	EnableDynamicPortAllocation   bool                         `json:"enableDynamicPortAllocation"`
+	EnableEndpointIndependentMap  bool                         `json:"enableEndpointIndependentMapping"`
+	EndpointTypes                 []string                     `json:"endpointTypes"`
+	Subnetworks                   []ComputeRouterNATSubnetwork `json:"subnetworks"`
+	LogConfig                     ComputeRouterNATLogConfig    `json:"logConfig"`
+	Rules                         []ComputeRouterNATRule       `json:"rules"`
+}
+
+type ComputeRouterNATSubnetwork struct {
+	Name                  string   `json:"name"`
+	SourceIPRangesToNAT   []string `json:"sourceIpRangesToNat"`
+	SecondaryIPRangeNames []string `json:"secondaryIpRangeNames"`
+}
+
+type ComputeRouterNATLogConfig struct {
+	Enable bool   `json:"enable"`
+	Filter string `json:"filter"`
+}
+
+type ComputeRouterNATRule struct {
+	RuleNumber int    `json:"ruleNumber"`
+	Match      string `json:"match"`
+	Action     struct {
+		SourceNATActiveIPs []string `json:"sourceNatActiveIps"`
+		SourceNATDrainIPs  []string `json:"sourceNatDrainIps"`
+	} `json:"action"`
+}
+
+type ComputeVPNGatewayRecord struct {
+	ID               string                       `json:"id"`
+	Name             string                       `json:"name"`
+	SelfLink         string                       `json:"selfLink"`
+	Description      string                       `json:"description"`
+	Region           string                       `json:"region"`
+	Network          string                       `json:"network"`
+	GatewayIPVersion string                       `json:"gatewayIpVersion"`
+	StackType        string                       `json:"stackType"`
+	VPNInterfaces    []ComputeVPNGatewayInterface `json:"vpnInterfaces"`
+	Labels           map[string]string            `json:"labels"`
+	Raw              json.RawMessage              `json:"-"`
+}
+
+type ComputeVPNGatewayInterface struct {
+	ID        int    `json:"id"`
+	IPAddress string `json:"ipAddress"`
+}
+
+type ComputeTargetVPNGatewayRecord struct {
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	SelfLink        string            `json:"selfLink"`
+	Description     string            `json:"description"`
+	Region          string            `json:"region"`
+	Network         string            `json:"network"`
+	Status          string            `json:"status"`
+	Tunnels         []string          `json:"tunnels"`
+	ForwardingRules []string          `json:"forwardingRules"`
+	Labels          map[string]string `json:"labels"`
+	Raw             json.RawMessage   `json:"-"`
+}
+
+type ComputeVPNTunnelRecord struct {
+	ID                       string            `json:"id"`
+	Name                     string            `json:"name"`
+	SelfLink                 string            `json:"selfLink"`
+	Description              string            `json:"description"`
+	Region                   string            `json:"region"`
+	Status                   string            `json:"status"`
+	DetailedStatus           string            `json:"detailedStatus"`
+	IKEVersion               int               `json:"ikeVersion"`
+	PeerIP                   string            `json:"peerIp"`
+	PeerExternalGateway      string            `json:"peerExternalGateway"`
+	PeerExternalGatewayIface int               `json:"peerExternalGatewayInterface"`
+	PeerGCPGateway           string            `json:"peerGcpGateway"`
+	TargetVPNGateway         string            `json:"targetVpnGateway"`
+	VPNGateway               string            `json:"vpnGateway"`
+	VPNGatewayInterface      int               `json:"vpnGatewayInterface"`
+	Router                   string            `json:"router"`
+	LocalTrafficSelector     []string          `json:"localTrafficSelector"`
+	RemoteTrafficSelector    []string          `json:"remoteTrafficSelector"`
+	SharedSecretHash         string            `json:"sharedSecretHash"`
+	Labels                   map[string]string `json:"labels"`
+	Raw                      json.RawMessage   `json:"-"`
+}
+
+type ComputeInterconnectAttachmentRecord struct {
+	ID                      string            `json:"id"`
+	Name                    string            `json:"name"`
+	SelfLink                string            `json:"selfLink"`
+	Description             string            `json:"description"`
+	Region                  string            `json:"region"`
+	Router                  string            `json:"router"`
+	Interconnect            string            `json:"interconnect"`
+	Type                    string            `json:"type"`
+	AdminEnabled            bool              `json:"adminEnabled"`
+	OperationalStatus       string            `json:"operationalStatus"`
+	State                   string            `json:"state"`
+	Bandwidth               string            `json:"bandwidth"`
+	EdgeAvailabilityDomain  string            `json:"edgeAvailabilityDomain"`
+	VlanTag8021q            int               `json:"vlanTag8021q"`
+	MTU                     int               `json:"mtu"`
+	Encryption              string            `json:"encryption"`
+	StackType               string            `json:"stackType"`
+	CloudRouterIPAddress    string            `json:"cloudRouterIpAddress"`
+	CustomerRouterIPAddress string            `json:"customerRouterIpAddress"`
+	IPSecInternalAddresses  []string          `json:"ipsecInternalAddresses"`
+	SatisfiesPzs            bool              `json:"satisfiesPzs"`
+	Labels                  map[string]string `json:"labels"`
+	Raw                     json.RawMessage   `json:"-"`
+}
+
 type ComputeHealthCheckRecord struct {
 	ID                 string                  `json:"id"`
 	Name               string                  `json:"name"`
@@ -1141,6 +1348,26 @@ func (record ComputeInstanceTemplateRecord) CerebroResourceID() string {
 }
 
 func (record ComputeNetworkEndpointGroupRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeRouterRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeVPNGatewayRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeTargetVPNGatewayRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeVPNTunnelRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeInterconnectAttachmentRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
 }
 
@@ -2575,6 +2802,148 @@ func ComputeNetworkEndpointGroupEvent(settings Settings, record ComputeNetworkEn
 	return sourceEvent(settings, "gcp-compute-network-endpoint-group-"+resourceID, "gcp.compute_network_endpoint_group", "gcp/compute_network_endpoint_group/v1", payload, attributes)
 }
 
+func ComputeRouterEvent(settings Settings, record ComputeRouterRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	natNames, natIPs, natModes, natLogging := computeRouterNATs(record.NATs)
+	interfaces := computeRouterInterfaces(record.Interfaces)
+	peerNames, peerASNs := computeRouterPeers(record.BGPPeers)
+	attributes := cloudResourceAttributes(settings, "compute_router", resourceID, record.Name, "compute_router", location, nil)
+	attributes["description"] = record.Description
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["ncc_gateway"] = lastPathSegment(record.NCCGateway)
+	attributes["ncc_gateway_url"] = record.NCCGateway
+	attributes["asn"] = strconv.FormatInt(record.BGP.ASN, 10)
+	attributes["advertise_mode"] = record.BGP.AdvertiseMode
+	attributes["advertised_groups"] = strings.Join(record.BGP.AdvertisedGroups, ",")
+	attributes["keepalive_interval"] = strconv.Itoa(record.BGP.KeepaliveInterval)
+	attributes["interfaces"] = strings.Join(interfaces, ",")
+	attributes["interfaces_count"] = strconv.Itoa(len(record.Interfaces))
+	attributes["bgp_peers"] = strings.Join(peerNames, ",")
+	attributes["bgp_peer_asns"] = strings.Join(peerASNs, ",")
+	attributes["bgp_peers_count"] = strconv.Itoa(len(record.BGPPeers))
+	attributes["nats"] = strings.Join(natNames, ",")
+	attributes["nats_count"] = strconv.Itoa(len(record.NATs))
+	attributes["nat_ip_allocate_options"] = strings.Join(natModes, ",")
+	attributes["nat_ips"] = strings.Join(lastPathSegments(natIPs), ",")
+	attributes["nat_ip_urls"] = strings.Join(natIPs, ",")
+	attributes["nat_logging_enabled"] = boolString(natLogging)
+	attributes["encrypted_interconnect_router"] = boolString(record.EncryptedInterconnectRouter)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-router-"+resourceID, "gcp.compute_router", "gcp/compute_router/v1", payload, attributes)
+}
+
+func ComputeVPNGatewayEvent(settings Settings, record ComputeVPNGatewayRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	attributes := cloudResourceAttributes(settings, "compute_vpn_gateway", resourceID, record.Name, "compute_vpn_gateway", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["gateway_ip_version"] = record.GatewayIPVersion
+	attributes["stack_type"] = record.StackType
+	attributes["interfaces_count"] = strconv.Itoa(len(record.VPNInterfaces))
+	attributes["interface_ips"] = strings.Join(computeVPNGatewayInterfaceIPs(record.VPNInterfaces), ",")
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-vpn-gateway-"+resourceID, "gcp.compute_vpn_gateway", "gcp/compute_vpn_gateway/v1", payload, attributes)
+}
+
+func ComputeTargetVPNGatewayEvent(settings Settings, record ComputeTargetVPNGatewayRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	attributes := cloudResourceAttributes(settings, "compute_target_vpn_gateway", resourceID, record.Name, "compute_target_vpn_gateway", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["status"] = record.Status
+	attributes["tunnels"] = strings.Join(lastPathSegments(record.Tunnels), ",")
+	attributes["tunnel_urls"] = strings.Join(record.Tunnels, ",")
+	attributes["tunnels_count"] = strconv.Itoa(len(record.Tunnels))
+	attributes["forwarding_rules"] = strings.Join(lastPathSegments(record.ForwardingRules), ",")
+	attributes["forwarding_rule_urls"] = strings.Join(record.ForwardingRules, ",")
+	attributes["forwarding_rules_count"] = strconv.Itoa(len(record.ForwardingRules))
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-target-vpn-gateway-"+resourceID, "gcp.compute_target_vpn_gateway", "gcp/compute_target_vpn_gateway/v1", payload, attributes)
+}
+
+func ComputeVPNTunnelEvent(settings Settings, record ComputeVPNTunnelRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	attributes := cloudResourceAttributes(settings, "compute_vpn_tunnel", resourceID, record.Name, "compute_vpn_tunnel", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["status"] = record.Status
+	attributes["detailed_status"] = record.DetailedStatus
+	attributes["ike_version"] = strconv.Itoa(record.IKEVersion)
+	attributes["peer_ip"] = record.PeerIP
+	attributes["peer_external_gateway"] = lastPathSegment(record.PeerExternalGateway)
+	attributes["peer_external_gateway_url"] = record.PeerExternalGateway
+	attributes["peer_gcp_gateway"] = lastPathSegment(record.PeerGCPGateway)
+	attributes["peer_gcp_gateway_url"] = record.PeerGCPGateway
+	attributes["target_vpn_gateway"] = lastPathSegment(record.TargetVPNGateway)
+	attributes["target_vpn_gateway_url"] = record.TargetVPNGateway
+	attributes["vpn_gateway"] = lastPathSegment(record.VPNGateway)
+	attributes["vpn_gateway_url"] = record.VPNGateway
+	attributes["vpn_gateway_interface"] = strconv.Itoa(record.VPNGatewayInterface)
+	attributes["router"] = lastPathSegment(record.Router)
+	attributes["router_url"] = record.Router
+	attributes["local_traffic_selectors"] = strings.Join(record.LocalTrafficSelector, ",")
+	attributes["remote_traffic_selectors"] = strings.Join(record.RemoteTrafficSelector, ",")
+	attributes["shared_secret_configured"] = boolString(record.SharedSecretHash != "")
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-vpn-tunnel-"+resourceID, "gcp.compute_vpn_tunnel", "gcp/compute_vpn_tunnel/v1", payload, attributes)
+}
+
+func ComputeInterconnectAttachmentEvent(settings Settings, record ComputeInterconnectAttachmentRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	attributes := cloudResourceAttributes(settings, "compute_interconnect_attachment", resourceID, record.Name, "compute_interconnect_attachment", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["router"] = lastPathSegment(record.Router)
+	attributes["router_url"] = record.Router
+	attributes["interconnect"] = lastPathSegment(record.Interconnect)
+	attributes["interconnect_url"] = record.Interconnect
+	attributes["attachment_type"] = record.Type
+	attributes["type"] = record.Type
+	attributes["admin_enabled"] = boolString(record.AdminEnabled)
+	attributes["operational_status"] = record.OperationalStatus
+	attributes["status"] = firstNonEmpty(record.OperationalStatus, record.State)
+	attributes["state"] = record.State
+	attributes["bandwidth"] = record.Bandwidth
+	attributes["edge_availability_domain"] = record.EdgeAvailabilityDomain
+	if record.VlanTag8021q != 0 {
+		attributes["vlan_tag_8021q"] = strconv.Itoa(record.VlanTag8021q)
+	}
+	if record.MTU != 0 {
+		attributes["mtu"] = strconv.Itoa(record.MTU)
+	}
+	attributes["encryption"] = record.Encryption
+	attributes["encrypted"] = boolString(record.Encryption != "" && !strings.EqualFold(record.Encryption, "NONE"))
+	attributes["stack_type"] = record.StackType
+	attributes["cloud_router_ip_address"] = record.CloudRouterIPAddress
+	attributes["customer_router_ip_address"] = record.CustomerRouterIPAddress
+	attributes["ipsec_internal_addresses"] = strings.Join(lastPathSegments(record.IPSecInternalAddresses), ",")
+	attributes["ipsec_internal_address_urls"] = strings.Join(record.IPSecInternalAddresses, ",")
+	attributes["satisfies_pzs"] = boolString(record.SatisfiesPzs)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-interconnect-attachment-"+resourceID, "gcp.compute_interconnect_attachment", "gcp/compute_interconnect_attachment/v1", payload, attributes)
+}
+
 func ComputeHealthCheckEvent(settings Settings, record ComputeHealthCheckRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	location := lastPathSegment(record.Region)
@@ -3753,6 +4122,64 @@ func computeNamedPorts(ports []ComputeNamedPort) []string {
 			continue
 		}
 		values = append(values, port.Name+":"+strconv.Itoa(port.Port))
+	}
+	return values
+}
+
+func computeRouterNATs(nats []ComputeRouterNAT) ([]string, []string, []string, bool) {
+	names := make([]string, 0, len(nats))
+	ips := []string{}
+	modes := []string{}
+	logging := false
+	for _, nat := range nats {
+		if nat.Name != "" {
+			names = append(names, nat.Name)
+		}
+		ips = append(ips, nat.NATIPs...)
+		if nat.NATIPAllocateOption != "" {
+			modes = append(modes, nat.NATIPAllocateOption)
+		}
+		logging = logging || nat.LogConfig.Enable
+	}
+	return names, ips, modes, logging
+}
+
+func computeRouterInterfaces(interfaces []ComputeRouterIface) []string {
+	values := make([]string, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.Name == "" {
+			continue
+		}
+		target := lastPathSegment(firstNonEmpty(iface.LinkedVPNTunnel, iface.LinkedInterconnectAttachment, iface.Subnetwork))
+		if target == "" {
+			values = append(values, iface.Name)
+			continue
+		}
+		values = append(values, iface.Name+":"+target)
+	}
+	return values
+}
+
+func computeRouterPeers(peers []ComputeRouterBGPPeer) ([]string, []string) {
+	names := make([]string, 0, len(peers))
+	asns := make([]string, 0, len(peers))
+	for _, peer := range peers {
+		if peer.Name != "" {
+			names = append(names, peer.Name)
+		}
+		if peer.PeerASN != 0 {
+			asns = append(asns, strconv.FormatInt(peer.PeerASN, 10))
+		}
+	}
+	return names, asns
+}
+
+func computeVPNGatewayInterfaceIPs(interfaces []ComputeVPNGatewayInterface) []string {
+	values := make([]string, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.IPAddress != "" {
+			values = append(values, iface.IPAddress)
+		}
 	}
 	return values
 }
