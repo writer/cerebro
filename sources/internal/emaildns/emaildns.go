@@ -152,6 +152,8 @@ func evaluateSPF(ctx context.Context, resolver Resolver, domain string, result *
 	switch result.SPFPolicy {
 	case "+all", "all":
 		result.Issues = append(result.Issues, makeIssue("SPF", SeverityCrit, "spf_permissive_all", "SPF allows all senders", "SPF ends in '+all' which permits spoofing.", "Replace '+all' with '-all' after validating legitimate senders."))
+	case "?all":
+		result.Issues = append(result.Issues, makeIssue("SPF", SeverityHigh, "spf_neutral_all", "SPF uses neutral all", "SPF ends in '?all' which neither passes nor fails senders and offers no spoofing protection.", "Replace '?all' with '-all' after validating legitimate senders."))
 	case "~all":
 		result.Issues = append(result.Issues, makeIssue("SPF", SeverityMedium, "spf_softfail", "SPF uses soft-fail", "SPF ends in '~all' which is not strict enforcement.", "Move to '-all' when sender inventory is complete."))
 	case "":
@@ -178,12 +180,15 @@ func evaluateDMARC(ctx context.Context, resolver Resolver, domain string, result
 	}
 	tags := parseTagRecord(dmarcRecords[0])
 	policy := strings.ToLower(strings.TrimSpace(tags["p"]))
-	if policy == "" {
-		result.Issues = append(result.Issues, makeIssue("DMARC", SeverityHigh, "dmarc_policy_missing", "DMARC policy missing", "The p= tag is missing in the DMARC record.", "Add p=quarantine or p=reject after baseline monitoring."))
-	}
 	result.DMARCPolicy = strings.ToUpper(policy)
-	if policy == "none" {
+	switch policy {
+	case "":
+		result.Issues = append(result.Issues, makeIssue("DMARC", SeverityHigh, "dmarc_policy_missing", "DMARC policy missing", "The p= tag is missing in the DMARC record.", "Add p=quarantine or p=reject after baseline monitoring."))
+	case "none":
 		result.Issues = append(result.Issues, makeIssue("DMARC", SeverityMedium, "dmarc_policy_none", "DMARC policy is monitoring-only", "DMARC policy is set to p=none.", "Move to p=quarantine or p=reject for enforcement."))
+	case "quarantine", "reject":
+	default:
+		result.Issues = append(result.Issues, makeIssue("DMARC", SeverityHigh, "dmarc_policy_invalid", "DMARC policy value is invalid", fmt.Sprintf("p=%s is not one of none|quarantine|reject and will be treated as p=none by receivers.", policy), "Set p= to none, quarantine, or reject per RFC 7489."))
 	}
 	result.DMARCPct = 100
 	if pct, err := strconv.Atoi(strings.TrimSpace(tags["pct"])); err == nil {
@@ -214,19 +219,20 @@ func evaluateDKIM(ctx context.Context, resolver Resolver, domain string, dkimSel
 		record := dkimRecords[0]
 		tags := parseTagRecord(record)
 		keyValue := strings.TrimSpace(tags["p"])
-		keyBits := dkimKeyBits(keyValue)
+		keyBits, keyValid := dkimKeyBits(keyValue)
 		status := StatusHealthy
-		if keyValue == "" {
+		switch {
+		case keyValue == "":
 			status = StatusFailing
 			result.Issues = append(result.Issues, makeIssue("DKIM", SeverityHigh, "dkim_missing_key", "DKIM public key missing", fmt.Sprintf("Selector %s is missing p= key material.", selector), "Publish a valid RSA key in p=."))
-		}
-		if keyBits > 0 && keyBits < 1024 {
+		case !keyValid:
+			status = StatusFailing
+			result.Issues = append(result.Issues, makeIssue("DKIM", SeverityHigh, "dkim_invalid_key", "DKIM public key is not valid base64", fmt.Sprintf("Selector %s p= value did not decode as base64 key material.", selector), "Republish the DKIM selector with valid base64-encoded RSA key material."))
+		case keyBits < 1024:
 			status = StatusFailing
 			result.Issues = append(result.Issues, makeIssue("DKIM", SeverityCrit, "dkim_weak_key", "DKIM key is too weak", fmt.Sprintf("Selector %s key size is %d bits.", selector, keyBits), "Rotate selector to at least 2048-bit RSA key material."))
-		} else if keyBits >= 1024 && keyBits < 2048 {
-			if status != StatusFailing {
-				status = StatusWarning
-			}
+		case keyBits < 2048:
+			status = StatusWarning
 			result.Issues = append(result.Issues, makeIssue("DKIM", SeverityMedium, "dkim_key_short", "DKIM key length below recommended", fmt.Sprintf("Selector %s key size is %d bits.", selector, keyBits), "Rotate selector to a 2048-bit RSA key."))
 		}
 		result.DKIMSelectors = append(result.DKIMSelectors, DKIMSelector{Selector: selector, Status: status, KeyBits: keyBits, Record: record})
@@ -359,16 +365,20 @@ func spfLookupCount(record string) int {
 	return count
 }
 
-func dkimKeyBits(publicKey string) int {
+// dkimKeyBits decodes the DKIM p= public-key payload and returns the byte
+// length in bits along with a flag indicating whether the payload was valid
+// base64. Empty payloads return (0, true) so callers can distinguish a
+// missing key from a malformed one.
+func dkimKeyBits(publicKey string) (int, bool) {
 	cleaned := strings.ReplaceAll(strings.TrimSpace(publicKey), " ", "")
 	if cleaned == "" {
-		return 0
+		return 0, true
 	}
 	decoded, err := base64.StdEncoding.DecodeString(cleaned)
 	if err != nil {
-		return 0
+		return 0, false
 	}
-	return len(decoded) * 8
+	return len(decoded) * 8, true
 }
 
 func sortIssues(issues []Issue) {

@@ -82,3 +82,69 @@ func TestSeverityRankOrders(t *testing.T) {
 		t.Fatalf("unknown severity should rank 0")
 	}
 }
+
+func TestEvaluateDoesNotMarkPermissiveSPFAsHealthy(t *testing.T) {
+	resolver := fakeResolver{
+		txt: map[string][]string{
+			"neutral.example.com":                    {"v=spf1 ?all"},
+			"_dmarc.neutral.example.com":             {"v=DMARC1; p=reject; rua=mailto:dmarc@neutral.example.com"},
+			"default._domainkey.neutral.example.com": {"v=DKIM1; p=" + base64.StdEncoding.EncodeToString(make([]byte, 256))},
+		},
+		mx: map[string][]*net.MX{"neutral.example.com": {{Host: "mx.example.com.", Pref: 10}}},
+	}
+	health := Evaluate(context.Background(), resolver, "neutral.example.com", nil)
+	if health.Status == StatusHealthy {
+		t.Fatalf("Status = HEALTHY for SPF ?all; want WARNING or FAILING")
+	}
+	if !findIssueCode(health.Issues, "spf_neutral_all") {
+		t.Fatalf("expected spf_neutral_all issue; got %+v", health.Issues)
+	}
+}
+
+func TestEvaluateRejectsInvalidDMARCPolicyValue(t *testing.T) {
+	resolver := fakeResolver{
+		txt: map[string][]string{
+			"badp.example.com":                    {"v=spf1 -all"},
+			"_dmarc.badp.example.com":             {"v=DMARC1; p=definitely-not-valid; rua=mailto:dmarc@badp.example.com"},
+			"default._domainkey.badp.example.com": {"v=DKIM1; p=" + base64.StdEncoding.EncodeToString(make([]byte, 256))},
+		},
+		mx: map[string][]*net.MX{"badp.example.com": {{Host: "mx.example.com.", Pref: 10}}},
+	}
+	health := Evaluate(context.Background(), resolver, "badp.example.com", nil)
+	if health.Status == StatusHealthy {
+		t.Fatalf("Status = HEALTHY for DMARC p=invalid; want WARNING or FAILING")
+	}
+	if !findIssueCode(health.Issues, "dmarc_policy_invalid") {
+		t.Fatalf("expected dmarc_policy_invalid issue; got %+v", health.Issues)
+	}
+}
+
+func TestEvaluateFlagsInvalidDKIMKeyMaterial(t *testing.T) {
+	resolver := fakeResolver{
+		txt: map[string][]string{
+			"baddkim.example.com":                    {"v=spf1 -all"},
+			"_dmarc.baddkim.example.com":             {"v=DMARC1; p=reject; rua=mailto:dmarc@baddkim.example.com"},
+			"default._domainkey.baddkim.example.com": {"v=DKIM1; k=rsa; p=not-valid-base64!!!"},
+		},
+		mx: map[string][]*net.MX{"baddkim.example.com": {{Host: "mx.example.com.", Pref: 10}}},
+	}
+	health := Evaluate(context.Background(), resolver, "baddkim.example.com", nil)
+	if health.Status == StatusHealthy {
+		t.Fatalf("Status = HEALTHY for invalid DKIM key; want WARNING or FAILING")
+	}
+	if !findIssueCode(health.Issues, "dkim_invalid_key") {
+		t.Fatalf("expected dkim_invalid_key issue; got %+v", health.Issues)
+	}
+	if len(health.DKIMSelectors) == 0 || health.DKIMSelectors[0].Status != StatusFailing {
+		t.Fatalf("DKIM selector status = %+v, want FAILING", health.DKIMSelectors)
+	}
+}
+
+func findIssueCode(issues []Issue, code string) bool {
+	for _, issue := range issues {
+		if issue.Code == code {
+			return true
+		}
+	}
+	return false
+}
