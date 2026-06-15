@@ -164,6 +164,8 @@ Core runtime and store variables:
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | JetStream subject prefix | `events` |
 | `CEREBRO_STATE_STORE_DRIVER` | state-store driver; supported value: `postgres` | unset |
 | `CEREBRO_POSTGRES_DSN` | Postgres DSN | unset |
+| `CEREBRO_CONNECTOR_CREDENTIAL_KEY` | high-entropy key used to seal Cerebro-managed connector credentials in the state store | unset |
+| `CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY` | RSA private key used to decrypt browser-submitted connector credentials; all replicas must share the same key | unset |
 | `CEREBRO_GRAPH_STORE_DRIVER` | graph-store driver; supported value: `neo4j` | unset |
 | `CEREBRO_NEO4J_URI` | Neo4j/Aura connection URI | unset |
 | `CEREBRO_NEO4J_USERNAME` | Neo4j/Aura username | unset |
@@ -203,6 +205,7 @@ export CEREBRO_NEO4J_PASSWORD='local-password'
 | Operation | Required backing dependencies |
 | --- | --- |
 | `serve`, `/health`, `/sources`, source `check/discover/read` | none beyond provider-specific source config/auth |
+| Connector library and credentialed connector creation | Postgres state store; credentialed creation also requires `CEREBRO_CONNECTOR_CREDENTIAL_KEY` and shared `CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY` |
 | `source-runtime put/get` | Postgres state store |
 | `source-runtime sync` | Postgres state store + NATS JetStream append log |
 | Claim, finding, evidence, evaluation, and report run persistence | Postgres state store |

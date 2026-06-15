@@ -52,6 +52,10 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_RATE_LIMIT_RPS", "")
 	t.Setenv("CEREBRO_RATE_LIMIT_BURST", "")
 	t.Setenv("CEREBRO_RATE_LIMIT_EXEMPT_PATHS", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -156,6 +160,10 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_RATE_LIMIT_RPS", "42.5")
 	t.Setenv("CEREBRO_RATE_LIMIT_BURST", "60")
 	t.Setenv("CEREBRO_RATE_LIMIT_EXEMPT_PATHS", "/health,/ready")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY", "connector-vault-key")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY", "connector-transit-key")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -243,6 +251,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if got := cfg.Auth.AllowedTenants; len(got) != 2 || got[0] != "security" || got[1] != "writer" {
 		t.Fatalf("Auth.AllowedTenants = %#v, want [security writer]", got)
+	}
+	if cfg.ConnectorCredentials.Key != "connector-vault-key" || cfg.ConnectorCredentials.TransitPrivateKey != "connector-transit-key" {
+		t.Fatalf("ConnectorCredentials = %#v", cfg.ConnectorCredentials)
 	}
 }
 
@@ -390,6 +401,10 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_RATE_LIMIT_RPS", "")
 	t.Setenv("CEREBRO_RATE_LIMIT_BURST", "")
 	t.Setenv("CEREBRO_RATE_LIMIT_EXEMPT_PATHS", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY", "")
+	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 }

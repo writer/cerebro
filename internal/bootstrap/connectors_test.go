@@ -1,0 +1,305 @@
+package bootstrap
+
+import (
+	"bytes"
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
+)
+
+type connectorTestStore struct {
+	*stubRuntimeStore
+	credentials map[string]*ports.ConnectorCredentialRecord
+}
+
+func (s *connectorTestStore) PutConnectorCredential(_ context.Context, record *ports.ConnectorCredentialRecord) error {
+	if s.credentials == nil {
+		s.credentials = map[string]*ports.ConnectorCredentialRecord{}
+	}
+	cloned := *record
+	cloned.Sealed = append([]byte{}, record.Sealed...)
+	cloned.CreatedAt = time.Now().UTC()
+	cloned.UpdatedAt = cloned.CreatedAt
+	s.credentials[record.ID] = &cloned
+	return nil
+}
+
+func (s *connectorTestStore) GetConnectorCredential(_ context.Context, id string) (*ports.ConnectorCredentialRecord, error) {
+	record, ok := s.credentials[id]
+	if !ok {
+		return nil, ports.ErrConnectorCredentialNotFound
+	}
+	cloned := *record
+	cloned.Sealed = append([]byte{}, record.Sealed...)
+	return &cloned, nil
+}
+
+func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	encrypted, err := encryptConnectorCredentialsForTest(app.connectorTransitKey.PublicKey(), map[string]string{"token": "secret-token"})
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"config":                map[string]string{"family": "audit"},
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/connections error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	runtimePayload, ok := payload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("runtime payload = %#v", payload["runtime"])
+	}
+	configPayload, ok := runtimePayload["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("runtime config payload = %#v", runtimePayload["config"])
+	}
+	if got := configPayload["token"]; got != "[redacted]" {
+		t.Fatalf("response token = %#v, want [redacted]", got)
+	}
+	runtime := store.runtimes["runtime-a"]
+	if runtime == nil {
+		t.Fatal("stored runtime missing")
+	}
+	if got := runtime.GetConfig()["token"]; !strings.HasPrefix(got, "credential:") {
+		t.Fatalf("stored runtime token = %q, want credential reference", got)
+	}
+	if strings.Contains(runtime.GetConfig()["token"], "secret-token") {
+		t.Fatalf("stored runtime token leaked secret: %q", runtime.GetConfig()["token"])
+	}
+	if source.checkToken != "secret-token" {
+		t.Fatalf("source check token = %q, want decrypted secret", source.checkToken)
+	}
+}
+
+func TestConnectorConnectionRejectsPlaintextSensitiveConfig(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"runtime_id":"runtime-a","tenant_id":"tenant-a","config":{"token":"secret-token"}}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors plaintext config error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST /connectors plaintext status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestConnectorTransitKeyIsSharedAcrossReplicas(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	credentialConfig := config.ConnectorCredentialConfig{
+		Key:               "test-connector-vault-key",
+		TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+	}
+	appA, err := NewWithError(config.Config{
+		HTTPAddr:             "127.0.0.1:0",
+		ShutdownTimeout:      time.Second,
+		ConnectorCredentials: credentialConfig,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	if err != nil {
+		t.Fatalf("NewWithError(appA) error = %v", err)
+	}
+	appB, err := NewWithError(config.Config{
+		HTTPAddr:             "127.0.0.1:0",
+		ShutdownTimeout:      time.Second,
+		ConnectorCredentials: credentialConfig,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	if err != nil {
+		t.Fatalf("NewWithError(appB) error = %v", err)
+	}
+	keyA := appA.connectorTransitKey.PublicKey()
+	keyB := appB.connectorTransitKey.PublicKey()
+	if keyA.KeyID == "" || keyA.KeyID != keyB.KeyID {
+		t.Fatalf("transit key IDs = %q and %q, want shared stable key ID", keyA.KeyID, keyB.KeyID)
+	}
+	encrypted, err := encryptConnectorCredentialsForTest(keyA, map[string]string{"token": "secret-token"})
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	decrypted, err := appB.connectorTransitKey.Decrypt(encrypted)
+	if err != nil {
+		t.Fatalf("Decrypt() on second app error = %v", err)
+	}
+	var fields map[string]string
+	if err := json.Unmarshal(decrypted, &fields); err != nil {
+		t.Fatalf("unmarshal decrypted fields: %v", err)
+	}
+	if fields["token"] != "secret-token" {
+		t.Fatalf("decrypted token = %q, want secret-token", fields["token"])
+	}
+}
+
+func TestConnectorCredentialKeyUnavailableWithoutTransitKey(t *testing.T) {
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key: "test-connector-vault-key",
+		},
+	}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/credential-key")
+	if err != nil {
+		t.Fatalf("GET /connectors/credential-key error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("GET /connectors/credential-key status = %d, want 503", resp.StatusCode)
+	}
+}
+
+func testConnectorTransitPrivateKeyPEM(t *testing.T) string {
+	t.Helper()
+	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	block := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)}
+	return string(pem.EncodeToMemory(block))
+}
+
+func encryptConnectorCredentialsForTest(key connectorcredentials.PublicKey, fields map[string]string) (connectorcredentials.EncryptedPayload, error) {
+	plaintext, err := json.Marshal(fields)
+	if err != nil {
+		return connectorcredentials.EncryptedPayload{}, err
+	}
+	publicKey, err := rsaPublicKeyFromJWK(key.JWK)
+	if err != nil {
+		return connectorcredentials.EncryptedPayload{}, err
+	}
+	aesKey := make([]byte, 32)
+	if _, err := rand.Read(aesKey); err != nil {
+		return connectorcredentials.EncryptedPayload{}, err
+	}
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		return connectorcredentials.EncryptedPayload{}, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return connectorcredentials.EncryptedPayload{}, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return connectorcredentials.EncryptedPayload{}, err
+	}
+	wrapped, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, publicKey, aesKey, nil)
+	if err != nil {
+		return connectorcredentials.EncryptedPayload{}, err
+	}
+	return connectorcredentials.EncryptedPayload{
+		KeyID:      key.KeyID,
+		Algorithm:  key.Algorithm,
+		WrappedKey: base64.StdEncoding.EncodeToString(wrapped),
+		Nonce:      base64.StdEncoding.EncodeToString(nonce),
+		Ciphertext: base64.StdEncoding.EncodeToString(gcm.Seal(nil, nonce, plaintext, []byte(key.KeyID))),
+	}, nil
+}
+
+func rsaPublicKeyFromJWK(jwk map[string]any) (*rsa.PublicKey, error) {
+	modulus, ok := jwk["n"].(string)
+	if !ok {
+		return nil, errInvalidHTTPRequest
+	}
+	exponent, ok := jwk["e"].(string)
+	if !ok {
+		return nil, errInvalidHTTPRequest
+	}
+	nBytes, err := base64.RawURLEncoding.DecodeString(modulus)
+	if err != nil {
+		return nil, err
+	}
+	eBytes, err := base64.RawURLEncoding.DecodeString(exponent)
+	if err != nil {
+		return nil, err
+	}
+	return &rsa.PublicKey{
+		N: new(big.Int).SetBytes(nBytes),
+		E: int(new(big.Int).SetBytes(eBytes).Int64()),
+	}, nil
+}
+
+var _ ports.ConnectorCredentialStore = (*connectorTestStore)(nil)

@@ -38,17 +38,18 @@ var (
 
 // Config is the minimal bootstrap configuration for the rewrite skeleton.
 type Config struct {
-	HTTPAddr        string
-	ShutdownTimeout time.Duration
-	ImageTag        string
-	DevMode         bool
-	AppendLog       AppendLogConfig
-	StateStore      StateStoreConfig
-	GraphStore      GraphStoreConfig
-	GraphAgentLLM   GraphAgentLLMConfig
-	Auth            AuthConfig
-	OTEL            OpenTelemetryConfig
-	RateLimit       RateLimitConfig
+	HTTPAddr             string
+	ShutdownTimeout      time.Duration
+	ImageTag             string
+	DevMode              bool
+	AppendLog            AppendLogConfig
+	StateStore           StateStoreConfig
+	GraphStore           GraphStoreConfig
+	GraphAgentLLM        GraphAgentLLMConfig
+	Auth                 AuthConfig
+	ConnectorCredentials ConnectorCredentialConfig
+	OTEL                 OpenTelemetryConfig
+	RateLimit            RateLimitConfig
 }
 
 // RateLimitConfig controls global API rate limiting.
@@ -99,6 +100,12 @@ type GraphAgentLLMConfig struct {
 	Temperature      float64
 	OpenRouterAPIKey string
 	BedrockRegion    string
+}
+
+// ConnectorCredentialConfig controls Cerebro-managed connector credential sealing.
+type ConnectorCredentialConfig struct {
+	Key               string
+	TransitPrivateKey string
 }
 
 // OpenTelemetryConfig controls OTLP trace and metric export.
@@ -298,6 +305,14 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	connectorCredentialKey, err := readConfigValue("CEREBRO_CONNECTOR_CREDENTIAL_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+	connectorCredentialTransitPrivateKey, err := readConfigValue("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY")
+	if err != nil {
+		return Config{}, err
+	}
 	devMode, err := parseBoolEnv("CEREBRO_DEV_MODE")
 	if err != nil {
 		return Config{}, err
@@ -337,6 +352,10 @@ func Load() (Config, error) {
 			OpusModel:     strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_OPUS")),
 			HaikuModel:    strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU")),
 			BedrockRegion: strings.TrimSpace(os.Getenv("CEREBRO_BEDROCK_REGION")),
+		},
+		ConnectorCredentials: ConnectorCredentialConfig{
+			Key:               connectorCredentialKey,
+			TransitPrivateKey: connectorCredentialTransitPrivateKey,
 		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),

@@ -508,7 +508,7 @@ func (s *Service) putProgressIngestRun(ctx context.Context, runStore RunStore, r
 }
 
 func (s *Service) preparedConfig(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]string, error) {
-	config := sourceconfig.WithRuntimeTenant(runtime.GetConfig(), runtime.GetTenantId())
+	config := sourceconfig.WithRuntimeContext(runtime.GetConfig(), runtime.GetTenantId(), runtime.GetId())
 	if s.prepareConfig == nil {
 		return config, nil
 	}

@@ -26,6 +26,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
 	app.registerSourceRoutes(mux)
+	app.registerConnectorRoutes(mux)
 	app.registerKnowledgeRoutes(mux)
 	app.registerGraphRoutes(mux)
 	app.registerJobRoutes(mux)
@@ -108,6 +109,12 @@ func (app *App) registerSourceRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/check", routeSurfacePlatformHTTP, app.handleCheckSource)
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/discover", routeSurfacePlatformHTTP, app.handleDiscoverSource)
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/read", routeSurfacePlatformHTTP, app.handleReadSource)
+}
+
+func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /connectors", routeSurfacePlatformHTTP, app.handleListConnectors)
+	registerHTTPRoute(mux, "GET /connectors/credential-key", routeSurfacePlatformHTTP, app.handleConnectorCredentialKey)
+	registerHTTPRoute(mux, "POST /connectors/{sourceID}/connections", routeSurfacePlatformHTTP, app.handleCreateConnectorConnection)
 }
 
 func (app *App) registerKnowledgeRoutes(mux *http.ServeMux) {
