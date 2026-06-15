@@ -2729,6 +2729,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SourceRuntimeHealthSummary'
+        coverage:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageRecord'
+        coverage_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageSummary'
     SourceRuntimeHealthSummary:
       type: object
       properties:
@@ -2796,6 +2804,95 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RuntimeFreshnessSummary'
+        coverage_blind_spots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageRecord'
+        coverage_blind_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageSummary'
+    SourceCoverageSummary:
+      type: object
+      properties:
+        source_id:
+          type: string
+        total:
+          type: integer
+          minimum: 0
+        healthy:
+          type: integer
+          minimum: 0
+        partial:
+          type: integer
+          minimum: 0
+        unsupported:
+          type: integer
+          minimum: 0
+        unconfigured:
+          type: integer
+          minimum: 0
+        stale:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        blind_spots:
+          type: integer
+          minimum: 0
+    SourceCoverageRecord:
+      type: object
+      properties:
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        dimension_id:
+          type: string
+        dimension_type:
+          type: string
+          enum: [app_entitlement, audit_event, entity_family, incremental_sync, lifecycle_state, relationship, remediation_state]
+        title:
+          type: string
+        state:
+          type: string
+          enum: [healthy, partial, unsupported, unconfigured, stale, failed, unknown]
+        support_level:
+          type: string
+          enum: [supported, partial, unsupported, planned]
+        runtime_id:
+          type: string
+        family:
+          type: string
+        last_synced_at:
+          type: string
+          format: date-time
+        owner_domain:
+          type: string
+        authority_domain:
+          type: string
+        high_value:
+          type: boolean
+        blind_spot:
+          type: boolean
+        warning:
+          type: string
+        known_unsupported_fields:
+          type: array
+          items:
+            type: string
+        notes:
+          type: array
+          items:
+            type: string
+        supported_runtime_families:
+          type: array
+          items:
+            type: string
     RuntimeFreshnessSummary:
       type: object
       properties:

@@ -10,7 +10,10 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-var catalogEventContracts sync.Map
+var (
+	catalogEventContracts    sync.Map
+	catalogCoverageContracts sync.Map
+)
 
 type catalogFile struct {
 	ID             string                 `yaml:"id"`
@@ -19,6 +22,7 @@ type catalogFile struct {
 	EmittedKinds   []string               `yaml:"emitted_kinds"`
 	KindLifecycle  []catalogKindLifecycle `yaml:"kind_lifecycle"`
 	EventContracts []EventContract        `yaml:"event_contracts"`
+	Coverage       CoverageContract       `yaml:"coverage_contract"`
 }
 
 type catalogKindLifecycle struct {
@@ -28,8 +32,9 @@ type catalogKindLifecycle struct {
 }
 
 type SourceCatalog struct {
-	Spec           *cerebrov1.SourceSpec
-	EventContracts []EventContract
+	Spec             *cerebrov1.SourceSpec
+	EventContracts   []EventContract
+	CoverageContract *CoverageContract
 }
 
 // LoadCatalog parses a source catalog.yaml file into a source spec.
@@ -67,13 +72,23 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 	if err != nil {
 		return nil, err
 	}
+	coverageContract, err := NormalizeCoverageContract(catalog.ID, catalog.Coverage)
+	if err != nil {
+		return nil, err
+	}
 	registerCatalogEventContracts(catalog.ID, eventContracts)
+	registerCatalogCoverageContract(catalog.ID, coverageContract)
+	var coverage *CoverageContract
+	if len(coverageContract.Dimensions) > 0 {
+		cloned := cloneCoverageContract(coverageContract)
+		coverage = &cloned
+	}
 	return &SourceCatalog{Spec: &cerebrov1.SourceSpec{
 		Id:           catalog.ID,
 		Name:         catalog.Name,
 		Description:  catalog.Description,
 		EmittedKinds: emittedKinds,
-	}, EventContracts: eventContracts}, nil
+	}, EventContracts: eventContracts, CoverageContract: coverage}, nil
 }
 
 func registerCatalogEventContracts(sourceID string, contracts []EventContract) {
@@ -98,6 +113,31 @@ func catalogEventContractsForSource(sourceID string) []EventContract {
 		return nil
 	}
 	return cloneEventContracts(contracts)
+}
+
+func registerCatalogCoverageContract(sourceID string, contract CoverageContract) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return
+	}
+	if len(contract.Dimensions) == 0 {
+		catalogCoverageContracts.Delete(sourceID)
+		return
+	}
+	catalogCoverageContracts.Store(sourceID, cloneCoverageContract(contract))
+}
+
+func catalogCoverageContractForSource(sourceID string) *CoverageContract {
+	value, ok := catalogCoverageContracts.Load(strings.TrimSpace(sourceID))
+	if !ok {
+		return nil
+	}
+	contract, ok := value.(CoverageContract)
+	if !ok {
+		return nil
+	}
+	cloned := cloneCoverageContract(contract)
+	return &cloned
 }
 
 func normalizeCatalogKinds(values []string) ([]string, error) {

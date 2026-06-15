@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -22,13 +23,17 @@ type sourceRuntimeHealthResponse struct {
 	GeneratedAt     string                       `json:"generated_at"`
 	Runtimes        []sourceRuntimeHealthRecord  `json:"runtimes"`
 	SourceSummaries []sourceRuntimeHealthSummary `json:"source_summaries"`
+	Coverage        []sourcecoverage.Record      `json:"coverage,omitempty"`
+	CoverageSummary []sourcecoverage.Summary     `json:"coverage_summaries,omitempty"`
 }
 
 type runtimeFreshnessResponse struct {
-	GeneratedAt string                    `json:"generated_at"`
-	Status      string                    `json:"status"`
-	Runtimes    []runtimeFreshnessRecord  `json:"runtimes"`
-	Summaries   []runtimeFreshnessSummary `json:"summaries"`
+	GeneratedAt          string                    `json:"generated_at"`
+	Status               string                    `json:"status"`
+	Runtimes             []runtimeFreshnessRecord  `json:"runtimes"`
+	Summaries            []runtimeFreshnessSummary `json:"summaries"`
+	CoverageBlindSpots   []sourcecoverage.Record   `json:"coverage_blind_spots,omitempty"`
+	CoverageBlindSummary []sourcecoverage.Summary  `json:"coverage_blind_summaries,omitempty"`
 }
 
 type runtimeFreshnessSummary struct {
@@ -278,6 +283,7 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	}
 	generatedAt := time.Now().UTC()
 	records := make([]sourceRuntimeHealthRecord, 0, len(runtimes))
+	visibleRuntimes := make([]*cerebrov1.SourceRuntime, 0, len(runtimes))
 	for _, runtime := range runtimes {
 		if runtime == nil {
 			continue
@@ -285,16 +291,20 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 		if requiresTenantFilter(r.Context()) && !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
 			continue
 		}
+		visibleRuntimes = append(visibleRuntimes, runtime)
 		record, err := a.sourceRuntimeHealthRecord(r.Context(), runtime, generatedAt)
 		if err != nil {
 			return sourceRuntimeHealthResponse{}, err
 		}
 		records = append(records, record)
 	}
+	coverage := a.sourceCoverageRecords(visibleRuntimes, filter, generatedAt)
 	return sourceRuntimeHealthResponse{
 		GeneratedAt:     generatedAt.Format(time.RFC3339Nano),
 		Runtimes:        records,
 		SourceSummaries: sourceRuntimeHealthSummaries(records),
+		Coverage:        coverage,
+		CoverageSummary: sourcecoverage.Summaries(coverage),
 	}, nil
 }
 
@@ -310,12 +320,32 @@ func runtimeFreshnessFromHealth(health sourceRuntimeHealthResponse) runtimeFresh
 			break
 		}
 	}
+	blindSpots := sourcecoverage.BlindSpots(health.Coverage)
 	return runtimeFreshnessResponse{
-		GeneratedAt: health.GeneratedAt,
-		Status:      status,
-		Runtimes:    records,
-		Summaries:   runtimeFreshnessSummaries(records),
+		GeneratedAt:          health.GeneratedAt,
+		Status:               status,
+		Runtimes:             records,
+		Summaries:            runtimeFreshnessSummaries(records),
+		CoverageBlindSpots:   blindSpots,
+		CoverageBlindSummary: sourcecoverage.Summaries(blindSpots),
 	}
+}
+
+func (a *App) sourceCoverageRecords(runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time) []sourcecoverage.Record {
+	if a == nil || a.sources == nil {
+		return nil
+	}
+	contracts := sourcecoverage.ContractsFromRegistry(a.sources)
+	if len(contracts) == 0 {
+		return nil
+	}
+	observations := sourcecoverage.ObservationsFromRuntimes(runtimes, func(runtime *cerebrov1.SourceRuntime) string {
+		return runtimeHealthStatus(runtime, generatedAt)
+	})
+	return sourcecoverage.Evaluate(contracts, observations, sourcecoverage.Options{
+		TenantID: strings.TrimSpace(filter.TenantID),
+		SourceID: strings.TrimSpace(filter.SourceID),
+	})
 }
 
 func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeFreshnessRecord {

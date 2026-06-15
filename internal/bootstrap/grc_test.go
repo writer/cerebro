@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -433,6 +434,7 @@ func TestGRCDashboardCapsPreviewWorkToRenderedLimit(t *testing.T) {
 				TenantId:     tenantID,
 				LastSyncedAt: timestamppb.New(now),
 				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+				Config:       map[string]string{"family": "user"},
 			},
 		},
 		findings:        map[string]*ports.FindingRecord{},
@@ -457,7 +459,11 @@ func TestGRCDashboardCapsPreviewWorkToRenderedLimit(t *testing.T) {
 			CreatedAt: timestamppb.New(now.Add(-time.Duration(i) * time.Minute)),
 		}
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -493,6 +499,16 @@ func TestGRCDashboardCapsPreviewWorkToRenderedLimit(t *testing.T) {
 	}
 	if store.aggregateCalls != 1 {
 		t.Fatalf("aggregate calls = %d, want 1", store.aggregateCalls)
+	}
+	if got := len(payload.CoverageBlindSpots); got != 2 {
+		t.Fatalf("coverage blind spots = %d, want 2: %#v", got, payload.CoverageBlindSpots)
+	}
+	if got := len(payload.CoverageSummaries); got != 1 {
+		t.Fatalf("coverage summaries = %d, want 1: %#v", got, payload.CoverageSummaries)
+	}
+	summary := payload.CoverageSummaries[0]
+	if summary.Total != 3 || summary.Healthy != 1 || summary.BlindSpots != 2 {
+		t.Fatalf("coverage summary = %+v, want total=3 healthy=1 blind_spots=2", summary)
 	}
 }
 

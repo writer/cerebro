@@ -92,6 +92,45 @@ event_contracts:
 	}
 }
 
+func TestLoadSourceCatalogParsesCoverageContract(t *testing.T) {
+	catalog, err := LoadSourceCatalog([]byte(`
+id: okta
+name: Okta
+emitted_kinds:
+  - okta.audit
+coverage_contract:
+  owner_domain: identity
+  authority_domain: okta
+  dimensions:
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+      high_value: true
+    - id: remediation
+      type: remediation_state
+      title: Remediation lifecycle
+      support: unsupported
+      known_unsupported_fields: [app remediation state]
+`))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	if catalog.CoverageContract == nil {
+		t.Fatal("CoverageContract = nil, want parsed contract")
+	}
+	if catalog.CoverageContract.SourceID != "okta" || catalog.CoverageContract.AuthorityDomain != "okta" {
+		t.Fatalf("CoverageContract = %#v", catalog.CoverageContract)
+	}
+	if len(catalog.CoverageContract.Dimensions) != 2 {
+		t.Fatalf("len(Dimensions) = %d, want 2", len(catalog.CoverageContract.Dimensions))
+	}
+	if got := catalog.CoverageContract.Dimensions[1].Support; got != CoverageSupportUnsupported {
+		t.Fatalf("Dimensions[1].Support = %q, want unsupported", got)
+	}
+}
+
 func TestNewRegistryPreservesCatalogEventContracts(t *testing.T) {
 	_, err := LoadSourceCatalog([]byte(`
 id: contract_source
@@ -124,6 +163,46 @@ event_contracts:
 	}
 }
 
+func TestNewRegistryPreservesCatalogCoverageContracts(t *testing.T) {
+	_, err := LoadSourceCatalog([]byte(`
+id: coverage_source
+name: Coverage Source
+emitted_kinds:
+  - coverage_source.user
+coverage_contract:
+  owner_domain: identity
+  dimensions:
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+      high_value: true
+`))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	registry, err := NewRegistry(catalogTestSource{id: "coverage_source"})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registered, ok := registry.Get("coverage_source")
+	if !ok {
+		t.Fatal("registry missing coverage_source")
+	}
+	provider, ok := registered.(CoverageContractProvider)
+	if !ok {
+		t.Fatalf("registered source does not implement CoverageContractProvider")
+	}
+	if got := provider.CoverageContract(); got.SourceID != "coverage_source" || len(got.Dimensions) != 1 {
+		t.Fatalf("CoverageContract() = %#v, want coverage_source contract", got)
+	}
+	contracts := registry.CoverageContracts()
+	if len(contracts) != 1 || contracts[0].SourceID != "coverage_source" {
+		t.Fatalf("CoverageContracts() = %#v, want coverage_source", contracts)
+	}
+}
+
 type catalogTestSource struct {
 	id string
 }
@@ -153,5 +232,20 @@ kind_lifecycle:
     status: maybe
 `)); err == nil {
 		t.Fatal("LoadCatalog() error = nil, want invalid lifecycle status error")
+	}
+}
+
+func TestLoadCatalogRejectsInvalidCoverageContract(t *testing.T) {
+	if _, err := LoadCatalog([]byte(`
+id: okta
+name: Okta
+coverage_contract:
+  dimensions:
+    - id: users
+      type: entity_family
+      title: Users
+      support: maybe
+`)); err == nil {
+		t.Fatal("LoadCatalog() error = nil, want invalid coverage support error")
 	}
 }
