@@ -35,6 +35,7 @@ import (
 const (
 	familyAccessAnalyzer      = "access_analyzer"
 	familyConfigRecorder      = "config_recorder"
+	familyGuardDutyDetector   = "guardduty_detector"
 	familyGuardDutyFinding    = "guardduty_finding"
 	familyInspector2Finding   = "inspector2_finding"
 	familyMacie2Finding       = "macie2_finding"
@@ -68,6 +69,7 @@ type awsConfigServiceAPI interface {
 
 type awsGuardDutyAPI interface {
 	ListDetectors(context.Context, *guardduty.ListDetectorsInput, ...func(*guardduty.Options)) (*guardduty.ListDetectorsOutput, error)
+	GetDetector(context.Context, *guardduty.GetDetectorInput, ...func(*guardduty.Options)) (*guardduty.GetDetectorOutput, error)
 	ListFindings(context.Context, *guardduty.ListFindingsInput, ...func(*guardduty.Options)) (*guardduty.ListFindingsOutput, error)
 	GetFindings(context.Context, *guardduty.GetFindingsInput, ...func(*guardduty.Options)) (*guardduty.GetFindingsOutput, error)
 }
@@ -109,6 +111,12 @@ type guardDutyPageCursor struct {
 type awsGuardDutyFinding struct {
 	DetectorID string
 	Finding    guarddutytypes.Finding
+}
+
+type awsGuardDutyDetector struct {
+	DetectorID string
+	Detail     *guardduty.GetDetectorOutput
+	Missing    bool
 }
 
 type awsWAFV2WebACL struct {
@@ -164,6 +172,17 @@ func awsSecurityFamilies(clientFactory awsClientFactory) []sourcecdk.Family[sett
 			CursorFallback: func(recorder awsConfigRecorder) string {
 				return firstNonEmpty(awssdk.ToString(recorder.Recorder.Arn), awssdk.ToString(recorder.Recorder.Name))
 			},
+		}),
+		awsFamily(clientFactory, awsFamilyOptions[awsGuardDutyDetector]{
+			Name:  familyGuardDutyDetector,
+			Label: "aws guardduty detectors",
+			List:  listGuardDutyDetectors,
+			Event: guardDutyDetectorEvent,
+			URN: func(settings settings, detector awsGuardDutyDetector) (string, error) {
+				detectorID := firstNonEmpty(detector.DetectorID, guardDutyMissingDetectorID(settings))
+				return fmt.Sprintf("urn:cerebro:%s:aws_guardduty_detector:%s", settings.accountID, firstNonEmpty(guardDutyDetectorARN(settings, detectorID), detectorID)), nil
+			},
+			CursorFallback: func(detector awsGuardDutyDetector) string { return detector.DetectorID },
 		}),
 		awsFamily(clientFactory, awsFamilyOptions[awsGuardDutyFinding]{
 			Name:  familyGuardDutyFinding,
@@ -282,6 +301,33 @@ func listConfigRecorders(ctx context.Context, clients awsClients, settings setti
 		})
 	}
 	return records, "", nil
+}
+
+func listGuardDutyDetectors(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGuardDutyDetector, string, error) {
+	output, err := clients.guardDuty.ListDetectors(ctx, &guardduty.ListDetectorsInput{
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	if len(output.DetectorIds) == 0 && awssdk.ToString(output.NextToken) == "" && strings.TrimSpace(cursor) == "" {
+		detectorID := guardDutyMissingDetectorID(settings)
+		return []awsGuardDutyDetector{{
+			DetectorID: detectorID,
+			Detail:     &guardduty.GetDetectorOutput{Status: guarddutytypes.DetectorStatusDisabled},
+			Missing:    true,
+		}}, "", nil
+	}
+	records := make([]awsGuardDutyDetector, 0, len(output.DetectorIds))
+	for _, detectorID := range output.DetectorIds {
+		detail, err := clients.guardDuty.GetDetector(ctx, &guardduty.GetDetectorInput{DetectorId: awssdk.String(detectorID)})
+		if err != nil {
+			return nil, "", fmt.Errorf("get guardduty detector %q: %w", detectorID, err)
+		}
+		records = append(records, awsGuardDutyDetector{DetectorID: detectorID, Detail: detail})
+	}
+	return records, awssdk.ToString(output.NextToken), nil
 }
 
 func listGuardDutyFindings(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsGuardDutyFinding, string, error) {
@@ -492,6 +538,38 @@ func configRecorderEvent(settings settings, record awsConfigRecorder) (*primitiv
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-config-recorder-"+resourceID, "aws.config_recorder", "aws/config_recorder/v1", payload, attributes, firstTime(status.LastStatusChangeTime, status.LastStartTime, status.LastStopTime, timePtrFromBool(record.Missing)))
+}
+
+func guardDutyDetectorEvent(settings settings, record awsGuardDutyDetector) (*primitives.Event, error) {
+	detail := record.Detail
+	if detail == nil {
+		detail = &guardduty.GetDetectorOutput{}
+	}
+	detectorID := firstNonEmpty(record.DetectorID, guardDutyMissingDetectorID(settings))
+	arn := guardDutyDetectorARN(settings, detectorID)
+	resourceID := firstNonEmpty(arn, detectorID)
+	name := firstNonEmpty(detectorID, "guardduty-"+settings.region)
+	status := string(detail.Status)
+	enabled := detail.Status == guarddutytypes.DetectorStatusEnabled
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyGuardDutyDetector, resourceID, name, "guardduty_detector", detail.Tags)
+	attributes["account_id"] = settings.accountID
+	attributes["arn"] = arn
+	attributes["detector_id"] = detectorID
+	attributes["enabled"] = boolString(enabled)
+	attributes["features"] = strings.Join(guardDutyFeatureStates(detail.Features), ",")
+	attributes["finding_publishing_frequency"] = string(detail.FindingPublishingFrequency)
+	attributes["missing"] = boolString(record.Missing)
+	attributes["policy_resource_type"] = "aws::guardduty::detector"
+	attributes["resource_arn"] = arn
+	attributes["service_role"] = awssdk.ToString(detail.ServiceRole)
+	attributes["status"] = status
+	addAWSStringTimeAttribute(attributes, "created_at", awssdk.ToString(detail.CreatedAt))
+	addAWSStringTimeAttribute(attributes, "updated_at", awssdk.ToString(detail.UpdatedAt))
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "detector_id": detectorID, "detector": detail, "missing": record.Missing})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-guardduty-detector-"+resourceID, "aws.guardduty_detector", "aws/guardduty_detector/v1", payload, attributes, firstParsedAWSTime(awssdk.ToString(detail.UpdatedAt), awssdk.ToString(detail.CreatedAt)))
 }
 
 func guardDutyFindingEvent(settings settings, record awsGuardDutyFinding) (*primitives.Event, error) {
@@ -820,6 +898,30 @@ func listAllGuardDutyDetectors(ctx context.Context, clients awsClients) ([]strin
 	}
 	sort.Strings(detectors)
 	return detectors, nil
+}
+
+func guardDutyMissingDetectorID(settings settings) string {
+	return "missing-" + firstNonEmpty(settings.region, defaultRegion)
+}
+
+func guardDutyDetectorARN(settings settings, detectorID string) string {
+	if strings.TrimSpace(detectorID) == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:guardduty:%s:%s:detector/%s", settings.region, settings.accountID, strings.TrimSpace(detectorID))
+}
+
+func guardDutyFeatureStates(features []guarddutytypes.DetectorFeatureConfigurationResult) []string {
+	values := make([]string, 0, len(features))
+	for _, feature := range features {
+		name := string(feature.Name)
+		if name == "" {
+			continue
+		}
+		values = append(values, name+"="+string(feature.Status))
+	}
+	sort.Strings(values)
+	return values
 }
 
 func getGuardDutyFindings(ctx context.Context, clients awsClients, detectorID string, ids []string) ([]guarddutytypes.Finding, error) {

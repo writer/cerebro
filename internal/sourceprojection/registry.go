@@ -125,6 +125,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.cloudfront_public_key":                     awsCloudResourceProjections,
 	"aws.cloudfront_response_headers_policy":        awsCloudResourceProjections,
 	"aws.effective_permission":                      awsEffectivePermissionProjections,
+	"aws.guardduty_detector":                        awsCloudResourceProjections,
 	"aws.guardduty_finding":                         awsCloudResourceProjections,
 	"aws.eventbridge_archive":                       awsCloudResourceProjections,
 	"aws.eventbridge_event_bus":                     awsCloudResourceProjections,

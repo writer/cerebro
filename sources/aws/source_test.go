@@ -519,6 +519,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyCloudFrontPublicKey, kind: "aws.cloudfront_public_key"},
 		{family: familyCloudFrontRHP, kind: "aws.cloudfront_response_headers_policy"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyGuardDutyDetector, kind: "aws.guardduty_detector"},
 		{family: familyGuardDutyFinding, kind: "aws.guardduty_finding"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyInspector2Finding, kind: "aws.inspector2_finding"},

@@ -399,6 +399,13 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			entityType:   "aws.ec2.ebs.encryption.by.default",
 		},
 		{
+			name:         "guardduty detector",
+			kind:         "aws.guardduty_detector",
+			resourceID:   "arn:aws:guardduty:us-east-1:123456789012:detector/detector-1",
+			resourceType: "guardduty_detector",
+			entityType:   "aws.guardduty.detector",
+		},
+		{
 			name:         "public ebs snapshot",
 			kind:         "aws.ebs_snapshot",
 			resourceID:   "snap-123",
