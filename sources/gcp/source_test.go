@@ -71,6 +71,10 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image"},
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset"},
+		{family: familyCertificateManagerCertificate, kind: "gcp.certificate_manager_certificate"},
+		{family: familyCertificateManagerCertificateMap, kind: "gcp.certificate_manager_certificate_map"},
+		{family: familyCertificateManagerCertificateMapEntry, kind: "gcp.certificate_manager_certificate_map_entry"},
+		{family: familyCertificateManagerDNSAuthorization, kind: "gcp.certificate_manager_dns_authorization"},
 		{family: familyServiceAcct, kind: "gcp.service_account"},
 		{family: familyCloudFunction, kind: "gcp.cloud_function"},
 		{family: familyCloudIDSEndpoint, kind: "gcp.cloud_ids_endpoint"},
@@ -134,6 +138,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familySecret, kind: "gcp.secret_manager_secret"},
 		{family: familyAudit, kind: "gcp.audit"},
 		{family: familyServiceUsageService, kind: "gcp.service_usage_service"},
+		{family: familyVPCAccessConnector, kind: "gcp.vpc_access_connector"},
 		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -307,6 +312,10 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeInstance, kind: "gcp.compute_instance", attr: "service_account_email", want: "vm@writer-prod.iam.gserviceaccount.com"},
 		{family: familyGKECluster, kind: "gcp.gke_cluster", attr: "network_tags", want: "gke"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"},
+		{family: familyCertificateManagerCertificate, kind: "gcp.certificate_manager_certificate", attr: "managed_state", want: "ACTIVE"},
+		{family: familyCertificateManagerCertificateMap, kind: "gcp.certificate_manager_certificate_map", attr: "target_https_proxies", want: "prod-https-proxy"},
+		{family: familyCertificateManagerCertificateMapEntry, kind: "gcp.certificate_manager_certificate_map_entry", attr: "hostname", want: "app.writer.example"},
+		{family: familyCertificateManagerDNSAuthorization, kind: "gcp.certificate_manager_dns_authorization", attr: "dns_record_type", want: "CNAME"},
 		{family: familyCloudIDSEndpoint, kind: "gcp.cloud_ids_endpoint", attr: "threat_log_routed", want: "true"},
 		{family: familyCloudSchedulerJob, kind: "gcp.cloud_scheduler_job", attr: "runtime_identity", want: "scheduler@writer-prod.iam.gserviceaccount.com"},
 		{family: familyCloudRunRevision, kind: "gcp.cloud_run_revision", attr: "runtime_identity", want: "run@writer-prod.iam.gserviceaccount.com"},
@@ -362,6 +371,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository", attr: "immutable_tags", want: "true"},
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image", attr: "digest", want: "sha256:abc"},
 		{family: familyServiceUsageService, kind: "gcp.service_usage_service", attr: "service_name", want: "bigquery.googleapis.com"},
+		{family: familyVPCAccessConnector, kind: "gcp.vpc_access_connector", attr: "ip_cidr_range", want: "10.8.0.0/28"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"base_url": server.URL, "family": tt.family, "project_id": "writer-prod", "token": "test-token"}
@@ -660,6 +670,10 @@ func TestReadLiveGCPDisabledOptionalServicesReturnEmpty(t *testing.T) {
 		{family: familyAIDataset, path: "/v1/projects/writer-prod/locations/-/datasets"},
 		{family: familyAIEndpoint, path: "/v1/projects/writer-prod/locations/-/endpoints"},
 		{family: familyBigQueryDataset, path: "/bigquery/v2/projects/writer-prod/datasets"},
+		{family: familyCertificateManagerCertificate, path: "/v1/projects/writer-prod/locations/-/certificates"},
+		{family: familyCertificateManagerCertificateMap, path: "/v1/projects/writer-prod/locations/-/certificateMaps"},
+		{family: familyCertificateManagerCertificateMapEntry, path: "/v1/projects/writer-prod/locations/-/certificateMaps"},
+		{family: familyCertificateManagerDNSAuthorization, path: "/v1/projects/writer-prod/locations/-/dnsAuthorizations"},
 		{family: familyGKECluster, path: "/v1/projects/writer-prod/locations/-/clusters"},
 		{family: familyCloudIDSEndpoint, path: "/v1/projects/writer-prod/locations/-/endpoints"},
 		{family: familyCloudRunService, path: "/v2/projects/writer-prod/locations/-/services"},
@@ -667,6 +681,7 @@ func TestReadLiveGCPDisabledOptionalServicesReturnEmpty(t *testing.T) {
 		{family: familyContainerVuln, path: "/v1/projects/writer-prod/occurrences"},
 		{family: familyDNSManagedZone, path: "/dns/v1/projects/writer-prod/managedZones"},
 		{family: familySecret, path: "/v1/projects/writer-prod/secrets"},
+		{family: familyVPCAccessConnector, path: "/v1/projects/writer-prod/locations/-/connectors"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -862,6 +877,77 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"datasets": []map[string]any{{"id": "writer-prod:analytics", "datasetReference": map[string]string{"projectId": "writer-prod", "datasetId": "analytics"}, "friendlyName": "Analytics", "location": "US", "labels": map[string]string{"env": "prod"}}}})
 		case "/bigquery/v2/projects/writer-prod/datasets/analytics":
 			writeJSON(t, w, map[string]any{"id": "writer-prod:analytics", "selfLink": "https://bigquery.googleapis.com/bigquery/v2/projects/writer-prod/datasets/analytics", "datasetReference": map[string]string{"projectId": "writer-prod", "datasetId": "analytics"}, "friendlyName": "Analytics", "description": "prod analytics dataset", "location": "US", "labels": map[string]string{"env": "prod"}, "access": []map[string]string{{"role": "READER", "specialGroup": "projectReaders"}, {"role": "OWNER", "userByEmail": "data-owner@writer.com"}}, "defaultEncryptionConfiguration": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"}, "creationTime": "1770000000000", "lastModifiedTime": "1770003600000"})
+		case "/v1/projects/writer-prod/locations/-/certificates":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("certificate manager certificates pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"certificates": []map[string]any{{
+				"name":        "projects/writer-prod/locations/global/certificates/prod-cert",
+				"description": "prod managed certificate",
+				"labels":      map[string]string{"env": "prod"},
+				"managed": map[string]any{
+					"domains":           []string{"app.writer.example"},
+					"dnsAuthorizations": []string{"projects/writer-prod/locations/global/dnsAuthorizations/app-writer-example"},
+					"state":             "ACTIVE",
+					"authorizationAttemptInfo": []map[string]string{{
+						"domain": "app.writer.example",
+						"state":  "AUTHORIZED",
+					}},
+				},
+				"sanDnsnames": []string{"app.writer.example"},
+				"expireTime":  "2026-12-31T23:59:59Z",
+				"scope":       "DEFAULT",
+				"usedBy":      []map[string]string{{"name": "//certificatemanager.googleapis.com/projects/writer-prod/locations/global/certificateMaps/prod-map/certificateMapEntries/app"}},
+				"createTime":  "2026-04-23T00:00:00Z",
+				"updateTime":  "2026-04-24T00:00:00Z",
+			}}})
+		case "/v1/projects/writer-prod/locations/-/certificateMaps":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("certificate manager maps pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"certificateMaps": []map[string]any{{
+				"name":        "projects/writer-prod/locations/global/certificateMaps/prod-map",
+				"description": "prod certificate map",
+				"labels":      map[string]string{"env": "prod"},
+				"gclbTargets": []map[string]any{{
+					"targetHttpsProxy": "//compute.googleapis.com/projects/writer-prod/global/targetHttpsProxies/prod-https-proxy",
+					"ipConfigs":        []map[string]any{{"ipAddress": "203.0.113.20", "ports": []int{443}}},
+				}},
+				"createTime": "2026-04-23T00:00:00Z",
+				"updateTime": "2026-04-24T00:00:00Z",
+			}}})
+		case "/v1/projects/writer-prod/locations/global/certificateMaps/prod-map/certificateMapEntries":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("certificate manager map entries pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"certificateMapEntries": []map[string]any{{
+				"name":         "projects/writer-prod/locations/global/certificateMaps/prod-map/certificateMapEntries/app",
+				"description":  "app hostname certificate",
+				"labels":       map[string]string{"env": "prod"},
+				"hostname":     "app.writer.example",
+				"certificates": []string{"projects/writer-prod/locations/global/certificates/prod-cert"},
+				"state":        "ACTIVE",
+				"createTime":   "2026-04-23T00:00:00Z",
+				"updateTime":   "2026-04-24T00:00:00Z",
+			}}})
+		case "/v1/projects/writer-prod/locations/-/dnsAuthorizations":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("certificate manager dns authorizations pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"dnsAuthorizations": []map[string]any{{
+				"name":        "projects/writer-prod/locations/global/dnsAuthorizations/app-writer-example",
+				"description": "app domain authorization",
+				"labels":      map[string]string{"env": "prod"},
+				"domain":      "app.writer.example",
+				"dnsResourceRecord": map[string]string{
+					"name": "_acme-challenge.app.writer.example.",
+					"type": "CNAME",
+					"data": "token.authorize.certificatemanager.goog.",
+				},
+				"type":       "FIXED_RECORD",
+				"createTime": "2026-04-23T00:00:00Z",
+				"updateTime": "2026-04-24T00:00:00Z",
+			}}})
 		case "/compute/v1/projects/writer-prod/aggregated/instances":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"instances": []map[string]any{{"id": "123456789", "name": "web-1", "zone": "projects/writer-prod/zones/us-central1-a", "machineType": "projects/writer-prod/zones/us-central1-a/machineTypes/e2-medium", "status": "RUNNING", "labels": map[string]string{"env": "prod"}, "tags": map[string]any{"items": []string{"web"}}, "networkInterfaces": []map[string]any{{"network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "networkIP": "10.0.0.5", "accessConfigs": []map[string]any{{"type": "ONE_TO_ONE_NAT", "natIP": "34.1.2.3"}}}}, "serviceAccounts": []map[string]any{{"email": "vm@writer-prod.iam.gserviceaccount.com"}}, "disks": []map[string]any{{"boot": true, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vm"}}}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/instanceGroups":
@@ -1074,6 +1160,21 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"revisions": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/services/api/revisions/api-00001", "uid": "revision-1", "service": "projects/writer-prod/locations/us-central1/services/api", "serviceAccount": "run@writer-prod.iam.gserviceaccount.com", "containers": []map[string]string{{"image": "us-docker.pkg.dev/writer-prod/app/api@sha256:abc"}}, "vpcAccess": map[string]string{"connector": "projects/writer-prod/locations/us-central1/connectors/serverless", "egress": "PRIVATE_RANGES_ONLY"}, "encryptionKey": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/run", "labels": map[string]string{"env": "prod"}, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z"}}})
 		case "/v2/projects/writer-prod/locations/-/functions":
 			writeJSON(t, w, map[string]any{"functions": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/functions/ingest", "state": "ACTIVE", "environment": "GEN_2", "labels": map[string]string{"env": "prod"}, "serviceConfig": map[string]string{"serviceAccountEmail": "fn@writer-prod.iam.gserviceaccount.com", "uri": "https://ingest.cloudfunctions.net", "ingressSettings": "ALLOW_ALL", "vpcConnector": "projects/writer-prod/locations/us-central1/connectors/serverless"}}}})
+		case "/v1/projects/writer-prod/locations/-/connectors":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("vpc access connectors pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"connectors": []map[string]any{{
+				"name":              "projects/writer-prod/locations/us-central1/connectors/serverless",
+				"network":           "default",
+				"ipCidrRange":       "10.8.0.0/28",
+				"state":             "READY",
+				"machineType":       "e2-micro",
+				"minInstances":      2,
+				"maxInstances":      4,
+				"connectedProjects": []string{"writer-prod"},
+				"subnet":            map[string]string{"name": "serverless", "projectId": "writer-prod"},
+			}}})
 		case "/sql/v1beta4/projects/writer-prod/instances":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"name": "prod-sql", "selfLink": "https://sqladmin.googleapis.com/sql/v1beta4/projects/writer-prod/instances/prod-sql", "region": "us-central1", "gceZone": "us-central1-a", "databaseVersion": "POSTGRES_15", "state": "RUNNABLE", "serviceAccountEmailAddress": "sql@writer-prod.iam.gserviceaccount.com", "settings": map[string]any{"userLabels": map[string]string{"env": "prod"}, "storageAutoResize": true, "deletionProtectionEnabled": true, "backupConfiguration": map[string]any{"enabled": true, "pointInTimeRecoveryEnabled": true, "startTime": "03:00"}, "ipConfiguration": map[string]any{"ipv4Enabled": true, "privateNetwork": "projects/writer-prod/global/networks/default", "authorizedNetworks": []map[string]string{{"name": "all", "value": "0.0.0.0/0"}}}}, "ipAddresses": []map[string]string{{"type": "PRIMARY", "ipAddress": "35.2.3.4"}, {"type": "PRIVATE", "ipAddress": "10.10.0.3"}}, "diskEncryptionConfiguration": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/sql"}}}})
 		case "/storage/v1/b/artifacts.writer-prod.appspot.com":

@@ -127,6 +127,29 @@ func TestCloudPolicyCoverageMapsLegacyGCPResources(t *testing.T) {
 	}
 }
 
+func TestCloudPolicyCoverageMapsGCPExpansionTargets(t *testing.T) {
+	tests := map[string]string{
+		"gcp::certificate_manager::certificate":           "certificate_manager_certificate",
+		"gcp::certificate_manager::certificate_map":       "certificate_manager_certificate_map",
+		"gcp::certificate_manager::certificate_map_entry": "certificate_manager_certificate_map_entry",
+		"gcp::certificate_manager::dns_authorization":     "certificate_manager_dns_authorization",
+		"gcp::certificatemanager::certificate":            "certificate_manager_certificate",
+		"gcp::certificatemanager::certificate_map":        "certificate_manager_certificate_map",
+		"gcp::certificatemanager::certificate_map_entry":  "certificate_manager_certificate_map_entry",
+		"gcp::certificatemanager::dns_authorization":      "certificate_manager_dns_authorization",
+		"gcp::vpcaccess::connector":                       "vpc_access_connector",
+	}
+	for resource, wantDimension := range tests {
+		alias, ok := cloudPolicyCoverageAliases[resource]
+		if !ok {
+			t.Fatalf("cloudPolicyCoverageAliases[%q] missing", resource)
+		}
+		if alias.SourceID != "gcp" || alias.DimensionID != wantDimension {
+			t.Fatalf("cloudPolicyCoverageAliases[%q] = %#v, want gcp/%s", resource, alias, wantDimension)
+		}
+	}
+}
+
 func TestCheckRequiredCloudCoverageDimensionsRejectsMissingMinimum(t *testing.T) {
 	issues := checkRequiredCloudCoverageDimensions(map[string]map[string]sourcecdk.CoverageDimension{
 		"azure": {
