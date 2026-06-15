@@ -1,0 +1,203 @@
+package riskplan
+
+import (
+	"testing"
+	"time"
+
+	findinganalysis "github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/ports"
+)
+
+func TestAnalyzeRanksSimulatedCandidatesWithFirstClassSignals(t *testing.T) {
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	findings := []*ports.FindingRecord{
+		{
+			ID:           "cloud-public-prod-secrets",
+			TenantID:     "writer",
+			RuntimeID:    "writer-aws",
+			RuleID:       "cloud-public-resource-exposure",
+			Title:        "Cloud Public Resource Exposure",
+			Severity:     "HIGH",
+			Status:       "open",
+			ResourceURNs: []string{"urn:cerebro:writer:aws_secret_store:prod-secrets"},
+			EventIDs:     []string{"evt-public"},
+			FindingWorkflow: ports.FindingWorkflow{
+				Assignee: "cloud-platform",
+			},
+			FindingRisk: ports.FindingRisk{
+				RiskScore:       90,
+				ConfidenceScore: 92,
+				RiskReasons:     []string{"external_exposure", "crown_jewel"},
+				RiskFactors: []ports.FindingRiskFactor{
+					{FactorID: "external_exposure", Category: "likelihood", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:internet_exposed"}},
+					{FactorID: "crown_jewel", Category: "impact", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:crown_jewel"}},
+				},
+			},
+			Attributes: map[string]string{
+				"action":               "public_network_ingress",
+				"crown_jewel":          "true",
+				"internet_exposed":     "true",
+				"primary_resource_urn": "urn:cerebro:writer:aws_secret_store:prod-secrets",
+				"resource_name":        "prod-secrets",
+			},
+			LastObservedAt: now.Add(-2 * time.Hour),
+		},
+		{
+			ID:           "repo-kev-package",
+			TenantID:     "writer",
+			RuntimeID:    "writer-github",
+			RuleID:       "vulnerability-known-exploited",
+			Title:        "Known exploited dependency",
+			Severity:     "HIGH",
+			Status:       "open",
+			ResourceURNs: []string{"urn:cerebro:writer:github_repository:payments-api"},
+			FindingRisk: ports.FindingRisk{
+				RiskScore:       78,
+				ConfidenceScore: 88,
+				RiskReasons:     []string{"known_exploited", "cvss_high"},
+				RiskFactors: []ports.FindingRiskFactor{
+					{FactorID: "known_exploited", Category: "likelihood", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:is_kev"}},
+				},
+			},
+			Attributes: map[string]string{
+				"cvss_score":           "8.7",
+				"is_kev":               "true",
+				"package":              "example-lib",
+				"primary_resource_urn": "urn:cerebro:writer:github_repository:payments-api",
+			},
+			LastObservedAt: now.Add(-24 * time.Hour),
+		},
+	}
+	graphNeighborhoods := map[string]*ports.EntityNeighborhood{
+		"urn:cerebro:writer:aws_secret_store:prod-secrets": {
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
+				{URN: "urn:cerebro:writer:finding:cloud-public-prod-secrets", EntityType: "finding", Label: "cloud-public-prod-secrets"},
+				{URN: "urn:cerebro:writer:action:block-public-prod-secrets", EntityType: "workflow_action", Label: "block public access"},
+			},
+			Relations: []*ports.NeighborhoodRelation{
+				{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				{FromURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:cloud-public-prod-secrets"},
+				{FromURN: "urn:cerebro:writer:action:block-public-prod-secrets", Relation: "completed_action", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Attributes: map[string]string{"outcome": "resolved"}},
+			},
+		},
+		"urn:cerebro:writer:github_repository:payments-api": {
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:github_repository:payments-api", EntityType: "github.repository", Label: "payments-api"},
+		},
+	}
+
+	plan := Analyze(findings, Options{
+		TenantID:           "writer",
+		RuntimeIDs:         []string{"writer-aws", "writer-github"},
+		CandidateLimit:     2,
+		GraphNeighborhoods: graphNeighborhoods,
+		Now:                now,
+	})
+
+	if plan.ModelVersion != ModelVersion {
+		t.Fatalf("ModelVersion = %q, want %q", plan.ModelVersion, ModelVersion)
+	}
+	if plan.TotalFindings != 2 || plan.TotalCandidates != 2 || plan.SimulatedCandidateCount != 2 {
+		t.Fatalf("plan counts = %#v, want two simulated candidates", plan)
+	}
+	top := plan.ActionCandidates[0]
+	if top.ScenarioType != findinganalysis.RiskDeltaScenarioRemovePublicExposure {
+		t.Fatalf("top scenario = %q, want remove public exposure", top.ScenarioType)
+	}
+	if top.TargetURN != "urn:cerebro:writer:aws_secret_store:prod-secrets" {
+		t.Fatalf("top target = %q, want prod secrets", top.TargetURN)
+	}
+	if top.PriorityScore != top.ScoreBreakdown.Total || top.ScoreBreakdown.AttackPathCountReductionPoints <= 0 {
+		t.Fatalf("score breakdown = %#v, priority = %d, want auditable attack-path contribution", top.ScoreBreakdown, top.PriorityScore)
+	}
+	if top.ExpectedReduction.RiskScore != top.ExpectedRiskScoreReduction || top.ExpectedAttackPathScoreReduction <= 0 {
+		t.Fatalf("expected reduction = %#v, legacy reduction = %d", top.ExpectedReduction, top.ExpectedRiskScoreReduction)
+	}
+	if top.Ownership.Owner != "cloud-platform" || top.Owner != "cloud-platform" || top.Ownership.Missing {
+		t.Fatalf("ownership = %#v, owner = %q, want cloud-platform", top.Ownership, top.Owner)
+	}
+	if top.Effort.Level == "" || !top.Effort.ApprovalRequired {
+		t.Fatalf("effort = %#v, want explicit approval-aware estimate", top.Effort)
+	}
+	if top.Evidence.Status != "ready" || top.Evidence.Freshness != "current" {
+		t.Fatalf("evidence = %#v, want current ready evidence", top.Evidence)
+	}
+	if top.OutcomeLearning.Status != "learned_from_prior_outcomes" || top.OutcomeLearning.PositiveOutcomeCount == 0 {
+		t.Fatalf("outcome learning = %#v, want learned positive outcome", top.OutcomeLearning)
+	}
+}
+
+func TestAnalyzeCanIncludeUnscoredPlanningBlockers(t *testing.T) {
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	plan := Analyze([]*ports.FindingRecord{{
+		ID:           "ownerless-control-gap",
+		TenantID:     "writer",
+		RuntimeID:    "writer-grc",
+		RuleID:       "control-owner-missing",
+		Title:        "High risk control gap",
+		Status:       "open",
+		ResourceURNs: []string{"urn:cerebro:writer:service:payments"},
+		FindingRisk: ports.FindingRisk{
+			RiskScore:       82,
+			ConfidenceScore: 42,
+			RiskReasons:     []string{"crown_jewel"},
+		},
+		Attributes: map[string]string{
+			"primary_resource_urn": "urn:cerebro:writer:service:payments",
+			"resource_name":        "payments",
+		},
+		LastObservedAt: now.Add(-45 * 24 * time.Hour),
+	}}, Options{
+		TenantID:        "writer",
+		RuntimeIDs:      []string{"writer-grc"},
+		IncludeUnscored: true,
+		Now:             now,
+	})
+
+	if plan.SimulatedCandidateCount != 0 || plan.UnscoredCandidateCount != 2 {
+		t.Fatalf("candidate counts = simulated %d unscored %d, want two unscored blockers", plan.SimulatedCandidateCount, plan.UnscoredCandidateCount)
+	}
+	byType := map[string]Candidate{}
+	for _, candidate := range plan.ActionCandidates {
+		byType[candidate.ActionType] = candidate
+		if candidate.SimulationStatus != SimulationStatusUnsupported {
+			t.Fatalf("candidate %s status = %q, want unsupported", candidate.ActionType, candidate.SimulationStatus)
+		}
+		if candidate.ScoreBreakdown.SimulationPenaltyPoints == 0 {
+			t.Fatalf("candidate %s score breakdown = %#v, want simulation penalty", candidate.ActionType, candidate.ScoreBreakdown)
+		}
+	}
+	if owner := byType[ActionTypeAssignOwner]; !owner.Ownership.Missing || owner.Effort.PrimaryConstraint != "routing" {
+		t.Fatalf("assign owner candidate = %#v, want missing ownership routing blocker", owner)
+	}
+	if evidence := byType[ActionTypeRefreshEvidence]; evidence.Evidence.Status != "limited" || evidence.Evidence.Freshness != "stale" {
+		t.Fatalf("refresh evidence candidate = %#v, want limited stale evidence", evidence)
+	}
+}
+
+func TestDiffCandidatesReportsAddedRemovedAndChanged(t *testing.T) {
+	diff := DiffCandidates(
+		[]Candidate{
+			{ID: "a", Title: "A", PriorityScore: 100, ExpectedRiskScoreReduction: 5, ExpectedAttackPathCountReduction: 1, SimulationStatus: SimulationStatusSimulated},
+			{ID: "c", Title: "C", PriorityScore: 70},
+		},
+		[]Candidate{
+			{ID: "a", Title: "A", PriorityScore: 115, ExpectedRiskScoreReduction: 8, ExpectedAttackPathCountReduction: 2, SimulationStatus: SimulationStatusSimulated},
+			{ID: "b", Title: "B", PriorityScore: 20},
+		},
+	)
+
+	if len(diff.Added) != 1 || diff.Added[0].ID != "b" || diff.Added[0].ChangeType != "added" {
+		t.Fatalf("added diff = %#v, want b added", diff.Added)
+	}
+	if len(diff.Removed) != 1 || diff.Removed[0].ID != "c" || diff.Removed[0].ChangeType != "removed" {
+		t.Fatalf("removed diff = %#v, want c removed", diff.Removed)
+	}
+	if len(diff.Changed) != 1 || diff.Changed[0].ID != "a" || diff.Changed[0].PriorityScoreDelta != 15 || diff.Changed[0].ExpectedRiskScoreReductionDelta != 3 {
+		t.Fatalf("changed diff = %#v, want a changed with deltas", diff.Changed)
+	}
+	if diff.UnchangedCount != 0 {
+		t.Fatalf("UnchangedCount = %d, want 0", diff.UnchangedCount)
+	}
+}
