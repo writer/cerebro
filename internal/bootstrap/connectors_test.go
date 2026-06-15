@@ -171,6 +171,63 @@ func TestConnectorConnectionRejectsPlaintextSensitiveConfig(t *testing.T) {
 	}
 }
 
+func TestConnectorConnectionRejectsLegacyAADEncryptedSubmission(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTest(key, map[string]string{"token": "secret-token"})
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"auth_method":           connectorAuthMethodEncryptedSubmission,
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"config":                map[string]string{"family": "audit"},
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors legacy AAD error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST /connectors legacy AAD status = %d, want 400", resp.StatusCode)
+	}
+	if source.checkToken != "" {
+		t.Fatalf("source check token = %q, want no source check", source.checkToken)
+	}
+	if len(store.runtimes) != 0 {
+		t.Fatalf("stored runtimes len = %d, want 0", len(store.runtimes))
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials len = %d, want 0", len(store.credentials))
+	}
+}
+
 func TestConnectorConnectionRejectsUnsupportedCredentialStore(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)
@@ -543,13 +600,14 @@ func TestConnectorTransitKeyIsSharedAcrossReplicas(t *testing.T) {
 	if keyA.KeyID == "" || keyA.KeyID != keyB.KeyID {
 		t.Fatalf("transit key IDs = %q and %q, want shared stable key ID", keyA.KeyID, keyB.KeyID)
 	}
-	encrypted, err := encryptConnectorCredentialsForTest(keyA, map[string]string{"token": "secret-token"})
+	additionalData := connectorCredentialAdditionalData(keyA.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID)
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(keyA, map[string]string{"token": "secret-token"}, additionalData)
 	if err != nil {
 		t.Fatalf("encrypt credentials: %v", err)
 	}
-	decrypted, err := appB.connectorTransitKey.Decrypt(encrypted)
+	decrypted, err := appB.connectorTransitKey.DecryptWithExactAdditionalData(encrypted, additionalData)
 	if err != nil {
-		t.Fatalf("Decrypt() on second app error = %v", err)
+		t.Fatalf("DecryptWithExactAdditionalData() on second app error = %v", err)
 	}
 	var fields map[string]string
 	if err := json.Unmarshal(decrypted, &fields); err != nil {

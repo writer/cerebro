@@ -265,7 +265,7 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 			writeConnectorError(w, connectorcredentials.ErrUnavailable)
 			return
 		}
-		decrypted, err := a.connectorTransitKey.DecryptWithAdditionalData(
+		decrypted, err := a.connectorTransitKey.DecryptWithExactAdditionalData(
 			request.EncryptedCredentials,
 			connectorCredentialAdditionalData(request.EncryptedCredentials.KeyID, sourceID, tenantID, runtimeID, credentialStoreID),
 		)

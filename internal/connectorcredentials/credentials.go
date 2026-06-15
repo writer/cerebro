@@ -188,10 +188,21 @@ func (k *TransitKey) PublicKey() PublicKey {
 }
 
 func (k *TransitKey) Decrypt(payload EncryptedPayload) ([]byte, error) {
-	return k.DecryptWithAdditionalData(payload, []byte(payload.KeyID))
+	return k.DecryptWithAdditionalData(payload, nil)
 }
 
 func (k *TransitKey) DecryptWithAdditionalData(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
+	return k.decryptWithAdditionalData(payload, additionalData)
+}
+
+func (k *TransitKey) DecryptWithExactAdditionalData(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
+	if len(additionalData) == 0 {
+		return nil, fmt.Errorf("%w: credential payload context is required", ErrInvalidRequest)
+	}
+	return k.decryptWithAdditionalData(payload, additionalData)
+}
+
+func (k *TransitKey) decryptWithAdditionalData(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
 	if k == nil || k.private == nil {
 		return nil, fmt.Errorf("%w: transit key is not configured", ErrUnavailable)
 	}
@@ -200,28 +211,12 @@ func (k *TransitKey) DecryptWithAdditionalData(payload EncryptedPayload, additio
 	}
 	algorithm := strings.TrimSpace(payload.Algorithm)
 	if strings.EqualFold(algorithm, transitAlgorithm) {
-		aad := additionalData
-		if len(aad) == 0 {
-			aad = []byte(payload.KeyID)
+		if len(additionalData) == 0 {
+			return nil, fmt.Errorf("%w: credential payload context is required", ErrInvalidRequest)
 		}
-		plaintext, err := k.decryptHybrid(payload, aad)
-		if err == nil || bytes.Equal(aad, []byte(payload.KeyID)) {
-			return plaintext, err
-		}
-		return k.decryptHybrid(payload, []byte(payload.KeyID))
+		return k.decryptHybrid(payload, additionalData)
 	}
-	if !strings.EqualFold(algorithm, rsaOAEPAlgorithm) {
-		return nil, fmt.Errorf("%w: unsupported credential transport algorithm", ErrInvalidRequest)
-	}
-	ciphertext, err := decodeBase64(payload.Ciphertext)
-	if err != nil {
-		return nil, fmt.Errorf("%w: decode credential ciphertext: %w", ErrInvalidRequest, err)
-	}
-	plaintext, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, k.private, ciphertext, nil)
-	if err != nil {
-		return nil, fmt.Errorf("%w: decrypt credential payload", ErrInvalidRequest)
-	}
-	return plaintext, nil
+	return nil, fmt.Errorf("%w: unsupported credential transport algorithm", ErrInvalidRequest)
 }
 
 func (k *TransitKey) decryptHybrid(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
