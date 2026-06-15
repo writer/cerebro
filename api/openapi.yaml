@@ -20,6 +20,7 @@ tags:
   - name: OAuth
   - name: Platform
   - name: Reports
+  - name: Connectors
   - name: Sources
   - name: Telemetry
   - name: Workflow
@@ -139,6 +140,77 @@ paths:
       responses:
         '200':
           description: Source events and cursor.
+  /connectors:
+    get:
+      summary: List connector library entries
+      tags:
+        - Connectors
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Connector catalog with runtime counts and credential capability state.
+  /connectors/credential-key:
+    get:
+      summary: Get connector credential transit key
+      tags:
+        - Connectors
+      responses:
+        '200':
+          description: Public RSA-OAEP key metadata used to encrypt connector credentials before submission.
+  /connectors/{sourceID}/connections:
+    post:
+      summary: Create a credentialed connector runtime
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - runtime_id
+                - tenant_id
+                - encrypted_credentials
+              properties:
+                runtime_id:
+                  type: string
+                tenant_id:
+                  type: string
+                config:
+                  type: object
+                  additionalProperties:
+                    type: string
+                encrypted_credentials:
+                  type: object
+                  required:
+                    - key_id
+                    - algorithm
+                    - wrapped_key
+                    - nonce
+                    - ciphertext
+                  properties:
+                    key_id:
+                      type: string
+                    algorithm:
+                      type: string
+                      enum:
+                        - RSA-OAEP-256+A256GCM
+                    wrapped_key:
+                      type: string
+                    nonce:
+                      type: string
+                    ciphertext:
+                      type: string
+      responses:
+        '200':
+          description: Stored runtime with sensitive config redacted and credential metadata.
   /source-runtimes:
     get:
       summary: List source runtime configurations

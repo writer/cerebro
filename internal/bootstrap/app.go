@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findings"
@@ -72,6 +73,7 @@ type App struct {
 	mcpOAuthService       *mcpoauth.Service
 	mcpOAuthRegisterLimit *deviceauth.TokenBucket
 	oauthEndpointLimit    *deviceauth.TokenBucket
+	connectorTransitKey   *connectorcredentials.TransitKey
 }
 
 type appServices struct {
@@ -121,6 +123,11 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 // security-sensitive surfaces fail closed when misconfigured.
 func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
+	transitKey, err := connectorcredentials.NewTransitKey()
+	if err != nil {
+		return nil, err
+	}
+	app.connectorTransitKey = transitKey
 	if cfg.Auth.DeviceAuth.Enabled && !cfg.Auth.Enabled {
 		return nil, errDeviceAuthRequiresAPIAuth
 	}
@@ -200,7 +207,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	}
 	app.services.sourceOps = newSourceService(app.sources)
 	app.services.reports = app.newReportService()
-	app.services.runtimeOps = newRuntimeService(app.deps, app.sources)
+	app.services.runtimeOps = newRuntimeService(app.cfg, app.deps, app.sources)
 	app.services.claims = app.newClaimService()
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
@@ -1914,7 +1921,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizePutSourceRuntimeTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntime()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := newRuntimeService(s.deps, s.sources).Put(ctx, req.Msg)
+	response, err := newRuntimeService(s.cfg, s.deps, s.sources).Put(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -1925,7 +1932,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := newRuntimeService(s.deps, s.sources).Get(ctx, req.Msg)
+	response, err := newRuntimeService(s.cfg, s.deps, s.sources).Get(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -1936,7 +1943,7 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := newRuntimeService(s.deps, s.sources).SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
+	response, err := newRuntimeService(s.cfg, s.deps, s.sources).SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
 		LeaseStore: sourceRuntimeLeaseStore(s.deps.StateStore),
 	})
 	if err != nil {
@@ -2778,27 +2785,44 @@ func (a *App) runtimeService() *sourceruntime.Service {
 	if a != nil && a.services.runtimeOps != nil {
 		return a.services.runtimeOps
 	}
-	return newRuntimeService(a.deps, a.sources)
+	return newRuntimeService(a.cfg, a.deps, a.sources)
 }
 
 func newSourceService(sources *sourcecdk.Registry) *sourceops.Service {
 	return sourceops.New(sources)
 }
 
-func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {
+func newRuntimeService(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {
 	return sourceruntime.New(
 		sources,
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
-	).WithConfigResolver(resolveRuntimeSourceConfig)
+	).WithConfigResolver(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, deps.StateStore, sourceID, values)
+	})
 }
 
 func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	return resolveRuntimeSourceConfigWithStore(ctx, config.ConnectorCredentialConfig{}, nil, sourceID, values)
+}
+
+func resolveRuntimeSourceConfigWithStore(ctx context.Context, credentialConfig config.ConnectorCredentialConfig, store ports.StateStore, sourceID string, values map[string]string) (map[string]string, error) {
 	if err := authorizeRuntimeConfigEnvReferences(ctx, sourceID, values); err != nil {
 		return nil, err
 	}
-	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, values)
+	resolved := values
+	if hasConnectorCredentialReferences(values) {
+		vault, err := connectorCredentialVault(credentialConfig, store)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", sourceruntime.ErrRuntimeUnavailable, err)
+		}
+		resolved, err = vault.ResolveReferences(ctx, sourceID, values[sourceconfig.RuntimeTenantIDKey], values[sourceconfig.RuntimeIDKey], values)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
+		}
+	}
+	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, resolved)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
 	}
@@ -2806,6 +2830,15 @@ func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map
 		return nil, err
 	}
 	return resolved, nil
+}
+
+func hasConnectorCredentialReferences(values map[string]string) bool {
+	for _, value := range values {
+		if sourceconfig.IsCredentialReference(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func authorizeRuntimeConfigEnvReferences(ctx context.Context, sourceID string, values map[string]string) error {
