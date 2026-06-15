@@ -129,6 +129,16 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
                 job_block = workflow.split(f"name: {job_name}", 1)[1].split("      - name: Install uv", 1)[0]
                 self.assertIn("fetch-depth: 0", job_block)
 
+    def test_main_aws_deploy_jobs_refresh_before_pulumi_up(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        for job_marker, stack in (("  deploy-sec-dev-main:", "sec-dev"), ("  deploy-go-prod:", "go-prod")):
+            with self.subTest(stack=stack):
+                job_block = workflow.split(job_marker, 1)[1].split("\n  # ", 1)[0]
+                pulumi_up = job_block.split(f"Pulumi Up ({stack})", 1)[1].split("\n      - name:", 1)[0]
+                self.assertIn("command: up", pulumi_up)
+                self.assertIn(f"stack-name: {stack}", pulumi_up)
+                self.assertIn("refresh: true", pulumi_up)
+
     def test_sec_dev_autorelease_uses_normal_push_deploys(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         deploy_block = workflow.split("  deploy-sec-dev-main:", 1)[1].split("  # Main merge: Pulumi up for go-prod stack", 1)[0]
