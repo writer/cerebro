@@ -1,29 +1,191 @@
 id: cloudflare
 name: Cloudflare
-description: Cloudflare account, member, role, zone, and DNS source.
+description: Cloudflare account, IAM, edge, Zero Trust, Workers, load balancing, zone, and DNS source.
 emitted_kinds:
+  - cloudflare.access_application
+  - cloudflare.access_group
   - cloudflare.account
+  - cloudflare.account_ruleset
+  - cloudflare.audit_log
   - cloudflare.member
+  - cloudflare.gateway_rule
+  - cloudflare.load_balancer
+  - cloudflare.load_balancer_pool
   - cloudflare.role
+  - cloudflare.worker_script
   - cloudflare.zone
+  - cloudflare.zone_ruleset
   - cloudflare.dns_record
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: cloudflare
+  dimensions:
+    - id: access_applications
+      type: entity_family
+      title: Zero Trust Access applications
+      families: [access_application]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [zone-scoped Access applications, nested policy expansion]
+    - id: access_groups
+      type: app_entitlement
+      title: Zero Trust Access groups
+      families: [access_group]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [zone-scoped Access groups, group rule expansion]
+    - id: accounts
+      type: entity_family
+      title: Accounts
+      families: [account]
+      support: supported
+      high_value: true
+    - id: account_rulesets
+      type: entity_family
+      title: Account rulesets
+      families: [account_ruleset]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [ruleset rule version expansion]
+    - id: audit_logs
+      type: audit_event
+      title: Account audit logs
+      families: [audit_log]
+      support: supported
+      high_value: true
+    - id: dns_records
+      type: entity_family
+      title: DNS records
+      families: [dns_record]
+      support: supported
+      high_value: true
+    - id: gateway_rules
+      type: entity_family
+      title: Zero Trust Gateway rules
+      families: [gateway_rule]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [inherited parent account rules]
+    - id: load_balancer_pools
+      type: entity_family
+      title: Load balancer pools
+      families: [load_balancer_pool]
+      support: supported
+      high_value: true
+    - id: load_balancers
+      type: entity_family
+      title: Load balancers
+      families: [load_balancer]
+      support: supported
+      high_value: true
+    - id: members
+      type: app_entitlement
+      title: Account members
+      families: [member]
+      support: supported
+      high_value: true
+    - id: roles
+      type: app_entitlement
+      title: Account roles
+      families: [role]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [custom permission group expansion]
+    - id: worker_scripts
+      type: entity_family
+      title: Workers scripts
+      families: [worker_script]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [script content and secret bindings]
+    - id: zones
+      type: entity_family
+      title: Zones
+      families: [zone]
+      support: supported
+      high_value: true
+    - id: zone_rulesets
+      type: entity_family
+      title: Zone rulesets
+      families: [zone_ruleset]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [ruleset rule version expansion]
 event_contracts:
+  - kind: cloudflare.access_application
+    schema_ref: cloudflare/access_application/v1
+    required_attributes:
+      - account_id
+      - application_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.access_group
+    schema_ref: cloudflare/access_group/v1
+    required_attributes:
+      - account_id
+      - group_id
+    required_payload_fields:
+      - id
   - kind: cloudflare.account
     schema_ref: cloudflare/account/v1
     required_attributes:
       - account_id
     required_payload_fields:
       - id
+  - kind: cloudflare.account_ruleset
+    schema_ref: cloudflare/account_ruleset/v1
+    required_attributes:
+      - account_id
+      - ruleset_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.audit_log
+    schema_ref: cloudflare/audit_log/v1
+    required_attributes:
+      - account_id
+      - audit_id
+    required_payload_fields:
+      - id
   - kind: cloudflare.member
     schema_ref: cloudflare/member/v1
     required_attributes:
+      - account_id
       - member_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.gateway_rule
+    schema_ref: cloudflare/gateway_rule/v1
+    required_attributes:
+      - account_id
+      - rule_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.load_balancer
+    schema_ref: cloudflare/load_balancer/v1
+    required_attributes:
+      - load_balancer_id
+      - zone_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.load_balancer_pool
+    schema_ref: cloudflare/load_balancer_pool/v1
+    required_attributes:
+      - account_id
+      - pool_id
     required_payload_fields:
       - id
   - kind: cloudflare.role
     schema_ref: cloudflare/role/v1
     required_attributes:
+      - account_id
       - role_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.worker_script
+    schema_ref: cloudflare/worker_script/v1
+    required_attributes:
+      - account_id
+      - script_id
     required_payload_fields:
       - id
   - kind: cloudflare.zone
@@ -32,9 +194,17 @@ event_contracts:
       - zone_id
     required_payload_fields:
       - id
+  - kind: cloudflare.zone_ruleset
+    schema_ref: cloudflare/zone_ruleset/v1
+    required_attributes:
+      - ruleset_id
+      - zone_id
+    required_payload_fields:
+      - id
   - kind: cloudflare.dns_record
     schema_ref: cloudflare/dns_record/v1
     required_attributes:
       - record_id
+      - zone_id
     required_payload_fields:
       - id

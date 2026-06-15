@@ -96,6 +96,20 @@ var cloudPolicyCoverageAliases = map[string]cloudCoverageAlias{
 	"azure::storage::blob":                            {SourceID: "azure", DimensionID: "storage_blob"},
 	"azure::storage::container":                       {SourceID: "azure", DimensionID: "storage_container"},
 	"azure::web::function":                            {SourceID: "azure", DimensionID: "function_app"},
+	"cloudflare::access::application":                 {SourceID: "cloudflare", DimensionID: "access_applications"},
+	"cloudflare::access::group":                       {SourceID: "cloudflare", DimensionID: "access_groups"},
+	"cloudflare::account":                             {SourceID: "cloudflare", DimensionID: "accounts"},
+	"cloudflare::account::member":                     {SourceID: "cloudflare", DimensionID: "members"},
+	"cloudflare::account::role":                       {SourceID: "cloudflare", DimensionID: "roles"},
+	"cloudflare::audit_log":                           {SourceID: "cloudflare", DimensionID: "audit_logs"},
+	"cloudflare::dns::record":                         {SourceID: "cloudflare", DimensionID: "dns_records"},
+	"cloudflare::gateway::rule":                       {SourceID: "cloudflare", DimensionID: "gateway_rules"},
+	"cloudflare::load_balancer":                       {SourceID: "cloudflare", DimensionID: "load_balancers"},
+	"cloudflare::load_balancer::pool":                 {SourceID: "cloudflare", DimensionID: "load_balancer_pools"},
+	"cloudflare::ruleset::account":                    {SourceID: "cloudflare", DimensionID: "account_rulesets"},
+	"cloudflare::ruleset::zone":                       {SourceID: "cloudflare", DimensionID: "zone_rulesets"},
+	"cloudflare::worker::script":                      {SourceID: "cloudflare", DimensionID: "worker_scripts"},
+	"cloudflare::zone":                                {SourceID: "cloudflare", DimensionID: "zones"},
 	"gcp::aiplatform::dataset":                        {SourceID: "gcp", DimensionID: "aiplatform_dataset"},
 	"gcp::aiplatform::endpoint":                       {SourceID: "gcp", DimensionID: "aiplatform_endpoint"},
 	"gcp::artifact_registry::repository":              {SourceID: "gcp", DimensionID: "artifact_registry_repository"},
@@ -294,6 +308,22 @@ var minimumCloudCoverageDimensions = map[string][]string{
 		"virtual_machine",
 		"virtual_machine_scale_set",
 		"virtual_network",
+	},
+	"cloudflare": {
+		"access_applications",
+		"access_groups",
+		"account_rulesets",
+		"accounts",
+		"audit_logs",
+		"dns_records",
+		"gateway_rules",
+		"load_balancer_pools",
+		"load_balancers",
+		"members",
+		"roles",
+		"worker_scripts",
+		"zone_rulesets",
+		"zones",
 	},
 	"gcp": {
 		"aiplatform_dataset",
@@ -513,6 +543,8 @@ func isCloudPolicyResource(resource string) bool {
 	case strings.HasPrefix(resource, "aws::"):
 		return true
 	case strings.HasPrefix(resource, "azure::"):
+		return true
+	case strings.HasPrefix(resource, "cloudflare::"):
 		return true
 	case strings.HasPrefix(resource, "gcp::"):
 		return true
