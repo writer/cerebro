@@ -1,0 +1,17 @@
+id: email_domain_health
+name: Email Domain Health
+description: Email authentication posture source. Probes SPF, DKIM, DMARC, MX, and related DNS records for configured tenant mail domains.
+emitted_kinds:
+  - email_domain_health.health
+event_contracts:
+  - kind: email_domain_health.health
+    schema_ref: email_domain_health/health/v1
+    required_attributes:
+      - domain
+      - status
+      - score
+    required_payload_fields:
+      - domain
+      - status
+      - score
+      - issues

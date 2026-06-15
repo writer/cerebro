@@ -1,0 +1,10 @@
+sourceId: email_domain_health
+secretKeys:
+  - EMAIL_DOMAIN_HEALTH_DOMAINS
+  - EMAIL_DOMAIN_HEALTH_DKIM_SELECTORS
+runtimes:
+  - localId: health
+    config:
+      family: health
+      domains: env:EMAIL_DOMAIN_HEALTH_DOMAINS
+      dkim_selectors: env:EMAIL_DOMAIN_HEALTH_DKIM_SELECTORS

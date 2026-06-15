@@ -13,6 +13,7 @@ import (
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	duosource "github.com/writer/cerebro/sources/duo"
+	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
@@ -99,6 +100,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "duo",
 		load: func() (sourcecdk.Source, error) {
 			return duosource.New()
+		},
+	},
+	{
+		name: "email_domain_health",
+		load: func() (sourcecdk.Source, error) {
+			return emaildomainhealthsource.New()
 		},
 	},
 	{
