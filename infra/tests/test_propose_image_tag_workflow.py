@@ -43,6 +43,10 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         apply_step = self._apply_step()
 
         self.assertIn("- name: Resolve release automation auth", workflow)
+        self.assertIn("actions: write", workflow)
+        self.assertIn("contents: write", workflow)
+        self.assertIn("pull-requests: write", workflow)
+        self.assertIn("persist-credentials: false", workflow)
         self.assertIn("CEREBRO_AUTORELEASE_TOKEN", workflow)
         self.assertIn("mode=deploy_app", workflow)
         self.assertIn("mode=autorelease_token", workflow)
