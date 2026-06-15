@@ -28,9 +28,11 @@ emitted_kinds:
   - gcp.compute_instance_group
   - gcp.compute_instance_group_manager
   - gcp.compute_instance_template
+  - gcp.compute_interconnect_attachment
   - gcp.compute_network_endpoint_group
   - gcp.compute_network
   - gcp.compute_route
+  - gcp.compute_router
   - gcp.compute_security_policy
   - gcp.compute_ssl_certificate
   - gcp.compute_ssl_policy
@@ -40,7 +42,10 @@ emitted_kinds:
   - gcp.compute_target_https_proxy
   - gcp.compute_target_ssl_proxy
   - gcp.compute_target_tcp_proxy
+  - gcp.compute_target_vpn_gateway
   - gcp.compute_url_map
+  - gcp.compute_vpn_gateway
+  - gcp.compute_vpn_tunnel
   - gcp.dns_managed_zone
   - gcp.dns_record_set
   - gcp.effective_permission
@@ -90,9 +95,11 @@ runtime_families:
   - compute_instance_group
   - compute_instance_group_manager
   - compute_instance_template
+  - compute_interconnect_attachment
   - compute_network_endpoint_group
   - compute_network
   - compute_route
+  - compute_router
   - compute_security_policy
   - compute_ssl_certificate
   - compute_ssl_policy
@@ -102,7 +109,10 @@ runtime_families:
   - compute_target_https_proxy
   - compute_target_ssl_proxy
   - compute_target_tcp_proxy
+  - compute_target_vpn_gateway
   - compute_url_map
+  - compute_vpn_gateway
+  - compute_vpn_tunnel
   - dns_managed_zone
   - dns_record_set
   - effective_permission
@@ -267,6 +277,12 @@ coverage_contract:
       families: [compute_instance_template]
       support: supported
       high_value: true
+    - id: compute_interconnect_attachment
+      type: entity_family
+      title: Compute interconnect attachments
+      families: [compute_interconnect_attachment]
+      support: supported
+      high_value: true
     - id: compute_network_endpoint_group
       type: entity_family
       title: Compute network endpoint groups
@@ -283,6 +299,12 @@ coverage_contract:
       type: entity_family
       title: Compute routes
       families: [compute_route]
+      support: supported
+      high_value: true
+    - id: compute_router
+      type: entity_family
+      title: Compute routers
+      families: [compute_router]
       support: supported
       high_value: true
     - id: compute_security_policy
@@ -339,10 +361,28 @@ coverage_contract:
       families: [compute_target_tcp_proxy]
       support: supported
       high_value: true
+    - id: compute_target_vpn_gateway
+      type: entity_family
+      title: Compute target VPN gateways
+      families: [compute_target_vpn_gateway]
+      support: supported
+      high_value: true
     - id: compute_url_map
       type: entity_family
       title: Compute URL maps
       families: [compute_url_map]
+      support: supported
+      high_value: true
+    - id: compute_vpn_gateway
+      type: entity_family
+      title: Compute VPN gateways
+      families: [compute_vpn_gateway]
+      support: supported
+      high_value: true
+    - id: compute_vpn_tunnel
+      type: entity_family
+      title: Compute VPN tunnels
+      families: [compute_vpn_tunnel]
       support: supported
       high_value: true
     - id: container_vulnerability

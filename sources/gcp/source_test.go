@@ -91,9 +91,11 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyComputeInstanceGroup, kind: "gcp.compute_instance_group"},
 		{family: familyComputeInstanceGroupMgr, kind: "gcp.compute_instance_group_manager"},
 		{family: familyComputeInstanceTemplate, kind: "gcp.compute_instance_template"},
+		{family: familyComputeInterconnectAttachment, kind: "gcp.compute_interconnect_attachment"},
 		{family: familyComputeNetworkEndpointGroup, kind: "gcp.compute_network_endpoint_group"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network"},
 		{family: familyComputeRoute, kind: "gcp.compute_route"},
+		{family: familyComputeRouter, kind: "gcp.compute_router"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy"},
 		{family: familyComputeSSLCertificate, kind: "gcp.compute_ssl_certificate"},
 		{family: familyComputeSSLPolicy, kind: "gcp.compute_ssl_policy"},
@@ -103,7 +105,10 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyComputeTargetHTTPSProxy, kind: "gcp.compute_target_https_proxy"},
 		{family: familyComputeTargetSSLProxy, kind: "gcp.compute_target_ssl_proxy"},
 		{family: familyComputeTargetTCPProxy, kind: "gcp.compute_target_tcp_proxy"},
+		{family: familyComputeTargetVPNGateway, kind: "gcp.compute_target_vpn_gateway"},
 		{family: familyComputeURLMap, kind: "gcp.compute_url_map"},
+		{family: familyComputeVPNGateway, kind: "gcp.compute_vpn_gateway"},
+		{family: familyComputeVPNTunnel, kind: "gcp.compute_vpn_tunnel"},
 		{family: familyDNSManagedZone, kind: "gcp.dns_managed_zone"},
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set"},
 		{family: familyGCSBucket, kind: "gcp.gcs_bucket"},
@@ -313,9 +318,11 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeInstanceGroup, kind: "gcp.compute_instance_group", attr: "named_ports", want: "http:80"},
 		{family: familyComputeInstanceGroupMgr, kind: "gcp.compute_instance_group_manager", attr: "instance_template", want: "prod-template"},
 		{family: familyComputeInstanceTemplate, kind: "gcp.compute_instance_template", attr: "service_account_email", want: "vm@writer-prod.iam.gserviceaccount.com"},
+		{family: familyComputeInterconnectAttachment, kind: "gcp.compute_interconnect_attachment", attr: "bandwidth", want: "BPS_10G"},
 		{family: familyComputeNetworkEndpointGroup, kind: "gcp.compute_network_endpoint_group", attr: "network_endpoint_type", want: "GCE_VM_IP_PORT"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
+		{family: familyComputeRouter, kind: "gcp.compute_router", attr: "nats", want: "prod-nat"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy", attr: "rules_count", want: "3"},
 		{family: familyComputeSSLCertificate, kind: "gcp.compute_ssl_certificate", attr: "managed_status", want: "ACTIVE"},
 		{family: familyComputeSSLPolicy, kind: "gcp.compute_ssl_policy", attr: "min_tls_version", want: "TLS_1_2"},
@@ -325,7 +332,10 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeTargetHTTPSProxy, kind: "gcp.compute_target_https_proxy", attr: "ssl_certificates", want: "prod-cert"},
 		{family: familyComputeTargetSSLProxy, kind: "gcp.compute_target_ssl_proxy", attr: "ssl_policy", want: "modern"},
 		{family: familyComputeTargetTCPProxy, kind: "gcp.compute_target_tcp_proxy", attr: "backend_service", want: "prod-tcp-backend"},
+		{family: familyComputeTargetVPNGateway, kind: "gcp.compute_target_vpn_gateway", attr: "tunnels", want: "classic-tunnel"},
 		{family: familyComputeURLMap, kind: "gcp.compute_url_map", attr: "backend_services", want: "prod-backend,api-backend,canary-backend"},
+		{family: familyComputeVPNGateway, kind: "gcp.compute_vpn_gateway", attr: "interface_ips", want: "203.0.113.31"},
+		{family: familyComputeVPNTunnel, kind: "gcp.compute_vpn_tunnel", attr: "router", want: "prod-router"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall", attr: "source_ranges", want: "0.0.0.0/0"},
 		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule", attr: "internet_exposed", want: "true"},
 		{family: familyComputeDisk, kind: "gcp.compute_disk", attr: "disk_type", want: "pd-balanced"},
@@ -883,6 +893,54 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				"id": "neg-1", "name": "prod-neg", "selfLink": "projects/writer-prod/zones/us-central1-a/networkEndpointGroups/prod-neg", "description": "prod backend endpoints",
 				"zone": "projects/writer-prod/zones/us-central1-a", "network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default",
 				"networkEndpointType": "GCE_VM_IP_PORT", "defaultPort": 8080, "size": 3, "annotations": map[string]string{"env": "prod"},
+			}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/interconnectAttachments":
+			requireQuery(t, r, "maxResults", "10", "interconnect attachments")
+			requireQuery(t, r, "returnPartialSuccess", "true", "interconnect attachments")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"interconnectAttachments": []map[string]any{{
+				"id": "ica-1", "name": "prod-vlan", "selfLink": "projects/writer-prod/regions/us-central1/interconnectAttachments/prod-vlan", "description": "prod dedicated interconnect",
+				"region": "projects/writer-prod/regions/us-central1", "router": "projects/writer-prod/regions/us-central1/routers/prod-router", "interconnect": "projects/writer-prod/global/interconnects/prod-interconnect",
+				"type": "DEDICATED", "adminEnabled": true, "operationalStatus": "OS_ACTIVE", "state": "ACTIVE", "bandwidth": "BPS_10G", "edgeAvailabilityDomain": "AVAILABILITY_DOMAIN_1",
+				"vlanTag8021q": 1234, "mtu": 1500, "encryption": "IPSEC", "cloudRouterIpAddress": "169.254.10.1/29", "customerRouterIpAddress": "169.254.10.2/29",
+				"ipsecInternalAddresses": []string{"projects/writer-prod/regions/us-central1/addresses/prod-ipsec"}, "satisfiesPzs": true, "labels": map[string]string{"env": "prod"},
+			}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/routers":
+			requireQuery(t, r, "maxResults", "10", "routers")
+			requireQuery(t, r, "returnPartialSuccess", "true", "routers")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"routers": []map[string]any{{
+				"id": "router-1", "name": "prod-router", "selfLink": "projects/writer-prod/regions/us-central1/routers/prod-router", "description": "prod hybrid router",
+				"region": "projects/writer-prod/regions/us-central1", "network": "projects/writer-prod/global/networks/default",
+				"bgp":                         map[string]any{"asn": 64514, "advertiseMode": "CUSTOM", "advertisedGroups": []string{"ALL_SUBNETS"}, "keepaliveInterval": 20},
+				"interfaces":                  []map[string]any{{"name": "if-vlan", "linkedInterconnectAttachment": "projects/writer-prod/regions/us-central1/interconnectAttachments/prod-vlan"}, {"name": "if-vpn", "linkedVpnTunnel": "projects/writer-prod/regions/us-central1/vpnTunnels/ha-tunnel"}},
+				"bgpPeers":                    []map[string]any{{"name": "peer-onprem", "interfaceName": "if-vlan", "peerAsn": 65001, "peerIpAddress": "169.254.10.2", "ipAddress": "169.254.10.1", "advertiseMode": "DEFAULT"}},
+				"nats":                        []map[string]any{{"name": "prod-nat", "natIpAllocateOption": "MANUAL_ONLY", "sourceSubnetworkIpRangesToNat": "LIST_OF_SUBNETWORKS", "natIps": []string{"projects/writer-prod/regions/us-central1/addresses/prod-nat-ip"}, "logConfig": map[string]any{"enable": true, "filter": "ALL"}}},
+				"encryptedInterconnectRouter": true,
+			}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/targetVpnGateways":
+			requireQuery(t, r, "maxResults", "10", "target vpn gateways")
+			requireQuery(t, r, "returnPartialSuccess", "true", "target vpn gateways")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"targetVpnGateways": []map[string]any{{
+				"id": "tvg-1", "name": "classic-vpn", "selfLink": "projects/writer-prod/regions/us-central1/targetVpnGateways/classic-vpn", "description": "classic vpn gateway",
+				"region": "projects/writer-prod/regions/us-central1", "network": "projects/writer-prod/global/networks/default", "status": "READY",
+				"tunnels": []string{"projects/writer-prod/regions/us-central1/vpnTunnels/classic-tunnel"}, "forwardingRules": []string{"projects/writer-prod/regions/us-central1/forwardingRules/classic-vpn-esp"},
+			}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/vpnGateways":
+			requireQuery(t, r, "maxResults", "10", "vpn gateways")
+			requireQuery(t, r, "returnPartialSuccess", "true", "vpn gateways")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"vpnGateways": []map[string]any{{
+				"id": "vgw-1", "name": "ha-vpn", "selfLink": "projects/writer-prod/regions/us-central1/vpnGateways/ha-vpn", "description": "ha vpn gateway",
+				"region": "projects/writer-prod/regions/us-central1", "network": "projects/writer-prod/global/networks/default", "gatewayIpVersion": "IPV4", "stackType": "IPV4_ONLY",
+				"vpnInterfaces": []map[string]any{{"id": 0, "ipAddress": "203.0.113.31"}},
+			}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/vpnTunnels":
+			requireQuery(t, r, "maxResults", "10", "vpn tunnels")
+			requireQuery(t, r, "returnPartialSuccess", "true", "vpn tunnels")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"vpnTunnels": []map[string]any{{
+				"id": "tunnel-1", "name": "ha-tunnel", "selfLink": "projects/writer-prod/regions/us-central1/vpnTunnels/ha-tunnel", "description": "ha vpn tunnel",
+				"region": "projects/writer-prod/regions/us-central1", "status": "ESTABLISHED", "detailedStatus": "Tunnel is up and running.", "ikeVersion": 2,
+				"peerIp": "198.51.100.10", "peerExternalGateway": "projects/writer-prod/global/externalVpnGateways/onprem", "peerExternalGatewayInterface": 0,
+				"vpnGateway": "projects/writer-prod/regions/us-central1/vpnGateways/ha-vpn", "vpnGatewayInterface": 0, "router": "projects/writer-prod/regions/us-central1/routers/prod-router",
+				"localTrafficSelector": []string{"10.0.0.0/24"}, "remoteTrafficSelector": []string{"172.16.0.0/16"}, "sharedSecretHash": "hash",
 			}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/backendServices":
 			requireQuery(t, r, "maxResults", "10", "backend services")
