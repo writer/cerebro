@@ -734,11 +734,19 @@ func normalizedListFilterRuntimeIDs(filter ports.SourceRuntimeFilter) []string {
 }
 
 func restoreRedactedConfig(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) {
-	if existing == nil || incoming == nil || len(incoming.GetConfig()) == 0 {
+	if existing == nil || incoming == nil {
 		return
 	}
 	if strings.TrimSpace(existing.GetSourceId()) != strings.TrimSpace(incoming.GetSourceId()) {
 		return
+	}
+	if incoming.Config == nil {
+		incoming.Config = map[string]string{}
+	}
+	if _, ok := incoming.GetConfig()[resourcescope.ConfigKey]; !ok {
+		if preserved, ok := existing.GetConfig()[resourcescope.ConfigKey]; ok {
+			incoming.Config[resourcescope.ConfigKey] = preserved
+		}
 	}
 	for key, value := range incoming.GetConfig() {
 		if strings.TrimSpace(value) != redactedValue || !sensitiveConfigKey(key) {

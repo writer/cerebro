@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	githubsource "github.com/writer/cerebro/sources/github"
@@ -1088,6 +1089,55 @@ func TestPutRestoresRedactedSensitiveConfigBeforeMerge(t *testing.T) {
 		t.Fatalf("response token = %q, want redacted", got)
 	}
 	if got := store.runtimes["writer-github"].GetNextCursor().GetOpaque(); got != "1" {
+		t.Fatalf("stored next cursor = %q, want preserved cursor", got)
+	}
+}
+
+func TestPutPreservesOmittedResourceScopePolicyOnRedactedRoundTrip(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(emptyPageSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	scopeValue, err := resourcescope.ConfigValue(resourcescope.Policy{ExcludedFamilies: []string{"empty_page.event"}})
+	if err != nil {
+		t.Fatalf("scope ConfigValue() error = %v", err)
+	}
+	store := &runtimeStore{}
+	service := New(registry, store, nil, nil)
+
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-empty-page",
+			SourceId: "empty_page",
+			TenantId: "writer",
+			Config: map[string]string{
+				"owner":                 "platform",
+				resourcescope.ConfigKey: scopeValue,
+			},
+			Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "1"},
+			NextCursor: &cerebrov1.SourceCursor{Opaque: "1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("initial Put() error = %v", err)
+	}
+	getResp, err := service.Get(context.Background(), &cerebrov1.GetSourceRuntimeRequest{Id: "writer-empty-page"})
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if _, ok := getResp.GetRuntime().GetConfig()[resourcescope.ConfigKey]; ok {
+		t.Fatal("redacted Get() response exposed resource scope config")
+	}
+
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: getResp.GetRuntime()})
+	if err != nil {
+		t.Fatalf("round-trip Put() error = %v", err)
+	}
+	stored := store.runtimes["writer-empty-page"]
+	if got := stored.GetConfig()[resourcescope.ConfigKey]; got != scopeValue {
+		t.Fatalf("stored scope policy = %q, want preserved %q", got, scopeValue)
+	}
+	if got := stored.GetNextCursor().GetOpaque(); got != "1" {
 		t.Fatalf("stored next cursor = %q, want preserved cursor", got)
 	}
 }
