@@ -20,6 +20,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -805,7 +806,7 @@ func TestSourceHTTPClientFailsClosedWhenHostResolutionFails(t *testing.T) {
 	}
 }
 
-func TestSourceHTTPClientAllowsHostsResolvingToPublicIPs(t *testing.T) {
+func TestSourceHTTPClientFailsClosedWhenCustomTransportCannotPinResolvedIP(t *testing.T) {
 	called := false
 	client := sourceHTTPClientNoRedirect(&http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
@@ -823,17 +824,15 @@ func TestSourceHTTPClientAllowsHostsResolvingToPublicIPs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequestWithContext() error = %v", err)
 	}
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatalf("Do() error = %v", err)
+	resp, err := client.Do(request)
+	if resp != nil {
+		_ = resp.Body.Close()
 	}
-	defer func() {
-		if closeErr := response.Body.Close(); closeErr != nil {
-			t.Fatalf("response.Body.Close() error = %v", closeErr)
-		}
-	}()
-	if !called {
-		t.Fatal("Do() did not reach wrapped transport for public resolved host")
+	if !errors.Is(err, sourcehttp.ErrTransportPinningUnsupported) {
+		t.Fatalf("Do() error = %v, want pinned host dialing error", err)
+	}
+	if called {
+		t.Fatal("Do() reached wrapped transport after pinning failed")
 	}
 }
 
@@ -1054,6 +1053,9 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("encode users response: %v", err)
 			}
 		case "/api/v3/orgs/writer/audit-log":
+			if got := r.URL.Query().Get("order"); got != "asc" {
+				t.Fatalf("audit order = %q, want asc", got)
+			}
 			after := r.URL.Query().Get("after")
 			if after == "" {
 				w.Header().Set("Link", "</api/v3/orgs/writer/audit-log?after=cursor-2&before=>; rel=\"next\"")

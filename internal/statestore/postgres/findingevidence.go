@@ -17,6 +17,11 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+const (
+	defaultFindingEvidenceListLimit = uint32(500)
+	maxFindingEvidenceListLimit     = uint32(500)
+)
+
 var ensureFindingEvidenceStatements = []string{
 	`CREATE TABLE IF NOT EXISTS finding_evidence (
   id TEXT PRIMARY KEY,
@@ -397,10 +402,8 @@ SELECT finding_evidence_json::text
 FROM finding_evidence
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingEvidenceListOrder(request)
-	if request.Limit != 0 {
-		args = append(args, int64(request.Limit))
-		query += fmt.Sprintf(" LIMIT $%d", len(args))
-	}
+	args = append(args, int64(findingEvidenceListLimit(request.Limit)))
+	query += fmt.Sprintf(" LIMIT $%d", len(args))
 	return query, args, nil
 }
 
@@ -414,11 +417,16 @@ SELECT id, runtime_id, rule_id, finding_id, run_id, claim_ids_json::text, event_
 FROM finding_evidence
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingEvidenceListOrder(request)
-	if request.Limit != 0 {
-		args = append(args, int64(request.Limit))
-		query += fmt.Sprintf(" LIMIT $%d", len(args))
-	}
+	args = append(args, int64(findingEvidenceListLimit(request.Limit)))
+	query += fmt.Sprintf(" LIMIT $%d", len(args))
 	return query, args, nil
+}
+
+func findingEvidenceListLimit(limit uint32) uint32 {
+	if limit == 0 || limit > maxFindingEvidenceListLimit {
+		return defaultFindingEvidenceListLimit
+	}
+	return limit
 }
 
 func findingEvidenceCountByFindingIDQuery(request ports.ListFindingEvidenceRequest) (string, []any, error) {

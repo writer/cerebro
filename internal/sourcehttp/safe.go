@@ -2,6 +2,7 @@ package sourcehttp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -19,6 +20,8 @@ const DefaultTimeout = 30 * time.Second
 const DefaultRetryMaxAttempts = 3
 const DefaultRetryBackoff = 250 * time.Millisecond
 const MaxRetryAfter = 5 * time.Second
+
+var ErrTransportPinningUnsupported = errors.New("source transport must support pinned host dialing")
 
 type ClientOptions struct {
 	SourceID                 string
@@ -214,26 +217,19 @@ func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 		if len(addrs) > 0 {
 			pinned, err := pinnedHostTransport(base, req.URL.Hostname(), addrs[0].IP)
-			if err != nil && isDefaultTransportShape(base) {
+			if err != nil {
 				return nil, err
 			}
-			if err == nil {
-				base = pinned
-			}
+			base = pinned
 		}
 	}
 	return base.RoundTrip(req)
 }
 
-func isDefaultTransportShape(base http.RoundTripper) bool {
-	_, ok := base.(*http.Transport)
-	return ok
-}
-
 func pinnedHostTransport(base http.RoundTripper, host string, ip net.IP) (http.RoundTripper, error) {
 	transport, ok := base.(*http.Transport)
 	if !ok {
-		return nil, fmt.Errorf("source transport must support pinned host dialing")
+		return nil, ErrTransportPinningUnsupported
 	}
 	clone := transport.Clone()
 	clone.Proxy = nil

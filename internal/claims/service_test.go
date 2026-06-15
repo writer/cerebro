@@ -484,6 +484,9 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	if got := retractList.Status; got != claimStatusAsserted {
 		t.Fatalf("retract list status = %q, want %q", got, claimStatusAsserted)
 	}
+	if got := retractList.Limit; got != 0 {
+		t.Fatalf("retract list limit = %d, want unbounded 0", got)
+	}
 	retracted := store.claims[assigneeID]
 	if retracted == nil {
 		t.Fatal("retracted claim = nil, want non-nil")
@@ -1877,14 +1880,15 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	}
 }
 
-func TestListClaimsPreservesUnboundedAndExplicitLimits(t *testing.T) {
+func TestListClaimsNormalizesUserFacingLimits(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
 		limit uint32
 		want  uint32
 	}{
-		{name: "unbounded", limit: 0, want: 0},
-		{name: "large explicit", limit: 5000, want: 5000},
+		{name: "zero defaults", limit: 0, want: defaultListLimit},
+		{name: "within limit preserved", limit: 25, want: 25},
+		{name: "above max clamped", limit: maxListLimit + 1, want: maxListLimit},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &stubClaimStore{claims: map[string]*ports.ClaimRecord{}}

@@ -2913,8 +2913,8 @@ func TestAuthMiddlewareEnforcesTenantOnIDOnlyRoutes(t *testing.T) {
 				t.Fatalf("%s %s error = %v", tt.method, tt.path, err)
 			}
 			_ = resp.Body.Close()
-			if resp.StatusCode != http.StatusForbidden {
-				t.Fatalf("%s %s status = %d, want %d", tt.method, tt.path, resp.StatusCode, http.StatusForbidden)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("%s %s status = %d, want %d", tt.method, tt.path, resp.StatusCode, http.StatusNotFound)
 			}
 		})
 	}
@@ -2922,13 +2922,13 @@ func TestAuthMiddlewareEnforcesTenantOnIDOnlyRoutes(t *testing.T) {
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	getRuntimeReq := connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{Id: "other-runtime"})
 	getRuntimeReq.Header().Set("Authorization", "Bearer writer-key")
-	if _, err := client.GetSourceRuntime(context.Background(), getRuntimeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("GetSourceRuntime(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	if _, err := client.GetSourceRuntime(context.Background(), getRuntimeReq); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("GetSourceRuntime(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodeNotFound, err)
 	}
 	getFindingReq := connect.NewRequest(&cerebrov1.GetFindingRequest{Id: "other-finding"})
 	getFindingReq.Header().Set("Authorization", "Bearer writer-key")
-	if _, err := client.GetFinding(context.Background(), getFindingReq); connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("GetFinding(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	if _, err := client.GetFinding(context.Background(), getFindingReq); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("GetFinding(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodeNotFound, err)
 	}
 }
 
@@ -3389,8 +3389,8 @@ func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.
 		t.Fatalf("GET /source-runtimes blank tenant error = %v", err)
 	}
 	_ = getResp.Body.Close()
-	if getResp.StatusCode != http.StatusForbidden {
-		t.Fatalf("GET /source-runtimes blank tenant status = %d, want %d", getResp.StatusCode, http.StatusForbidden)
+	if getResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /source-runtimes blank tenant status = %d, want %d", getResp.StatusCode, http.StatusNotFound)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
@@ -3403,8 +3403,8 @@ func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.
 	}
 	getRuntimeReq := connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{Id: "blank-runtime"})
 	getRuntimeReq.Header().Set("Authorization", "Bearer writer-key")
-	if _, err := client.GetSourceRuntime(context.Background(), getRuntimeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("GetSourceRuntime(blank tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	if _, err := client.GetSourceRuntime(context.Background(), getRuntimeReq); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("GetSourceRuntime(blank tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodeNotFound, err)
 	}
 }
 

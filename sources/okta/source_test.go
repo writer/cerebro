@@ -1794,6 +1794,9 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 		}
 		switch r.URL.Path {
 		case "/api/v1/logs":
+			if got := r.URL.Query().Get("sortOrder"); got != "ASCENDING" {
+				t.Fatalf("audit sortOrder = %q, want ASCENDING", got)
+			}
 			after := r.URL.Query().Get("after")
 			if after == "" {
 				w.Header().Set("Link", "</api/v1/logs?after=cursor-2&limit=1>; rel=\"next\"")

@@ -27,6 +27,8 @@ const (
 	claimStatusRefuted      = "refuted"
 	claimStatusSuperseded   = "superseded"
 
+	defaultListLimit                   uint32 = 500
+	maxListLimit                       uint32 = 500
 	supportingRelationClaimLookupLimit uint32 = 2
 )
 
@@ -261,7 +263,7 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 		ClaimType:     strings.TrimSpace(request.ClaimType),
 		Status:        strings.TrimSpace(request.Status),
 		SourceEventID: strings.TrimSpace(request.SourceEventID),
-		Limit:         request.Limit,
+		Limit:         normalizeListLimit(request.Limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list claims for runtime %q: %w", runtimeID, err)
@@ -315,6 +317,17 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 		retracted++
 	}
 	return retracted, nil
+}
+
+func normalizeListLimit(limit uint32) uint32 {
+	switch {
+	case limit == 0:
+		return defaultListLimit
+	case limit > maxListLimit:
+		return maxListLimit
+	default:
+		return limit
+	}
 }
 
 func (s *Service) deleteRelationIfUnsupported(ctx context.Context, runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim, link *ports.ProjectedLink) error {

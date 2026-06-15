@@ -2607,10 +2607,7 @@ func mcpMapArrayCount(value any, key string) int {
 }
 
 func mcpNormalizeIDLookupError(err error, normalized error) error {
-	if errors.Is(err, errTenantForbidden) {
-		return normalized
-	}
-	return err
+	return normalizeIDLookupError(err, normalized)
 }
 
 func mcpAnyString(value any) string {

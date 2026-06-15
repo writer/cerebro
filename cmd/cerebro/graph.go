@@ -1661,7 +1661,11 @@ func graphHealthRunStartedAfter(left, right graphstore.IngestRun) bool {
 
 func graphHealthRunIsStale(run graphstore.IngestRun, now time.Time, maxRunningMinutes int) bool {
 	startedAt, ok := parseGraphHealthRunTime(run.StartedAt)
-	return ok && now.UTC().Sub(startedAt) > time.Duration(maxRunningMinutes)*time.Minute
+	const maxDurationMinutes = int64(1<<63-1) / int64(time.Minute)
+	if !ok || maxRunningMinutes <= 0 || int64(maxRunningMinutes) > maxDurationMinutes {
+		return false
+	}
+	return now.UTC().Sub(startedAt) > time.Duration(maxRunningMinutes)*time.Minute
 }
 
 func parseGraphHealthRunTime(value string) (time.Time, bool) {

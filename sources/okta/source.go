@@ -33,7 +33,7 @@ const (
 	oktaHTTPTimeout   = 30 * time.Second
 	maxOktaBodyBytes  = 4 << 20
 	defaultFamily     = familyAudit
-	defaultAuditOrder = "DESCENDING"
+	defaultAuditOrder = "ASCENDING"
 	defaultUserOrder  = "asc"
 	familyAudit       = "audit"
 	familyApplication = "application"
@@ -772,10 +772,10 @@ func uint32FromUint64(value uint64) uint32 {
 
 func normalizeAuditSortOrder(raw string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", "desc", "descending":
+	case "", "asc", "ascending":
 		return defaultAuditOrder, nil
-	case "asc", "ascending":
-		return "ASCENDING", nil
+	case "desc", "descending":
+		return "DESCENDING", nil
 	default:
 		return "", fmt.Errorf("okta sort_order must be one of asc, desc, ascending, or descending when family=%q", familyAudit)
 	}

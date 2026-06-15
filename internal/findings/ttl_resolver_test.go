@@ -171,6 +171,32 @@ func TestResolveTTLOpenFindings_ResolvesStale(t *testing.T) {
 	}
 }
 
+func TestResolveTTLOpenFindings_SkipsConcurrentFreshObservation(t *testing.T) {
+	fx := newTTLResolverFixture(t, LifecycleTTLEvidence, 24*time.Hour)
+	fx.seedFinding("stale-race", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
+	racingStore := &ttlConcurrentObservationStore{
+		stubFindingStore: fx.store,
+		findingID:        "stale-race",
+		observedAt:       fx.now.Add(-time.Hour),
+	}
+	fx.service.store = racingStore
+
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
+		t.Fatalf("resolveTTLOpenFindings: %v", err)
+	}
+
+	finding := fx.store.findings["stale-race"]
+	if finding.Status != findingStatusOpen {
+		t.Fatalf("finding status = %q, want open after concurrent fresh observation", finding.Status)
+	}
+	if !finding.LastObservedAt.Equal(fx.now.Add(-time.Hour)) {
+		t.Fatalf("last_observed_at = %v, want concurrent fresh observation", finding.LastObservedAt)
+	}
+	if fx.store.updateStatusCallCount != 0 {
+		t.Fatalf("UpdateFindingStatus calls = %d, want 0 because CAS precondition failed", fx.store.updateStatusCallCount)
+	}
+}
+
 func TestResolveTTLOpenFindings_EmitsStatusChangedWorkflowEvent(t *testing.T) {
 	fx := newTTLResolverFixture(t, LifecycleTTLEvidence, 24*time.Hour)
 	appendLog := &recordingAppendLog{}
@@ -462,6 +488,24 @@ func (s *tenantRequiredListFindingStore) ListFindings(ctx context.Context, reque
 		return nil, errors.New("finding tenant id is required")
 	}
 	return s.stubFindingStore.ListFindings(ctx, request)
+}
+
+type ttlConcurrentObservationStore struct {
+	*stubFindingStore
+	findingID  string
+	observedAt time.Time
+	mutated    bool
+}
+
+func (s *ttlConcurrentObservationStore) ListFindings(ctx context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	rows, err := s.stubFindingStore.ListFindings(ctx, request)
+	if err == nil && !s.mutated {
+		s.mutated = true
+		if finding := s.findings[strings.TrimSpace(s.findingID)]; finding != nil {
+			finding.LastObservedAt = s.observedAt.UTC()
+		}
+	}
+	return rows, err
 }
 
 func TestResolveTTLOpenFindings_Idempotent(t *testing.T) {

@@ -2,6 +2,7 @@ package sourcehttp
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -10,6 +11,12 @@ import (
 	"testing"
 	"time"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
 
 func TestNormalizeBaseURLRejectsUnsafeHosts(t *testing.T) {
 	for _, raw := range []string{
@@ -208,6 +215,29 @@ func TestPinnedHostTransportDisablesKeepAlives(t *testing.T) {
 	}
 	if !transport.DisableKeepAlives {
 		t.Fatal("pinned transport must disable keep-alives")
+	}
+}
+
+func TestSafeRoundTripperFailsClosedWhenBaseCannotBePinned(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://api.example.com/v1", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	resp, err := SafeRoundTripper{
+		SourceID: "test",
+		Base: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Fatal("base RoundTrip should not be called when pinning fails")
+			return nil, nil
+		}),
+		LookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("203.0.113.10")}}, nil
+		},
+	}.RoundTrip(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	if !errors.Is(err, ErrTransportPinningUnsupported) {
+		t.Fatalf("SafeRoundTripper.RoundTrip() error = %v, want pinned host dialing error", err)
 	}
 }
 

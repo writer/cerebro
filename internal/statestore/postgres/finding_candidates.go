@@ -13,6 +13,11 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+const (
+	defaultFindingCandidateListLimit = uint32(500)
+	maxFindingCandidateListLimit     = uint32(500)
+)
+
 var ensureFindingCandidateStatements = []string{
 	`CREATE TABLE IF NOT EXISTS finding_candidate_runs (
   id TEXT PRIMARY KEY,
@@ -579,10 +584,8 @@ SELECT id, tenant_id, runtime_id, rule_id, status, event_limit, events_evaluated
 FROM finding_candidate_runs
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY started_at DESC, id`
-	if request.Limit != 0 {
-		args = append(args, int64(request.Limit))
-		query += fmt.Sprintf(" LIMIT $%d", len(args))
-	}
+	args = append(args, int64(findingCandidateListLimit(request.Limit)))
+	query += fmt.Sprintf(" LIMIT $%d", len(args))
 	return query, args, nil
 }
 
@@ -608,11 +611,16 @@ func findingCandidateListQuery(request ports.ListFindingCandidatesRequest) (stri
 FROM finding_candidates
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY last_observed_at DESC, id`
-	if request.Limit != 0 {
-		args = append(args, int64(request.Limit))
-		query += fmt.Sprintf(" LIMIT $%d", len(args))
-	}
+	args = append(args, int64(findingCandidateListLimit(request.Limit)))
+	query += fmt.Sprintf(" LIMIT $%d", len(args))
 	return query, args, nil
+}
+
+func findingCandidateListLimit(limit uint32) uint32 {
+	if limit == 0 || limit > maxFindingCandidateListLimit {
+		return defaultFindingCandidateListLimit
+	}
+	return limit
 }
 
 func addFindingCandidateFilter(clauses *[]string, args *[]any, column string, value string) {

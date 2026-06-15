@@ -15,6 +15,10 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+const (
+	maxClaimListLimit = uint32(500)
+)
+
 var ensureClaimStatements = []string{
 	`CREATE TABLE IF NOT EXISTS claims (
   id TEXT NOT NULL,
@@ -218,8 +222,8 @@ SELECT runtime_id, tenant_id, claim_json::text
 FROM claims
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
-	if request.Limit != 0 {
-		args = append(args, int64(request.Limit))
+	if limit := claimListLimit(request.Limit); limit > 0 {
+		args = append(args, int64(limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -250,6 +254,13 @@ ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
 		return nil, fmt.Errorf("iterate claims rows: %w", err)
 	}
 	return claims, nil
+}
+
+func claimListLimit(limit uint32) uint32 {
+	if limit > maxClaimListLimit {
+		return maxClaimListLimit
+	}
+	return limit
 }
 
 func (s *Store) ensureClaimTables(ctx context.Context) error {

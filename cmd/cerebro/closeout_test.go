@@ -694,7 +694,7 @@ func TestCloseoutDryRunExitCode(t *testing.T) {
 }
 
 func TestCloseout_OlderThanRejectsInvalid(t *testing.T) {
-	cases := []string{"abc", "-3d", "0d"}
+	cases := []string{"abc", "-3d", "0d", "106752d"}
 	for _, raw := range cases {
 		t.Run(raw, func(t *testing.T) {
 			env, backend, _, _, _ := newCloseoutTestEnv(t)

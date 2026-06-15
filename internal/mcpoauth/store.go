@@ -87,10 +87,11 @@ type RefreshToken struct {
 }
 
 var (
-	ErrNotFound = errors.New("mcpoauth: token not found")
-	ErrExpired  = errors.New("mcpoauth: token expired")
-	ErrConsumed = errors.New("mcpoauth: token already consumed")
-	ErrReplay   = errors.New("mcpoauth: refresh token replay detected")
+	ErrNotFound                 = errors.New("mcpoauth: token not found")
+	ErrExpired                  = errors.New("mcpoauth: token expired")
+	ErrConsumed                 = errors.New("mcpoauth: token already consumed")
+	ErrReplay                   = errors.New("mcpoauth: refresh token replay detected")
+	ErrOAuthClientLimitExceeded = errors.New("mcpoauth: oauth client registration limit exceeded")
 )
 
 func HashToken(token string) [32]byte {
