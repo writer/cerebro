@@ -12,9 +12,166 @@ import (
 )
 
 type Settings struct {
-	ProjectID string
-	TenantID  string
-	Location  string
+	ProjectID           string
+	TenantID            string
+	Location            string
+	CustomerID          string
+	GroupKey            string
+	ServiceAccountEmail string
+}
+
+type ServiceAccountRecord struct {
+	Name           string          `json:"name"`
+	ProjectID      string          `json:"projectId"`
+	UniqueID       string          `json:"uniqueId"`
+	Email          string          `json:"email"`
+	DisplayName    string          `json:"displayName"`
+	Description    string          `json:"description"`
+	Disabled       bool            `json:"disabled"`
+	OAuth2ClientID string          `json:"oauth2ClientId"`
+	Raw            json.RawMessage `json:"-"`
+}
+
+type ServiceAccountKeyRecord struct {
+	Name            string          `json:"name"`
+	PrivateKeyType  string          `json:"privateKeyType"`
+	KeyAlgorithm    string          `json:"keyAlgorithm"`
+	ValidAfterTime  string          `json:"validAfterTime"`
+	ValidBeforeTime string          `json:"validBeforeTime"`
+	KeyOrigin       string          `json:"keyOrigin"`
+	KeyType         string          `json:"keyType"`
+	Disabled        bool            `json:"disabled"`
+	Raw             json.RawMessage `json:"-"`
+}
+
+type EntityKey struct {
+	ID string `json:"id"`
+}
+
+type GroupRecord struct {
+	Name        string          `json:"name"`
+	GroupKey    EntityKey       `json:"groupKey"`
+	DisplayName string          `json:"displayName"`
+	Description string          `json:"description"`
+	Raw         json.RawMessage `json:"-"`
+}
+
+type MembershipRecord struct {
+	Name               string           `json:"name"`
+	PreferredMemberKey EntityKey        `json:"preferredMemberKey"`
+	Roles              []MembershipRole `json:"roles"`
+	Type               string           `json:"type"`
+	Raw                json.RawMessage  `json:"-"`
+}
+
+type MembershipRole struct {
+	Name string `json:"name"`
+}
+
+type RoleAssignmentRecord struct {
+	Role   string
+	Member string
+	Raw    json.RawMessage
+}
+
+type ServiceAccountImpersonationRecord struct {
+	Role   string
+	Member string
+	Raw    json.RawMessage
+}
+
+type AuditRecord struct {
+	InsertID     string        `json:"insertId"`
+	Timestamp    string        `json:"timestamp"`
+	ProtoPayload AuditProto    `json:"protoPayload"`
+	Resource     AuditResource `json:"resource"`
+	Raw          json.RawMessage
+}
+
+type AuditProto struct {
+	MethodName         string                  `json:"methodName"`
+	ServiceName        string                  `json:"serviceName"`
+	ResourceName       string                  `json:"resourceName"`
+	AuthenticationInfo AuditAuthenticationInfo `json:"authenticationInfo"`
+}
+
+type AuditAuthenticationInfo struct {
+	PrincipalEmail   string `json:"principalEmail"`
+	PrincipalSubject string `json:"principalSubject"`
+}
+
+type AuditResource struct {
+	Type   string            `json:"type"`
+	Labels map[string]string `json:"labels"`
+}
+
+type IAMPolicy struct {
+	Bindings []IAMBinding `json:"bindings"`
+	Etag     string       `json:"etag"`
+	Version  int          `json:"version"`
+}
+
+type IAMBinding struct {
+	Role    string   `json:"role"`
+	Members []string `json:"members"`
+}
+
+type AIDatasetRecord struct {
+	Name              string            `json:"name"`
+	DisplayName       string            `json:"displayName"`
+	Description       string            `json:"description"`
+	MetadataSchemaURI string            `json:"metadataSchemaUri"`
+	Metadata          json.RawMessage   `json:"metadata"`
+	Labels            map[string]string `json:"labels"`
+	CreateTime        string            `json:"createTime"`
+	UpdateTime        string            `json:"updateTime"`
+	EncryptionSpec    AIEncryptionSpec  `json:"encryptionSpec"`
+	ETag              string            `json:"etag"`
+	IAMPolicy         IAMPolicy         `json:"-"`
+	Raw               json.RawMessage   `json:"-"`
+}
+
+type AIEndpointRecord struct {
+	Name                        string                        `json:"name"`
+	DisplayName                 string                        `json:"displayName"`
+	Description                 string                        `json:"description"`
+	Labels                      map[string]string             `json:"labels"`
+	CreateTime                  string                        `json:"createTime"`
+	UpdateTime                  string                        `json:"updateTime"`
+	EncryptionSpec              AIEncryptionSpec              `json:"encryptionSpec"`
+	DeployedModels              []AIDeployedModel             `json:"deployedModels"`
+	TrafficSplit                map[string]int                `json:"trafficSplit"`
+	Network                     string                        `json:"network"`
+	PrivateServiceConnectConfig AIPrivateServiceConnectConfig `json:"privateServiceConnectConfig"`
+	ETag                        string                        `json:"etag"`
+	IAMPolicy                   IAMPolicy                     `json:"-"`
+	Raw                         json.RawMessage               `json:"-"`
+}
+
+type AIEncryptionSpec struct {
+	KMSKeyName string `json:"kmsKeyName"`
+}
+
+type AIDeployedModel struct {
+	ID                 string        `json:"id"`
+	Model              string        `json:"model"`
+	DisplayName        string        `json:"displayName"`
+	ServiceAccount     string        `json:"serviceAccount"`
+	CreateTime         string        `json:"createTime"`
+	EnableAccessLog    bool          `json:"enableAccessLogging"`
+	EnableContainerLog bool          `json:"enableContainerLogging"`
+	MachineSpec        AIMachineSpec `json:"machineSpec"`
+}
+
+type AIMachineSpec struct {
+	MachineType      string `json:"machineType"`
+	AcceleratorType  string `json:"acceleratorType"`
+	AcceleratorCount int    `json:"acceleratorCount"`
+}
+
+type AIPrivateServiceConnectConfig struct {
+	EnablePrivateServiceConnect bool     `json:"enablePrivateServiceConnect"`
+	ProjectAllowlist            []string `json:"projectAllowlist"`
 }
 
 type CloudIDSEndpointRecord struct {
@@ -238,6 +395,42 @@ type GCSIAMConfiguration struct {
 
 type GCSUniformBucketLevelAccess struct {
 	Enabled bool `json:"enabled"`
+}
+
+type GCSObjectRecord struct {
+	ID                      string                `json:"id"`
+	Name                    string                `json:"name"`
+	Bucket                  string                `json:"bucket"`
+	Generation              string                `json:"generation"`
+	Metageneration          string                `json:"metageneration"`
+	ContentType             string                `json:"contentType"`
+	StorageClass            string                `json:"storageClass"`
+	Size                    string                `json:"size"`
+	MD5Hash                 string                `json:"md5Hash"`
+	CRC32C                  string                `json:"crc32c"`
+	KMSKeyName              string                `json:"kmsKeyName"`
+	CustomerEncryption      GCSCustomerEncryption `json:"customerEncryption"`
+	EventBasedHold          bool                  `json:"eventBasedHold"`
+	TemporaryHold           bool                  `json:"temporaryHold"`
+	RetentionExpirationTime string                `json:"retentionExpirationTime"`
+	TimeCreated             string                `json:"timeCreated"`
+	Updated                 string                `json:"updated"`
+	Metadata                map[string]string     `json:"metadata"`
+	ACL                     []GCSObjectACL        `json:"acl"`
+	BucketLocation          string
+	Raw                     json.RawMessage `json:"-"`
+}
+
+type GCSCustomerEncryption struct {
+	EncryptionAlgorithm string `json:"encryptionAlgorithm"`
+	KeySHA256           string `json:"keySha256"`
+}
+
+type GCSObjectACL struct {
+	Entity string `json:"entity"`
+	Role   string `json:"role"`
+	Email  string `json:"email"`
+	Domain string `json:"domain"`
 }
 
 type SecretRecord struct {
@@ -483,19 +676,321 @@ type ContainerVulnerabilityRelatedURL struct {
 }
 
 type ResourceManagerProjectRecord struct {
-	ProjectNumber  string                       `json:"projectNumber"`
-	ProjectID      string                       `json:"projectId"`
-	LifecycleState string                       `json:"lifecycleState"`
-	Name           string                       `json:"name"`
-	Labels         map[string]string            `json:"labels"`
-	CreateTime     string                       `json:"createTime"`
-	Parent         ResourceManagerProjectParent `json:"parent"`
-	Raw            json.RawMessage              `json:"-"`
+	ProjectNumber   string                       `json:"projectNumber"`
+	ProjectID       string                       `json:"projectId"`
+	LifecycleState  string                       `json:"lifecycleState"`
+	Name            string                       `json:"name"`
+	Labels          map[string]string            `json:"labels"`
+	CreateTime      string                       `json:"createTime"`
+	Parent          ResourceManagerProjectParent `json:"parent"`
+	EnabledServices []ServiceUsageServiceRecord
+	OrgPolicies     []OrgPolicyRecord
+	Raw             json.RawMessage `json:"-"`
 }
 
 type ResourceManagerProjectParent struct {
 	Type string `json:"type"`
 	ID   string `json:"id"`
+}
+
+type ServiceUsageServiceRecord struct {
+	Name   string             `json:"name"`
+	Parent string             `json:"parent"`
+	State  string             `json:"state"`
+	Config ServiceUsageConfig `json:"config"`
+	Raw    json.RawMessage    `json:"-"`
+}
+
+type ServiceUsageConfig struct {
+	Name  string `json:"name"`
+	Title string `json:"title"`
+}
+
+type OrgPolicyRecord struct {
+	Name       string          `json:"name"`
+	Spec       OrgPolicySpec   `json:"spec"`
+	DryRunSpec OrgPolicySpec   `json:"dryRunSpec"`
+	Etag       string          `json:"etag"`
+	Raw        json.RawMessage `json:"-"`
+}
+
+type OrgPolicySpec struct {
+	Rules             []OrgPolicyRule `json:"rules"`
+	InheritFromParent bool            `json:"inheritFromParent"`
+	Reset             bool            `json:"reset"`
+	Etag              string          `json:"etag"`
+	UpdateTime        string          `json:"updateTime"`
+}
+
+type OrgPolicyRule struct {
+	Values    OrgPolicyValues `json:"values"`
+	AllowAll  bool            `json:"allowAll"`
+	DenyAll   bool            `json:"denyAll"`
+	Enforce   *bool           `json:"enforce"`
+	Condition json.RawMessage `json:"condition"`
+}
+
+type OrgPolicyValues struct {
+	AllowedValues []string `json:"allowedValues"`
+	DeniedValues  []string `json:"deniedValues"`
+}
+
+func ServiceAccountEvent(settings Settings, record ServiceAccountRecord) (*primitives.Event, error) {
+	attributes := map[string]string{
+		"display_name":   firstNonEmpty(record.DisplayName, record.Email),
+		"domain":         settings.TenantID,
+		"email":          record.Email,
+		"family":         "service_account",
+		"mfa_enrolled":   "false",
+		"principal_type": "service_account",
+		"status":         disabledStatus(record.Disabled),
+		"unique_id":      record.UniqueID,
+		"user_id":        firstNonEmpty(record.Email, record.UniqueID, record.Name),
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-service-account-"+firstNonEmpty(record.UniqueID, record.Email), "gcp.service_account", "gcp/service_account/v1", payload, attributes)
+}
+
+func ServiceAccountKeyEvent(settings Settings, record ServiceAccountKeyRecord) (*primitives.Event, error) {
+	attributes := map[string]string{ // #nosec G101 -- service-account key attributes are inventory identifiers, not key material.
+		"credential_id":   firstNonEmpty(record.Name, settings.ServiceAccountEmail),
+		"credential_type": "gcp_service_account_key",
+		"domain":          settings.TenantID,
+		"event_type":      "gcp_service_account_key_present",
+		"family":          "service_account_key",
+		"resource_id":     firstNonEmpty(record.Name, settings.ServiceAccountEmail),
+		"resource_type":   "service_account_key",
+		"status":          disabledStatus(record.Disabled),
+		"subject_email":   settings.ServiceAccountEmail,
+		"subject_id":      settings.ServiceAccountEmail,
+		"subject_type":    "service_account",
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID, "service_account_email": settings.ServiceAccountEmail})
+	if err != nil {
+		return nil, err
+	}
+	occurredAt := time.Now().UTC()
+	if record.ValidAfterTime != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, record.ValidAfterTime); err == nil {
+			occurredAt = parsed.UTC()
+		}
+	}
+	return sourceEventAt(settings, "gcp-service-account-key-"+firstNonEmpty(record.Name, settings.ServiceAccountEmail), "gcp.service_account_key", "gcp/service_account_key/v1", payload, attributes, occurredAt)
+}
+
+func GroupEvent(settings Settings, record GroupRecord) (*primitives.Event, error) {
+	attributes := map[string]string{
+		"domain":      settings.TenantID,
+		"family":      "group",
+		"group_email": emailLike(record.GroupKey.ID),
+		"group_id":    firstNonEmpty(record.GroupKey.ID, record.Name),
+		"group_name":  firstNonEmpty(record.DisplayName, record.GroupKey.ID),
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"customer_id": settings.CustomerID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-group-"+firstNonEmpty(record.GroupKey.ID, record.Name), "gcp.group", "gcp/group/v1", payload, attributes)
+}
+
+func GroupMembershipEvent(settings Settings, record MembershipRecord) (*primitives.Event, error) {
+	memberType, memberID, memberEmail := parseMember(record.PreferredMemberKey.ID)
+	attributes := map[string]string{
+		"domain":       settings.TenantID,
+		"family":       "group_membership",
+		"group_email":  emailLike(settings.GroupKey),
+		"group_id":     settings.GroupKey,
+		"member_email": memberEmail,
+		"member_id":    memberID,
+		"member_type":  memberType,
+		"role":         membershipRoleName(record.Roles),
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"group_key": settings.GroupKey})
+	if err != nil {
+		return nil, err
+	}
+	id := "gcp-group-membership-" + settings.GroupKey + "-" + firstNonEmpty(memberID, record.Name)
+	return sourceEvent(settings, id, "gcp.group_membership", "gcp/group_membership/v1", payload, attributes)
+}
+
+func RoleAssignmentEvent(settings Settings, record RoleAssignmentRecord) (*primitives.Event, error) {
+	memberType, memberID, memberEmail := parseMember(record.Member)
+	attributes := map[string]string{
+		"domain":         settings.TenantID,
+		"family":         "iam_role_assignment",
+		"is_admin":       boolString(iamAdminRole(record.Role)),
+		"principal_type": memberType,
+		"role_id":        record.Role,
+		"role_name":      record.Role,
+		"role_type":      "gcp_iam_role",
+		"subject_email":  memberEmail,
+		"subject_id":     memberID,
+		"subject_type":   memberType,
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	id := "gcp-iam-role-assignment-" + sanitizeEventID(memberID) + "-" + sanitizeEventID(record.Role)
+	return sourceEvent(settings, id, "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1", payload, attributes)
+}
+
+func EffectivePermissionEvent(settings Settings, record RoleAssignmentRecord) (*primitives.Event, error) {
+	memberType, memberID, memberEmail := parseMember(record.Member)
+	projectResource := "projects/" + settings.ProjectID
+	admin := iamAdminRole(record.Role)
+	attributes := map[string]string{
+		"actions":         record.Role,
+		"domain":          settings.TenantID,
+		"effect":          "allow",
+		"family":          "effective_permission",
+		"is_admin":        boolString(admin),
+		"permission":      record.Role,
+		"privilege_level": privilegeLevel(admin),
+		"project_id":      settings.ProjectID,
+		"resource_id":     projectResource,
+		"resource_name":   settings.ProjectID,
+		"resource_type":   "project",
+		"role_id":         record.Role,
+		"role_name":       record.Role,
+		"role_type":       "gcp_iam_role",
+		"scope":           projectResource,
+		"subject_email":   memberEmail,
+		"subject_id":      memberID,
+		"subject_type":    memberType,
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	id := "gcp-effective-permission-" + sanitizeEventID(memberID) + "-" + sanitizeEventID(record.Role)
+	return sourceEvent(settings, id, "gcp.effective_permission", "gcp/effective_permission/v1", payload, attributes)
+}
+
+func ServiceAccountImpersonationEvent(settings Settings, record ServiceAccountImpersonationRecord) (*primitives.Event, error) {
+	memberType, memberID, memberEmail := parseMember(record.Member)
+	attributes := map[string]string{
+		"domain":        settings.TenantID,
+		"family":        "service_account_impersonation",
+		"is_admin":      "true",
+		"member":        record.Member,
+		"path_type":     "service_account_impersonation",
+		"relationship":  "can_impersonate",
+		"role_id":       record.Role,
+		"role_name":     record.Role,
+		"role_type":     "gcp_service_account_iam_role",
+		"subject_email": memberEmail,
+		"subject_id":    memberID,
+		"subject_type":  memberType,
+		"target_email":  settings.ServiceAccountEmail,
+		"target_id":     settings.ServiceAccountEmail,
+		"target_name":   settings.ServiceAccountEmail,
+		"target_type":   "service_account",
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID, "service_account_email": settings.ServiceAccountEmail})
+	if err != nil {
+		return nil, err
+	}
+	id := "gcp-service-account-impersonation-" + sanitizeEventID(memberID) + "-" + sanitizeEventID(record.Role)
+	return sourceEvent(settings, id, "gcp.service_account_impersonation", "gcp/service_account_impersonation/v1", payload, attributes)
+}
+
+func AuditEvent(settings Settings, record AuditRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.ProtoPayload.ResourceName, record.Resource.Labels["project_id"], settings.ProjectID)
+	attributes := map[string]string{
+		"actor_alternate_id": firstNonEmpty(record.ProtoPayload.AuthenticationInfo.PrincipalEmail, record.ProtoPayload.AuthenticationInfo.PrincipalSubject),
+		"actor_email":        emailLike(record.ProtoPayload.AuthenticationInfo.PrincipalEmail),
+		"actor_id":           firstNonEmpty(record.ProtoPayload.AuthenticationInfo.PrincipalSubject, record.ProtoPayload.AuthenticationInfo.PrincipalEmail),
+		"domain":             settings.TenantID,
+		"event_name":         record.ProtoPayload.MethodName,
+		"event_type":         record.ProtoPayload.MethodName,
+		"family":             "audit",
+		"resource_id":        resourceID,
+		"resource_name":      resourceID,
+		"resource_type":      firstNonEmpty(record.Resource.Type, record.ProtoPayload.ServiceName, "resource"),
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	occurredAt := time.Now().UTC()
+	if record.Timestamp != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, record.Timestamp); err == nil {
+			occurredAt = parsed.UTC()
+		}
+	}
+	return sourceEventAt(settings, "gcp-audit-"+firstNonEmpty(record.InsertID, record.ProtoPayload.MethodName), "gcp.audit", "gcp/audit/v1", payload, attributes, occurredAt)
+}
+
+func AIDatasetEvent(settings Settings, record AIDatasetRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	resourceID := record.Name
+	policy := iamPolicySummary(record.IAMPolicy)
+	attributes := cloudResourceAttributes(settings, "aiplatform_dataset", resourceID, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "aiplatform_dataset", location, record.Labels)
+	attributes["dataset_id"] = lastPathSegment(record.Name)
+	attributes["display_name"] = record.DisplayName
+	attributes["description"] = record.Description
+	attributes["metadata_schema_uri"] = record.MetadataSchemaURI
+	attributes["kms_key_name"] = record.EncryptionSpec.KMSKeyName
+	attributes["encryption_enabled"] = boolString(record.EncryptionSpec.KMSKeyName != "")
+	attributes["iam_bindings_count"] = strconv.Itoa(len(record.IAMPolicy.Bindings))
+	attributes["iam_members"] = strings.Join(policy.Members, ",")
+	attributes["admin_members"] = strings.Join(policy.AdminMembers, ",")
+	attributes["public"] = boolString(policy.Public)
+	attributes["internet_exposed"] = boolString(policy.Public)
+	attributes["external_exposure"] = boolString(policy.Public)
+	attributes["create_time"] = record.CreateTime
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"iam_policy": record.IAMPolicy, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-aiplatform-dataset-"+resourceID, "gcp.aiplatform_dataset", "gcp/aiplatform_dataset/v1", payload, attributes)
+}
+
+func AIEndpointEvent(settings Settings, record AIEndpointRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	resourceID := record.Name
+	policy := iamPolicySummary(record.IAMPolicy)
+	deployed := aiDeployedModelSummary(record.DeployedModels)
+	privateEndpoint := strings.TrimSpace(record.Network) != "" || record.PrivateServiceConnectConfig.EnablePrivateServiceConnect
+	publicEndpoint := !privateEndpoint
+	attributes := cloudResourceAttributes(settings, "aiplatform_endpoint", resourceID, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "aiplatform_endpoint", location, record.Labels)
+	attributes["endpoint_id"] = lastPathSegment(record.Name)
+	attributes["display_name"] = record.DisplayName
+	attributes["description"] = record.Description
+	attributes["deployed_models_count"] = strconv.Itoa(len(record.DeployedModels))
+	attributes["deployed_models"] = strings.Join(deployed.Models, ",")
+	attributes["deployed_model_ids"] = strings.Join(deployed.IDs, ",")
+	attributes["runtime_identities"] = strings.Join(deployed.ServiceAccounts, ",")
+	attributes["service_account_email"] = firstString(deployed.ServiceAccounts)
+	attributes["runtime_identity"] = firstString(deployed.ServiceAccounts)
+	attributes["machine_types"] = strings.Join(deployed.MachineTypes, ",")
+	attributes["access_logging_enabled"] = boolString(deployed.AccessLogging)
+	attributes["container_logging_enabled"] = boolString(deployed.ContainerLogging)
+	attributes["traffic_split_count"] = strconv.Itoa(len(record.TrafficSplit))
+	attributes["network"] = record.Network
+	attributes["private_service_connect_enabled"] = boolString(record.PrivateServiceConnectConfig.EnablePrivateServiceConnect)
+	attributes["private_service_connect_projects"] = strings.Join(record.PrivateServiceConnectConfig.ProjectAllowlist, ",")
+	attributes["private_endpoint"] = boolString(privateEndpoint)
+	attributes["public"] = boolString(publicEndpoint || policy.Public)
+	attributes["internet_exposed"] = boolString(publicEndpoint || policy.Public)
+	attributes["external_exposure"] = boolString(publicEndpoint || policy.Public)
+	attributes["kms_key_name"] = record.EncryptionSpec.KMSKeyName
+	attributes["encryption_enabled"] = boolString(record.EncryptionSpec.KMSKeyName != "")
+	attributes["iam_bindings_count"] = strconv.Itoa(len(record.IAMPolicy.Bindings))
+	attributes["iam_members"] = strings.Join(policy.Members, ",")
+	attributes["admin_members"] = strings.Join(policy.AdminMembers, ",")
+	attributes["create_time"] = record.CreateTime
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"iam_policy": record.IAMPolicy, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-aiplatform-endpoint-"+resourceID, "gcp.aiplatform_endpoint", "gcp/aiplatform_endpoint/v1", payload, attributes)
 }
 
 func CloudIDSEndpointEvent(settings Settings, record CloudIDSEndpointRecord) (*primitives.Event, error) {
@@ -755,6 +1250,45 @@ func GCSBucketEvent(settings Settings, record GCSBucketRecord) (*primitives.Even
 	return sourceEvent(settings, "gcp-gcs-bucket-"+firstNonEmpty(record.ID, record.Name), "gcp.gcs_bucket", "gcp/gcs_bucket/v1", payload, attributes)
 }
 
+func GCSObjectEvent(settings Settings, record GCSObjectRecord) (*primitives.Event, error) {
+	acl := gcsObjectACLSummary(record.ACL)
+	metadataClass := labelLookup(record.Metadata, "data_classification", "data-classification", "classification", "sensitivity", "data_sensitivity")
+	resourceID := firstNonEmpty(record.ID, record.Bucket+"/"+record.Name)
+	location := firstNonEmpty(record.BucketLocation, "global")
+	attributes := cloudResourceAttributes(settings, "gcs_object", resourceID, record.Name, "gcs_object", location, record.Metadata)
+	attributes["bucket"] = record.Bucket
+	attributes["object_name"] = record.Name
+	attributes["generation"] = record.Generation
+	attributes["metageneration"] = record.Metageneration
+	attributes["content_type"] = record.ContentType
+	attributes["storage_class"] = record.StorageClass
+	attributes["size_bytes"] = record.Size
+	attributes["md5_hash"] = record.MD5Hash
+	attributes["crc32c"] = record.CRC32C
+	attributes["kms_key_name"] = record.KMSKeyName
+	attributes["customer_encryption_algorithm"] = record.CustomerEncryption.EncryptionAlgorithm
+	attributes["customer_encryption_key_sha256"] = record.CustomerEncryption.KeySHA256
+	attributes["encryption_enabled"] = boolString(record.KMSKeyName != "" || record.CustomerEncryption.EncryptionAlgorithm != "")
+	attributes["event_based_hold"] = boolString(record.EventBasedHold)
+	attributes["temporary_hold"] = boolString(record.TemporaryHold)
+	attributes["retention_expiration_time"] = record.RetentionExpirationTime
+	attributes["created_at"] = record.TimeCreated
+	attributes["updated_at"] = record.Updated
+	attributes["acl_entries_count"] = strconv.Itoa(len(record.ACL))
+	attributes["acl_readers"] = strings.Join(acl.Readers, ",")
+	attributes["acl_owners"] = strings.Join(acl.Owners, ",")
+	attributes["public"] = boolString(acl.Public)
+	attributes["internet_exposed"] = boolString(acl.Public)
+	attributes["external_exposure"] = boolString(acl.Public)
+	attributes["data_classification"] = metadataClass
+	attributes["contains_pii"] = labelLookup(record.Metadata, "contains_pii", "pii")
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"bucket": record.Bucket, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-gcs-object-"+resourceID, "gcp.gcs_object", "gcp/gcs_object/v1", payload, attributes)
+}
+
 func SecretEvent(settings Settings, record SecretRecord) (*primitives.Event, error) {
 	kmsKey := secretKMSKey(record)
 	attributes := cloudResourceAttributes(settings, "secret_manager_secret", record.Name, lastPathSegment(record.Name), "secret_manager_secret", secretLocation(record), record.Labels)
@@ -945,6 +1479,9 @@ func ContainerVulnerabilityEvent(settings Settings, record ContainerVulnerabilit
 
 func ResourceManagerProjectEvent(settings Settings, record ResourceManagerProjectRecord) (*primitives.Event, error) {
 	projectID := firstNonEmpty(record.ProjectID, settings.ProjectID)
+	enabledServices := serviceUsageNames(record.EnabledServices)
+	orgPolicies := orgPolicyConstraints(record.OrgPolicies)
+	enforcedPolicies := enforcedOrgPolicyConstraints(record.OrgPolicies)
 	attributes := cloudResourceAttributes(settings, "resourcemanager_project", projectID, firstNonEmpty(record.Name, projectID), "resourcemanager_project", "global", record.Labels)
 	attributes["project_number"] = record.ProjectNumber
 	attributes["project_id"] = projectID
@@ -955,11 +1492,161 @@ func ResourceManagerProjectEvent(settings Settings, record ResourceManagerProjec
 	attributes["parent_id"] = record.Parent.ID
 	attributes["parent"] = strings.Trim(strings.Join([]string{record.Parent.Type, record.Parent.ID}, "/"), "/")
 	attributes["create_time"] = record.CreateTime
-	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": projectID})
+	attributes["enabled_services"] = strings.Join(enabledServices, ",")
+	attributes["enabled_services_count"] = strconv.Itoa(len(enabledServices))
+	attributes["org_policies"] = strings.Join(orgPolicies, ",")
+	attributes["org_policies_count"] = strconv.Itoa(len(orgPolicies))
+	attributes["enforced_org_policies"] = strings.Join(enforcedPolicies, ",")
+	attributes["enforced_org_policies_count"] = strconv.Itoa(len(enforcedPolicies))
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"enabled_services": record.EnabledServices, "org_policies": record.OrgPolicies, "project_id": projectID})
 	if err != nil {
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-resourcemanager-project-"+projectID, "gcp.resourcemanager_project", "gcp/resourcemanager_project/v1", payload, attributes)
+}
+
+type iamSummary struct {
+	Public       bool
+	Members      []string
+	AdminMembers []string
+}
+
+func iamPolicySummary(policy IAMPolicy) iamSummary {
+	summary := iamSummary{}
+	for _, binding := range policy.Bindings {
+		admin := iamAdminRole(binding.Role)
+		for _, member := range binding.Members {
+			trimmed := strings.TrimSpace(member)
+			if trimmed == "" {
+				continue
+			}
+			summary.Members = appendUnique(summary.Members, trimmed)
+			if admin {
+				summary.AdminMembers = appendUnique(summary.AdminMembers, trimmed)
+			}
+			if publicPrincipal(trimmed) {
+				summary.Public = true
+			}
+		}
+	}
+	return summary
+}
+
+func iamAdminRole(role string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(role))
+	return strings.Contains(normalized, "admin") || strings.Contains(normalized, "owner") || strings.Contains(normalized, "editor")
+}
+
+type deployedModelSummary struct {
+	IDs              []string
+	Models           []string
+	ServiceAccounts  []string
+	MachineTypes     []string
+	AccessLogging    bool
+	ContainerLogging bool
+}
+
+func aiDeployedModelSummary(models []AIDeployedModel) deployedModelSummary {
+	summary := deployedModelSummary{}
+	for _, model := range models {
+		summary.IDs = appendUnique(summary.IDs, model.ID)
+		summary.Models = appendUnique(summary.Models, model.Model)
+		summary.ServiceAccounts = appendUnique(summary.ServiceAccounts, model.ServiceAccount)
+		summary.MachineTypes = appendUnique(summary.MachineTypes, model.MachineSpec.MachineType)
+		summary.AccessLogging = summary.AccessLogging || model.EnableAccessLog
+		summary.ContainerLogging = summary.ContainerLogging || model.EnableContainerLog
+	}
+	return summary
+}
+
+type objectACLSummary struct {
+	Public  bool
+	Readers []string
+	Owners  []string
+}
+
+func gcsObjectACLSummary(entries []GCSObjectACL) objectACLSummary {
+	summary := objectACLSummary{}
+	for _, entry := range entries {
+		principal := firstNonEmpty(entry.Email, entry.Entity, entry.Domain)
+		if publicPrincipal(principal) {
+			summary.Public = true
+		}
+		switch strings.ToUpper(strings.TrimSpace(entry.Role)) {
+		case "OWNER":
+			summary.Owners = appendUnique(summary.Owners, principal)
+		case "READER":
+			summary.Readers = appendUnique(summary.Readers, principal)
+		}
+	}
+	return summary
+}
+
+func publicPrincipal(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	return normalized == "allusers" || normalized == "allauthenticatedusers" || normalized == "all_users" || normalized == "all_authenticated_users"
+}
+
+func serviceUsageNames(services []ServiceUsageServiceRecord) []string {
+	names := make([]string, 0, len(services))
+	for _, service := range services {
+		name := firstNonEmpty(service.Config.Name, lastPathSegment(service.Name), service.Name)
+		names = appendUnique(names, name)
+	}
+	return names
+}
+
+func orgPolicyConstraints(policies []OrgPolicyRecord) []string {
+	constraints := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		constraints = appendUnique(constraints, orgPolicyConstraint(policy.Name))
+	}
+	return constraints
+}
+
+func enforcedOrgPolicyConstraints(policies []OrgPolicyRecord) []string {
+	constraints := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		if orgPolicyEnforced(policy) {
+			constraints = appendUnique(constraints, orgPolicyConstraint(policy.Name))
+		}
+	}
+	return constraints
+}
+
+func orgPolicyConstraint(name string) string {
+	parts := strings.Split(strings.Trim(name, "/"), "/")
+	for index, part := range parts {
+		if part == "policies" && index+1 < len(parts) {
+			return parts[index+1]
+		}
+	}
+	return lastPathSegment(name)
+}
+
+func orgPolicyEnforced(policy OrgPolicyRecord) bool {
+	for _, rule := range policy.Spec.Rules {
+		if rule.Enforce != nil && *rule.Enforce {
+			return true
+		}
+		if rule.DenyAll || len(rule.Values.DeniedValues) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func appendUnique(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func dnsManagedZoneNetworks(record DNSManagedZoneRecord) []string {
@@ -1333,13 +2020,17 @@ func payloadWithRaw(raw json.RawMessage, values map[string]any) ([]byte, error) 
 }
 
 func sourceEvent(settings Settings, id string, kind string, schemaRef string, payload []byte, attributes map[string]string) (*primitives.Event, error) {
+	return sourceEventAt(settings, id, kind, schemaRef, payload, attributes, time.Now().UTC())
+}
+
+func sourceEventAt(settings Settings, id string, kind string, schemaRef string, payload []byte, attributes map[string]string, occurredAt time.Time) (*primitives.Event, error) {
 	trimEmptyAttributes(attributes)
 	return &primitives.Event{
 		Id:         sanitizeEventID(id),
 		TenantId:   settings.TenantID,
 		SourceId:   "gcp",
 		Kind:       kind,
-		OccurredAt: timestamppb.New(time.Now().UTC()),
+		OccurredAt: timestamppb.New(occurredAt.UTC()),
 		SchemaRef:  schemaRef,
 		Payload:    payload,
 		Attributes: attributes,
@@ -1371,6 +2062,51 @@ func normalizeLabelKey(value string) string {
 
 func boolString(value bool) string {
 	return strconv.FormatBool(value)
+}
+
+func disabledStatus(disabled bool) string {
+	if disabled {
+		return "DISABLED"
+	}
+	return "ACTIVE"
+}
+
+func parseMember(value string) (string, string, string) {
+	trimmed := strings.TrimSpace(value)
+	parts := strings.SplitN(trimmed, ":", 2)
+	if len(parts) != 2 {
+		if publicPrincipal(trimmed) {
+			return "public", trimmed, ""
+		}
+		return "user", trimmed, emailLike(trimmed)
+	}
+	memberType := strings.ToLower(strings.ReplaceAll(parts[0], "serviceAccount", "service_account"))
+	if publicPrincipal(memberType) {
+		memberType = "public"
+	}
+	return memberType, parts[1], emailLike(parts[1])
+}
+
+func membershipRoleName(roles []MembershipRole) string {
+	if len(roles) == 0 {
+		return "member"
+	}
+	return firstNonEmpty(roles[0].Name, "member")
+}
+
+func privilegeLevel(admin bool) string {
+	if admin {
+		return "admin"
+	}
+	return "standard"
+}
+
+func emailLike(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if strings.Contains(trimmed, "@") {
+		return strings.ToLower(trimmed)
+	}
+	return ""
 }
 
 func locationFromResourceName(value string) string {

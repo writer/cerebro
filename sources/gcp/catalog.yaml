@@ -3,6 +3,8 @@ name: GCP
 description: GCP IAM, Cloud Identity, service account, and audit log source.
 emitted_kinds:
   - asset.data_sensitivity
+  - gcp.aiplatform_dataset
+  - gcp.aiplatform_endpoint
   - gcp.artifact_registry_image
   - gcp.artifact_registry_repository
   - gcp.audit
@@ -22,6 +24,7 @@ emitted_kinds:
   - gcp.dns_record_set
   - gcp.effective_permission
   - gcp.gcs_bucket
+  - gcp.gcs_object
   - gcp.gke_cluster
   - gcp.gke_node_pool
   - gcp.group
@@ -37,6 +40,8 @@ emitted_kinds:
   - gcp.service_account_key
 runtime_families:
   - asset_metadata
+  - aiplatform_dataset
+  - aiplatform_endpoint
   - artifact_registry_image
   - artifact_registry_repository
   - audit
@@ -56,6 +61,7 @@ runtime_families:
   - dns_record_set
   - effective_permission
   - gcs_bucket
+  - gcs_object
   - gke_cluster
   - gke_node_pool
   - group
@@ -76,17 +82,15 @@ coverage_contract:
     - id: aiplatform_dataset
       type: entity_family
       title: Vertex AI datasets
-      families: [asset_metadata]
-      support: partial
+      families: [aiplatform_dataset]
+      support: supported
       high_value: true
-      known_unsupported_fields: [dataset IAM and public sharing detail]
     - id: aiplatform_endpoint
       type: entity_family
       title: Vertex AI endpoints
-      families: [asset_metadata]
-      support: partial
+      families: [aiplatform_endpoint]
+      support: supported
       high_value: true
-      known_unsupported_fields: [endpoint public access and deployed model detail]
     - id: artifact_registry_repository
       type: entity_family
       title: Artifact Registry repositories
@@ -200,10 +204,10 @@ coverage_contract:
     - id: gcs_object
       type: entity_family
       title: Cloud Storage objects
-      families: [asset_metadata]
+      families: [gcs_object]
       support: partial
       high_value: true
-      known_unsupported_fields: [object-level ACLs and content inspection]
+      known_unsupported_fields: [object content inspection]
     - id: gke_cluster
       type: entity_family
       title: GKE clusters
@@ -250,9 +254,8 @@ coverage_contract:
       type: entity_family
       title: Resource Manager projects
       families: [resourcemanager_project]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [enabled service inventory and org-policy detail]
     - id: resource_exposure
       type: relationship
       title: GCP public resource exposure
