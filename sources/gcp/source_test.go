@@ -74,6 +74,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyServiceAcct, kind: "gcp.service_account"},
 		{family: familyCloudFunction, kind: "gcp.cloud_function"},
 		{family: familyCloudIDSEndpoint, kind: "gcp.cloud_ids_endpoint"},
+		{family: familyCloudSchedulerJob, kind: "gcp.cloud_scheduler_job"},
 		{family: familyCloudRunRevision, kind: "gcp.cloud_run_revision"},
 		{family: familyCloudRunService, kind: "gcp.cloud_run_service"},
 		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance"},
@@ -279,6 +280,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyGKECluster, kind: "gcp.gke_cluster", attr: "network_tags", want: "gke"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"},
 		{family: familyCloudIDSEndpoint, kind: "gcp.cloud_ids_endpoint", attr: "threat_log_routed", want: "true"},
+		{family: familyCloudSchedulerJob, kind: "gcp.cloud_scheduler_job", attr: "runtime_identity", want: "scheduler@writer-prod.iam.gserviceaccount.com"},
 		{family: familyCloudRunRevision, kind: "gcp.cloud_run_revision", attr: "runtime_identity", want: "run@writer-prod.iam.gserviceaccount.com"},
 		{family: familyCloudRunService, kind: "gcp.cloud_run_service", attr: "internet_exposed", want: "true"},
 		{family: familyCloudFunction, kind: "gcp.cloud_function", attr: "runtime_identity", want: "fn@writer-prod.iam.gserviceaccount.com"},
@@ -826,6 +828,11 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("cloud ids pageSize = %q, want 10", got)
 			}
 			writeJSON(t, w, map[string]any{"endpoints": []map[string]any{{"name": "projects/writer-prod/locations/us-central1-a/endpoints/prod-ids", "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "labels": map[string]string{"env": "prod"}, "network": "projects/writer-prod/global/networks/default", "endpointForwardingRule": "https://www.googleapis.com/compute/v1/projects/writer-prod/regions/us-central1/forwardingRules/prod-ids-ilb", "endpointIp": "10.3.0.5", "description": "prod ids endpoint", "severity": "HIGH", "threatExceptions": []string{"12345"}, "state": "READY", "trafficLogs": true}}})
+		case "/v1/projects/writer-prod/locations/-/jobs":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("cloud scheduler pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"jobs": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/jobs/nightly-reconcile", "description": "nightly reconcile", "schedule": "0 2 * * *", "timeZone": "Etc/UTC", "state": "ENABLED", "httpTarget": map[string]any{"uri": "https://reconcile.writer.com/jobs/nightly", "httpMethod": "POST", "oidcToken": map[string]string{"serviceAccountEmail": "scheduler@writer-prod.iam.gserviceaccount.com", "audience": "reconcile"}}, "retryConfig": map[string]any{"retryCount": 3, "minBackoffDuration": "5s", "maxBackoffDuration": "300s", "maxDoublings": 4}, "attemptDeadline": "180s", "userUpdateTime": "2026-04-23T00:00:00Z", "scheduleTime": "2026-04-24T02:00:00Z", "lastAttemptTime": "2026-04-23T02:00:00Z", "satisfiesPzs": true}}})
 		case "/v2/projects/writer-prod/locations/-/services":
 			writeJSON(t, w, map[string]any{"services": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/services/api", "uid": "run-1", "uri": "https://api.run.app", "ingress": "INGRESS_TRAFFIC_ALL", "labels": map[string]string{"env": "prod"}, "template": map[string]any{"serviceAccount": "run@writer-prod.iam.gserviceaccount.com", "containers": []map[string]string{{"image": "us-docker.pkg.dev/writer-prod/app/api@sha256:abc"}}, "vpcAccess": map[string]string{"connector": "projects/writer-prod/locations/us-central1/connectors/serverless"}}}}})
 		case "/v2/projects/writer-prod/locations/us-central1/services/api/revisions":

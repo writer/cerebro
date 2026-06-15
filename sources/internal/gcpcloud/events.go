@@ -275,6 +275,83 @@ type CloudFunctionServiceConfig struct {
 	KMSKeyName                 string `json:"kmsKeyName"`
 }
 
+type CloudSchedulerJobRecord struct {
+	Name                string                            `json:"name"`
+	Description         string                            `json:"description"`
+	Schedule            string                            `json:"schedule"`
+	TimeZone            string                            `json:"timeZone"`
+	UserUpdateTime      string                            `json:"userUpdateTime"`
+	State               string                            `json:"state"`
+	Status              CloudSchedulerStatus              `json:"status"`
+	ScheduleTime        string                            `json:"scheduleTime"`
+	LastAttemptTime     string                            `json:"lastAttemptTime"`
+	RetryConfig         CloudSchedulerRetryConfig         `json:"retryConfig"`
+	AttemptDeadline     string                            `json:"attemptDeadline"`
+	SatisfiesPzs        bool                              `json:"satisfiesPzs"`
+	PubsubTarget        CloudSchedulerPubsubTarget        `json:"pubsubTarget"`
+	AppEngineHTTPTarget CloudSchedulerAppEngineHTTPTarget `json:"appEngineHttpTarget"`
+	HTTPTarget          CloudSchedulerHTTPTarget          `json:"httpTarget"`
+	Raw                 json.RawMessage                   `json:"-"`
+}
+
+type CloudSchedulerStatus struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type CloudSchedulerRetryConfig struct {
+	RetryCount         int    `json:"retryCount"`
+	MaxRetryDuration   string `json:"maxRetryDuration"`
+	MinBackoffDuration string `json:"minBackoffDuration"`
+	MaxBackoffDuration string `json:"maxBackoffDuration"`
+	MaxDoublings       int    `json:"maxDoublings"`
+}
+
+type CloudSchedulerPubsubTarget struct {
+	TopicName  string            `json:"topicName"`
+	Attributes map[string]string `json:"attributes"`
+	Data       string            `json:"data"`
+}
+
+type CloudSchedulerAppEngineHTTPTarget struct {
+	HTTPMethod       string                   `json:"httpMethod"`
+	AppEngineRouting CloudSchedulerAppRouting `json:"appEngineRouting"`
+	RelativeURI      string                   `json:"relativeUri"`
+	Headers          map[string]string        `json:"headers"`
+	Body             string                   `json:"body"`
+}
+
+type CloudSchedulerAppRouting struct {
+	Service  string `json:"service"`
+	Version  string `json:"version"`
+	Instance string `json:"instance"`
+	Host     string `json:"host"`
+}
+
+type CloudSchedulerHTTPTarget struct {
+	URI        string                   `json:"uri"`
+	HTTPMethod string                   `json:"httpMethod"`
+	Headers    map[string]string        `json:"headers"`
+	Body       string                   `json:"body"`
+	OAuthToken CloudSchedulerOAuthToken `json:"oauthToken"`
+	OIDCToken  CloudSchedulerOIDCToken  `json:"oidcToken"`
+}
+
+type CloudSchedulerOAuthToken struct {
+	ServiceAccountEmail string `json:"serviceAccountEmail"`
+	Scope               string `json:"scope"`
+}
+
+type CloudSchedulerOIDCToken struct {
+	ServiceAccountEmail string `json:"serviceAccountEmail"`
+	Audience            string `json:"audience"`
+}
+
+type CloudSchedulerJobsResponse struct {
+	Jobs          []json.RawMessage `json:"jobs"`
+	NextPageToken string            `json:"nextPageToken"`
+}
+
 type CloudSQLInstanceRecord struct {
 	Name                       string                   `json:"name"`
 	SelfLink                   string                   `json:"selfLink"`
@@ -327,6 +404,21 @@ type CloudSQLIPAddress struct {
 
 type CloudSQLEncryptionConfig struct {
 	KMSKeyName string `json:"kmsKeyName"`
+}
+
+type ComputeNetworkRecord struct {
+	ID                    string                      `json:"id"`
+	Name                  string                      `json:"name"`
+	SelfLink              string                      `json:"selfLink"`
+	Description           string                      `json:"description"`
+	AutoCreateSubnetworks bool                        `json:"autoCreateSubnetworks"`
+	RoutingConfig         ComputeNetworkRoutingConfig `json:"routingConfig"`
+	Labels                map[string]string           `json:"labels"`
+	Raw                   json.RawMessage             `json:"-"`
+}
+
+type ComputeNetworkRoutingConfig struct {
+	RoutingMode string `json:"routingMode"`
 }
 
 type ComputeDiskRecord struct {
@@ -1344,6 +1436,45 @@ func CloudFunctionEvent(settings Settings, record CloudFunctionRecord) (*primiti
 	return sourceEvent(settings, "gcp-cloud-function-"+record.Name, "gcp.cloud_function", "gcp/cloud_function/v1", payload, attributes)
 }
 
+func CloudSchedulerJobEvent(settings Settings, record CloudSchedulerJobRecord) (*primitives.Event, error) {
+	location := locationFromResourceName(record.Name)
+	target := cloudSchedulerTarget(record)
+	attributes := cloudResourceAttributes(settings, "cloud_scheduler_job", record.Name, lastPathSegment(record.Name), "cloud_scheduler_job", location, nil)
+	attributes["description"] = record.Description
+	attributes["schedule"] = record.Schedule
+	attributes["time_zone"] = record.TimeZone
+	attributes["state"] = record.State
+	attributes["status"] = record.State
+	if record.Status.Code != 0 || record.Status.Message != "" {
+		attributes["status_code"] = strconv.Itoa(record.Status.Code)
+		attributes["status_message"] = record.Status.Message
+	}
+	attributes["target_type"] = target.Type
+	attributes["target"] = target.Target
+	attributes["target_uri"] = target.URI
+	attributes["target_topic"] = target.Topic
+	attributes["http_method"] = target.Method
+	attributes["service_account_email"] = target.ServiceAccountEmail
+	attributes["runtime_identity"] = target.ServiceAccountEmail
+	attributes["oauth_scope"] = target.OAuthScope
+	attributes["oidc_audience"] = target.OIDCAudience
+	attributes["attempt_deadline"] = record.AttemptDeadline
+	attributes["retry_count"] = strconv.Itoa(record.RetryConfig.RetryCount)
+	attributes["max_retry_duration"] = record.RetryConfig.MaxRetryDuration
+	attributes["min_backoff_duration"] = record.RetryConfig.MinBackoffDuration
+	attributes["max_backoff_duration"] = record.RetryConfig.MaxBackoffDuration
+	attributes["max_doublings"] = strconv.Itoa(record.RetryConfig.MaxDoublings)
+	attributes["schedule_time"] = record.ScheduleTime
+	attributes["last_attempt_time"] = record.LastAttemptTime
+	attributes["user_update_time"] = record.UserUpdateTime
+	attributes["satisfies_pzs"] = boolString(record.SatisfiesPzs)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-cloud-scheduler-job-"+record.Name, "gcp.cloud_scheduler_job", "gcp/cloud_scheduler_job/v1", payload, attributes)
+}
+
 func CloudSQLInstanceEvent(settings Settings, record CloudSQLInstanceRecord) (*primitives.Event, error) {
 	publicIP, privateIP := cloudSQLIPs(record)
 	publicAuthorized := cloudSQLPublicAuthorizedNetwork(record)
@@ -1374,6 +1505,19 @@ func CloudSQLInstanceEvent(settings Settings, record CloudSQLInstanceRecord) (*p
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-cloud-sql-instance-"+firstNonEmpty(record.SelfLink, record.Name), "gcp.cloud_sql_instance", "gcp/cloud_sql_instance/v1", payload, attributes)
+}
+
+func ComputeNetworkEvent(settings Settings, record ComputeNetworkRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	attributes := cloudResourceAttributes(settings, "compute_network", resourceID, record.Name, "compute_network", "global", record.Labels)
+	attributes["description"] = record.Description
+	attributes["auto_create_subnetworks"] = boolString(record.AutoCreateSubnetworks)
+	attributes["routing_mode"] = record.RoutingConfig.RoutingMode
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-network-"+resourceID, "gcp.compute_network", "gcp/compute_network/v1", payload, attributes)
 }
 
 func ComputeDiskEvent(settings Settings, record ComputeDiskRecord) (*primitives.Event, error) {
@@ -2038,6 +2182,32 @@ func OrgPolicyEvent(settings Settings, record OrgPolicyRecord) (*primitives.Even
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-org-policy-"+resourceID, "gcp.org_policy", "gcp/org_policy/v1", payload, attributes)
+}
+
+type cloudSchedulerTargetSummary struct {
+	Type                string
+	Target              string
+	URI                 string
+	Topic               string
+	Method              string
+	ServiceAccountEmail string
+	OAuthScope          string
+	OIDCAudience        string
+}
+
+func cloudSchedulerTarget(record CloudSchedulerJobRecord) cloudSchedulerTargetSummary {
+	if record.PubsubTarget.TopicName != "" {
+		return cloudSchedulerTargetSummary{Type: "pubsub", Target: record.PubsubTarget.TopicName, Topic: record.PubsubTarget.TopicName}
+	}
+	if record.HTTPTarget.URI != "" || record.HTTPTarget.HTTPMethod != "" {
+		serviceAccount := firstNonEmpty(record.HTTPTarget.OAuthToken.ServiceAccountEmail, record.HTTPTarget.OIDCToken.ServiceAccountEmail)
+		return cloudSchedulerTargetSummary{Type: "http", Target: record.HTTPTarget.URI, URI: record.HTTPTarget.URI, Method: record.HTTPTarget.HTTPMethod, ServiceAccountEmail: serviceAccount, OAuthScope: record.HTTPTarget.OAuthToken.Scope, OIDCAudience: record.HTTPTarget.OIDCToken.Audience}
+	}
+	if record.AppEngineHTTPTarget.RelativeURI != "" || record.AppEngineHTTPTarget.HTTPMethod != "" {
+		target := firstNonEmpty(record.AppEngineHTTPTarget.AppEngineRouting.Host, record.AppEngineHTTPTarget.RelativeURI)
+		return cloudSchedulerTargetSummary{Type: "app_engine", Target: target, URI: record.AppEngineHTTPTarget.RelativeURI, Method: record.AppEngineHTTPTarget.HTTPMethod}
+	}
+	return cloudSchedulerTargetSummary{}
 }
 
 type iamSummary struct {
