@@ -641,6 +641,36 @@ config:
         - page_limit=100
         - graph_page_limit=100
         - event_limit=1000
+    - name: okta-authenticator-inventory
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-okta-authenticator
+        - page_limit=100
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: okta-policy-rule-inventory
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-okta-policy-rule
+        - page_limit=100
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: okta-threat-insight-inventory
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-okta-threat-insight
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
     - name: sentinelone-threat-live
       scheduleExpression: rate(15 minutes)
       taskCount: 1
@@ -691,6 +721,26 @@ config:
         - page_limit=10
         - graph_page_limit=100
         - event_limit=1000
+    - name: sentinelone-site-inventory
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-sentinelone-site
+        - page_limit=10
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: sentinelone-group-inventory
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-sentinelone-group
+        - page_limit=10
+        - graph_page_limit=100
+        - event_limit=1000
     - name: github-audit-writerinternal
       scheduleExpression: cron(12,27,42,57 * * * ? *)
       taskCount: 1
@@ -700,6 +750,46 @@ config:
         - runtime_id=writer-github-audit-writerinternal
         - page_limit=5
         - graph_page_limit=5
+        - event_limit=1000
+    - name: github-org-inventory-writerinternal
+      scheduleExpression: cron(3 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-github-org-inventory-writerinternal
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: github-repository-writerinternal
+      scheduleExpression: cron(18 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-github-repository-writerinternal
+        - page_limit=50
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: github-secret-scan-wi
+      scheduleExpression: cron(33 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-github-secret-scanning-alert-writerinternal
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: gh-cerebro-dependabot-wi
+      scheduleExpression: cron(48 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-github-cerebro-dependabot-alert-writerinternal
+        - page_limit=20
+        - graph_page_limit=100
         - event_limit=1000
     - name: aws-sec-dev-us1-public-endpoints
       scheduleExpression: rate(1 hour)
@@ -1179,6 +1269,49 @@ config:
         owner: WriterInternal
         per_page: "100"
         private_key_base64: env:GITHUB_APP_PRIVATE_KEY_BASE64
+    - id: writer-github-org-inventory-writerinternal
+      sourceId: github
+      tenantId: writer
+      config:
+        family: org_inventory
+        app_id: env:GITHUB_APP_ID
+        installation_id: env:GITHUB_APP_INSTALLATION_ID_WRITERINTERNAL
+        owner: WriterInternal
+        per_page: "100"
+        private_key_base64: env:GITHUB_APP_PRIVATE_KEY_BASE64
+    - id: writer-github-repository-writerinternal
+      sourceId: github
+      tenantId: writer
+      config:
+        family: repository
+        app_id: env:GITHUB_APP_ID
+        installation_id: env:GITHUB_APP_INSTALLATION_ID_WRITERINTERNAL
+        owner: WriterInternal
+        per_page: "100"
+        private_key_base64: env:GITHUB_APP_PRIVATE_KEY_BASE64
+    - id: writer-github-secret-scanning-alert-writerinternal
+      sourceId: github
+      tenantId: writer
+      config:
+        family: secret_scanning_alert
+        app_id: env:GITHUB_APP_ID
+        installation_id: env:GITHUB_APP_INSTALLATION_ID_WRITERINTERNAL
+        owner: WriterInternal
+        per_page: "100"
+        private_key_base64: env:GITHUB_APP_PRIVATE_KEY_BASE64
+        state: open
+    - id: writer-github-cerebro-dependabot-alert-writerinternal
+      sourceId: github
+      tenantId: writer
+      config:
+        family: dependabot_alert
+        app_id: env:GITHUB_APP_ID
+        installation_id: env:GITHUB_APP_INSTALLATION_ID_WRITERINTERNAL
+        owner: WriterInternal
+        per_page: "100"
+        private_key_base64: env:GITHUB_APP_PRIVATE_KEY_BASE64
+        repo: cerebro
+        state: open
     - id: writer-evidence-cas-cases
       sourceId: evidence_cas
       tenantId: writer
@@ -1251,6 +1384,30 @@ config:
         group_id: 00g1zrvrkh58xp8m21d8
         per_page: "200"
         token: env:OKTA_API_TOKEN
+    - id: writer-okta-authenticator
+      sourceId: okta
+      tenantId: writer
+      config:
+        domain: env:OKTA_DOMAIN
+        family: authenticator
+        per_page: "200"
+        token: env:OKTA_API_TOKEN
+    - id: writer-okta-policy-rule
+      sourceId: okta
+      tenantId: writer
+      config:
+        domain: env:OKTA_DOMAIN
+        family: policy_rule
+        per_page: "200"
+        token: env:OKTA_API_TOKEN
+    - id: writer-okta-threat-insight
+      sourceId: okta
+      tenantId: writer
+      config:
+        domain: env:OKTA_DOMAIN
+        family: threat_insight
+        per_page: "200"
+        token: env:OKTA_API_TOKEN
     - id: writer-sentinelone-threat
       sourceId: sentinelone
       tenantId: writer
@@ -1292,6 +1449,22 @@ config:
         family: activity
         per_page: "200"
         since: "2026-05-01T00:00:00Z"
+        token: env:SENTINELONE_API_TOKEN
+    - id: writer-sentinelone-site
+      sourceId: sentinelone
+      tenantId: writer
+      config:
+        base_url: env:SENTINELONE_BASE_URL
+        family: site
+        per_page: "200"
+        token: env:SENTINELONE_API_TOKEN
+    - id: writer-sentinelone-group
+      sourceId: sentinelone
+      tenantId: writer
+      config:
+        base_url: env:SENTINELONE_BASE_URL
+        family: group
+        per_page: "200"
         token: env:SENTINELONE_API_TOKEN
     - id: writer-aws-sec-dev-us1-public-endpoint
       sourceId: aws
