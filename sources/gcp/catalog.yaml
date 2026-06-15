@@ -127,9 +127,8 @@ coverage_contract:
       type: entity_family
       title: Cloud IDS endpoints
       families: [cloud_ids_endpoint]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [notification configuration and threat log routing detail]
     - id: cloud_run_revision
       type: entity_family
       title: Cloud Run revisions

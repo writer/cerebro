@@ -2,6 +2,7 @@ package gcpcloud
 
 import (
 	"encoding/json"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/writer/cerebro/internal/primitives"
 )
+
+var cloudIDSResourceLabelIDFilterRE = regexp.MustCompile(`resource\.labels\.id\s*(?:=|:)\s*"?([^"\s)]+)"?`)
 
 type Settings struct {
 	ProjectID           string
@@ -175,19 +178,20 @@ type AIPrivateServiceConnectConfig struct {
 }
 
 type CloudIDSEndpointRecord struct {
-	Name                   string            `json:"name"`
-	CreateTime             string            `json:"createTime"`
-	UpdateTime             string            `json:"updateTime"`
-	Labels                 map[string]string `json:"labels"`
-	Network                string            `json:"network"`
-	EndpointForwardingRule string            `json:"endpointForwardingRule"`
-	EndpointIP             string            `json:"endpointIp"`
-	Description            string            `json:"description"`
-	Severity               string            `json:"severity"`
-	ThreatExceptions       []string          `json:"threatExceptions"`
-	State                  string            `json:"state"`
-	TrafficLogs            bool              `json:"trafficLogs"`
-	Raw                    json.RawMessage   `json:"-"`
+	Name                   string              `json:"name"`
+	CreateTime             string              `json:"createTime"`
+	UpdateTime             string              `json:"updateTime"`
+	Labels                 map[string]string   `json:"labels"`
+	Network                string              `json:"network"`
+	EndpointForwardingRule string              `json:"endpointForwardingRule"`
+	EndpointIP             string              `json:"endpointIp"`
+	Description            string              `json:"description"`
+	Severity               string              `json:"severity"`
+	ThreatExceptions       []string            `json:"threatExceptions"`
+	State                  string              `json:"state"`
+	TrafficLogs            bool                `json:"trafficLogs"`
+	LoggingSinks           []LoggingSinkRecord `json:"-"`
+	Raw                    json.RawMessage     `json:"-"`
 }
 
 type DNSManagedZoneRecord struct {
@@ -998,6 +1002,7 @@ func CloudIDSEndpointEvent(settings Settings, record CloudIDSEndpointRecord) (*p
 	resourceID := firstNonEmpty(record.Name, record.EndpointForwardingRule)
 	resourceName := lastPathSegment(resourceID)
 	endpointIP := record.EndpointIP
+	logs := cloudIDSLogSinkSummary(record.LoggingSinks)
 	attributes := cloudResourceAttributes(settings, "cloud_ids_endpoint", resourceID, resourceName, "cloud_ids_endpoint", location, record.Labels)
 	attributes["description"] = record.Description
 	attributes["zone"] = location
@@ -1014,10 +1019,20 @@ func CloudIDSEndpointEvent(settings Settings, record CloudIDSEndpointRecord) (*p
 	attributes["traffic_logs"] = boolString(record.TrafficLogs)
 	attributes["threat_exceptions"] = strings.Join(record.ThreatExceptions, ",")
 	attributes["threat_exceptions_count"] = strconv.Itoa(len(record.ThreatExceptions))
+	attributes["threat_log_name"] = cloudIDSLogName(settings.ProjectID, "threat")
+	attributes["traffic_log_name"] = cloudIDSLogName(settings.ProjectID, "traffic")
+	attributes["threat_log_routed"] = boolString(logs.Threat)
+	attributes["traffic_log_routed"] = boolString(logs.Traffic)
+	attributes["log_sinks_count"] = strconv.Itoa(len(record.LoggingSinks))
+	attributes["log_sink_names"] = strings.Join(logs.Names, ",")
+	attributes["log_sink_destinations"] = strings.Join(logs.Destinations, ",")
+	attributes["log_sink_destination_types"] = strings.Join(logs.DestinationTypes, ",")
+	attributes["notification_configured"] = boolString(len(logs.NotificationDestinations) != 0)
+	attributes["notification_destinations"] = strings.Join(logs.NotificationDestinations, ",")
 	attributes["private_endpoint"] = boolString(endpointIP != "")
 	attributes["create_time"] = record.CreateTime
 	attributes["update_time"] = record.UpdateTime
-	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"logging_sinks": record.LoggingSinks, "project_id": settings.ProjectID})
 	if err != nil {
 		return nil, err
 	}
@@ -1595,6 +1610,87 @@ func aiDeployedModelSummary(models []AIDeployedModel) deployedModelSummary {
 		summary.ContainerLogging = summary.ContainerLogging || model.EnableContainerLog
 	}
 	return summary
+}
+
+type cloudIDSLoggingSummary struct {
+	Names                    []string
+	Destinations             []string
+	DestinationTypes         []string
+	NotificationDestinations []string
+	Threat                   bool
+	Traffic                  bool
+}
+
+func AttachCloudIDSLoggingSinks(records []CloudIDSEndpointRecord, sinks []LoggingSinkRecord) {
+	for index := range records {
+		records[index].LoggingSinks = cloudIDSLoggingSinks(records[index], sinks)
+	}
+}
+
+func cloudIDSLoggingSinks(record CloudIDSEndpointRecord, sinks []LoggingSinkRecord) []LoggingSinkRecord {
+	matched := make([]LoggingSinkRecord, 0)
+	endpointName := strings.ToLower(lastPathSegment(record.Name))
+	for _, sink := range sinks {
+		if sink.Disabled || !cloudIDSFilterMatches(sink.Filter, endpointName) {
+			continue
+		}
+		matched = append(matched, sink)
+	}
+	return matched
+}
+
+func cloudIDSLogSinkSummary(sinks []LoggingSinkRecord) cloudIDSLoggingSummary {
+	summary := cloudIDSLoggingSummary{}
+	for _, sink := range sinks {
+		destinationType := loggingSinkDestinationType(sink.Destination)
+		summary.Names = appendUnique(summary.Names, sink.Name)
+		summary.Destinations = appendUnique(summary.Destinations, sink.Destination)
+		summary.DestinationTypes = appendUnique(summary.DestinationTypes, destinationType)
+		if destinationType == "pubsub" {
+			summary.NotificationDestinations = appendUnique(summary.NotificationDestinations, sink.Destination)
+		}
+		filter := strings.ToLower(strings.TrimSpace(sink.Filter))
+		if filter == "" {
+			summary.Threat = true
+			summary.Traffic = true
+			continue
+		}
+		genericIDS := strings.Contains(filter, "ids.googleapis.com/endpoint") || strings.Contains(filter, "ids_googleapis_com_endpoint")
+		summary.Threat = summary.Threat || genericIDS || strings.Contains(filter, "ids.googleapis.com%2fthreat") || strings.Contains(filter, "ids.googleapis.com/threat")
+		summary.Traffic = summary.Traffic || genericIDS || strings.Contains(filter, "ids.googleapis.com%2ftraffic") || strings.Contains(filter, "ids.googleapis.com/traffic")
+	}
+	return summary
+}
+
+func cloudIDSFilterMatches(filter string, endpointName string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(filter))
+	if normalized == "" {
+		return true
+	}
+	if endpointName != "" && strings.Contains(normalized, "resource.labels.id") && !cloudIDSResourceIDFilterMatches(normalized, endpointName) {
+		return false
+	}
+	return strings.Contains(normalized, "ids.googleapis.com%2f") ||
+		strings.Contains(normalized, "ids.googleapis.com/") ||
+		strings.Contains(normalized, "ids.googleapis.com/endpoint") ||
+		strings.Contains(normalized, "ids_googleapis_com_endpoint")
+}
+
+func cloudIDSResourceIDFilterMatches(normalized string, endpointName string) bool {
+	matches := cloudIDSResourceLabelIDFilterRE.FindAllStringSubmatch(normalized, -1)
+	if len(matches) == 0 {
+		return false
+	}
+	for _, match := range matches {
+		if len(match) > 1 && strings.Trim(match[1], `"'`) == endpointName {
+			return true
+		}
+	}
+	return false
+}
+
+func cloudIDSLogName(projectID string, logID string) string {
+	return "projects/" + projectID + "/logs/ids.googleapis.com%2F" + logID
 }
 
 type objectACLSummary struct {

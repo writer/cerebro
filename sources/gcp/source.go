@@ -974,7 +974,7 @@ func listAIDatasets(ctx context.Context, source *Source, settings settings, page
 	var response pageResponse
 	location := firstNonEmpty(settings.location, "-")
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/datasets"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, aiPlatformBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, aiPlatformBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Datasets, "gcp vertex ai dataset", func(record *aiDatasetRecord, raw json.RawMessage) {
@@ -1005,7 +1005,7 @@ func listAIEndpoints(ctx context.Context, source *Source, settings settings, pag
 	var response pageResponse
 	location := firstNonEmpty(settings.location, "-")
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/endpoints"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, aiPlatformBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, aiPlatformBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Endpoints, "gcp vertex ai endpoint", func(record *aiEndpointRecord, raw json.RawMessage) {
@@ -1031,7 +1031,7 @@ func lookupAIResourcePolicy(ctx context.Context, source *Source, settings settin
 	var policy gcpcloud.IAMPolicy
 	path := "/v1/" + escapePathSegments(resourceName) + ":getIamPolicy"
 	if err := getJSON(ctx, source, settings, aiPlatformBaseURL, http.MethodPost, path, nil, map[string]any{}, &policy); err != nil {
-		if optionalGCPEnrichmentErr(err) == nil {
+		if gcpcloud.OptionalEnrichmentErr(err) == nil {
 			return gcpcloud.IAMPolicy{}, nil
 		}
 		return gcpcloud.IAMPolicy{}, err
@@ -1044,7 +1044,7 @@ func listBigQueryDatasets(ctx context.Context, source *Source, settings settings
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/bigquery/v2/projects/" + url.PathEscape(settings.projectID) + "/datasets"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, bigQueryBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, bigQueryBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Datasets, "gcp bigquery dataset", func(record *bigQueryDatasetRecord, raw json.RawMessage) {
@@ -1060,7 +1060,7 @@ func listBigQueryDatasets(ctx context.Context, source *Source, settings settings
 		}
 		detailPath := "/bigquery/v2/projects/" + url.PathEscape(settings.projectID) + "/datasets/" + url.PathEscape(datasetID)
 		var raw json.RawMessage
-		if err := optionalGCPServiceErr(getJSON(ctx, source, settings, bigQueryBaseURL, http.MethodGet, detailPath, nil, nil, &raw)); err != nil {
+		if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, bigQueryBaseURL, http.MethodGet, detailPath, nil, nil, &raw)); err != nil {
 			return nil, "", err
 		}
 		if len(raw) == 0 {
@@ -1171,7 +1171,7 @@ func listDNSManagedZones(ctx context.Context, source *Source, settings settings,
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/dns/v1/projects/" + url.PathEscape(settings.projectID) + "/managedZones"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, dnsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, dnsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.ManagedZones, "gcp dns managed zone", func(record *dnsManagedZoneRecord, raw json.RawMessage) {
@@ -1193,7 +1193,7 @@ func listDNSRecordSets(ctx context.Context, source *Source, settings settings, p
 		query := url.Values{"maxResults": {strconv.Itoa(limit)}}
 		var response pageResponse
 		path := "/dns/v1/projects/" + url.PathEscape(settings.projectID) + "/managedZones/" + url.PathEscape(zone.Name) + "/rrsets"
-		if err := optionalGCPServiceErr(getJSON(ctx, source, settings, dnsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, dnsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 			return nil, "", err
 		}
 		recordSets, err := decodeRecords(response.RRSets, "gcp dns record set", func(record *dnsRecordSetRecord, raw json.RawMessage) {
@@ -1250,7 +1250,7 @@ func listGKEClusters(ctx context.Context, source *Source, settings settings, pag
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/-/clusters"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Clusters, "gcp gke cluster", func(record *gkeClusterRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
@@ -1271,7 +1271,7 @@ func listGKENodePools(ctx context.Context, source *Source, settings settings, pa
 		location := firstNonEmpty(cluster.Location, locationFromResourceName(cluster.SelfLink), settings.location)
 		var response pageResponse
 		path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/clusters/" + url.PathEscape(clusterName) + "/nodePools"
-		if err := optionalGCPServiceErr(getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, nil, nil, &response)); err != nil {
+		if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, nil, nil, &response)); err != nil {
 			return nil, "", err
 		}
 		nodePools, err := decodeRecords(response.NodePools, "gcp gke node pool", func(record *gkeNodePoolRecord, raw json.RawMessage) {
@@ -1296,13 +1296,23 @@ func listCloudIDSEndpoints(ctx context.Context, source *Source, settings setting
 	var response pageResponse
 	location := firstNonEmpty(settings.location, "-")
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/endpoints"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, idsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, idsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Endpoints, "gcp cloud ids endpoint", func(record *cloudIDSEndpointRecord, raw json.RawMessage) {
 		record.Raw = append(json.RawMessage(nil), raw...)
 	})
-	return records, response.NextPageToken, err
+	if err != nil || len(records) == 0 {
+		return records, response.NextPageToken, err
+	}
+	sinks, sinkErr := gcpcloud.CollectPages(func(pageToken string) ([]loggingSinkRecord, string, error) {
+		return listLoggingSinks(ctx, source, settings, pageToken, settings.perPage)
+	})
+	if sinkErr != nil && gcpcloud.OptionalEnrichmentErr(sinkErr) != nil {
+		return nil, "", sinkErr
+	}
+	gcpcloud.AttachCloudIDSLoggingSinks(records, sinks)
+	return records, response.NextPageToken, nil
 }
 
 func listCloudRunServices(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]cloudRunServiceRecord, string, error) {
@@ -1310,7 +1320,7 @@ func listCloudRunServices(ctx context.Context, source *Source, settings settings
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/locations/-/services"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Services, "gcp cloud run service", func(record *cloudRunServiceRecord, raw json.RawMessage) {
@@ -1332,7 +1342,7 @@ func listCloudRunRevisions(ctx context.Context, source *Source, settings setting
 		query := url.Values{"pageSize": {strconv.Itoa(limit)}}
 		var response pageResponse
 		path := "/v2/" + escapePathSegments(service.Name) + "/revisions"
-		if err := optionalGCPServiceErr(getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 			return nil, "", err
 		}
 		revisions, err := decodeRecords(response.Revisions, "gcp cloud run revision", func(record *cloudRunRevisionRecord, raw json.RawMessage) {
@@ -1353,7 +1363,7 @@ func listCloudFunctions(ctx context.Context, source *Source, settings settings, 
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/locations/-/functions"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, functionsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, functionsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Functions, "gcp cloud function", func(record *cloudFunctionRecord, raw json.RawMessage) {
@@ -1372,7 +1382,7 @@ func listContainerVulnerabilities(ctx context.Context, source *Source, settings 
 	}
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/occurrences"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, containerAnalysisBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, containerAnalysisBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Occurrences, "gcp container vulnerability", func(record *containerVulnerabilityRecord, raw json.RawMessage) {
@@ -1460,7 +1470,7 @@ func listSecrets(ctx context.Context, source *Source, settings settings, pageTok
 	addQuery(query, pageToken)
 	var response pageResponse
 	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/secrets"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, secretManagerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, secretManagerBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Secrets, "gcp secret", func(record *secretRecord, raw json.RawMessage) { record.Raw = append(json.RawMessage(nil), raw...) })
@@ -1487,7 +1497,7 @@ func listLoggingSinks(ctx context.Context, source *Source, settings settings, pa
 	}
 	var response pageResponse
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/sinks"
-	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, loggingBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+	if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, loggingBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Sinks, "gcp logging project sink", func(record *loggingSinkRecord, raw json.RawMessage) {
@@ -1511,14 +1521,14 @@ func listResourceManagerProjects(ctx context.Context, source *Source, settings s
 	services, err := gcpcloud.CollectPages(func(pageToken string) ([]serviceUsageServiceRecord, string, error) {
 		return listServiceUsageServices(ctx, source, settings, serviceParent, pageToken, settings.perPage)
 	})
-	if err != nil && optionalGCPEnrichmentErr(err) != nil {
+	if err != nil && gcpcloud.OptionalEnrichmentErr(err) != nil {
 		return nil, "", err
 	}
 	record.EnabledServices = services
 	policies, err := gcpcloud.CollectPages(func(pageToken string) ([]orgPolicyRecord, string, error) {
 		return listOrgPolicies(ctx, source, settings, pageToken, settings.perPage)
 	})
-	if err != nil && optionalGCPEnrichmentErr(err) != nil {
+	if err != nil && gcpcloud.OptionalEnrichmentErr(err) != nil {
 		return nil, "", err
 	}
 	record.OrgPolicies = policies
@@ -2050,28 +2060,6 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 		return fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return nil
-}
-
-func optionalGCPServiceErr(err error) error {
-	if err != nil && (strings.Contains(fmt.Sprint(err), "SERVICE_DISABLED") || strings.Contains(fmt.Sprint(err), "has not been used")) {
-		return nil
-	}
-	return err
-}
-
-func optionalGCPEnrichmentErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	message := fmt.Sprint(err)
-	if strings.Contains(message, "SERVICE_DISABLED") ||
-		strings.Contains(message, "has not been used") ||
-		strings.Contains(message, "PERMISSION_DENIED") ||
-		strings.Contains(message, "IAM_PERMISSION_DENIED") ||
-		strings.Contains(message, "gcp API returned 403") {
-		return nil
-	}
-	return err
 }
 
 func gcpBearerToken(ctx context.Context, source *Source, settings settings) (string, error) {
