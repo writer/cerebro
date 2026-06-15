@@ -488,6 +488,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyDocDBInstance, kind: "aws.docdb_instance"},
 		{family: familyEBSSnapshot, kind: "aws.ebs_snapshot"},
 		{family: familyEBSVolume, kind: "aws.ebs_volume"},
+		{family: familyEC2EBSEncryptionByDefault, kind: "aws.ec2_ebs_encryption_by_default"},
 		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
 		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
@@ -1203,31 +1204,34 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 					Status: s3controltypes.MultiRegionAccessPointStatusReady,
 				}},
 				s3MultiRegionAccessPointPublic: map[string]bool{"prod-global": false},
-				ebsVolumes: []ec2types.Volume{{
-					AvailabilityZone: awssdk.String("us-east-1a"),
-					CreateTime:       timePtr("2026-04-23T00:00:00Z"),
-					Encrypted:        awssdk.Bool(true),
-					KmsKeyId:         awssdk.String(kmsARN),
-					Size:             awssdk.Int32(100),
-					SnapshotId:       awssdk.String("snap-123"),
-					State:            ec2types.VolumeStateInUse,
-					Tags:             []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("orders-data")}, {Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
-					VolumeId:         awssdk.String("vol-123"),
-					VolumeType:       ec2types.VolumeTypeGp3,
-				}},
-				ebsSnapshots: []ec2types.Snapshot{{
-					Description: awssdk.String("orders backup"),
-					Encrypted:   awssdk.Bool(true),
-					KmsKeyId:    awssdk.String(kmsARN),
-					OwnerId:     awssdk.String("123456789012"),
-					SnapshotId:  awssdk.String("snap-123"),
-					StartTime:   timePtr("2026-04-23T00:00:00Z"),
-					State:       ec2types.SnapshotStateCompleted,
-					Tags:        []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("orders-snapshot")}, {Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
-					VolumeId:    awssdk.String("vol-123"),
-					VolumeSize:  awssdk.Int32(100),
-				}},
-				ebsSnapshotPublic: map[string]bool{"snap-123": false},
+				fakeAWSEBSData: fakeAWSEBSData{
+					ebsVolumes: []ec2types.Volume{{
+						AvailabilityZone: awssdk.String("us-east-1a"),
+						CreateTime:       timePtr("2026-04-23T00:00:00Z"),
+						Encrypted:        awssdk.Bool(true),
+						KmsKeyId:         awssdk.String(kmsARN),
+						Size:             awssdk.Int32(100),
+						SnapshotId:       awssdk.String("snap-123"),
+						State:            ec2types.VolumeStateInUse,
+						Tags:             []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("orders-data")}, {Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
+						VolumeId:         awssdk.String("vol-123"),
+						VolumeType:       ec2types.VolumeTypeGp3,
+					}},
+					ebsSnapshots: []ec2types.Snapshot{{
+						Description: awssdk.String("orders backup"),
+						Encrypted:   awssdk.Bool(true),
+						KmsKeyId:    awssdk.String(kmsARN),
+						OwnerId:     awssdk.String("123456789012"),
+						SnapshotId:  awssdk.String("snap-123"),
+						StartTime:   timePtr("2026-04-23T00:00:00Z"),
+						State:       ec2types.SnapshotStateCompleted,
+						Tags:        []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("orders-snapshot")}, {Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}},
+						VolumeId:    awssdk.String("vol-123"),
+						VolumeSize:  awssdk.Int32(100),
+					}},
+					ebsSnapshotPublic:      map[string]bool{"snap-123": false},
+					ebsEncryptionByDefault: true,
+				},
 				datasyncTasks: []datasynctypes.TaskListEntry{{
 					Name:     awssdk.String("copy-prod-data"),
 					Status:   datasynctypes.TaskStatusAvailable,
@@ -1273,6 +1277,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familyS3MultiRegionAccessPoint, kind: "aws.s3_multi_region_access_point", attr: "backups", want: "true"},
 		{family: familyEBSVolume, kind: "aws.ebs_volume", attr: "backups", want: "true"},
 		{family: familyEBSSnapshot, kind: "aws.ebs_snapshot", attr: "encryption", want: "true"},
+		{family: familyEC2EBSEncryptionByDefault, kind: "aws.ec2_ebs_encryption_by_default", attr: "ebs_encryption_enabled", want: "true"},
 		{family: familyDataSyncTask, kind: "aws.datasync_task", attr: "backups", want: "true"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location", attr: "location_type", want: "s3"},
 		{family: familyRDSInstance, kind: "aws.rds_instance", attr: "deletion_protection", want: "true"},
@@ -3002,6 +3007,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.ebsVolumes = []ec2types.Volume{{VolumeId: awssdk.String("vol-123"), State: ec2types.VolumeStateAvailable}}
 		fake.ebsSnapshots = []ec2types.Snapshot{{SnapshotId: awssdk.String("snap-123"), State: ec2types.SnapshotStateCompleted}}
 		fake.ebsSnapshotPublic = map[string]bool{"snap-123": false}
+		fake.ebsEncryptionByDefault = true
 		taskARN := "arn:aws:datasync:us-east-1:123456789012:task/task-123"
 		locationARN := "arn:aws:datasync:us-east-1:123456789012:location/loc-src"
 		fake.datasyncTasks = []datasynctypes.TaskListEntry{{TaskArn: awssdk.String(taskARN), Name: awssdk.String("copy-prod-data"), Status: datasynctypes.TaskStatusAvailable}}
@@ -3176,6 +3182,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyEBSSnapshot,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ec2:DescribeSnapshotAttribute", "ec2:DescribeSnapshots"},
+		},
+		{
+			family:  familyEC2EBSEncryptionByDefault,
+			seed:    cloudAssetData,
+			wantAPI: []string{"ec2:GetEbsEncryptionByDefault"},
 		},
 		{
 			family:  familyRDSInstance,
@@ -4107,24 +4118,29 @@ type fakeAWSStorageAccessData struct {
 	s3ControlTags                  map[string][]s3controltypes.Tag
 	s3MultiRegionAccessPoints      []s3controltypes.MultiRegionAccessPointReport
 	s3MultiRegionAccessPointPublic map[string]bool
-	ebsVolumes                     []ec2types.Volume
-	ebsSnapshots                   []ec2types.Snapshot
-	ebsSnapshotPublic              map[string]bool
-	dynamoDBTables                 []dynamodbtypes.TableDescription
-	dynamoDBTags                   map[string][]dynamodbtypes.Tag
-	dynamoDBContinuousBackups      map[string]dynamodbtypes.ContinuousBackupsDescription
-	dynamoDBTimeToLive             map[string]dynamodbtypes.TimeToLiveDescription
-	dynamoDBBackups                []dynamodbtypes.BackupSummary
-	dynamoDBStreams                []dynamodbstreamstypes.StreamDescription
-	efsFileSystems                 []efstypes.FileSystemDescription
-	efsMountTargets                map[string][]efstypes.MountTargetDescription
-	efsMountTargetSecurityGroups   map[string][]string
-	efsAccessPoints                []efstypes.AccessPointDescription
-	datasyncTasks                  []datasynctypes.TaskListEntry
-	datasyncTaskDetails            map[string]*datasync.DescribeTaskOutput
-	datasyncLocations              []datasynctypes.LocationListEntry
-	datasyncLocationS3             map[string]*datasync.DescribeLocationS3Output
-	datasyncTags                   map[string][]datasynctypes.TagListEntry
+	fakeAWSEBSData
+	dynamoDBTables               []dynamodbtypes.TableDescription
+	dynamoDBTags                 map[string][]dynamodbtypes.Tag
+	dynamoDBContinuousBackups    map[string]dynamodbtypes.ContinuousBackupsDescription
+	dynamoDBTimeToLive           map[string]dynamodbtypes.TimeToLiveDescription
+	dynamoDBBackups              []dynamodbtypes.BackupSummary
+	dynamoDBStreams              []dynamodbstreamstypes.StreamDescription
+	efsFileSystems               []efstypes.FileSystemDescription
+	efsMountTargets              map[string][]efstypes.MountTargetDescription
+	efsMountTargetSecurityGroups map[string][]string
+	efsAccessPoints              []efstypes.AccessPointDescription
+	datasyncTasks                []datasynctypes.TaskListEntry
+	datasyncTaskDetails          map[string]*datasync.DescribeTaskOutput
+	datasyncLocations            []datasynctypes.LocationListEntry
+	datasyncLocationS3           map[string]*datasync.DescribeLocationS3Output
+	datasyncTags                 map[string][]datasynctypes.TagListEntry
+}
+
+type fakeAWSEBSData struct {
+	ebsVolumes             []ec2types.Volume
+	ebsSnapshots           []ec2types.Snapshot
+	ebsSnapshotPublic      map[string]bool
+	ebsEncryptionByDefault bool
 }
 
 type fakeAWSDataManager struct {
@@ -4543,6 +4559,11 @@ func (f *recordingAWS) DescribeSnapshots(ctx context.Context, input *ec2.Describ
 func (f *recordingAWS) DescribeSnapshotAttribute(ctx context.Context, input *ec2.DescribeSnapshotAttributeInput, options ...func(*ec2.Options)) (*ec2.DescribeSnapshotAttributeOutput, error) {
 	f.record("ec2:DescribeSnapshotAttribute")
 	return f.fakeAWS.DescribeSnapshotAttribute(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetEbsEncryptionByDefault(ctx context.Context, input *ec2.GetEbsEncryptionByDefaultInput, options ...func(*ec2.Options)) (*ec2.GetEbsEncryptionByDefaultOutput, error) {
+	f.record("ec2:GetEbsEncryptionByDefault")
+	return f.fakeAWS.GetEbsEncryptionByDefault(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListFunctions(ctx context.Context, input *lambda.ListFunctionsInput, options ...func(*lambda.Options)) (*lambda.ListFunctionsOutput, error) {
@@ -6640,6 +6661,10 @@ func (f fakeAWS) DescribeSnapshotAttribute(_ context.Context, input *ec2.Describ
 		permissions = append(permissions, ec2types.CreateVolumePermission{Group: ec2types.PermissionGroupAll})
 	}
 	return &ec2.DescribeSnapshotAttributeOutput{SnapshotId: input.SnapshotId, CreateVolumePermissions: permissions}, nil
+}
+
+func (f fakeAWS) GetEbsEncryptionByDefault(context.Context, *ec2.GetEbsEncryptionByDefaultInput, ...func(*ec2.Options)) (*ec2.GetEbsEncryptionByDefaultOutput, error) {
+	return &ec2.GetEbsEncryptionByDefaultOutput{EbsEncryptionByDefault: awssdk.Bool(f.ebsEncryptionByDefault)}, nil
 }
 
 func (f fakeAWS) ListFunctions(_ context.Context, input *lambda.ListFunctionsInput, _ ...func(*lambda.Options)) (*lambda.ListFunctionsOutput, error) {

@@ -392,6 +392,13 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			entityType:   "aws.ebs.volume",
 		},
 		{
+			name:         "ebs encryption by default",
+			kind:         "aws.ec2_ebs_encryption_by_default",
+			resourceID:   "arn:aws:ec2:us-east-1:123456789012:ebs-encryption-by-default/default",
+			resourceType: "ec2_ebs_encryption_by_default",
+			entityType:   "aws.ec2.ebs.encryption.by.default",
+		},
+		{
 			name:         "public ebs snapshot",
 			kind:         "aws.ebs_snapshot",
 			resourceID:   "snap-123",
