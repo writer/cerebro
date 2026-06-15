@@ -4,14 +4,15 @@ import "github.com/writer/cerebro/internal/ports"
 
 // ServiceOptions controls optional orchestration features for Ask.
 type ServiceOptions struct {
-	TrajectoryStore        ports.AskTrajectoryStore
-	EnableGraphProbes      bool
-	EnableRecovery         bool
-	EnableMapReduce        bool
-	MaxDepth               int
-	MaxChildren            int
-	MapReduceRowThreshold  int
-	MapReduceByteThreshold int
+	TrajectoryStore             ports.AskTrajectoryStore
+	EnableGraphProbes           bool
+	EnableDeterministicFastPath bool
+	EnableRecovery              bool
+	EnableMapReduce             bool
+	MaxDepth                    int
+	MaxChildren                 int
+	MapReduceRowThreshold       int
+	MapReduceByteThreshold      int
 }
 
 // AskExecutionContext bounds one root or child Ask execution.

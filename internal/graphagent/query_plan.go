@@ -162,6 +162,98 @@ func convertDraftToQuery(request AskRequest, draft *DraftResponse) conversionRes
 	return result
 }
 
+func deterministicFastPathConversion(request AskRequest, enabled bool) (conversionResult, string, bool) {
+	if !enabled {
+		return conversionResult{}, "", false
+	}
+	plan, ok := deterministicFastPathPlan(request)
+	if !ok {
+		return conversionResult{}, "", false
+	}
+	cypher, ok := renderDeterministicPlan(plan, defaultMaxRows)
+	if !ok || strings.TrimSpace(cypher) == "" {
+		return conversionResult{}, "", false
+	}
+	result := conversionResult{
+		Plan:          plan,
+		Cypher:        cypher,
+		Source:        "deterministic_fast_path",
+		Deterministic: true,
+		Diagnostics: []ConversionDiagnostic{{
+			Level:   "info",
+			Code:    "deterministic_query_plan",
+			Message: "Graph access used a deterministic Cerebro query template and skipped LLM Cypher drafting.",
+		}},
+	}
+	return result, "Using a deterministic Cerebro query template for this common read-only graph question.", true
+}
+
+func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
+	question := strings.TrimSpace(request.Question)
+	if question == "" || questionLooksUnsafe(question) {
+		return AskQueryPlan{}, false
+	}
+	intent := inferIntent(strings.ReplaceAll(question, "-", " "), "")
+	if intent == IntentRawCypher {
+		return AskQueryPlan{}, false
+	}
+	plan := AskQueryPlan{
+		Intent:     intent,
+		Confidence: 0.95,
+		ScopeURN:   strings.TrimSpace(request.ScopeURN),
+		Limit:      25,
+	}
+	switch intent {
+	case IntentTopRiskFindings:
+		plan.Filters = fastPathTopRiskFilters(question)
+	case IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge:
+		plan.Filters = map[string]string{}
+	case IntentExplainFinding:
+		if plan.ScopeURN == "" {
+			return AskQueryPlan{}, false
+		}
+		plan.Filters = map[string]string{}
+	default:
+		return AskQueryPlan{}, false
+	}
+	return normalizePlan(&plan, request, "", defaultMaxRows), true
+}
+
+func questionLooksUnsafe(question string) bool {
+	lower := strings.ToLower(question)
+	for _, token := range []string{"delete", "drop", "detach", "remove", "write", "update", "merge ", "create "} {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func fastPathTopRiskFilters(question string) map[string]string {
+	lower := strings.ToLower(question)
+	filters := map[string]string{}
+	switch {
+	case containsWord(lower, "open"):
+		filters["status"] = "open"
+	case containsWord(lower, "resolved"):
+		filters["status"] = "resolved"
+	case containsWord(lower, "suppressed"):
+		filters["status"] = "suppressed"
+	}
+	if strings.Contains(lower, "repository") || containsWord(lower, "repo") || strings.Contains(lower, "code repo") {
+		filters["resource_type"] = "repository"
+	}
+	return filters
+}
+
+func containsWord(haystack string, needle string) bool {
+	if strings.TrimSpace(needle) == "" {
+		return false
+	}
+	pattern := regexp.MustCompile(`\b` + regexp.QuoteMeta(strings.ToLower(needle)) + `\b`)
+	return pattern.MatchString(strings.ToLower(haystack))
+}
+
 func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaultMaxRows int) AskQueryPlan {
 	var out AskQueryPlan
 	if plan != nil {

@@ -83,6 +83,83 @@ LIMIT 25`,
 	}
 }
 
+func TestServiceUsesDeterministicFastPathForCommonTopRiskAsk(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"finding_urn":                       "urn:cerebro:writer:finding:open-repo",
+				"finding_label":                     "Open repository finding",
+				"resource_urn":                      "urn:cerebro:writer:repo:alpha",
+				"resource_label":                    "repo-alpha",
+				"resource_type":                     "github.code.repository",
+				"relation_attributes_json_internal": `{"risk_score":88,"status":"open"}`,
+				"finding_attributes_json_internal":  `{"severity":"HIGH"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftErr: errors.New("draft should be skipped"),
+		Summary:  "One open repository finding remains.",
+	}
+	service := NewServiceWithOptions(store, llm, ValidatorOptions{}, ServiceOptions{EnableDeterministicFastPath: true})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Show open high-risk repository findings",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	progressEvent := events[0].Data.(ProgressEvent)
+	if progressEvent.Stage != "planning_query" {
+		t.Fatalf("first progress stage = %q, want planning_query", progressEvent.Stage)
+	}
+	if len(llm.DraftRequests) != 0 {
+		t.Fatalf("DraftCypher called %#v, want deterministic fast path to skip drafting", llm.DraftRequests)
+	}
+	planEvent := events[2].Data.(QueryPlanEvent)
+	if planEvent.Source != "deterministic_fast_path" || !planEvent.Deterministic || planEvent.Plan.Intent != IntentTopRiskFindings {
+		t.Fatalf("query plan event = %#v, want deterministic fast path top-risk plan", planEvent)
+	}
+	if !strings.Contains(store.requests[0].Query, "toLower(filter_status) = 'open'") || !strings.Contains(store.requests[0].Query, "resource.entity_type = 'github.code.repository'") {
+		t.Fatalf("store request should push supported filters into Cypher:\n%s", store.requests[0].Query)
+	}
+}
+
+func TestCollectGraphProbeCachesTenantCounts(t *testing.T) {
+	resetGraphProbeCountsCacheForTest()
+	defer resetGraphProbeCountsCacheForTest()
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"name":  "source",
+				"count": int64(3),
+			},
+		}},
+	}
+	request := AskRequest{TenantID: "writer", Question: "What is risky?"}
+
+	first := collectGraphProbe(context.Background(), store, request, askParams(request))
+	if first.SourceCount != 3 {
+		t.Fatalf("first probe source count = %d, want 3", first.SourceCount)
+	}
+	if len(store.requests) != 2 {
+		t.Fatalf("store requests after first probe = %d, want 2", len(store.requests))
+	}
+	second := collectGraphProbe(context.Background(), store, request, askParams(request))
+	if second.SourceCount != 3 {
+		t.Fatalf("second probe source count = %d, want cached 3", second.SourceCount)
+	}
+	if len(store.requests) != 2 {
+		t.Fatalf("store requests after second probe = %d, want tenant count cache hit", len(store.requests))
+	}
+}
+
 func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 	store := &askStore{}
 	llm := &StubLLMClient{DraftResponse: &DraftResponse{

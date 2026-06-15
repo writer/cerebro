@@ -6,9 +6,28 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
+
+const graphProbeCountsCacheTTL = 2 * time.Minute
+
+var graphProbeCountsCache = struct {
+	sync.Mutex
+	entries map[string]graphProbeCountsCacheEntry
+}{
+	entries: map[string]graphProbeCountsCacheEntry{},
+}
+
+type graphProbeCountsCacheEntry struct {
+	ExpiresAt    time.Time
+	EntityTypes  []GraphProbeCount
+	Relations    []GraphProbeCount
+	SourceCount  int64
+	FindingCount int64
+}
 
 type GraphProbe struct {
 	ScopeURN     string            `json:"scope_urn,omitempty"`
@@ -43,6 +62,14 @@ func collectGraphProbe(ctx context.Context, store ports.GraphQueryStore, request
 			probe.ScopeLabel = neighborhood.Root.Label
 		}
 	}
+	if cached, ok := cachedGraphProbeCounts(request.TenantID); ok {
+		probe.EntityTypes = cached.EntityTypes
+		probe.Relations = cached.Relations
+		probe.SourceCount = cached.SourceCount
+		probe.FindingCount = cached.FindingCount
+		return probe
+	}
+	warningsBeforeCounts := len(probe.Warnings)
 	probe.EntityTypes = probeCounts(ctx, store, params, `MATCH (n:Entity {tenant_id: $tenant_id})
 RETURN n.entity_type AS name, count(n) AS count
 ORDER BY count DESC, name
@@ -53,7 +80,57 @@ ORDER BY count DESC, name
 LIMIT 20`, &probe)
 	probe.SourceCount = countForName(probe.EntityTypes, "source")
 	probe.FindingCount = countForName(probe.EntityTypes, "finding")
+	if len(probe.Warnings) == warningsBeforeCounts {
+		storeGraphProbeCounts(request.TenantID, probe)
+	}
 	return probe
+}
+
+func cachedGraphProbeCounts(tenantID string) (graphProbeCountsCacheEntry, bool) {
+	key := strings.TrimSpace(tenantID)
+	if key == "" {
+		return graphProbeCountsCacheEntry{}, false
+	}
+	now := time.Now()
+	graphProbeCountsCache.Lock()
+	defer graphProbeCountsCache.Unlock()
+	entry, ok := graphProbeCountsCache.entries[key]
+	if !ok || now.After(entry.ExpiresAt) {
+		delete(graphProbeCountsCache.entries, key)
+		return graphProbeCountsCacheEntry{}, false
+	}
+	entry.EntityTypes = copyGraphProbeCounts(entry.EntityTypes)
+	entry.Relations = copyGraphProbeCounts(entry.Relations)
+	return entry, true
+}
+
+func storeGraphProbeCounts(tenantID string, probe GraphProbe) {
+	key := strings.TrimSpace(tenantID)
+	if key == "" {
+		return
+	}
+	graphProbeCountsCache.Lock()
+	defer graphProbeCountsCache.Unlock()
+	graphProbeCountsCache.entries[key] = graphProbeCountsCacheEntry{
+		ExpiresAt:    time.Now().Add(graphProbeCountsCacheTTL),
+		EntityTypes:  copyGraphProbeCounts(probe.EntityTypes),
+		Relations:    copyGraphProbeCounts(probe.Relations),
+		SourceCount:  probe.SourceCount,
+		FindingCount: probe.FindingCount,
+	}
+}
+
+func copyGraphProbeCounts(counts []GraphProbeCount) []GraphProbeCount {
+	if len(counts) == 0 {
+		return nil
+	}
+	return append([]GraphProbeCount(nil), counts...)
+}
+
+func resetGraphProbeCountsCacheForTest() {
+	graphProbeCountsCache.Lock()
+	defer graphProbeCountsCache.Unlock()
+	graphProbeCountsCache.entries = map[string]graphProbeCountsCacheEntry{}
 }
 
 func probeCounts(ctx context.Context, store ports.GraphQueryStore, params map[string]any, query string, probe *GraphProbe) []GraphProbeCount {
