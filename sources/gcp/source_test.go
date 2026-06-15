@@ -89,7 +89,10 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyComputeNetwork, kind: "gcp.compute_network"},
 		{family: familyComputeRoute, kind: "gcp.compute_route"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy"},
+		{family: familyComputeSSLCertificate, kind: "gcp.compute_ssl_certificate"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork"},
+		{family: familyComputeTargetHTTPProxy, kind: "gcp.compute_target_http_proxy"},
+		{family: familyComputeTargetHTTPSProxy, kind: "gcp.compute_target_https_proxy"},
 		{family: familyComputeURLMap, kind: "gcp.compute_url_map"},
 		{family: familyDNSManagedZone, kind: "gcp.dns_managed_zone"},
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set"},
@@ -298,7 +301,10 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy", attr: "rules_count", want: "3"},
+		{family: familyComputeSSLCertificate, kind: "gcp.compute_ssl_certificate", attr: "managed_status", want: "ACTIVE"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
+		{family: familyComputeTargetHTTPProxy, kind: "gcp.compute_target_http_proxy", attr: "url_map", want: "prod-url-map"},
+		{family: familyComputeTargetHTTPSProxy, kind: "gcp.compute_target_https_proxy", attr: "ssl_certificates", want: "prod-cert"},
 		{family: familyComputeURLMap, kind: "gcp.compute_url_map", attr: "backend_services", want: "prod-backend,api-backend,canary-backend"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall", attr: "source_ranges", want: "0.0.0.0/0"},
 		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule", attr: "internet_exposed", want: "true"},
@@ -779,16 +785,12 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 		case "/compute/v1/projects/writer-prod/global/networks":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "net-1", "name": "default", "selfLink": "projects/writer-prod/global/networks/default", "description": "default network", "autoCreateSubnetworks": false, "routingConfig": map[string]string{"routingMode": "REGIONAL"}, "labels": map[string]string{"env": "prod"}}}})
 		case "/compute/v1/projects/writer-prod/global/routes":
-			if got := r.URL.Query().Get("maxResults"); got != "10" {
-				t.Fatalf("compute routes maxResults = %q, want 10", got)
-			}
+			requireQuery(t, r, "maxResults", "10", "compute routes")
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "route-1", "name": "default-route-internet", "selfLink": "projects/writer-prod/global/routes/default-route-internet", "description": "default internet route", "network": "projects/writer-prod/global/networks/default", "destRange": "0.0.0.0/0", "priority": 1000, "tags": []string{"web"}, "nextHopGateway": "projects/writer-prod/global/gateways/default-internet-gateway", "routeType": "STATIC", "routeStatus": "ACTIVE", "creationTimestamp": "2026-04-23T00:00:00Z"}}})
 		case "/compute/v1/projects/writer-prod/global/firewalls":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "fw-1", "name": "allow-web", "network": "global/networks/default", "direction": "INGRESS", "sourceRanges": []string{"0.0.0.0/0"}, "allowed": []map[string]any{{"IPProtocol": "tcp", "ports": []string{"443"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/forwardingRules":
-			if got := r.URL.Query().Get("maxResults"); got != "10" {
-				t.Fatalf("forwarding rules maxResults = %q, want 10", got)
-			}
+			requireQuery(t, r, "maxResults", "10", "forwarding rules")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"forwardingRules": []map[string]any{{"id": "fr-1", "name": "prod-https", "selfLink": "projects/writer-prod/regions/us-central1/forwardingRules/prod-https", "description": "prod https frontend", "region": "projects/writer-prod/regions/us-central1", "IPAddress": "203.0.113.20", "IPProtocol": "TCP", "ipVersion": "IPV4", "loadBalancingScheme": "EXTERNAL_MANAGED", "portRange": "443-443", "ports": []string{"443"}, "networkTier": "PREMIUM", "target": "projects/writer-prod/regions/us-central1/targetHttpsProxies/prod-https-proxy", "network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "labels": map[string]string{"env": "prod"}}}}}})
 		case "/v1/groups:lookup":
 			if got := r.URL.Query().Get("groupKey.id"); got != "security@writer.com" {
@@ -825,35 +827,33 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 		case "/compute/v1/projects/writer-prod/aggregated/instances":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"instances": []map[string]any{{"id": "123456789", "name": "web-1", "zone": "projects/writer-prod/zones/us-central1-a", "machineType": "projects/writer-prod/zones/us-central1-a/machineTypes/e2-medium", "status": "RUNNING", "labels": map[string]string{"env": "prod"}, "tags": map[string]any{"items": []string{"web"}}, "networkInterfaces": []map[string]any{{"network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "networkIP": "10.0.0.5", "accessConfigs": []map[string]any{{"type": "ONE_TO_ONE_NAT", "natIP": "34.1.2.3"}}}}, "serviceAccounts": []map[string]any{{"email": "vm@writer-prod.iam.gserviceaccount.com"}}, "disks": []map[string]any{{"boot": true, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vm"}}}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/backendServices":
-			if got := r.URL.Query().Get("maxResults"); got != "10" {
-				t.Fatalf("backend services maxResults = %q, want 10", got)
-			}
+			requireQuery(t, r, "maxResults", "10", "backend services")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"backendServices": []map[string]any{{"id": "bs-1", "name": "prod-backend", "selfLink": "projects/writer-prod/global/backendServices/prod-backend", "description": "prod https backend", "protocol": "HTTPS", "portName": "https", "loadBalancingScheme": "EXTERNAL_MANAGED", "sessionAffinity": "NONE", "localityLbPolicy": "ROUND_ROBIN", "timeoutSec": 30, "enableCDN": true, "healthChecks": []string{"projects/writer-prod/global/healthChecks/prod-hc"}, "backends": []map[string]any{{"group": "projects/writer-prod/zones/us-central1-a/instanceGroups/prod-mig", "balancingMode": "UTILIZATION", "capacityScaler": 1.0, "maxUtilization": 0.8}}, "connectionDraining": map[string]int{"drainingTimeoutSec": 300}, "logConfig": map[string]any{"enable": true, "sampleRate": 1.0}, "iap": map[string]bool{"enabled": true}, "securityPolicy": "projects/writer-prod/global/securityPolicies/prod-armor", "network": "projects/writer-prod/global/networks/default", "customRequestHeaders": []string{"X-Forwarded-Proto:{client_protocol}"}, "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/addresses":
-			if got := r.URL.Query().Get("maxResults"); got != "10" {
-				t.Fatalf("addresses maxResults = %q, want 10", got)
-			}
-			if got := r.URL.Query().Get("returnPartialSuccess"); got != "true" {
-				t.Fatalf("addresses returnPartialSuccess = %q, want true", got)
-			}
+			requireQuery(t, r, "maxResults", "10", "addresses")
+			requireQuery(t, r, "returnPartialSuccess", "true", "addresses")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"addresses": []map[string]any{{"id": "addr-1", "name": "prod-https-ip", "selfLink": "projects/writer-prod/regions/us-central1/addresses/prod-https-ip", "description": "prod https frontend ip", "address": "203.0.113.20", "status": "IN_USE", "region": "projects/writer-prod/regions/us-central1", "users": []string{"projects/writer-prod/regions/us-central1/forwardingRules/prod-https"}, "networkTier": "PREMIUM", "ipVersion": "IPV4", "addressType": "EXTERNAL", "purpose": "GCE_ENDPOINT", "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/securityPolicies":
-			if got := r.URL.Query().Get("maxResults"); got != "10" {
-				t.Fatalf("security policies maxResults = %q, want 10", got)
-			}
-			if got := r.URL.Query().Get("returnPartialSuccess"); got != "true" {
-				t.Fatalf("security policies returnPartialSuccess = %q, want true", got)
-			}
+			requireQuery(t, r, "maxResults", "10", "security policies")
+			requireQuery(t, r, "returnPartialSuccess", "true", "security policies")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"securityPolicies": []map[string]any{{"id": "sp-1", "name": "prod-armor", "selfLink": "projects/writer-prod/global/securityPolicies/prod-armor", "description": "prod cloud armor policy", "type": "CLOUD_ARMOR", "fingerprint": "abc123", "rules": []map[string]any{{"priority": 1000, "action": "deny(403)", "description": "block sqli", "match": map[string]any{"expr": map[string]string{"expression": "evaluatePreconfiguredWaf('sqli-v33-stable')"}}}, {"priority": 2000, "action": "throttle", "preview": true, "description": "rate limit broad traffic", "match": map[string]any{"versionedExpr": "SRC_IPS_V1", "config": map[string]any{"srcIpRanges": []string{"0.0.0.0/0"}}}}, {"priority": 2147483647, "action": "allow", "description": "default allow", "match": map[string]any{"versionedExpr": "SRC_IPS_V1", "config": map[string]any{"srcIpRanges": []string{"0.0.0.0/0"}}}}}, "adaptiveProtectionConfig": map[string]any{"layer7DdosDefenseConfig": map[string]bool{"enable": true}}, "advancedOptionsConfig": map[string]any{"jsonParsing": "STANDARD", "logLevel": "VERBOSE", "userIpRequestHeaders": []string{"X-Forwarded-For"}}, "associations": []map[string]any{{"name": "prod-backend", "attachmentId": "projects/writer-prod/global/backendServices/prod-backend", "securityPolicyId": "sp-1", "shortName": "prod-armor"}}, "labels": map[string]string{"env": "prod"}}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/sslCertificates":
+			requireQuery(t, r, "maxResults", "10", "ssl certificates")
+			requireQuery(t, r, "returnPartialSuccess", "true", "ssl certificates")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"sslCertificates": []map[string]any{{"id": "cert-1", "name": "prod-cert", "selfLink": "projects/writer-prod/global/sslCertificates/prod-cert", "description": "prod managed cert", "type": "MANAGED", "managed": map[string]any{"domains": []string{"app.writer.example"}, "status": "ACTIVE", "domainStatus": map[string]string{"app.writer.example": "ACTIVE"}}, "subjectAlternativeNames": []string{"app.writer.example"}, "expireTime": "2026-12-31T23:59:59Z"}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/targetHttpProxies":
+			requireQuery(t, r, "maxResults", "10", "target http proxies")
+			requireQuery(t, r, "returnPartialSuccess", "true", "target http proxies")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"targetHttpProxies": []map[string]any{{"id": "thp-1", "name": "prod-http-proxy", "selfLink": "projects/writer-prod/global/targetHttpProxies/prod-http-proxy", "description": "prod http proxy", "urlMap": "projects/writer-prod/global/urlMaps/prod-url-map", "httpKeepAliveTimeoutSec": 610, "fingerprint": "httpfp"}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/targetHttpsProxies":
+			requireQuery(t, r, "maxResults", "10", "target https proxies")
+			requireQuery(t, r, "returnPartialSuccess", "true", "target https proxies")
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"targetHttpsProxies": []map[string]any{{"id": "thsp-1", "name": "prod-https-proxy", "selfLink": "projects/writer-prod/global/targetHttpsProxies/prod-https-proxy", "description": "prod https proxy", "urlMap": "projects/writer-prod/global/urlMaps/prod-url-map", "sslCertificates": []string{"projects/writer-prod/global/sslCertificates/prod-cert"}, "certificateMap": "//certificatemanager.googleapis.com/projects/writer-prod/locations/global/certificateMaps/prod-map", "quicOverride": "ENABLE", "sslPolicy": "projects/writer-prod/global/sslPolicies/modern", "serverTlsPolicy": "projects/writer-prod/locations/global/serverTlsPolicies/prod-server-tls", "authorizationPolicy": "projects/writer-prod/locations/global/authorizationPolicies/prod-authz", "httpKeepAliveTimeoutSec": 610, "fingerprint": "httpsfp"}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/subnetworks":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"subnetworks": []map[string]any{{"id": "subnet-1", "name": "default", "selfLink": "projects/writer-prod/regions/us-central1/subnetworks/default", "network": "projects/writer-prod/global/networks/default", "region": "projects/writer-prod/regions/us-central1", "ipCidrRange": "10.0.0.0/24", "privateIpGoogleAccess": true, "purpose": "PRIVATE", "stackType": "IPV4_ONLY", "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/urlMaps":
-			if got := r.URL.Query().Get("maxResults"); got != "10" {
-				t.Fatalf("url maps maxResults = %q, want 10", got)
-			}
-			if got := r.URL.Query().Get("returnPartialSuccess"); got != "true" {
-				t.Fatalf("url maps returnPartialSuccess = %q, want true", got)
-			}
+			requireQuery(t, r, "maxResults", "10", "url maps")
+			requireQuery(t, r, "returnPartialSuccess", "true", "url maps")
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"urlMaps": []map[string]any{{"id": "um-1", "name": "prod-url-map", "selfLink": "projects/writer-prod/global/urlMaps/prod-url-map", "description": "prod application routing", "defaultService": "projects/writer-prod/global/backendServices/prod-backend", "hostRules": []map[string]any{{"hosts": []string{"app.writer.example"}, "pathMatcher": "app"}}, "pathMatchers": []map[string]any{{"name": "app", "defaultService": "projects/writer-prod/global/backendServices/prod-backend", "pathRules": []map[string]any{{"paths": []string{"/api/*"}, "service": "projects/writer-prod/global/backendServices/api-backend"}, {"paths": []string{"/old/*"}, "urlRedirect": map[string]any{"prefixRedirect": "/new", "redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}}}, "routeRules": []map[string]any{{"priority": 10, "routeAction": map[string]any{"weightedBackendServices": []map[string]any{{"backendService": "projects/writer-prod/global/backendServices/canary-backend", "weight": 10}}}}}}}, "tests": []map[string]any{{"host": "app.writer.example", "path": "/api/health", "service": "projects/writer-prod/global/backendServices/api-backend"}}, "fingerprint": "urlmap123"}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/disks":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"disks": []map[string]any{{"id": "disk-1", "name": "web-1", "selfLink": "projects/writer-prod/zones/us-central1-a/disks/web-1", "zone": "projects/writer-prod/zones/us-central1-a", "type": "projects/writer-prod/zones/us-central1-a/diskTypes/pd-balanced", "status": "READY", "sizeGb": "100", "users": []string{"projects/writer-prod/zones/us-central1-a/instances/web-1"}, "labels": map[string]string{"env": "prod"}, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/disk"}}}}}})
@@ -990,5 +990,12 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 	t.Helper()
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		t.Fatalf("encode response: %v", err)
+	}
+}
+
+func requireQuery(t *testing.T, r *http.Request, key, want, label string) {
+	t.Helper()
+	if got := r.URL.Query().Get(key); got != want {
+		t.Fatalf("%s %s = %q, want %s", label, key, got, want)
 	}
 }
