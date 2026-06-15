@@ -925,6 +925,161 @@ type ComputeInterconnectAttachmentRecord struct {
 	Raw                     json.RawMessage   `json:"-"`
 }
 
+type ComputeExternalVPNGatewayRecord struct {
+	ID             string                               `json:"id"`
+	Name           string                               `json:"name"`
+	SelfLink       string                               `json:"selfLink"`
+	Description    string                               `json:"description"`
+	RedundancyType string                               `json:"redundancyType"`
+	Interfaces     []ComputeExternalVPNGatewayInterface `json:"interfaces"`
+	Labels         map[string]string                    `json:"labels"`
+	Raw            json.RawMessage                      `json:"-"`
+}
+
+type ComputeExternalVPNGatewayInterface struct {
+	ID          int    `json:"id"`
+	IPAddress   string `json:"ipAddress"`
+	IPv6Address string `json:"ipv6Address"`
+}
+
+type ComputeInterconnectRecord struct {
+	ID                      string                      `json:"id"`
+	Name                    string                      `json:"name"`
+	SelfLink                string                      `json:"selfLink"`
+	Description             string                      `json:"description"`
+	Location                string                      `json:"location"`
+	RemoteLocation          string                      `json:"remoteLocation"`
+	LinkType                string                      `json:"linkType"`
+	InterconnectType        string                      `json:"interconnectType"`
+	RequestedLinkCount      int                         `json:"requestedLinkCount"`
+	ProvisionedLinkCount    int                         `json:"provisionedLinkCount"`
+	AdminEnabled            bool                        `json:"adminEnabled"`
+	OperationalStatus       string                      `json:"operationalStatus"`
+	State                   string                      `json:"state"`
+	InterconnectAttachments []string                    `json:"interconnectAttachments"`
+	PeerIPAddress           string                      `json:"peerIpAddress"`
+	GoogleIPAddress         string                      `json:"googleIpAddress"`
+	ExpectedOutages         []ComputeInterconnectOutage `json:"expectedOutages"`
+	Labels                  map[string]string           `json:"labels"`
+	SatisfiesPzs            bool                        `json:"satisfiesPzs"`
+	MACsec                  ComputeInterconnectMACsec   `json:"macsec"`
+	MACsecEnabled           bool                        `json:"macsecEnabled"`
+	RequestedFeatures       []string                    `json:"requestedFeatures"`
+	AvailableFeatures       []string                    `json:"availableFeatures"`
+	Raw                     json.RawMessage             `json:"-"`
+}
+
+type ComputeInterconnectOutage struct {
+	Name             string   `json:"name"`
+	State            string   `json:"state"`
+	IssueType        string   `json:"issueType"`
+	AffectedCircuits []string `json:"affectedCircuits"`
+}
+
+type ComputeInterconnectMACsec struct {
+	FailOpen bool `json:"failOpen"`
+}
+
+type ComputePacketMirroringRecord struct {
+	ID                string                          `json:"id"`
+	Name              string                          `json:"name"`
+	SelfLink          string                          `json:"selfLink"`
+	Description       string                          `json:"description"`
+	Region            string                          `json:"region"`
+	Network           ComputePacketMirroringReference `json:"network"`
+	Priority          int                             `json:"priority"`
+	CollectorILB      ComputePacketMirroringCollector `json:"collectorIlb"`
+	MirroredResources ComputePacketMirroringResources `json:"mirroredResources"`
+	Filter            ComputePacketMirroringFilter    `json:"filter"`
+	Enable            string                          `json:"enable"`
+	Raw               json.RawMessage                 `json:"-"`
+}
+
+type ComputePacketMirroringCollector struct {
+	URL          string `json:"url"`
+	CanonicalURL string `json:"canonicalUrl"`
+}
+
+type ComputePacketMirroringReference struct {
+	URL          string `json:"url"`
+	CanonicalURL string `json:"canonicalUrl"`
+}
+
+type ComputePacketMirroringResources struct {
+	Subnetworks []ComputePacketMirroringReference `json:"subnetworks"`
+	Instances   []ComputePacketMirroringReference `json:"instances"`
+	Tags        []string                          `json:"tags"`
+}
+
+type ComputePacketMirroringFilter struct {
+	CIDRRanges  []string `json:"cidrRanges"`
+	IPProtocols []string `json:"IPProtocols"`
+	Direction   string   `json:"direction"`
+}
+
+type ComputeNetworkFirewallPolicyRecord struct {
+	ID                   string                             `json:"id"`
+	Name                 string                             `json:"name"`
+	SelfLink             string                             `json:"selfLink"`
+	SelfLinkWithID       string                             `json:"selfLinkWithId"`
+	Description          string                             `json:"description"`
+	Region               string                             `json:"region"`
+	Parent               string                             `json:"parent"`
+	PolicyType           string                             `json:"policyType"`
+	ShortName            string                             `json:"shortName"`
+	DisplayName          string                             `json:"displayName"`
+	Rules                []ComputeFirewallPolicyRule        `json:"rules"`
+	PacketMirroringRules []ComputeFirewallPolicyRule        `json:"packetMirroringRules"`
+	Associations         []ComputeFirewallPolicyAssociation `json:"associations"`
+	RuleTupleCount       int                                `json:"ruleTupleCount"`
+	Raw                  json.RawMessage                    `json:"-"`
+}
+
+type ComputeFirewallPolicyRule struct {
+	RuleName              string                           `json:"ruleName"`
+	Description           string                           `json:"description"`
+	Priority              int                              `json:"priority"`
+	Action                string                           `json:"action"`
+	Direction             string                           `json:"direction"`
+	EnableLogging         bool                             `json:"enableLogging"`
+	Disabled              bool                             `json:"disabled"`
+	TargetResources       []string                         `json:"targetResources"`
+	TargetServiceAccounts []string                         `json:"targetServiceAccounts"`
+	TargetForwardingRules []string                         `json:"targetForwardingRules"`
+	SecurityProfileGroup  string                           `json:"securityProfileGroup"`
+	TLSInspect            bool                             `json:"tlsInspect"`
+	TargetType            string                           `json:"targetType"`
+	Match                 ComputeFirewallPolicyRuleMatcher `json:"match"`
+}
+
+type ComputeFirewallPolicyRuleMatcher struct {
+	SrcIPRanges     []string                            `json:"srcIpRanges"`
+	DestIPRanges    []string                            `json:"destIpRanges"`
+	Layer4Configs   []ComputeFirewallPolicyLayer4Config `json:"layer4Configs"`
+	SrcSecureTags   []ComputeFirewallPolicySecureTag    `json:"srcSecureTags"`
+	SrcNetworks     []string                            `json:"srcNetworks"`
+	SrcNetworkType  string                              `json:"srcNetworkType"`
+	DestNetworkType string                              `json:"destNetworkType"`
+}
+
+type ComputeFirewallPolicyLayer4Config struct {
+	IPProtocol string   `json:"ipProtocol"`
+	Ports      []string `json:"ports"`
+}
+
+type ComputeFirewallPolicySecureTag struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+}
+
+type ComputeFirewallPolicyAssociation struct {
+	Name             string `json:"name"`
+	AttachmentTarget string `json:"attachmentTarget"`
+	FirewallPolicyID string `json:"firewallPolicyId"`
+	ShortName        string `json:"shortName"`
+	DisplayName      string `json:"displayName"`
+}
+
 type ComputeHealthCheckRecord struct {
 	ID                 string                  `json:"id"`
 	Name               string                  `json:"name"`
@@ -1369,6 +1524,22 @@ func (record ComputeVPNTunnelRecord) CerebroResourceID() string {
 
 func (record ComputeInterconnectAttachmentRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeExternalVPNGatewayRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeInterconnectRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputePacketMirroringRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeNetworkFirewallPolicyRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.SelfLinkWithID, record.ID, record.Name)
 }
 
 func (record ComputeDiskRecord) CerebroResourceID() string {
@@ -2944,6 +3115,144 @@ func ComputeInterconnectAttachmentEvent(settings Settings, record ComputeInterco
 	return sourceEvent(settings, "gcp-compute-interconnect-attachment-"+resourceID, "gcp.compute_interconnect_attachment", "gcp/compute_interconnect_attachment/v1", payload, attributes)
 }
 
+func ComputeExternalVPNGatewayEvent(settings Settings, record ComputeExternalVPNGatewayRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	ipv4, ipv6 := computeExternalVPNGatewayInterfaceIPs(record.Interfaces)
+	attributes := cloudResourceAttributes(settings, "compute_external_vpn_gateway", resourceID, record.Name, "compute_external_vpn_gateway", "global", record.Labels)
+	attributes["description"] = record.Description
+	attributes["redundancy_type"] = record.RedundancyType
+	attributes["interfaces_count"] = strconv.Itoa(len(record.Interfaces))
+	attributes["interface_ips"] = strings.Join(ipv4, ",")
+	attributes["interface_ipv6_addresses"] = strings.Join(ipv6, ",")
+	attributes["public"] = boolString(len(ipv4) != 0 || len(ipv6) != 0)
+	attributes["external_exposure"] = boolString(len(ipv4) != 0 || len(ipv6) != 0)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-external-vpn-gateway-"+resourceID, "gcp.compute_external_vpn_gateway", "gcp/compute_external_vpn_gateway/v1", payload, attributes)
+}
+
+func ComputeInterconnectEvent(settings Settings, record ComputeInterconnectRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := "global"
+	attachments := lastPathSegments(record.InterconnectAttachments)
+	outages := computeInterconnectOutages(record.ExpectedOutages)
+	attributes := cloudResourceAttributes(settings, "compute_interconnect", resourceID, record.Name, "compute_interconnect", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["interconnect_location"] = lastPathSegment(record.Location)
+	attributes["interconnect_location_url"] = record.Location
+	attributes["remote_location"] = lastPathSegment(record.RemoteLocation)
+	attributes["remote_location_url"] = record.RemoteLocation
+	attributes["link_type"] = record.LinkType
+	attributes["interconnect_type"] = record.InterconnectType
+	attributes["admin_enabled"] = boolString(record.AdminEnabled)
+	attributes["operational_status"] = record.OperationalStatus
+	attributes["status"] = firstNonEmpty(record.OperationalStatus, record.State)
+	attributes["state"] = record.State
+	attributes["requested_link_count"] = strconv.Itoa(record.RequestedLinkCount)
+	attributes["provisioned_link_count"] = strconv.Itoa(record.ProvisionedLinkCount)
+	attributes["attachments"] = strings.Join(attachments, ",")
+	attributes["attachment_urls"] = strings.Join(record.InterconnectAttachments, ",")
+	attributes["attachments_count"] = strconv.Itoa(len(record.InterconnectAttachments))
+	attributes["peer_ip_address"] = record.PeerIPAddress
+	attributes["google_ip_address"] = record.GoogleIPAddress
+	attributes["expected_outages"] = strings.Join(outages, ",")
+	attributes["expected_outages_count"] = strconv.Itoa(len(record.ExpectedOutages))
+	attributes["macsec_enabled"] = boolString(record.MACsecEnabled)
+	attributes["macsec_fail_open"] = boolString(record.MACsec.FailOpen)
+	attributes["satisfies_pzs"] = boolString(record.SatisfiesPzs)
+	attributes["requested_features"] = strings.Join(record.RequestedFeatures, ",")
+	attributes["available_features"] = strings.Join(record.AvailableFeatures, ",")
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-interconnect-"+resourceID, "gcp.compute_interconnect", "gcp/compute_interconnect/v1", payload, attributes)
+}
+
+func ComputePacketMirroringEvent(settings Settings, record ComputePacketMirroringRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	network := computePacketMirroringReferenceURL(record.Network)
+	collector := firstNonEmpty(record.CollectorILB.CanonicalURL, record.CollectorILB.URL)
+	instances := computePacketMirroringReferenceURLs(record.MirroredResources.Instances)
+	subnetworks := computePacketMirroringReferenceURLs(record.MirroredResources.Subnetworks)
+	enabled := !strings.EqualFold(record.Enable, "FALSE") && !strings.EqualFold(record.Enable, "DISABLED")
+	attributes := cloudResourceAttributes(settings, "compute_packet_mirroring", resourceID, record.Name, "compute_packet_mirroring", location, nil)
+	attributes["description"] = record.Description
+	attributes["network"] = lastPathSegment(network)
+	attributes["network_url"] = network
+	attributes["priority"] = strconv.Itoa(record.Priority)
+	attributes["collector_ilb"] = lastPathSegment(collector)
+	attributes["collector_ilb_url"] = collector
+	attributes["mirrored_instances"] = strings.Join(lastPathSegments(instances), ",")
+	attributes["mirrored_instance_urls"] = strings.Join(instances, ",")
+	attributes["mirrored_subnetworks"] = strings.Join(lastPathSegments(subnetworks), ",")
+	attributes["mirrored_subnetwork_urls"] = strings.Join(subnetworks, ",")
+	attributes["mirrored_tags"] = strings.Join(record.MirroredResources.Tags, ",")
+	attributes["filter_cidr_ranges"] = strings.Join(record.Filter.CIDRRanges, ",")
+	attributes["filter_protocols"] = strings.Join(record.Filter.IPProtocols, ",")
+	attributes["filter_direction"] = record.Filter.Direction
+	attributes["enable"] = record.Enable
+	attributes["enabled"] = boolString(enabled)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-packet-mirroring-"+resourceID, "gcp.compute_packet_mirroring", "gcp/compute_packet_mirroring/v1", payload, attributes)
+}
+
+func computePacketMirroringReferenceURL(ref ComputePacketMirroringReference) string {
+	return firstNonEmpty(ref.CanonicalURL, ref.URL)
+}
+
+func computePacketMirroringReferenceURLs(refs []ComputePacketMirroringReference) []string {
+	urls := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if url := computePacketMirroringReferenceURL(ref); url != "" {
+			urls = append(urls, url)
+		}
+	}
+	return urls
+}
+
+func ComputeNetworkFirewallPolicyEvent(settings Settings, record ComputeNetworkFirewallPolicyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.SelfLinkWithID, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	summary := computeFirewallPolicyRuleSummary(record.Rules)
+	attributes := cloudResourceAttributes(settings, "compute_network_firewall_policy", resourceID, firstNonEmpty(record.DisplayName, record.ShortName, record.Name), "compute_network_firewall_policy", location, nil)
+	attributes["description"] = record.Description
+	attributes["policy_type"] = record.PolicyType
+	attributes["parent"] = record.Parent
+	attributes["short_name"] = record.ShortName
+	attributes["display_name"] = record.DisplayName
+	attributes["rules_count"] = strconv.Itoa(len(record.Rules))
+	attributes["packet_mirroring_rules_count"] = strconv.Itoa(len(record.PacketMirroringRules))
+	attributes["associations"] = strings.Join(computeFirewallPolicyAssociations(record.Associations), ",")
+	attributes["associations_count"] = strconv.Itoa(len(record.Associations))
+	attributes["rule_actions"] = strings.Join(summary.Actions, ",")
+	attributes["rule_priorities"] = strings.Join(summary.Priorities, ",")
+	attributes["source_ranges"] = strings.Join(summary.SourceRanges, ",")
+	attributes["destination_ranges"] = strings.Join(summary.DestinationRanges, ",")
+	attributes["layer4_configs"] = strings.Join(summary.Layer4Configs, ",")
+	attributes["target_resources"] = strings.Join(summary.TargetResources, ",")
+	attributes["target_service_accounts"] = strings.Join(summary.TargetServiceAccounts, ",")
+	attributes["logging_enabled"] = boolString(summary.LoggingEnabled)
+	attributes["disabled_rules_count"] = strconv.Itoa(summary.DisabledCount)
+	if record.RuleTupleCount != 0 {
+		attributes["rule_tuple_count"] = strconv.Itoa(record.RuleTupleCount)
+	}
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-network-firewall-policy-"+resourceID, "gcp.compute_network_firewall_policy", "gcp/compute_network_firewall_policy/v1", payload, attributes)
+}
+
 func ComputeHealthCheckEvent(settings Settings, record ComputeHealthCheckRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	location := lastPathSegment(record.Region)
@@ -4179,6 +4488,94 @@ func computeVPNGatewayInterfaceIPs(interfaces []ComputeVPNGatewayInterface) []st
 	for _, iface := range interfaces {
 		if iface.IPAddress != "" {
 			values = append(values, iface.IPAddress)
+		}
+	}
+	return values
+}
+
+func computeExternalVPNGatewayInterfaceIPs(interfaces []ComputeExternalVPNGatewayInterface) ([]string, []string) {
+	ipv4 := make([]string, 0, len(interfaces))
+	ipv6 := make([]string, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.IPAddress != "" {
+			ipv4 = append(ipv4, iface.IPAddress)
+		}
+		if iface.IPv6Address != "" {
+			ipv6 = append(ipv6, iface.IPv6Address)
+		}
+	}
+	return ipv4, ipv6
+}
+
+func computeInterconnectOutages(outages []ComputeInterconnectOutage) []string {
+	values := make([]string, 0, len(outages))
+	for _, outage := range outages {
+		label := firstNonEmpty(outage.Name, outage.IssueType, outage.State)
+		if label == "" {
+			continue
+		}
+		if outage.State != "" && outage.State != label {
+			label += ":" + outage.State
+		}
+		values = append(values, label)
+	}
+	return values
+}
+
+type firewallPolicyRuleSummary struct {
+	Actions               []string
+	Priorities            []string
+	SourceRanges          []string
+	DestinationRanges     []string
+	Layer4Configs         []string
+	TargetResources       []string
+	TargetServiceAccounts []string
+	LoggingEnabled        bool
+	DisabledCount         int
+}
+
+func computeFirewallPolicyRuleSummary(rules []ComputeFirewallPolicyRule) firewallPolicyRuleSummary {
+	var summary firewallPolicyRuleSummary
+	for _, rule := range rules {
+		if rule.Action != "" {
+			summary.Actions = append(summary.Actions, rule.Action)
+		}
+		if rule.Priority != 0 {
+			summary.Priorities = append(summary.Priorities, strconv.Itoa(rule.Priority))
+		}
+		summary.SourceRanges = append(summary.SourceRanges, rule.Match.SrcIPRanges...)
+		summary.DestinationRanges = append(summary.DestinationRanges, rule.Match.DestIPRanges...)
+		summary.TargetResources = append(summary.TargetResources, lastPathSegments(rule.TargetResources)...)
+		summary.TargetServiceAccounts = append(summary.TargetServiceAccounts, rule.TargetServiceAccounts...)
+		summary.Layer4Configs = append(summary.Layer4Configs, computeFirewallPolicyLayer4Configs(rule.Match.Layer4Configs)...)
+		summary.LoggingEnabled = summary.LoggingEnabled || rule.EnableLogging
+		if rule.Disabled {
+			summary.DisabledCount++
+		}
+	}
+	return summary
+}
+
+func computeFirewallPolicyLayer4Configs(configs []ComputeFirewallPolicyLayer4Config) []string {
+	values := make([]string, 0, len(configs))
+	for _, config := range configs {
+		if config.IPProtocol == "" {
+			continue
+		}
+		if len(config.Ports) == 0 {
+			values = append(values, config.IPProtocol)
+			continue
+		}
+		values = append(values, config.IPProtocol+":"+strings.Join(config.Ports, "|"))
+	}
+	return values
+}
+
+func computeFirewallPolicyAssociations(associations []ComputeFirewallPolicyAssociation) []string {
+	values := make([]string, 0, len(associations))
+	for _, association := range associations {
+		if label := firstNonEmpty(association.DisplayName, association.ShortName, association.Name, lastPathSegment(association.AttachmentTarget)); label != "" {
+			values = append(values, label)
 		}
 	}
 	return values

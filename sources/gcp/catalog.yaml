@@ -21,6 +21,7 @@ emitted_kinds:
   - gcp.compute_backend_bucket
   - gcp.compute_backend_service
   - gcp.compute_disk
+  - gcp.compute_external_vpn_gateway
   - gcp.compute_firewall
   - gcp.compute_forwarding_rule
   - gcp.compute_health_check
@@ -28,9 +29,12 @@ emitted_kinds:
   - gcp.compute_instance_group
   - gcp.compute_instance_group_manager
   - gcp.compute_instance_template
+  - gcp.compute_interconnect
   - gcp.compute_interconnect_attachment
   - gcp.compute_network_endpoint_group
+  - gcp.compute_network_firewall_policy
   - gcp.compute_network
+  - gcp.compute_packet_mirroring
   - gcp.compute_route
   - gcp.compute_router
   - gcp.compute_security_policy
@@ -88,6 +92,7 @@ runtime_families:
   - compute_backend_bucket
   - compute_backend_service
   - compute_disk
+  - compute_external_vpn_gateway
   - compute_firewall
   - compute_forwarding_rule
   - compute_health_check
@@ -95,9 +100,12 @@ runtime_families:
   - compute_instance_group
   - compute_instance_group_manager
   - compute_instance_template
+  - compute_interconnect
   - compute_interconnect_attachment
   - compute_network_endpoint_group
+  - compute_network_firewall_policy
   - compute_network
+  - compute_packet_mirroring
   - compute_route
   - compute_router
   - compute_security_policy
@@ -235,6 +243,12 @@ coverage_contract:
       families: [compute_disk]
       support: supported
       high_value: true
+    - id: compute_external_vpn_gateway
+      type: entity_family
+      title: Compute external VPN gateways
+      families: [compute_external_vpn_gateway]
+      support: supported
+      high_value: true
     - id: compute_firewall
       type: entity_family
       title: Compute firewall rules
@@ -277,6 +291,12 @@ coverage_contract:
       families: [compute_instance_template]
       support: supported
       high_value: true
+    - id: compute_interconnect
+      type: entity_family
+      title: Compute interconnects
+      families: [compute_interconnect]
+      support: supported
+      high_value: true
     - id: compute_interconnect_attachment
       type: entity_family
       title: Compute interconnect attachments
@@ -293,6 +313,18 @@ coverage_contract:
       type: entity_family
       title: Compute networks
       families: [compute_network]
+      support: supported
+      high_value: true
+    - id: compute_network_firewall_policy
+      type: entity_family
+      title: Compute network firewall policies
+      families: [compute_network_firewall_policy]
+      support: supported
+      high_value: true
+    - id: compute_packet_mirroring
+      type: entity_family
+      title: Compute packet mirrorings
+      families: [compute_packet_mirroring]
       support: supported
       high_value: true
     - id: compute_route
