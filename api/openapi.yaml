@@ -199,6 +199,63 @@ paths:
       responses:
         '200':
           description: Public RSA-OAEP key metadata used to encrypt connector credentials before submission.
+  /connectors/{sourceID}/preflight:
+    post:
+      summary: Preflight a connector runtime without persisting it
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - runtime_id
+                - tenant_id
+              properties:
+                runtime_id:
+                  type: string
+                tenant_id:
+                  type: string
+                auth_method:
+                  type: string
+                  enum:
+                    - encrypted_submission
+                    - aws_sso_profile
+                    - infisical_cli
+                    - environment_managed
+                    - external_reference
+                credential_store_id:
+                  type: string
+                  enum:
+                    - cerebro_vault
+                    - environment_managed
+                    - infisical
+                    - google_secret_manager
+                    - aws_secrets_manager
+                    - azure_key_vault
+                    - hashicorp_vault
+                config:
+                  type: object
+                  additionalProperties:
+                    type: string
+                credential_references:
+                  type: object
+                  description: Non-secret credential references for environment-managed or external-reference methods.
+                  additionalProperties:
+                    type: string
+                scope_policy:
+                  type: object
+                  description: Non-secret connector scope policy previewed before source validation.
+                encrypted_credentials:
+                  type: object
+                  description: Required only when auth_method is encrypted_submission. The response never returns secret values.
+      responses:
+        '200':
+          description: Provider-neutral readiness checks, credential-boundary summary, and source-time resource scope preview. Status is ready, warning, or blocked; blocked preflight checks are returned as data without persisting credentials or runtimes.
   /connectors/{sourceID}/connections:
     post:
       summary: Create a credentialed connector runtime

@@ -255,6 +255,48 @@ type connectorConnectionRequest struct {
 	EncryptedCredentials connectorcredentials.EncryptedPayload `json:"encrypted_credentials"`
 }
 
+type connectorPreflightResponse struct {
+	GeneratedAt        string                          `json:"generated_at"`
+	SourceID           string                          `json:"source_id"`
+	RuntimeID          string                          `json:"runtime_id,omitempty"`
+	TenantID           string                          `json:"tenant_id,omitempty"`
+	AuthMethod         string                          `json:"auth_method,omitempty"`
+	CredentialStoreID  string                          `json:"credential_store_id,omitempty"`
+	Status             string                          `json:"status"`
+	Summary            string                          `json:"summary"`
+	NextAction         string                          `json:"next_action"`
+	Checks             []connectorPreflightCheckView   `json:"checks"`
+	ScopePreview       connectorScopePreviewView       `json:"scope_preview"`
+	CredentialBoundary connectorCredentialBoundaryView `json:"credential_boundary"`
+}
+
+type connectorPreflightCheckView struct {
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	Status     string `json:"status"`
+	Severity   string `json:"severity"`
+	Detail     string `json:"detail,omitempty"`
+	NextAction string `json:"next_action,omitempty"`
+	Blocking   bool   `json:"blocking,omitempty"`
+}
+
+type connectorScopePreviewView struct {
+	Mode                   string   `json:"mode,omitempty"`
+	AvailableResourceTypes int      `json:"available_resource_types"`
+	DisabledResourceTypes  int      `json:"disabled_resource_types"`
+	EnabledResourceTypes   int      `json:"enabled_resource_types"`
+	ExcludedFamilies       []string `json:"excluded_families,omitempty"`
+	ExactResourceCount     int      `json:"exact_resource_count"`
+}
+
+type connectorCredentialBoundaryView struct {
+	Mode           string   `json:"mode,omitempty"`
+	StoreID        string   `json:"credential_store_id,omitempty"`
+	SendsSecrets   bool     `json:"sends_secrets"`
+	ReferenceOnly  bool     `json:"reference_only"`
+	FieldsAccepted []string `json:"fields_accepted,omitempty"`
+}
+
 type connectorConnectionResponse struct {
 	SourceID    string                  `json:"source_id"`
 	Runtime     json.RawMessage         `json:"runtime"`
@@ -415,6 +457,25 @@ func (a *App) handleConnectorCredentialKey(w http.ResponseWriter, _ *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, a.connectorTransitKey.PublicKey())
+}
+
+func (a *App) handlePreflightConnectorConnection(w http.ResponseWriter, r *http.Request) {
+	request := connectorConnectionRequest{}
+	if err := readConnectorJSON(r, &request); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	if sourceID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	response, err := a.connectorConnectionPreflight(r.Context(), sourceID, request)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Request) {
@@ -579,6 +640,260 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		Credential:  credential,
 		ScopePolicy: connectorScopePolicyPtr(scopePolicy),
 	})
+}
+
+func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string, request connectorConnectionRequest) (connectorPreflightResponse, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	tenantID := strings.TrimSpace(request.TenantID)
+	response := connectorPreflightResponse{
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		SourceID:    sourceID,
+		RuntimeID:   runtimeID,
+		TenantID:    tenantID,
+		Status:      "blocked",
+		Summary:     "Preflight has not completed.",
+		NextAction:  "fix_blocking_checks",
+	}
+	source, err := a.connectorSource(sourceID)
+	if err != nil {
+		return response, err
+	}
+	response.addPreflightCheck(connectorPreflightCheckView{
+		ID:       "source",
+		Label:    "Connector source",
+		Status:   "passed",
+		Severity: "success",
+		Detail:   "Source is registered and can run the standard check contract.",
+	})
+	if runtimeID == "" || tenantID == "" {
+		response.addPreflightCheck(connectorPreflightCheckView{
+			ID:         "runtime_identity",
+			Label:      "Runtime identity",
+			Status:     "blocked",
+			Severity:   "error",
+			Detail:     "Runtime ID and tenant ID are required before preflight can validate access.",
+			NextAction: "set_runtime_and_tenant",
+			Blocking:   true,
+		})
+		response.finalizePreflight()
+		return response, nil
+	}
+	response.addPreflightCheck(connectorPreflightCheckView{
+		ID:       "runtime_identity",
+		Label:    "Runtime identity",
+		Status:   "passed",
+		Severity: "success",
+		Detail:   "Runtime ID and tenant scope are present.",
+	})
+
+	authMethod := normalizeConnectorAuthMethod(request.AuthMethod)
+	response.AuthMethod = authMethod
+	credentialStoreID, credentialStoreIssue := normalizeConnectorCredentialStoreID(request.CredentialStoreID, authMethod)
+	if credentialStoreIssue != nil {
+		response.addPreflightCheck(connectorPreflightCheckView{
+			ID:         "auth_method",
+			Label:      "Authentication method",
+			Status:     "blocked",
+			Severity:   "error",
+			Detail:     connectorPreflightValidationDetail(credentialStoreIssue, "Selected authentication method and credential store are not compatible."),
+			NextAction: "choose_supported_method",
+			Blocking:   true,
+		})
+		response.finalizePreflight()
+		return response, nil
+	}
+	response.CredentialStoreID = credentialStoreID
+	response.addPreflightCheck(connectorPreflightCheckView{
+		ID:       "auth_method",
+		Label:    "Authentication method",
+		Status:   "passed",
+		Severity: "success",
+		Detail:   "Selected method is supported for this connector.",
+	})
+	store, storeOK := a.connectorPreflightStore(credentialStoreID)
+	if !storeOK || !store.Available {
+		response.addPreflightCheck(connectorPreflightCheckView{
+			ID:         "credential_store",
+			Label:      "Credential store",
+			Status:     "blocked",
+			Severity:   "error",
+			Detail:     "Selected credential store is not available in this deployment.",
+			NextAction: "choose_ready_store",
+			Blocking:   true,
+		})
+		response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+		response.finalizePreflight()
+		return response, nil
+	}
+	response.addPreflightCheck(connectorPreflightCheckView{
+		ID:       "credential_store",
+		Label:    "Credential store",
+		Status:   "passed",
+		Severity: "success",
+		Detail:   store.Label + " is available.",
+	})
+
+	runtimeConfig, configIssue := connectorRuntimeConfig(request.Config)
+	if configIssue != nil {
+		response.addPreflightCheck(connectorPreflightCheckView{
+			ID:         "config_shape",
+			Label:      "Config and secret boundary",
+			Status:     "blocked",
+			Severity:   "error",
+			Detail:     connectorPreflightValidationDetail(configIssue, "Runtime config contains unsupported internal or sensitive plaintext fields."),
+			NextAction: "fix_config_fields",
+			Blocking:   true,
+		})
+		response.finalizePreflight()
+		return response, nil
+	}
+	if referenceIssue := applyConnectorCredentialReferences(runtimeConfig, request.CredentialReferences); referenceIssue != nil {
+		response.addPreflightCheck(connectorPreflightCheckView{
+			ID:         "config_shape",
+			Label:      "Config and secret boundary",
+			Status:     "blocked",
+			Severity:   "error",
+			Detail:     connectorPreflightValidationDetail(referenceIssue, "Credential references must point to server-resolvable secret references."),
+			NextAction: "fix_credential_references",
+			Blocking:   true,
+		})
+		response.finalizePreflight()
+		return response, nil
+	}
+	scopePolicy, scopeIssue := connectorScopePolicy(request.ScopePolicy)
+	if scopeIssue != nil {
+		response.addPreflightCheck(connectorPreflightCheckView{
+			ID:         "scope_policy",
+			Label:      "Resource scope policy",
+			Status:     "blocked",
+			Severity:   "error",
+			Detail:     connectorPreflightValidationDetail(scopeIssue, "Resource scope policy is not valid."),
+			NextAction: "fix_scope_policy",
+			Blocking:   true,
+		})
+		response.finalizePreflight()
+		return response, nil
+	}
+	response.ScopePreview = a.connectorScopePreview(sourceID, source, scopePolicy)
+	response.addPreflightCheck(connectorPreflightScopeCheck(response.ScopePreview))
+	if !scopePolicy.Empty() {
+		scopeConfigValue, scopeConfigIssue := resourcescope.ConfigValue(scopePolicy)
+		if scopeConfigIssue != nil {
+			response.addPreflightCheck(connectorPreflightCheckView{
+				ID:         "scope_policy",
+				Label:      "Resource scope policy",
+				Status:     "blocked",
+				Severity:   "error",
+				Detail:     connectorPreflightValidationDetail(scopeConfigIssue, "Resource scope policy cannot be stored on the runtime."),
+				NextAction: "fix_scope_policy",
+				Blocking:   true,
+			})
+			response.finalizePreflight()
+			return response, nil
+		}
+		runtimeConfig[resourcescope.ConfigKey] = scopeConfigValue
+	}
+	if shapeIssue := validateConnectorConnectionShape(sourceID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); shapeIssue != nil {
+		response.addPreflightCheck(connectorPreflightCheckView{
+			ID:         "config_shape",
+			Label:      "Config and secret boundary",
+			Status:     "blocked",
+			Severity:   "error",
+			Detail:     connectorPreflightValidationDetail(shapeIssue, "Required config, credentials, or references are missing or unsupported."),
+			NextAction: "fix_required_fields",
+			Blocking:   true,
+		})
+		response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, sortedStringKeys(request.CredentialReferences))
+		response.finalizePreflight()
+		return response, nil
+	}
+	response.addPreflightCheck(connectorPreflightCheckView{
+		ID:       "config_shape",
+		Label:    "Config and secret boundary",
+		Status:   "passed",
+		Severity: "success",
+		Detail:   "Config fields match the connector contract and secret material stays out of runtime config.",
+	})
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       runtimeID,
+		SourceId: sourceID,
+		TenantId: tenantID,
+		Config:   runtimeConfig,
+	}
+	if err := authorizePutSourceRuntimeTenant(ctx, sourceRuntimeStore(a.deps.StateStore), runtime); err != nil {
+		return response, err
+	}
+	plaintextFields := map[string]string(nil)
+	fieldNames := sortedStringKeys(request.CredentialReferences)
+	if authMethod == connectorAuthMethodEncryptedSubmission {
+		if a == nil || a.connectorTransitKey == nil {
+			response.addPreflightCheck(connectorPreflightCheckView{
+				ID:         "credential_transport",
+				Label:      "Credential encryption",
+				Status:     "blocked",
+				Severity:   "error",
+				Detail:     "Credential transit key is unavailable.",
+				NextAction: "configure_credential_transport",
+				Blocking:   true,
+			})
+			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.finalizePreflight()
+			return response, nil
+		}
+		decrypted, decryptIssue := a.connectorTransitKey.DecryptWithExactAdditionalData(
+			request.EncryptedCredentials,
+			connectorCredentialAdditionalData(request.EncryptedCredentials.KeyID, sourceID, tenantID, runtimeID, credentialStoreID),
+		)
+		if decryptIssue != nil {
+			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(decryptIssue, "Encrypted credential payload could not be opened."), "fix_encrypted_payload"))
+			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.finalizePreflight()
+			return response, nil
+		}
+		fields, parseIssue := connectorcredentials.ParseCredentialFields(decrypted)
+		if parseIssue != nil {
+			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(parseIssue, "Encrypted credential payload is not a valid credential field map."), "fix_encrypted_payload"))
+			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.finalizePreflight()
+			return response, nil
+		}
+		if credentialIssue := validateConnectorCredentialFields(sourceID, authMethod, fields); credentialIssue != nil {
+			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(credentialIssue, "Credential fields do not match the connector contract."), "fix_credential_fields"))
+			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, connectorcredentials.SortedFieldNames(fields))
+			response.finalizePreflight()
+			return response, nil
+		}
+		plaintextFields = fields
+		fieldNames = connectorcredentials.SortedFieldNames(fields)
+	}
+	response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, fieldNames)
+	response.addPreflightCheck(connectorPreflightCredentialPassed(authMethod))
+	for _, check := range connectorProviderPreflightChecks(sourceID, authMethod, runtimeConfig, scopePolicy) {
+		response.addPreflightCheck(check)
+	}
+	if sourceCheckIssue := a.checkConnectorRuntime(ctx, runtime, plaintextFields); sourceCheckIssue != nil {
+		response.addPreflightCheck(connectorPreflightCheckView{
+			ID:         "source_check",
+			Label:      "Source validation",
+			Status:     "blocked",
+			Severity:   "error",
+			Detail:     connectorPreflightErrorDetail(sourceCheckIssue),
+			NextAction: "fix_source_access",
+			Blocking:   true,
+		})
+		response.finalizePreflight()
+		return response, nil
+	}
+	response.addPreflightCheck(connectorPreflightCheckView{
+		ID:       "source_check",
+		Label:    "Source validation",
+		Status:   "passed",
+		Severity: "success",
+		Detail:   "Source check passed with the resolved runtime configuration.",
+	})
+	response.finalizePreflight()
+	return response, nil
 }
 
 func (a *App) connectorRuntimeCatalog(r *http.Request, tenantID string) ([]*cerebrov1.SourceRuntime, string) {
@@ -754,6 +1069,238 @@ func connectorScopePolicyPtr(policy resourcescope.Policy) *resourcescope.Policy 
 	}
 	cloned := policy
 	return &cloned
+}
+
+func (r *connectorPreflightResponse) addPreflightCheck(check connectorPreflightCheckView) {
+	if check.Status == "" {
+		check.Status = "passed"
+	}
+	if check.Severity == "" {
+		switch check.Status {
+		case "blocked":
+			check.Severity = "error"
+		case "warning":
+			check.Severity = "warning"
+		default:
+			check.Severity = "info"
+		}
+	}
+	if check.Status == "blocked" {
+		check.Blocking = true
+	}
+	r.Checks = append(r.Checks, check)
+}
+
+func (r *connectorPreflightResponse) finalizePreflight() {
+	blocked := 0
+	warnings := 0
+	for _, check := range r.Checks {
+		switch check.Status {
+		case "blocked":
+			blocked++
+		case "warning":
+			warnings++
+		}
+	}
+	switch {
+	case blocked > 0:
+		r.Status = "blocked"
+		r.Summary = "Preflight found blocking setup issues."
+		r.NextAction = "fix_blocking_checks"
+	case warnings > 0:
+		r.Status = "warning"
+		r.Summary = "Preflight passed with warnings to review."
+		r.NextAction = "review_warnings_then_save"
+	default:
+		r.Status = "ready"
+		r.Summary = "Preflight passed. This connection is ready to save."
+		r.NextAction = "save_connection"
+	}
+}
+
+func (a *App) connectorPreflightStore(storeID string) (connectorStoreView, bool) {
+	transport := connectorTransportView{Available: a != nil && a.connectorTransitKey != nil}
+	if a != nil && a.connectorTransitKey != nil {
+		transport.Algorithm = a.connectorTransitKey.PublicKey().Algorithm
+		transport.KeyURL = "/connectors/credential-key"
+	}
+	vaultStatus := connectorVaultStatus(config.ConnectorCredentialConfig{}, nil)
+	if a != nil {
+		vaultStatus = connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore)
+	}
+	for _, store := range connectorStoreViews(vaultStatus, transport) {
+		if store.ID == strings.TrimSpace(storeID) {
+			return store, true
+		}
+	}
+	return connectorStoreView{}, false
+}
+
+func (a *App) connectorScopePreview(sourceID string, source sourcecdk.Source, policy resourcescope.Policy) connectorScopePreviewView {
+	kinds := []string{}
+	if source != nil && source.Spec() != nil {
+		kinds = source.Spec().GetEmittedKinds()
+	}
+	options := a.connectorScopeOptions(sourceID, kinds)
+	disabled := 0
+	for _, option := range options {
+		for _, family := range option.Families {
+			if connectorScopePreviewFamilyExcluded(sourceID, family, policy) {
+				disabled++
+				break
+			}
+		}
+	}
+	preview := connectorScopePreviewView{
+		AvailableResourceTypes: len(options),
+		DisabledResourceTypes:  disabled,
+		EnabledResourceTypes:   len(options) - disabled,
+		ExactResourceCount:     len(policy.ExcludedResourceURNs) + len(policy.ExcludedResources),
+	}
+	if !policy.Empty() {
+		preview.Mode = resourcescope.ModeExclude
+		preview.ExcludedFamilies = append([]string{}, policy.ExcludedFamilies...)
+	}
+	return preview
+}
+
+func connectorScopePreviewFamilyExcluded(sourceID string, family string, policy resourcescope.Policy) bool {
+	if policy.ExcludesFamily(sourceID, family) {
+		return true
+	}
+	normalized := strings.ToLower(strings.TrimSpace(family))
+	for _, values := range [][]string{policy.ExcludedFamilies, policy.ExcludedAssetClasses, policy.ExcludedKinds} {
+		for _, value := range values {
+			if strings.EqualFold(value, normalized) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func connectorPreflightScopeCheck(preview connectorScopePreviewView) connectorPreflightCheckView {
+	if preview.DisabledResourceTypes == 0 && preview.ExactResourceCount == 0 {
+		return connectorPreflightCheckView{
+			ID:       "scope_policy",
+			Label:    "Resource scope policy",
+			Status:   "passed",
+			Severity: "success",
+			Detail:   "All advertised resource types remain in scope.",
+		}
+	}
+	return connectorPreflightCheckView{
+		ID:       "scope_policy",
+		Label:    "Resource scope policy",
+		Status:   "warning",
+		Severity: "warning",
+		Detail:   "Some resource types or exact resources are excluded before collection or projection.",
+	}
+}
+
+func connectorPreflightCredentialBoundary(authMethod string, storeID string, fields []string) connectorCredentialBoundaryView {
+	authMethod = normalizeConnectorAuthMethod(authMethod)
+	return connectorCredentialBoundaryView{
+		Mode:           authMethod,
+		StoreID:        strings.TrimSpace(storeID),
+		SendsSecrets:   authMethod == connectorAuthMethodEncryptedSubmission,
+		ReferenceOnly:  authMethod != connectorAuthMethodEncryptedSubmission,
+		FieldsAccepted: append([]string{}, fields...),
+	}
+}
+
+func connectorPreflightCredentialCheck(detail string, nextAction string) connectorPreflightCheckView {
+	return connectorPreflightCheckView{
+		ID:         "credential_boundary",
+		Label:      "Credential boundary",
+		Status:     "blocked",
+		Severity:   "error",
+		Detail:     detail,
+		NextAction: nextAction,
+		Blocking:   true,
+	}
+}
+
+func connectorPreflightCredentialPassed(authMethod string) connectorPreflightCheckView {
+	if normalizeConnectorAuthMethod(authMethod) == connectorAuthMethodEncryptedSubmission {
+		return connectorPreflightCheckView{
+			ID:       "credential_boundary",
+			Label:    "Credential boundary",
+			Status:   "passed",
+			Severity: "success",
+			Detail:   "Encrypted credential payload opened successfully and will not be returned by connector reads.",
+		}
+	}
+	return connectorPreflightCheckView{
+		ID:       "credential_boundary",
+		Label:    "Credential boundary",
+		Status:   "passed",
+		Severity: "success",
+		Detail:   "Only server-resolvable credential references are submitted for this method.",
+	}
+}
+
+func connectorProviderPreflightChecks(sourceID string, authMethod string, config map[string]string, policy resourcescope.Policy) []connectorPreflightCheckView {
+	switch strings.TrimSpace(sourceID) {
+	case "aws":
+		checks := []connectorPreflightCheckView{}
+		if authMethod == connectorAuthMethodAWSSSOProfile || strings.TrimSpace(config["role_arn"]) != "" {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:       "aws_access_model",
+				Label:    "AWS access model",
+				Status:   "passed",
+				Severity: "success",
+				Detail:   "AWS access uses a role or deployment-managed SSO profile.",
+			})
+		} else {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:         "aws_access_model",
+				Label:      "AWS access model",
+				Status:     "warning",
+				Severity:   "warning",
+				Detail:     "Prefer AWS SSO or role assumption over long-lived access keys for production connections.",
+				NextAction: "prefer_role_or_sso",
+			})
+		}
+		if policy.ExcludesFamily("aws", "organizations_account") {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:       "aws_organizations_scope",
+				Label:    "AWS Organizations coverage",
+				Status:   "warning",
+				Severity: "warning",
+				Detail:   "Organizations families are scoped out, so account and OU discovery will be skipped.",
+			})
+		}
+		return checks
+	default:
+		return nil
+	}
+}
+
+func connectorPreflightErrorDetail(err error) string {
+	switch {
+	case errors.Is(err, sourceruntime.ErrInvalidRequest),
+		errors.Is(err, sourcecdk.ErrInvalidConfig),
+		errors.Is(err, connectorcredentials.ErrInvalidRequest):
+		return "Source rejected the resolved runtime configuration."
+	case errors.Is(err, connectorcredentials.ErrUnavailable),
+		errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
+		return "A backend dependency needed for source validation is unavailable."
+	default:
+		return "Source validation did not pass."
+	}
+}
+
+func connectorPreflightValidationDetail(issue error, fallback string) string {
+	switch {
+	case issue == nil:
+		return fallback
+	case errors.Is(issue, connectorcredentials.ErrUnavailable),
+		errors.Is(issue, sourceruntime.ErrRuntimeUnavailable):
+		return fallback + " A backend dependency needed for validation is unavailable."
+	default:
+		return fallback
+	}
 }
 
 func (a *App) connectorHealthForSource(r *http.Request, sourceID string, tenantID string) (sourceRuntimeHealthResponse, error) {

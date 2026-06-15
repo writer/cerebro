@@ -38,6 +38,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Exact: "/connectors/credential-key", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/connectors/", Suffix: "/activity", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/connectors/", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/preflight", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/connections", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/reports", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Exact: "/finding-rules", Scope: scopeCosmoSecurityRead},
