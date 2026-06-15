@@ -606,6 +606,194 @@ func TestRunRiskDeltaReportRejectsCrossTenantTargetURN(t *testing.T) {
 	}
 }
 
+func TestRunRiskActionPlanReportRanksSimulatedRemediations(t *testing.T) {
+	findingStore := &stubFindingStore{
+		findings: []*ports.FindingRecord{
+			{
+				ID:           "cloud-public-prod-secrets",
+				TenantID:     "writer",
+				RuntimeID:    "writer-aws",
+				RuleID:       "cloud-public-resource-exposure",
+				Title:        "Cloud Public Resource Exposure",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				FindingWorkflow: ports.FindingWorkflow{
+					Assignee: "cloud-platform",
+				},
+				FindingRisk: ports.FindingRisk{
+					RiskScore:       90,
+					ConfidenceScore: 92,
+					RiskReasons:     []string{"external_exposure", "crown_jewel"},
+					RiskFactors: []ports.FindingRiskFactor{
+						{FactorID: "external_exposure", Category: "likelihood", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:internet_exposed"}},
+						{FactorID: "crown_jewel", Category: "impact", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:crown_jewel"}},
+					},
+				},
+				Attributes: map[string]string{
+					"action":               "public_network_ingress",
+					"crown_jewel":          "true",
+					"internet_exposed":     "true",
+					"primary_resource_urn": "urn:cerebro:writer:aws_secret_store:prod-secrets",
+					"resource_name":        "prod-secrets",
+				},
+			},
+			{
+				ID:           "repo-kev-package",
+				TenantID:     "writer",
+				RuntimeID:    "writer-github",
+				RuleID:       "vulnerability-known-exploited",
+				Title:        "Known exploited dependency",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:github_repository:payments-api"},
+				FindingRisk: ports.FindingRisk{
+					RiskScore:       78,
+					ConfidenceScore: 88,
+					RiskReasons:     []string{"known_exploited", "cvss_high"},
+					RiskFactors: []ports.FindingRiskFactor{
+						{FactorID: "known_exploited", Category: "likelihood", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:is_kev"}},
+					},
+				},
+				Attributes: map[string]string{
+					"cvss_score":           "8.7",
+					"is_kev":               "true",
+					"package":              "example-lib",
+					"primary_resource_urn": "urn:cerebro:writer:github_repository:payments-api",
+				},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{
+		neighborhoods: map[string]*ports.EntityNeighborhood{
+			"urn:cerebro:writer:aws_secret_store:prod-secrets": {
+				Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+				Neighbors: []*ports.NeighborhoodNode{
+					{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
+					{URN: "urn:cerebro:writer:finding:cloud-public-prod-secrets", EntityType: "finding", Label: "cloud-public-prod-secrets"},
+				},
+				Relations: []*ports.NeighborhoodRelation{
+					{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets"},
+					{FromURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:cloud-public-prod-secrets"},
+				},
+			},
+			"urn:cerebro:writer:github_repository:payments-api": {
+				Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:github_repository:payments-api", EntityType: "github.repository", Label: "payments-api"},
+			},
+		},
+	}
+	service := New(findingStore, graphStore, &stubReportStore{})
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: riskActionPlanReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:       "writer",
+			reportParameterRuntimeIDs:     "writer-aws, writer-github",
+			reportParameterCandidateLimit: "2",
+			reportParameterResourceLimit:  "2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if findingStore.request.RuntimeID != "" {
+		t.Fatalf("ListFindings().RuntimeID = %q, want empty for multi-runtime request", findingStore.request.RuntimeID)
+	}
+	if got := findingStore.request.RuntimeIDs; len(got) != 2 || got[0] != "writer-aws" || got[1] != "writer-github" {
+		t.Fatalf("ListFindings().RuntimeIDs = %#v, want both runtimes", got)
+	}
+	result := response.GetRun().GetResult().AsMap()
+	if got := result["graph_evidence_status"]; got != graphEvidenceStatusIncluded {
+		t.Fatalf("graph_evidence_status = %#v, want included", got)
+	}
+	if got := result["graph_neighborhood_count"]; got != float64(2) {
+		t.Fatalf("graph_neighborhood_count = %#v, want 2", got)
+	}
+	candidates, ok := result["action_candidates"].([]any)
+	if !ok || len(candidates) != 2 {
+		t.Fatalf("action_candidates = %#v, want 2 entries", result["action_candidates"])
+	}
+	topCandidate, ok := candidates[0].(map[string]any)
+	if !ok {
+		t.Fatalf("top candidate = %#v, want object", candidates[0])
+	}
+	if got := topCandidate["scenario_type"]; got != findinganalysis.RiskDeltaScenarioRemovePublicExposure {
+		t.Fatalf("top scenario_type = %#v, want remove_public_exposure", got)
+	}
+	if got := topCandidate["target_urn"]; got != "urn:cerebro:writer:aws_secret_store:prod-secrets" {
+		t.Fatalf("top target_urn = %#v, want prod secrets", got)
+	}
+	if got := topCandidate["owner"]; got != "cloud-platform" {
+		t.Fatalf("top owner = %#v, want cloud-platform", got)
+	}
+	if got := topCandidate["expected_risk_score_reduction"]; got.(float64) <= 0 {
+		t.Fatalf("expected risk reduction = %#v, want positive", got)
+	}
+	if got := topCandidate["expected_attack_path_score_reduction"]; got.(float64) <= 0 {
+		t.Fatalf("expected attack path reduction = %#v, want positive", got)
+	}
+	riskDelta, ok := topCandidate["risk_delta"].(map[string]any)
+	if !ok {
+		t.Fatalf("risk_delta = %#v, want object", topCandidate["risk_delta"])
+	}
+	removedPaths, ok := riskDelta["removed_attack_paths"].([]any)
+	if !ok || len(removedPaths) == 0 {
+		t.Fatalf("risk_delta.removed_attack_paths = %#v, want removed public path", riskDelta["removed_attack_paths"])
+	}
+	if got := response.GetRun().GetParameters()[reportParameterCandidateLimit]; got != "2" {
+		t.Fatalf("stored candidate_limit = %q, want 2", got)
+	}
+}
+
+func TestRunRiskActionPlanReportWithoutGraphStoreUsesFindingSignals(t *testing.T) {
+	findingStore := &stubFindingStore{
+		findings: []*ports.FindingRecord{
+			{
+				ID:           "repo-kev-package",
+				TenantID:     "writer",
+				RuntimeID:    "writer-github",
+				RuleID:       "vulnerability-known-exploited",
+				Title:        "Known exploited dependency",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:github_repository:payments-api"},
+				Attributes: map[string]string{
+					"cvss_score":           "9.1",
+					"is_kev":               "true",
+					"primary_resource_urn": "urn:cerebro:writer:github_repository:payments-api",
+				},
+			},
+		},
+	}
+	service := New(findingStore, nil, &stubReportStore{})
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: riskActionPlanReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:   "writer",
+			reportParameterRuntimeIDs: "writer-github",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	result := response.GetRun().GetResult().AsMap()
+	if got := result["graph_evidence_status"]; got != graphEvidenceStatusUnconfigured {
+		t.Fatalf("graph_evidence_status = %#v, want unconfigured", got)
+	}
+	candidates, ok := result["action_candidates"].([]any)
+	if !ok || len(candidates) != 1 {
+		t.Fatalf("action_candidates = %#v, want one entry", result["action_candidates"])
+	}
+	candidate := candidates[0].(map[string]any)
+	if got := candidate["scenario_type"]; got != findinganalysis.RiskDeltaScenarioPatchVulnerability {
+		t.Fatalf("scenario_type = %#v, want patch_vulnerability", got)
+	}
+	if got := candidate["expected_risk_score_reduction"]; got.(float64) <= 0 {
+		t.Fatalf("expected risk reduction = %#v, want positive", got)
+	}
+}
+
 func TestGetReportRunRequiresAvailableStore(t *testing.T) {
 	service := New(nil, nil, nil)
 	if _, err := service.Get(context.Background(), &cerebrov1.GetReportRunRequest{Id: "report-run-1"}); !errors.Is(err, ErrRuntimeUnavailable) {
@@ -622,8 +810,8 @@ func TestRunReportValidationErrorsAreInvalidRequest(t *testing.T) {
 
 func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	response := New(nil, nil, nil).List()
-	if len(response.GetReports()) != 2 {
-		t.Fatalf("len(List().Reports) = %d, want 2", len(response.GetReports()))
+	if len(response.GetReports()) != 3 {
+		t.Fatalf("len(List().Reports) = %d, want 3", len(response.GetReports()))
 	}
 	reportsByID := map[string]*cerebrov1.ReportDefinition{}
 	for _, report := range response.GetReports() {
@@ -635,6 +823,9 @@ func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	if reportsByID[riskDeltaReportID] == nil {
 		t.Fatalf("List().Reports = %#v, want risk delta definition", response.GetReports())
 	}
+	if reportsByID[riskActionPlanReportID] == nil {
+		t.Fatalf("List().Reports = %#v, want risk action plan definition", response.GetReports())
+	}
 	parameters := reportParametersByID(reportsByID[findingSummaryReportID].GetParameters())
 	if !parameters[reportParameterRuntimeIDs].GetRequired() {
 		t.Fatalf("runtime_ids parameter Required = false, want true")
@@ -642,6 +833,10 @@ func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	riskDeltaParameters := reportParametersByID(reportsByID[riskDeltaReportID].GetParameters())
 	if !riskDeltaParameters[reportParameterScenarioType].GetRequired() || !riskDeltaParameters[reportParameterTargetURN].GetRequired() {
 		t.Fatalf("risk delta parameters = %#v, want scenario_type and target_urn required", riskDeltaParameters)
+	}
+	riskActionPlanParameters := reportParametersByID(reportsByID[riskActionPlanReportID].GetParameters())
+	if !riskActionPlanParameters[reportParameterRuntimeIDs].GetRequired() || riskActionPlanParameters[reportParameterCandidateLimit].GetRequired() {
+		t.Fatalf("risk action plan parameters = %#v, want runtime_ids required and candidate_limit optional", riskActionPlanParameters)
 	}
 }
 
