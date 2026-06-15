@@ -500,6 +500,7 @@ jobs:
             git add "infra/aws/Pulumi.sec-dev.yaml"
           fi
           git commit -m "${title}"
+          git fetch origin "${branch}:refs/remotes/origin/${branch}" || true
           git push --force-with-lease origin "HEAD:${branch}"
 
           body="$(mktemp)"
