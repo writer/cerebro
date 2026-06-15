@@ -11,6 +11,7 @@ emitted_kinds:
   - gcp.bigquery_dataset
   - gcp.cloud_function
   - gcp.cloud_ids_endpoint
+  - gcp.cloud_scheduler_job
   - gcp.cloud_run_revision
   - gcp.cloud_run_service
   - gcp.cloud_sql_instance
@@ -53,6 +54,7 @@ runtime_families:
   - bigquery_dataset
   - cloud_function
   - cloud_ids_endpoint
+  - cloud_scheduler_job
   - cloud_run_revision
   - cloud_run_service
   - cloud_sql_instance
@@ -135,6 +137,12 @@ coverage_contract:
       type: entity_family
       title: Cloud IDS endpoints
       families: [cloud_ids_endpoint]
+      support: supported
+      high_value: true
+    - id: cloud_scheduler_job
+      type: entity_family
+      title: Cloud Scheduler jobs
+      families: [cloud_scheduler_job]
       support: supported
       high_value: true
     - id: cloud_run_revision

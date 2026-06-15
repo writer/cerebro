@@ -244,6 +244,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"gcp.bigquery_dataset":                      gcpCloudResourceProjections,
 	"gcp.cloud_function":                        gcpCloudResourceProjections,
 	"gcp.cloud_ids_endpoint":                    gcpCloudResourceProjections,
+	"gcp.cloud_scheduler_job":                   gcpCloudResourceProjections,
 	"gcp.cloud_run_revision":                    gcpCloudResourceProjections,
 	"gcp.cloud_run_service":                     gcpCloudResourceProjections,
 	"gcp.cloud_sql_instance":                    gcpCloudResourceProjections,
