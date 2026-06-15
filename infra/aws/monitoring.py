@@ -17,6 +17,18 @@ def _orchestrator_rule_alarm_resource_name(name: str, index: int, schedule: dict
     return f"{name}-orchestrator-rule-{suffix}-failed-invocations"
 
 
+def _orchestrator_rule_alarm_schedules(orchestrator_schedules: list[dict] | None, rule_count: int) -> list[dict | None]:
+    eventbridge_schedules = [
+        schedule
+        for schedule in orchestrator_schedules or []
+        if str(schedule.get("backend") or schedule.get("scheduleBackend") or "eventbridge").strip() == "eventbridge"
+    ]
+    return [
+        eventbridge_schedules[index] if index < len(eventbridge_schedules) else None
+        for index in range(rule_count)
+    ]
+
+
 def _scheduler_alarm_specs(name: str, schedule_group_name: pulumi.Input[str] = None, dlq_queue_name: pulumi.Input[str] = None) -> list[dict]:
     specs = []
     if schedule_group_name:
@@ -954,8 +966,9 @@ def create_monitoring(
             tags={"Name": spec["alarm_name"]},
         )
 
+    rule_schedules = _orchestrator_rule_alarm_schedules(orchestrator_schedules, len(orchestrator_rule_names or []))
     for index, rule_name in enumerate(orchestrator_rule_names or []):
-        schedule = (orchestrator_schedules or [])[index] if index < len(orchestrator_schedules or []) else None
+        schedule = rule_schedules[index]
         aws.cloudwatch.MetricAlarm(
             _orchestrator_rule_alarm_resource_name(name, index, schedule),
             name=pulumi.Output.concat(rule_name, "-failed-invocations"),

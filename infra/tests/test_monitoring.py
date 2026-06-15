@@ -57,6 +57,21 @@ class MonitoringRuntimeTest(unittest.TestCase):
             "cerebro-test-orchestrator-rule-aws-secdev-us2-res-exp-failed-invocations",
         )
 
+    def test_orchestrator_rule_alarm_schedules_skip_scheduler_backends(self) -> None:
+        schedules = [
+            {"name": "gcp-prod-audit", "backend": "scheduler"},
+            {"name": "aws-secdev-us2-res-exp"},
+            {"name": "gcp-prod-assets", "scheduleBackend": "scheduler"},
+            {"name": "aws-prod-us1-subnet-inventory", "backend": "eventbridge"},
+        ]
+
+        alarm_schedules = monitoring._orchestrator_rule_alarm_schedules(schedules, 3)
+
+        self.assertEqual(
+            [schedule.get("name") if schedule else None for schedule in alarm_schedules],
+            ["aws-secdev-us2-res-exp", "aws-prod-us1-subnet-inventory", None],
+        )
+
     def test_scheduler_alarm_specs_cover_dlq_and_target_failures(self) -> None:
         specs = monitoring._scheduler_alarm_specs(
             "cerebro-test",
