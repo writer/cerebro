@@ -201,7 +201,7 @@ func TestFindingRiskAttributesForUpdateIncludesEffectiveSeverity(t *testing.T) {
 	}
 }
 
-func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
+func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntimeUnbounded(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID: "writer",
 		RuleID:   "identity-okta-deprovisioned-active-in-github",
@@ -222,17 +222,35 @@ func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	if !strings.Contains(query, "status = $3") {
 		t.Fatalf("findingListQuery() did not slot status at $3 when runtime is omitted: %s", query)
 	}
-	if !strings.Contains(query, "LIMIT $4") {
-		t.Fatalf("findingListQuery() did not apply default LIMIT at $4: %s", query)
+	if strings.Contains(query, "LIMIT") {
+		t.Fatalf("findingListQuery() applied LIMIT for unbounded internal request: %s", query)
 	}
-	if got := len(args); got != 4 {
-		t.Fatalf("len(findingListQuery().args) = %d, want 4", got)
+	if got := len(args); got != 3 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 3", got)
 	}
 	if got := args[1]; got != "identity-okta-deprovisioned-active-in-github" {
 		t.Fatalf("findingListQuery().args[1] = %#v, want rule id", got)
 	}
-	if got := args[3]; got != int64(defaultFindingListLimit) {
-		t.Fatalf("findingListQuery().args[3] = %#v, want default limit", got)
+}
+
+func TestFindingListQueryClampsExplicitLimit(t *testing.T) {
+	query, args, err := findingListQuery(ports.ListFindingsRequest{
+		TenantID: "writer",
+		RuleID:   "identity-okta-deprovisioned-active-in-github",
+		Status:   "open",
+		Limit:    maxFindingListLimit + 1,
+	})
+	if err != nil {
+		t.Fatalf("findingListQuery() error = %v", err)
+	}
+	if !strings.Contains(query, "LIMIT $4") {
+		t.Fatalf("findingListQuery() did not apply LIMIT at $4: %s", query)
+	}
+	if got := len(args); got != 4 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 4", got)
+	}
+	if got := args[3]; got != int64(maxFindingListLimit) {
+		t.Fatalf("findingListQuery().args[3] = %#v, want max limit", got)
 	}
 }
 

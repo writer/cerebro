@@ -352,6 +352,38 @@ func TestTombstoneFindingsBulk_DryRun_NoMutation(t *testing.T) {
 	}
 }
 
+func TestTombstoneFindingsBulk_CloseoutCandidatesRemainUnbounded(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	now := time.Now().UTC()
+	for i := 0; i < 501; i++ {
+		fx.seedFinding(fmt.Sprintf("fresh-%03d", i), "open", now.Add(-time.Hour), nil)
+	}
+	stale := fx.seedFinding("stale-eligible", "open", now.Add(-72*time.Hour), nil)
+	request := fx.request("run-unbounded-1", true)
+	request.Selector.OlderThan = 24 * time.Hour
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), request)
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk error = %v", err)
+	}
+	if result.ProposedCount != 1 {
+		t.Fatalf("ProposedCount = %d, want 1", result.ProposedCount)
+	}
+	if got := strings.TrimSpace(result.Proposed[0].ID); got != stale.ID {
+		t.Fatalf("Proposed[0].ID = %q, want %q", got, stale.ID)
+	}
+	var candidateList ports.ListFindingsRequest
+	for _, request := range fx.store.listFindingsRequests {
+		if request.RuleID == fx.ruleID && request.Status == findingStatusOpen {
+			candidateList = request
+			break
+		}
+	}
+	if got := candidateList.Limit; got != 0 {
+		t.Fatalf("closeout candidate list limit = %d, want unbounded 0", got)
+	}
+}
+
 func TestTombstoneFindingsBulk_Apply_PersistsAndEmits(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	first := fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)

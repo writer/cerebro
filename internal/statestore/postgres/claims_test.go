@@ -71,6 +71,24 @@ func TestListClaimsRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
+func TestClaimListLimitPreservesUnboundedAndClampsExplicitLimit(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		limit uint32
+		want  uint32
+	}{
+		{name: "zero remains unbounded", limit: 0, want: 0},
+		{name: "within limit preserved", limit: 25, want: 25},
+		{name: "above max clamped", limit: maxClaimListLimit + 1, want: maxClaimListLimit},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := claimListLimit(tt.limit); got != tt.want {
+				t.Fatalf("claimListLimit(%d) = %d, want %d", tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClaimSchemaScopesPrimaryKeyByTenantAndRuntime(t *testing.T) {
 	create := ensureClaimStatements[0]
 	if !strings.Contains(create, "PRIMARY KEY (tenant_id, runtime_id, id)") {

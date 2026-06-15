@@ -25,6 +25,8 @@ import (
 const (
 	defaultEventLimit       = 100
 	maxEventLimit           = 1000
+	defaultListLimit        = uint32(500)
+	maxListLimit            = uint32(500)
 	defaultEvidenceClaimCap = 100
 	findingStatusOpen       = "open"
 	findingStatusResolved   = "resolved"
@@ -580,7 +582,7 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 		ResourceURN: strings.TrimSpace(request.ResourceURN),
 		EventID:     strings.TrimSpace(request.EventID),
 		PolicyID:    strings.TrimSpace(request.PolicyID),
-		Limit:       request.Limit,
+		Limit:       normalizeListLimit(request.Limit),
 		Order:       request.Order,
 	})
 	if err != nil {
@@ -1598,6 +1600,17 @@ func normalizeEventLimit(limit uint32) uint32 {
 		return defaultEventLimit
 	case limit > maxEventLimit:
 		return maxEventLimit
+	default:
+		return limit
+	}
+}
+
+func normalizeListLimit(limit uint32) uint32 {
+	switch {
+	case limit == 0:
+		return defaultListLimit
+	case limit > maxListLimit:
+		return maxListLimit
 	default:
 		return limit
 	}

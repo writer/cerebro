@@ -4024,6 +4024,44 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 	}
 }
 
+func TestListFindingsNormalizesUserFacingLimits(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		limit uint32
+		want  uint32
+	}{
+		{name: "zero defaults", limit: 0, want: defaultListLimit},
+		{name: "within limit preserved", limit: 25, want: 25},
+		{name: "above max clamped", limit: maxListLimit + 1, want: maxListLimit},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &stubFindingStore{}
+			service := New(
+				&stubRuntimeStore{
+					runtimes: map[string]*cerebrov1.SourceRuntime{
+						"writer-okta-audit": {
+							Id:       "writer-okta-audit",
+							SourceId: "okta",
+							TenantId: "writer",
+						},
+					},
+				},
+				&stubReplayer{},
+				store,
+				store,
+				store,
+				store,
+			)
+			if _, err := service.ListFindings(context.Background(), ListRequest{RuntimeID: "writer-okta-audit", Limit: tt.limit}); err != nil {
+				t.Fatalf("ListFindings() error = %v", err)
+			}
+			if got := store.request.Limit; got != tt.want {
+				t.Fatalf("ListFindings().Limit = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestListFindingsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	if _, err := service.ListFindings(context.Background(), ListRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {

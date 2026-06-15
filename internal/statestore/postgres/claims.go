@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	defaultClaimListLimit = uint32(500)
-	maxClaimListLimit     = uint32(500)
+	maxClaimListLimit = uint32(500)
 )
 
 var ensureClaimStatements = []string{
@@ -223,8 +222,10 @@ SELECT runtime_id, tenant_id, claim_json::text
 FROM claims
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
-	args = append(args, int64(claimListLimit(request.Limit)))
-	query += fmt.Sprintf(" LIMIT $%d", len(args))
+	if limit := claimListLimit(request.Limit); limit > 0 {
+		args = append(args, int64(limit))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query claims for scope %q/%q: %w", tenantID, runtimeID, err)
@@ -256,8 +257,8 @@ ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
 }
 
 func claimListLimit(limit uint32) uint32 {
-	if limit == 0 || limit > maxClaimListLimit {
-		return defaultClaimListLimit
+	if limit > maxClaimListLimit {
+		return maxClaimListLimit
 	}
 	return limit
 }

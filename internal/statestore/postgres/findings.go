@@ -176,7 +176,6 @@ const findingStatusReasonBackfillCollision findingStatusReason = "backfill_colli
 const (
 	tenantScopedFingerprintBackfillActor = "tenant_scoped_fingerprint_backfill"
 	tenantScopedFingerprintBackfillRunID = "tenant_scoped_fingerprint_backfill"
-	defaultFindingListLimit              = uint32(500)
 	maxFindingListLimit                  = uint32(500)
 )
 
@@ -1142,8 +1141,10 @@ SELECT ` + findingSelectColumns + `
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingOrderClause(request)
-	args = append(args, int64(findingListLimit(request.Limit)))
-	query += fmt.Sprintf(" LIMIT $%d", len(args))
+	if limit := findingListLimit(request.Limit); limit > 0 {
+		args = append(args, int64(limit))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
 	return query, args, nil
 }
 
@@ -1159,8 +1160,10 @@ SELECT id, tenant_id, runtime_id, rule_id, title, ` + findingEffectiveSeveritySQ
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingOrderClause(request)
-	args = append(args, int64(findingListLimit(request.Limit)))
-	query += fmt.Sprintf(" LIMIT $%d", len(args))
+	if limit := findingListLimit(request.Limit); limit > 0 {
+		args = append(args, int64(limit))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
 	return query, args, nil
 }
 
@@ -1197,8 +1200,8 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 }
 
 func findingListLimit(limit uint32) uint32 {
-	if limit == 0 || limit > maxFindingListLimit {
-		return defaultFindingListLimit
+	if limit > maxFindingListLimit {
+		return maxFindingListLimit
 	}
 	return limit
 }
