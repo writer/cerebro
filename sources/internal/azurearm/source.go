@@ -27,6 +27,7 @@ var DefaultDefinitions = []Definition{
 	{Name: "databricks_workspace", Label: "azure databricks workspaces", ProviderPath: "Microsoft.Databricks/workspaces", APIVersion: "2023-02-01", Kind: "azure.databricks_workspace", SchemaRef: "azure/databricks_workspace/v1"},
 	{Name: "load_balancer", Label: "azure load balancers", ProviderPath: "Microsoft.Network/loadBalancers", APIVersion: "2023-09-01", Kind: "azure.load_balancer", SchemaRef: "azure/load_balancer/v1"},
 	{Name: "log_alert", Label: "azure log alert rules", ProviderPath: "Microsoft.Insights/scheduledQueryRules", APIVersion: "2023-12-01-preview", Kind: "azure.log_alert", SchemaRef: "azure/log_alert/v1"},
+	{Name: "machine_learning_workspace", Label: "azure machine learning workspaces", ProviderPath: "Microsoft.MachineLearningServices/workspaces", APIVersion: "2024-04-01", Kind: "azure.machine_learning_workspace", SchemaRef: "azure/machine_learning_workspace/v1"},
 	{Name: "metric_alert_rule", Label: "azure metric alert rules", ProviderPath: "Microsoft.Insights/metricAlerts", APIVersion: "2018-03-01", Kind: "azure.metric_alert_rule", SchemaRef: "azure/metric_alert_rule/v1"},
 	{Name: "role", Label: "azure role definitions", ProviderPath: "Microsoft.Authorization/roleDefinitions", APIVersion: "2022-04-01", Kind: "azure.role", SchemaRef: "azure/role/v1"},
 	{Name: "route_table", Label: "azure route tables", ProviderPath: "Microsoft.Network/routeTables", APIVersion: "2023-09-01", Kind: "azure.route_table", SchemaRef: "azure/route_table/v1"},

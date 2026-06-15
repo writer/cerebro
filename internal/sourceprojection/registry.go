@@ -221,6 +221,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"azure.key_vault_secret":                        azureCloudResourceProjections,
 	"azure.load_balancer":                           azureCloudResourceProjections,
 	"azure.log_alert":                               azureCloudResourceProjections,
+	"azure.machine_learning_workspace":              azureCloudResourceProjections,
 	"azure.managed_disk":                            azureCloudResourceProjections,
 	"azure.metric_alert_rule":                       azureCloudResourceProjections,
 	"azure.network_security_group":                  azureCloudResourceProjections,

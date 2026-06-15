@@ -184,6 +184,13 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: machine-learning-workspace
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: machine_learning_workspace
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
   - localId: managed-disk
     config:
       arm_token: env:AZURE_ARM_TOKEN
