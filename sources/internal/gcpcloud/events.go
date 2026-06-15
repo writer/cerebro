@@ -2099,18 +2099,18 @@ type MonitoringAlertPolicyCondition struct {
 }
 
 type MonitoringNotificationChannelRecord struct {
-	Name               string                   `json:"name"`
-	Type               string                   `json:"type"`
-	DisplayName        string                   `json:"displayName"`
-	Description        string                   `json:"description"`
-	Labels             map[string]string        `json:"labels"`
-	UserLabels         map[string]string        `json:"userLabels"`
-	Enabled            *bool                    `json:"enabled"`
-	VerificationStatus string                   `json:"verificationStatus"`
-	SensitiveLabels    json.RawMessage          `json:"sensitiveLabels"`
-	CreationRecord     MonitoringMutationRecord `json:"creationRecord"`
-	MutationRecord     MonitoringMutationRecord `json:"mutationRecord"`
-	Raw                json.RawMessage          `json:"-"`
+	Name               string                     `json:"name"`
+	Type               string                     `json:"type"`
+	DisplayName        string                     `json:"displayName"`
+	Description        string                     `json:"description"`
+	Labels             map[string]string          `json:"labels"`
+	UserLabels         map[string]string          `json:"userLabels"`
+	Enabled            *bool                      `json:"enabled"`
+	VerificationStatus string                     `json:"verificationStatus"`
+	SensitiveLabels    json.RawMessage            `json:"sensitiveLabels"`
+	CreationRecord     MonitoringMutationRecord   `json:"creationRecord"`
+	MutationRecords    []MonitoringMutationRecord `json:"mutationRecords"`
+	Raw                json.RawMessage            `json:"-"`
 }
 
 type LoggingMetricRecord struct {
@@ -4602,6 +4602,7 @@ func MonitoringNotificationChannelEvent(settings Settings, record MonitoringNoti
 	if len(labels) == 0 {
 		labels = record.Labels
 	}
+	mutationRecord := latestMonitoringMutationRecord(record.MutationRecords)
 	attributes := cloudResourceAttributes(settings, "monitoring_notification_channel", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "monitoring_notification_channel", "global", labels)
 	attributes["display_name"] = record.DisplayName
 	attributes["description"] = record.Description
@@ -4610,8 +4611,8 @@ func MonitoringNotificationChannelEvent(settings Settings, record MonitoringNoti
 	attributes["sensitive_labels_present"] = boolString(len(record.SensitiveLabels) != 0)
 	attributes["created_at"] = record.CreationRecord.MutateTime
 	attributes["created_by"] = record.CreationRecord.MutatedBy
-	attributes["updated_at"] = record.MutationRecord.MutateTime
-	attributes["updated_by"] = record.MutationRecord.MutatedBy
+	attributes["updated_at"] = mutationRecord.MutateTime
+	attributes["updated_by"] = mutationRecord.MutatedBy
 	if record.Enabled != nil {
 		attributes["enabled"] = boolString(*record.Enabled)
 		attributes["disabled"] = boolString(!*record.Enabled)
@@ -4621,6 +4622,28 @@ func MonitoringNotificationChannelEvent(settings Settings, record MonitoringNoti
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-monitoring-notification-channel-"+record.Name, "gcp.monitoring_notification_channel", "gcp/monitoring_notification_channel/v1", payload, attributes)
+}
+
+func latestMonitoringMutationRecord(records []MonitoringMutationRecord) MonitoringMutationRecord {
+	if len(records) == 0 {
+		return MonitoringMutationRecord{}
+	}
+	latest := records[0]
+	for _, record := range records[1:] {
+		if monitoringMutationAfter(record, latest) {
+			latest = record
+		}
+	}
+	return latest
+}
+
+func monitoringMutationAfter(candidate, current MonitoringMutationRecord) bool {
+	candidateTime, candidateErr := time.Parse(time.RFC3339Nano, candidate.MutateTime)
+	currentTime, currentErr := time.Parse(time.RFC3339Nano, current.MutateTime)
+	if candidateErr == nil && currentErr == nil {
+		return candidateTime.After(currentTime)
+	}
+	return candidate.MutateTime > current.MutateTime
 }
 
 func LoggingMetricResourceName(projectID string, record LoggingMetricRecord) string {

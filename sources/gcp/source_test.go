@@ -377,6 +377,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink", attr: "exclusions_count", want: "1"},
 		{family: familyMonitoringAlertPolicy, kind: "gcp.monitoring_alert_policy", attr: "severity", want: "CRITICAL"},
 		{family: familyMonitoringNotificationChannel, kind: "gcp.monitoring_notification_channel", attr: "channel_type", want: "email"},
+		{family: familyMonitoringNotificationChannel, kind: "gcp.monitoring_notification_channel", attr: "updated_by", want: "secops@writer.com"},
 		{family: familyOrgPolicy, kind: "gcp.org_policy", attr: "constraint", want: "iam.disableServiceAccountKeyCreation"},
 		{family: familyPubSubSubscription, kind: "gcp.pubsub_subscription", attr: "dead_letter_topic_name", want: "dead-letter"},
 		{family: familyPubSubTopic, kind: "gcp.pubsub_topic", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/pubsub"},
@@ -1260,7 +1261,7 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("monitoring notification channel pageSize = %q, want 10", got)
 			}
 			enabled := true
-			writeJSON(t, w, map[string]any{"notificationChannels": []map[string]any{{"name": "projects/writer-prod/notificationChannels/channel-1", "type": "email", "displayName": "Security Oncall", "description": "security paging channel", "labels": map[string]string{"email_address": "security-oncall@writer.com"}, "userLabels": map[string]string{"env": "prod"}, "enabled": enabled, "verificationStatus": "VERIFIED"}}})
+			writeJSON(t, w, map[string]any{"notificationChannels": []map[string]any{{"name": "projects/writer-prod/notificationChannels/channel-1", "type": "email", "displayName": "Security Oncall", "description": "security paging channel", "labels": map[string]string{"email_address": "security-oncall@writer.com"}, "userLabels": map[string]string{"env": "prod"}, "enabled": enabled, "verificationStatus": "VERIFIED", "creationRecord": map[string]string{"mutateTime": "2026-04-23T00:00:00Z", "mutatedBy": "admin@writer.com"}, "mutationRecords": []map[string]string{{"mutateTime": "2026-04-24T00:00:00Z", "mutatedBy": "admin@writer.com"}, {"mutateTime": "2026-04-25T00:00:00Z", "mutatedBy": "secops@writer.com"}}}}})
 		case "/v1/projects/writer-prod/topics":
 			if got := r.URL.Query().Get("pageSize"); got != "10" {
 				t.Fatalf("pubsub topic pageSize = %q, want 10", got)
