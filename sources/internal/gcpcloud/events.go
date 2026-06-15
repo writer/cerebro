@@ -421,6 +421,24 @@ type ComputeNetworkRoutingConfig struct {
 	RoutingMode string `json:"routingMode"`
 }
 
+type ComputeFirewallRecord struct {
+	ID                    string                   `json:"id"`
+	Name                  string                   `json:"name"`
+	Network               string                   `json:"network"`
+	Direction             string                   `json:"direction"`
+	Disabled              bool                     `json:"disabled"`
+	SourceRanges          []string                 `json:"sourceRanges"`
+	Allowed               []ComputeFirewallAllowed `json:"allowed"`
+	TargetTags            []string                 `json:"targetTags"`
+	TargetServiceAccounts []string                 `json:"targetServiceAccounts"`
+	Raw                   json.RawMessage          `json:"-"`
+}
+
+type ComputeFirewallAllowed struct {
+	IPProtocol string   `json:"IPProtocol"`
+	Ports      []string `json:"ports"`
+}
+
 type ComputeRouteRecord struct {
 	ID                            string          `json:"id"`
 	Name                          string          `json:"name"`
@@ -446,6 +464,31 @@ type ComputeRouteRecord struct {
 	NextHopMed                    int             `json:"nextHopMed"`
 	CreationTimestamp             string          `json:"creationTimestamp"`
 	Raw                           json.RawMessage `json:"-"`
+}
+
+type ComputeForwardingRuleRecord struct {
+	ID                  string            `json:"id"`
+	Name                string            `json:"name"`
+	SelfLink            string            `json:"selfLink"`
+	Description         string            `json:"description"`
+	Region              string            `json:"region"`
+	IPAddress           string            `json:"IPAddress"`
+	IPProtocol          string            `json:"IPProtocol"`
+	IPVersion           string            `json:"ipVersion"`
+	LoadBalancingScheme string            `json:"loadBalancingScheme"`
+	PortRange           string            `json:"portRange"`
+	Ports               []string          `json:"ports"`
+	AllPorts            bool              `json:"allPorts"`
+	AllowGlobalAccess   bool              `json:"allowGlobalAccess"`
+	Network             string            `json:"network"`
+	Subnetwork          string            `json:"subnetwork"`
+	NetworkTier         string            `json:"networkTier"`
+	Target              string            `json:"target"`
+	BackendService      string            `json:"backendService"`
+	ServiceLabel        string            `json:"serviceLabel"`
+	ServiceName         string            `json:"serviceName"`
+	Labels              map[string]string `json:"labels"`
+	Raw                 json.RawMessage   `json:"-"`
 }
 
 type ComputeSubnetworkRecord struct {
@@ -1562,6 +1605,25 @@ func ComputeNetworkEvent(settings Settings, record ComputeNetworkRecord) (*primi
 	return sourceEvent(settings, "gcp-compute-network-"+resourceID, "gcp.compute_network", "gcp/compute_network/v1", payload, attributes)
 }
 
+func ComputeFirewallEvent(settings Settings, record ComputeFirewallRecord) (*primitives.Event, error) {
+	allowed := computeFirewallPrimaryAllowed(record)
+	attributes := cloudResourceAttributes(settings, "compute_firewall", firstNonEmpty(record.ID, record.Name), record.Name, "compute_firewall", "global", nil)
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["direction"] = record.Direction
+	attributes["disabled"] = boolString(record.Disabled)
+	attributes["source_ranges"] = strings.Join(record.SourceRanges, ",")
+	attributes["target_tags"] = strings.Join(record.TargetTags, ",")
+	attributes["target_service_accounts"] = strings.Join(record.TargetServiceAccounts, ",")
+	attributes["protocol"] = allowed.IPProtocol
+	attributes["ports"] = strings.Join(allowed.Ports, ",")
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-firewall-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_firewall", "gcp/compute_firewall/v1", payload, attributes)
+}
+
 func ComputeRouteEvent(settings Settings, record ComputeRouteRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	nextHopType, nextHopURL, nextHop := computeRouteNextHop(record)
@@ -1593,6 +1655,49 @@ func ComputeRouteEvent(settings Settings, record ComputeRouteRecord) (*primitive
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-compute-route-"+resourceID, "gcp.compute_route", "gcp/compute_route/v1", payload, attributes)
+}
+
+func ComputeForwardingRuleEvent(settings Settings, record ComputeForwardingRuleRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	targetType, targetURL, targetName := computeForwardingRuleTarget(record)
+	external := computeForwardingRuleExternal(record.LoadBalancingScheme)
+	attributes := cloudResourceAttributes(settings, "compute_forwarding_rule", resourceID, record.Name, "compute_forwarding_rule", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["ip_address"] = record.IPAddress
+	attributes["ip_protocol"] = record.IPProtocol
+	attributes["ip_version"] = record.IPVersion
+	attributes["load_balancing_scheme"] = record.LoadBalancingScheme
+	attributes["scheme"] = record.LoadBalancingScheme
+	attributes["network_tier"] = record.NetworkTier
+	attributes["port_range"] = record.PortRange
+	attributes["ports"] = strings.Join(record.Ports, ",")
+	attributes["all_ports"] = boolString(record.AllPorts)
+	attributes["allow_global_access"] = boolString(record.AllowGlobalAccess)
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["subnet"] = lastPathSegment(record.Subnetwork)
+	attributes["subnet_url"] = record.Subnetwork
+	attributes["subnetwork"] = lastPathSegment(record.Subnetwork)
+	attributes["subnetwork_url"] = record.Subnetwork
+	attributes["target_type"] = targetType
+	attributes["target"] = targetName
+	attributes["target_url"] = targetURL
+	attributes["backend_service"] = lastPathSegment(record.BackendService)
+	attributes["backend_service_url"] = record.BackendService
+	attributes["service_label"] = record.ServiceLabel
+	attributes["service_name"] = record.ServiceName
+	attributes["public"] = boolString(external)
+	attributes["internet_exposed"] = boolString(external)
+	attributes["external_exposure"] = boolString(external)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-forwarding-rule-"+resourceID, "gcp.compute_forwarding_rule", "gcp/compute_forwarding_rule/v1", payload, attributes)
 }
 
 func ComputeSubnetworkEvent(settings Settings, record ComputeSubnetworkRecord) (*primitives.Event, error) {
@@ -2326,6 +2431,62 @@ func computeRouteNextHop(record ComputeRouteRecord) (string, string, string) {
 		return "ip", record.NextHopIP, record.NextHopIP
 	}
 	return "", "", ""
+}
+
+func computeForwardingRuleTarget(record ComputeForwardingRuleRecord) (string, string, string) {
+	if record.BackendService != "" {
+		return "backend_service", record.BackendService, lastPathSegment(record.BackendService)
+	}
+	if record.Target != "" {
+		return computeForwardingRuleTargetType(record.Target), record.Target, lastPathSegment(record.Target)
+	}
+	return "", "", ""
+}
+
+func computeForwardingRuleTargetType(targetURL string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(targetURL), "/"), "/")
+	if len(parts) < 2 {
+		return "target"
+	}
+	switch parts[len(parts)-2] {
+	case "backendServices":
+		return "backend_service"
+	case "serviceAttachments":
+		return "service_attachment"
+	case "targetGrpcProxies":
+		return "target_grpc_proxy"
+	case "targetHttpProxies":
+		return "target_http_proxy"
+	case "targetHttpsProxies":
+		return "target_https_proxy"
+	case "targetInstances":
+		return "target_instance"
+	case "targetPools":
+		return "target_pool"
+	case "targetSslProxies":
+		return "target_ssl_proxy"
+	case "targetTcpProxies":
+		return "target_tcp_proxy"
+	case "targetVpnGateways":
+		return "target_vpn_gateway"
+	}
+	return "target"
+}
+
+func computeForwardingRuleExternal(scheme string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(scheme))
+	return strings.HasPrefix(upper, "EXTERNAL")
+}
+
+func computeFirewallPrimaryAllowed(record ComputeFirewallRecord) ComputeFirewallAllowed {
+	if len(record.Allowed) == 0 {
+		return ComputeFirewallAllowed{IPProtocol: "all"}
+	}
+	allowed := record.Allowed[0]
+	if len(allowed.Ports) == 0 {
+		allowed.Ports = []string{"all"}
+	}
+	return allowed
 }
 
 type iamSummary struct {
