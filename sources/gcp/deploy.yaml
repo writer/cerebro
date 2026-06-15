@@ -144,6 +144,34 @@ runtimes:
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE
       wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: compute-instance-group
+    config:
+      family: compute_instance_group
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: compute-instance-group-manager
+    config:
+      family: compute_instance_group_manager
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: compute-instance-template
+    config:
+      family: compute_instance_template
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: compute-network-endpoint-group
+    config:
+      family: compute_network_endpoint_group
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-network
     config:
       family: compute_network

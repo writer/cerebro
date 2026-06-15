@@ -570,6 +570,154 @@ type ComputeBackendServiceIAP struct {
 	Enabled bool `json:"enabled"`
 }
 
+type ComputeNamedPort struct {
+	Name string `json:"name"`
+	Port int    `json:"port"`
+}
+
+type ComputeInstanceGroupRecord struct {
+	ID          string             `json:"id"`
+	Name        string             `json:"name"`
+	SelfLink    string             `json:"selfLink"`
+	Description string             `json:"description"`
+	Zone        string             `json:"zone"`
+	Region      string             `json:"region"`
+	Network     string             `json:"network"`
+	Subnetwork  string             `json:"subnetwork"`
+	NamedPorts  []ComputeNamedPort `json:"namedPorts"`
+	Size        int                `json:"size"`
+	Raw         json.RawMessage    `json:"-"`
+}
+
+type ComputeInstanceGroupManagerRecord struct {
+	ID                  string                           `json:"id"`
+	Name                string                           `json:"name"`
+	SelfLink            string                           `json:"selfLink"`
+	Description         string                           `json:"description"`
+	Zone                string                           `json:"zone"`
+	Region              string                           `json:"region"`
+	BaseInstanceName    string                           `json:"baseInstanceName"`
+	InstanceTemplate    string                           `json:"instanceTemplate"`
+	TargetSize          int                              `json:"targetSize"`
+	TargetPools         []string                         `json:"targetPools"`
+	NamedPorts          []ComputeNamedPort               `json:"namedPorts"`
+	AutoHealingPolicies []ComputeAutoHealingPolicy       `json:"autoHealingPolicies"`
+	CurrentActions      ComputeInstanceGroupActions      `json:"currentActions"`
+	Status              ComputeInstanceGroupStatus       `json:"status"`
+	UpdatePolicy        ComputeInstanceGroupUpdatePolicy `json:"updatePolicy"`
+	DistributionPolicy  ComputeInstanceDistribution      `json:"distributionPolicy"`
+	Raw                 json.RawMessage                  `json:"-"`
+}
+
+type ComputeAutoHealingPolicy struct {
+	HealthCheck     string `json:"healthCheck"`
+	InitialDelaySec int    `json:"initialDelaySec"`
+}
+
+type ComputeInstanceGroupActions struct {
+	None                   int `json:"none"`
+	Creating               int `json:"creating"`
+	Deleting               int `json:"deleting"`
+	Recreating             int `json:"recreating"`
+	Refreshing             int `json:"refreshing"`
+	Restarting             int `json:"restarting"`
+	Verifying              int `json:"verifying"`
+	Abandoning             int `json:"abandoning"`
+	CreatingWithoutRetries int `json:"creatingWithoutRetries"`
+}
+
+type ComputeInstanceGroupStatus struct {
+	IsStable      bool `json:"isStable"`
+	VersionTarget struct {
+		IsReached bool `json:"isReached"`
+	} `json:"versionTarget"`
+	Stateful struct {
+		HasStatefulConfig  bool `json:"hasStatefulConfig"`
+		PerInstanceConfigs struct {
+			AllEffective bool `json:"allEffective"`
+		} `json:"perInstanceConfigs"`
+	} `json:"stateful"`
+}
+
+type ComputeInstanceGroupUpdatePolicy struct {
+	Type                        string `json:"type"`
+	MinimalAction               string `json:"minimalAction"`
+	MostDisruptiveAllowedAction string `json:"mostDisruptiveAllowedAction"`
+	ReplacementMethod           string `json:"replacementMethod"`
+	MaxSurge                    string `json:"maxSurge"`
+	MaxUnavailable              string `json:"maxUnavailable"`
+}
+
+type ComputeInstanceDistribution struct {
+	Zones []ComputeInstanceDistributionZone `json:"zones"`
+}
+
+type ComputeInstanceDistributionZone struct {
+	Zone string `json:"zone"`
+}
+
+type ComputeInstanceTemplateRecord struct {
+	ID          string                            `json:"id"`
+	Name        string                            `json:"name"`
+	SelfLink    string                            `json:"selfLink"`
+	Description string                            `json:"description"`
+	Properties  ComputeInstanceTemplateProperties `json:"properties"`
+	Raw         json.RawMessage                   `json:"-"`
+}
+
+type ComputeInstanceTemplateProperties struct {
+	MachineType            string                    `json:"machineType"`
+	Labels                 map[string]string         `json:"labels"`
+	Tags                   ComputeTags               `json:"tags"`
+	NetworkInterfaces      []ComputeNetworkInterface `json:"networkInterfaces"`
+	ServiceAccounts        []ComputeServiceAccount   `json:"serviceAccounts"`
+	Disks                  []ComputeAttachedDisk     `json:"disks"`
+	ShieldedInstanceConfig ComputeShieldedInstance   `json:"shieldedInstanceConfig"`
+}
+
+type ComputeShieldedInstance struct {
+	EnableSecureBoot          bool `json:"enableSecureBoot"`
+	EnableVtpm                bool `json:"enableVtpm"`
+	EnableIntegrityMonitoring bool `json:"enableIntegrityMonitoring"`
+}
+
+type ComputeNetworkEndpointGroupRecord struct {
+	ID                  string                  `json:"id"`
+	Name                string                  `json:"name"`
+	SelfLink            string                  `json:"selfLink"`
+	Description         string                  `json:"description"`
+	Zone                string                  `json:"zone"`
+	Region              string                  `json:"region"`
+	Network             string                  `json:"network"`
+	Subnetwork          string                  `json:"subnetwork"`
+	NetworkEndpointType string                  `json:"networkEndpointType"`
+	DefaultPort         int                     `json:"defaultPort"`
+	Size                int                     `json:"size"`
+	PscTargetService    string                  `json:"pscTargetService"`
+	CloudRun            ComputeNEGCloudRun      `json:"cloudRun"`
+	CloudFunction       ComputeNEGCloudFunction `json:"cloudFunction"`
+	AppEngine           ComputeNEGAppEngine     `json:"appEngine"`
+	Annotations         map[string]string       `json:"annotations"`
+	Raw                 json.RawMessage         `json:"-"`
+}
+
+type ComputeNEGCloudRun struct {
+	Service string `json:"service"`
+	Tag     string `json:"tag"`
+	URLMask string `json:"urlMask"`
+}
+
+type ComputeNEGCloudFunction struct {
+	Function string `json:"function"`
+	URLMask  string `json:"urlMask"`
+}
+
+type ComputeNEGAppEngine struct {
+	Service string `json:"service"`
+	Version string `json:"version"`
+	URLMask string `json:"urlMask"`
+}
+
 type ComputeHealthCheckRecord struct {
 	ID                 string                  `json:"id"`
 	Name               string                  `json:"name"`
@@ -977,6 +1125,22 @@ func (record ComputeBackendBucketRecord) CerebroResourceID() string {
 }
 
 func (record ComputeBackendServiceRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeInstanceGroupRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeInstanceGroupManagerRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeInstanceTemplateRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeNetworkEndpointGroupRecord) CerebroResourceID() string {
 	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
 }
 
@@ -2279,6 +2443,138 @@ func ComputeBackendServiceEvent(settings Settings, record ComputeBackendServiceR
 	return sourceEvent(settings, "gcp-compute-backend-service-"+resourceID, "gcp.compute_backend_service", "gcp/compute_backend_service/v1", payload, attributes)
 }
 
+func ComputeInstanceGroupEvent(settings Settings, record ComputeInstanceGroupRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(firstNonEmpty(record.Zone, record.Region))
+	if location == "" {
+		location = "global"
+	}
+	namedPorts := computeNamedPorts(record.NamedPorts)
+	attributes := cloudResourceAttributes(settings, "compute_instance_group", resourceID, record.Name, "compute_instance_group", location, nil)
+	attributes["description"] = record.Description
+	attributes["zone"] = lastPathSegment(record.Zone)
+	attributes["region"] = lastPathSegment(record.Region)
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["subnet"] = lastPathSegment(record.Subnetwork)
+	attributes["subnet_url"] = record.Subnetwork
+	attributes["subnetwork"] = lastPathSegment(record.Subnetwork)
+	attributes["subnetwork_url"] = record.Subnetwork
+	attributes["size"] = strconv.Itoa(record.Size)
+	attributes["named_ports"] = strings.Join(namedPorts, ",")
+	attributes["named_ports_count"] = strconv.Itoa(len(record.NamedPorts))
+	attributes["backend_group_type"] = "instance_group"
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-instance-group-"+resourceID, "gcp.compute_instance_group", "gcp/compute_instance_group/v1", payload, attributes)
+}
+
+func ComputeInstanceGroupManagerEvent(settings Settings, record ComputeInstanceGroupManagerRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(firstNonEmpty(record.Zone, record.Region))
+	if location == "" {
+		location = "global"
+	}
+	namedPorts := computeNamedPorts(record.NamedPorts)
+	healthChecks := computeAutoHealingHealthChecks(record.AutoHealingPolicies)
+	attributes := cloudResourceAttributes(settings, "compute_instance_group_manager", resourceID, record.Name, "compute_instance_group_manager", location, nil)
+	attributes["description"] = record.Description
+	attributes["zone"] = lastPathSegment(record.Zone)
+	attributes["region"] = lastPathSegment(record.Region)
+	attributes["base_instance_name"] = record.BaseInstanceName
+	attributes["instance_template"] = lastPathSegment(record.InstanceTemplate)
+	attributes["instance_template_url"] = record.InstanceTemplate
+	attributes["target_size"] = strconv.Itoa(record.TargetSize)
+	attributes["target_pools"] = strings.Join(lastPathSegments(record.TargetPools), ",")
+	attributes["target_pool_urls"] = strings.Join(record.TargetPools, ",")
+	attributes["target_pools_count"] = strconv.Itoa(len(record.TargetPools))
+	attributes["named_ports"] = strings.Join(namedPorts, ",")
+	attributes["named_ports_count"] = strconv.Itoa(len(record.NamedPorts))
+	attributes["auto_healing_health_checks"] = strings.Join(lastPathSegments(healthChecks), ",")
+	attributes["auto_healing_health_check_urls"] = strings.Join(healthChecks, ",")
+	attributes["auto_healing_policies_count"] = strconv.Itoa(len(record.AutoHealingPolicies))
+	attributes["current_none"] = strconv.Itoa(record.CurrentActions.None)
+	attributes["is_stable"] = boolString(record.Status.IsStable)
+	attributes["version_target_reached"] = boolString(record.Status.VersionTarget.IsReached)
+	attributes["update_policy_type"] = record.UpdatePolicy.Type
+	attributes["minimal_action"] = record.UpdatePolicy.MinimalAction
+	attributes["replacement_method"] = record.UpdatePolicy.ReplacementMethod
+	attributes["distribution_zones"] = strings.Join(computeDistributionZones(record.DistributionPolicy), ",")
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-instance-group-manager-"+resourceID, "gcp.compute_instance_group_manager", "gcp/compute_instance_group_manager/v1", payload, attributes)
+}
+
+func ComputeInstanceTemplateEvent(settings Settings, record ComputeInstanceTemplateRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	network := firstTemplateNetworkInterface(record.Properties)
+	serviceAccounts := computeTemplateServiceAccounts(record.Properties)
+	public := computeTemplatePublic(record.Properties)
+	attributes := cloudResourceAttributes(settings, "compute_instance_template", resourceID, record.Name, "compute_instance_template", "global", record.Properties.Labels)
+	attributes["description"] = record.Description
+	attributes["machine_type"] = lastPathSegment(record.Properties.MachineType)
+	attributes["network"] = lastPathSegment(network.Network)
+	attributes["network_url"] = network.Network
+	attributes["subnet"] = lastPathSegment(network.Subnetwork)
+	attributes["subnet_url"] = network.Subnetwork
+	attributes["subnetwork"] = lastPathSegment(network.Subnetwork)
+	attributes["subnetwork_url"] = network.Subnetwork
+	attributes["service_account_email"] = firstString(serviceAccounts)
+	attributes["service_accounts"] = strings.Join(serviceAccounts, ",")
+	attributes["service_accounts_count"] = strconv.Itoa(len(serviceAccounts))
+	attributes["runtime_identity"] = firstString(serviceAccounts)
+	attributes["network_tags"] = strings.Join(record.Properties.Tags.Items, ",")
+	attributes["security_tags"] = strings.Join(record.Properties.Tags.Items, ",")
+	attributes["disks_count"] = strconv.Itoa(len(record.Properties.Disks))
+	attributes["kms_key_name"] = computeTemplateBootDiskKMS(record.Properties)
+	attributes["secure_boot"] = boolString(record.Properties.ShieldedInstanceConfig.EnableSecureBoot)
+	attributes["integrity_monitoring"] = boolString(record.Properties.ShieldedInstanceConfig.EnableIntegrityMonitoring)
+	attributes["public"] = boolString(public)
+	attributes["internet_exposed"] = boolString(public)
+	attributes["external_exposure"] = boolString(public)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-instance-template-"+resourceID, "gcp.compute_instance_template", "gcp/compute_instance_template/v1", payload, attributes)
+}
+
+func ComputeNetworkEndpointGroupEvent(settings Settings, record ComputeNetworkEndpointGroupRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(firstNonEmpty(record.Zone, record.Region))
+	if location == "" {
+		location = "global"
+	}
+	attributes := cloudResourceAttributes(settings, "compute_network_endpoint_group", resourceID, record.Name, "compute_network_endpoint_group", location, record.Annotations)
+	attributes["description"] = record.Description
+	attributes["zone"] = lastPathSegment(record.Zone)
+	attributes["region"] = lastPathSegment(record.Region)
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["subnet"] = lastPathSegment(record.Subnetwork)
+	attributes["subnet_url"] = record.Subnetwork
+	attributes["subnetwork"] = lastPathSegment(record.Subnetwork)
+	attributes["subnetwork_url"] = record.Subnetwork
+	attributes["network_endpoint_type"] = record.NetworkEndpointType
+	attributes["endpoint_type"] = record.NetworkEndpointType
+	attributes["default_port"] = strconv.Itoa(record.DefaultPort)
+	attributes["size"] = strconv.Itoa(record.Size)
+	attributes["psc_target_service"] = record.PscTargetService
+	attributes["cloud_run_service"] = record.CloudRun.Service
+	attributes["cloud_function"] = record.CloudFunction.Function
+	attributes["app_engine_service"] = record.AppEngine.Service
+	attributes["backend_group_type"] = "network_endpoint_group"
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-network-endpoint-group-"+resourceID, "gcp.compute_network_endpoint_group", "gcp/compute_network_endpoint_group/v1", payload, attributes)
+}
+
 func ComputeHealthCheckEvent(settings Settings, record ComputeHealthCheckRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	location := lastPathSegment(record.Region)
@@ -3448,6 +3744,75 @@ func computeInstanceKMSKey(record ComputeInstanceRecord) string {
 		}
 	}
 	return ""
+}
+
+func computeNamedPorts(ports []ComputeNamedPort) []string {
+	values := make([]string, 0, len(ports))
+	for _, port := range ports {
+		if port.Name == "" && port.Port == 0 {
+			continue
+		}
+		values = append(values, port.Name+":"+strconv.Itoa(port.Port))
+	}
+	return values
+}
+
+func computeAutoHealingHealthChecks(policies []ComputeAutoHealingPolicy) []string {
+	values := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		if policy.HealthCheck != "" {
+			values = append(values, policy.HealthCheck)
+		}
+	}
+	return values
+}
+
+func firstTemplateNetworkInterface(properties ComputeInstanceTemplateProperties) ComputeNetworkInterface {
+	if len(properties.NetworkInterfaces) == 0 {
+		return ComputeNetworkInterface{}
+	}
+	return properties.NetworkInterfaces[0]
+}
+
+func computeTemplateServiceAccounts(properties ComputeInstanceTemplateProperties) []string {
+	accounts := make([]string, 0, len(properties.ServiceAccounts))
+	for _, account := range properties.ServiceAccounts {
+		if email := strings.TrimSpace(account.Email); email != "" {
+			accounts = append(accounts, email)
+		}
+	}
+	return accounts
+}
+
+func computeTemplatePublic(properties ComputeInstanceTemplateProperties) bool {
+	for _, networkInterface := range properties.NetworkInterfaces {
+		if len(networkInterface.AccessConfigs) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func computeTemplateBootDiskKMS(properties ComputeInstanceTemplateProperties) string {
+	for _, disk := range properties.Disks {
+		if !disk.Boot {
+			continue
+		}
+		if key := strings.TrimSpace(disk.DiskEncryptionKey.KMSKeyName); key != "" {
+			return key
+		}
+	}
+	return ""
+}
+
+func computeDistributionZones(policy ComputeInstanceDistribution) []string {
+	zones := make([]string, 0, len(policy.Zones))
+	for _, zone := range policy.Zones {
+		if zone.Zone != "" {
+			zones = append(zones, lastPathSegment(zone.Zone))
+		}
+	}
+	return zones
 }
 
 func computeBackendServiceExternal(scheme string) bool {

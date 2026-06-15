@@ -25,6 +25,10 @@ emitted_kinds:
   - gcp.compute_forwarding_rule
   - gcp.compute_health_check
   - gcp.compute_instance
+  - gcp.compute_instance_group
+  - gcp.compute_instance_group_manager
+  - gcp.compute_instance_template
+  - gcp.compute_network_endpoint_group
   - gcp.compute_network
   - gcp.compute_route
   - gcp.compute_security_policy
@@ -83,6 +87,10 @@ runtime_families:
   - compute_forwarding_rule
   - compute_health_check
   - compute_instance
+  - compute_instance_group
+  - compute_instance_group_manager
+  - compute_instance_template
+  - compute_network_endpoint_group
   - compute_network
   - compute_route
   - compute_security_policy
@@ -239,6 +247,30 @@ coverage_contract:
       type: entity_family
       title: Compute instances
       families: [compute_instance]
+      support: supported
+      high_value: true
+    - id: compute_instance_group
+      type: entity_family
+      title: Compute instance groups
+      families: [compute_instance_group]
+      support: supported
+      high_value: true
+    - id: compute_instance_group_manager
+      type: entity_family
+      title: Compute instance group managers
+      families: [compute_instance_group_manager]
+      support: supported
+      high_value: true
+    - id: compute_instance_template
+      type: entity_family
+      title: Compute instance templates
+      families: [compute_instance_template]
+      support: supported
+      high_value: true
+    - id: compute_network_endpoint_group
+      type: entity_family
+      title: Compute network endpoint groups
+      families: [compute_network_endpoint_group]
       support: supported
       high_value: true
     - id: compute_network
