@@ -70,13 +70,19 @@ func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	encrypted, err := encryptConnectorCredentialsForTest(app.connectorTransitKey.PublicKey(), map[string]string{"token": "secret-token"})
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
 	if err != nil {
 		t.Fatalf("encrypt credentials: %v", err)
 	}
 	body, err := json.Marshal(map[string]any{
 		"runtime_id":            "runtime-a",
 		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
 		"config":                map[string]string{"family": "audit"},
 		"encrypted_credentials": encrypted,
 	})
@@ -109,6 +115,13 @@ func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
 	}
 	if got := configPayload["token"]; got != "[redacted]" {
 		t.Fatalf("response token = %#v, want [redacted]", got)
+	}
+	credentialPayload, ok := payload["credential"].(map[string]any)
+	if !ok {
+		t.Fatalf("credential payload = %#v", payload["credential"])
+	}
+	if got := credentialPayload["credential_store_id"]; got != defaultConnectorCredentialStoreID {
+		t.Fatalf("credential_store_id = %#v, want %q", got, defaultConnectorCredentialStoreID)
 	}
 	runtime := store.runtimes["runtime-a"]
 	if runtime == nil {
@@ -155,6 +168,38 @@ func TestConnectorConnectionRejectsPlaintextSensitiveConfig(t *testing.T) {
 	}()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("POST /connectors plaintext status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestConnectorConnectionRejectsUnsupportedCredentialStore(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"runtime_id":"runtime-a","tenant_id":"tenant-a","credential_store_id":"google_secret_manager","encrypted_credentials":{"key_id":"ignored","algorithm":"RSA-OAEP-256+A256GCM"}}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors unsupported credential store error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST /connectors unsupported credential store status = %d, want 400", resp.StatusCode)
 	}
 }
 
@@ -242,6 +287,10 @@ func testConnectorTransitPrivateKeyPEM(t *testing.T) string {
 }
 
 func encryptConnectorCredentialsForTest(key connectorcredentials.PublicKey, fields map[string]string) (connectorcredentials.EncryptedPayload, error) {
+	return encryptConnectorCredentialsForTestWithAAD(key, fields, []byte(key.KeyID))
+}
+
+func encryptConnectorCredentialsForTestWithAAD(key connectorcredentials.PublicKey, fields map[string]string, additionalData []byte) (connectorcredentials.EncryptedPayload, error) {
 	plaintext, err := json.Marshal(fields)
 	if err != nil {
 		return connectorcredentials.EncryptedPayload{}, err
@@ -275,7 +324,7 @@ func encryptConnectorCredentialsForTest(key connectorcredentials.PublicKey, fiel
 		Algorithm:  key.Algorithm,
 		WrappedKey: base64.StdEncoding.EncodeToString(wrapped),
 		Nonce:      base64.StdEncoding.EncodeToString(nonce),
-		Ciphertext: base64.StdEncoding.EncodeToString(gcm.Seal(nil, nonce, plaintext, []byte(key.KeyID))),
+		Ciphertext: base64.StdEncoding.EncodeToString(gcm.Seal(nil, nonce, plaintext, additionalData)),
 	}, nil
 }
 

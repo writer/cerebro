@@ -183,6 +183,10 @@ paths:
                   type: string
                 tenant_id:
                   type: string
+                credential_store_id:
+                  type: string
+                  description: Closed credential-store identifier selected from /connectors credential_stores metadata.
+                  default: cerebro_vault
                 config:
                   type: object
                   additionalProperties:

@@ -188,6 +188,10 @@ func (k *TransitKey) PublicKey() PublicKey {
 }
 
 func (k *TransitKey) Decrypt(payload EncryptedPayload) ([]byte, error) {
+	return k.DecryptWithAdditionalData(payload, []byte(payload.KeyID))
+}
+
+func (k *TransitKey) DecryptWithAdditionalData(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
 	if k == nil || k.private == nil {
 		return nil, fmt.Errorf("%w: transit key is not configured", ErrUnavailable)
 	}
@@ -196,7 +200,15 @@ func (k *TransitKey) Decrypt(payload EncryptedPayload) ([]byte, error) {
 	}
 	algorithm := strings.TrimSpace(payload.Algorithm)
 	if strings.EqualFold(algorithm, transitAlgorithm) {
-		return k.decryptHybrid(payload)
+		aad := additionalData
+		if len(aad) == 0 {
+			aad = []byte(payload.KeyID)
+		}
+		plaintext, err := k.decryptHybrid(payload, aad)
+		if err == nil || bytes.Equal(aad, []byte(payload.KeyID)) {
+			return plaintext, err
+		}
+		return k.decryptHybrid(payload, []byte(payload.KeyID))
 	}
 	if !strings.EqualFold(algorithm, rsaOAEPAlgorithm) {
 		return nil, fmt.Errorf("%w: unsupported credential transport algorithm", ErrInvalidRequest)
@@ -212,7 +224,7 @@ func (k *TransitKey) Decrypt(payload EncryptedPayload) ([]byte, error) {
 	return plaintext, nil
 }
 
-func (k *TransitKey) decryptHybrid(payload EncryptedPayload) ([]byte, error) {
+func (k *TransitKey) decryptHybrid(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
 	wrappedKey, err := decodeBase64(payload.WrappedKey)
 	if err != nil {
 		return nil, fmt.Errorf("%w: decode wrapped credential key: %w", ErrInvalidRequest, err)
@@ -237,7 +249,7 @@ func (k *TransitKey) decryptHybrid(payload EncryptedPayload) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: initialize credential payload cipher: %w", ErrInvalidRequest, err)
 	}
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, []byte(payload.KeyID))
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, additionalData)
 	if err != nil {
 		return nil, fmt.Errorf("%w: decrypt credential payload", ErrInvalidRequest)
 	}

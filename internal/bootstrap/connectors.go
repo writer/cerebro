@@ -21,6 +21,8 @@ import (
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
+const defaultConnectorCredentialStoreID = "cerebro_vault"
+
 type connectorCatalogEntry struct {
 	SourceID               string   `json:"source_id"`
 	Name                   string   `json:"name"`
@@ -38,6 +40,7 @@ type connectorLibraryResponse struct {
 	RuntimeStore        string                  `json:"runtime_store"`
 	CredentialTransport connectorTransportView  `json:"credential_transport"`
 	CredentialVault     connectorVaultView      `json:"credential_vault"`
+	CredentialStores    []connectorStoreView    `json:"credential_stores,omitempty"`
 }
 
 type connectorTransportView struct {
@@ -51,9 +54,20 @@ type connectorVaultView struct {
 	Detail    string `json:"detail,omitempty"`
 }
 
+type connectorStoreView struct {
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Provider  string `json:"provider"`
+	Available bool   `json:"available"`
+	Default   bool   `json:"default,omitempty"`
+	Mode      string `json:"mode"`
+	Detail    string `json:"detail,omitempty"`
+}
+
 type connectorConnectionRequest struct {
 	RuntimeID            string                                `json:"runtime_id"`
 	TenantID             string                                `json:"tenant_id"`
+	CredentialStoreID    string                                `json:"credential_store_id,omitempty"`
 	Config               map[string]string                     `json:"config"`
 	EncryptedCredentials connectorcredentials.EncryptedPayload `json:"encrypted_credentials"`
 }
@@ -69,6 +83,7 @@ type connectorCredentialView struct {
 	TenantID  string   `json:"tenant_id"`
 	SourceID  string   `json:"source_id"`
 	RuntimeID string   `json:"runtime_id"`
+	StoreID   string   `json:"credential_store_id"`
 	KeyID     string   `json:"key_id"`
 	Fields    []string `json:"fields"`
 	CreatedAt string   `json:"created_at,omitempty"`
@@ -118,12 +133,14 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 	if a.connectorTransitKey != nil {
 		transport.Algorithm = a.connectorTransitKey.PublicKey().Algorithm
 	}
+	vaultStatus := connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore)
 	writeJSON(w, http.StatusOK, connectorLibraryResponse{
 		Connectors:          entries,
 		TenantID:            tenantID,
 		RuntimeStore:        runtimeStoreStatus,
 		CredentialTransport: transport,
-		CredentialVault:     connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore),
+		CredentialVault:     vaultStatus,
+		CredentialStores:    connectorStoreViews(vaultStatus, transport),
 	})
 }
 
@@ -156,6 +173,11 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, fmt.Errorf("%w: tenant_id is required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	credentialStoreID, err := normalizeConnectorCredentialStoreID(request.CredentialStoreID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	runtimeConfig, err := connectorRuntimeConfig(request.Config)
 	if err != nil {
 		writeConnectorError(w, err)
@@ -175,7 +197,10 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, connectorcredentials.ErrUnavailable)
 		return
 	}
-	decrypted, err := a.connectorTransitKey.Decrypt(request.EncryptedCredentials)
+	decrypted, err := a.connectorTransitKey.DecryptWithAdditionalData(
+		request.EncryptedCredentials,
+		connectorCredentialAdditionalData(request.EncryptedCredentials.KeyID, sourceID, tenantID, runtimeID, credentialStoreID),
+	)
 	if err != nil {
 		writeConnectorError(w, err)
 		return
@@ -221,6 +246,7 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 			TenantID:  record.TenantID,
 			SourceID:  record.SourceID,
 			RuntimeID: record.RuntimeID,
+			StoreID:   credentialStoreID,
 			KeyID:     record.KeyID,
 			Fields:    connectorcredentials.SortedFieldNames(fields),
 			CreatedAt: connectorcredentials.TimestampOrZero(record.CreatedAt),
@@ -271,6 +297,49 @@ func connectorRuntimeHealthy(runtime *cerebrov1.SourceRuntime) bool {
 		return status == "completed" || status == "healthy"
 	}
 	return runtime.GetLastSyncedAt() != nil
+}
+
+func connectorStoreViews(vaultStatus connectorVaultView, transport connectorTransportView) []connectorStoreView {
+	available := vaultStatus.Available && transport.Available
+	detail := strings.TrimSpace(vaultStatus.Detail)
+	if available {
+		detail = "ready"
+	}
+	return []connectorStoreView{
+		{
+			ID:        defaultConnectorCredentialStoreID,
+			Label:     "Cerebro Vault",
+			Provider:  "Cerebro",
+			Available: available,
+			Default:   true,
+			Mode:      "encrypted_submission",
+			Detail:    detail,
+		},
+	}
+}
+
+func normalizeConnectorCredentialStoreID(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return defaultConnectorCredentialStoreID, nil
+	}
+	if trimmed != defaultConnectorCredentialStoreID {
+		return "", fmt.Errorf("%w: credential store is not available", connectorcredentials.ErrInvalidRequest)
+	}
+	return trimmed, nil
+}
+
+func connectorCredentialAdditionalData(keyID string, sourceID string, tenantID string, runtimeID string, credentialStoreID string) []byte {
+	parts := []string{
+		"connector-credential",
+		"v1",
+		strings.TrimSpace(keyID),
+		strings.TrimSpace(sourceID),
+		strings.TrimSpace(tenantID),
+		strings.TrimSpace(runtimeID),
+		strings.TrimSpace(credentialStoreID),
+	}
+	return []byte(strings.Join(parts, "\x00"))
 }
 
 func connectorRuntimeConfig(input map[string]string) (map[string]string, error) {
