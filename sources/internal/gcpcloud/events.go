@@ -580,6 +580,77 @@ type ComputeSecurityPolicyAssociation struct {
 	ShortName        string   `json:"shortName"`
 }
 
+type ComputeURLMapRecord struct {
+	ID                 string                     `json:"id"`
+	Name               string                     `json:"name"`
+	SelfLink           string                     `json:"selfLink"`
+	Description        string                     `json:"description"`
+	Region             string                     `json:"region"`
+	DefaultService     string                     `json:"defaultService"`
+	DefaultRouteAction ComputeURLMapRouteAction   `json:"defaultRouteAction"`
+	DefaultURLRedirect ComputeURLMapURLRedirect   `json:"defaultUrlRedirect"`
+	HostRules          []ComputeURLMapHostRule    `json:"hostRules"`
+	PathMatchers       []ComputeURLMapPathMatcher `json:"pathMatchers"`
+	Tests              []ComputeURLMapTest        `json:"tests"`
+	Fingerprint        string                     `json:"fingerprint"`
+	Raw                json.RawMessage            `json:"-"`
+}
+
+type ComputeURLMapHostRule struct {
+	Description string   `json:"description"`
+	Hosts       []string `json:"hosts"`
+	PathMatcher string   `json:"pathMatcher"`
+}
+
+type ComputeURLMapPathMatcher struct {
+	Name               string                   `json:"name"`
+	Description        string                   `json:"description"`
+	DefaultService     string                   `json:"defaultService"`
+	DefaultRouteAction ComputeURLMapRouteAction `json:"defaultRouteAction"`
+	DefaultURLRedirect ComputeURLMapURLRedirect `json:"defaultUrlRedirect"`
+	PathRules          []ComputeURLMapPathRule  `json:"pathRules"`
+	RouteRules         []ComputeURLMapRouteRule `json:"routeRules"`
+}
+
+type ComputeURLMapPathRule struct {
+	Paths       []string                 `json:"paths"`
+	Service     string                   `json:"service"`
+	RouteAction ComputeURLMapRouteAction `json:"routeAction"`
+	URLRedirect ComputeURLMapURLRedirect `json:"urlRedirect"`
+}
+
+type ComputeURLMapRouteRule struct {
+	Priority    int                      `json:"priority"`
+	Service     string                   `json:"service"`
+	RouteAction ComputeURLMapRouteAction `json:"routeAction"`
+	URLRedirect ComputeURLMapURLRedirect `json:"urlRedirect"`
+}
+
+type ComputeURLMapRouteAction struct {
+	WeightedBackendServices []ComputeURLMapWeightedBackendService `json:"weightedBackendServices"`
+}
+
+type ComputeURLMapWeightedBackendService struct {
+	BackendService string `json:"backendService"`
+	Weight         int    `json:"weight"`
+}
+
+type ComputeURLMapURLRedirect struct {
+	HostRedirect         string `json:"hostRedirect"`
+	PathRedirect         string `json:"pathRedirect"`
+	PrefixRedirect       string `json:"prefixRedirect"`
+	RedirectResponseCode string `json:"redirectResponseCode"`
+	HTTPSRedirect        bool   `json:"httpsRedirect"`
+	StripQuery           bool   `json:"stripQuery"`
+}
+
+type ComputeURLMapTest struct {
+	Description string `json:"description"`
+	Host        string `json:"host"`
+	Path        string `json:"path"`
+	Service     string `json:"service"`
+}
+
 type ComputeNetworkRecord struct {
 	ID                    string                      `json:"id"`
 	Name                  string                      `json:"name"`
@@ -1927,6 +1998,39 @@ func ComputeSecurityPolicyEvent(settings Settings, record ComputeSecurityPolicyR
 	return sourceEvent(settings, "gcp-compute-security-policy-"+resourceID, "gcp.compute_security_policy", "gcp/compute_security_policy/v1", payload, attributes)
 }
 
+func ComputeURLMapEvent(settings Settings, record ComputeURLMapRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	routes := computeURLMapRoutes(record)
+	attributes := cloudResourceAttributes(settings, "compute_url_map", resourceID, record.Name, "compute_url_map", location, nil)
+	attributes["description"] = record.Description
+	attributes["default_service"] = lastPathSegment(record.DefaultService)
+	attributes["default_service_url"] = record.DefaultService
+	attributes["host_rules_count"] = strconv.Itoa(len(record.HostRules))
+	attributes["hosts"] = strings.Join(routes.hosts, ",")
+	attributes["path_matchers"] = strings.Join(routes.pathMatchers, ",")
+	attributes["path_matchers_count"] = strconv.Itoa(len(record.PathMatchers))
+	attributes["paths"] = strings.Join(routes.paths, ",")
+	attributes["path_rules_count"] = strconv.Itoa(routes.pathRulesCount)
+	attributes["route_rules_count"] = strconv.Itoa(routes.routeRulesCount)
+	attributes["redirect_rules_count"] = strconv.Itoa(routes.redirectRulesCount)
+	attributes["weighted_backend_services_count"] = strconv.Itoa(routes.weightedBackendServicesCount)
+	attributes["backend_services"] = strings.Join(routes.backendNames, ",")
+	attributes["backend_service_urls"] = strings.Join(routes.backendURLs, ",")
+	attributes["backend_resources"] = strings.Join(routes.backendNames, ",")
+	attributes["backend_resource_urls"] = strings.Join(routes.backendURLs, ",")
+	attributes["tests_count"] = strconv.Itoa(len(record.Tests))
+	attributes["fingerprint"] = record.Fingerprint
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-url-map-"+resourceID, "gcp.compute_url_map", "gcp/compute_url_map/v1", payload, attributes)
+}
+
 func ComputeNetworkEvent(settings Settings, record ComputeNetworkRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	attributes := cloudResourceAttributes(settings, "compute_network", resourceID, record.Name, "compute_network", "global", record.Labels)
@@ -2906,6 +3010,85 @@ func computeSecurityPolicyAssociations(associations []ComputeSecurityPolicyAssoc
 		}
 	}
 	return names, urls
+}
+
+type computeURLMapRouteSummary struct {
+	hosts                        []string
+	pathMatchers                 []string
+	paths                        []string
+	backendNames                 []string
+	backendURLs                  []string
+	pathRulesCount               int
+	routeRulesCount              int
+	redirectRulesCount           int
+	weightedBackendServicesCount int
+}
+
+func computeURLMapRoutes(record ComputeURLMapRecord) computeURLMapRouteSummary {
+	summary := computeURLMapRouteSummary{}
+	addURLMapBackend(&summary, record.DefaultService)
+	addURLMapWeightedBackends(&summary, record.DefaultRouteAction)
+	if computeURLRedirectConfigured(record.DefaultURLRedirect) {
+		summary.redirectRulesCount++
+	}
+	for _, hostRule := range record.HostRules {
+		for _, host := range hostRule.Hosts {
+			summary.hosts = appendUnique(summary.hosts, host)
+		}
+		if hostRule.PathMatcher != "" {
+			summary.pathMatchers = appendUnique(summary.pathMatchers, hostRule.PathMatcher)
+		}
+	}
+	for _, matcher := range record.PathMatchers {
+		if matcher.Name != "" {
+			summary.pathMatchers = appendUnique(summary.pathMatchers, matcher.Name)
+		}
+		addURLMapBackend(&summary, matcher.DefaultService)
+		addURLMapWeightedBackends(&summary, matcher.DefaultRouteAction)
+		if computeURLRedirectConfigured(matcher.DefaultURLRedirect) {
+			summary.redirectRulesCount++
+		}
+		for _, rule := range matcher.PathRules {
+			summary.pathRulesCount++
+			for _, path := range rule.Paths {
+				summary.paths = appendUnique(summary.paths, path)
+			}
+			addURLMapBackend(&summary, rule.Service)
+			addURLMapWeightedBackends(&summary, rule.RouteAction)
+			if computeURLRedirectConfigured(rule.URLRedirect) {
+				summary.redirectRulesCount++
+			}
+		}
+		for _, rule := range matcher.RouteRules {
+			summary.routeRulesCount++
+			addURLMapBackend(&summary, rule.Service)
+			addURLMapWeightedBackends(&summary, rule.RouteAction)
+			if computeURLRedirectConfigured(rule.URLRedirect) {
+				summary.redirectRulesCount++
+			}
+		}
+	}
+	return summary
+}
+
+func addURLMapBackend(summary *computeURLMapRouteSummary, backend string) {
+	backend = strings.TrimSpace(backend)
+	if backend == "" {
+		return
+	}
+	summary.backendURLs = appendUnique(summary.backendURLs, backend)
+	summary.backendNames = appendUnique(summary.backendNames, lastPathSegment(backend))
+}
+
+func addURLMapWeightedBackends(summary *computeURLMapRouteSummary, action ComputeURLMapRouteAction) {
+	for _, backend := range action.WeightedBackendServices {
+		addURLMapBackend(summary, backend.BackendService)
+		summary.weightedBackendServicesCount++
+	}
+}
+
+func computeURLRedirectConfigured(redirect ComputeURLMapURLRedirect) bool {
+	return redirect.HostRedirect != "" || redirect.PathRedirect != "" || redirect.PrefixRedirect != "" || redirect.RedirectResponseCode != "" || redirect.HTTPSRedirect || redirect.StripQuery
 }
 
 func lastPathSegments(values []string) []string {

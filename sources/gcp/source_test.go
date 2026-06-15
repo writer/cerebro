@@ -90,6 +90,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyComputeRoute, kind: "gcp.compute_route"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork"},
+		{family: familyComputeURLMap, kind: "gcp.compute_url_map"},
 		{family: familyDNSManagedZone, kind: "gcp.dns_managed_zone"},
 		{family: familyDNSRecordSet, kind: "gcp.dns_record_set"},
 		{family: familyGCSBucket, kind: "gcp.gcs_bucket"},
@@ -298,6 +299,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeRoute, kind: "gcp.compute_route", attr: "internet_egress", want: "true"},
 		{family: familyComputeSecurityPolicy, kind: "gcp.compute_security_policy", attr: "rules_count", want: "3"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
+		{family: familyComputeURLMap, kind: "gcp.compute_url_map", attr: "backend_services", want: "prod-backend,api-backend,canary-backend"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall", attr: "source_ranges", want: "0.0.0.0/0"},
 		{family: familyComputeForwardingRule, kind: "gcp.compute_forwarding_rule", attr: "internet_exposed", want: "true"},
 		{family: familyComputeDisk, kind: "gcp.compute_disk", attr: "disk_type", want: "pd-balanced"},
@@ -845,6 +847,14 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"securityPolicies": []map[string]any{{"id": "sp-1", "name": "prod-armor", "selfLink": "projects/writer-prod/global/securityPolicies/prod-armor", "description": "prod cloud armor policy", "type": "CLOUD_ARMOR", "fingerprint": "abc123", "rules": []map[string]any{{"priority": 1000, "action": "deny(403)", "description": "block sqli", "match": map[string]any{"expr": map[string]string{"expression": "evaluatePreconfiguredWaf('sqli-v33-stable')"}}}, {"priority": 2000, "action": "throttle", "preview": true, "description": "rate limit broad traffic", "match": map[string]any{"versionedExpr": "SRC_IPS_V1", "config": map[string]any{"srcIpRanges": []string{"0.0.0.0/0"}}}}, {"priority": 2147483647, "action": "allow", "description": "default allow", "match": map[string]any{"versionedExpr": "SRC_IPS_V1", "config": map[string]any{"srcIpRanges": []string{"0.0.0.0/0"}}}}}, "adaptiveProtectionConfig": map[string]any{"layer7DdosDefenseConfig": map[string]bool{"enable": true}}, "advancedOptionsConfig": map[string]any{"jsonParsing": "STANDARD", "logLevel": "VERBOSE", "userIpRequestHeaders": []string{"X-Forwarded-For"}}, "associations": []map[string]any{{"name": "prod-backend", "attachmentId": "projects/writer-prod/global/backendServices/prod-backend", "securityPolicyId": "sp-1", "shortName": "prod-armor"}}, "labels": map[string]string{"env": "prod"}}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/subnetworks":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"regions/us-central1": map[string]any{"subnetworks": []map[string]any{{"id": "subnet-1", "name": "default", "selfLink": "projects/writer-prod/regions/us-central1/subnetworks/default", "network": "projects/writer-prod/global/networks/default", "region": "projects/writer-prod/regions/us-central1", "ipCidrRange": "10.0.0.0/24", "privateIpGoogleAccess": true, "purpose": "PRIVATE", "stackType": "IPV4_ONLY", "labels": map[string]string{"env": "prod"}}}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/urlMaps":
+			if got := r.URL.Query().Get("maxResults"); got != "10" {
+				t.Fatalf("url maps maxResults = %q, want 10", got)
+			}
+			if got := r.URL.Query().Get("returnPartialSuccess"); got != "true" {
+				t.Fatalf("url maps returnPartialSuccess = %q, want true", got)
+			}
+			writeJSON(t, w, map[string]any{"items": map[string]any{"global": map[string]any{"urlMaps": []map[string]any{{"id": "um-1", "name": "prod-url-map", "selfLink": "projects/writer-prod/global/urlMaps/prod-url-map", "description": "prod application routing", "defaultService": "projects/writer-prod/global/backendServices/prod-backend", "hostRules": []map[string]any{{"hosts": []string{"app.writer.example"}, "pathMatcher": "app"}}, "pathMatchers": []map[string]any{{"name": "app", "defaultService": "projects/writer-prod/global/backendServices/prod-backend", "pathRules": []map[string]any{{"paths": []string{"/api/*"}, "service": "projects/writer-prod/global/backendServices/api-backend"}, {"paths": []string{"/old/*"}, "urlRedirect": map[string]any{"prefixRedirect": "/new", "redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}}}, "routeRules": []map[string]any{{"priority": 10, "routeAction": map[string]any{"weightedBackendServices": []map[string]any{{"backendService": "projects/writer-prod/global/backendServices/canary-backend", "weight": 10}}}}}}}, "tests": []map[string]any{{"host": "app.writer.example", "path": "/api/health", "service": "projects/writer-prod/global/backendServices/api-backend"}}, "fingerprint": "urlmap123"}}}}})
 		case "/compute/v1/projects/writer-prod/aggregated/disks":
 			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"disks": []map[string]any{{"id": "disk-1", "name": "web-1", "selfLink": "projects/writer-prod/zones/us-central1-a/disks/web-1", "zone": "projects/writer-prod/zones/us-central1-a", "type": "projects/writer-prod/zones/us-central1-a/diskTypes/pd-balanced", "status": "READY", "sizeGb": "100", "users": []string{"projects/writer-prod/zones/us-central1-a/instances/web-1"}, "labels": map[string]string{"env": "prod"}, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/disk"}}}}}})
 		case "/dns/v1/projects/writer-prod/managedZones":
