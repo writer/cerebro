@@ -38,6 +38,12 @@ config:
   cerebro:postgresDeletionProtection: true
   cerebro:postgresMultiAz: true
   cerebro:retainLegacyJobsTableForDeletionProtectionTransition: true
+  cerebro:cacheEnabled: true
+  cerebro:cacheEngine: valkey
+  cerebro:cacheNamespace: cerebro:go-production:grc
+  cerebro:cacheDefaultTTL: 30s
+  cerebro:cacheStaleTTL: 5m
+  cerebro:cacheMaxPayloadBytes: 1048576
   cerebro:natsCpu: 1024
   cerebro:natsMemory: 2048
   cerebro:jetstreamStreamName: CEREBRO_EVENTS

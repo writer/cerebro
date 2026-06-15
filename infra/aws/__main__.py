@@ -11,6 +11,7 @@ import pulumi
 import pulumi_aws as aws
 
 import audit_storage
+import cache
 import certificate as cert
 import compute
 import ecr
@@ -268,6 +269,14 @@ postgres_multi_az = _config_bool("postgresMultiAz", is_production)
 postgres_apply_immediately = _config_bool("postgresApplyImmediately", not is_production)
 postgres_final_snapshot_identifier = config.get("postgresFinalSnapshotIdentifier") or None
 retain_legacy_jobs_table = _config_bool("retainLegacyJobsTableForDeletionProtectionTransition", False)
+
+cache_enabled = _config_bool("cacheEnabled", False)
+cache_engine = (config.get("cacheEngine") or "valkey").strip().lower()
+cache_major_engine_version = (config.get("cacheMajorEngineVersion") or "").strip() or None
+cache_namespace = config.get("cacheNamespace") or f"cerebro:{environment}:grc"
+cache_default_ttl = config.get("cacheDefaultTTL") or "30s"
+cache_stale_ttl = config.get("cacheStaleTTL") or "5m"
+cache_max_payload_bytes = _config_int("cacheMaxPayloadBytes", 1048576)
 
 nats_cpu = _config_int("natsCpu", 512)
 nats_memory = _config_int("natsMemory", 1024)
@@ -588,6 +597,19 @@ nats_stack = nats.create_nats_service(
     lag_probe_interval_seconds=jetstream_lag_probe_interval_seconds,
 )
 
+cache_stack = None
+if cache_enabled:
+    cache_stack = cache.create_query_cache(
+        name=f"cerebro-{environment}",
+        vpc_id=vpc_stack["vpc_id"],
+        subnet_ids=vpc_stack["private_subnet_ids"],
+        app_security_group_id=vpc_stack["app_security_group_id"],
+        kms_key_arn=kms_key["key_arn"],
+        secret_name=f"{external_secrets_prefix}/CEREBRO_CACHE_URL",
+        engine=cache_engine,
+        major_engine_version=cache_major_engine_version,
+    )
+
 neo4j_stack = None
 neo4j_secret_stack = None
 if neo4j_aura_enabled:
@@ -723,6 +745,8 @@ if device_auth_enabled:
 if mcp_oauth_enabled:
     secret_keys.append(_infisical_secret("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", mcp_oauth_upstream_client_id_secret_name))
     secret_keys.append(_infisical_secret("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", mcp_oauth_upstream_client_secret_name))
+if cache_stack:
+    secret_keys.append("CEREBRO_CACHE_URL")
 secret_keys.extend(_infisical_source_secret(secret_key) for secret_key in source_secret_keys)
 
 app_environment = {
@@ -794,6 +818,14 @@ if trusted_proxy_cidrs:
     app_environment["CEREBRO_TRUSTED_PROXY_CIDRS"] = ",".join(trusted_proxy_cidrs)
 if source_runtime_env_refs:
     app_environment["CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"] = ",".join(source_runtime_env_refs)
+if cache_stack:
+    app_environment.update({
+        "CEREBRO_CACHE_MODE": cache_engine,
+        "CEREBRO_CACHE_NAMESPACE": cache_namespace,
+        "CEREBRO_CACHE_DEFAULT_TTL": cache_default_ttl,
+        "CEREBRO_CACHE_STALE_TTL": cache_stale_ttl,
+        "CEREBRO_CACHE_MAX_PAYLOAD_BYTES": str(cache_max_payload_bytes),
+    })
 
 graph_agent_llm_provider = config.get("graphAgentLlmProvider")
 if graph_agent_llm_provider:
@@ -835,6 +867,8 @@ runtime_dependencies = [
 ]
 if neo4j_secret_stack:
     runtime_dependencies.extend(neo4j_secret_stack["versions"])
+if cache_stack:
+    runtime_dependencies.append(cache_stack["secret_version"])
 
 ecs_stack = compute.create_ecs_cluster(
     name=f"cerebro-{environment}",
@@ -1105,6 +1139,9 @@ pulumi.export("postgres_secret_name", postgres_stack["secret"].name)
 pulumi.export("nats_url", nats_stack["url"])
 pulumi.export("jetstream_stream_name", nats_stack["stream_name"])
 pulumi.export("jetstream_lag_probe_enabled", nats_stack["lag_probe_enabled"])
+if cache_stack:
+    pulumi.export("cache_name", cache_stack["cache"].name)
+    pulumi.export("cache_secret_name", cache_stack["secret"].name)
 if neo4j_stack:
     pulumi.export("neo4j_instance_id", neo4j_stack["instance"].instance_id)
     pulumi.export("neo4j_connection_url", neo4j_stack["instance"].connection_url)

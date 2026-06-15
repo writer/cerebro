@@ -58,6 +58,12 @@ config:
   cerebro:postgresBackupRetentionDays: 14
   cerebro:postgresDeletionProtection: true
   cerebro:postgresMultiAz: true
+  cerebro:cacheEnabled: true
+  cerebro:cacheEngine: valkey
+  cerebro:cacheNamespace: cerebro:sec-dev:grc
+  cerebro:cacheDefaultTTL: 30s
+  cerebro:cacheStaleTTL: 5m
+  cerebro:cacheMaxPayloadBytes: 1048576
   cerebro:natsCpu: 512
   cerebro:natsMemory: 1024
   cerebro:jetstreamStreamName: CEREBRO_EVENTS

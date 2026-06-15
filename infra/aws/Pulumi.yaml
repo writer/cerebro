@@ -292,6 +292,35 @@ config:
     default: false
     description: Temporarily retain the legacy DynamoDB jobs table while disabling its deletion protection
 
+  cerebro:cacheEnabled:
+    type: boolean
+    default: false
+    description: Provision an ElastiCache Serverless cache and enable Cerebro query caching
+  cerebro:cacheEngine:
+    type: string
+    default: valkey
+    description: ElastiCache Serverless engine for query caching; valid values are valkey or redis
+  cerebro:cacheMajorEngineVersion:
+    type: string
+    default: ""
+    description: Optional major cache engine version override; empty lets AWS choose the default
+  cerebro:cacheNamespace:
+    type: string
+    default: ""
+    description: Cache key namespace passed to the Cerebro API task
+  cerebro:cacheDefaultTTL:
+    type: string
+    default: 30s
+    description: Default fresh TTL for cacheable Cerebro API responses
+  cerebro:cacheStaleTTL:
+    type: string
+    default: 5m
+    description: Additional stale-if-error window for cacheable Cerebro API responses
+  cerebro:cacheMaxPayloadBytes:
+    type: integer
+    default: 1048576
+    description: Maximum response payload size eligible for query caching
+
   cerebro:natsCpu:
     type: integer
     default: 512
