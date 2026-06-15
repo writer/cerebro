@@ -203,6 +203,315 @@ func TestConnectorConnectionRejectsUnsupportedCredentialStore(t *testing.T) {
 	}
 }
 
+func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Connectors []struct {
+			SourceID          string `json:"source_id"`
+			DisplayName       string `json:"display_name"`
+			ConnectionMethods []struct {
+				ID       string `json:"id"`
+				Saveable bool   `json:"saveable"`
+			} `json:"connection_methods"`
+		} `json:"connectors"`
+		CredentialStores []struct {
+			ID        string `json:"id"`
+			Available bool   `json:"available"`
+		} `json:"credential_stores"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Connectors) != 1 {
+		t.Fatalf("connectors len = %d, want 1", len(payload.Connectors))
+	}
+	if got := payload.Connectors[0].DisplayName; got != "Bootstrap token source" {
+		t.Fatalf("display_name = %q, want fallback source name", got)
+	}
+	methods := map[string]bool{}
+	for _, method := range payload.Connectors[0].ConnectionMethods {
+		methods[method.ID] = method.Saveable
+	}
+	if !methods[connectorAuthMethodEncryptedSubmission] {
+		t.Fatalf("encrypted submission method not saveable: %#v", methods)
+	}
+	if !methods[connectorAuthMethodEnvironmentManaged] {
+		t.Fatalf("environment-managed method not saveable: %#v", methods)
+	}
+	stores := map[string]bool{}
+	for _, store := range payload.CredentialStores {
+		stores[store.ID] = store.Available
+	}
+	if !stores[connectorStoreEnvironmentManaged] {
+		t.Fatalf("environment-managed store not advertised available: %#v", stores)
+	}
+}
+
+func TestConnectorConnectionStoresEnvironmentManagedReference(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+	t.Setenv("CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", "resolved-env-token")
+
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-env",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodInfisicalCLI,
+		"credential_store_id": connectorStoreEnvironmentManaged,
+		"config":              map[string]string{"family": "audit"},
+		"credential_references": map[string]string{
+			"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", // #nosec G101 -- env reference string, not a secret value.
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors environment reference error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors environment reference status = %d, want 200", resp.StatusCode)
+	}
+	if source.checkToken != "resolved-env-token" {
+		t.Fatalf("source check token = %q, want resolved-env-token", source.checkToken)
+	}
+	runtime := store.runtimes["runtime-env"]
+	if runtime == nil {
+		t.Fatal("stored runtime missing")
+	}
+	if got := runtime.GetConfig()["token"]; got != "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN" {
+		t.Fatalf("stored runtime token = %q, want env reference", got)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	credentialPayload, ok := payload["credential"].(map[string]any)
+	if !ok {
+		t.Fatalf("credential payload = %#v", payload["credential"])
+	}
+	if got := credentialPayload["auth_method"]; got != connectorAuthMethodInfisicalCLI {
+		t.Fatalf("credential auth_method = %#v, want %q", got, connectorAuthMethodInfisicalCLI)
+	}
+	if got := credentialPayload["credential_store_id"]; got != connectorStoreEnvironmentManaged {
+		t.Fatalf("credential_store_id = %#v, want %q", got, connectorStoreEnvironmentManaged)
+	}
+}
+
+func TestConnectorConnectionCheckOnlyDoesNotPersistCredentialOrRuntime(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-check", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-check",
+		"tenant_id":             "tenant-a",
+		"check_only":            true,
+		"auth_method":           connectorAuthMethodEncryptedSubmission,
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"config":                map[string]string{"family": "audit"},
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors check-only error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors check-only status = %d, want 200", resp.StatusCode)
+	}
+	if source.checkToken != "secret-token" {
+		t.Fatalf("source check token = %q, want decrypted secret", source.checkToken)
+	}
+	if len(store.runtimes) != 0 {
+		t.Fatalf("stored runtimes len = %d, want 0", len(store.runtimes))
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials len = %d, want 0", len(store.credentials))
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := payload["status"]; got != "checked" {
+		t.Fatalf("status = %#v, want checked", got)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal response payload: %v", err)
+	}
+	if strings.Contains(string(encoded), "secret-token") {
+		t.Fatalf("check-only response leaked secret: %s", encoded)
+	}
+}
+
+func TestConnectorConnectionStoresExternalStoreReference(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+	t.Setenv("CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", "resolved-external-token")
+
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-external",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodExternalReference,
+		"credential_store_id": connectorStoreInfisical,
+		"config":              map[string]string{"family": "audit"},
+		"credential_references": map[string]string{
+			"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", // #nosec G101 -- env reference string, not a secret value.
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors external reference error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors external reference status = %d, want 200", resp.StatusCode)
+	}
+	if source.checkToken != "resolved-external-token" {
+		t.Fatalf("source check token = %q, want resolved-external-token", source.checkToken)
+	}
+	runtime := store.runtimes["runtime-external"]
+	if runtime == nil {
+		t.Fatal("stored runtime missing")
+	}
+	if got := runtime.GetConfig()["token"]; got != "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN" {
+		t.Fatalf("stored runtime token = %q, want env reference", got)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	credentialPayload, ok := payload["credential"].(map[string]any)
+	if !ok {
+		t.Fatalf("credential payload = %#v", payload["credential"])
+	}
+	if got := credentialPayload["auth_method"]; got != connectorAuthMethodExternalReference {
+		t.Fatalf("credential auth_method = %#v, want %q", got, connectorAuthMethodExternalReference)
+	}
+	if got := credentialPayload["credential_store_id"]; got != connectorStoreInfisical {
+		t.Fatalf("credential_store_id = %#v, want %q", got, connectorStoreInfisical)
+	}
+}
+
+func TestConnectorConnectionRejectsInternalConfigAndUnsupportedAuth(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for name, body := range map[string]string{
+		"internal_config": `{"runtime_id":"runtime-a","tenant_id":"tenant-a","auth_method":"environment_managed","credential_store_id":"environment_managed","config":{"__cerebro_aws_assume_role_arns":"caller-controlled"}}`,
+		"wrong_source":    `{"runtime_id":"runtime-a","tenant_id":"tenant-a","auth_method":"aws_sso_profile","credential_store_id":"environment_managed","config":{"account_id":"123456789012","profile":"cerebro"}}`,
+	} {
+		resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("%s: POST /connectors error = %v", name, err)
+		}
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("%s: close response: %v", name, closeErr)
+		}
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: POST /connectors status = %d, want 400", name, resp.StatusCode)
+		}
+	}
+}
+
 func TestConnectorTransitKeyIsSharedAcrossReplicas(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)

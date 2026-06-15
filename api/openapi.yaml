@@ -177,22 +177,49 @@ paths:
               required:
                 - runtime_id
                 - tenant_id
-                - encrypted_credentials
               properties:
                 runtime_id:
                   type: string
                 tenant_id:
                   type: string
+                check_only:
+                  type: boolean
+                  description: Validate the connector configuration and selected credential path without persisting a runtime or storing credentials.
+                  default: false
+                auth_method:
+                  type: string
+                  description: Backend-advertised connection method selected from /connectors connection_methods metadata.
+                  default: encrypted_submission
+                  enum:
+                    - encrypted_submission
+                    - aws_sso_profile
+                    - infisical_cli
+                    - environment_managed
+                    - external_reference
                 credential_store_id:
                   type: string
                   description: Closed credential-store identifier selected from /connectors credential_stores metadata.
                   default: cerebro_vault
+                  enum:
+                    - cerebro_vault
+                    - environment_managed
+                    - infisical
+                    - google_secret_manager
+                    - aws_secrets_manager
+                    - azure_key_vault
+                    - hashicorp_vault
                 config:
                   type: object
                   additionalProperties:
                     type: string
+                credential_references:
+                  type: object
+                  description: Non-secret credential references for environment-managed or external-reference methods. Values must be server-resolvable references such as env:CEREBRO_SOURCE_<SOURCE>_<FIELD>; secret-store CLIs/controllers are expected to populate those environment values outside the browser.
+                  additionalProperties:
+                    type: string
                 encrypted_credentials:
                   type: object
+                  description: Required only when auth_method is encrypted_submission.
                   required:
                     - key_id
                     - algorithm
