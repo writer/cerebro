@@ -6,7 +6,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -34,6 +33,7 @@ var catalogFS embed.FS
 const (
 	defaultFamily                                = familyAudit
 	defaultPageSize                              = 10
+	gcsObjectContentSampleBytes                  = 64 << 10
 	maxPageSize                                  = 200
 	familyAssetMetadata                          = "asset_metadata"
 	familyAIDataset                              = "aiplatform_dataset"
@@ -1455,6 +1455,10 @@ func listGCSObjects(ctx context.Context, source *Source, settings settings, page
 				record.BucketLocation = bucket.Location
 				record.Raw = append(json.RawMessage(nil), raw...)
 			})
+			gcpcloud.EnrichGCSObjectContentInspections(objects, func(object gcpcloud.GCSObjectRecord) ([]byte, bool, error) {
+				path, query := gcpcloud.GCSObjectContentMediaRequest(object)
+				return getBytes(ctx, source, settings, storageBaseURL, http.MethodGet, path, query, nil, gcsObjectContentSampleBytes)
+			})
 			return objects, response.NextPageToken, err
 		})
 		if err != nil {
@@ -2003,38 +2007,41 @@ func sourceEvent(settings settings, id string, kind string, schemaRef string, pa
 }
 
 func getJSON(ctx context.Context, source *Source, settings settings, defaultBaseURL func() string, method string, requestPath string, query url.Values, body any, target any) error {
+	content, _, err := getBytes(ctx, source, settings, defaultBaseURL, method, requestPath, query, body, 0)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(content, target); err != nil {
+		return fmt.Errorf("decode %s response: %w", requestPath, err)
+	}
+	return nil
+}
+
+func getBytes(ctx context.Context, source *Source, settings settings, defaultBaseURL func() string, method string, requestPath string, query url.Values, body any, maxBytes int) ([]byte, bool, error) {
 	baseURL := settings.baseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL()
 	}
-	baseURL, _, err := sourcehttp.NormalizeBaseURL("gcp", baseURL, source != nil && source.allowLoopbackBaseURL)
-	if err != nil {
-		return err
-	}
-	path, err := sourcehttp.NormalizeRequestPath("gcp", requestPath)
-	if err != nil {
-		return err
-	}
-	endpoint := baseURL + path
-	if encoded := query.Encode(); encoded != "" {
-		endpoint += "?" + encoded
-	}
-	var requestBody io.Reader
+	var payload []byte
 	if body != nil {
-		payload, err := json.Marshal(body)
+		var err error
+		payload, err = json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("marshal %s request: %w", requestPath, err)
+			return nil, false, fmt.Errorf("marshal %s request: %w", requestPath, err)
 		}
-		requestBody = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, requestBody)
+	req, err := sourcehttp.NewRequest(ctx, "gcp", baseURL, source != nil && source.allowLoopbackBaseURL, method, requestPath, query, payload)
 	if err != nil {
-		return fmt.Errorf("build request %s: %w", requestPath, err)
+		return nil, false, err
 	}
 	req.Header.Set("Accept", "application/json")
+	if maxBytes > 0 {
+		req.Header.Set("Accept", "*/*")
+		req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", maxBytes-1))
+	}
 	token, err := gcpBearerToken(ctx, source, settings)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	if body != nil {
@@ -2044,22 +2051,14 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 	if source != nil && source.client != nil {
 		client = source.client
 	}
-	resp, err := client.Do(req)
+	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{MaxAttempts: 1, MaxBodyBytes: maxBytes})
 	if err != nil {
-		return fmt.Errorf("request %s: %w", requestPath, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	content, err := sourcehttp.ReadLimitedBody(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read %s response: %w", requestPath, err)
+		return nil, false, fmt.Errorf("request %s: %w", requestPath, err)
 	}
 	if resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("gcp API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(content)))
+		return nil, false, fmt.Errorf("gcp API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(resp.Body)))
 	}
-	if err := json.Unmarshal(content, target); err != nil {
-		return fmt.Errorf("decode %s response: %w", requestPath, err)
-	}
-	return nil
+	return resp.Body, sourcehttp.ResponseBodyTruncated(resp.StatusCode, resp.Header.Get("Content-Range"), len(resp.Body), maxBytes), nil
 }
 
 func gcpBearerToken(ctx context.Context, source *Source, settings settings) (string, error) {

@@ -2,6 +2,7 @@ package gcpcloud
 
 import (
 	"encoding/json"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,6 +14,10 @@ import (
 )
 
 var cloudIDSResourceLabelIDFilterRE = regexp.MustCompile(`resource\.labels\.id\s*(?:=|:)\s*"?([^"\s)]+)"?`)
+var gcsContentEmailRE = regexp.MustCompile(`[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
+var gcsContentClassificationRE = regexp.MustCompile(`\b(restricted|confidential|internal|public)\b`)
+var gcsContentSecretRE = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|passwd|private[_-]?key)\s*[:=]\s*["']?[a-z0-9_./+=\-]{12,}`)
+var gcsContentSSNRE = regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)
 
 type Settings struct {
 	ProjectID           string
@@ -422,7 +427,19 @@ type GCSObjectRecord struct {
 	Metadata                map[string]string     `json:"metadata"`
 	ACL                     []GCSObjectACL        `json:"acl"`
 	BucketLocation          string
-	Raw                     json.RawMessage `json:"-"`
+	ContentInspection       GCSObjectContentInspection `json:"-"`
+	Raw                     json.RawMessage            `json:"-"`
+}
+
+type GCSObjectContentInspection struct {
+	Inspected          bool     `json:"inspected"`
+	BytesScanned       int      `json:"bytes_scanned"`
+	Truncated          bool     `json:"truncated"`
+	Findings           []string `json:"findings"`
+	DataClassification string   `json:"data_classification"`
+	ContainsPII        bool     `json:"contains_pii"`
+	ContainsSecrets    bool     `json:"contains_secrets"`
+	Error              string   `json:"error,omitempty"`
 }
 
 type GCSCustomerEncryption struct {
@@ -1268,6 +1285,7 @@ func GCSBucketEvent(settings Settings, record GCSBucketRecord) (*primitives.Even
 func GCSObjectEvent(settings Settings, record GCSObjectRecord) (*primitives.Event, error) {
 	acl := gcsObjectACLSummary(record.ACL)
 	metadataClass := labelLookup(record.Metadata, "data_classification", "data-classification", "classification", "sensitivity", "data_sensitivity")
+	inspection := record.ContentInspection
 	resourceID := firstNonEmpty(record.ID, record.Bucket+"/"+record.Name)
 	location := firstNonEmpty(record.BucketLocation, "global")
 	attributes := cloudResourceAttributes(settings, "gcs_object", resourceID, record.Name, "gcs_object", location, record.Metadata)
@@ -1295,13 +1313,156 @@ func GCSObjectEvent(settings Settings, record GCSObjectRecord) (*primitives.Even
 	attributes["public"] = boolString(acl.Public)
 	attributes["internet_exposed"] = boolString(acl.Public)
 	attributes["external_exposure"] = boolString(acl.Public)
-	attributes["data_classification"] = metadataClass
-	attributes["contains_pii"] = labelLookup(record.Metadata, "contains_pii", "pii")
-	payload, err := payloadWithRaw(record.Raw, map[string]any{"bucket": record.Bucket, "project_id": settings.ProjectID})
+	contentBytesScanned := ""
+	contentInspectionTruncated := ""
+	contentContainsPII := ""
+	contentContainsSecrets := ""
+	if inspection.Inspected {
+		contentBytesScanned = strconv.Itoa(inspection.BytesScanned)
+		contentInspectionTruncated = boolString(inspection.Truncated)
+		contentContainsPII = boolString(inspection.ContainsPII)
+		contentContainsSecrets = boolString(inspection.ContainsSecrets)
+	}
+	attributes["content_inspected"] = boolString(inspection.Inspected)
+	attributes["content_bytes_scanned"] = contentBytesScanned
+	attributes["content_inspection_truncated"] = contentInspectionTruncated
+	attributes["content_findings"] = strings.Join(inspection.Findings, ",")
+	attributes["content_contains_pii"] = contentContainsPII
+	attributes["content_contains_secrets"] = contentContainsSecrets
+	attributes["content_inspection_error"] = inspection.Error
+	attributes["data_classification"] = strongestDataClassification(metadataClass, inspection.DataClassification)
+	attributes["contains_pii"] = mergeContainsIndicator(labelLookup(record.Metadata, "contains_pii", "pii"), contentContainsPII)
+	attributes["contains_secrets"] = contentContainsSecrets
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"bucket": record.Bucket, "content_inspection": inspection, "project_id": settings.ProjectID})
 	if err != nil {
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-gcs-object-"+resourceID, "gcp.gcs_object", "gcp/gcs_object/v1", payload, attributes)
+}
+
+func GCSObjectContentInspectable(record GCSObjectRecord) bool {
+	contentType := strings.ToLower(strings.TrimSpace(strings.Split(record.ContentType, ";")[0]))
+	switch {
+	case strings.HasPrefix(contentType, "text/"):
+		return true
+	case contentType == "application/json", contentType == "application/xml", contentType == "application/yaml", contentType == "application/x-yaml", contentType == "application/javascript", contentType == "application/x-www-form-urlencoded":
+		return true
+	case strings.HasSuffix(contentType, "+json"), strings.HasSuffix(contentType, "+xml"):
+		return true
+	}
+	name := strings.ToLower(record.Name)
+	for _, suffix := range []string{".csv", ".env", ".ini", ".json", ".log", ".md", ".sql", ".tf", ".txt", ".xml", ".yaml", ".yml"} {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+type GCSObjectContentFetcher func(GCSObjectRecord) ([]byte, bool, error)
+
+func EnrichGCSObjectContentInspections(records []GCSObjectRecord, fetch GCSObjectContentFetcher) {
+	for index := range records {
+		if !GCSObjectContentInspectable(records[index]) {
+			continue
+		}
+		inspection, err := inspectGCSObjectContent(records[index], fetch)
+		if err != nil {
+			inspection = GCSObjectContentInspection{Error: err.Error()}
+		}
+		records[index].ContentInspection = inspection
+	}
+}
+
+func inspectGCSObjectContent(record GCSObjectRecord, fetch GCSObjectContentFetcher) (GCSObjectContentInspection, error) {
+	content, truncated, err := fetch(record)
+	if err != nil {
+		return GCSObjectContentInspection{}, err
+	}
+	return InspectGCSObjectContentSample(content, truncated), nil
+}
+
+func GCSObjectContentMediaRequest(record GCSObjectRecord) (string, url.Values) {
+	query := url.Values{"alt": {"media"}}
+	if strings.TrimSpace(record.Generation) != "" {
+		query.Set("generation", record.Generation)
+	}
+	return "/storage/v1/b/" + url.PathEscape(record.Bucket) + "/o/" + url.PathEscape(record.Name), query
+}
+
+func InspectGCSObjectContentSample(sample []byte, truncated bool) GCSObjectContentInspection {
+	inspection := GCSObjectContentInspection{Inspected: true, BytesScanned: len(sample), Truncated: truncated}
+	normalized := strings.ToLower(string(sample))
+	if gcsContentEmailRE.MatchString(normalized) || gcsContentSSNRE.MatchString(normalized) {
+		inspection.ContainsPII = true
+		inspection.Findings = appendUnique(inspection.Findings, "pii")
+	}
+	if gcsContentSecretRE.MatchString(normalized) || (strings.Contains(normalized, "-----begin ") && strings.Contains(normalized, " private key-----")) {
+		inspection.ContainsSecrets = true
+		inspection.Findings = appendUnique(inspection.Findings, "secret")
+	}
+	contentClass := gcsContentClassificationRE.FindString(normalized)
+	switch {
+	case inspection.ContainsSecrets || inspection.ContainsPII || contentClass == "restricted":
+		inspection.DataClassification = "restricted"
+	case contentClass == "confidential":
+		inspection.DataClassification = "confidential"
+	case contentClass == "internal":
+		inspection.DataClassification = "internal"
+	case contentClass == "public":
+		inspection.DataClassification = "public"
+	}
+	return inspection
+}
+
+func strongestDataClassification(metadataClass string, contentClass string) string {
+	metadataClass = strings.TrimSpace(metadataClass)
+	contentClass = strings.TrimSpace(contentClass)
+	if metadataClass == "" {
+		return contentClass
+	}
+	if contentClass == "" {
+		return metadataClass
+	}
+	metadataRank := dataClassificationRank(metadataClass)
+	if metadataRank == 0 {
+		return metadataClass
+	}
+	if dataClassificationRank(contentClass) > metadataRank {
+		return contentClass
+	}
+	return metadataClass
+}
+
+func dataClassificationRank(value string) int {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "public":
+		return 1
+	case "internal":
+		return 2
+	case "confidential":
+		return 3
+	case "restricted":
+		return 4
+	default:
+		return 0
+	}
+}
+
+func mergeContainsIndicator(metadataValue string, contentValue string) string {
+	if truthyIndicator(contentValue) || truthyIndicator(metadataValue) {
+		return "true"
+	}
+	return firstNonEmpty(metadataValue, contentValue)
+}
+
+func truthyIndicator(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1", "yes", "y":
+		return true
+	default:
+		return false
+	}
 }
 
 func SecretEvent(settings Settings, record SecretRecord) (*primitives.Event, error) {
