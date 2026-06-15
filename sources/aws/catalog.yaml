@@ -13,6 +13,7 @@ emitted_kinds:
   - aws.backup_plan
   - aws.backup_protected_resource
   - aws.backup_recovery_point
+  - aws.codebuild_project
   - aws.cloudtrail
   - aws.config_recorder
   - aws.dynamodb_backup
@@ -150,6 +151,7 @@ runtime_families:
   - backup_plan
   - backup_protected_resource
   - backup_recovery_point
+  - codebuild_project
   - cloudtrail
   - config_recorder
   - dynamodb_backup
@@ -366,10 +368,9 @@ coverage_contract:
     - id: codebuild_project
       type: entity_family
       title: AWS CodeBuild projects
-      families: [asset_metadata]
-      support: partial
+      families: [codebuild_project]
+      support: supported
       high_value: true
-      known_unsupported_fields: [environment variables, source settings, privileged mode, and webhook detail]
     - id: codebuild_source_credential
       type: entity_family
       title: AWS CodeBuild source credentials

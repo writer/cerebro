@@ -473,6 +473,13 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			entityType:   "aws.guardduty.detector",
 		},
 		{
+			name:         "codebuild project",
+			kind:         "aws.codebuild_project",
+			resourceID:   "arn:aws:codebuild:us-east-1:123456789012:project/orders-build",
+			resourceType: "codebuild_project",
+			entityType:   "aws.codebuild.project",
+		},
+		{
 			name:         "public ebs snapshot",
 			kind:         "aws.ebs_snapshot",
 			resourceID:   "snap-123",

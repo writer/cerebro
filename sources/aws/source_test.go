@@ -33,6 +33,8 @@ import (
 	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
+	"github.com/aws/aws-sdk-go-v2/service/codebuild"
+	codebuildtypes "github.com/aws/aws-sdk-go-v2/service/codebuild/types"
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	datasynctypes "github.com/aws/aws-sdk-go-v2/service/datasync/types"
 	"github.com/aws/aws-sdk-go-v2/service/docdb"
@@ -482,6 +484,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyBackupPlan, kind: "aws.backup_plan"},
 		{family: familyBackupProtected, kind: "aws.backup_protected_resource"},
 		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point"},
+		{family: familyCodeBuildProject, kind: "aws.codebuild_project"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location"},
 		{family: familyDataSyncTask, kind: "aws.datasync_task"},
 		{family: familyDocDBCluster, kind: "aws.docdb_cluster"},
@@ -1331,6 +1334,70 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadAWSCodeBuildProjectInventoryEvent(t *testing.T) {
+	projectARN := "arn:aws:codebuild:us-east-1:123456789012:project/orders-build"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+			codeBuildProjects: []string{"orders-build"},
+			codeBuildProjectDetail: map[string]codebuildtypes.Project{"orders-build": {
+				Arn:               awssdk.String(projectARN),
+				Created:           timePtr("2026-04-23T00:00:00Z"),
+				EncryptionKey:     awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+				Name:              awssdk.String("orders-build"),
+				ProjectVisibility: codebuildtypes.ProjectVisibilityTypePrivate,
+				ServiceRole:       awssdk.String("arn:aws:iam::123456789012:role/service-role/codebuild-orders"),
+				Source:            &codebuildtypes.ProjectSource{Type: codebuildtypes.SourceTypeGithub},
+				Environment: &codebuildtypes.ProjectEnvironment{
+					ComputeType:    codebuildtypes.ComputeTypeBuildGeneral1Small,
+					Image:          awssdk.String("aws/codebuild/standard:7.0"),
+					PrivilegedMode: awssdk.Bool(true),
+					Type:           codebuildtypes.EnvironmentTypeLinuxContainer,
+					EnvironmentVariables: []codebuildtypes.EnvironmentVariable{{
+						Name: awssdk.String("API_TOKEN"), Type: codebuildtypes.EnvironmentVariableTypePlaintext, Value: awssdk.String("do-not-store-this-value"),
+					}},
+				},
+				LogsConfig: &codebuildtypes.LogsConfig{
+					CloudWatchLogs: &codebuildtypes.CloudWatchLogsConfig{Status: codebuildtypes.LogsConfigStatusTypeEnabled},
+					S3Logs:         &codebuildtypes.S3LogsConfig{Status: codebuildtypes.LogsConfigStatusTypeEnabled, EncryptionDisabled: awssdk.Bool(true)},
+				},
+				Tags: []codebuildtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("ci@writer.com")}},
+				Webhook: &codebuildtypes.Webhook{
+					FilterGroups: [][]codebuildtypes.WebhookFilter{{{
+						Type: codebuildtypes.WebhookFilterTypeEvent, Pattern: awssdk.String("PULL_REQUEST_CREATED,PULL_REQUEST_UPDATED"),
+					}}},
+					Status: codebuildtypes.WebhookStatusActive,
+				},
+			}},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCodeBuildProject}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyCodeBuildProject, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.codebuild_project" {
+		t.Fatalf("kind = %q, want aws.codebuild_project", got)
+	}
+	for key, want := range map[string]string{
+		"environment_variable_names":           "API_TOKEN",
+		"plaintext_environment_variable_names": "API_TOKEN",
+		"privileged_mode":                      "true",
+		"s3_logs_encryption_disabled":          "true",
+		"source_type":                          "GITHUB",
+		"webhook_public_trigger":               "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
+		t.Fatal("payload contains environment variable value")
 	}
 }
 
@@ -3001,6 +3068,13 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.snsTags = map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.codeBuildProjects = []string{"orders-build"}
+		fake.codeBuildProjectDetail = map[string]codebuildtypes.Project{"orders-build": {
+			Arn:         awssdk.String("arn:aws:codebuild:us-east-1:123456789012:project/orders-build"),
+			Name:        awssdk.String("orders-build"),
+			Source:      &codebuildtypes.ProjectSource{Type: codebuildtypes.SourceTypeGithub},
+			Environment: &codebuildtypes.ProjectEnvironment{Type: codebuildtypes.EnvironmentTypeLinuxContainer},
+		}}
 		openSearchARN := "arn:aws:es:us-east-1:123456789012:domain/search-prod"
 		aossARN := "arn:aws:aoss:us-east-1:123456789012:collection/col-123"
 		elasticacheReplicationGroupARN := "arn:aws:elasticache:us-east-1:123456789012:replicationgroup:orders-rg"
@@ -3123,6 +3197,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyBatchJobQueue,
 			seed:    batchData,
 			wantAPI: []string{"batch:DescribeJobQueues"},
+		},
+		{
+			family:  familyCodeBuildProject,
+			seed:    cloudAssetData,
+			wantAPI: []string{"codebuild:BatchGetProjects", "codebuild:ListProjects"},
 		},
 		{
 			family:  familyBackupVault,
@@ -3874,6 +3953,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 			},
 			awsRuntimeClients: awsRuntimeClients{
 				batch:          fake,
+				codeBuild:      fake,
 				rds:            fake,
 				kms:            fake,
 				secrets:        fake,
@@ -3931,6 +4011,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 			},
 			awsRuntimeClients: awsRuntimeClients{
 				batch:          fake,
+				codeBuild:      fake,
 				rds:            fake,
 				kms:            fake,
 				secrets:        fake,
@@ -4205,6 +4286,8 @@ type fakeAWSRuntimeApplication struct {
 	appRunnerSummaries     []apprunnertypes.ServiceSummary
 	appRunnerServices      map[string]apprunnertypes.Service
 	appRunnerTags          map[string][]apprunnertypes.Tag
+	codeBuildProjects      []string
+	codeBuildProjectDetail map[string]codebuildtypes.Project
 	sfnStateMachines       []sfntypes.StateMachineListItem
 	sfnStateMachineDetails map[string]sfn.DescribeStateMachineOutput
 	sfnActivities          []sfntypes.ActivityListItem
@@ -4530,6 +4613,16 @@ func (f *recordingAWS) DescribeComputeEnvironments(ctx context.Context, input *b
 func (f *recordingAWS) DescribeJobQueues(ctx context.Context, input *batch.DescribeJobQueuesInput, options ...func(*batch.Options)) (*batch.DescribeJobQueuesOutput, error) {
 	f.record("batch:DescribeJobQueues")
 	return f.fakeAWS.DescribeJobQueues(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListProjects(ctx context.Context, input *codebuild.ListProjectsInput, options ...func(*codebuild.Options)) (*codebuild.ListProjectsOutput, error) {
+	f.record("codebuild:ListProjects")
+	return f.fakeAWS.ListProjects(ctx, input, options...)
+}
+
+func (f *recordingAWS) BatchGetProjects(ctx context.Context, input *codebuild.BatchGetProjectsInput, options ...func(*codebuild.Options)) (*codebuild.BatchGetProjectsOutput, error) {
+	f.record("codebuild:BatchGetProjects")
+	return f.fakeAWS.BatchGetProjects(ctx, input, options...)
 }
 
 func (f *recordingAWS) DescribeSecurityGroups(ctx context.Context, input *ec2.DescribeSecurityGroupsInput, options ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
@@ -6649,6 +6742,20 @@ func (f fakeAWS) DescribeComputeEnvironments(_ context.Context, input *batch.Des
 func (f fakeAWS) DescribeJobQueues(_ context.Context, input *batch.DescribeJobQueuesInput, _ ...func(*batch.Options)) (*batch.DescribeJobQueuesOutput, error) {
 	queues, next := paginateBatchJobQueues(f.compute.batchJobQueues, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
 	return &batch.DescribeJobQueuesOutput{JobQueues: queues, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeAWS) ListProjects(context.Context, *codebuild.ListProjectsInput, ...func(*codebuild.Options)) (*codebuild.ListProjectsOutput, error) {
+	return &codebuild.ListProjectsOutput{Projects: f.codeBuildProjects}, nil
+}
+
+func (f fakeAWS) BatchGetProjects(_ context.Context, input *codebuild.BatchGetProjectsInput, _ ...func(*codebuild.Options)) (*codebuild.BatchGetProjectsOutput, error) {
+	projects := make([]codebuildtypes.Project, 0, len(input.Names))
+	for _, name := range input.Names {
+		if project, ok := f.codeBuildProjectDetail[name]; ok {
+			projects = append(projects, project)
+		}
+	}
+	return &codebuild.BatchGetProjectsOutput{Projects: projects}, nil
 }
 
 func (f fakeAWS) DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
