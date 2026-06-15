@@ -544,6 +544,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyOpenSearchServerlessSecurityPolicy, kind: "aws.opensearch_serverless_security_policy"},
 		{family: familyNeptuneCluster, kind: "aws.neptune_cluster"},
 		{family: familyNeptuneInstance, kind: "aws.neptune_instance"},
+		{family: familyRDSDBSnapshot, kind: "aws.rds_db_snapshot"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
 		{family: familyRedshiftCluster, kind: "aws.redshift_cluster"},
 		{family: familyS3AccessPoint, kind: "aws.s3_access_point"},
@@ -980,6 +981,7 @@ func TestReadAWSBatchRuntimeEvents(t *testing.T) {
 
 func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	rdsARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
+	rdsSnapshotARN := "arn:aws:rds:us-east-1:123456789012:snapshot:orders-public-snapshot"
 	redshiftARN := "arn:aws:redshift:us-east-1:123456789012:cluster:warehouse-prod"
 	docdbClusterARN := "arn:aws:rds:us-east-1:123456789012:cluster:docdb-prod"
 	docdbInstanceARN := "arn:aws:rds:us-east-1:123456789012:db:docdb-prod-1"
@@ -1020,18 +1022,6 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 					BlockPublicPolicy:     awssdk.Bool(true),
 					IgnorePublicAcls:      awssdk.Bool(true),
 					RestrictPublicBuckets: awssdk.Bool(true),
-				}},
-				rdsInstances: []rdstypes.DBInstance{{
-					DBInstanceArn:         awssdk.String(rdsARN),
-					DBInstanceIdentifier:  awssdk.String("orders-db"),
-					Engine:                awssdk.String("postgres"),
-					StorageEncrypted:      awssdk.Bool(true),
-					KmsKeyId:              awssdk.String(kmsARN),
-					DeletionProtection:    awssdk.Bool(true),
-					BackupRetentionPeriod: awssdk.Int32(7),
-					PubliclyAccessible:    awssdk.Bool(false),
-					InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
-					TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
 				}},
 				kmsKeys: []kmstypes.KeyMetadata{{
 					Arn:          awssdk.String(kmsARN),
@@ -1081,6 +1071,38 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
 				}},
 				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			},
+			fakeAWSRDSData: fakeAWSRDSData{
+				rdsInstances: []rdstypes.DBInstance{{
+					DBInstanceArn:         awssdk.String(rdsARN),
+					DBInstanceIdentifier:  awssdk.String("orders-db"),
+					Engine:                awssdk.String("postgres"),
+					StorageEncrypted:      awssdk.Bool(true),
+					KmsKeyId:              awssdk.String(kmsARN),
+					DeletionProtection:    awssdk.Bool(true),
+					BackupRetentionPeriod: awssdk.Int32(7),
+					PubliclyAccessible:    awssdk.Bool(false),
+					InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
+					TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+				}},
+				rdsDBSnapshots: []rdstypes.DBSnapshot{{
+					AllocatedStorage:     awssdk.Int32(100),
+					DBInstanceIdentifier: awssdk.String("orders-db"),
+					DBSnapshotArn:        awssdk.String(rdsSnapshotARN),
+					DBSnapshotIdentifier: awssdk.String("orders-public-snapshot"),
+					Engine:               awssdk.String("postgres"),
+					Encrypted:            awssdk.Bool(true),
+					KmsKeyId:             awssdk.String(kmsARN),
+					SnapshotCreateTime:   timePtr("2026-04-23T00:00:00Z"),
+					SnapshotType:         awssdk.String("manual"),
+					Status:               awssdk.String("available"),
+					TagList:              []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+					VpcId:                awssdk.String("vpc-data"),
+				}},
+				rdsDBSnapshotAttributes: map[string][]rdstypes.DBSnapshotAttribute{"orders-public-snapshot": {{
+					AttributeName:   awssdk.String("restore"),
+					AttributeValues: []string{"all"},
+				}}},
 			},
 			fakeAWSDataWarehouseData: fakeAWSDataWarehouseData{
 				redshiftClusters: []redshifttypes.Cluster{{
@@ -1281,6 +1303,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familyEC2EBSEncryptionByDefault, kind: "aws.ec2_ebs_encryption_by_default", attr: "ebs_encryption_enabled", want: "true"},
 		{family: familyDataSyncTask, kind: "aws.datasync_task", attr: "backups", want: "true"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location", attr: "location_type", want: "s3"},
+		{family: familyRDSDBSnapshot, kind: "aws.rds_db_snapshot", attr: "restore", want: "all"},
 		{family: familyRDSInstance, kind: "aws.rds_instance", attr: "deletion_protection", want: "true"},
 		{family: familyRedshiftCluster, kind: "aws.redshift_cluster", attr: "arn", want: redshiftARN},
 		{family: familyDocDBCluster, kind: "aws.docdb_cluster", attr: "deletion_protection", want: "true"},
@@ -2964,6 +2987,8 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.s3Versioning = map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled}
 		fake.s3PublicAccessBlocks = map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {}}
 		fake.rdsInstances = []rdstypes.DBInstance{{DBInstanceArn: awssdk.String("arn:aws:rds:us-east-1:123456789012:db:orders-db"), DBInstanceIdentifier: awssdk.String("orders-db")}}
+		fake.rdsDBSnapshots = []rdstypes.DBSnapshot{{DBSnapshotArn: awssdk.String("arn:aws:rds:us-east-1:123456789012:snapshot:orders-public-snapshot"), DBSnapshotIdentifier: awssdk.String("orders-public-snapshot")}}
+		fake.rdsDBSnapshotAttributes = map[string][]rdstypes.DBSnapshotAttribute{"orders-public-snapshot": {{AttributeName: awssdk.String("restore"), AttributeValues: []string{"all"}}}}
 		fake.kmsKeys = []kmstypes.KeyMetadata{{Arn: awssdk.String(kmsARN), KeyId: awssdk.String("key-123")}}
 		fake.kmsTags = map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}}
 		fake.kmsRotation = map[string]bool{"key-123": true}
@@ -3193,6 +3218,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyRDSInstance,
 			seed:    cloudAssetData,
 			wantAPI: []string{"rds:DescribeDBInstances"},
+		},
+		{
+			family:  familyRDSDBSnapshot,
+			seed:    cloudAssetData,
+			wantAPI: []string{"rds:DescribeDBSnapshotAttributes", "rds:DescribeDBSnapshots"},
 		},
 		{
 			family:  familyKMSKey,
@@ -4059,6 +4089,7 @@ type fakeAWSNetworkAPI struct {
 // cerebro:lint:allow maxfields AWS fixture aggregates service-specific fake responses.
 type fakeAWSData struct {
 	fakeAWSCoreData
+	fakeAWSRDSData
 	fakeAWSBackupData
 	fakeAWSStorageAccessData
 	fakeAWSDataManager
@@ -4074,7 +4105,6 @@ type fakeAWSCoreData struct {
 	s3Logging            map[string]bool
 	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
 	s3OptionalError      error
-	rdsInstances         []rdstypes.DBInstance
 	kmsKeys              []kmstypes.KeyMetadata
 	kmsDescribeErrors    map[string]error
 	kmsTagErrors         map[string]error
@@ -4090,6 +4120,12 @@ type fakeAWSCoreData struct {
 	snsTags              map[string][]snstypes.Tag
 	ecrRepositories      []ecrtypes.Repository
 	ecrTags              map[string][]ecrtypes.Tag
+}
+
+type fakeAWSRDSData struct {
+	rdsInstances            []rdstypes.DBInstance
+	rdsDBSnapshots          []rdstypes.DBSnapshot
+	rdsDBSnapshotAttributes map[string][]rdstypes.DBSnapshotAttribute
 }
 
 type fakeAWSBackupData struct {
@@ -4720,6 +4756,16 @@ func (f *recordingAWS) GetPublicAccessBlock(ctx context.Context, input *s3.GetPu
 func (f *recordingAWS) DescribeDBInstances(ctx context.Context, input *rds.DescribeDBInstancesInput, options ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error) {
 	f.record("rds:DescribeDBInstances")
 	return f.fakeAWS.DescribeDBInstances(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeDBSnapshots(ctx context.Context, input *rds.DescribeDBSnapshotsInput, options ...func(*rds.Options)) (*rds.DescribeDBSnapshotsOutput, error) {
+	f.record("rds:DescribeDBSnapshots")
+	return f.fakeAWS.DescribeDBSnapshots(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeDBSnapshotAttributes(ctx context.Context, input *rds.DescribeDBSnapshotAttributesInput, options ...func(*rds.Options)) (*rds.DescribeDBSnapshotAttributesOutput, error) {
+	f.record("rds:DescribeDBSnapshotAttributes")
+	return f.fakeAWS.DescribeDBSnapshotAttributes(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListKeys(ctx context.Context, input *kms.ListKeysInput, options ...func(*kms.Options)) (*kms.ListKeysOutput, error) {
@@ -6901,6 +6947,20 @@ func (f fakeAWS) GetPublicAccessBlock(_ context.Context, input *s3.GetPublicAcce
 
 func (f fakeAWS) DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error) {
 	return &rds.DescribeDBInstancesOutput{DBInstances: f.rdsInstances}, nil
+}
+
+func (f fakeAWS) DescribeDBSnapshots(context.Context, *rds.DescribeDBSnapshotsInput, ...func(*rds.Options)) (*rds.DescribeDBSnapshotsOutput, error) {
+	return &rds.DescribeDBSnapshotsOutput{DBSnapshots: f.rdsDBSnapshots}, nil
+}
+
+func (f fakeAWS) DescribeDBSnapshotAttributes(_ context.Context, input *rds.DescribeDBSnapshotAttributesInput, _ ...func(*rds.Options)) (*rds.DescribeDBSnapshotAttributesOutput, error) {
+	snapshotID := awssdk.ToString(input.DBSnapshotIdentifier)
+	return &rds.DescribeDBSnapshotAttributesOutput{
+		DBSnapshotAttributesResult: &rdstypes.DBSnapshotAttributesResult{
+			DBSnapshotAttributes: f.rdsDBSnapshotAttributes[snapshotID],
+			DBSnapshotIdentifier: awssdk.String(snapshotID),
+		},
+	}, nil
 }
 
 func (f fakeAWS) DescribeClusters(context.Context, *redshift.DescribeClustersInput, ...func(*redshift.Options)) (*redshift.DescribeClustersOutput, error) {
