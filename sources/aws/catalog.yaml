@@ -24,6 +24,7 @@ emitted_kinds:
   - aws.docdb_instance
   - aws.ebs_snapshot
   - aws.ebs_volume
+  - aws.ec2_ebs_encryption_by_default
   - aws.athena_data_catalog
   - aws.athena_workgroup
   - aws.cloudwatch_alarm
@@ -158,6 +159,7 @@ runtime_families:
   - docdb_instance
   - ebs_snapshot
   - ebs_volume
+  - ec2_ebs_encryption_by_default
   - athena_data_catalog
   - athena_workgroup
   - cloudwatch_alarm
@@ -418,10 +420,9 @@ coverage_contract:
     - id: ec2_ebs_encryption_by_default
       type: entity_family
       title: AWS EC2 EBS encryption by default
-      families: [asset_metadata]
-      support: partial
+      families: [ec2_ebs_encryption_by_default]
+      support: supported
       high_value: true
-      known_unsupported_fields: [regional account encryption default state]
     - id: ec2_instance
       type: entity_family
       title: AWS EC2 instances

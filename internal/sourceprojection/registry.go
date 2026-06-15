@@ -81,6 +81,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.datasync_task":                         awsCloudResourceProjections,
 	"aws.ebs_snapshot":                          awsCloudResourceProjections,
 	"aws.ebs_volume":                            awsCloudResourceProjections,
+	"aws.ec2_ebs_encryption_by_default":         awsCloudResourceProjections,
 	"aws.athena_data_catalog":                   awsCloudResourceProjections,
 	"aws.athena_workgroup":                      awsCloudResourceProjections,
 	"aws.cloudwatch_alarm":                      awsCloudResourceProjections,

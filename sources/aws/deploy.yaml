@@ -158,6 +158,13 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  - localId: ec2-ebs-encryption-by-default
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ec2_ebs_encryption_by_default
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
   - localId: athena-data-catalog
     config:
       account_id: env:AWS_ACCOUNT_ID

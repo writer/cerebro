@@ -38,6 +38,13 @@ type awsEBSSnapshot struct {
 	Public   bool
 }
 
+type awsEC2EBSEncryptionByDefault struct {
+	ResourceID string
+	Region     string
+	Enabled    bool
+	ObservedAt time.Time
+}
+
 type awsDataSyncTask struct {
 	Task *datasync.DescribeTaskOutput
 	Tags map[string]string
@@ -178,6 +185,22 @@ func listEBSSnapshots(ctx context.Context, clients awsClients, settings settings
 		records = append(records, record)
 	}
 	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listEC2EBSEncryptionByDefault(ctx context.Context, clients awsClients, settings settings, cursor string, _ int) ([]awsEC2EBSEncryptionByDefault, string, error) {
+	if strings.TrimSpace(cursor) != "" {
+		return nil, "", nil
+	}
+	out, err := clients.ec2.GetEbsEncryptionByDefault(ctx, &ec2.GetEbsEncryptionByDefaultInput{})
+	if err != nil {
+		return nil, "", err
+	}
+	return []awsEC2EBSEncryptionByDefault{{
+		ResourceID: ec2EBSEncryptionByDefaultResourceID(settings),
+		Region:     settings.region,
+		Enabled:    awssdk.ToBool(out.EbsEncryptionByDefault),
+		ObservedAt: time.Now().UTC(),
+	}}, "", nil
 }
 
 func listDataSyncTasks(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsDataSyncTask, string, error) {
@@ -348,6 +371,26 @@ func ebsSnapshotEvent(settings settings, record awsEBSSnapshot) (*primitives.Eve
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-ebs-snapshot-"+snapshotID, "aws.ebs_snapshot", "aws/ebs_snapshot/v1", payload, attributes, firstTime(snapshot.StartTime))
+}
+
+func ec2EBSEncryptionByDefaultEvent(settings settings, record awsEC2EBSEncryptionByDefault) (*primitives.Event, error) {
+	region := firstNonEmpty(record.Region, settings.region)
+	resourceID := firstNonEmpty(record.ResourceID, ec2EBSEncryptionByDefaultResourceID(settings))
+	attributes := commonCloudAssetAttributes(settings, region, familyEC2EBSEncryptionByDefault, resourceID, "EBS encryption by default "+region, "ec2_ebs_encryption_by_default", nil)
+	attributes["account_id"] = settings.accountID
+	attributes["arn"] = resourceID
+	attributes["ebs_encryption_enabled"] = boolString(record.Enabled)
+	attributes["enabled"] = boolString(record.Enabled)
+	attributes["encryption"] = boolString(record.Enabled)
+	attributes["internet_exposed"] = boolString(false)
+	attributes["policy_resource_type"] = "aws::ec2::ebs_encryption_by_default"
+	attributes["public"] = boolString(false)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": region, "resource_id": resourceID, "ebs_encryption_enabled": record.Enabled})
+	if err != nil {
+		return nil, err
+	}
+	observedAt := record.ObservedAt
+	return sourceEvent(settings, "aws-ec2-ebs-encryption-by-default-"+region, "aws.ec2_ebs_encryption_by_default", "aws/ec2_ebs_encryption_by_default/v1", payload, attributes, firstTime(&observedAt))
 }
 
 func dataSyncTaskEvent(settings settings, record awsDataSyncTask) (*primitives.Event, error) {
@@ -691,6 +734,10 @@ func ebsVolumeARN(settings settings, volumeID string) string {
 		return ""
 	}
 	return fmt.Sprintf("arn:aws:ec2:%s:%s:volume/%s", settings.region, settings.accountID, strings.TrimSpace(volumeID))
+}
+
+func ec2EBSEncryptionByDefaultResourceID(settings settings) string {
+	return fmt.Sprintf("arn:aws:ec2:%s:%s:ebs-encryption-by-default/default", settings.region, settings.accountID)
 }
 
 func s3AccessPointDetailARN(detail *s3control.GetAccessPointOutput) string {
