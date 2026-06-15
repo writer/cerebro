@@ -188,6 +188,21 @@ func (k *TransitKey) PublicKey() PublicKey {
 }
 
 func (k *TransitKey) Decrypt(payload EncryptedPayload) ([]byte, error) {
+	return k.DecryptWithAdditionalData(payload, nil)
+}
+
+func (k *TransitKey) DecryptWithAdditionalData(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
+	return k.decryptWithAdditionalData(payload, additionalData)
+}
+
+func (k *TransitKey) DecryptWithExactAdditionalData(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
+	if len(additionalData) == 0 {
+		return nil, fmt.Errorf("%w: credential payload context is required", ErrInvalidRequest)
+	}
+	return k.decryptWithAdditionalData(payload, additionalData)
+}
+
+func (k *TransitKey) decryptWithAdditionalData(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
 	if k == nil || k.private == nil {
 		return nil, fmt.Errorf("%w: transit key is not configured", ErrUnavailable)
 	}
@@ -196,23 +211,15 @@ func (k *TransitKey) Decrypt(payload EncryptedPayload) ([]byte, error) {
 	}
 	algorithm := strings.TrimSpace(payload.Algorithm)
 	if strings.EqualFold(algorithm, transitAlgorithm) {
-		return k.decryptHybrid(payload)
+		if len(additionalData) == 0 {
+			return nil, fmt.Errorf("%w: credential payload context is required", ErrInvalidRequest)
+		}
+		return k.decryptHybrid(payload, additionalData)
 	}
-	if !strings.EqualFold(algorithm, rsaOAEPAlgorithm) {
-		return nil, fmt.Errorf("%w: unsupported credential transport algorithm", ErrInvalidRequest)
-	}
-	ciphertext, err := decodeBase64(payload.Ciphertext)
-	if err != nil {
-		return nil, fmt.Errorf("%w: decode credential ciphertext: %w", ErrInvalidRequest, err)
-	}
-	plaintext, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, k.private, ciphertext, nil)
-	if err != nil {
-		return nil, fmt.Errorf("%w: decrypt credential payload", ErrInvalidRequest)
-	}
-	return plaintext, nil
+	return nil, fmt.Errorf("%w: unsupported credential transport algorithm", ErrInvalidRequest)
 }
 
-func (k *TransitKey) decryptHybrid(payload EncryptedPayload) ([]byte, error) {
+func (k *TransitKey) decryptHybrid(payload EncryptedPayload, additionalData []byte) ([]byte, error) {
 	wrappedKey, err := decodeBase64(payload.WrappedKey)
 	if err != nil {
 		return nil, fmt.Errorf("%w: decode wrapped credential key: %w", ErrInvalidRequest, err)
@@ -237,7 +244,7 @@ func (k *TransitKey) decryptHybrid(payload EncryptedPayload) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: initialize credential payload cipher: %w", ErrInvalidRequest, err)
 	}
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, []byte(payload.KeyID))
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, additionalData)
 	if err != nil {
 		return nil, fmt.Errorf("%w: decrypt credential payload", ErrInvalidRequest)
 	}

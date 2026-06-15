@@ -79,20 +79,24 @@ func TestTransitKeyDecryptsHybridPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTransitKey() error = %v", err)
 	}
-	payload, err := encryptForTransit(transit, []byte(`{"token":"secret-token"}`))
+	additionalData := []byte("connector-credential-test-context")
+	payload, err := encryptForTransit(transit, []byte(`{"token":"secret-token"}`), additionalData)
 	if err != nil {
 		t.Fatalf("encryptForTransit() error = %v", err)
 	}
-	plaintext, err := transit.Decrypt(payload)
+	plaintext, err := transit.DecryptWithExactAdditionalData(payload, additionalData)
 	if err != nil {
-		t.Fatalf("Decrypt() error = %v", err)
+		t.Fatalf("DecryptWithExactAdditionalData() error = %v", err)
 	}
 	if string(plaintext) != `{"token":"secret-token"}` {
 		t.Fatalf("plaintext = %s", plaintext)
 	}
+	if _, err := transit.Decrypt(payload); err == nil {
+		t.Fatal("Decrypt() with implicit context error = nil, want error")
+	}
 }
 
-func encryptForTransit(transit *TransitKey, plaintext []byte) (EncryptedPayload, error) {
+func encryptForTransit(transit *TransitKey, plaintext []byte, additionalData []byte) (EncryptedPayload, error) {
 	aesKey := make([]byte, 32)
 	if _, err := rand.Read(aesKey); err != nil {
 		return EncryptedPayload{}, err
@@ -115,7 +119,7 @@ func encryptForTransit(transit *TransitKey, plaintext []byte) (EncryptedPayload,
 		return EncryptedPayload{}, err
 	}
 	key := transit.PublicKey()
-	ciphertext := gcm.Seal(nil, nonce, plaintext, []byte(key.KeyID))
+	ciphertext := gcm.Seal(nil, nonce, plaintext, additionalData)
 	return EncryptedPayload{
 		KeyID:      key.KeyID,
 		Algorithm:  key.Algorithm,
