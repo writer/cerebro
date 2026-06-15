@@ -44,6 +44,37 @@ func TestPolicyRejectsMalformedResourceSelectors(t *testing.T) {
 	}
 }
 
+func TestPolicyDoesNotCrossMatchUnpairedResourceTypeAndID(t *testing.T) {
+	policy, err := Normalize(Policy{ExcludedResources: []ResourceSelector{{Type: "aws.s3_bucket", ID: "bucket-a"}}})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if policy.ExcludesEvent("aws.iam_role", "role-a", map[string]string{
+		"resource_type": "aws.s3_bucket",
+		"target_id":     "bucket-a",
+	}) {
+		t.Fatal("policy excluded event by combining unrelated resource_type and target_id attributes")
+	}
+	if !policy.ExcludesEvent("aws.iam_role", "role-a", map[string]string{
+		"resource_type": "aws.s3_bucket",
+		"resource_id":   "bucket-a",
+	}) {
+		t.Fatal("policy did not exclude paired resource_type/resource_id attributes")
+	}
+}
+
+func TestPolicyMatchesTypedResourceFromURNTypeVariant(t *testing.T) {
+	policy, err := Normalize(Policy{ExcludedResources: []ResourceSelector{{Type: "gcp.bigquery_dataset", ID: "dataset-a"}}})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if !policy.ExcludesEvent("gcp.audit", "event-1", map[string]string{
+		"resource_urn": "urn:cerebro:tenant:gcp_bigquery_dataset:dataset-a",
+	}) {
+		t.Fatal("policy did not match typed resource selector from URN source_type:id variant")
+	}
+}
+
 func TestEmptyPolicyDoesNotStoreConfigValue(t *testing.T) {
 	value, err := ConfigValue(Policy{ExcludedFamilies: []string{" "}})
 	if err != nil {

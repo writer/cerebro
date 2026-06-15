@@ -644,11 +644,7 @@ func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.
 		ScheduleContextConfigured: false,
 		GeneratedAt:               generatedAt.Format(time.RFC3339Nano),
 	}
-	policy, err := resourcescope.FromConfig(runtime.GetConfig())
-	if err != nil {
-		return sourceRuntimeHealthRecord{}, err
-	}
-	if !policy.Empty() {
+	if policy, err := resourcescope.FromConfig(runtime.GetConfig()); err == nil && !policy.Empty() {
 		record.ScopePolicy = &policy
 	}
 	if lastSynced := timestampValue(runtime.GetLastSyncedAt()); !lastSynced.IsZero() {

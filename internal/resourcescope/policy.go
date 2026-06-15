@@ -151,14 +151,17 @@ func (p Policy) ExcludesEvent(kind string, id string, attributes map[string]stri
 			return true
 		}
 	}
-	ids := eventIDs(id, attributes, urns)
-	types := eventTypes(kind, attributes)
+	pairs := eventResourcePairs(kind, id, attributes, urns)
 	for _, resource := range p.ExcludedResources {
 		if resource.URN != "" && urns[resource.URN] {
 			return true
 		}
-		if resource.Type != "" && resource.ID != "" && types[strings.ToLower(resource.Type)] && ids[resource.ID] {
-			return true
+		if resource.Type != "" && resource.ID != "" {
+			for _, key := range resourcePairKeys(resource.Type, resource.ID) {
+				if pairs[key] {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -293,36 +296,72 @@ func eventURNs(attributes map[string]string) map[string]bool {
 	return urns
 }
 
-func eventIDs(id string, attributes map[string]string, urns map[string]bool) map[string]bool {
-	ids := map[string]bool{}
-	for _, value := range splitAttributeValues(id) {
-		ids[value] = true
-	}
-	for _, key := range []string{"id", "asset_id", "resource_id", "resource_name", "target_id", "entity_id"} {
-		for _, value := range splitAttributeValues(attributes[key]) {
-			ids[value] = true
+func eventResourcePairs(kind string, id string, attributes map[string]string, urns map[string]bool) map[string]bool {
+	pairs := map[string]bool{}
+	addPairs := func(types []string, ids []string) {
+		for _, typ := range types {
+			for _, id := range ids {
+				for _, key := range resourcePairKeys(typ, id) {
+					pairs[key] = true
+				}
+			}
 		}
 	}
+	addPairs(splitAttributeValues(kind), splitAttributeValues(id))
+	addPairs(splitAttributeValues(attributes["kind"]), splitAttributeValues(attributes["id"]))
+	addPairs(splitAttributeValues(attributes["asset_type"]), splitAttributeValues(attributes["asset_id"]))
+	addPairs(splitAttributeValues(attributes["resource_type"]), splitAttributeValues(attributes["resource_id"]))
+	addPairs(splitAttributeValues(attributes["resource_type"]), splitAttributeValues(attributes["resource_name"]))
+	addPairs(splitAttributeValues(attributes["target_type"]), splitAttributeValues(attributes["target_id"]))
+	addPairs(splitAttributeValues(attributes["entity_type"]), splitAttributeValues(attributes["entity_id"]))
 	for urn := range urns {
 		parts := strings.Split(urn, ":")
-		if len(parts) > 0 {
-			ids[parts[len(parts)-1]] = true
+		if len(parts) >= 2 {
+			addPairs([]string{parts[len(parts)-2]}, []string{parts[len(parts)-1]})
 		}
 	}
-	return ids
+	return pairs
 }
 
-func eventTypes(kind string, attributes map[string]string) map[string]bool {
-	types := map[string]bool{}
-	for _, value := range splitAttributeValues(kind) {
-		types[strings.ToLower(value)] = true
+func resourcePairKeys(resourceType string, id string) []string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
 	}
-	for _, key := range []string{"kind", "asset_type", "resource_type", "entity_type", "target_type"} {
-		for _, value := range splitAttributeValues(attributes[key]) {
-			types[strings.ToLower(value)] = true
+	types := resourceTypeCandidates(resourceType)
+	keys := make([]string, 0, len(types))
+	for _, typ := range types {
+		keys = append(keys, typ+"\x00"+id)
+	}
+	return keys
+}
+
+func resourceTypeCandidates(resourceType string) []string {
+	normalized := strings.ToLower(strings.TrimSpace(resourceType))
+	if normalized == "" {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := []string{}
+	add := func(value string) {
+		if value == "" {
+			return
 		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
 	}
-	return types
+	add(normalized)
+	if strings.Contains(normalized, ".") {
+		add(strings.ReplaceAll(normalized, ".", "_"))
+		return out
+	}
+	if index := strings.Index(normalized, "_"); index > 0 && index < len(normalized)-1 {
+		add(normalized[:index] + "." + normalized[index+1:])
+	}
+	return out
 }
 
 func splitAttributeValues(value string) []string {
