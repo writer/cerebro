@@ -1148,6 +1148,166 @@ func TestConnectorConnectionRejectsInternalConfigAndUnsupportedAuth(t *testing.T
 	}
 }
 
+func TestConnectorPreflightValidatesWithoutPersisting(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-a",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodEncryptedSubmission,
+		"credential_store_id": defaultConnectorCredentialStoreID,
+		"config":              map[string]string{"family": "audit"},
+		"scope_policy": map[string]any{
+			"excluded_families":      []string{"bootstrap.token"},
+			"excluded_resource_urns": []string{"urn:cerebro:tenant-a:external_asset:test"},
+		},
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status             string `json:"status"`
+		NextAction         string `json:"next_action"`
+		CredentialBoundary struct {
+			SendsSecrets   bool     `json:"sends_secrets"`
+			FieldsAccepted []string `json:"fields_accepted"`
+		} `json:"credential_boundary"`
+		ScopePreview struct {
+			AvailableResourceTypes int `json:"available_resource_types"`
+			DisabledResourceTypes  int `json:"disabled_resource_types"`
+			ExactResourceCount     int `json:"exact_resource_count"`
+		} `json:"scope_preview"`
+		Checks []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"checks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "warning" || payload.NextAction != "review_warnings_then_save" {
+		t.Fatalf("preflight status/action = %q/%q, want warning/review_warnings_then_save", payload.Status, payload.NextAction)
+	}
+	if !payload.CredentialBoundary.SendsSecrets || len(payload.CredentialBoundary.FieldsAccepted) != 1 || payload.CredentialBoundary.FieldsAccepted[0] != "token" {
+		t.Fatalf("credential boundary = %#v, want encrypted token field", payload.CredentialBoundary)
+	}
+	if payload.ScopePreview.AvailableResourceTypes != 1 || payload.ScopePreview.DisabledResourceTypes != 1 || payload.ScopePreview.ExactResourceCount != 1 {
+		t.Fatalf("scope preview = %#v, want one disabled type and one exact resource", payload.ScopePreview)
+	}
+	if len(store.runtimes) != 0 {
+		t.Fatalf("stored runtimes len = %d, want 0", len(store.runtimes))
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials len = %d, want 0", len(store.credentials))
+	}
+	if source.checkToken != "secret-token" {
+		t.Fatalf("source check token = %q, want decrypted secret", source.checkToken)
+	}
+	checks := map[string]string{}
+	for _, check := range payload.Checks {
+		checks[check.ID] = check.Status
+	}
+	if checks["source_check"] != "passed" {
+		t.Fatalf("source_check status = %q, want passed; checks=%#v", checks["source_check"], checks)
+	}
+}
+
+func TestConnectorPreflightReturnsBlockedChecks(t *testing.T) {
+	source := &failingConnectorCheckSource{bootstrapTokenSource: bootstrapTokenSource{id: "bootstrap_token"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"runtime_id":"runtime-a","tenant_id":"tenant-a","auth_method":"environment_managed","credential_store_id":"environment_managed","config":{"family":"audit"},"credential_references":{"token":"env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN"}}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status string `json:"status"`
+		Checks []struct {
+			ID       string `json:"id"`
+			Status   string `json:"status"`
+			Blocking bool   `json:"blocking"`
+		} `json:"checks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "blocked" {
+		t.Fatalf("preflight status = %q, want blocked", payload.Status)
+	}
+	checks := map[string]struct {
+		status   string
+		blocking bool
+	}{}
+	for _, check := range payload.Checks {
+		checks[check.ID] = struct {
+			status   string
+			blocking bool
+		}{status: check.Status, blocking: check.Blocking}
+	}
+	if got := checks["source_check"]; got.status != "blocked" || !got.blocking {
+		t.Fatalf("source_check = %#v, want blocked blocking check; checks=%#v", got, checks)
+	}
+	if len(store.runtimes) != 0 {
+		t.Fatalf("stored runtimes len = %d, want 0", len(store.runtimes))
+	}
+}
+
 func TestConnectorTransitKeyIsSharedAcrossReplicas(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)
@@ -1306,4 +1466,12 @@ type connectorCoverageSource struct {
 
 func (s *connectorCoverageSource) CoverageContract() sourcecdk.CoverageContract {
 	return s.contract
+}
+
+type failingConnectorCheckSource struct {
+	bootstrapTokenSource
+}
+
+func (s *failingConnectorCheckSource) Check(context.Context, sourcecdk.Config) error {
+	return sourcecdk.ErrInvalidConfig
 }
