@@ -512,6 +512,7 @@ func outcomeLearningForTarget(targetURN string, neighborhoods map[string]*ports.
 		return learning
 	}
 	seenActions := map[string]struct{}{}
+	seenRelations := map[string]struct{}{}
 	if neighborhood := neighborhoodForTarget(targetURN, neighborhoods); neighborhood != nil {
 		for _, node := range append(append([]*ports.NeighborhoodNode{}, neighborhood.Root), neighborhood.Neighbors...) {
 			if node == nil {
@@ -533,6 +534,11 @@ func outcomeLearningForTarget(targetURN string, neighborhoods map[string]*ports.
 			if relation == nil || !relationTouchesTarget(relation, targetURN) {
 				continue
 			}
+			relationKey := outcomeRelationKey(relation)
+			if _, ok := seenRelations[relationKey]; ok {
+				continue
+			}
+			seenRelations[relationKey] = struct{}{}
 			relationName := strings.ToLower(strings.TrimSpace(relation.Relation))
 			if strings.Contains(relationName, "action") || strings.Contains(relationName, "remediat") || strings.Contains(relationName, "ticket") {
 				addStringSetValue(seenActions, relation.FromURN)
@@ -552,6 +558,15 @@ func outcomeLearningForTarget(targetURN string, neighborhoods map[string]*ports.
 		learning.Status = "learned_from_prior_outcomes"
 	}
 	return learning
+}
+
+func outcomeRelationKey(relation *ports.NeighborhoodRelation) string {
+	if relation == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(relation.FromURN)) + "|" +
+		strings.ToLower(strings.TrimSpace(relation.Relation)) + "|" +
+		strings.ToLower(strings.TrimSpace(relation.ToURN))
 }
 
 func neighborhoodForTarget(targetURN string, neighborhoods map[string]*ports.EntityNeighborhood) *ports.EntityNeighborhood {

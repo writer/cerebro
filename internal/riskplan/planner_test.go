@@ -141,6 +141,45 @@ func TestAnalyzeRanksSimulatedCandidatesWithFirstClassSignals(t *testing.T) {
 	}
 }
 
+func TestOutcomeLearningDeduplicatesMirroredRelations(t *testing.T) {
+	targetURN := "urn:cerebro:writer:service:payments"
+	actionURN := "urn:cerebro:writer:workflow_action:patch-payments"
+	relation := &ports.NeighborhoodRelation{
+		FromURN:    actionURN,
+		Relation:   "completed_action",
+		ToURN:      targetURN,
+		Attributes: map[string]string{"outcome": "resolved"},
+	}
+	neighborhoods := map[string]*ports.EntityNeighborhood{
+		targetURN: {
+			Root: &ports.NeighborhoodNode{URN: targetURN, EntityType: "service", Label: "payments"},
+			Relations: []*ports.NeighborhoodRelation{
+				relation,
+			},
+		},
+		actionURN: {
+			Root: &ports.NeighborhoodNode{URN: actionURN, EntityType: "workflow_action", Label: "patch payments"},
+			Relations: []*ports.NeighborhoodRelation{
+				{
+					FromURN:    " " + actionURN + " ",
+					Relation:   " completed_action ",
+					ToURN:      " " + targetURN + " ",
+					Attributes: map[string]string{"outcome": "resolved"},
+				},
+			},
+		},
+	}
+
+	learning := outcomeLearningForTarget(targetURN, neighborhoods)
+
+	if learning.PositiveOutcomeCount != 1 {
+		t.Fatalf("PositiveOutcomeCount = %d, want mirrored relations counted once", learning.PositiveOutcomeCount)
+	}
+	if learning.NegativeOutcomeCount != 0 || learning.PriorityAdjustment != 10 {
+		t.Fatalf("outcome learning = %#v, want one positive outcome adjustment", learning)
+	}
+}
+
 func TestAnalyzeDeduplicatesStoredAndRecomputedRiskFactorsPerFinding(t *testing.T) {
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 	plan := Analyze([]*ports.FindingRecord{{
