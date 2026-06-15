@@ -311,4 +311,4 @@ jobs:
           automatic_security_review: true
           review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'claude-opus-4-8' }}
           security_model: gpt-5.4
-          allowed_bots: dependabot
+          allowed_bots: dependabot,writer-cerebro-deploy
