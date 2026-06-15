@@ -53,13 +53,14 @@ For local durable evaluation:
 
 ```bash
 docker compose up --build
+export CEREBRO_API_KEY=local-dev-key
 curl -sS http://127.0.0.1:8080/health
-curl -sS http://127.0.0.1:8080/sources
+curl -sS --oauth2-bearer "$CEREBRO_API_KEY" http://127.0.0.1:8080/sources
 ```
 
 The checked-in compose file starts:
 
-- Cerebro on port `8080`,
+- Cerebro on port `8080` with the local bearer key `local-dev-key`,
 - NATS JetStream on `4222`,
 - Postgres on `5432`,
 - Neo4j on `7474` and `7687`,

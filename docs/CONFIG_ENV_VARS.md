@@ -6,12 +6,16 @@ Current bootstrap configuration is loaded by `internal/config`.
 | --- | --- | --- |
 | `CEREBRO_HTTP_ADDR` | `:8080` | HTTP listen address. |
 | `CEREBRO_SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown timeout. |
-| `CEREBRO_API_AUTH_ENABLED` | `false` | Require bearer/API-key authentication for non-public routes. |
+| `CEREBRO_API_AUTH_ENABLED` | `true` outside acknowledged dev mode | Require bearer/API-key authentication for non-public routes. |
 | `CEREBRO_API_KEYS` | unset | Comma-separated `key[:principal[:tenant_id]]` entries. Required when auth is enabled. |
 | `CEREBRO_ALLOWED_TENANTS` | unset | Optional comma-separated tenant allowlist for unscoped API keys. |
 | `CEREBRO_PUBLIC_ORIGIN` | request host | Canonical external origin, for example `https://cerebro.example.com`, used for DPoP `htu` and public URL reconstruction. Must not include a path, query, or fragment. |
 | `CEREBRO_TRUSTED_PROXY_CIDRS` | private/link-local remotes | Optional comma-separated CIDRs whose forwarded headers are trusted. Set this explicitly in production to the load-balancer/proxy network. |
 | `CEREBRO_TRUSTED_PROXY_COUNT` | `0` | Optional count of trusted trailing `X-Forwarded-For` hops. Use `1` for a single ALB/proxy hop. |
+| `CEREBRO_RATE_LIMIT_ENABLED` | `true` outside acknowledged dev mode | Enable global API rate limiting. |
+| `CEREBRO_RATE_LIMIT_RPS` | `100` | Global API rate-limit refill rate. |
+| `CEREBRO_RATE_LIMIT_BURST` | `150` | Global API rate-limit burst size. |
+| `CEREBRO_RATE_LIMIT_EXEMPT_PATHS` | health, metrics, and well-known metadata paths | Optional comma-separated path prefixes that bypass rate limiting. |
 | `CEREBRO_APPEND_LOG_DRIVER` | inferred | Append-log driver. Supported: `jetstream`. |
 | `CEREBRO_JETSTREAM_URL` | unset | NATS JetStream URL. Setting this infers `jetstream`. |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | `events` | Subject prefix for append-log events. |

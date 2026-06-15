@@ -50,6 +50,7 @@ services:
     build: .
     environment:
       CEREBRO_HTTP_ADDR: :8080
+      CEREBRO_API_KEYS: local-dev-key:local:local
       CEREBRO_APPEND_LOG_DRIVER: jetstream
       CEREBRO_JETSTREAM_URL: nats://nats:4222
       CEREBRO_STATE_STORE_DRIVER: postgres

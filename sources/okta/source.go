@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/oktaevent"
+	"github.com/writer/cerebro/sources/internal/textutil"
 )
 
 //go:embed catalog.yaml
@@ -1886,12 +1887,7 @@ func stringSliceMap(values map[string]any, key string) []string {
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return textutil.FirstNonEmpty(values...)
 }
 
 func boolString(value bool) string {

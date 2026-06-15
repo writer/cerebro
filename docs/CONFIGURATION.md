@@ -6,10 +6,10 @@ For end-to-end hosting guidance, including container deployment, reverse proxy s
 
 ## Minimal local configuration
 
-No external stores are required for `/health`, `/healthz`, `/livez`, `/openapi.yaml`, `/sources`, and source preview routes that do not need provider credentials. `/health` reports dependency-aware readiness; `/healthz` and `/livez` are liveness-only.
+No external stores are required for `/health`, `/healthz`, `/livez`, `/openapi.yaml`, `/sources`, and source preview routes that do not need provider credentials. API auth and rate limiting are enabled by default outside acknowledged dev mode. `/health` reports dependency-aware readiness; `/healthz` and `/livez` are liveness-only.
 
 ```bash
-make serve
+make serve-dev
 curl -sS http://127.0.0.1:8080/health
 ```
 

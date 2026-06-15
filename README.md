@@ -84,8 +84,7 @@ git clone https://github.com/writer/cerebro.git
 cd cerebro
 
 make doctor
-make build
-make serve
+make serve-dev
 ```
 
 By default, Cerebro listens on `:8080`.
@@ -110,7 +109,7 @@ make verify
 docker compose up --build
 ```
 
-The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using service-local `CEREBRO_*` environment variables. For a standalone environment template, start from `.env.example`.
+The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a local-only bearer key (`local-dev-key`) using service-local `CEREBRO_*` environment variables. For a standalone environment template, start from `.env.example`.
 
 ---
 
@@ -118,8 +117,8 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using 
 
 | Goal | Start here | Notes |
 | --- | --- | --- |
-| Run the lightweight server | `make serve` | Starts the API without external stores; useful for health, source catalog, and OpenAPI checks. |
-| Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, and Neo4j. |
+| Run the lightweight server | `make serve-dev` | Starts the API without external stores using an acknowledged local-only auth/rate-limit opt-out; useful for health, source catalog, and OpenAPI checks. |
+| Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, Neo4j, and the local bearer key `local-dev-key`. |
 | Host Cerebro | `docs/HOSTING.md`, `docs/DEPLOYMENT_EXAMPLES.md`, and `docs/OPERATIONS_RUNBOOK.md` | Deployment guidance, example platform shapes, health checks, operations, and rollout. |
 | Try a local end-to-end path | `docs/GETTING_STARTED.md` | Creates an SDK source runtime, writes a synthetic claim, and reads it back. |
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
@@ -150,7 +149,7 @@ Core runtime and store variables:
 | `CEREBRO_HTTP_ADDR` | HTTP listen address | `:8080` |
 | `CEREBRO_SHUTDOWN_TIMEOUT` | graceful shutdown timeout | `10s` |
 | `CEREBRO_IMAGE_TAG` | image tag exported by release/deploy tooling | unset |
-| `CEREBRO_API_AUTH_ENABLED` | require bearer/API-key auth for non-public routes | `false` |
+| `CEREBRO_API_AUTH_ENABLED` | require bearer/API-key auth for non-public routes | `true` outside acknowledged dev mode |
 | `CEREBRO_API_KEYS` | comma-separated `key[:principal[:tenant_id]]` entries | unset |
 | `CEREBRO_API_CREDENTIALS_JSON` | structured bearer credentials with scopes and tenant metadata | unset |
 | `CEREBRO_ALLOWED_TENANTS` | optional tenant allowlist for unscoped API keys | unset |
@@ -159,6 +158,9 @@ Core runtime and store variables:
 | `CEREBRO_PUBLIC_ORIGIN` | canonical external origin for DPoP and proxy-aware URL reconstruction | request host |
 | `CEREBRO_TRUSTED_PROXY_CIDRS` | comma-separated trusted proxy/load-balancer CIDRs for forwarded headers | private/link-local remotes |
 | `CEREBRO_TRUSTED_PROXY_COUNT` | trusted trailing `X-Forwarded-For` hops | `0` |
+| `CEREBRO_RATE_LIMIT_ENABLED` | enable global API rate limiting | `true` outside acknowledged dev mode |
+| `CEREBRO_RATE_LIMIT_RPS` | global API rate-limit refill rate | `100` |
+| `CEREBRO_RATE_LIMIT_BURST` | global API rate-limit burst size | `150` |
 | `CEREBRO_APPEND_LOG_DRIVER` | append-log driver; supported value: `jetstream` | unset |
 | `CEREBRO_JETSTREAM_URL` | NATS URL for JetStream | unset |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | JetStream subject prefix | `events` |
@@ -181,7 +183,7 @@ Advanced config families include:
 
 Driver selection is inferred when a driver-specific setting is present. For example, `CEREBRO_POSTGRES_DSN` selects the Postgres state store, and `CEREBRO_NEO4J_URI` selects the Neo4j graph store.
 
-Enable `CEREBRO_API_AUTH_ENABLED=true` in shared or production deployments. API keys can be scoped to a tenant with `key:principal:tenant_id`; requests that provide a different `tenant_id` are rejected before service logic runs.
+API auth and rate limiting are enabled by default outside acknowledged dev mode. API keys can be scoped to a tenant with `key:principal:tenant_id`; requests that provide a different `tenant_id` are rejected before service logic runs.
 
 Example durable local configuration:
 
@@ -346,7 +348,7 @@ Useful directories include `policies/aws/`, `policies/azure/`, `policies/gcp/`, 
 
 ```bash
 make build          # compile ./bin/cerebro
-make serve          # build and run the server
+make serve-dev      # build and run local server with acknowledged dev-mode opt-out
 make test           # go test ./...
 make lint           # golangci-lint over app packages
 make proto-lint     # buf lint

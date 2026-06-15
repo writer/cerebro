@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/textutil"
 )
 
 //go:embed catalog.yaml
@@ -2742,12 +2743,7 @@ func azureResourceTypeFromID(value string) string {
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
+	return textutil.FirstNonEmpty(values...)
 }
 
 func trimEmptyAttributes(attributes map[string]string) {

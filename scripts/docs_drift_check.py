@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 import sys
+from typing import Optional
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -20,6 +22,22 @@ FORBIDDEN_DOC_MARKERS = {
         "SQLite via `internal/vulndb.SQLiteStore`",
         "persisted by default at `VULNDB_STATE_FILE`",
     ],
+}
+
+
+CONFIG_DEFAULT_DOCS = {
+    "README.md": {
+        "CEREBRO_API_AUTH_ENABLED": (2, "true outside acknowledged dev mode"),
+        "CEREBRO_RATE_LIMIT_ENABLED": (2, "true outside acknowledged dev mode"),
+        "CEREBRO_RATE_LIMIT_RPS": (2, "100"),
+        "CEREBRO_RATE_LIMIT_BURST": (2, "150"),
+    },
+    "docs/CONFIG_ENV_VARS.md": {
+        "CEREBRO_API_AUTH_ENABLED": (1, "true outside acknowledged dev mode"),
+        "CEREBRO_RATE_LIMIT_ENABLED": (1, "true outside acknowledged dev mode"),
+        "CEREBRO_RATE_LIMIT_RPS": (1, "100"),
+        "CEREBRO_RATE_LIMIT_BURST": (1, "150"),
+    },
 }
 
 
@@ -50,10 +68,63 @@ def check_findings_catalog_reference() -> list[str]:
     return []
 
 
+def markdown_row_cells(body: str, variable: str) -> Optional[list[str]]:
+    marker = f"`{variable}`"
+    for line in body.splitlines():
+        if marker not in line or not line.lstrip().startswith("|"):
+            continue
+        cells = [normalize_markdown_cell(cell) for cell in line.strip().strip("|").split("|")]
+        if cells and cells[0] == variable:
+            return cells
+    return None
+
+
+def normalize_markdown_cell(value: str) -> str:
+    return re.sub(r"\s+", " ", value.replace("`", "").strip())
+
+
+def check_config_default_docs() -> list[str]:
+    failures: list[str] = []
+    config_go = read("internal/config/config.go")
+    runtime_markers = [
+        'parseBoolEnvDefault("CEREBRO_API_AUTH_ENABLED", !cfg.DevMode)',
+        'parseBoolEnvDefault("CEREBRO_RATE_LIMIT_ENABLED", !cfg.DevMode)',
+        'parseFloatEnv("CEREBRO_RATE_LIMIT_RPS", 100)',
+        'parseIntEnv("CEREBRO_RATE_LIMIT_BURST", 150)',
+    ]
+    for marker in runtime_markers:
+        if marker not in config_go:
+            failures.append(f"internal/config/config.go: expected runtime default marker {marker!r}")
+    for rel, expectations in CONFIG_DEFAULT_DOCS.items():
+        body = read(rel)
+        for variable, (default_index, expected) in expectations.items():
+            cells = markdown_row_cells(body, variable)
+            if cells is None:
+                failures.append(f"{rel}: missing documented row for {variable}")
+                continue
+            if default_index >= len(cells):
+                failures.append(f"{rel}: row for {variable} has no default column")
+                continue
+            actual = cells[default_index]
+            if actual != expected:
+                failures.append(f"{rel}: {variable} default is {actual!r}, want {expected!r}")
+    env_example = read(".env.example")
+    for line in [
+        "CEREBRO_API_AUTH_ENABLED=true",
+        "CEREBRO_RATE_LIMIT_ENABLED=true",
+        "CEREBRO_RATE_LIMIT_RPS=100",
+        "CEREBRO_RATE_LIMIT_BURST=150",
+    ]:
+        if line not in env_example:
+            failures.append(f".env.example: expected {line!r}")
+    return failures
+
+
 def main() -> int:
     failures = []
     failures.extend(check_forbidden_markers())
     failures.extend(check_findings_catalog_reference())
+    failures.extend(check_config_default_docs())
     if failures:
         print("docs drift check failed:", file=sys.stderr)
         for failure in failures:

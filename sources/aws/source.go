@@ -96,6 +96,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/sources/internal/textutil"
 )
 
 //go:embed catalog.yaml
@@ -4960,12 +4961,7 @@ func boolString(value bool) string {
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
+	return textutil.FirstNonEmpty(values...)
 }
 
 func containsAny(value string, needles ...string) bool {
