@@ -32,6 +32,7 @@ func TestNormalizeDomainAcceptsCanonicalForms(t *testing.T) {
 		"Security@Example.COM":     "example.com",
 		"https://mail.Example.com": "mail.example.com",
 		"www.Example.com:443":      "example.com",
+		"www.www.Example.com":      "example.com",
 		"":                         "",
 		"local.local":              "",
 		"10.0.0.1":                 "",
@@ -137,6 +138,28 @@ func TestEvaluateFlagsInvalidDKIMKeyMaterial(t *testing.T) {
 	}
 	if len(health.DKIMSelectors) == 0 || health.DKIMSelectors[0].Status != StatusFailing {
 		t.Fatalf("DKIM selector status = %+v, want FAILING", health.DKIMSelectors)
+	}
+}
+
+func TestEvaluateAcceptsEd25519DKIMKeyMaterial(t *testing.T) {
+	ed25519Key := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	resolver := fakeResolver{
+		txt: map[string][]string{
+			"ed25519.example.com":                    {"v=spf1 -all"},
+			"_dmarc.ed25519.example.com":             {"v=DMARC1; p=reject; rua=mailto:dmarc@ed25519.example.com"},
+			"default._domainkey.ed25519.example.com": {"v=DKIM1; k=ed25519; p=" + ed25519Key},
+		},
+		mx: map[string][]*net.MX{"ed25519.example.com": {{Host: "mx.example.com.", Pref: 10}}},
+	}
+	health := Evaluate(context.Background(), resolver, "ed25519.example.com", nil)
+	if health.Status != StatusHealthy {
+		t.Fatalf("Status = %q for valid Ed25519 DKIM key, want HEALTHY; issues=%+v", health.Status, health.Issues)
+	}
+	if findIssueCode(health.Issues, "dkim_weak_key") || findIssueCode(health.Issues, "dkim_key_short") {
+		t.Fatalf("valid Ed25519 key should not receive RSA strength issue; issues=%+v", health.Issues)
+	}
+	if len(health.DKIMSelectors) == 0 || health.DKIMSelectors[0].Status != StatusHealthy || health.DKIMSelectors[0].KeyBits != 256 {
+		t.Fatalf("DKIM selector = %+v, want healthy 256-bit Ed25519 selector", health.DKIMSelectors)
 	}
 }
 

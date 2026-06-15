@@ -537,7 +537,7 @@
         "DKIM selectors outside the probed defaults (or scoped to subdomains) may exist and not be discovered by the source.",
         "Domains that intentionally do not send mail may legitimately omit SPF/DKIM/DMARC, but should publish a deny-all SPF and DMARC reject policy to stop spoofing."
       ],
-      "runbook": "Inspect the failing_issue_codes attribute on the finding, address the most severe protocol gap first (SPF permissive/missing, DMARC missing or p=none, DKIM weak/missing), then confirm the source re-runs and clears the finding.",
+      "runbook": "Inspect the failing_issue_codes attribute on the finding, address the most severe protocol gap first (SPF permissive/missing, DMARC missing or p=none, DKIM weak/missing), then confirm the source re-runs healthy and clears the finding.",
       "required_attributes": [
         "domain",
         "status"

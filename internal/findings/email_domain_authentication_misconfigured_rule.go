@@ -11,14 +11,22 @@ import (
 
 const emailDomainAuthenticationMisconfiguredRuleID = "email-domain-authentication-misconfigured"
 
+type emailDomainAuthenticationMisconfiguredRule struct {
+	Rule
+	definition RuleDefinition
+}
+
 func newEmailDomainAuthenticationMisconfiguredRule() Rule {
 	definition := emailDomainAuthenticationMisconfiguredDefinition()
-	return newEventRule(eventRuleConfig{
+	return &emailDomainAuthenticationMisconfiguredRule{
+		Rule: newEventRule(eventRuleConfig{
+			definition: definition,
+			sourceID:   definition.SourceID,
+			match:      eventKindMatcher(definition.EventKinds...),
+			build:      buildEmailDomainAuthenticationMisconfiguredFinding,
+		}),
 		definition: definition,
-		sourceID:   definition.SourceID,
-		match:      eventKindMatcher(definition.EventKinds...),
-		build:      buildEmailDomainAuthenticationMisconfiguredFinding,
-	})
+	}
 }
 
 func emailDomainAuthenticationMisconfiguredDefinition() RuleDefinition {
@@ -42,7 +50,7 @@ func emailDomainAuthenticationMisconfiguredDefinition() RuleDefinition {
 			"Domains that intentionally do not send mail may legitimately omit SPF/DKIM/DMARC, but should publish a deny-all SPF and DMARC reject policy to stop spoofing.",
 			"DKIM selectors outside the probed defaults (or scoped to subdomains) may exist and not be discovered by the source.",
 		},
-		Runbook:            "Inspect the failing_issue_codes attribute on the finding, address the most severe protocol gap first (SPF permissive/missing, DMARC missing or p=none, DKIM weak/missing), then confirm the source re-runs and clears the finding.",
+		Runbook:            "Inspect the failing_issue_codes attribute on the finding, address the most severe protocol gap first (SPF permissive/missing, DMARC missing or p=none, DKIM weak/missing), then confirm the source re-runs healthy and clears the finding.",
 		RequiredAttributes: []string{"domain", "status"},
 		FingerprintFields:  []string{"domain"},
 		ControlRefs: []ports.FindingControlRef{
@@ -52,6 +60,32 @@ func emailDomainAuthenticationMisconfiguredDefinition() RuleDefinition {
 		},
 		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 	}
+}
+
+func (r *emailDomainAuthenticationMisconfiguredRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *emailDomainAuthenticationMisconfiguredRule) OpenAnchor(attributes map[string]string) string {
+	return emailDomainAuthenticationCounterAnchor(attributes["domain"])
+}
+
+func (r *emailDomainAuthenticationMisconfiguredRule) CloseOnEvent(event Event) (string, bool) {
+	if !eventKindMatcher(emailDomainAuthenticationMisconfiguredDefinition().EventKinds...)(event) {
+		return "", false
+	}
+	attributes := eventAttributes(event)
+	if !strings.EqualFold(strings.TrimSpace(attributes["status"]), "HEALTHY") {
+		return "", false
+	}
+	anchor := emailDomainAuthenticationCounterAnchor(attributes["domain"])
+	if anchor == "" {
+		return "", false
+	}
+	return anchor, true
 }
 
 func buildEmailDomainAuthenticationMisconfiguredFinding(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
@@ -85,7 +119,7 @@ func buildEmailDomainAuthenticationMisconfiguredFinding(_ context.Context, runti
 	failingCodes := strings.TrimSpace(attributes["failing_issue_codes"])
 	issueCodes := strings.TrimSpace(attributes["issue_codes"])
 	summary := emailDomainAuthenticationSummary(domain, status, failingCodes, issueCodes)
-	action := "Publish or correct SPF, DKIM, and DMARC records on the affected mail domain. Aim for one SPF record terminating in -all, DMARC at p=quarantine or p=reject with reporting, and DKIM keys of at least 2048 bits."
+	action := "Publish or correct SPF, DKIM, and DMARC records on the affected mail domain. Aim for one SPF record terminating in -all, DMARC at p=quarantine or p=reject with reporting, and RSA DKIM keys of at least 2048 bits or standards-compliant Ed25519 selectors."
 
 	findingAttributes := map[string]string{
 		"action":               action,
@@ -172,4 +206,12 @@ func emailDomainURN(tenantID string, domain string) string {
 		return ""
 	}
 	return "urn:cerebro:" + tenant + ":email_domain:" + value
+}
+
+func emailDomainAuthenticationCounterAnchor(domain string) string {
+	value := strings.ToLower(strings.TrimSpace(domain))
+	if value == "" {
+		return ""
+	}
+	return "domain=" + value
 }
