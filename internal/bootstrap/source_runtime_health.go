@@ -268,11 +268,11 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	}
 	store := sourceRuntimeStore(a.deps.StateStore)
 	if store == nil {
-		return emptySourceRuntimeHealthResponse(), nil
+		return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
 	}
 	lister, ok := store.(ports.SourceRuntimeListStore)
 	if !ok {
-		return emptySourceRuntimeHealthResponse(), nil
+		return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
 	}
 	if filter.Limit == 0 {
 		filter.Limit = 100

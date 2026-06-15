@@ -662,6 +662,7 @@ func matchesReplayAttributes(event *cerebrov1.EventEnvelope, expected map[string
 type stubRuntimeStore struct {
 	err                             error
 	runtimes                        map[string]*cerebrov1.SourceRuntime
+	sourceRuntimeListFilter         ports.SourceRuntimeFilter
 	entities                        map[string]*ports.ProjectedEntity
 	links                           map[string]*ports.ProjectedLink
 	claims                          map[string]*ports.ClaimRecord
@@ -743,6 +744,7 @@ func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.So
 	if s.err != nil {
 		return nil, s.err
 	}
+	s.sourceRuntimeListFilter = filter
 	var ids []string
 	for id := range s.runtimes {
 		ids = append(ids, id)

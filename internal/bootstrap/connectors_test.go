@@ -22,6 +22,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -505,6 +506,103 @@ func TestConnectorActivityRejectsUnknownSource(t *testing.T) {
 	}()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("GET /connectors/{sourceID}/activity status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestConnectorActivityRejectsLimitAboveContract(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token/activity?limit=501")
+	if err != nil {
+		t.Fatalf("GET /connectors/{sourceID}/activity error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /connectors/{sourceID}/activity status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestConnectorActivityLimitTruncatesActivityRows(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {
+			Id:           "runtime-a",
+			SourceId:     "bootstrap_token",
+			TenantId:     "tenant-a",
+			LastSyncedAt: timestamppb.New(now.Add(-time.Hour)),
+			Config: map[string]string{
+				"family":                        "audit",
+				runtimeRecordsAcceptedConfigKey: "10",
+			},
+		},
+	}}}
+	graph := &stubGraphStore{ingestRuns: map[string]graphstore.IngestRun{
+		"graph-a": {
+			ID:         "graph-a",
+			RuntimeID:  "runtime-a",
+			Status:     "completed",
+			StartedAt:  now.Add(-30 * time.Minute).Format(time.RFC3339Nano),
+			FinishedAt: now.Add(-25 * time.Minute).Format(time.RFC3339Nano),
+		},
+	}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: store, GraphStore: graph}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token/activity?tenant_id=tenant-a&limit=1")
+	if err != nil {
+		t.Fatalf("GET /connectors/{sourceID}/activity error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors/{sourceID}/activity status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Activity []struct {
+			Type      string `json:"type"`
+			RuntimeID string `json:"runtime_id"`
+		} `json:"activity"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Activity) != 1 {
+		t.Fatalf("activity length = %d, want 1: %#v", len(payload.Activity), payload.Activity)
+	}
+	if got := payload.Activity[0].RuntimeID; got != "runtime-a" {
+		t.Fatalf("activity[0].runtime_id = %q, want runtime-a", got)
+	}
+	if got := store.sourceRuntimeListFilter.Limit; got != connectorActivityMaxLimit {
+		t.Fatalf("runtime list limit = %d, want connector fetch limit %d", got, connectorActivityMaxLimit)
+	}
+	if got := graph.ingestRunListFilter.Limit; got != 1 {
+		t.Fatalf("graph ingest run list limit = %d, want latest run lookup limit", got)
 	}
 }
 

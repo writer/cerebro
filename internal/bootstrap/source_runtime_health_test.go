@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcecoverage"
+	"github.com/writer/cerebro/internal/sourceruntime"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -407,22 +409,12 @@ func TestListSourceRuntimeHealthFiltersCoverageByAllowedTenant(t *testing.T) {
 	}
 }
 
-func TestListSourceRuntimeHealthToleratesUnavailableStore(t *testing.T) {
+func TestListSourceRuntimeHealthFailsClosedWithoutRuntimeStore(t *testing.T) {
 	app := &App{}
 	req := httptest.NewRequest("GET", "/source-runtimes/health?source_id=aws", nil)
 
-	response, err := app.listSourceRuntimeHealth(req)
-	if err != nil {
-		t.Fatalf("listSourceRuntimeHealth() error = %v", err)
-	}
-	if strings.TrimSpace(response.GeneratedAt) == "" {
-		t.Fatalf("GeneratedAt is empty")
-	}
-	if len(response.Runtimes) != 0 {
-		t.Fatalf("Runtimes = %#v, want empty", response.Runtimes)
-	}
-	if len(response.SourceSummaries) != 0 {
-		t.Fatalf("SourceSummaries = %#v, want empty", response.SourceSummaries)
+	if _, err := app.listSourceRuntimeHealth(req); !errors.Is(err, sourceruntime.ErrRuntimeUnavailable) {
+		t.Fatalf("listSourceRuntimeHealth() error = %v, want runtime unavailable", err)
 	}
 }
 

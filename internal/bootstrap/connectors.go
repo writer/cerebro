@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,8 @@ import (
 const (
 	defaultConnectorCredentialStoreID = "cerebro_vault"
 	connectorStoreEnvironmentManaged  = "environment_managed"
+	connectorActivityDefaultLimit     = 500
+	connectorActivityMaxLimit         = 500
 
 	connectorAuthMethodEncryptedSubmission = "encrypted_submission"
 	connectorAuthMethodAWSSSOProfile       = "aws_sso_profile"
@@ -319,16 +322,22 @@ func (a *App) handleListConnectorActivity(w http.ResponseWriter, r *http.Request
 		writeConnectorError(w, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, sourceID))
 		return
 	}
+	activityLimit, err := connectorActivityLimit(r)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	health, err := a.connectorHealthForSource(r, entry.SourceID, tenantID)
 	if err != nil {
 		writeConnectorError(w, err)
 		return
 	}
+	activity := connectorActivityFromHealth(health.Runtimes)
 	writeJSON(w, http.StatusOK, connectorActivityResponse{
 		GeneratedAt: health.GeneratedAt,
 		TenantID:    tenantID,
 		SourceID:    entry.SourceID,
-		Activity:    connectorActivityFromHealth(health.Runtimes),
+		Activity:    limitConnectorActivity(activity, activityLimit),
 	})
 }
 
@@ -589,9 +598,7 @@ func (a *App) connectorHealthForSource(r *http.Request, sourceID string, tenantI
 	if strings.TrimSpace(tenantID) != "" {
 		query.Set("tenant_id", strings.TrimSpace(tenantID))
 	}
-	if strings.TrimSpace(query.Get("limit")) == "" {
-		query.Set("limit", "500")
-	}
+	query.Set("limit", strconv.Itoa(connectorActivityMaxLimit))
 	clonedURL.RawQuery = query.Encode()
 	clone.URL = &clonedURL
 	health, err := a.listSourceRuntimeHealth(clone)
@@ -599,6 +606,21 @@ func (a *App) connectorHealthForSource(r *http.Request, sourceID string, tenantI
 		return emptySourceRuntimeHealthResponse(), nil
 	}
 	return health, err
+}
+
+func connectorActivityLimit(r *http.Request) (int, error) {
+	value := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if value == "" {
+		return connectorActivityDefaultLimit, nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("%w: invalid limit", connectorcredentials.ErrInvalidRequest)
+	}
+	if parsed == 0 || parsed > connectorActivityMaxLimit {
+		return 0, fmt.Errorf("%w: limit must be between 1 and %d", connectorcredentials.ErrInvalidRequest, connectorActivityMaxLimit)
+	}
+	return int(parsed), nil
 }
 
 func connectorOperationsSummaryFromHealth(entry connectorCatalogEntry, records []sourceRuntimeHealthRecord) connectorOperationsSummary {
@@ -735,6 +757,13 @@ func connectorActivityFromHealth(records []sourceRuntimeHealthRecord) []connecto
 		return activity[i].OccurredAt > activity[j].OccurredAt
 	})
 	return activity
+}
+
+func limitConnectorActivity(activity []connectorActivityView, limit int) []connectorActivityView {
+	if limit <= 0 || len(activity) <= limit {
+		return activity
+	}
+	return activity[:limit]
 }
 
 func connectorAnyRecordFailing(records []sourceRuntimeHealthRecord) bool {
