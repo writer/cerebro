@@ -126,7 +126,7 @@ func run(pass *analysis.Pass) (any, error) {
 					pass.Report(analysis.Diagnostic{
 						Pos:     ts.Pos(),
 						End:     ts.End(),
-						Message: "type " + ts.Name.Name + " implements sealed interface " + sealedObj.Pkg().Name() + "." + sealedObj.Name() + " outside its home package; move the implementation beside the interface. (see PLAN.md §7 sin #8)",
+						Message: "type " + ts.Name.Name + " implements sealed interface " + sealedObj.Pkg().Name() + "." + sealedObj.Name() + " outside its home package; move the implementation beside the interface. (see docs/NON_GOALS.md)",
 					})
 					break
 				}
@@ -1868,7 +1868,7 @@ func reportImportedSealedActual(pass *analysis.Pass, expr ast.Expr, actual types
 	pass.Report(analysis.Diagnostic{
 		Pos:     expr.Pos(),
 		End:     expr.End(),
-		Message: qualifiedImportedName(named) + " crosses sealed interface " + sealedObj.Pkg().Name() + "." + sealedObj.Name() + " outside its home package; move the implementation beside the interface. (see PLAN.md §7 sin #8)",
+		Message: qualifiedImportedName(named) + " crosses sealed interface " + sealedObj.Pkg().Name() + "." + sealedObj.Name() + " outside its home package; move the implementation beside the interface. (see docs/NON_GOALS.md)",
 	})
 }
 

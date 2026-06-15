@@ -35,7 +35,7 @@ func run(pass *analysis.Pass) (any, error) {
 			pass.Report(analysis.Diagnostic{
 				Pos:     call.Pos(),
 				End:     call.End(),
-				Message: "os." + name + " is forbidden outside cmd/ and config; thread configuration through typed inputs instead. (see PLAN.md §7 sin #11)",
+				Message: "os." + name + " is forbidden outside cmd/ and config; thread configuration through typed inputs instead. (see docs/NON_GOALS.md)",
 			})
 		}
 		switch fun := call.Fun.(type) {

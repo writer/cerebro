@@ -97,7 +97,7 @@ func report(pass *analysis.Pass, reported map[token.Pos]struct{}, pos, end token
 	pass.Report(analysis.Diagnostic{
 		Pos:     pos,
 		End:     end,
-		Message: "embedded or in-memory database usage is forbidden in production code; use durable external stores instead. (see PLAN.md §7 sin #10)",
+		Message: "embedded or in-memory database usage is forbidden in production code; use durable external stores instead. (see docs/NON_GOALS.md)",
 	})
 }
 

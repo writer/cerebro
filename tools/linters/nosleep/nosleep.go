@@ -5,8 +5,6 @@
 // the agent-y part of the system. Each case has a better, testable
 // primitive — an explicit context, an errgroup, a backoff from the
 // `runtime/backoff` package, or a subscription.
-//
-// Sin #4 in PLAN.md §7.
 package nosleep
 
 import (
@@ -61,13 +59,13 @@ func run(pass *analysis.Pass) (any, error) {
 				pass.Report(analysis.Diagnostic{
 					Pos:     call.Pos(),
 					End:     call.End(),
-					Message: "time.Sleep is forbidden outside tests; use a context deadline, an errgroup, or runtime/backoff. (see PLAN.md §7 sin #4)",
+					Message: "time.Sleep is forbidden outside tests; use a context deadline, an errgroup, or runtime/backoff. (see docs/NON_GOALS.md)",
 				})
 			case "After":
 				pass.Report(analysis.Diagnostic{
 					Pos:     call.Pos(),
 					End:     call.End(),
-					Message: "time.After leaks timers; use ctx.Done() with a deadline, or time.NewTimer. (see PLAN.md §7 sin #4)",
+					Message: "time.After leaks timers; use ctx.Done() with a deadline, or time.NewTimer. (see docs/NON_GOALS.md)",
 				})
 			}
 			return true

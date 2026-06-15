@@ -52,7 +52,7 @@ func run(pass *analysis.Pass) (any, error) {
 				pass.Report(analysis.Diagnostic{
 					Pos:     field.Pos(),
 					End:     field.End(),
-					Message: "struct field " + fieldLabel(field) + " stores back-pointer to *" + target + "; inject a narrow interface instead. (see PLAN.md §7 sin #7)",
+					Message: "struct field " + fieldLabel(field) + " stores back-pointer to *" + target + "; inject a narrow interface instead. (see docs/NON_GOALS.md)",
 				})
 			}
 		}

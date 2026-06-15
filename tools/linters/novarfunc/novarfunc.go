@@ -7,8 +7,6 @@
 // a distance in the existing Cerebro codebase. Test seams must use
 // explicit dependency injection (a parameter or a field on a struct
 // that a test can replace) instead.
-//
-// Sin #3 in PLAN.md §7.
 package novarfunc
 
 import (
@@ -68,7 +66,7 @@ func run(pass *analysis.Pass) (any, error) {
 							Message: "package-level var '" + name.Name +
 								"' is bound to a function literal; " +
 								"use explicit dependency injection instead of a mutable hook. " +
-								"(see PLAN.md §7 sin #3)",
+								"(see docs/NON_GOALS.md)",
 						})
 					}
 				}

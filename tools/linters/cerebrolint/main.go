@@ -4,8 +4,8 @@
 //	go run ./cerebrolint ../../...
 //
 // Each analyzer is deliberately small and self-contained; see
-// PLAN.md §7 for the full list of architectural invariants it
-// enforces.
+// tools/linters/README.md and docs/NON_GOALS.md for the architectural
+// invariants it enforces.
 package main
 
 import (
