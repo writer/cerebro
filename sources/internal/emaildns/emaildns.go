@@ -514,7 +514,9 @@ func NormalizeDomain(raw string) string {
 	} else if index := strings.LastIndex(candidate, ":"); index > 0 {
 		candidate = candidate[:index]
 	}
-	candidate = strings.TrimPrefix(candidate, "www.")
+	for strings.HasPrefix(candidate, "www.") {
+		candidate = strings.TrimPrefix(candidate, "www.")
+	}
 	if ip := net.ParseIP(candidate); ip != nil {
 		return ""
 	}
