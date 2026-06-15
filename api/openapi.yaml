@@ -153,6 +153,44 @@ paths:
       responses:
         '200':
           description: Connector catalog with runtime counts and credential capability state.
+  /connectors/{sourceID}:
+    get:
+      summary: Get connector operations summary
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Connector catalog entry, runtime health summary, safe connection summaries, and recent activity.
+        '404':
+          description: Connector source was not found.
+  /connectors/{sourceID}/activity:
+    get:
+      summary: List connector activity
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: Safe sync and graph activity derived from connector runtime health.
+        '404':
+          description: Connector source was not found.
   /connectors/credential-key:
     get:
       summary: Get connector credential transit key

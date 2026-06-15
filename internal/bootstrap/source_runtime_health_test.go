@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcecoverage"
+	"github.com/writer/cerebro/internal/sourceruntime"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -404,6 +406,15 @@ func TestListSourceRuntimeHealthFiltersCoverageByAllowedTenant(t *testing.T) {
 	}
 	if got := byDimension["applications"].RuntimeID; got != "" {
 		t.Fatalf("applications runtime_id = %q, want empty", got)
+	}
+}
+
+func TestListSourceRuntimeHealthFailsClosedWithoutRuntimeStore(t *testing.T) {
+	app := &App{}
+	req := httptest.NewRequest("GET", "/source-runtimes/health?source_id=aws", nil)
+
+	if _, err := app.listSourceRuntimeHealth(req); !errors.Is(err, sourceruntime.ErrRuntimeUnavailable) {
+		t.Fatalf("listSourceRuntimeHealth() error = %v, want runtime unavailable", err)
 	}
 }
 

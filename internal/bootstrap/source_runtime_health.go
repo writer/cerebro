@@ -308,6 +308,14 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	}, nil
 }
 
+func emptySourceRuntimeHealthResponse() sourceRuntimeHealthResponse {
+	return sourceRuntimeHealthResponse{
+		GeneratedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+		Runtimes:        []sourceRuntimeHealthRecord{},
+		SourceSummaries: []sourceRuntimeHealthSummary{},
+	}
+}
+
 func runtimeFreshnessFromHealth(health sourceRuntimeHealthResponse) runtimeFreshnessResponse {
 	records := make([]runtimeFreshnessRecord, 0, len(health.Runtimes))
 	for _, record := range health.Runtimes {

@@ -19,10 +19,13 @@ import (
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type connectorTestStore struct {
@@ -328,6 +331,278 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 	}
 	if !stores[connectorStoreEnvironmentManaged] {
 		t.Fatalf("environment-managed store not advertised available: %#v", stores)
+	}
+}
+
+func TestConnectorDetailSummarizesOperationsWithoutConfig(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 15, 16, 0, 0, 0, time.UTC)
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {
+			Id:           "runtime-a",
+			SourceId:     "bootstrap_token",
+			TenantId:     "tenant-a",
+			LastSyncedAt: timestamppb.New(now),
+			Config: map[string]string{
+				"family":                           "audit",
+				"internal_marker":                  "runtime-config-marker",
+				runtimeRecordsAcceptedConfigKey:    "42",
+				runtimeRecordsRejectedConfigKey:    "1",
+				runtimeEntitiesProjectedConfigKey:  "40",
+				runtimeLinksProjectedConfigKey:     "8",
+				runtimeContractProbeStateConfigKey: "passing",
+				"expected_cadence_seconds":         "14400",
+			},
+		},
+	}}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token?tenant_id=tenant-a")
+	if err != nil {
+		t.Fatalf("GET /connectors/{sourceID} error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors/{sourceID} status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Connector struct {
+			SourceID string `json:"source_id"`
+		} `json:"connector"`
+		Summary struct {
+			Status               string `json:"status"`
+			TotalConnections     int    `json:"total_connections"`
+			NeedsAttention       int    `json:"needs_attention"`
+			SyncFrequencySeconds *int64 `json:"sync_frequency_seconds"`
+		} `json:"summary"`
+		Connections []struct {
+			RuntimeID       string `json:"runtime_id"`
+			RecordsAccepted uint32 `json:"records_accepted"`
+			NextAction      string `json:"next_action"`
+		} `json:"connections"`
+		Activity []struct {
+			Type            string `json:"type"`
+			Status          string `json:"status"`
+			RecordsAccepted uint32 `json:"records_accepted"`
+		} `json:"activity"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := payload.Connector.SourceID; got != "bootstrap_token" {
+		t.Fatalf("connector source_id = %q, want bootstrap_token", got)
+	}
+	if got := payload.Summary.TotalConnections; got != 1 {
+		t.Fatalf("summary total_connections = %d, want 1", got)
+	}
+	if got := payload.Summary.Status; got != "needs_refresh" {
+		t.Fatalf("summary status = %q, want needs_refresh because graph ingest is not observed", got)
+	}
+	if payload.Summary.SyncFrequencySeconds == nil || *payload.Summary.SyncFrequencySeconds != 14400 {
+		t.Fatalf("summary sync_frequency_seconds = %#v, want 14400", payload.Summary.SyncFrequencySeconds)
+	}
+	if len(payload.Connections) != 1 || payload.Connections[0].RuntimeID != "runtime-a" {
+		t.Fatalf("connections = %#v, want runtime-a", payload.Connections)
+	}
+	if got := payload.Connections[0].RecordsAccepted; got != 42 {
+		t.Fatalf("records_accepted = %d, want 42", got)
+	}
+	if got := payload.Connections[0].NextAction; got != "run_graph_ingest" {
+		t.Fatalf("next_action = %q, want run_graph_ingest", got)
+	}
+	if len(payload.Activity) == 0 || payload.Activity[0].Type != "sync" {
+		t.Fatalf("activity = %#v, want sync activity", payload.Activity)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal decoded payload: %v", err)
+	}
+	if strings.Contains(string(encoded), "runtime-config-marker") {
+		t.Fatalf("connector detail leaked runtime config: %s", encoded)
+	}
+}
+
+func TestConnectorDetailToleratesUnavailableRuntimeStore(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token")
+	if err != nil {
+		t.Fatalf("GET /connectors/{sourceID} error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors/{sourceID} status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Summary struct {
+			Status           string `json:"status"`
+			TotalConnections int    `json:"total_connections"`
+		} `json:"summary"`
+		Connections []struct{} `json:"connections"`
+		Activity    []struct{} `json:"activity"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := payload.Summary.Status; got != "not_configured" {
+		t.Fatalf("summary status = %q, want not_configured", got)
+	}
+	if got := payload.Summary.TotalConnections; got != 0 {
+		t.Fatalf("summary total_connections = %d, want 0", got)
+	}
+	if len(payload.Connections) != 0 || len(payload.Activity) != 0 {
+		t.Fatalf("connections/activity = %d/%d, want empty", len(payload.Connections), len(payload.Activity))
+	}
+}
+
+func TestConnectorActivityRejectsUnknownSource(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/missing/activity")
+	if err != nil {
+		t.Fatalf("GET /connectors/{sourceID}/activity error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /connectors/{sourceID}/activity status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestConnectorActivityRejectsLimitAboveContract(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token/activity?limit=501")
+	if err != nil {
+		t.Fatalf("GET /connectors/{sourceID}/activity error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /connectors/{sourceID}/activity status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestConnectorActivityLimitTruncatesActivityRows(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {
+			Id:           "runtime-a",
+			SourceId:     "bootstrap_token",
+			TenantId:     "tenant-a",
+			LastSyncedAt: timestamppb.New(now.Add(-time.Hour)),
+			Config: map[string]string{
+				"family":                        "audit",
+				runtimeRecordsAcceptedConfigKey: "10",
+			},
+		},
+	}}}
+	graph := &stubGraphStore{ingestRuns: map[string]graphstore.IngestRun{
+		"graph-a": {
+			ID:         "graph-a",
+			RuntimeID:  "runtime-a",
+			Status:     "completed",
+			StartedAt:  now.Add(-30 * time.Minute).Format(time.RFC3339Nano),
+			FinishedAt: now.Add(-25 * time.Minute).Format(time.RFC3339Nano),
+		},
+	}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: store, GraphStore: graph}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token/activity?tenant_id=tenant-a&limit=1")
+	if err != nil {
+		t.Fatalf("GET /connectors/{sourceID}/activity error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors/{sourceID}/activity status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Activity []struct {
+			Type      string `json:"type"`
+			RuntimeID string `json:"runtime_id"`
+		} `json:"activity"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Activity) != 1 {
+		t.Fatalf("activity length = %d, want 1: %#v", len(payload.Activity), payload.Activity)
+	}
+	if got := payload.Activity[0].RuntimeID; got != "runtime-a" {
+		t.Fatalf("activity[0].runtime_id = %q, want runtime-a", got)
+	}
+	if got := store.sourceRuntimeListFilter.Limit; got != connectorActivityMaxLimit {
+		t.Fatalf("runtime list limit = %d, want connector fetch limit %d", got, connectorActivityMaxLimit)
+	}
+	if got := graph.ingestRunListFilter.Limit; got != 1 {
+		t.Fatalf("graph ingest run list limit = %d, want latest run lookup limit", got)
 	}
 }
 
