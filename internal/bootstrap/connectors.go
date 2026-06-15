@@ -18,6 +18,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -150,13 +151,34 @@ type connectorVaultView struct {
 }
 
 type connectorStoreView struct {
-	ID        string `json:"id"`
-	Label     string `json:"label"`
-	Provider  string `json:"provider"`
-	Available bool   `json:"available"`
-	Default   bool   `json:"default,omitempty"`
-	Mode      string `json:"mode"`
-	Detail    string `json:"detail,omitempty"`
+	ID                        string                          `json:"id"`
+	Label                     string                          `json:"label"`
+	Provider                  string                          `json:"provider"`
+	Available                 bool                            `json:"available"`
+	Default                   bool                            `json:"default,omitempty"`
+	Mode                      string                          `json:"mode"`
+	Status                    string                          `json:"status,omitempty"`
+	Detail                    string                          `json:"detail,omitempty"`
+	Description               string                          `json:"description,omitempty"`
+	ReferencePrefixes         []string                        `json:"reference_prefixes,omitempty"`
+	ReferencePlaceholder      string                          `json:"reference_placeholder,omitempty"`
+	NativeResolutionAvailable bool                            `json:"native_resolution_available,omitempty"`
+	SetupSteps                []connectorStoreSetupStepView   `json:"setup_steps,omitempty"`
+	RequiredConfig            []connectorStoreConfigFieldView `json:"required_config,omitempty"`
+}
+
+type connectorStoreSetupStepView struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+	Command     string `json:"command,omitempty"`
+}
+
+type connectorStoreConfigFieldView struct {
+	Env         string `json:"env"`
+	Label       string `json:"label"`
+	Required    bool   `json:"required,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type connectorFieldView struct {
@@ -340,7 +362,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		transport.Algorithm = a.connectorTransitKey.PublicKey().Algorithm
 	}
 	vaultStatus := connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore)
-	stores := connectorStoreViews(vaultStatus, transport)
+	stores := connectorStoreViews(vaultStatus, transport, a.cfg.ConnectorSecretStores)
 	entries := make([]connectorCatalogEntry, 0, len(sources))
 	for _, source := range sources {
 		entry := connectorCatalogEntry{
@@ -502,6 +524,10 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 	authMethod := normalizeConnectorAuthMethod(request.AuthMethod)
 	credentialStoreID, err := normalizeConnectorCredentialStoreID(request.CredentialStoreID, authMethod)
 	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if err := a.validateConnectorCredentialStoreAvailable(credentialStoreID); err != nil {
 		writeConnectorError(w, err)
 		return
 	}
@@ -1128,12 +1154,30 @@ func (a *App) connectorPreflightStore(storeID string) (connectorStoreView, bool)
 	if a != nil {
 		vaultStatus = connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore)
 	}
-	for _, store := range connectorStoreViews(vaultStatus, transport) {
+	secretStoreConfig := config.ConnectorSecretStoreConfig{}
+	if a != nil {
+		secretStoreConfig = a.cfg.ConnectorSecretStores
+	}
+	for _, store := range connectorStoreViews(vaultStatus, transport, secretStoreConfig) {
 		if store.ID == strings.TrimSpace(storeID) {
 			return store, true
 		}
 	}
 	return connectorStoreView{}, false
+}
+
+func (a *App) validateConnectorCredentialStoreAvailable(storeID string) error {
+	store, ok := a.connectorPreflightStore(storeID)
+	if !ok {
+		return fmt.Errorf("%w: credential store %q is not supported", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(storeID))
+	}
+	if !store.Available {
+		if strings.TrimSpace(storeID) == defaultConnectorCredentialStoreID {
+			return fmt.Errorf("%w: credential store %q is not available in this deployment", connectorcredentials.ErrUnavailable, strings.TrimSpace(storeID))
+		}
+		return fmt.Errorf("%w: credential store %q is not available in this deployment", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(storeID))
+	}
+	return nil
 }
 
 func (a *App) connectorScopePreview(sourceID string, source sourcecdk.Source, policy resourcescope.Policy) connectorScopePreviewView {
@@ -1684,7 +1728,7 @@ func (a *App) checkConnectorRuntime(ctx context.Context, runtime *cerebrov1.Sour
 		values[key] = value
 	}
 	values = sourceconfig.WithRuntimeContext(values, runtime.GetTenantId(), runtime.GetId())
-	resolved, err := resolveRuntimeSourceConfigWithStore(ctx, a.cfg.ConnectorCredentials, a.deps.StateStore, runtime.GetSourceId(), values)
+	resolved, err := resolveRuntimeSourceConfigWithStore(ctx, a.cfg.ConnectorCredentials, a.cfg.ConnectorSecretStores, a.deps.StateStore, runtime.GetSourceId(), values)
 	if err != nil {
 		return err
 	}
@@ -1874,71 +1918,193 @@ func connectorEnvComponent(value string) string {
 	return component
 }
 
-func connectorStoreViews(vaultStatus connectorVaultView, transport connectorTransportView) []connectorStoreView {
+func connectorStoreViews(vaultStatus connectorVaultView, transport connectorTransportView, secretStoreConfig config.ConnectorSecretStoreConfig) []connectorStoreView {
 	available := vaultStatus.Available && transport.Available
 	detail := strings.TrimSpace(vaultStatus.Detail)
+	status := "unavailable"
 	if available {
 		detail = "ready"
+		status = "ready"
 	}
 	return []connectorStoreView{
 		{
-			ID:        defaultConnectorCredentialStoreID,
-			Label:     "Cerebro Vault",
-			Provider:  "Cerebro",
-			Available: available,
-			Default:   true,
-			Mode:      "encrypted_submission",
-			Detail:    detail,
+			ID:          defaultConnectorCredentialStoreID,
+			Label:       "Cerebro Vault",
+			Provider:    "Cerebro",
+			Available:   available,
+			Default:     true,
+			Mode:        "encrypted_submission",
+			Status:      status,
+			Detail:      detail,
+			Description: "Cerebro stores one sealed credential envelope in its state store. The browser submits secrets only after encrypting them to the backend transit key.",
+			SetupSteps:  cerebroVaultStoreSetupSteps(),
+			RequiredConfig: []connectorStoreConfigFieldView{
+				{
+					Env:         "CEREBRO_CONNECTOR_CREDENTIAL_KEY",
+					Label:       "Credential envelope key",
+					Required:    true,
+					Description: "Symmetric key material used to seal connector credentials at rest.",
+				},
+				{
+					Env:         "CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY",
+					Label:       "Browser transit private key",
+					Required:    true,
+					Description: "Private key matching /connectors/credential-key for encrypted browser submissions.",
+				},
+			},
 		},
 		{
-			ID:        connectorStoreEnvironmentManaged,
-			Label:     "Environment managed",
-			Provider:  "Deployment",
-			Available: true,
-			Mode:      "environment_managed",
-			Detail:    "ready",
+			ID:                   connectorStoreEnvironmentManaged,
+			Label:                "Environment managed",
+			Provider:             "Deployment",
+			Available:            true,
+			Mode:                 "environment_managed",
+			Status:               "ready",
+			Detail:               "ready",
+			Description:          "Cerebro stores env: references and resolves them inside the backend process. The browser never receives the secret value.",
+			ReferencePrefixes:    []string{"env:"},
+			ReferencePlaceholder: "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>",
+			SetupSteps: []connectorStoreSetupStepView{
+				{
+					ID:          "project_env",
+					Label:       "Project secrets into the Cerebro runtime",
+					Description: "Set source-scoped CEREBRO_SOURCE_<SOURCE>_<FIELD> variables or allow explicit shared env names with CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST.",
+				},
+			},
+		},
+		connectorExternalStoreView(secretStoreConfig, connectorStoreInfisical, "Infisical", "Infisical"),
+		connectorExternalStoreView(secretStoreConfig, connectorStoreGoogleSecretMgr, "Google Secret Manager", "Google Cloud Platform"),
+		connectorExternalStoreView(secretStoreConfig, connectorStoreAWSSecretsManager, "AWS Secrets Manager", "Amazon Web Services"),
+		connectorExternalStoreView(secretStoreConfig, connectorStoreAzureKeyVault, "Azure Key Vault", "Microsoft Azure"),
+		connectorExternalStoreView(secretStoreConfig, connectorStoreHashiCorpVault, "HashiCorp Vault", "HashiCorp"),
+	}
+}
+
+func connectorExternalStoreView(secretStoreConfig config.ConnectorSecretStoreConfig, id string, label string, provider string) connectorStoreView {
+	enabled := connectorsecretstores.StoreEnabled(secretStoreConfig, id)
+	native := connectorsecretstores.NativeResolutionAvailable(secretStoreConfig, id)
+	status := "needs_configuration"
+	detail := "enable with CEREBRO_CONNECTOR_SECRET_STORES"
+	if enabled {
+		status = "ready"
+		detail = "ready via env projection"
+	}
+	if native {
+		detail = "native resolver ready"
+	}
+	return connectorStoreView{
+		ID:                        id,
+		Label:                     label,
+		Provider:                  provider,
+		Available:                 enabled,
+		Mode:                      connectorCredentialStoreModeRefs,
+		Status:                    status,
+		Detail:                    detail,
+		Description:               connectorExternalStoreDescription(id, label),
+		ReferencePrefixes:         connectorsecretstores.ReferencePrefixes(id),
+		ReferencePlaceholder:      connectorStoreReferencePlaceholder(id),
+		NativeResolutionAvailable: native,
+		SetupSteps:                connectorExternalStoreSetupSteps(id, native),
+		RequiredConfig:            connectorExternalStoreRequiredConfig(id),
+	}
+}
+
+func cerebroVaultStoreSetupSteps() []connectorStoreSetupStepView {
+	return []connectorStoreSetupStepView{
+		{
+			ID:          "configure_state_store",
+			Label:       "Use a credential-capable state store",
+			Description: "The configured state store must implement connector credential persistence.",
 		},
 		{
-			ID:        connectorStoreInfisical,
-			Label:     "Infisical",
-			Provider:  "Infisical",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
-		},
-		{
-			ID:        connectorStoreGoogleSecretMgr,
-			Label:     "Google Secret Manager",
-			Provider:  "Google Cloud Platform",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
-		},
-		{
-			ID:        connectorStoreAWSSecretsManager,
-			Label:     "AWS Secrets Manager",
-			Provider:  "Amazon Web Services",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
-		},
-		{
-			ID:        connectorStoreAzureKeyVault,
-			Label:     "Azure Key Vault",
-			Provider:  "Microsoft Azure",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
-		},
-		{
-			ID:        connectorStoreHashiCorpVault,
-			Label:     "HashiCorp Vault",
-			Provider:  "HashiCorp",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
+			ID:          "publish_transit_key",
+			Label:       "Publish the credential transit key",
+			Description: "/connectors/credential-key must return the public key used by the browser before encrypted submission.",
 		},
 	}
+}
+
+func connectorExternalStoreDescription(id string, label string) string {
+	switch id {
+	case connectorStoreAWSSecretsManager:
+		return "Cerebro can resolve aws-sm: references natively when AWS resolver config is present, or consume env: references projected by deployment automation."
+	default:
+		return label + " references are saved as non-secret pointers. Configure deployment-side projection to env: references until a native backend resolver is enabled for this store."
+	}
+}
+
+func connectorStoreReferencePlaceholder(id string) string {
+	switch id {
+	case connectorStoreAWSSecretsManager:
+		return "aws-sm:us-east-1:cerebro/<tenant>/<source>/<runtime>/credentials#<field>"
+	default:
+		return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+	}
+}
+
+func connectorExternalStoreSetupSteps(id string, native bool) []connectorStoreSetupStepView {
+	steps := []connectorStoreSetupStepView{
+		{
+			ID:          "enable_store",
+			Label:       "Enable the store for connector references",
+			Description: "Add the store id to CEREBRO_CONNECTOR_SECRET_STORES before saving references that target it.",
+			Command:     "CEREBRO_CONNECTOR_SECRET_STORES=" + id,
+		},
+		{
+			ID:          "keep_browser_secretless",
+			Label:       "Submit references, not secret values",
+			Description: "The UI should send credential_references only. Secret material is resolved by the backend or projected into the runtime environment.",
+		},
+	}
+	if id == connectorStoreAWSSecretsManager {
+		description := "Set CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION to enable native aws-sm: resolution with the AWS SDK."
+		if native {
+			description = "Native aws-sm: resolution is enabled for this deployment."
+		}
+		steps = append(steps, connectorStoreSetupStepView{
+			ID:          "configure_native_resolver",
+			Label:       "Configure native AWS resolution",
+			Description: description,
+			Command:     "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION=us-east-1",
+		})
+	}
+	return steps
+}
+
+func connectorExternalStoreRequiredConfig(id string) []connectorStoreConfigFieldView {
+	fields := []connectorStoreConfigFieldView{
+		{
+			Env:         "CEREBRO_CONNECTOR_SECRET_STORES",
+			Label:       "Enabled connector secret stores",
+			Required:    true,
+			Description: "Comma-separated store ids that this deployment accepts for connector credential references.",
+		},
+	}
+	if id == connectorStoreAWSSecretsManager {
+		fields = append(fields,
+			connectorStoreConfigFieldView{
+				Env:         "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION",
+				Label:       "AWS resolver region",
+				Description: "Default region used when aws-sm: references do not include a region.",
+			},
+			connectorStoreConfigFieldView{
+				Env:         "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE",
+				Label:       "AWS shared config profile",
+				Description: "Optional shared AWS config profile used by the backend resolver.",
+			},
+			connectorStoreConfigFieldView{
+				Env:         "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN",
+				Label:       "AWS resolver role",
+				Description: "Optional role the backend assumes before reading secrets.",
+			},
+			connectorStoreConfigFieldView{
+				Env:         "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID",
+				Label:       "AWS external ID",
+				Description: "Optional external ID used with the resolver role.",
+			},
+		)
+	}
+	return fields
 }
 
 func connectorConnectionMethods(sourceID string, stores []connectorStoreView) []connectorConnectionMethodView {
@@ -2555,8 +2721,8 @@ func applyConnectorCredentialReferences(config map[string]string, references map
 		if sourceconfig.InternalKey(trimmedKey) || trimmedKey == resourcescope.ConfigKey {
 			return fmt.Errorf("%w: internal config %q cannot be supplied by connector references", connectorcredentials.ErrInvalidRequest, trimmedKey)
 		}
-		if !sourceconfig.IsSecretReference(trimmedValue) {
-			return fmt.Errorf("%w: credential reference %q must use an env reference", connectorcredentials.ErrInvalidRequest, trimmedKey)
+		if !connectorsecretstores.IsReference(trimmedValue) {
+			return fmt.Errorf("%w: credential reference %q must use an env or connector secret-store reference", connectorcredentials.ErrInvalidRequest, trimmedKey)
 		}
 		config[trimmedKey] = trimmedValue
 	}
@@ -2601,6 +2767,9 @@ func validateConnectorConnectionShape(sourceID string, authMethod string, creden
 		if authMethod == connectorAuthMethodInfisicalCLI && len(references) == 0 {
 			return fmt.Errorf("%w: infisical_cli requires credential references", connectorcredentials.ErrInvalidRequest)
 		}
+		if err := validateConnectorCredentialReferencesForStore(connectorStoreEnvironmentManaged, references); err != nil {
+			return err
+		}
 	case connectorAuthMethodExternalReference:
 		if !connectorExternalReferenceStore(credentialStoreID) {
 			return fmt.Errorf("%w: external_reference requires an external credential store", connectorcredentials.ErrInvalidRequest)
@@ -2611,11 +2780,23 @@ func validateConnectorConnectionShape(sourceID string, authMethod string, creden
 		if len(references) == 0 {
 			return fmt.Errorf("%w: external_reference requires credential references", connectorcredentials.ErrInvalidRequest)
 		}
+		if err := validateConnectorCredentialReferencesForStore(credentialStoreID, references); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("%w: unsupported auth method", connectorcredentials.ErrInvalidRequest)
 	}
 	if err := validateConnectorConfigFields(sourceID, authMethod, config, references); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateConnectorCredentialReferencesForStore(storeID string, references map[string]string) error {
+	for key, value := range references {
+		if err := connectorsecretstores.ValidateReferenceForStore(storeID, value); err != nil {
+			return fmt.Errorf("%w: credential reference %q is not valid for %s", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(key), strings.TrimSpace(storeID))
+		}
 	}
 	return nil
 }

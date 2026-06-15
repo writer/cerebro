@@ -39,6 +39,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/workflowevents"
@@ -346,6 +347,29 @@ func TestResolveRuntimeSourceConfigRejectsTenantScopedEnvSelectors(t *testing.T)
 	})
 	if !errors.Is(err, errTenantForbidden) {
 		t.Fatalf("resolveRuntimeSourceConfig() error = %v, want tenant forbidden", err)
+	}
+}
+
+func TestResolveRuntimeSourceConfigRejectsUnscopedAWSSecretReferences(t *testing.T) {
+	_, err := resolveRuntimeSourceConfigWithStore(
+		context.Background(),
+		config.ConnectorCredentialConfig{},
+		config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-east-1",
+			},
+		},
+		nil,
+		"aws",
+		map[string]string{
+			sourceconfig.RuntimeTenantIDKey: "tenant-a",
+			sourceconfig.RuntimeIDKey:       "runtime-a",
+			"value":                         "aws-sm:us-east-1:shared/credentials#value",
+		},
+	)
+	if !errors.Is(err, sourceruntime.ErrInvalidRequest) {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v, want invalid request", err)
 	}
 }
 

@@ -152,7 +152,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog with runtime counts, credential capability state, backend-advertised connection methods, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
+          description: Connector catalog with runtime counts, credential capability state, backend-advertised connection methods, credential-store choices, store availability, accepted reference prefixes, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
@@ -309,7 +309,7 @@ paths:
                     type: string
                 credential_references:
                   type: object
-                  description: Non-secret credential references for environment-managed or external-reference methods. Values must be server-resolvable references such as env:CEREBRO_SOURCE_<SOURCE>_<FIELD>; secret-store CLIs/controllers are expected to populate those environment values outside the browser.
+                  description: Non-secret credential references for environment-managed or external-reference methods. Values must use prefixes advertised by /connectors credential_stores metadata, such as env:CEREBRO_SOURCE_<SOURCE>_<FIELD> or scoped AWS Secrets Manager references like aws-sm:us-east-1:cerebro/<tenant>/<source>/<runtime>/credentials#<field>. The browser must never submit plaintext secret values for reference-backed methods.
                   additionalProperties:
                     type: string
                 scope_policy:
