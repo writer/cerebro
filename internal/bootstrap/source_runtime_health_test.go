@@ -407,6 +407,25 @@ func TestListSourceRuntimeHealthFiltersCoverageByAllowedTenant(t *testing.T) {
 	}
 }
 
+func TestListSourceRuntimeHealthToleratesUnavailableStore(t *testing.T) {
+	app := &App{}
+	req := httptest.NewRequest("GET", "/source-runtimes/health?source_id=aws", nil)
+
+	response, err := app.listSourceRuntimeHealth(req)
+	if err != nil {
+		t.Fatalf("listSourceRuntimeHealth() error = %v", err)
+	}
+	if strings.TrimSpace(response.GeneratedAt) == "" {
+		t.Fatalf("GeneratedAt is empty")
+	}
+	if len(response.Runtimes) != 0 {
+		t.Fatalf("Runtimes = %#v, want empty", response.Runtimes)
+	}
+	if len(response.SourceSummaries) != 0 {
+		t.Fatalf("SourceSummaries = %#v, want empty", response.SourceSummaries)
+	}
+}
+
 func TestRuntimeFreshnessIncludesCoverageBlindSpots(t *testing.T) {
 	health := sourceRuntimeHealthResponse{
 		GeneratedAt: "2026-06-15T00:00:00Z",

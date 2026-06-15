@@ -268,11 +268,11 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	}
 	store := sourceRuntimeStore(a.deps.StateStore)
 	if store == nil {
-		return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
+		return emptySourceRuntimeHealthResponse(), nil
 	}
 	lister, ok := store.(ports.SourceRuntimeListStore)
 	if !ok {
-		return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
+		return emptySourceRuntimeHealthResponse(), nil
 	}
 	if filter.Limit == 0 {
 		filter.Limit = 100
@@ -306,6 +306,14 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 		Coverage:        coverage,
 		CoverageSummary: sourcecoverage.Summaries(coverage),
 	}, nil
+}
+
+func emptySourceRuntimeHealthResponse() sourceRuntimeHealthResponse {
+	return sourceRuntimeHealthResponse{
+		GeneratedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+		Runtimes:        []sourceRuntimeHealthRecord{},
+		SourceSummaries: []sourceRuntimeHealthSummary{},
+	}
 }
 
 func runtimeFreshnessFromHealth(health sourceRuntimeHealthResponse) runtimeFreshnessResponse {

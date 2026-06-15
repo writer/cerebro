@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -61,6 +62,74 @@ type connectorLibraryResponse struct {
 	CredentialTransport connectorTransportView  `json:"credential_transport"`
 	CredentialVault     connectorVaultView      `json:"credential_vault"`
 	CredentialStores    []connectorStoreView    `json:"credential_stores,omitempty"`
+}
+
+type connectorDetailResponse struct {
+	GeneratedAt string                     `json:"generated_at"`
+	TenantID    string                     `json:"tenant_id,omitempty"`
+	Connector   connectorCatalogEntry      `json:"connector"`
+	Summary     connectorOperationsSummary `json:"summary"`
+	Connections []connectorConnectionView  `json:"connections"`
+	Activity    []connectorActivityView    `json:"activity"`
+}
+
+type connectorActivityResponse struct {
+	GeneratedAt string                  `json:"generated_at"`
+	TenantID    string                  `json:"tenant_id,omitempty"`
+	SourceID    string                  `json:"source_id"`
+	Activity    []connectorActivityView `json:"activity"`
+}
+
+type connectorOperationsSummary struct {
+	Status               string `json:"status"`
+	StatusReason         string `json:"status_reason"`
+	TopIssue             string `json:"top_issue,omitempty"`
+	TotalConnections     int    `json:"total_connections"`
+	HealthyConnections   int    `json:"healthy_connections"`
+	NeedsAttention       int    `json:"needs_attention"`
+	LastActivityAt       string `json:"last_activity_at,omitempty"`
+	SyncFrequencySeconds *int64 `json:"sync_frequency_seconds,omitempty"`
+	ResourceTypes        int    `json:"resource_types"`
+	EmittedKinds         int    `json:"emitted_kinds"`
+}
+
+type connectorConnectionView struct {
+	RuntimeID               string `json:"runtime_id"`
+	SourceID                string `json:"source_id"`
+	TenantID                string `json:"tenant_id,omitempty"`
+	Family                  string `json:"family,omitempty"`
+	Status                  string `json:"status"`
+	GraphStatus             string `json:"graph_status"`
+	ContractProbeState      string `json:"contract_probe_state"`
+	LastActivityAt          string `json:"last_activity_at,omitempty"`
+	CheckpointWatermark     string `json:"checkpoint_watermark,omitempty"`
+	WatermarkLagSeconds     *int64 `json:"watermark_lag_seconds,omitempty"`
+	RecordsAccepted         uint32 `json:"records_accepted"`
+	RecordsRejected         uint32 `json:"records_rejected"`
+	EntitiesProjected       uint32 `json:"entities_projected"`
+	LinksProjected          uint32 `json:"links_projected"`
+	CursorPending           bool   `json:"cursor_pending"`
+	CheckpointCursorPresent bool   `json:"checkpoint_cursor_present"`
+	NextAction              string `json:"next_action"`
+}
+
+type connectorActivityView struct {
+	ID                string `json:"id"`
+	RuntimeID         string `json:"runtime_id"`
+	SourceID          string `json:"source_id"`
+	TenantID          string `json:"tenant_id,omitempty"`
+	Family            string `json:"family,omitempty"`
+	Type              string `json:"type"`
+	Status            string `json:"status"`
+	Title             string `json:"title"`
+	Description       string `json:"description,omitempty"`
+	OccurredAt        string `json:"occurred_at,omitempty"`
+	DurationSeconds   *int64 `json:"duration_seconds,omitempty"`
+	RecordsAccepted   uint32 `json:"records_accepted,omitempty"`
+	RecordsRejected   uint32 `json:"records_rejected,omitempty"`
+	EntitiesProjected int64  `json:"entities_projected,omitempty"`
+	LinksProjected    int64  `json:"links_projected,omitempty"`
+	FailureClass      string `json:"failure_class,omitempty"`
 }
 
 type connectorTransportView struct {
@@ -143,6 +212,11 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 		writeConnectorError(w, err)
 		return
 	}
+	response := a.connectorLibrary(r, tenantID)
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibraryResponse {
 	runtimes, runtimeStoreStatus := a.connectorRuntimeCatalog(r, tenantID)
 	counts := connectorRuntimeCounts(runtimes)
 	sources := a.sourceService().List().GetSources()
@@ -184,13 +258,77 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(entries, func(i, j int) bool {
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
-	writeJSON(w, http.StatusOK, connectorLibraryResponse{
+	return connectorLibraryResponse{
 		Connectors:          entries,
 		TenantID:            tenantID,
 		RuntimeStore:        runtimeStoreStatus,
 		CredentialTransport: transport,
 		CredentialVault:     vaultStatus,
 		CredentialStores:    stores,
+	}
+}
+
+func (a *App) handleGetConnector(w http.ResponseWriter, r *http.Request) {
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	if sourceID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	library := a.connectorLibrary(r, tenantID)
+	entry, ok := connectorEntryBySourceID(library.Connectors, sourceID)
+	if !ok {
+		writeConnectorError(w, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, sourceID))
+		return
+	}
+	health, err := a.connectorHealthForSource(r, entry.SourceID, tenantID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	connections := connectorConnectionsFromHealth(health.Runtimes)
+	activity := connectorActivityFromHealth(health.Runtimes)
+	writeJSON(w, http.StatusOK, connectorDetailResponse{
+		GeneratedAt: health.GeneratedAt,
+		TenantID:    tenantID,
+		Connector:   entry,
+		Summary:     connectorOperationsSummaryFromHealth(entry, health.Runtimes),
+		Connections: connections,
+		Activity:    activity,
+	})
+}
+
+func (a *App) handleListConnectorActivity(w http.ResponseWriter, r *http.Request) {
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	if sourceID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	library := a.connectorLibrary(r, tenantID)
+	entry, ok := connectorEntryBySourceID(library.Connectors, sourceID)
+	if !ok {
+		writeConnectorError(w, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, sourceID))
+		return
+	}
+	health, err := a.connectorHealthForSource(r, entry.SourceID, tenantID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, connectorActivityResponse{
+		GeneratedAt: health.GeneratedAt,
+		TenantID:    tenantID,
+		SourceID:    entry.SourceID,
+		Activity:    connectorActivityFromHealth(health.Runtimes),
 	})
 }
 
@@ -431,6 +569,352 @@ func connectorRuntimeCounts(runtimes []*cerebrov1.SourceRuntime) map[string]conn
 		counts[sourceID] = count
 	}
 	return counts
+}
+
+func connectorEntryBySourceID(entries []connectorCatalogEntry, sourceID string) (connectorCatalogEntry, bool) {
+	normalized := strings.TrimSpace(sourceID)
+	for _, entry := range entries {
+		if entry.SourceID == normalized {
+			return entry, true
+		}
+	}
+	return connectorCatalogEntry{}, false
+}
+
+func (a *App) connectorHealthForSource(r *http.Request, sourceID string, tenantID string) (sourceRuntimeHealthResponse, error) {
+	clone := r.Clone(r.Context())
+	clonedURL := *r.URL
+	query := clonedURL.Query()
+	query.Set("source_id", strings.TrimSpace(sourceID))
+	if strings.TrimSpace(tenantID) != "" {
+		query.Set("tenant_id", strings.TrimSpace(tenantID))
+	}
+	if strings.TrimSpace(query.Get("limit")) == "" {
+		query.Set("limit", "500")
+	}
+	clonedURL.RawQuery = query.Encode()
+	clone.URL = &clonedURL
+	health, err := a.listSourceRuntimeHealth(clone)
+	if errors.Is(err, sourceruntime.ErrRuntimeUnavailable) {
+		return emptySourceRuntimeHealthResponse(), nil
+	}
+	return health, err
+}
+
+func connectorOperationsSummaryFromHealth(entry connectorCatalogEntry, records []sourceRuntimeHealthRecord) connectorOperationsSummary {
+	total := len(records)
+	healthy := 0
+	needsAttention := 0
+	var syncFrequency *int64
+	var lastActivity time.Time
+	status := "not_configured"
+	reason := "No active connection is configured."
+	topIssue := reason
+	for _, record := range records {
+		if strings.EqualFold(record.Status, "healthy") && sourceRuntimeGraphState(record) == "current" {
+			healthy++
+		} else {
+			needsAttention++
+		}
+		if record.ExpectedCadenceSeconds != nil && (syncFrequency == nil || *record.ExpectedCadenceSeconds < *syncFrequency) {
+			value := *record.ExpectedCadenceSeconds
+			syncFrequency = &value
+		}
+		if observedAt, ok := connectorRecordLastActivityTime(record); ok && observedAt.After(lastActivity) {
+			lastActivity = observedAt
+		}
+	}
+	if total > 0 {
+		switch {
+		case connectorAnyRecordFailing(records):
+			status = "bad"
+			reason = "At least one connection has a failing sync, graph, or probe signal."
+			topIssue = "Fix failing connection signal."
+		case connectorAnyRecordRefreshNeeded(records):
+			status = "needs_refresh"
+			reason = "At least one connection is stale or missing graph freshness."
+			topIssue = "Refresh sync or graph projection."
+		case needsAttention > 0:
+			status = "poor"
+			reason = "Connection telemetry is incomplete."
+			topIssue = "Inspect incomplete connection telemetry."
+		default:
+			status = "healthy"
+			reason = "Sync and graph signals are current."
+			topIssue = ""
+		}
+	}
+	lastActivityAt := ""
+	if !lastActivity.IsZero() {
+		lastActivityAt = lastActivity.UTC().Format(time.RFC3339Nano)
+	}
+	return connectorOperationsSummary{
+		Status:               status,
+		StatusReason:         reason,
+		TopIssue:             topIssue,
+		TotalConnections:     total,
+		HealthyConnections:   healthy,
+		NeedsAttention:       needsAttention,
+		LastActivityAt:       lastActivityAt,
+		SyncFrequencySeconds: syncFrequency,
+		ResourceTypes:        len(entry.EmittedKinds),
+		EmittedKinds:         len(entry.EmittedKinds),
+	}
+}
+
+func connectorConnectionsFromHealth(records []sourceRuntimeHealthRecord) []connectorConnectionView {
+	connections := make([]connectorConnectionView, 0, len(records))
+	for _, record := range records {
+		status := connectorConnectionReadiness(record)
+		connections = append(connections, connectorConnectionView{
+			RuntimeID:               record.RuntimeID,
+			SourceID:                record.SourceID,
+			TenantID:                record.TenantID,
+			Family:                  record.Family,
+			Status:                  status,
+			GraphStatus:             sourceRuntimeGraphState(record),
+			ContractProbeState:      record.ContractProbeState,
+			LastActivityAt:          connectorRecordLastActivity(record),
+			CheckpointWatermark:     record.CheckpointWatermark,
+			WatermarkLagSeconds:     record.WatermarkLagSeconds,
+			RecordsAccepted:         record.RecentSync.RecordsAccepted,
+			RecordsRejected:         record.RecentSync.RecordsRejected,
+			EntitiesProjected:       record.RecentSync.EntitiesProjected,
+			LinksProjected:          record.RecentSync.LinksProjected,
+			CursorPending:           record.CursorPending,
+			CheckpointCursorPresent: record.CheckpointCursorPresent,
+			NextAction:              connectorConnectionNextAction(status, record),
+		})
+	}
+	sort.Slice(connections, func(i, j int) bool {
+		return connections[i].LastActivityAt > connections[j].LastActivityAt
+	})
+	return connections
+}
+
+func connectorActivityFromHealth(records []sourceRuntimeHealthRecord) []connectorActivityView {
+	activity := make([]connectorActivityView, 0, len(records)*2)
+	for _, record := range records {
+		syncStatus := connectorSyncActivityStatus(record)
+		activity = append(activity, connectorActivityView{
+			ID:              connectorActivityID(record.RuntimeID, "sync", connectorRecordLastActivity(record)),
+			RuntimeID:       record.RuntimeID,
+			SourceID:        record.SourceID,
+			TenantID:        record.TenantID,
+			Family:          record.Family,
+			Type:            "sync",
+			Status:          syncStatus,
+			Title:           connectorSyncActivityTitle(syncStatus),
+			Description:     connectorSyncActivityDescription(record),
+			OccurredAt:      connectorRecordLastActivity(record),
+			RecordsAccepted: record.RecentSync.RecordsAccepted,
+			RecordsRejected: record.RecentSync.RecordsRejected,
+			FailureClass:    connectorFailureClass(record),
+		})
+		if record.LatestGraphRun != nil {
+			graphStatus := connectorGraphActivityStatus(record.LatestGraphRun.Status)
+			activity = append(activity, connectorActivityView{
+				ID:                connectorActivityID(record.RuntimeID, "graph", connectorGraphActivityTime(record.LatestGraphRun)),
+				RuntimeID:         record.RuntimeID,
+				SourceID:          record.SourceID,
+				TenantID:          record.TenantID,
+				Family:            record.Family,
+				Type:              "graph",
+				Status:            graphStatus,
+				Title:             connectorGraphActivityTitle(graphStatus),
+				Description:       "Graph projection activity for this connection.",
+				OccurredAt:        connectorGraphActivityTime(record.LatestGraphRun),
+				DurationSeconds:   record.LatestGraphRun.DurationSeconds,
+				EntitiesProjected: record.LatestGraphRun.EntitiesProjected,
+				LinksProjected:    record.LatestGraphRun.LinksProjected,
+				FailureClass:      connectorGraphFailureClass(record.LatestGraphRun.Status),
+			})
+		}
+	}
+	sort.Slice(activity, func(i, j int) bool {
+		return activity[i].OccurredAt > activity[j].OccurredAt
+	})
+	return activity
+}
+
+func connectorAnyRecordFailing(records []sourceRuntimeHealthRecord) bool {
+	for _, record := range records {
+		if strings.EqualFold(record.Status, "failing") || sourceRuntimeGraphState(record) == "failed" || strings.EqualFold(record.ContractProbeState, "failure") {
+			return true
+		}
+	}
+	return false
+}
+
+func connectorAnyRecordRefreshNeeded(records []sourceRuntimeHealthRecord) bool {
+	for _, record := range records {
+		if strings.EqualFold(record.Status, "stale") || record.CursorPending {
+			return true
+		}
+		switch sourceRuntimeGraphState(record) {
+		case "behind", "not_observed":
+			return true
+		}
+	}
+	return false
+}
+
+func connectorConnectionReadiness(record sourceRuntimeHealthRecord) string {
+	if strings.EqualFold(record.Status, "failing") || sourceRuntimeGraphState(record) == "failed" || strings.EqualFold(record.ContractProbeState, "failure") {
+		return "bad"
+	}
+	if strings.EqualFold(record.Status, "stale") || record.CursorPending || sourceRuntimeGraphState(record) == "behind" || sourceRuntimeGraphState(record) == "not_observed" {
+		return "needs_refresh"
+	}
+	if strings.EqualFold(record.Status, "healthy") && sourceRuntimeGraphState(record) == "current" {
+		return "healthy"
+	}
+	return "poor"
+}
+
+func connectorConnectionNextAction(status string, record sourceRuntimeHealthRecord) string {
+	switch status {
+	case "bad":
+		return "fix_connection"
+	case "needs_refresh":
+		if sourceRuntimeGraphState(record) == "not_observed" || sourceRuntimeGraphState(record) == "behind" {
+			return "run_graph_ingest"
+		}
+		return "run_sync"
+	case "healthy":
+		return "monitor"
+	default:
+		return "inspect_connection"
+	}
+}
+
+func connectorRecordLastActivity(record sourceRuntimeHealthRecord) string {
+	if observedAt, ok := connectorRecordLastActivityTime(record); ok {
+		return observedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return ""
+}
+
+func connectorRecordLastActivityTime(record sourceRuntimeHealthRecord) (time.Time, bool) {
+	var latest time.Time
+	for _, value := range []string{
+		record.LastSyncedAt,
+		record.CheckpointWatermark,
+		connectorGraphActivityTime(record.LatestGraphRun),
+	} {
+		parsed, ok := parseRFC3339(value)
+		if !ok {
+			continue
+		}
+		if parsed.After(latest) {
+			latest = parsed
+		}
+	}
+	if latest.IsZero() {
+		return time.Time{}, false
+	}
+	return latest, true
+}
+
+func connectorSyncActivityStatus(record sourceRuntimeHealthRecord) string {
+	switch connectorConnectionReadiness(record) {
+	case "healthy":
+		return "success"
+	case "bad":
+		return "failed"
+	case "needs_refresh":
+		return "needs_refresh"
+	default:
+		return "incomplete"
+	}
+}
+
+func connectorSyncActivityTitle(status string) string {
+	switch status {
+	case "success":
+		return "Successful sync"
+	case "failed":
+		return "Sync needs attention"
+	case "needs_refresh":
+		return "Sync refresh needed"
+	default:
+		return "Sync signal incomplete"
+	}
+}
+
+func connectorSyncActivityDescription(record sourceRuntimeHealthRecord) string {
+	switch connectorSyncActivityStatus(record) {
+	case "success":
+		return "Runtime sync completed with current source telemetry."
+	case "failed":
+		return "Runtime sync or validation is failing."
+	case "needs_refresh":
+		return "Runtime sync, cursor, or graph projection is behind."
+	default:
+		return "Runtime telemetry has not produced enough signal yet."
+	}
+}
+
+func connectorGraphActivityStatus(status string) string {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	if strings.Contains(normalized, "fail") || strings.Contains(normalized, "error") || strings.Contains(normalized, "cancel") {
+		return "failed"
+	}
+	if strings.Contains(normalized, "running") || strings.Contains(normalized, "pending") {
+		return "running"
+	}
+	if normalized == "" {
+		return "not_observed"
+	}
+	return "success"
+}
+
+func connectorGraphActivityTitle(status string) string {
+	switch status {
+	case "success":
+		return "Graph projection complete"
+	case "failed":
+		return "Graph projection failed"
+	case "running":
+		return "Graph projection running"
+	default:
+		return "Graph projection not observed"
+	}
+}
+
+func connectorGraphActivityTime(run *sourceRuntimeHealthGraphRun) string {
+	if run == nil {
+		return ""
+	}
+	if strings.TrimSpace(run.FinishedAt) != "" {
+		return strings.TrimSpace(run.FinishedAt)
+	}
+	return strings.TrimSpace(run.StartedAt)
+}
+
+func connectorFailureClass(record sourceRuntimeHealthRecord) string {
+	if value := strings.TrimSpace(record.LastFailureCategory); value != "" {
+		return value
+	}
+	if strings.EqualFold(record.ContractProbeState, "failure") {
+		return "contract_probe_failure"
+	}
+	if connectorConnectionReadiness(record) == "needs_refresh" {
+		return "freshness"
+	}
+	return ""
+}
+
+func connectorGraphFailureClass(status string) string {
+	if connectorGraphActivityStatus(status) == "failed" {
+		return "graph_ingest_failed"
+	}
+	return ""
+}
+
+func connectorActivityID(runtimeID string, kind string, occurredAt string) string {
+	parts := []string{strings.TrimSpace(runtimeID), strings.TrimSpace(kind), strings.TrimSpace(occurredAt)}
+	return strings.Trim(strings.Join(parts, ":"), ":")
 }
 
 func connectorRuntimeHealthy(runtime *cerebrov1.SourceRuntime) bool {
