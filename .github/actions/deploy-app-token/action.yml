@@ -1,0 +1,72 @@
+name: Create deploy GitHub App token
+description: Mint and validate the repo-scoped GitHub App token used by release promotion automation.
+inputs:
+  client-id:
+    description: GitHub App client ID.
+    required: true
+  private-key:
+    description: GitHub App private key.
+    required: true
+outputs:
+  token:
+    description: Short-lived installation access token.
+    value: ${{ steps.app-token.outputs.token }}
+  app-slug:
+    description: GitHub App slug.
+    value: ${{ steps.app-token.outputs.app-slug }}
+  installation-id:
+    description: GitHub App installation ID.
+    value: ${{ steps.app-token.outputs.installation-id }}
+runs:
+  using: composite
+  steps:
+    - name: Create deploy GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        permission-checks: read
+        permission-contents: write
+        permission-issues: write
+        permission-pull-requests: write
+        permission-statuses: read
+
+    - name: Preflight deploy GitHub App token
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: |
+        set -euo pipefail
+
+        payload="$(gh api /installation/repositories)"
+        repo_count="$(jq '.repositories | length' <<<"${payload}")"
+        if [ "${repo_count}" -ne 1 ]; then
+          echo "Deploy App token must be scoped to exactly one repository; got ${repo_count}" >&2
+          jq -r '.repositories[]?.full_name' <<<"${payload}" >&2
+          exit 1
+        fi
+
+        if ! jq -e --arg repo "${GITHUB_REPOSITORY}" '.repositories[] | select(.full_name == $repo)' <<<"${payload}" >/dev/null; then
+          echo "Deploy App token is not scoped to ${GITHUB_REPOSITORY}" >&2
+          jq -r '.repositories[]?.full_name' <<<"${payload}" >&2
+          exit 1
+        fi
+
+        check_permission() {
+          local key="$1"
+          local expected="$2"
+          local actual=""
+          actual="$(jq -r --arg repo "${GITHUB_REPOSITORY}" --arg key "${key}" '.repositories[] | select(.full_name == $repo) | .permissions[$key] // ""' <<<"${payload}")"
+          if [ "${actual}" != "${expected}" ]; then
+            echo "Deploy App token requires ${key}=${expected}; got ${actual:-unset}" >&2
+            exit 1
+          fi
+        }
+
+        check_permission checks read
+        check_permission contents write
+        check_permission issues write
+        check_permission pull_requests write
+        check_permission statuses read
+

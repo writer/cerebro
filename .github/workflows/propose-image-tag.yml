@@ -23,10 +23,8 @@ on:
         type: string
 
 permissions:
-  actions: write
-  contents: write
+  contents: read
   packages: read
-  pull-requests: write
 
 concurrency:
   group: propose-cerebro-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
@@ -276,16 +274,10 @@ jobs:
       - name: Create deploy GitHub App token
         if: steps.latest.outputs.superseded != 'true' && steps.update.outputs.changed == 'true'
         id: deploy-app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: ./.github/actions/deploy-app-token
         with:
           client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
           private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
-          permission-actions: write
-          permission-checks: read
-          permission-contents: write
-          permission-issues: write
-          permission-pull-requests: write
-          permission-statuses: read
 
       - name: Apply stack config update
         if: steps.latest.outputs.superseded != 'true' && steps.update.outputs.changed == 'true'
@@ -315,6 +307,26 @@ jobs:
           deploy_app_user_id="$(gh api "/users/${DEPLOY_APP_SLUG}[bot]" --jq .id)"
           git config user.name "${DEPLOY_APP_SLUG}[bot]"
           git config user.email "${deploy_app_user_id}+${DEPLOY_APP_SLUG}[bot]@users.noreply.github.com"
+
+          promotion_mode="${APPLY_MODE}"
+          if [ "${promotion_mode}" = "direct_push" ]; then
+            echo "::warning::apply_mode=direct_push is deprecated; creating a trusted sec-dev release PR instead."
+            promotion_mode="trusted_sec_dev_release"
+          fi
+          if [ "${promotion_mode}" = "trusted_sec_dev_release" ]; then
+            if [ "${STACK_NAME}" != "sec-dev" ]; then
+              echo "trusted_sec_dev_release is only allowed for sec-dev; got ${STACK_NAME}" >&2
+              exit 1
+            fi
+            if [ "${EVENT_NAME}" != "repository_dispatch" ]; then
+              echo "trusted_sec_dev_release is reserved for signed public release dispatches" >&2
+              exit 1
+            fi
+          fi
+          if [ "${promotion_mode}" != "pull_request" ] && [ "${promotion_mode}" != "trusted_sec_dev_release" ]; then
+            echo "Unknown apply_mode ${APPLY_MODE}; expected pull_request or trusted_sec_dev_release" >&2
+            exit 1
+          fi
 
           refresh_from_main_and_apply_update() {
             local target_config="infra/aws/Pulumi.${STACK_NAME}.yaml"
@@ -415,7 +427,7 @@ jobs:
                 gh run list \
                   --repo "${GITHUB_REPOSITORY}" \
                   --workflow infra-deploy.yml \
-                  --event workflow_dispatch \
+                  --event push \
                   --branch main \
                   --limit 50 \
                   --json headSha,status,conclusion,url \
@@ -439,91 +451,6 @@ jobs:
             echo "::notice::Timed out waiting for sec-dev deploy success for ${sec_dev_tag}; leaving go-prod PR open."
             return 1
           }
-
-          if [ "${APPLY_MODE}" = "direct_push" ]; then
-            if [ "${STACK_NAME}" != "sec-dev" ]; then
-              echo "direct_push is only allowed for sec-dev; got ${STACK_NAME}" >&2
-              exit 1
-            fi
-            if [ "${EVENT_NAME}" != "repository_dispatch" ]; then
-              echo "direct_push is reserved for signed public release dispatches" >&2
-              exit 1
-            fi
-
-            refresh_from_main_and_apply_update
-
-            changed_files="$(git diff --name-only)"
-            expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
-            if [ "${changed_files}" != "${expected_file}" ]; then
-              echo "direct_push can only change ${expected_file}; got:" >&2
-              printf '%s\n' "${changed_files}" >&2
-              exit 1
-            fi
-            uv run --project infra python infra/scripts/validate_stack_config.py
-
-            git add "${expected_file}"
-            git commit -m "chore: deploy ${STACK_NAME} Cerebro ${IMAGE_TAG}" \
-              -m "Triggered by writer/cerebro release ${IMAGE_TAG}." \
-              -m "Image: ${GHCR_IMAGE}:${IMAGE_TAG}" \
-              -m "Digest: ${IMAGE_DIGEST}" \
-              -m "Release: ${RELEASE_URL}" \
-              -m "Supply chain: ${VERIFY_SUMMARY}"
-            deploy_sha="$(git rev-parse HEAD)"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:main"
-
-            dispatch_and_require_run() {
-              local workflow="$1"
-              shift
-              local run_id=""
-              local run_url=""
-              local run=""
-
-              gh workflow run "${workflow}" --ref main "$@"
-              for _ in {1..24}; do
-                run="$(gh run list \
-                  --workflow "${workflow}" \
-                  --event workflow_dispatch \
-                  --branch main \
-                  --limit 20 \
-                  --json databaseId,headSha,url \
-                  --jq ".[] | select(.headSha == \"${deploy_sha}\") | [.databaseId, .url] | @tsv" | head -n 1)"
-                if [ -n "${run}" ]; then
-                  IFS=$'\t' read -r run_id run_url <<< "${run}"
-                  echo "Created ${workflow} workflow_dispatch run ${run_id} for ${deploy_sha}: ${run_url}"
-                  return 0
-                fi
-                sleep 5
-              done
-              echo "Could not find ${workflow} workflow_dispatch run for ${deploy_sha}" >&2
-              exit 1
-            }
-
-            # Clean up stale sec-dev automation branches and PRs from prior runs
-            gh pr list --state open --json number,headRefName \
-              --jq ".[] | select(.headRefName | startswith(\"automation/cerebro-image-${STACK_NAME}-\")) | .number" \
-            | while read -r old_pr; do
-              echo "Closing superseded PR #${old_pr}"
-              gh pr close "${old_pr}" --comment "Superseded by direct-push of ${IMAGE_TAG}." --delete-branch || true
-            done
-            mapfile -t stale_branches < <(
-              gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
-              | grep -E "^automation/cerebro-image-${STACK_NAME}-" || true
-            )
-            for old_branch in "${stale_branches[@]}"; do
-              echo "Deleting stale branch ${old_branch}"
-              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
-            done
-
-            echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; dispatching sec-dev publish and deploy workflows."
-            dispatch_and_require_run ci.yml
-            dispatch_and_require_run infra-deploy.yml -f environment="${STACK_NAME}"
-            exit 0
-          fi
-
-          if [ "${APPLY_MODE}" != "pull_request" ]; then
-            echo "Unknown apply_mode ${APPLY_MODE}; expected pull_request or direct_push" >&2
-            exit 1
-          fi
 
           refresh_from_main_and_apply_update
 
@@ -565,7 +492,11 @@ jobs:
               echo "- Runtime contract: ${contract_sources} sources, ${contract_runtimes} manifest runtimes, ${contract_receipts} source-health receipts"
             fi
             echo
-            echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
+            if [ "${promotion_mode}" = "trusted_sec_dev_release" ]; then
+              echo "Trusted release promotion: this PR will auto-merge after required checks pass, then the normal main push deploy workflow will run."
+            else
+              echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
+            fi
           } > "${body}"
 
           # Close superseded automation PRs and delete their branches
@@ -623,7 +554,11 @@ jobs:
               return 1
             }
 
-            if [ "${STACK_NAME}" != "go-prod" ] || [ "${APPLY_MODE}" != "pull_request" ]; then
+            if [ "${promotion_mode}" = "trusted_sec_dev_release" ]; then
+              :
+            elif [ "${STACK_NAME}" = "go-prod" ] && [ "${promotion_mode}" = "pull_request" ]; then
+              :
+            else
               return 0
             fi
             if ! trusted_auto_merge_source; then
@@ -667,7 +602,7 @@ jobs:
             if ! release_is_still_latest "${pr_url}"; then
               return 0
             fi
-            if ! wait_for_sec_dev_release; then
+            if [ "${STACK_NAME}" = "go-prod" ] && ! wait_for_sec_dev_release; then
               return 0
             fi
             gh pr merge "${pr_url}" --merge --delete-branch

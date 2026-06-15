@@ -20,10 +20,8 @@ on:
         type: string
 
 permissions:
-  actions: write
-  contents: write
+  contents: read
   packages: read
-  pull-requests: write
 
 concurrency:
   group: propose-web-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'sec-dev' }}
@@ -58,6 +56,10 @@ jobs:
           tag="${DISPATCH_TAG:-${INPUT_TAG}}"
           env="${DISPATCH_ENV:-${INPUT_ENV:-sec-dev}}"
           mode="${DISPATCH_MODE:-pull_request}"
+          if [ "${mode}" = "direct_push" ]; then
+            echo "::warning::apply_mode=direct_push is deprecated; creating a trusted sec-dev release PR instead."
+            mode="trusted_sec_dev_release"
+          fi
 
           if [ -z "${tag}" ]; then
             echo "No web image tag provided" >&2
@@ -71,12 +73,12 @@ jobs:
             echo "Web image promotion is currently only supported for sec-dev" >&2
             exit 1
           fi
-          if [ "${mode}" != "pull_request" ] && [ "${mode}" != "direct_push" ]; then
-            echo "Web image promotion must use pull_request or direct_push mode" >&2
+          if [ "${mode}" != "pull_request" ] && [ "${mode}" != "trusted_sec_dev_release" ]; then
+            echo "Web image promotion must use pull_request or trusted_sec_dev_release mode" >&2
             exit 1
           fi
-          if [ "${mode}" = "direct_push" ] && [ "${EVENT_NAME}" != "repository_dispatch" ]; then
-            echo "direct_push is reserved for public release dispatches" >&2
+          if [ "${mode}" = "trusted_sec_dev_release" ] && [ "${EVENT_NAME}" != "repository_dispatch" ]; then
+            echo "trusted_sec_dev_release is reserved for public release dispatches" >&2
             exit 1
           fi
           if [ "${EVENT_NAME}" = "repository_dispatch" ]; then
@@ -186,16 +188,10 @@ jobs:
 
       - name: Create deploy GitHub App token
         id: deploy-app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: ./.github/actions/deploy-app-token
         with:
           client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
           private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
-          permission-actions: write
-          permission-checks: read
-          permission-contents: write
-          permission-issues: write
-          permission-pull-requests: write
-          permission-statuses: read
 
       - name: Apply stack config update
         shell: bash
@@ -240,55 +236,6 @@ jobs:
             fi
           }
 
-          dispatch_and_require_run() {
-            local workflow="$1"
-            shift
-            local run=""
-            local run_id=""
-            local run_url=""
-            local status_payload=""
-            local status=""
-            local conclusion=""
-
-            gh workflow run "${workflow}" --ref main "$@"
-            for _ in {1..24}; do
-              run="$(gh run list \
-                --workflow "${workflow}" \
-                --event workflow_dispatch \
-                --branch main \
-                --limit 20 \
-                --json databaseId,headSha,url \
-                --jq ".[] | select(.headSha == \"${deploy_sha}\") | [.databaseId, .url] | @tsv" | head -n 1)"
-              if [ -n "${run}" ]; then
-                IFS=$'\t' read -r run_id run_url <<< "${run}"
-                echo "Created ${workflow} workflow_dispatch run ${run_id} for ${deploy_sha}: ${run_url}"
-                break
-              fi
-              sleep 5
-            done
-            if [ -z "${run_id}" ]; then
-              echo "Could not find ${workflow} workflow_dispatch run for ${deploy_sha}" >&2
-              exit 1
-            fi
-
-            for _ in {1..120}; do
-              status_payload="$(gh run view "${run_id}" --json status,conclusion,url)"
-              status="$(jq -r '.status' <<< "${status_payload}")"
-              conclusion="$(jq -r '.conclusion // ""' <<< "${status_payload}")"
-              if [ "${status}" = "completed" ]; then
-                if [ "${conclusion}" != "success" ]; then
-                  echo "${workflow} run ${run_id} completed with ${conclusion}: ${run_url}" >&2
-                  exit 1
-                fi
-                echo "${workflow} run ${run_id} completed successfully: ${run_url}"
-                return 0
-              fi
-              sleep 15
-            done
-            echo "${workflow} run ${run_id} did not complete before timeout: ${run_url}" >&2
-            exit 1
-          }
-
           refresh_from_main_and_apply_update
           changed_files="$(git diff --name-only)"
           if [ "${changed_files}" != "${expected_file}" ]; then
@@ -297,46 +244,8 @@ jobs:
           fi
           git add "${expected_file}"
 
-          if [ "${APPLY_MODE}" = "direct_push" ]; then
-            if [ "${STACK_NAME}" != "sec-dev" ]; then
-              echo "direct_push is only allowed for sec-dev; got ${STACK_NAME}" >&2
-              exit 1
-            fi
-            if [ "${EVENT_NAME}" != "repository_dispatch" ]; then
-              echo "direct_push is reserved for signed public release dispatches" >&2
-              exit 1
-            fi
-
-            git commit -m "${title}" \
-              -m "Triggered by ${SOURCE_REPO}@${SOURCE_REF}." \
-              -m "Image: ${WEB_GHCR_IMAGE}:${IMAGE_TAG}" \
-              -m "Digest: ${IMAGE_DIGEST}"
-            deploy_sha="$(git rev-parse HEAD)"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:main"
-
-            gh pr list --state open --json number,headRefName \
-              --jq ".[] | select(.headRefName | startswith(\"automation/cerebro-web-${STACK_NAME}-\")) | .number" \
-            | while read -r old_pr; do
-              echo "Closing superseded PR #${old_pr}"
-              gh pr close "${old_pr}" --comment "Superseded by direct-push of ${IMAGE_TAG}." --delete-branch || true
-            done
-            mapfile -t stale_branches < <(
-              gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
-              | grep -E "^automation/cerebro-web-${STACK_NAME}-" || true
-            )
-            for old_branch in "${stale_branches[@]}"; do
-              echo "Deleting stale branch ${old_branch}"
-              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
-            done
-
-            echo "Pushed ${STACK_NAME} web deploy commit for ${IMAGE_TAG}; dispatching sec-dev publish and deploy workflows."
-            dispatch_and_require_run ci.yml
-            dispatch_and_require_run infra-deploy.yml -f environment="${STACK_NAME}"
-            exit 0
-          fi
-
-          if [ "${APPLY_MODE}" != "pull_request" ]; then
-            echo "Unknown apply_mode ${APPLY_MODE}; expected pull_request or direct_push" >&2
+          if [ "${APPLY_MODE}" != "pull_request" ] && [ "${APPLY_MODE}" != "trusted_sec_dev_release" ]; then
+            echo "Unknown apply_mode ${APPLY_MODE}; expected pull_request or trusted_sec_dev_release" >&2
             exit 1
           fi
 
@@ -354,7 +263,11 @@ jobs:
             echo "- Source: \`${SOURCE_REPO}@${SOURCE_REF}\`"
             echo "- Digest: \`${IMAGE_DIGEST}\`"
             echo
-            echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
+            if [ "${APPLY_MODE}" = "trusted_sec_dev_release" ]; then
+              echo "Trusted release promotion: this PR will auto-merge after required checks pass, then the normal main push deploy workflow will run."
+            else
+              echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
+            fi
           } > "${body}"
 
           gh pr list --state open --json number,headRefName \
@@ -366,8 +279,52 @@ jobs:
 
           existing_pr="$(gh pr list --head "${branch}" --json url --jq '.[0].url // empty')"
           if [ -n "${existing_pr}" ]; then
-            gh pr edit "${existing_pr}" --title "${title}" --body-file "${body}"
-            echo "Updated ${existing_pr}"
+            pr_url="${existing_pr}"
+            gh pr edit "${pr_url}" --title "${title}" --body-file "${body}"
+            echo "Updated ${pr_url}"
           else
-            gh pr create --base main --head "${branch}" --title "${title}" --body-file "${body}"
+            pr_url="$(gh pr create --base main --head "${branch}" --title "${title}" --body-file "${body}")"
+            echo "Created ${pr_url}"
           fi
+
+          auto_merge_trusted_sec_dev_pr() {
+            local pr_url="$1"
+            local check_count=""
+            local registered=false
+
+            if [ "${APPLY_MODE}" != "trusted_sec_dev_release" ]; then
+              return 0
+            fi
+            if [ "${STACK_NAME}" != "sec-dev" ] || [ "${EVENT_NAME}" != "repository_dispatch" ]; then
+              echo "Refusing to auto-merge untrusted web promotion ${STACK_NAME} ${EVENT_NAME}" >&2
+              exit 1
+            fi
+
+            changed_files="$(gh pr diff "${pr_url}" --name-only | sort)"
+            if [ "${changed_files}" != "${expected_file}" ]; then
+              echo "Refusing to auto-merge ${pr_url}; expected ${expected_file}, got:" >&2
+              printf '%s\n' "${changed_files}" >&2
+              exit 1
+            fi
+
+            for _ in {1..60}; do
+              check_count="$(gh pr checks "${pr_url}" --required --json name --jq 'length' 2>/dev/null || true)"
+              if [[ "${check_count}" =~ ^[0-9]+$ ]] && [ "${check_count}" -gt 0 ]; then
+                registered=true
+                break
+              fi
+              sleep 10
+            done
+            if [ "${registered}" != "true" ]; then
+              echo "::notice::Required PR checks for ${pr_url} did not register within the wait window; leaving it open for the review-gated merge."
+              return 0
+            fi
+
+            if ! gh pr checks "${pr_url}" --required --watch --interval 10 --fail-fast; then
+              echo "::notice::Required PR checks for ${pr_url} did not all pass; leaving it open for the review-gated merge."
+              return 0
+            fi
+            gh pr merge "${pr_url}" --merge --delete-branch
+          }
+
+          auto_merge_trusted_sec_dev_pr "${pr_url}"

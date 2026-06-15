@@ -9,6 +9,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "propose-web-image-tag.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 INFRA_DEPLOY_WORKFLOW = ROOT / ".github" / "workflows" / "infra-deploy.yml"
 VERIFY_SCRIPT = ROOT / ".github" / "scripts" / "verify-ghcr-image.sh"
+DEPLOY_APP_ACTION = ROOT / ".github" / "actions" / "deploy-app-token" / "action.yml"
 
 
 class ProposeWebImageTagWorkflowTest(unittest.TestCase):
@@ -49,35 +50,35 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('docker buildx imagetools inspect "${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}" --raw', attest_block)
         self.assertIn('annotations["vnd.docker.reference.type"] == "attestation-manifest"', attest_block)
 
-    def test_direct_push_matches_backend_sec_dev_promotion_shape(self) -> None:
+    def test_trusted_sec_dev_release_uses_pr_auto_merge_not_main_push(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
-        direct_push_block = workflow.split('if [ "${APPLY_MODE}" = "direct_push" ]; then', 1)[1].split(
-            'if [ "${APPLY_MODE}" != "pull_request" ]; then',
-            1,
-        )[0]
 
-        self.assertIn('STACK_NAME}" != "sec-dev"', direct_push_block)
-        self.assertIn('EVENT_NAME}" != "repository_dispatch"', direct_push_block)
-        self.assertIn('"HEAD:main"', direct_push_block)
-        self.assertIn("dispatch_and_require_run ci.yml", direct_push_block)
-        self.assertIn("dispatch_and_require_run infra-deploy.yml -f environment=", direct_push_block)
-        self.assertIn('conclusion}" != "success"', workflow)
-        self.assertIn("completed successfully", workflow)
+        self.assertIn("apply_mode=direct_push is deprecated", workflow)
+        self.assertIn('mode="trusted_sec_dev_release"', workflow)
+        self.assertIn("auto_merge_trusted_sec_dev_pr", workflow)
+        self.assertIn("Trusted release promotion:", workflow)
+        self.assertIn('gh pr merge "${pr_url}" --merge --delete-branch', workflow)
+        self.assertNotIn('"HEAD:main"', workflow)
+        self.assertNotIn("dispatch_and_require_run", workflow)
 
     def test_release_automation_uses_deploy_app_token_not_pat(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
+        action = DEPLOY_APP_ACTION.read_text(encoding="utf-8")
 
         self.assertNotIn("CEREBRO_AUTORELEASE_TOKEN", workflow)
         self.assertIn("- name: Create deploy GitHub App token", workflow)
-        self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", workflow)
+        self.assertIn("uses: ./.github/actions/deploy-app-token", workflow)
         self.assertIn("client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}", workflow)
         self.assertIn("private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}", workflow)
-        self.assertIn("permission-actions: write", workflow)
-        self.assertIn("permission-contents: write", workflow)
-        self.assertIn("permission-pull-requests: write", workflow)
         self.assertIn("GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}", workflow)
         self.assertIn('git config user.name "${DEPLOY_APP_SLUG}[bot]"', workflow)
         self.assertIn("password: ${{ secrets.GITHUB_TOKEN }}", workflow)
+        self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", action)
+        self.assertIn("Preflight deploy GitHub App token", action)
+        self.assertIn("gh api /installation/repositories", action)
+        self.assertIn("permission-contents: write", action)
+        self.assertIn("permission-pull-requests: write", action)
+        self.assertNotIn("permission-actions: write", action)
 
     def test_ci_mirrors_public_web_image(self) -> None:
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
