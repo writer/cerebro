@@ -94,6 +94,8 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyGroupMember, config: map[string]string{"group_key": "security@writer.com"}, kind: "gcp.group_membership"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key"},
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink"},
+		{family: familyPubSubSubscription, kind: "gcp.pubsub_subscription"},
+		{family: familyPubSubTopic, kind: "gcp.pubsub_topic"},
 		{family: familyResourceExposure, kind: "gcp.resource_exposure"},
 		{family: familyResourceProject, kind: "gcp.resourcemanager_project"},
 		{family: familyRoleAssign, kind: "gcp.iam_role_assignment"},
@@ -293,6 +295,8 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familySecret, kind: "gcp.secret_manager_secret", attr: "rotation_enabled", want: "true"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key", attr: "protection_level", want: "HSM"},
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink", attr: "exclusions_count", want: "1"},
+		{family: familyPubSubSubscription, kind: "gcp.pubsub_subscription", attr: "dead_letter_topic_name", want: "dead-letter"},
+		{family: familyPubSubTopic, kind: "gcp.pubsub_topic", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/pubsub"},
 		{family: familyResourceProject, kind: "gcp.resourcemanager_project", attr: "enabled_services_count", want: "2"},
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository", attr: "immutable_tags", want: "true"},
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image", attr: "digest", want: "sha256:abc"},
@@ -869,6 +873,26 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("logging sink pageSize = %q, want 10", got)
 			}
 			writeJSON(t, w, map[string]any{"sinks": []map[string]any{{"name": "ids-threat", "resourceName": "projects/writer-prod/sinks/ids-threat", "description": "cloud ids threat export", "destination": "pubsub.googleapis.com/projects/writer-prod/topics/security-alerts", "filter": `logName="projects/writer-prod/logs/ids.googleapis.com%2Fthreat"`, "disabled": false, "writerIdentity": "serviceAccount:writer-prod@gcp-sa-logging.iam.gserviceaccount.com", "includeChildren": false, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "exclusions": []map[string]any{{"name": "debug", "filter": "severity<ERROR", "disabled": false}}}}})
+		case "/v1/projects/writer-prod/topics":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("pubsub topic pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"topics": []map[string]any{{"name": "projects/writer-prod/topics/security-alerts", "labels": map[string]string{"env": "prod"}, "kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/pubsub", "messageStoragePolicy": map[string]any{"allowedPersistenceRegions": []string{"us-central1", "us-east1"}}, "schemaSettings": map[string]string{"schema": "projects/writer-prod/schemas/alert", "encoding": "JSON", "firstRevisionId": "rev-1", "lastRevisionId": "rev-2"}, "messageRetentionDuration": "604800s", "state": "ACTIVE", "satisfiesPzs": true}}})
+		case "/v1/projects/writer-prod/topics/security-alerts:getIamPolicy":
+			if r.Method != http.MethodPost {
+				t.Fatalf("pubsub topic getIamPolicy method = %s, want POST", r.Method)
+			}
+			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/pubsub.publisher", "members": []string{"serviceAccount:logging@writer-prod.iam.gserviceaccount.com"}}, {"role": "roles/pubsub.viewer", "members": []string{"allUsers"}}}})
+		case "/v1/projects/writer-prod/subscriptions":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("pubsub subscription pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"subscriptions": []map[string]any{{"name": "projects/writer-prod/subscriptions/security-alerts-worker", "topic": "projects/writer-prod/topics/security-alerts", "labels": map[string]string{"env": "prod"}, "pushConfig": map[string]any{"pushEndpoint": "https://alerts.writer.com/pubsub", "oidcToken": map[string]string{"serviceAccountEmail": "pubsub-push@writer-prod.iam.gserviceaccount.com", "audience": "alerts"}}, "deadLetterPolicy": map[string]any{"deadLetterTopic": "projects/writer-prod/topics/dead-letter", "maxDeliveryAttempts": 5}, "retryPolicy": map[string]string{"minimumBackoff": "10s", "maximumBackoff": "600s"}, "expirationPolicy": map[string]string{"ttl": "2678400s"}, "messageRetentionDuration": "604800s", "topicMessageRetentionDuration": "604800s", "ackDeadlineSeconds": 30, "retainAckedMessages": true, "enableMessageOrdering": true, "filter": `attributes.severity="critical"`, "state": "ACTIVE"}}})
+		case "/v1/projects/writer-prod/subscriptions/security-alerts-worker:getIamPolicy":
+			if r.Method != http.MethodPost {
+				t.Fatalf("pubsub subscription getIamPolicy method = %s, want POST", r.Method)
+			}
+			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/pubsub.subscriber", "members": []string{"serviceAccount:worker@writer-prod.iam.gserviceaccount.com"}}}})
 		case "/v1/projects/writer-prod":
 			writeJSON(t, w, map[string]any{"projectNumber": "123456789", "projectId": "writer-prod", "name": "Writer Prod", "lifecycleState": "ACTIVE", "labels": map[string]string{"env": "prod"}, "createTime": "2026-04-23T00:00:00Z", "parent": map[string]string{"type": "organization", "id": "1234"}})
 		case "/v1/projects/123456789/services":
