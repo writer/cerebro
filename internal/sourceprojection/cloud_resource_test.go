@@ -214,6 +214,39 @@ func TestProjectAzureCognitiveServicesAccountLinksPublicExposure(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_public_principal:public_internet", relationCanReach, resourceURN)
 }
 
+func TestProjectAzureMachineLearningWorkspaceLinksPublicExposure(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceID := "/subscriptions/sub-1/resourceGroups/rg-ml/providers/Microsoft.MachineLearningServices/workspaces/ml-prod"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "azure-ml-prod",
+		TenantId: "writer",
+		SourceId: "azure",
+		Kind:     "azure.machine_learning_workspace",
+		Attributes: map[string]string{
+			"public_network_access": "Enabled",
+			"resource_group":        "rg-ml",
+			"resource_id":           resourceID,
+			"resource_name":         "ml-prod",
+			"resource_provider":     "azure",
+			"resource_type":         "Microsoft.MachineLearningServices/workspaces",
+			"subscription_id":       "sub-1",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:azure_machine_learning_workspace:" + resourceID
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "azure.machine.learning.workspace" {
+		t.Fatalf("azure machine learning workspace entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:azure_resource_group:sub-1:rg-ml")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_public_principal:public_internet", relationCanReach, resourceURN)
+}
+
 func TestProjectAWSDataResourceLinksNetworkAndElastiCacheContext(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

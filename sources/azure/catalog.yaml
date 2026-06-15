@@ -28,6 +28,7 @@ emitted_kinds:
   - azure.key_vault_secret
   - azure.load_balancer
   - azure.log_alert
+  - azure.machine_learning_workspace
   - azure.managed_disk
   - azure.metric_alert_rule
   - azure.network_security_group
@@ -72,6 +73,7 @@ runtime_families:
   - key_vault_secret
   - load_balancer
   - log_alert
+  - machine_learning_workspace
   - managed_disk
   - metric_alert_rule
   - network_security_group
@@ -316,10 +318,10 @@ coverage_contract:
     - id: machine_learning_workspace
       type: entity_family
       title: Azure Machine Learning workspaces
-      families: [asset_metadata]
+      families: [machine_learning_workspace]
       support: partial
       high_value: true
-      known_unsupported_fields: [workspace public network and private endpoint detail]
+      known_unsupported_fields: [workspace private endpoint and compute detail]
     - id: managed_disk
       type: entity_family
       title: Azure managed disks
