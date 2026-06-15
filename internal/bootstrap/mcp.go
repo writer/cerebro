@@ -27,31 +27,34 @@ import (
 )
 
 const (
-	mcpProtocolVersion           = "2025-11-25"
-	mcpEndpointPath              = "/api/v1/mcp"
-	mcpRedactedValue             = "[redacted]"
-	defaultMCPListLimit          = 25
-	maxMCPListLimit              = 100
-	defaultMCPAssetLimit         = 10
-	maxMCPAssetLimit             = 50
-	defaultMCPEvidenceLimit      = 25
-	maxMCPEvidenceLimit          = 100
-	defaultMCPNeighborhoodLimit  = 10
-	maxMCPNeighborhoodLimit      = 50
-	defaultMCPGraphLimit         = 25
-	maxMCPGraphLimit             = 100
-	defaultMCPImpactLimit        = 100
-	maxMCPImpactLimit            = 250
-	defaultMCPRiskLimit          = 100
-	maxMCPRiskLimit              = 500
-	defaultMCPRiskActionRoots    = 3
-	maxMCPRiskActionRoots        = 10
-	defaultMCPRiskActionGraph    = 3
-	maxMCPRiskActionGraph        = 10
+	mcpProtocolVersion          = "2025-11-25"
+	mcpEndpointPath             = "/api/v1/mcp"
+	mcpRedactedValue            = "[redacted]"
+	defaultMCPListLimit         = 25
+	maxMCPListLimit             = 100
+	defaultMCPAssetLimit        = 10
+	maxMCPAssetLimit            = 50
+	defaultMCPEvidenceLimit     = 25
+	maxMCPEvidenceLimit         = 100
+	defaultMCPNeighborhoodLimit = 10
+	maxMCPNeighborhoodLimit     = 50
+	defaultMCPGraphLimit        = 25
+	maxMCPGraphLimit            = 100
+	defaultMCPImpactLimit       = 100
+	maxMCPImpactLimit           = 250
+	defaultMCPRiskLimit         = 100
+	maxMCPRiskLimit             = 500
+	defaultMCPRiskActionRoots   = 3
+	maxMCPRiskActionRoots       = 10
+	defaultMCPRiskActionGraph   = 3
+	maxMCPRiskActionGraph       = 10
+	defaultMCPRecentRiskRows    = 10
+	mcpResourceMIMEJSON         = "application/json"
+)
+
+const (
 	mcpGraphEvidenceIncluded     = "included"
 	mcpGraphEvidenceUnconfigured = "unconfigured"
-	defaultMCPRecentRiskRows     = 10
-	mcpResourceMIMEJSON          = "application/json"
 )
 
 type mcpJSONRPCRequest struct {
@@ -2983,9 +2986,7 @@ func splitMCPStringList(value string) []string {
 		return r == ',' || r == ';' || r == '\n' || r == '\t'
 	})
 	values := make([]string, 0, len(parts))
-	for _, part := range parts {
-		values = append(values, part)
-	}
+	values = append(values, parts...)
 	return values
 }
 

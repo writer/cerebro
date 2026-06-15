@@ -789,14 +789,6 @@ func addStringSetValue(values map[string]struct{}, value string) {
 	}
 }
 
-func firstSortedSetValue(values map[string]struct{}) string {
-	sorted := sortedStringSetValues(values)
-	if len(sorted) == 0 {
-		return ""
-	}
-	return sorted[0]
-}
-
 func sortedStringSetValues(values map[string]struct{}) []string {
 	if len(values) == 0 {
 		return []string{}
