@@ -230,6 +230,13 @@ runtimes:
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE
       wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: org-policy
+    config:
+      family: org_policy
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: pubsub-subscription
     config:
       family: pubsub_subscription
@@ -268,6 +275,13 @@ runtimes:
   - localId: service-account
     config:
       family: service_account
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: service-usage-service
+    config:
+      family: service_usage_service
       per_page: "100"
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE

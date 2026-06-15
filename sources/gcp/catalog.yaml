@@ -33,6 +33,7 @@ emitted_kinds:
   - gcp.iam_role_assignment
   - gcp.kms_key
   - gcp.logging_project_sink
+  - gcp.org_policy
   - gcp.pubsub_subscription
   - gcp.pubsub_topic
   - gcp.resourcemanager_project
@@ -41,6 +42,7 @@ emitted_kinds:
   - gcp.service_account
   - gcp.service_account_impersonation
   - gcp.service_account_key
+  - gcp.service_usage_service
 runtime_families:
   - asset_metadata
   - aiplatform_dataset
@@ -73,6 +75,7 @@ runtime_families:
   - iam_role_assignment
   - kms_key
   - logging_project_sink
+  - org_policy
   - pubsub_subscription
   - pubsub_topic
   - resourcemanager_project
@@ -81,6 +84,7 @@ runtime_families:
   - service_account
   - service_account_impersonation
   - service_account_key
+  - service_usage_service
 coverage_contract:
   owner_domain: cloud
   authority_domain: gcp
@@ -253,6 +257,12 @@ coverage_contract:
       families: [logging_project_sink]
       support: supported
       high_value: true
+    - id: org_policy
+      type: entity_family
+      title: Organization Policy constraints
+      families: [org_policy]
+      support: supported
+      high_value: true
     - id: pubsub_subscription
       type: entity_family
       title: Pub/Sub subscriptions
@@ -299,5 +309,11 @@ coverage_contract:
       type: entity_family
       title: Service account keys
       families: [service_account_key]
+      support: supported
+      high_value: true
+    - id: service_usage_service
+      type: entity_family
+      title: Enabled Service Usage APIs
+      families: [service_usage_service]
       support: supported
       high_value: true

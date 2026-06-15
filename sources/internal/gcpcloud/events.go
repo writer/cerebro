@@ -2001,6 +2001,45 @@ func ResourceManagerProjectEvent(settings Settings, record ResourceManagerProjec
 	return sourceEvent(settings, "gcp-resourcemanager-project-"+projectID, "gcp.resourcemanager_project", "gcp/resourcemanager_project/v1", payload, attributes)
 }
 
+func ServiceUsageServiceEvent(settings Settings, record ServiceUsageServiceRecord) (*primitives.Event, error) {
+	serviceName := firstNonEmpty(record.Config.Name, lastPathSegment(record.Name), record.Name)
+	resourceID := firstNonEmpty(record.Name, settings.ProjectID+"/services/"+serviceName)
+	attributes := cloudResourceAttributes(settings, "service_usage_service", resourceID, firstNonEmpty(record.Config.Title, serviceName), "service_usage_service", "global", nil)
+	attributes["parent"] = record.Parent
+	attributes["service_name"] = serviceName
+	attributes["service_title"] = record.Config.Title
+	attributes["state"] = record.State
+	attributes["status"] = record.State
+	attributes["enabled"] = boolString(strings.EqualFold(record.State, "ENABLED"))
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-service-usage-service-"+resourceID, "gcp.service_usage_service", "gcp/service_usage_service/v1", payload, attributes)
+}
+
+func OrgPolicyEvent(settings Settings, record OrgPolicyRecord) (*primitives.Event, error) {
+	constraint := orgPolicyConstraint(record.Name)
+	allowedValues, deniedValues := orgPolicyRuleValues(record.Spec.Rules)
+	resourceID := firstNonEmpty(record.Name, settings.ProjectID+"/policies/"+constraint)
+	attributes := cloudResourceAttributes(settings, "org_policy", resourceID, constraint, "org_policy", "global", nil)
+	attributes["constraint"] = constraint
+	attributes["etag"] = firstNonEmpty(record.Spec.Etag, record.Etag)
+	attributes["inherit_from_parent"] = boolString(record.Spec.InheritFromParent)
+	attributes["enforced"] = boolString(orgPolicyEnforced(record))
+	attributes["policy_name"] = record.Name
+	attributes["reset"] = boolString(record.Spec.Reset)
+	attributes["rules_count"] = strconv.Itoa(len(record.Spec.Rules))
+	attributes["allowed_values"] = strings.Join(allowedValues, ",")
+	attributes["denied_values"] = strings.Join(deniedValues, ",")
+	attributes["updated_at"] = record.Spec.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-org-policy-"+resourceID, "gcp.org_policy", "gcp/org_policy/v1", payload, attributes)
+}
+
 type iamSummary struct {
 	Public       bool
 	Members      []string
@@ -2187,6 +2226,20 @@ func orgPolicyConstraints(policies []OrgPolicyRecord) []string {
 		constraints = appendUnique(constraints, orgPolicyConstraint(policy.Name))
 	}
 	return constraints
+}
+
+func orgPolicyRuleValues(rules []OrgPolicyRule) ([]string, []string) {
+	allowed := []string{}
+	denied := []string{}
+	for _, rule := range rules {
+		for _, value := range rule.Values.AllowedValues {
+			allowed = appendUnique(allowed, value)
+		}
+		for _, value := range rule.Values.DeniedValues {
+			denied = appendUnique(denied, value)
+		}
+	}
+	return allowed, denied
 }
 
 func enforcedOrgPolicyConstraints(policies []OrgPolicyRecord) []string {
