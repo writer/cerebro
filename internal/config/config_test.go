@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -36,8 +38,11 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
 	t.Setenv("CEREBRO_API_KEYS", "")
+	t.Setenv("CEREBRO_API_KEYS_FILE", "")
 	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", "")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON_FILE", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS_FILE", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
@@ -137,8 +142,11 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
 	t.Setenv("CEREBRO_API_KEYS", "token-1:ci:writer,token-2:ops:security")
+	t.Setenv("CEREBRO_API_KEYS_FILE", "")
 	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", "")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON_FILE", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS_FILE", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "security,writer,writer")
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://api.writer.com")
@@ -238,6 +246,85 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadParsesMountedAPISecretFiles(t *testing.T) {
+	clearDependencyEnv(t)
+	sum := sha256.Sum256([]byte("scoped-token"))
+	t.Setenv("CEREBRO_API_KEYS_FILE", writeConfigTestFile(t, "api-keys", "mounted-token:mounted:writer\n"))
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON_FILE", writeConfigTestFile(t, "api-credentials.json", `[
+		{
+			"credential_id": "mounted-credential",
+			"client_id": "mounted-client",
+			"key_sha256": "`+hex.EncodeToString(sum[:])+`",
+			"allowed_tenants": ["writer"],
+			"scopes": ["cerebro.cosmo.security.read"]
+		}
+	]`))
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS_FILE", writeConfigTestFile(t, "capability-secrets", "secret-2,secret-1\n"))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.Auth.APIKeys) != 1 || cfg.Auth.APIKeys[0].Key != "mounted-token" || cfg.Auth.APIKeys[0].Principal != "mounted" {
+		t.Fatalf("Auth.APIKeys = %#v", cfg.Auth.APIKeys)
+	}
+	if len(cfg.Auth.APICredentials) != 1 || cfg.Auth.APICredentials[0].ID != "mounted-credential" {
+		t.Fatalf("Auth.APICredentials = %#v", cfg.Auth.APICredentials)
+	}
+	if got := cfg.Auth.CapabilityTokenSecrets; len(got) != 2 || got[0] != "secret-1" || got[1] != "secret-2" {
+		t.Fatalf("CapabilityTokenSecrets = %#v, want sorted mounted secrets", got)
+	}
+}
+
+func TestLoadRejectsConflictingMountedConfigValue(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `[]`)
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON_FILE", writeConfigTestFile(t, "api-credentials.json", `[]`))
+
+	_, err := Load()
+	if !errors.Is(err, errConfigValueConflict) {
+		t.Fatalf("Load() error = %v, want errConfigValueConflict", err)
+	}
+}
+
+func TestLoadParsesDeviceAuthSigningKeysFile(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_DEVICE_AUTH_CURRENT_KID", "k1")
+	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON_FILE", writeConfigTestFile(t, "device-keys.json", `[{"kid":"k1","public_pem":"public","private_pem":"private"}]`))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.Auth.DeviceAuth.SigningKeys) != 1 || cfg.Auth.DeviceAuth.SigningKeys[0].KID != "k1" {
+		t.Fatalf("DeviceAuth.SigningKeys = %#v", cfg.Auth.DeviceAuth.SigningKeys)
+	}
+}
+
+func TestLoadParsesMCPOAuthJSONFiles(t *testing.T) {
+	setValidMCPOAuthEnv(t)
+	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON_FILE", writeConfigTestFile(t, "mcp-clients.json", `[
+		{"client_id":"droid","redirect_uris":["http://127.0.0.1/callback"],"public":true}
+	]`))
+	t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON_FILE", writeConfigTestFile(t, "mcp-entitlements.json", `[
+		{"groups":["secops"],"allowed_tenants":["writer"],"scopes":["cerebro.cosmo.security.read"]}
+	]`))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.Auth.MCPOAuth.Clients) != 1 || cfg.Auth.MCPOAuth.Clients[0].ClientID != "droid" {
+		t.Fatalf("MCPOAuth.Clients = %#v", cfg.Auth.MCPOAuth.Clients)
+	}
+	if len(cfg.Auth.MCPOAuth.Entitlements) != 1 || cfg.Auth.MCPOAuth.Entitlements[0].Groups[0] != "secops" {
+		t.Fatalf("MCPOAuth.Entitlements = %#v", cfg.Auth.MCPOAuth.Entitlements)
+	}
+}
+
 func TestLoadEnablesOTELWhenEndpointConfigured(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
@@ -249,6 +336,15 @@ func TestLoadEnablesOTELWhenEndpointConfigured(t *testing.T) {
 	if !cfg.OTEL.Enabled {
 		t.Fatal("OTEL.Enabled = false, want true when endpoint is configured")
 	}
+}
+
+func writeConfigTestFile(t *testing.T, name string, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config test file: %v", err)
+	}
+	return path
 }
 
 func clearDependencyEnv(t *testing.T) {
@@ -280,8 +376,11 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
 	t.Setenv("CEREBRO_API_KEYS", "")
+	t.Setenv("CEREBRO_API_KEYS_FILE", "")
 	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", "")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON_FILE", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS_FILE", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
@@ -346,6 +445,7 @@ func clearDeviceAuthEnv(t *testing.T) {
 	t.Setenv("CEREBRO_DEVICE_AUTH_APPLE_TEAM_ID", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_APPLE_BUNDLE_IDS", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON_FILE", "")
 }
 
 func clearMCPOAuthEnv(t *testing.T) {
@@ -354,8 +454,10 @@ func clearMCPOAuthEnv(t *testing.T) {
 	t.Setenv("CEREBRO_MCP_OAUTH_ISSUER", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_RESOURCE", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON_FILE", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_DYNAMIC_CLIENT_REGISTRATION_ENABLED", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON_FILE", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_ACCESS_TTL", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_REFRESH_TTL", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_CODE_TTL", "")

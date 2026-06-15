@@ -87,7 +87,11 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 	if cfg.Enabled && cfg.ReplicaCount > 1 {
 		return DeviceAuthConfig{}, fmt.Errorf("CEREBRO_DEVICE_AUTH_REPLICA_COUNT=%d is unsupported with in-process DPoP replay protection; configure one replica or wire shared DPoP replay state", cfg.ReplicaCount)
 	}
-	keys, err := parseDeviceAuthSigningKeys(os.Getenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON"))
+	signingKeysRaw, err := readConfigValue("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON")
+	if err != nil {
+		return DeviceAuthConfig{}, err
+	}
+	keys, err := parseDeviceAuthSigningKeys(signingKeysRaw)
 	if err != nil {
 		return DeviceAuthConfig{}, err
 	}

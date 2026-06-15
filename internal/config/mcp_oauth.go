@@ -68,12 +68,20 @@ func loadMCPOAuthConfig(publicOrigin string) (MCPOAuthConfig, error) {
 	if cfg.DynamicClientRegistration, err = parseBoolEnv("CEREBRO_MCP_OAUTH_DYNAMIC_CLIENT_REGISTRATION_ENABLED"); err != nil {
 		return MCPOAuthConfig{}, err
 	}
-	clients, err := parseMCPOAuthClients(os.Getenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON"))
+	clientsRaw, err := readConfigValue("CEREBRO_MCP_OAUTH_CLIENTS_JSON")
+	if err != nil {
+		return MCPOAuthConfig{}, err
+	}
+	clients, err := parseMCPOAuthClients(clientsRaw)
 	if err != nil {
 		return MCPOAuthConfig{}, err
 	}
 	cfg.Clients = clients
-	entitlements, err := parseMCPOAuthEntitlements(os.Getenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON"))
+	entitlementsRaw, err := readConfigValue("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON")
+	if err != nil {
+		return MCPOAuthConfig{}, err
+	}
+	entitlements, err := parseMCPOAuthEntitlements(entitlementsRaw)
 	if err != nil {
 		return MCPOAuthConfig{}, err
 	}
