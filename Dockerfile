@@ -30,7 +30,7 @@ RUN --mount=type=cache,id=cerebro-go-mod-cache,target=/go/pkg/mod,sharing=locked
     go build -p=${GO_BUILD_PARALLELISM} -buildvcs=false -trimpath -ldflags="-s -w" -o /cerebro ./cmd/cerebro
 
 # Runtime image
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk upgrade --no-cache && \
     apk add --no-cache curl && \
