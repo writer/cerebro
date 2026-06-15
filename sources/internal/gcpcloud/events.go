@@ -449,6 +449,28 @@ type ComputeAttachedDisk struct {
 	DiskEncryptionKey ComputeDiskEncryptionKey `json:"diskEncryptionKey"`
 }
 
+type ComputeAddressRecord struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	SelfLink         string            `json:"selfLink"`
+	Description      string            `json:"description"`
+	Address          string            `json:"address"`
+	PrefixLength     int               `json:"prefixLength"`
+	Status           string            `json:"status"`
+	Region           string            `json:"region"`
+	Users            []string          `json:"users"`
+	NetworkTier      string            `json:"networkTier"`
+	IPVersion        string            `json:"ipVersion"`
+	AddressType      string            `json:"addressType"`
+	Purpose          string            `json:"purpose"`
+	Subnetwork       string            `json:"subnetwork"`
+	Network          string            `json:"network"`
+	IPv6EndpointType string            `json:"ipv6EndpointType"`
+	IPCollection     string            `json:"ipCollection"`
+	Labels           map[string]string `json:"labels"`
+	Raw              json.RawMessage   `json:"-"`
+}
+
 type ComputeBackendServiceRecord struct {
 	ID                   string                                  `json:"id"`
 	Name                 string                                  `json:"name"`
@@ -1774,6 +1796,53 @@ func ComputeInstanceEvent(settings Settings, record ComputeInstanceRecord) (*pri
 	return sourceEvent(settings, "gcp-compute-instance-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_instance", "gcp/compute_instance/v1", payload, attributes)
 }
 
+func ComputeAddressEvent(settings Settings, record ComputeAddressRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name, record.Address)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	external := computeAddressExternal(record.AddressType)
+	inUse := strings.EqualFold(record.Status, "IN_USE")
+	usedBy := lastPathSegments(record.Users)
+	attributes := cloudResourceAttributes(settings, "compute_address", resourceID, record.Name, "compute_address", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["ip_address"] = record.Address
+	attributes["address"] = record.Address
+	if record.PrefixLength > 0 {
+		attributes["prefix_length"] = strconv.Itoa(record.PrefixLength)
+	}
+	attributes["status"] = record.Status
+	attributes["reserved"] = boolString(strings.EqualFold(record.Status, "RESERVED"))
+	attributes["in_use"] = boolString(inUse)
+	attributes["network_tier"] = record.NetworkTier
+	attributes["ip_version"] = record.IPVersion
+	attributes["address_type"] = record.AddressType
+	attributes["type"] = record.AddressType
+	attributes["purpose"] = record.Purpose
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["subnet"] = lastPathSegment(record.Subnetwork)
+	attributes["subnet_url"] = record.Subnetwork
+	attributes["subnetwork"] = lastPathSegment(record.Subnetwork)
+	attributes["subnetwork_url"] = record.Subnetwork
+	attributes["users"] = strings.Join(usedBy, ",")
+	attributes["user_urls"] = strings.Join(record.Users, ",")
+	attributes["used_by"] = strings.Join(usedBy, ",")
+	attributes["used_by_urls"] = strings.Join(record.Users, ",")
+	attributes["users_count"] = strconv.Itoa(len(record.Users))
+	attributes["ipv6_endpoint_type"] = record.IPv6EndpointType
+	attributes["ip_collection"] = record.IPCollection
+	attributes["public"] = boolString(external)
+	attributes["internet_exposed"] = boolString(external && inUse)
+	attributes["external_exposure"] = boolString(external && inUse)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-address-"+resourceID, "gcp.compute_address", "gcp/compute_address/v1", payload, attributes)
+}
+
 func ComputeBackendServiceEvent(settings Settings, record ComputeBackendServiceRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	location := lastPathSegment(record.Region)
@@ -2757,6 +2826,11 @@ func computeBackendServiceBackends(backends []ComputeBackendServiceBackend) ([]s
 		}
 	}
 	return names, urls, modes, failoverCount
+}
+
+func computeAddressExternal(addressType string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(addressType))
+	return normalized == "" || normalized == "EXTERNAL"
 }
 
 type computeSecurityPolicyRuleSummary struct {
