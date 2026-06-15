@@ -1,0 +1,119 @@
+{
+  "rule_id": "email-domain-authentication-misconfigured",
+  "runtime": {
+    "id": "writer-email-domain-health",
+    "source_id": "email_domain_health",
+    "tenant_id": "writer",
+    "config": {
+      "family": "health"
+    }
+  },
+  "events": [
+    {
+      "id": "email-domain-health-writer-failing.example.com-deadbeef",
+      "tenant_id": "writer",
+      "source_id": "email_domain_health",
+      "kind": "email_domain_health.health",
+      "occurred_at": "2026-06-14T00:00:00Z",
+      "schema_ref": "email_domain_health/health/v1",
+      "attributes": {
+        "domain": "failing.example.com",
+        "status": "FAILING",
+        "score": "30",
+        "spf_status": "FAILING",
+        "dkim_status": "FAILING",
+        "dmarc_status": "FAILING",
+        "issue_count": "3",
+        "failing_issue_count": "3",
+        "issue_codes": "dkim_weak_key,dmarc_missing,spf_permissive_all",
+        "failing_issue_codes": "dkim_weak_key,dmarc_missing,spf_permissive_all",
+        "highest_severity": "CRITICAL",
+        "resource_type": "email_domain",
+        "resource_id": "failing.example.com"
+      }
+    },
+    {
+      "id": "email-domain-health-writer-warning.example.com-cafef00d",
+      "tenant_id": "writer",
+      "source_id": "email_domain_health",
+      "kind": "email_domain_health.health",
+      "occurred_at": "2026-06-14T00:01:00Z",
+      "schema_ref": "email_domain_health/health/v1",
+      "attributes": {
+        "domain": "warning.example.com",
+        "status": "WARNING",
+        "score": "85",
+        "spf_status": "WARNING",
+        "dkim_status": "HEALTHY",
+        "dmarc_status": "HEALTHY",
+        "issue_count": "1",
+        "failing_issue_count": "0",
+        "issue_codes": "spf_softfail",
+        "failing_issue_codes": "",
+        "highest_severity": "MEDIUM",
+        "resource_type": "email_domain",
+        "resource_id": "warning.example.com"
+      }
+    },
+    {
+      "id": "email-domain-health-writer-healthy.example.com-feedface",
+      "tenant_id": "writer",
+      "source_id": "email_domain_health",
+      "kind": "email_domain_health.health",
+      "occurred_at": "2026-06-14T00:02:00Z",
+      "schema_ref": "email_domain_health/health/v1",
+      "attributes": {
+        "domain": "healthy.example.com",
+        "status": "HEALTHY",
+        "score": "100",
+        "spf_status": "HEALTHY",
+        "dkim_status": "HEALTHY",
+        "dmarc_status": "HEALTHY",
+        "issue_count": "0",
+        "failing_issue_count": "0",
+        "highest_severity": "",
+        "resource_type": "email_domain",
+        "resource_id": "healthy.example.com"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "email-domain-authentication-misconfigured",
+      "severity": "CRITICAL",
+      "status": "open",
+      "summary": "Mail domain failing.example.com has failing SPF/DKIM/DMARC controls: dkim_weak_key,dmarc_missing,spf_permissive_all",
+      "policy_id": "failing.example.com",
+      "event_ids": ["email-domain-health-writer-failing.example.com-deadbeef"],
+      "attributes": {
+        "domain": "failing.example.com",
+        "status": "FAILING",
+        "highest_severity": "CRITICAL",
+        "primary_resource_urn": "urn:cerebro:writer:email_domain:failing.example.com",
+        "resource_type": "email_domain",
+        "source_runtime_id": "writer-email-domain-health"
+      }
+    },
+    {
+      "rule_id": "email-domain-authentication-misconfigured",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "Mail domain warning.example.com has email authentication warnings: spf_softfail",
+      "policy_id": "warning.example.com",
+      "event_ids": ["email-domain-health-writer-warning.example.com-cafef00d"],
+      "attributes": {
+        "domain": "warning.example.com",
+        "status": "WARNING",
+        "primary_resource_urn": "urn:cerebro:writer:email_domain:warning.example.com",
+        "resource_type": "email_domain",
+        "source_runtime_id": "writer-email-domain-health"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "email-domain-health-writer-healthy.example.com-feedface",
+      "reason": "domain is healthy"
+    }
+  ]
+}

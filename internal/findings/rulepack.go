@@ -104,6 +104,14 @@ func builtinRulePacks() []RulePack {
 			Description: "Sensitive data and crown-jewel findings.",
 			Rules:       []Rule{newDataSensitiveAssetRiskRule()},
 		},
+		{
+			ID:          "email_domain",
+			Name:        "Email Domain",
+			Description: "SPF, DKIM, and DMARC posture findings on tenant mail domains.",
+			Rules: []Rule{
+				newEmailDomainAuthenticationMisconfiguredRule(),
+			},
+		},
 	}
 }
 

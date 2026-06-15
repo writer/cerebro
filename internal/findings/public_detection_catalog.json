@@ -505,6 +505,62 @@
       ]
     },
     {
+      "id": "email-domain-authentication-misconfigured",
+      "pack_id": "email_domain",
+      "pack_name": "Email Domain",
+      "name": "Email Domain Authentication Misconfigured",
+      "description": "Detect tenant mail domains whose SPF, DKIM, or DMARC configuration is missing, permissive, or non-enforcing and that can be abused for spoofing.",
+      "source_id": "email_domain_health",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "email_domain_health.health"
+      ],
+      "output_kind": "finding.email_domain_authentication_misconfigured",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "dkim",
+        "dmarc",
+        "email",
+        "mta",
+        "phishing",
+        "spf",
+        "spoofing"
+      ],
+      "references": [
+        "https://datatracker.ietf.org/doc/html/rfc6376",
+        "https://datatracker.ietf.org/doc/html/rfc7208",
+        "https://datatracker.ietf.org/doc/html/rfc7489"
+      ],
+      "false_positives": [
+        "DKIM selectors outside the probed defaults (or scoped to subdomains) may exist and not be discovered by the source.",
+        "Domains that intentionally do not send mail may legitimately omit SPF/DKIM/DMARC, but should publish a deny-all SPF and DMARC reject policy to stop spoofing."
+      ],
+      "runbook": "Inspect the failing_issue_codes attribute on the finding, address the most severe protocol gap first (SPF permissive/missing, DMARC missing or p=none, DKIM weak/missing), then confirm the source re-runs healthy and clears the finding.",
+      "required_attributes": [
+        "domain",
+        "status"
+      ],
+      "fingerprint_fields": [
+        "domain"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.14"
+        },
+        {
+          "framework_name": "NIST SP 800-177",
+          "control_id": "TLS-MAIL"
+        }
+      ]
+    },
+    {
       "id": "github-app-integration-installed",
       "pack_id": "github",
       "pack_name": "GitHub",

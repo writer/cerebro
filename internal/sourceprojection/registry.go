@@ -343,6 +343,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"duo.token":                                 genericInventoryProjections,
 	"duo.user":                                  genericInventoryProjections,
 	"duo.web_authn_credential":                  genericInventoryProjections,
+	"email_domain_health.health":                emailDomainHealthProjections,
 	"kubernetes.cluster":                        genericInventoryProjections,
 	"kubernetes.container":                      genericInventoryProjections,
 	"kubernetes.namespace":                      genericInventoryProjections,

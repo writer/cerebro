@@ -279,6 +279,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
 | `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |
+| `email_domain_health` | Email domain authentication posture source (SPF, DKIM, DMARC, MX, MTA-STS) | health |
 | `evidence_cas` | EvidenceCAS content-addressed evidence reference source | object manifests |
 | `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | audit, groups, IAM role assignments, service accounts, resource exposure |
 | `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests |

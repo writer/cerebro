@@ -1,0 +1,56 @@
+{
+  "domain": "writer-mail.example.com",
+  "status": "FAILING",
+  "score": 30,
+  "spf_status": "FAILING",
+  "dkim_status": "FAILING",
+  "dmarc_status": "FAILING",
+  "issue_count": 3,
+  "failing_issue_count": 3,
+  "spf_records": ["v=spf1 +all"],
+  "spf_policy": "+all",
+  "spf_lookup_count": 0,
+  "dmarc_records": [],
+  "dmarc_policy": "",
+  "dmarc_pct": 0,
+  "dmarc_rua": [],
+  "mx_records": [],
+  "dkim_selectors": [
+    {
+      "selector": "default",
+      "status": "FAILING",
+      "key_bits": 512,
+      "record": "v=DKIM1; k=rsa; p=REDACTED"
+    }
+  ],
+  "related_records": [],
+  "issues": [
+    {
+      "id": "DKIM:dkim_weak_key",
+      "protocol": "DKIM",
+      "severity": "CRITICAL",
+      "code": "dkim_weak_key",
+      "title": "DKIM key is too weak",
+      "detail": "Selector default key size is 512 bits.",
+      "recommendation": "Rotate selector to at least 2048-bit RSA key material."
+    },
+    {
+      "id": "DMARC:dmarc_missing",
+      "protocol": "DMARC",
+      "severity": "HIGH",
+      "code": "dmarc_missing",
+      "title": "DMARC record missing",
+      "detail": "No DMARC TXT record was found.",
+      "recommendation": "Publish a DMARC record with at least p=none and reporting, then move to p=quarantine/reject."
+    },
+    {
+      "id": "SPF:spf_permissive_all",
+      "protocol": "SPF",
+      "severity": "CRITICAL",
+      "code": "spf_permissive_all",
+      "title": "SPF allows all senders",
+      "detail": "SPF ends in '+all' which permits spoofing.",
+      "recommendation": "Replace '+all' with '-all' after validating legitimate senders."
+    }
+  ]
+}
