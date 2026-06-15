@@ -8,6 +8,7 @@ import (
 type StubLLMClient struct {
 	DraftResponse    *DraftResponse
 	Summary          string
+	DraftRequests    []DraftRequest
 	SummaryResponses []string
 	SummaryRequests  []SummarizeRequest
 	DraftErr         error
@@ -21,6 +22,9 @@ func NewStubLLMClient() *StubLLMClient {
 func (c *StubLLMClient) DraftCypher(_ context.Context, req DraftRequest) (*DraftResponse, error) {
 	if c != nil && c.DraftErr != nil {
 		return nil, c.DraftErr
+	}
+	if c != nil {
+		c.DraftRequests = append(c.DraftRequests, req)
 	}
 	if c != nil && c.DraftResponse != nil {
 		copy := *c.DraftResponse

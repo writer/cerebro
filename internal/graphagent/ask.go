@@ -98,39 +98,53 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 			return err
 		}
 	}
-	if err := emitProgress(emit, started, "drafting_query", "Drafting a read-only graph query."); err != nil {
-		return err
-	}
-	draftStarted := time.Now()
-	draft, err := s.llm.DraftCypher(ctx, DraftRequest{
-		TenantID:  strings.TrimSpace(request.TenantID),
-		Question:  strings.TrimSpace(request.Question),
-		ScopeURN:  strings.TrimSpace(request.ScopeURN),
-		Model:     model,
-		History:   history,
-		MaxRows:   defaultMaxRows,
-		Schema:    graphAgentSchemaHint,
-		Guardrail: graphAgentGuardrail,
-		Probe:     probe,
-	})
-	timings.DraftMS = time.Since(draftStarted).Milliseconds()
-	if err != nil {
-		return streamErrorf(traceID, timings, "%w: draft cypher: %w", ErrRuntimeUnavailable, err)
-	}
-	if draft == nil {
-		return streamErrorf(traceID, timings, "%w: LLM returned no draft", ErrRuntimeUnavailable)
-	}
-	rationale := strings.TrimSpace(draft.Rationale)
-	if rationale == "" {
-		rationale = "Drafting a bounded read-only Cypher query for the requested graph question."
+	var draft *DraftResponse
+	var conversion conversionResult
+	var rationale string
+	if fastConversion, fastRationale, ok := deterministicFastPathConversion(request, s.options.EnableDeterministicFastPath); ok {
+		if err := emitProgress(emit, started, "planning_query", "Selecting a deterministic read-only graph query template."); err != nil {
+			return err
+		}
+		conversionStarted := time.Now()
+		conversion = fastConversion
+		timings.ConversionMS = time.Since(conversionStarted).Milliseconds()
+		rationale = fastRationale
+	} else {
+		if err := emitProgress(emit, started, "drafting_query", "Drafting a read-only graph query."); err != nil {
+			return err
+		}
+		draftStarted := time.Now()
+		var err error
+		draft, err = s.llm.DraftCypher(ctx, DraftRequest{
+			TenantID:  strings.TrimSpace(request.TenantID),
+			Question:  strings.TrimSpace(request.Question),
+			ScopeURN:  strings.TrimSpace(request.ScopeURN),
+			Model:     model,
+			History:   history,
+			MaxRows:   defaultMaxRows,
+			Schema:    graphAgentSchemaHint,
+			Guardrail: graphAgentGuardrail,
+			Probe:     probe,
+		})
+		timings.DraftMS = time.Since(draftStarted).Milliseconds()
+		if err != nil {
+			return streamErrorf(traceID, timings, "%w: draft cypher: %w", ErrRuntimeUnavailable, err)
+		}
+		if draft == nil {
+			return streamErrorf(traceID, timings, "%w: LLM returned no draft", ErrRuntimeUnavailable)
+		}
+		rationale = strings.TrimSpace(draft.Rationale)
+		if rationale == "" {
+			rationale = "Drafting a bounded read-only Cypher query for the requested graph question."
+		}
+
+		conversionStarted := time.Now()
+		conversion = convertDraftToQuery(request, draft)
+		timings.ConversionMS = time.Since(conversionStarted).Milliseconds()
 	}
 	if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
 		return err
 	}
-
-	conversionStarted := time.Now()
-	conversion := convertDraftToQuery(request, draft)
-	timings.ConversionMS = time.Since(conversionStarted).Milliseconds()
 	cypher := strings.TrimSpace(conversion.Cypher)
 	if err := emitQueryPlan(emit, conversion); err != nil {
 		return err

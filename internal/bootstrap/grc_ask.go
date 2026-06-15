@@ -74,12 +74,13 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	clearStreamingWriteDeadline(w)
 	flusher, _ := w.(http.Flusher)
 	service := graphagent.NewServiceWithOptions(graphStore, llm, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
-		TrajectoryStore:   askTrajectoryStore(a.deps.StateStore),
-		EnableGraphProbes: true,
-		EnableRecovery:    true,
-		EnableMapReduce:   true,
-		MaxDepth:          2,
-		MaxChildren:       2,
+		TrajectoryStore:             askTrajectoryStore(a.deps.StateStore),
+		EnableGraphProbes:           true,
+		EnableDeterministicFastPath: true,
+		EnableRecovery:              true,
+		EnableMapReduce:             true,
+		MaxDepth:                    2,
+		MaxChildren:                 2,
 	})
 	var eventCount int
 	streamStarted := false

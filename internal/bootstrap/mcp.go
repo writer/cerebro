@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -52,6 +53,8 @@ const (
 	mcpResourceMIMEJSON         = "application/json"
 )
 
+const mcpMaxConcurrentGraphFetches = 4
+
 const (
 	mcpGraphEvidenceIncluded     = "included"
 	mcpGraphEvidenceUnconfigured = "unconfigured"
@@ -76,6 +79,103 @@ type mcpJSONRPCResponse struct {
 type mcpError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+type mcpGraphStoreNeighborhoodResult struct {
+	urn          string
+	neighborhood *ports.EntityNeighborhood
+	err          error
+}
+
+func fetchMCPGraphStoreNeighborhoods(ctx context.Context, graphStore ports.GraphQueryStore, roots []string, limit int) []mcpGraphStoreNeighborhoodResult {
+	if graphStore == nil || len(roots) == 0 {
+		return nil
+	}
+	results := make([]mcpGraphStoreNeighborhoodResult, len(roots))
+	sem := make(chan struct{}, mcpMaxConcurrentGraphFetches)
+	var wg sync.WaitGroup
+	for index, rootURN := range roots {
+		index, rootURN := index, rootURN
+		results[index].urn = rootURN
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[index].err = ctx.Err()
+				return
+			}
+			neighborhood, err := graphStore.GetEntityNeighborhood(ctx, rootURN, limit)
+			results[index].neighborhood = neighborhood
+			results[index].err = err
+		}()
+	}
+	wg.Wait()
+	return results
+}
+
+type mcpInvestigationResourceResult struct {
+	asset            *mcpAssetSearchResult
+	assetErr         error
+	neighborhood     any
+	graphErr         error
+	graphEncodingErr bool
+}
+
+func (app *App) fetchMCPInvestigationResources(ctx context.Context, r *http.Request, resourceURNs []string, includeGraph bool) []mcpInvestigationResourceResult {
+	if app == nil || r == nil || len(resourceURNs) == 0 {
+		return nil
+	}
+	results := make([]mcpInvestigationResourceResult, len(resourceURNs))
+	sem := make(chan struct{}, mcpMaxConcurrentGraphFetches)
+	var wg sync.WaitGroup
+	graphService := app.graphQueryService()
+	for index, resourceURN := range resourceURNs {
+		index, resourceURN := index, resourceURN
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[index].assetErr = ctx.Err()
+				return
+			}
+
+			found, err := app.mcpAssetSearchResults(r.Clone(ctx), map[string]any{"urn": resourceURN, "limit": 1})
+			if err == nil && len(found) > 0 {
+				asset := found[0]
+				results[index].asset = &asset
+			} else if err != nil {
+				results[index].assetErr = err
+			}
+			if !includeGraph || graphService == nil {
+				return
+			}
+			neighborhood, err := graphService.GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
+				RootURN: resourceURN,
+				Limit:   uint32(defaultMCPGraphLimit),
+			})
+			if err != nil {
+				results[index].graphErr = err
+				return
+			}
+			if neighborhood == nil {
+				return
+			}
+			value, err := protoJSONValue(graphNeighborhoodResponse(neighborhood))
+			if err != nil {
+				results[index].graphEncodingErr = true
+				return
+			}
+			results[index].neighborhood = mcpAddResponseMetadata(value, mcpResponseMetadata(defaultMCPGraphLimit, mcpNeighborhoodResultCount(neighborhood), nil))
+		}()
+	}
+	wg.Wait()
+	return results
 }
 
 type mcpTool struct {
@@ -1092,6 +1192,7 @@ func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mc
 			IncludeUnscored: mcpBoolArg(args, "include_unscored"),
 		})
 		seen := map[string]struct{}{}
+		roots := []string{}
 		for _, targetURN := range targetURNs {
 			if len(seen) >= rootLimit {
 				break
@@ -1104,17 +1205,20 @@ func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mc
 				continue
 			}
 			seen[targetURN] = struct{}{}
-			neighborhood, err := graphStore.GetEntityNeighborhood(r.Context(), targetURN, graphLimit)
+			roots = append(roots, targetURN)
+		}
+		for _, result := range fetchMCPGraphStoreNeighborhoods(r.Context(), graphStore, roots, graphLimit) {
 			switch {
-			case err == nil:
+			case result.err == nil:
+				neighborhood := result.neighborhood
 				if neighborhood == nil {
 					neighborhood = &ports.EntityNeighborhood{}
 				}
-				graphNeighborhoods[targetURN] = neighborhood
-			case errors.Is(err, ports.ErrGraphEntityNotFound):
+				graphNeighborhoods[result.urn] = neighborhood
+			case errors.Is(result.err, ports.ErrGraphEntityNotFound):
 				continue
 			default:
-				partialErrors = append(partialErrors, "graph neighborhood failed for "+targetURN+": "+safeMCPToolError(err))
+				partialErrors = append(partialErrors, "graph neighborhood failed for "+result.urn+": "+safeMCPToolError(result.err))
 			}
 		}
 	}
@@ -1292,34 +1396,34 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 	neighborhoods := []any{}
 	partialErrors := []string{}
 	includeGraph := !mcpBoolArg(args, "skip_graph")
+	resourceURNs := make([]string, 0, assetLimit)
+	seenResourceURNs := map[string]struct{}{}
 	for _, resourceURN := range finding.ResourceURNs {
-		if len(assets) >= assetLimit {
+		if len(resourceURNs) >= assetLimit {
 			break
 		}
-		if strings.TrimSpace(resourceURN) == "" {
+		resourceURN = strings.TrimSpace(resourceURN)
+		if resourceURN == "" {
 			continue
 		}
-		found, err := app.mcpAssetSearchResults(r, map[string]any{"urn": resourceURN, "limit": 1})
-		if err == nil && len(found) > 0 {
-			assets = append(assets, found[0])
-		} else if err != nil {
-			partialErrors = append(partialErrors, "asset lookup failed: "+safeMCPToolError(err))
+		if _, ok := seenResourceURNs[resourceURN]; ok {
+			continue
 		}
-		if includeGraph {
-			neighborhood, err := app.graphQueryService().GetEntityNeighborhood(r.Context(), graphquery.NeighborhoodRequest{
-				RootURN: resourceURN,
-				Limit:   uint32(defaultMCPGraphLimit),
-			})
-			if err == nil && neighborhood != nil {
-				value, err := protoJSONValue(graphNeighborhoodResponse(neighborhood))
-				if err == nil {
-					neighborhoods = append(neighborhoods, mcpAddResponseMetadata(value, mcpResponseMetadata(defaultMCPGraphLimit, mcpNeighborhoodResultCount(neighborhood), nil)))
-				} else {
-					partialErrors = append(partialErrors, "graph neighborhood encoding failed")
-				}
-			} else if err != nil {
-				partialErrors = append(partialErrors, "graph neighborhood failed: "+safeMCPToolError(err))
-			}
+		seenResourceURNs[resourceURN] = struct{}{}
+		resourceURNs = append(resourceURNs, resourceURN)
+	}
+	for _, result := range app.fetchMCPInvestigationResources(r.Context(), r, resourceURNs, includeGraph) {
+		if result.asset != nil {
+			assets = append(assets, *result.asset)
+		} else if result.assetErr != nil {
+			partialErrors = append(partialErrors, "asset lookup failed: "+safeMCPToolError(result.assetErr))
+		}
+		if result.neighborhood != nil {
+			neighborhoods = append(neighborhoods, result.neighborhood)
+		} else if result.graphErr != nil {
+			partialErrors = append(partialErrors, "graph neighborhood failed: "+safeMCPToolError(result.graphErr))
+		} else if result.graphEncodingErr {
+			partialErrors = append(partialErrors, "graph neighborhood encoding failed")
 		}
 	}
 	result := map[string]any{
