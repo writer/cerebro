@@ -11,16 +11,17 @@ Use it with:
 
 ## Default behavior
 
-API auth is disabled by default for local development:
+API auth and rate limiting are enabled by default outside acknowledged dev mode. For local-only unauthenticated development, use the Makefile target that sets both dev-mode variables:
 
 ```bash
-CEREBRO_API_AUTH_ENABLED=false
+make serve-dev
 ```
 
-Enable auth for any shared, hosted, or production-like environment:
+Equivalently, an explicitly acknowledged local shell can set:
 
 ```bash
-CEREBRO_API_AUTH_ENABLED=true
+CEREBRO_DEV_MODE=1
+CEREBRO_DEV_MODE_ACK=1
 ```
 
 When auth is enabled, non-public HTTP routes and Connect RPCs require a valid credential. Tenant mismatch checks happen before service logic.
@@ -162,6 +163,16 @@ Recommended pattern:
 2. Grant only the route families the integration needs.
 3. Use separate credentials for humans, automation, MCP clients, source jobs, and device flows.
 4. Rotate each credential independently.
+
+Current route scopes include:
+
+| Scope | Route family |
+| --- | --- |
+| `cerebro.cosmo.security.read` | Read-only source, finding, report, graph, GRC, MCP, and platform status routes. |
+| `cerebro.finding_candidates.promote` | Promote or reject finding candidates. |
+| `cerebro.findings.write` | Resolve, suppress, assign, set due dates, add notes, and link tickets on findings. |
+| `cerebro.grc.inventory.write` | Mutate GRC inventory scope, reports, and triage state. |
+| `cerebro.runtime_response.write` | Execute runtime response actions and revoke runtime blocklist entries. |
 
 ## Public origin
 

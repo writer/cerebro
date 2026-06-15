@@ -20,10 +20,10 @@ make build
 Run the lightweight server without durable stores:
 
 ```bash
-make serve
+make serve-dev
 ```
 
-Run the durable local stack with NATS JetStream, Postgres, Neo4j, and Cerebro:
+Run the durable local stack with NATS JetStream, Postgres, Neo4j, Cerebro, and the local bearer key `local-dev-key`:
 
 ```bash
 docker compose up --build
@@ -35,6 +35,7 @@ The compose stack uses service-local `CEREBRO_*` variables. For a standalone loc
 
 ```bash
 make build          # compile ./bin/cerebro
+make serve-dev      # run local server with acknowledged dev-mode opt-out
 make test           # go test ./...
 make lint           # golangci-lint over app packages
 make proto-lint     # buf lint

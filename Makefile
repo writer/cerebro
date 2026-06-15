@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -70,6 +70,9 @@ build: ## Build the Cerebro CLI binary.
 
 serve: build ## Build and run the local HTTP server.
 	./bin/cerebro serve
+
+serve-dev: build ## Build and run the local HTTP server with acknowledged dev-mode auth/rate-limit opt-out.
+	CEREBRO_DEV_MODE=1 CEREBRO_DEV_MODE_ACK=1 ./bin/cerebro serve
 
 test: ## Run all Go tests.
 	go test ./...

@@ -8,13 +8,14 @@ This guide walks through a local, durable Cerebro run and a small SDK-style clai
 docker compose up --build
 ```
 
-The stack exposes Cerebro on `http://127.0.0.1:8080` with NATS JetStream, Postgres, and Neo4j configured by the compose file.
+The stack exposes Cerebro on `http://127.0.0.1:8080` with NATS JetStream, Postgres, Neo4j, and the local bearer key `local-dev-key` configured by the compose file.
 
 In another shell, check readiness and the source catalog:
 
 ```bash
+export CEREBRO_API_KEY=local-dev-key
 curl -sS http://127.0.0.1:8080/health
-curl -sS http://127.0.0.1:8080/sources
+curl -sS --oauth2-bearer "$CEREBRO_API_KEY" http://127.0.0.1:8080/sources
 ```
 
 ## Create An SDK Source Runtime
@@ -23,6 +24,7 @@ The `sdk` source is the generic push source for application-owned posture or inv
 
 ```bash
 curl -sS -X PUT http://127.0.0.1:8080/source-runtimes/local-sdk-demo \
+  --oauth2-bearer "$CEREBRO_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "runtime": {
@@ -40,6 +42,7 @@ curl -sS -X PUT http://127.0.0.1:8080/source-runtimes/local-sdk-demo \
 
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/source-runtimes/local-sdk-demo/claims \
+  --oauth2-bearer "$CEREBRO_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "claims": [
@@ -62,7 +65,9 @@ curl -sS -X POST http://127.0.0.1:8080/source-runtimes/local-sdk-demo/claims \
 Read the claim back:
 
 ```bash
-curl -sS 'http://127.0.0.1:8080/source-runtimes/local-sdk-demo/claims?limit=10'
+curl -sS \
+  --oauth2-bearer "$CEREBRO_API_KEY" \
+  'http://127.0.0.1:8080/source-runtimes/local-sdk-demo/claims?limit=10'
 ```
 
 ## Try The SDK Helpers
@@ -72,6 +77,7 @@ Python:
 ```bash
 cd sdk/python
 CEREBRO_BASE_URL=http://127.0.0.1:8080 \
+CEREBRO_API_KEY=local-dev-key \
 CEREBRO_TENANT_ID=local \
 CEREBRO_RUNTIME_ID=local-jira-posture \
 python3 examples/jira_posture_onboarding.py

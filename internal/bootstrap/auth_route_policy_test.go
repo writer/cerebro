@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -53,17 +54,38 @@ func TestConnectProceduresHaveAuthPolicies(t *testing.T) {
 	}
 }
 
-func TestWriteHTTPRoutePolicyIsExplicitAdminOnly(t *testing.T) {
-	policy := httpRoutePolicyFor("POST", "/findings/finding-1/resolve")
-	if !policy.AdminOnly || policy.Scope != "" {
-		t.Fatalf("resolve finding policy = %#v, want explicit admin-only decision", policy)
+func TestFindingLifecycleHTTPRoutesRequireWriteScope(t *testing.T) {
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/findings/finding-1/resolve"},
+		{method: http.MethodPost, path: "/findings/finding-1/suppress"},
+		{method: http.MethodPut, path: "/findings/finding-1/assign"},
+		{method: http.MethodPut, path: "/findings/finding-1/due"},
+		{method: http.MethodPost, path: "/findings/finding-1/notes"},
+		{method: http.MethodPost, path: "/findings/finding-1/tickets"},
+	} {
+		policy := httpRoutePolicyFor(tt.method, tt.path)
+		if policy.Scope != scopeFindingLifecycleWrite || policy.AdminOnly {
+			t.Fatalf("%s %s policy = %#v, want findings write scope", tt.method, tt.path, policy)
+		}
 	}
 }
 
-func TestWriteConnectProcedurePolicyIsExplicitAdminOnly(t *testing.T) {
-	policy := connectProcedurePolicyFor(cerebrov1connect.BootstrapServiceResolveFindingProcedure)
-	if !policy.AdminOnly || policy.Scope != "" {
-		t.Fatalf("ResolveFinding policy = %#v, want explicit admin-only decision", policy)
+func TestFindingLifecycleConnectProceduresRequireWriteScope(t *testing.T) {
+	for _, procedure := range []string{
+		cerebrov1connect.BootstrapServiceResolveFindingProcedure,
+		cerebrov1connect.BootstrapServiceSuppressFindingProcedure,
+		cerebrov1connect.BootstrapServiceAssignFindingProcedure,
+		cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure,
+		cerebrov1connect.BootstrapServiceAddFindingNoteProcedure,
+		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
+	} {
+		policy := connectProcedurePolicyFor(procedure)
+		if policy.Scope != scopeFindingLifecycleWrite || policy.AdminOnly {
+			t.Fatalf("%s policy = %#v, want findings write scope", procedure, policy)
+		}
 	}
 }
 

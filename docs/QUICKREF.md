@@ -5,8 +5,7 @@ This quick reference covers the current bootstrap service. Historical Snowflake,
 ## Build And Run
 
 ```bash
-make build
-make serve
+make serve-dev
 ```
 
 Durable local stack:
@@ -20,8 +19,9 @@ End-to-end local walkthrough: [`docs/GETTING_STARTED.md`](GETTING_STARTED.md).
 Health and source catalog:
 
 ```bash
+export CEREBRO_API_KEY=local-dev-key
 curl -sS http://127.0.0.1:8080/health
-curl -sS http://127.0.0.1:8080/sources
+curl -sS --oauth2-bearer "$CEREBRO_API_KEY" http://127.0.0.1:8080/sources
 ```
 
 ## Configuration
@@ -38,10 +38,9 @@ export CEREBRO_NEO4J_USERNAME=neo4j
 export CEREBRO_NEO4J_PASSWORD='local-password'
 ```
 
-Enable API auth in shared deployments:
+API auth and rate limiting are enabled by default outside acknowledged dev mode. Configure credentials for shared deployments:
 
 ```bash
-export CEREBRO_API_AUTH_ENABLED=true
 export CEREBRO_API_KEYS='secret-key:principal:tenant_id'
 ```
 

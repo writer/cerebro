@@ -10,7 +10,13 @@ import (
 )
 
 type recordingRuntimeBlocklistStore struct {
-	putEntries []ports.RuntimeBlocklistEntry
+	putEntries   []ports.RuntimeBlocklistEntry
+	listFilters  []ports.RuntimeBlocklistFilter
+	listEntries  []*ports.RuntimeBlocklistEntry
+	revokeTenant string
+	revokeID     string
+	revokedEntry *ports.RuntimeBlocklistEntry
+	revokeErr    error
 }
 
 func (s *recordingRuntimeBlocklistStore) Ping(context.Context) error {
@@ -22,11 +28,20 @@ func (s *recordingRuntimeBlocklistStore) PutRuntimeBlocklistEntry(_ context.Cont
 	return &s.putEntries[len(s.putEntries)-1], nil
 }
 
-func (s *recordingRuntimeBlocklistStore) ListRuntimeBlocklistEntries(context.Context, ports.RuntimeBlocklistFilter) ([]*ports.RuntimeBlocklistEntry, error) {
-	return nil, nil
+func (s *recordingRuntimeBlocklistStore) ListRuntimeBlocklistEntries(_ context.Context, filter ports.RuntimeBlocklistFilter) ([]*ports.RuntimeBlocklistEntry, error) {
+	s.listFilters = append(s.listFilters, filter)
+	return s.listEntries, nil
 }
 
-func (s *recordingRuntimeBlocklistStore) RevokeRuntimeBlocklistEntry(context.Context, string, string) (*ports.RuntimeBlocklistEntry, error) {
+func (s *recordingRuntimeBlocklistStore) RevokeRuntimeBlocklistEntry(_ context.Context, tenantID string, id string) (*ports.RuntimeBlocklistEntry, error) {
+	s.revokeTenant = tenantID
+	s.revokeID = id
+	if s.revokeErr != nil {
+		return nil, s.revokeErr
+	}
+	if s.revokedEntry != nil {
+		return s.revokedEntry, nil
+	}
 	return nil, ports.ErrRuntimeBlocklistEntryNotFound
 }
 
@@ -176,5 +191,58 @@ func TestCapabilitiesRequireTrustedScope(t *testing.T) {
 		if !capability.RequiresScope {
 			t.Fatalf("capability %s does not require trusted scope", capability.Action)
 		}
+	}
+}
+
+func TestListDelegatesFilterToStore(t *testing.T) {
+	entry := &ports.RuntimeBlocklistEntry{ID: "rr-1", TenantID: "writer", Type: "ip", Value: "192.0.2.1"}
+	store := &recordingRuntimeBlocklistStore{listEntries: []*ports.RuntimeBlocklistEntry{entry}}
+	service := New(store)
+
+	got, err := service.List(context.Background(), ports.RuntimeBlocklistFilter{
+		TenantID:       "writer",
+		Type:           "ip",
+		IncludeRevoked: true,
+		Limit:          25,
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != entry {
+		t.Fatalf("List() entries = %#v, want stored entry", got)
+	}
+	if len(store.listFilters) != 1 {
+		t.Fatalf("ListRuntimeBlocklistEntries calls = %d, want 1", len(store.listFilters))
+	}
+	filter := store.listFilters[0]
+	if filter.TenantID != "writer" || filter.Type != "ip" || !filter.IncludeRevoked || filter.Limit != 25 {
+		t.Fatalf("List() filter = %#v", filter)
+	}
+}
+
+func TestRevokeDelegatesTenantAndIDToStore(t *testing.T) {
+	revoked := &ports.RuntimeBlocklistEntry{ID: "rr-1", TenantID: "writer", Type: "domain", Value: "example.com"}
+	store := &recordingRuntimeBlocklistStore{revokedEntry: revoked}
+	service := New(store)
+
+	got, err := service.Revoke(context.Background(), "writer", "rr-1")
+	if err != nil {
+		t.Fatalf("Revoke() error = %v", err)
+	}
+	if got != revoked {
+		t.Fatalf("Revoke() entry = %#v, want revoked entry", got)
+	}
+	if store.revokeTenant != "writer" || store.revokeID != "rr-1" {
+		t.Fatalf("RevokeRuntimeBlocklistEntry called with tenant=%q id=%q", store.revokeTenant, store.revokeID)
+	}
+}
+
+func TestListAndRevokeRequireStore(t *testing.T) {
+	service := New(nil)
+	if _, err := service.List(context.Background(), ports.RuntimeBlocklistFilter{}); !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("List(nil store) error = %v, want ErrRuntimeUnavailable", err)
+	}
+	if _, err := service.Revoke(context.Background(), "writer", "rr-1"); !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("Revoke(nil store) error = %v, want ErrRuntimeUnavailable", err)
 	}
 }
