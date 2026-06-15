@@ -423,6 +423,7 @@ jobs:
           stack-name: sec-dev
           work-dir: infra/aws
           diff: true
+          refresh: true
 
       - name: Verify AWS Bedrock task role (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
@@ -622,6 +623,7 @@ jobs:
           stack-name: go-prod
           work-dir: infra/aws
           diff: true
+          refresh: true
 
       - name: Verify AWS Bedrock task role (go-prod)
         if: needs.changes.outputs.aws_go_prod_deploy == 'true'
