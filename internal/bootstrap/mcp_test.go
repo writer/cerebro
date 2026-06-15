@@ -127,6 +127,8 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.assets.search",
 		"cerebro.assets.get",
 		"cerebro.risk.summary",
+		"cerebro.risk.actions.list",
+		"cerebro.risk.actions.explain",
 		"cerebro.graph.neighborhood",
 		"cerebro.graph.impact",
 		"cerebro.graph.paths",
@@ -1044,7 +1046,8 @@ func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
 func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-aws": {Id: "writer-aws", SourceId: "aws", TenantId: "writer"},
+			"writer-aws":    {Id: "writer-aws", SourceId: "aws", TenantId: "writer"},
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
 		},
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {ID: "finding-1", RuntimeID: "writer-aws", TenantID: "writer", RuleID: "rule-1", Title: "Finding", Severity: "high", Status: "open"},
@@ -1365,6 +1368,144 @@ func TestMCPRiskSummaryAggregatesScopedRuntimeFindings(t *testing.T) {
 	recent := summary["recent_high_risk"].([]any)
 	if len(recent) == 0 || recent[0].(map[string]any)["id"] != "finding-critical" {
 		t.Fatalf("recent_high_risk = %#v", recent)
+	}
+}
+
+func TestMCPRiskActionsListAndExplain(t *testing.T) {
+	now := time.Now().UTC()
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws":    {Id: "writer-aws", SourceId: "aws", TenantId: "writer"},
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"cloud-public-prod-secrets": {
+				ID:           "cloud-public-prod-secrets",
+				TenantID:     "writer",
+				RuntimeID:    "writer-aws",
+				RuleID:       "cloud-public-resource-exposure",
+				Title:        "Cloud Public Resource Exposure",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				EventIDs:     []string{"evt-public"},
+				FindingWorkflow: ports.FindingWorkflow{
+					Assignee: "cloud-platform",
+				},
+				FindingRisk: ports.FindingRisk{
+					RiskScore:       90,
+					ConfidenceScore: 92,
+					RiskReasons:     []string{"external_exposure", "crown_jewel"},
+					RiskFactors: []ports.FindingRiskFactor{
+						{FactorID: "external_exposure", Category: "likelihood", Weight: 35, SeverityContribution: "high", EvidenceRefs: []string{"attribute:internet_exposed"}},
+					},
+				},
+				Attributes: map[string]string{
+					"action":               "public_network_ingress",
+					"internet_exposed":     "true",
+					"primary_resource_urn": "urn:cerebro:writer:aws_secret_store:prod-secrets",
+					"resource_name":        "prod-secrets",
+				},
+				LastObservedAt: now,
+			},
+		},
+	}
+	graph := &stubGraphStore{
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
+				{URN: "urn:cerebro:writer:finding:cloud-public-prod-secrets", EntityType: "finding", Label: "cloud-public-prod-secrets"},
+			},
+			Relations: []*ports.NeighborhoodRelation{
+				{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				{FromURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:cloud-public-prod-secrets"},
+			},
+		},
+	}
+	server := newMCPTestServerWithGraph(t, store, graph)
+	defer server.Close()
+
+	listResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.risk.actions.list",
+			"arguments": map[string]any{
+				"runtime_ids": []string{"writer-aws", "writer-github"},
+				"status":      "open",
+				"limit":       5,
+				"graph_limit": 3,
+			},
+		},
+	})
+	if listResp["error"] != nil {
+		t.Fatalf("risk.actions.list error = %#v", listResp["error"])
+	}
+	if listResp["result"].(map[string]any)["isError"] == true {
+		t.Fatalf("risk.actions.list tool error = %#v", listResp["result"])
+	}
+	content := listResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if content["graph_evidence_status"] != mcpGraphEvidenceIncluded || content["graph_neighborhood_count"] != float64(1) {
+		t.Fatalf("graph evidence content = %#v", content)
+	}
+	candidates := content["action_candidates"].([]any)
+	if len(candidates) != 1 {
+		t.Fatalf("action_candidates = %#v, want one candidate", candidates)
+	}
+	candidate := candidates[0].(map[string]any)
+	candidateID := "remove-public-exposure-urn-cerebro-writer-aws-secret-store-prod-secrets"
+	if candidate["id"] != candidateID || candidate["simulation_status"] != "simulated" {
+		t.Fatalf("candidate = %#v, want simulated public exposure candidate", candidate)
+	}
+	if candidate["owner"] != "cloud-platform" {
+		t.Fatalf("candidate owner = %#v, want cloud-platform", candidate["owner"])
+	}
+	scoreBreakdown := candidate["score_breakdown"].(map[string]any)
+	if scoreBreakdown["total"].(float64) <= 0 || scoreBreakdown["attack_path_count_reduction_points"].(float64) <= 0 {
+		t.Fatalf("score_breakdown = %#v, want positive attack-path contribution", scoreBreakdown)
+	}
+	if store.findingListRequest.RuntimeID != "" || len(store.findingListRequest.RuntimeIDs) != 2 || store.findingListRequest.RuntimeIDs[0] != "writer-aws" || store.findingListRequest.RuntimeIDs[1] != "writer-github" {
+		t.Fatalf("finding list request = %#v, want runtime_ids request", store.findingListRequest)
+	}
+	if graph.neighborhoodRootURN != "urn:cerebro:writer:aws_secret_store:prod-secrets" || graph.neighborhoodLimit != 3 {
+		t.Fatalf("graph request root=%q limit=%d, want prod-secrets limit 3", graph.neighborhoodRootURN, graph.neighborhoodLimit)
+	}
+
+	explainResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.risk.actions.explain",
+			"arguments": map[string]any{
+				"candidate_id": candidateID,
+				"runtime_ids":  []string{"writer-aws", "writer-github"},
+				"status":       "open",
+				"limit":        5,
+				"graph_limit":  3,
+			},
+		},
+	})
+	if explainResp["error"] != nil {
+		t.Fatalf("risk.actions.explain error = %#v", explainResp["error"])
+	}
+	if explainResp["result"].(map[string]any)["isError"] == true {
+		t.Fatalf("risk.actions.explain tool error = %#v", explainResp["result"])
+	}
+	explain := explainResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if explain["plan_model_version"] != "risk-action-plan-v2" {
+		t.Fatalf("plan_model_version = %#v, want risk-action-plan-v2", explain["plan_model_version"])
+	}
+	if explain["candidate"].(map[string]any)["id"] != candidateID {
+		t.Fatalf("explain candidate = %#v, want %s", explain["candidate"], candidateID)
+	}
+	if explain["expected_reduction"].(map[string]any)["risk_score"].(float64) <= 0 {
+		t.Fatalf("expected_reduction = %#v, want positive risk score reduction", explain["expected_reduction"])
+	}
+	if explain["ownership"].(map[string]any)["owner"] != "cloud-platform" {
+		t.Fatalf("ownership = %#v, want cloud-platform", explain["ownership"])
 	}
 }
 

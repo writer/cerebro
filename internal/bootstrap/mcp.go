@@ -19,6 +19,7 @@ import (
 	findingdomain "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/riskplan"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -26,25 +27,31 @@ import (
 )
 
 const (
-	mcpProtocolVersion          = "2025-11-25"
-	mcpEndpointPath             = "/api/v1/mcp"
-	mcpRedactedValue            = "[redacted]"
-	defaultMCPListLimit         = 25
-	maxMCPListLimit             = 100
-	defaultMCPAssetLimit        = 10
-	maxMCPAssetLimit            = 50
-	defaultMCPEvidenceLimit     = 25
-	maxMCPEvidenceLimit         = 100
-	defaultMCPNeighborhoodLimit = 10
-	maxMCPNeighborhoodLimit     = 50
-	defaultMCPGraphLimit        = 25
-	maxMCPGraphLimit            = 100
-	defaultMCPImpactLimit       = 100
-	maxMCPImpactLimit           = 250
-	defaultMCPRiskLimit         = 100
-	maxMCPRiskLimit             = 500
-	defaultMCPRecentRiskRows    = 10
-	mcpResourceMIMEJSON         = "application/json"
+	mcpProtocolVersion           = "2025-11-25"
+	mcpEndpointPath              = "/api/v1/mcp"
+	mcpRedactedValue             = "[redacted]"
+	defaultMCPListLimit          = 25
+	maxMCPListLimit              = 100
+	defaultMCPAssetLimit         = 10
+	maxMCPAssetLimit             = 50
+	defaultMCPEvidenceLimit      = 25
+	maxMCPEvidenceLimit          = 100
+	defaultMCPNeighborhoodLimit  = 10
+	maxMCPNeighborhoodLimit      = 50
+	defaultMCPGraphLimit         = 25
+	maxMCPGraphLimit             = 100
+	defaultMCPImpactLimit        = 100
+	maxMCPImpactLimit            = 250
+	defaultMCPRiskLimit          = 100
+	maxMCPRiskLimit              = 500
+	defaultMCPRiskActionRoots    = 3
+	maxMCPRiskActionRoots        = 10
+	defaultMCPRiskActionGraph    = 3
+	maxMCPRiskActionGraph        = 10
+	mcpGraphEvidenceIncluded     = "included"
+	mcpGraphEvidenceUnconfigured = "unconfigured"
+	defaultMCPRecentRiskRows     = 10
+	mcpResourceMIMEJSON          = "application/json"
 )
 
 type mcpJSONRPCRequest struct {
@@ -444,6 +451,10 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGetAsset(r, args)
 	case "cerebro.risk.summary":
 		return app.mcpRiskSummary(r, args)
+	case "cerebro.risk.actions.list":
+		return app.mcpRiskActionsList(r, args)
+	case "cerebro.risk.actions.explain":
+		return app.mcpRiskActionsExplain(r, args)
 	case "cerebro.graph.neighborhood":
 		return app.mcpGraphNeighborhood(r, args)
 	case "cerebro.graph.impact":
@@ -913,6 +924,200 @@ func (app *App) mcpRiskSummary(r *http.Request, args map[string]any) (any, error
 	return summary, nil
 }
 
+type mcpRiskActionPlanResult struct {
+	Plan                   riskplan.Plan
+	Limit                  int
+	FindingLimit           int
+	GraphEvidenceStatus    string
+	GraphNeighborhoodCount int
+	PartialErrors          []string
+}
+
+func (app *App) mcpRiskActionsList(r *http.Request, args map[string]any) (any, error) {
+	result, err := app.mcpBuildRiskActionPlan(r, args)
+	if err != nil {
+		return nil, err
+	}
+	planValue, err := jsonValue(result.Plan)
+	if err != nil {
+		return nil, err
+	}
+	candidatesValue, err := jsonValue(result.Plan.ActionCandidates)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"plan":                     planValue,
+		"action_candidates":        candidatesValue,
+		"graph_evidence_status":    result.GraphEvidenceStatus,
+		"graph_neighborhood_count": result.GraphNeighborhoodCount,
+		"metadata":                 mcpResponseMetadata(result.Limit, len(result.Plan.ActionCandidates), result.PartialErrors),
+	}, nil
+}
+
+func (app *App) mcpRiskActionsExplain(r *http.Request, args map[string]any) (any, error) {
+	candidateID := mcpStringArg(args, "candidate_id")
+	if candidateID == "" {
+		return nil, fmt.Errorf("%w: candidate_id is required", findingdomain.ErrInvalidRequest)
+	}
+	result, err := app.mcpBuildRiskActionPlan(r, args)
+	if err != nil {
+		return nil, err
+	}
+	for _, candidate := range result.Plan.ActionCandidates {
+		if candidate.ID != candidateID {
+			continue
+		}
+		candidateValue, err := jsonValue(candidate)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"candidate":                candidateValue,
+			"score_breakdown":          candidate.ScoreBreakdown,
+			"expected_reduction":       candidate.ExpectedReduction,
+			"effort":                   candidate.Effort,
+			"ownership":                candidate.Ownership,
+			"evidence":                 candidate.Evidence,
+			"outcome_learning":         candidate.OutcomeLearning,
+			"risk_delta":               candidate.RiskDelta,
+			"plan_model_version":       result.Plan.ModelVersion,
+			"graph_evidence_status":    result.GraphEvidenceStatus,
+			"graph_neighborhood_count": result.GraphNeighborhoodCount,
+			"metadata":                 mcpResponseMetadata(result.Limit, 1, result.PartialErrors),
+		}, nil
+	}
+	return nil, fmt.Errorf("%w: risk action candidate %q not found", ports.ErrFindingNotFound, candidateID)
+}
+
+func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mcpRiskActionPlanResult, error) {
+	tenantID := mcpTenantArg(r, args)
+	runtimeIDs := mcpRuntimeIDsArg(args)
+	limit, err := mcpBoundedLimit(args, "limit", riskplan.DefaultCandidateLimit, riskplan.MaxCandidateLimit)
+	if err != nil {
+		return mcpRiskActionPlanResult{}, err
+	}
+	findingLimit, err := mcpBoundedLimit(args, "finding_limit", defaultMCPRiskLimit, maxMCPRiskLimit)
+	if err != nil {
+		return mcpRiskActionPlanResult{}, err
+	}
+	rootLimit, err := mcpBoundedLimit(args, "resource_limit", defaultMCPRiskActionRoots, maxMCPRiskActionRoots)
+	if err != nil {
+		return mcpRiskActionPlanResult{}, err
+	}
+	graphLimit, err := mcpBoundedLimit(args, "graph_limit", defaultMCPRiskActionGraph, maxMCPRiskActionGraph)
+	if err != nil {
+		return mcpRiskActionPlanResult{}, err
+	}
+	status := mcpStringArg(args, "status")
+	if status != "" {
+		parsed, err := parseFindingStatus(status)
+		if err != nil {
+			return mcpRiskActionPlanResult{}, err
+		}
+		status = findingStatusString(parsed)
+	}
+	if len(runtimeIDs) > 0 {
+		runtimeStore := sourceRuntimeStore(app.deps.StateStore)
+		for _, runtimeID := range runtimeIDs {
+			if err := authorizeSourceRuntimeIDTenant(r.Context(), runtimeStore, runtimeID); err != nil {
+				return mcpRiskActionPlanResult{}, mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
+			}
+		}
+	}
+	if tenantID == "" && len(runtimeIDs) == 0 && requiresTenantFilter(r.Context()) {
+		return mcpRiskActionPlanResult{}, errTenantForbidden
+	}
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		return mcpRiskActionPlanResult{}, err
+	}
+	store := findingStore(app.deps.StateStore)
+	if store == nil {
+		return mcpRiskActionPlanResult{}, findingdomain.ErrRuntimeUnavailable
+	}
+	listRequest := ports.ListFindingsRequest{
+		TenantID: tenantID,
+		Status:   status,
+		Limit:    boundedUint32(findingLimit),
+		Order:    ports.FindingOrderRiskScore,
+	}
+	if len(runtimeIDs) == 1 {
+		listRequest.RuntimeID = runtimeIDs[0]
+	} else if len(runtimeIDs) > 1 {
+		listRequest.RuntimeIDs = runtimeIDs
+	}
+	findings, err := store.ListFindings(r.Context(), listRequest)
+	if err != nil {
+		return mcpRiskActionPlanResult{}, err
+	}
+	filtered := findings[:0]
+	for _, finding := range findings {
+		if finding == nil || !tenantAllowedByContext(r.Context(), finding.TenantID) {
+			continue
+		}
+		filtered = append(filtered, finding)
+	}
+	findings = filtered
+
+	graphEvidenceStatus := mcpGraphEvidenceUnconfigured
+	graphNeighborhoods := map[string]*ports.EntityNeighborhood{}
+	partialErrors := []string{}
+	now := time.Now().UTC()
+	if graphStore := graphQueryStore(app.deps.GraphStore); graphStore != nil {
+		graphEvidenceStatus = mcpGraphEvidenceIncluded
+		targetURNs := riskplan.TargetURNs(findings, riskplan.Options{
+			TenantID:        tenantID,
+			RuntimeIDs:      runtimeIDs,
+			SeedLimit:       riskplan.MaxSimulationSeedLimit,
+			Now:             now,
+			IncludeUnscored: mcpBoolArg(args, "include_unscored"),
+		})
+		seen := map[string]struct{}{}
+		for _, targetURN := range targetURNs {
+			if len(seen) >= rootLimit {
+				break
+			}
+			targetURN = strings.TrimSpace(targetURN)
+			if targetURN == "" {
+				continue
+			}
+			if _, ok := seen[targetURN]; ok {
+				continue
+			}
+			seen[targetURN] = struct{}{}
+			neighborhood, err := graphStore.GetEntityNeighborhood(r.Context(), targetURN, graphLimit)
+			switch {
+			case err == nil:
+				if neighborhood == nil {
+					neighborhood = &ports.EntityNeighborhood{}
+				}
+				graphNeighborhoods[targetURN] = neighborhood
+			case errors.Is(err, ports.ErrGraphEntityNotFound):
+				continue
+			default:
+				partialErrors = append(partialErrors, "graph neighborhood failed for "+targetURN+": "+safeMCPToolError(err))
+			}
+		}
+	}
+	plan := riskplan.Analyze(findings, riskplan.Options{
+		TenantID:           tenantID,
+		RuntimeIDs:         runtimeIDs,
+		CandidateLimit:     limit,
+		SeedLimit:          riskplan.MaxSimulationSeedLimit,
+		GraphNeighborhoods: graphNeighborhoods,
+		Now:                now,
+		IncludeUnscored:    mcpBoolArg(args, "include_unscored"),
+	})
+	return mcpRiskActionPlanResult{
+		Plan:                   plan,
+		Limit:                  limit,
+		FindingLimit:           findingLimit,
+		GraphEvidenceStatus:    graphEvidenceStatus,
+		GraphNeighborhoodCount: len(graphNeighborhoods),
+		PartialErrors:          partialErrors,
+	}, nil
+}
+
 func (app *App) mcpGraphNeighborhood(r *http.Request, args map[string]any) (any, error) {
 	rootURN := mcpStringArg(args, "root_urn")
 	limit, err := mcpUint32Arg(args, "limit")
@@ -1349,6 +1554,60 @@ func mcpTools() []mcpTool {
 			}, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Risk Summary"),
+		},
+		{
+			Name:        "cerebro.risk.actions.list",
+			Title:       "List Risk Actions",
+			Description: "Rank next-best remediation and planning-blocker candidates from visible findings using bounded risk-delta simulations and graph context.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id":        map[string]any{"type": "string"},
+				"runtime_id":       map[string]any{"type": "string"},
+				"runtime_ids":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"status":           map[string]any{"type": "string", "enum": []string{"open", "resolved", "suppressed"}},
+				"limit":            mcpLimitSchema(riskplan.MaxCandidateLimit, "risk action candidates"),
+				"finding_limit":    mcpLimitSchema(maxMCPRiskLimit, "risk findings to seed the plan"),
+				"resource_limit":   mcpLimitSchema(maxMCPRiskActionRoots, "candidate target graph roots"),
+				"graph_limit":      mcpLimitSchema(maxMCPRiskActionGraph, "graph neighbors per candidate target"),
+				"include_unscored": map[string]any{"type": "boolean"},
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"plan":                     map[string]any{"type": "object"},
+				"action_candidates":        map[string]any{"type": "array"},
+				"graph_evidence_status":    map[string]any{"type": "string"},
+				"graph_neighborhood_count": map[string]any{"type": "integer"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("List Risk Actions"),
+		},
+		{
+			Name:        "cerebro.risk.actions.explain",
+			Title:       "Explain Risk Action",
+			Description: "Explain one ranked risk action candidate by id, including score breakdown, expected reduction, effort, ownership, evidence quality, outcome learning, and risk delta.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"candidate_id":     map[string]any{"type": "string"},
+				"tenant_id":        map[string]any{"type": "string"},
+				"runtime_id":       map[string]any{"type": "string"},
+				"runtime_ids":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"status":           map[string]any{"type": "string", "enum": []string{"open", "resolved", "suppressed"}},
+				"limit":            mcpLimitSchema(riskplan.MaxCandidateLimit, "risk action candidates"),
+				"finding_limit":    mcpLimitSchema(maxMCPRiskLimit, "risk findings to seed the plan"),
+				"resource_limit":   mcpLimitSchema(maxMCPRiskActionRoots, "candidate target graph roots"),
+				"graph_limit":      mcpLimitSchema(maxMCPRiskActionGraph, "graph neighbors per candidate target"),
+				"include_unscored": map[string]any{"type": "boolean"},
+			}, []string{"candidate_id"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"candidate":                map[string]any{"type": "object"},
+				"score_breakdown":          map[string]any{"type": "object"},
+				"expected_reduction":       map[string]any{"type": "object"},
+				"effort":                   map[string]any{"type": "object"},
+				"ownership":                map[string]any{"type": "object"},
+				"evidence":                 map[string]any{"type": "object"},
+				"outcome_learning":         map[string]any{"type": "object"},
+				"risk_delta":               map[string]any{"type": "object"},
+				"plan_model_version":       map[string]any{"type": "string"},
+				"graph_evidence_status":    map[string]any{"type": "string"},
+				"graph_neighborhood_count": map[string]any{"type": "integer"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Explain Risk Action"),
 		},
 		{
 			Name:        "cerebro.graph.neighborhood",
@@ -2693,6 +2952,59 @@ func mcpStringArg(args map[string]any, key string) string {
 	default:
 		return strings.TrimSpace(fmt.Sprint(typed))
 	}
+}
+
+func mcpRuntimeIDsArg(args map[string]any) []string {
+	values := []string{}
+	if runtimeID := mcpStringArg(args, "runtime_id"); runtimeID != "" {
+		values = append(values, runtimeID)
+	}
+	raw, ok := args["runtime_ids"]
+	if !ok || raw == nil {
+		return normalizeMCPStringList(values)
+	}
+	switch typed := raw.(type) {
+	case []any:
+		for _, item := range typed {
+			values = append(values, mcpAnyString(item))
+		}
+	case []string:
+		values = append(values, typed...)
+	case string:
+		values = append(values, splitMCPStringList(typed)...)
+	default:
+		values = append(values, splitMCPStringList(mcpAnyString(typed))...)
+	}
+	return normalizeMCPStringList(values)
+}
+
+func splitMCPStringList(value string) []string {
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t'
+	})
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		values = append(values, part)
+	}
+	return values
+}
+
+func normalizeMCPStringList(values []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	sort.Strings(normalized)
+	return normalized
 }
 
 func mcpBoolArg(args map[string]any, key string) bool {
