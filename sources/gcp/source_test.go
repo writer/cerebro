@@ -11,6 +11,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/gcpcloud"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -43,9 +44,9 @@ func TestCheckRequiresProjectAndAuth(t *testing.T) {
 }
 
 func TestGCPPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
-	pull, err := gcpPullFromRecords[string](nil, "next-page", nil)
+	pull, err := gcpcloud.PullFromRecords[string](nil, "next-page", nil)
 	if err != nil {
-		t.Fatalf("gcpPullFromRecords() error = %v", err)
+		t.Fatalf("gcpcloud.PullFromRecords() error = %v", err)
 	}
 	if len(pull.Events) != 0 {
 		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))
@@ -71,6 +72,8 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image"},
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset"},
+		{family: familyBigtableInstance, kind: "gcp.bigtable_instance"},
+		{family: familyBigtableTable, kind: "gcp.bigtable_table"},
 		{family: familyCertificateManagerCertificate, kind: "gcp.certificate_manager_certificate"},
 		{family: familyCertificateManagerCertificateMap, kind: "gcp.certificate_manager_certificate_map"},
 		{family: familyCertificateManagerCertificateMapEntry, kind: "gcp.certificate_manager_certificate_map_entry"},
@@ -126,7 +129,10 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyGroup, config: map[string]string{"customer_id": "C01"}, kind: "gcp.group"},
 		{family: familyGroupMember, config: map[string]string{"group_key": "security@writer.com"}, kind: "gcp.group_membership"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key"},
+		{family: familyLoggingMetric, kind: "gcp.logging_metric"},
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink"},
+		{family: familyMonitoringAlertPolicy, kind: "gcp.monitoring_alert_policy"},
+		{family: familyMonitoringNotificationChannel, kind: "gcp.monitoring_notification_channel"},
 		{family: familyOrgPolicy, kind: "gcp.org_policy"},
 		{family: familyPubSubSubscription, kind: "gcp.pubsub_subscription"},
 		{family: familyPubSubTopic, kind: "gcp.pubsub_topic"},
@@ -138,6 +144,8 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familySecret, kind: "gcp.secret_manager_secret"},
 		{family: familyAudit, kind: "gcp.audit"},
 		{family: familyServiceUsageService, kind: "gcp.service_usage_service"},
+		{family: familySpannerDatabase, kind: "gcp.spanner_database"},
+		{family: familySpannerInstance, kind: "gcp.spanner_instance"},
 		{family: familyVPCAccessConnector, kind: "gcp.vpc_access_connector"},
 		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
 	} {
@@ -312,6 +320,8 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyComputeInstance, kind: "gcp.compute_instance", attr: "service_account_email", want: "vm@writer-prod.iam.gserviceaccount.com"},
 		{family: familyGKECluster, kind: "gcp.gke_cluster", attr: "network_tags", want: "gke"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"},
+		{family: familyBigtableInstance, kind: "gcp.bigtable_instance", attr: "state", want: "READY"},
+		{family: familyBigtableTable, kind: "gcp.bigtable_table", attr: "deletion_protection", want: "true"},
 		{family: familyCertificateManagerCertificate, kind: "gcp.certificate_manager_certificate", attr: "managed_state", want: "ACTIVE"},
 		{family: familyCertificateManagerCertificateMap, kind: "gcp.certificate_manager_certificate_map", attr: "target_https_proxies", want: "prod-https-proxy"},
 		{family: familyCertificateManagerCertificateMapEntry, kind: "gcp.certificate_manager_certificate_map_entry", attr: "hostname", want: "app.writer.example"},
@@ -363,7 +373,10 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyGCSObject, kind: "gcp.gcs_object", attr: "content_findings", want: "pii,secret"},
 		{family: familySecret, kind: "gcp.secret_manager_secret", attr: "rotation_enabled", want: "true"},
 		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key", attr: "protection_level", want: "HSM"},
+		{family: familyLoggingMetric, kind: "gcp.logging_metric", attr: "metric_kind", want: "DELTA"},
 		{family: familyLoggingSink, kind: "gcp.logging_project_sink", attr: "exclusions_count", want: "1"},
+		{family: familyMonitoringAlertPolicy, kind: "gcp.monitoring_alert_policy", attr: "severity", want: "CRITICAL"},
+		{family: familyMonitoringNotificationChannel, kind: "gcp.monitoring_notification_channel", attr: "channel_type", want: "email"},
 		{family: familyOrgPolicy, kind: "gcp.org_policy", attr: "constraint", want: "iam.disableServiceAccountKeyCreation"},
 		{family: familyPubSubSubscription, kind: "gcp.pubsub_subscription", attr: "dead_letter_topic_name", want: "dead-letter"},
 		{family: familyPubSubTopic, kind: "gcp.pubsub_topic", attr: "kms_key_name", want: "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/pubsub"},
@@ -371,6 +384,8 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository", attr: "immutable_tags", want: "true"},
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image", attr: "digest", want: "sha256:abc"},
 		{family: familyServiceUsageService, kind: "gcp.service_usage_service", attr: "service_name", want: "bigquery.googleapis.com"},
+		{family: familySpannerDatabase, kind: "gcp.spanner_database", attr: "drop_protection_enabled", want: "true"},
+		{family: familySpannerInstance, kind: "gcp.spanner_instance", attr: "processing_units", want: "100"},
 		{family: familyVPCAccessConnector, kind: "gcp.vpc_access_connector", attr: "ip_cidr_range", want: "10.8.0.0/28"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -670,6 +685,7 @@ func TestReadLiveGCPDisabledOptionalServicesReturnEmpty(t *testing.T) {
 		{family: familyAIDataset, path: "/v1/projects/writer-prod/locations/-/datasets"},
 		{family: familyAIEndpoint, path: "/v1/projects/writer-prod/locations/-/endpoints"},
 		{family: familyBigQueryDataset, path: "/bigquery/v2/projects/writer-prod/datasets"},
+		{family: familyBigtableInstance, path: "/v2/projects/writer-prod/instances"},
 		{family: familyCertificateManagerCertificate, path: "/v1/projects/writer-prod/locations/-/certificates"},
 		{family: familyCertificateManagerCertificateMap, path: "/v1/projects/writer-prod/locations/-/certificateMaps"},
 		{family: familyCertificateManagerCertificateMapEntry, path: "/v1/projects/writer-prod/locations/-/certificateMaps"},
@@ -680,7 +696,11 @@ func TestReadLiveGCPDisabledOptionalServicesReturnEmpty(t *testing.T) {
 		{family: familyCloudFunction, path: "/v2/projects/writer-prod/locations/-/functions"},
 		{family: familyContainerVuln, path: "/v1/projects/writer-prod/occurrences"},
 		{family: familyDNSManagedZone, path: "/dns/v1/projects/writer-prod/managedZones"},
+		{family: familyLoggingMetric, path: "/v2/projects/writer-prod/metrics"},
+		{family: familyMonitoringAlertPolicy, path: "/v3/projects/writer-prod/alertPolicies"},
+		{family: familyMonitoringNotificationChannel, path: "/v3/projects/writer-prod/notificationChannels"},
 		{family: familySecret, path: "/v1/projects/writer-prod/secrets"},
+		{family: familySpannerInstance, path: "/v1/projects/writer-prod/instances"},
 		{family: familyVPCAccessConnector, path: "/v1/projects/writer-prod/locations/-/connectors"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -877,6 +897,13 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"datasets": []map[string]any{{"id": "writer-prod:analytics", "datasetReference": map[string]string{"projectId": "writer-prod", "datasetId": "analytics"}, "friendlyName": "Analytics", "location": "US", "labels": map[string]string{"env": "prod"}}}})
 		case "/bigquery/v2/projects/writer-prod/datasets/analytics":
 			writeJSON(t, w, map[string]any{"id": "writer-prod:analytics", "selfLink": "https://bigquery.googleapis.com/bigquery/v2/projects/writer-prod/datasets/analytics", "datasetReference": map[string]string{"projectId": "writer-prod", "datasetId": "analytics"}, "friendlyName": "Analytics", "description": "prod analytics dataset", "location": "US", "labels": map[string]string{"env": "prod"}, "access": []map[string]string{{"role": "READER", "specialGroup": "projectReaders"}, {"role": "OWNER", "userByEmail": "data-owner@writer.com"}}, "defaultEncryptionConfiguration": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/bq"}, "creationTime": "1770000000000", "lastModifiedTime": "1770003600000"})
+		case "/v2/projects/writer-prod/instances":
+			writeJSON(t, w, map[string]any{"instances": []map[string]any{{"name": "projects/writer-prod/instances/prod-bt", "displayName": "prod-bt", "state": "READY", "type": "PRODUCTION", "labels": map[string]string{"env": "prod"}, "createTime": "2026-04-23T00:00:00Z", "satisfiesPzs": true}}})
+		case "/v2/projects/writer-prod/instances/prod-bt/tables":
+			if got := r.URL.Query().Get("view"); got != "FULL" {
+				t.Fatalf("bigtable table view = %q, want FULL", got)
+			}
+			writeJSON(t, w, map[string]any{"tables": []map[string]any{{"name": "projects/writer-prod/instances/prod-bt/tables/events", "clusterStates": map[string]any{"prod-bt-c1": map[string]string{"replicationState": "READY"}}, "columnFamilies": map[string]any{"cf1": map[string]any{"gcRule": map[string]any{"maxNumVersions": 3}}}, "granularity": "MILLIS", "deletionProtection": true, "changeStreamConfig": map[string]string{"retentionPeriod": "604800s"}}}})
 		case "/v1/projects/writer-prod/locations/-/certificates":
 			if got := r.URL.Query().Get("pageSize"); got != "10" {
 				t.Fatalf("certificate manager certificates pageSize = %q, want 10", got)
@@ -1217,6 +1244,23 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("logging sink pageSize = %q, want 10", got)
 			}
 			writeJSON(t, w, map[string]any{"sinks": []map[string]any{{"name": "ids-threat", "resourceName": "projects/writer-prod/sinks/ids-threat", "description": "cloud ids threat export", "destination": "pubsub.googleapis.com/projects/writer-prod/topics/security-alerts", "filter": `logName="projects/writer-prod/logs/ids.googleapis.com%2Fthreat"`, "disabled": false, "writerIdentity": "serviceAccount:writer-prod@gcp-sa-logging.iam.gserviceaccount.com", "includeChildren": false, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "exclusions": []map[string]any{{"name": "debug", "filter": "severity<ERROR", "disabled": false}}}}})
+		case "/v2/projects/writer-prod/metrics":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("logging metric pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"metrics": []map[string]any{{"name": "error_count", "description": "error log count", "filter": `severity>=ERROR`, "disabled": false, "metricDescriptor": map[string]string{"type": "logging.googleapis.com/user/error_count", "metricKind": "DELTA", "valueType": "INT64", "unit": "1", "displayName": "Error count"}, "labelExtractors": map[string]string{"service": `EXTRACT(resource.labels.service_name)`}, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "version": "V2"}}})
+		case "/v3/projects/writer-prod/alertPolicies":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("monitoring alert policy pageSize = %q, want 10", got)
+			}
+			enabled := true
+			writeJSON(t, w, map[string]any{"alertPolicies": []map[string]any{{"name": "projects/writer-prod/alertPolicies/policy-1", "displayName": "Critical error rate", "documentation": map[string]string{"content": "Investigate service errors", "mimeType": "text/markdown", "subject": "Critical errors"}, "userLabels": map[string]string{"env": "prod"}, "enabled": enabled, "combiner": "OR", "conditions": []map[string]any{{"name": "projects/writer-prod/alertPolicies/policy-1/conditions/condition-1", "displayName": "error rate", "conditionThreshold": map[string]any{"filter": `metric.type="logging.googleapis.com/user/error_count"`}}}, "notificationChannels": []string{"projects/writer-prod/notificationChannels/channel-1"}, "severity": "CRITICAL", "creationRecord": map[string]string{"mutateTime": "2026-04-23T00:00:00Z", "mutatedBy": "admin@writer.com"}, "mutationRecord": map[string]string{"mutateTime": "2026-04-24T00:00:00Z", "mutatedBy": "admin@writer.com"}}}})
+		case "/v3/projects/writer-prod/notificationChannels":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("monitoring notification channel pageSize = %q, want 10", got)
+			}
+			enabled := true
+			writeJSON(t, w, map[string]any{"notificationChannels": []map[string]any{{"name": "projects/writer-prod/notificationChannels/channel-1", "type": "email", "displayName": "Security Oncall", "description": "security paging channel", "labels": map[string]string{"email_address": "security-oncall@writer.com"}, "userLabels": map[string]string{"env": "prod"}, "enabled": enabled, "verificationStatus": "VERIFIED"}}})
 		case "/v1/projects/writer-prod/topics":
 			if got := r.URL.Query().Get("pageSize"); got != "10" {
 				t.Fatalf("pubsub topic pageSize = %q, want 10", got)
@@ -1248,6 +1292,16 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				return
 			}
 			writeJSON(t, w, map[string]any{"services": []map[string]any{{"name": "projects/123456789/services/bigquery.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "bigquery.googleapis.com", "title": "BigQuery API"}}, {"name": "projects/123456789/services/aiplatform.googleapis.com", "state": "ENABLED", "config": map[string]string{"name": "aiplatform.googleapis.com", "title": "Vertex AI API"}}}})
+		case "/v1/projects/writer-prod/instances":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("spanner instance pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"instances": []map[string]any{{"name": "projects/writer-prod/instances/prod-spanner", "config": "projects/writer-prod/instanceConfigs/regional-us-central1", "displayName": "prod-spanner", "processingUnits": 100, "state": "READY", "labels": map[string]string{"env": "prod"}, "endpointUris": []string{"spanner.googleapis.com"}, "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "instanceType": "PROVISIONED"}}})
+		case "/v1/projects/writer-prod/instances/prod-spanner/databases":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("spanner database pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"databases": []map[string]any{{"name": "projects/writer-prod/instances/prod-spanner/databases/app", "state": "READY", "createTime": "2026-04-23T00:00:00Z", "versionRetentionPeriod": "1h", "earliestVersionTime": "2026-04-23T00:00:00Z", "encryptionConfig": map[string]string{"encryptionType": "CUSTOMER_MANAGED_ENCRYPTION", "kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/spanner"}, "encryptionInfo": []map[string]string{{"encryptionType": "CUSTOMER_MANAGED_ENCRYPTION", "kmsKeyVersion": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/spanner/cryptoKeyVersions/1"}}, "databaseDialect": "POSTGRESQL", "enableDropProtection": true}}})
 		case "/v2/projects/writer-prod/policies":
 			enforce := true
 			writeJSON(t, w, map[string]any{"policies": []map[string]any{{"name": "projects/writer-prod/policies/iam.disableServiceAccountKeyCreation", "spec": map[string]any{"rules": []map[string]any{{"enforce": enforce}}}}}})
