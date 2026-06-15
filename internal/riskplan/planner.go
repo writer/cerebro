@@ -512,10 +512,7 @@ func outcomeLearningForTarget(targetURN string, neighborhoods map[string]*ports.
 		return learning
 	}
 	seenActions := map[string]struct{}{}
-	for _, neighborhood := range neighborhoods {
-		if neighborhood == nil {
-			continue
-		}
+	if neighborhood := neighborhoodForTarget(targetURN, neighborhoods); neighborhood != nil {
 		for _, node := range append(append([]*ports.NeighborhoodNode{}, neighborhood.Root), neighborhood.Neighbors...) {
 			if node == nil {
 				continue
@@ -526,6 +523,11 @@ func outcomeLearningForTarget(targetURN string, neighborhoods map[string]*ports.
 			if strings.Contains(strings.ToLower(node.EntityType), "outcome") {
 				learning.PositiveOutcomeCount++
 			}
+		}
+	}
+	for _, neighborhood := range neighborhoods {
+		if neighborhood == nil {
+			continue
 		}
 		for _, relation := range neighborhood.Relations {
 			if relation == nil || !relationTouchesTarget(relation, targetURN) {
@@ -550,6 +552,18 @@ func outcomeLearningForTarget(targetURN string, neighborhoods map[string]*ports.
 		learning.Status = "learned_from_prior_outcomes"
 	}
 	return learning
+}
+
+func neighborhoodForTarget(targetURN string, neighborhoods map[string]*ports.EntityNeighborhood) *ports.EntityNeighborhood {
+	if neighborhood := neighborhoods[targetURN]; neighborhood != nil {
+		return neighborhood
+	}
+	for key, neighborhood := range neighborhoods {
+		if strings.EqualFold(strings.TrimSpace(key), targetURN) {
+			return neighborhood
+		}
+	}
+	return nil
 }
 
 func relationTouchesTarget(relation *ports.NeighborhoodRelation, targetURN string) bool {

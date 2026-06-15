@@ -126,6 +126,19 @@ func TestAnalyzeRanksSimulatedCandidatesWithFirstClassSignals(t *testing.T) {
 	if top.OutcomeLearning.Status != "learned_from_prior_outcomes" || top.OutcomeLearning.PositiveOutcomeCount == 0 {
 		t.Fatalf("outcome learning = %#v, want learned positive outcome", top.OutcomeLearning)
 	}
+	var payments Candidate
+	for _, candidate := range plan.ActionCandidates {
+		if candidate.TargetURN == "urn:cerebro:writer:github_repository:payments-api" {
+			payments = candidate
+			break
+		}
+	}
+	if payments.ID == "" {
+		t.Fatalf("action candidates = %#v, want payments-api candidate", plan.ActionCandidates)
+	}
+	if payments.OutcomeLearning.Status != "no_prior_outcomes" || payments.OutcomeLearning.PriorActionCount != 0 || payments.OutcomeLearning.PositiveOutcomeCount != 0 {
+		t.Fatalf("payments outcome learning = %#v, want no leaked prior outcomes", payments.OutcomeLearning)
+	}
 }
 
 func TestAnalyzeDeduplicatesStoredAndRecomputedRiskFactorsPerFinding(t *testing.T) {
