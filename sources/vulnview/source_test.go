@@ -8,7 +8,25 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
+
+func TestParseSettingsUsesRuntimeTenantFallback(t *testing.T) {
+	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+		"base_url":                      "http://127.0.0.1/api",
+		"client_id":                     "client",
+		"client_secret":                 "secret",
+		"family":                        "asset",
+		"okta_issuer":                   "http://127.0.0.1/oauth2/default",
+		sourceconfig.RuntimeTenantIDKey: "writer",
+	}), true)
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v", err)
+	}
+	if settings.tenantID != "writer" {
+		t.Fatalf("tenantID = %q, want writer", settings.tenantID)
+	}
+}
 
 func TestParseSettingsRejectsUnsafeBaseURL(t *testing.T) {
 	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- invalid config fixture uses placeholder secret text.

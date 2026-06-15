@@ -232,7 +232,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 
 func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	resolved := settings{
-		tenantID:     configValue(cfg, "tenant_id"),
+		tenantID:     firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, "__cerebro_runtime_tenant_id")),
 		family:       configValue(cfg, "family"),
 		baseURL:      configValue(cfg, "base_url"),
 		tokenURL:     configValue(cfg, "token_url"),

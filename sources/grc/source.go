@@ -221,7 +221,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, error) {
 	resolved := settings{
 		provider:     configValue(cfg, "provider"),
-		tenantID:     configValue(cfg, "tenant_id"),
+		tenantID:     firstNonEmptyString(configValue(cfg, "tenant_id"), configValue(cfg, "__cerebro_runtime_tenant_id")),
 		family:       configValue(cfg, "family"),
 		baseURL:      configValue(cfg, "base_url"),
 		tokenURL:     configValue(cfg, "token_url"),

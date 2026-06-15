@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 const (
@@ -42,6 +43,21 @@ func TestParseSettingsRequiresTenant(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("Check() error = nil, want tenant_id error")
+	}
+}
+
+func TestParseSettingsUsesRuntimeTenantFallback(t *testing.T) {
+	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"client_id":                     testClientID,
+		"client_secret":                 testClientSecret,
+		"family":                        familyVendor,
+		sourceconfig.RuntimeTenantIDKey: "writer",
+	}), true)
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v", err)
+	}
+	if settings.tenantID != "writer" {
+		t.Fatalf("tenantID = %q, want writer", settings.tenantID)
 	}
 }
 
