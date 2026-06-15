@@ -428,6 +428,205 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 	}
 }
 
+func TestConnectorCatalogAdvertisesAWSOnboardingGuidance(t *testing.T) {
+	source := &bootstrapTokenSource{id: "aws", emittedKinds: []string{"aws.s3_bucket"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Connectors []struct {
+			SourceID          string `json:"source_id"`
+			DisplayName       string `json:"display_name"`
+			ConnectionMethods []struct {
+				ID            string `json:"id"`
+				ShortLabel    string `json:"short_label"`
+				Category      string `json:"category"`
+				Recommended   bool   `json:"recommended"`
+				Prerequisites []any  `json:"prerequisites"`
+				Steps         []struct {
+					ID       string   `json:"id"`
+					Commands []string `json:"commands"`
+				} `json:"steps"`
+				Commands      []string `json:"commands"`
+				ProductGroups []struct {
+					ID       string   `json:"id"`
+					Families []string `json:"families"`
+				} `json:"product_groups"`
+				DeploymentGuides []struct {
+					ID   string `json:"id"`
+					Body string `json:"body"`
+				} `json:"deployment_guides"`
+				RegionGuidance *struct {
+					SupportsGlobal bool `json:"supports_global"`
+				} `json:"region_guidance"`
+				SecurityNotes []string `json:"security_notes"`
+			} `json:"connection_methods"`
+		} `json:"connectors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Connectors) != 1 || payload.Connectors[0].SourceID != "aws" {
+		t.Fatalf("connectors = %#v, want aws", payload.Connectors)
+	}
+	if got := payload.Connectors[0].DisplayName; got != "Amazon Web Services" {
+		t.Fatalf("display_name = %q, want Amazon Web Services", got)
+	}
+	var ssoMethod *struct {
+		ID            string `json:"id"`
+		ShortLabel    string `json:"short_label"`
+		Category      string `json:"category"`
+		Recommended   bool   `json:"recommended"`
+		Prerequisites []any  `json:"prerequisites"`
+		Steps         []struct {
+			ID       string   `json:"id"`
+			Commands []string `json:"commands"`
+		} `json:"steps"`
+		Commands      []string `json:"commands"`
+		ProductGroups []struct {
+			ID       string   `json:"id"`
+			Families []string `json:"families"`
+		} `json:"product_groups"`
+		DeploymentGuides []struct {
+			ID   string `json:"id"`
+			Body string `json:"body"`
+		} `json:"deployment_guides"`
+		RegionGuidance *struct {
+			SupportsGlobal bool `json:"supports_global"`
+		} `json:"region_guidance"`
+		SecurityNotes []string `json:"security_notes"`
+	}
+	for index := range payload.Connectors[0].ConnectionMethods {
+		method := &payload.Connectors[0].ConnectionMethods[index]
+		if method.ID == connectorAuthMethodAWSSSOProfile {
+			ssoMethod = method
+			break
+		}
+	}
+	if ssoMethod == nil {
+		t.Fatalf("aws_sso_profile method missing: %#v", payload.Connectors[0].ConnectionMethods)
+	}
+	if !ssoMethod.Recommended || ssoMethod.ShortLabel != "AWS SSO" || ssoMethod.Category != "Recommended" {
+		t.Fatalf("aws sso method guidance = %#v, want recommended AWS SSO", ssoMethod)
+	}
+	if len(ssoMethod.Prerequisites) < 3 || len(ssoMethod.Steps) < 5 || len(ssoMethod.Commands) == 0 {
+		t.Fatalf("aws sso guidance incomplete: %#v", ssoMethod)
+	}
+	if ssoMethod.RegionGuidance == nil || !ssoMethod.RegionGuidance.SupportsGlobal {
+		t.Fatalf("region guidance = %#v, want global guidance", ssoMethod.RegionGuidance)
+	}
+	productGroups := map[string][]string{}
+	for _, group := range ssoMethod.ProductGroups {
+		productGroups[group.ID] = group.Families
+	}
+	if len(productGroups["identity_center"]) == 0 || len(productGroups["organization"]) == 0 {
+		t.Fatalf("product groups = %#v, want identity_center and organization", productGroups)
+	}
+	guideBodies := strings.Join(func() []string {
+		out := make([]string, 0, len(ssoMethod.DeploymentGuides))
+		for _, guide := range ssoMethod.DeploymentGuides {
+			out = append(out, guide.Body)
+		}
+		return out
+	}(), "\n")
+	if !strings.Contains(guideBodies, "<cerebro-deployment-principal-arn>") || !strings.Contains(guideBodies, "SecurityAudit") {
+		t.Fatalf("deployment guides did not include expected placeholders: %s", guideBodies)
+	}
+	if strings.Contains(strings.ToLower(guideBodies), "secret-token") {
+		t.Fatalf("deployment guides leaked secret-shaped fixture: %s", guideBodies)
+	}
+}
+
+func TestConnectorScopeOptionsIncludeCoverageNotes(t *testing.T) {
+	source := &connectorCoverageSource{
+		bootstrapTokenSource: &bootstrapTokenSource{id: "coverage_source", emittedKinds: []string{"coverage_source.resource"}},
+		contract: sourcecdk.CoverageContract{
+			SourceID:        "coverage_source",
+			OwnerDomain:     "cloud",
+			AuthorityDomain: "coverage",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:                     "resource",
+				Type:                   "entity_family",
+				Title:                  "Coverage resources",
+				Families:               []string{"resource"},
+				Support:                sourcecdk.CoverageSupportPartial,
+				HighValue:              true,
+				KnownUnsupportedFields: []string{"deep configuration"},
+				Notes:                  []string{"Uses provider list APIs."},
+			}},
+		},
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Connectors []struct {
+			ScopeOptions []struct {
+				ID                     string   `json:"id"`
+				Support                string   `json:"support"`
+				KnownUnsupportedFields []string `json:"known_unsupported_fields"`
+				Notes                  []string `json:"notes"`
+			} `json:"scope_options"`
+		} `json:"connectors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Connectors) != 1 || len(payload.Connectors[0].ScopeOptions) != 1 {
+		t.Fatalf("scope options = %#v, want one option", payload.Connectors)
+	}
+	option := payload.Connectors[0].ScopeOptions[0]
+	if option.Support != sourcecdk.CoverageSupportPartial {
+		t.Fatalf("support = %q, want partial", option.Support)
+	}
+	if len(option.KnownUnsupportedFields) != 1 || option.KnownUnsupportedFields[0] != "deep configuration" {
+		t.Fatalf("known unsupported fields = %#v", option.KnownUnsupportedFields)
+	}
+	if len(option.Notes) != 1 || option.Notes[0] != "Uses provider list APIs." {
+		t.Fatalf("notes = %#v", option.Notes)
+	}
+}
+
 func TestConnectorDetailSummarizesOperationsWithoutConfig(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)
@@ -1099,3 +1298,12 @@ func rsaPublicKeyFromJWK(jwk map[string]any) (*rsa.PublicKey, error) {
 }
 
 var _ ports.ConnectorCredentialStore = (*connectorTestStore)(nil)
+
+type connectorCoverageSource struct {
+	*bootstrapTokenSource
+	contract sourcecdk.CoverageContract
+}
+
+func (s *connectorCoverageSource) CoverageContract() sourcecdk.CoverageContract {
+	return s.contract
+}
