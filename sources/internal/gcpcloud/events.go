@@ -1364,6 +1364,36 @@ func ArtifactImageEvent(settings Settings, record ArtifactImageRecord, artifactR
 	return sourceEvent(settings, "gcp-artifact-registry-image-"+imageURI, "gcp.artifact_registry_image", "gcp/artifact_registry_image/v1", payload, attributes)
 }
 
+func ContainerRegistryEvent(settings Settings, record ContainerRegistryRecord) (*primitives.Event, error) {
+	iam := iamPolicySummary(record.IAMPolicy)
+	resourceID := record.Host + "/" + settings.ProjectID
+	attributes := cloudResourceAttributes(settings, "container_registry", resourceID, record.Host, "container_registry", record.Location, record.Labels)
+	attributes["registry"] = record.Host
+	attributes["registry_host"] = record.Host
+	attributes["bucket"] = record.Bucket
+	attributes["storage_bucket"] = record.Bucket
+	attributes["storage_class"] = record.StorageClass
+	attributes["kms_key_name"] = record.Encryption.DefaultKMSKeyName
+	attributes["encryption_enabled"] = boolString(record.Encryption.DefaultKMSKeyName != "")
+	attributes["versioning_enabled"] = boolString(record.Versioning.Enabled)
+	attributes["uniform_bucket_level_access"] = boolString(record.IAMConfiguration.UniformBucketLevelAccess.Enabled)
+	attributes["public_access_prevention"] = record.IAMConfiguration.PublicAccessPrevention
+	attributes["legacy_container_registry"] = "true"
+	attributes["uses_cloud_storage"] = "true"
+	attributes["iam_bindings_count"] = strconv.Itoa(len(record.IAMPolicy.Bindings))
+	attributes["iam_roles"] = strings.Join(iamPolicyRoles(record.IAMPolicy), ",")
+	attributes["iam_members"] = strings.Join(iam.Members, ",")
+	attributes["iam_admin_members"] = strings.Join(iam.AdminMembers, ",")
+	attributes["public"] = boolString(iam.Public)
+	attributes["internet_exposed"] = boolString(iam.Public)
+	attributes["external_exposure"] = boolString(iam.Public)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"bucket": record.Bucket, "host": record.Host, "iam_policy": record.IAMPolicy, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-container-registry-"+resourceID, "gcp.container_registry", "gcp/container_registry/v1", payload, attributes)
+}
+
 func LoggingSinkEvent(settings Settings, record LoggingSinkRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.ResourceName, "projects/"+settings.ProjectID+"/sinks/"+record.Name)
 	exclusionNames, exclusionFilters, activeExclusions := loggingSinkExclusions(record.Exclusions)
@@ -1530,6 +1560,14 @@ func iamPolicySummary(policy IAMPolicy) iamSummary {
 		}
 	}
 	return summary
+}
+
+func iamPolicyRoles(policy IAMPolicy) []string {
+	roles := make([]string, 0, len(policy.Bindings))
+	for _, binding := range policy.Bindings {
+		roles = appendUnique(roles, binding.Role)
+	}
+	return roles
 }
 
 func iamAdminRole(role string) bool {

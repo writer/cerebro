@@ -102,6 +102,13 @@ runtimes:
       project_id: env:GCP_PROJECT_ID
       wif_audience: env:GCP_WIF_AUDIENCE
       wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - localId: container-registry
+    config:
+      family: container_registry
+      per_page: "100"
+      project_id: env:GCP_PROJECT_ID
+      wif_audience: env:GCP_WIF_AUDIENCE
+      wif_service_account_email: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
   - localId: compute-instance
     config:
       family: compute_instance

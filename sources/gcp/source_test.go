@@ -76,6 +76,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyCloudRunRevision, kind: "gcp.cloud_run_revision"},
 		{family: familyCloudRunService, kind: "gcp.cloud_run_service"},
 		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance"},
+		{family: familyContainerRegistry, kind: "gcp.container_registry"},
 		{family: familyContainerVuln, kind: "gcp.container_vulnerability"},
 		{family: familyComputeDisk, kind: "gcp.compute_disk"},
 		{family: familyComputeFirewall, kind: "gcp.compute_firewall"},
@@ -277,6 +278,7 @@ func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
 		{family: familyCloudRunService, kind: "gcp.cloud_run_service", attr: "internet_exposed", want: "true"},
 		{family: familyCloudFunction, kind: "gcp.cloud_function", attr: "runtime_identity", want: "fn@writer-prod.iam.gserviceaccount.com"},
 		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance", attr: "backup_enabled", want: "true"},
+		{family: familyContainerRegistry, kind: "gcp.container_registry", attr: "iam_bindings_count", want: "1"},
 		{family: familyContainerVuln, kind: "gcp.container_vulnerability", attr: "vulnerability_id", want: "CVE-2026-4242"},
 		{family: familyComputeNetwork, kind: "gcp.compute_network", attr: "routing_mode", want: "REGIONAL"},
 		{family: familyComputeSubnetwork, kind: "gcp.compute_subnetwork", attr: "ip_cidr_range", want: "10.0.0.0/24"},
@@ -714,6 +716,13 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"functions": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/functions/ingest", "state": "ACTIVE", "environment": "GEN_2", "labels": map[string]string{"env": "prod"}, "serviceConfig": map[string]string{"serviceAccountEmail": "fn@writer-prod.iam.gserviceaccount.com", "uri": "https://ingest.cloudfunctions.net", "ingressSettings": "ALLOW_ALL", "vpcConnector": "projects/writer-prod/locations/us-central1/connectors/serverless"}}}})
 		case "/sql/v1beta4/projects/writer-prod/instances":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"name": "prod-sql", "selfLink": "https://sqladmin.googleapis.com/sql/v1beta4/projects/writer-prod/instances/prod-sql", "region": "us-central1", "gceZone": "us-central1-a", "databaseVersion": "POSTGRES_15", "state": "RUNNABLE", "serviceAccountEmailAddress": "sql@writer-prod.iam.gserviceaccount.com", "settings": map[string]any{"userLabels": map[string]string{"env": "prod"}, "storageAutoResize": true, "deletionProtectionEnabled": true, "backupConfiguration": map[string]any{"enabled": true, "pointInTimeRecoveryEnabled": true, "startTime": "03:00"}, "ipConfiguration": map[string]any{"ipv4Enabled": true, "privateNetwork": "projects/writer-prod/global/networks/default", "authorizedNetworks": []map[string]string{{"name": "all", "value": "0.0.0.0/0"}}}}, "ipAddresses": []map[string]string{{"type": "PRIMARY", "ipAddress": "35.2.3.4"}, {"type": "PRIVATE", "ipAddress": "10.10.0.3"}}, "diskEncryptionConfiguration": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/sql"}}}})
+		case "/storage/v1/b/artifacts.writer-prod.appspot.com":
+			writeJSON(t, w, map[string]any{"id": "artifacts.writer-prod.appspot.com", "name": "artifacts.writer-prod.appspot.com", "location": "US", "storageClass": "STANDARD", "labels": map[string]string{"env": "prod"}, "encryption": map[string]string{"defaultKmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/gcr"}, "versioning": map[string]bool{"enabled": true}, "iamConfiguration": map[string]any{"uniformBucketLevelAccess": map[string]bool{"enabled": true}, "publicAccessPrevention": "enforced"}})
+		case "/storage/v1/b/artifacts.writer-prod.appspot.com/iam":
+			if got := r.URL.Query().Get("optionsRequestedPolicyVersion"); got != "3" {
+				t.Fatalf("gcr iam optionsRequestedPolicyVersion = %q, want 3", got)
+			}
+			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/storage.admin", "members": []string{"serviceAccount:gcr-admin@writer-prod.iam.gserviceaccount.com"}}}})
 		case "/storage/v1/b":
 			if got := r.URL.Query().Get("project"); got != "writer-prod" {
 				t.Fatalf("storage project = %q, want writer-prod", got)

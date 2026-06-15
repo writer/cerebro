@@ -32,44 +32,44 @@ import (
 var catalogFS embed.FS
 
 const (
-	defaultFamily                    = familyAudit
-	defaultPageSize                  = 10
-	maxPageSize                      = 200
-	familyAssetMetadata              = "asset_metadata"
-	familyAIDataset                  = "aiplatform_dataset"
-	familyAIEndpoint                 = "aiplatform_endpoint"
-	familyArtifactImage              = "artifact_registry_image"
-	familyArtifactRepo               = "artifact_registry_repository"
-	familyAudit                      = "audit"
-	familyBigQueryDataset            = "bigquery_dataset"
-	familyCloudFunction              = "cloud_function"
-	familyCloudIDSEndpoint           = "cloud_ids_endpoint"
-	familyCloudRunRevision           = "cloud_run_revision"
-	familyCloudRunService            = "cloud_run_service"
-	familyCloudSQLInstance           = "cloud_sql_instance"
-	familyContainerVuln              = "container_vulnerability"
-	familyComputeDisk                = "compute_disk"
-	familyComputeFirewall            = "compute_firewall"
-	familyComputeInstance            = "compute_instance"
-	familyComputeNetwork             = "compute_network"
-	familyComputeSubnetwork          = "compute_subnetwork"
-	familyDNSManagedZone             = "dns_managed_zone"
-	familyDNSRecordSet               = "dns_record_set"
-	familyEffectivePermission        = "effective_permission"
-	familyGCSBucket, familyGCSObject = "gcs_bucket", "gcs_object"
-	familyGKECluster                 = "gke_cluster"
-	familyGKENodePool                = "gke_node_pool"
-	familyGroup, familyGroupMember   = "group", "group_membership"
-	familyKMSKey                     = "kms_key"
-	familyLoggingSink                = "logging_project_sink"
-	familyResourceProject            = "resourcemanager_project"
-	familyRoleAssign                 = "iam_role_assignment"
-	familyResourceExposure           = "resource_exposure"
-	familySAImpersonation            = "service_account_impersonation"
-	familyServiceAcct                = "service_account"
-	familySAKey                      = "service_account_key"
-	gcpCloudPlatformScope            = "https://www.googleapis.com/auth/cloud-platform"
-	familySecret                     = "secret_manager_secret"
+	defaultFamily                                = familyAudit
+	defaultPageSize                              = 10
+	maxPageSize                                  = 200
+	familyAssetMetadata                          = "asset_metadata"
+	familyAIDataset                              = "aiplatform_dataset"
+	familyAIEndpoint                             = "aiplatform_endpoint"
+	familyArtifactImage                          = "artifact_registry_image"
+	familyArtifactRepo                           = "artifact_registry_repository"
+	familyAudit                                  = "audit"
+	familyBigQueryDataset                        = "bigquery_dataset"
+	familyCloudFunction                          = "cloud_function"
+	familyCloudIDSEndpoint                       = "cloud_ids_endpoint"
+	familyCloudRunRevision                       = "cloud_run_revision"
+	familyCloudRunService                        = "cloud_run_service"
+	familyCloudSQLInstance                       = "cloud_sql_instance"
+	familyContainerRegistry, familyContainerVuln = "container_registry", "container_vulnerability"
+	familyComputeDisk                            = "compute_disk"
+	familyComputeFirewall                        = "compute_firewall"
+	familyComputeInstance                        = "compute_instance"
+	familyComputeNetwork                         = "compute_network"
+	familyComputeSubnetwork                      = "compute_subnetwork"
+	familyDNSManagedZone                         = "dns_managed_zone"
+	familyDNSRecordSet                           = "dns_record_set"
+	familyEffectivePermission                    = "effective_permission"
+	familyGCSBucket, familyGCSObject             = "gcs_bucket", "gcs_object"
+	familyGKECluster                             = "gke_cluster"
+	familyGKENodePool                            = "gke_node_pool"
+	familyGroup, familyGroupMember               = "group", "group_membership"
+	familyKMSKey                                 = "kms_key"
+	familyLoggingSink                            = "logging_project_sink"
+	familyResourceProject                        = "resourcemanager_project"
+	familyRoleAssign                             = "iam_role_assignment"
+	familyResourceExposure                       = "resource_exposure"
+	familySAImpersonation                        = "service_account_impersonation"
+	familyServiceAcct                            = "service_account"
+	familySAKey                                  = "service_account_key"
+	gcpCloudPlatformScope                        = "https://www.googleapis.com/auth/cloud-platform"
+	familySecret                                 = "secret_manager_secret"
 )
 
 // Source reads GCP IAM, Cloud Identity, and Cloud Audit surfaces.
@@ -327,6 +327,7 @@ type artifactImageRecord = gcpcloud.ArtifactImageRecord
 
 type bigQueryDatasetRecord = gcpcloud.BigQueryDatasetRecord
 type cloudRunRevisionRecord = gcpcloud.CloudRunRevisionRecord
+type containerRegistryRecord = gcpcloud.ContainerRegistryRecord
 type containerVulnerabilityRecord = gcpcloud.ContainerVulnerabilityRecord
 type dnsRecordSetRecord = gcpcloud.DNSRecordSetRecord
 type loggingSinkRecord = gcpcloud.LoggingSinkRecord
@@ -426,7 +427,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyAIDataset,
 			Label: "gcp vertex ai datasets",
 			List:  listAIDatasets,
-			Event: aiDatasetEvent,
+			Event: gcpCloudEvent(gcpcloud.AIDatasetEvent),
 			URN: func(settings settings, dataset aiDatasetRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_aiplatform_dataset:%s", tenantID(settings), firstNonEmpty(dataset.Name, dataset.DisplayName)), nil
 			},
@@ -435,7 +436,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyAIEndpoint,
 			Label: "gcp vertex ai endpoints",
 			List:  listAIEndpoints,
-			Event: aiEndpointEvent,
+			Event: gcpCloudEvent(gcpcloud.AIEndpointEvent),
 			URN: func(settings settings, endpoint aiEndpointRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_aiplatform_endpoint:%s", tenantID(settings), firstNonEmpty(endpoint.Name, endpoint.DisplayName)), nil
 			},
@@ -453,7 +454,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyArtifactRepo,
 			Label: "gcp artifact registry repositories",
 			List:  listArtifactRepositories,
-			Event: artifactRepositoryEvent,
+			Event: gcpCloudEvent(gcpcloud.ArtifactRepositoryEvent),
 			URN: func(settings settings, repo artifactRepositoryRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_artifact_registry_repository:%s", tenantID(settings), firstNonEmpty(repo.Name, repo.Description)), nil
 			},
@@ -474,7 +475,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyBigQueryDataset,
 			Label: "gcp bigquery datasets",
 			List:  listBigQueryDatasets,
-			Event: bigQueryDatasetEvent,
+			Event: gcpCloudEvent(gcpcloud.BigQueryDatasetEvent),
 			URN: func(settings settings, dataset bigQueryDatasetRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_bigquery_dataset:%s", tenantID(settings), firstNonEmpty(dataset.ID, dataset.DatasetReference.DatasetID)), nil
 			},
@@ -483,7 +484,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyCloudFunction,
 			Label: "gcp cloud functions",
 			List:  listCloudFunctions,
-			Event: cloudFunctionEvent,
+			Event: gcpCloudEvent(gcpcloud.CloudFunctionEvent),
 			URN: func(settings settings, fn cloudFunctionRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_function:%s", tenantID(settings), firstNonEmpty(fn.Name, fn.ServiceConfig.URI)), nil
 			},
@@ -492,7 +493,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyCloudIDSEndpoint,
 			Label: "gcp cloud ids endpoints",
 			List:  listCloudIDSEndpoints,
-			Event: cloudIDSEndpointEvent,
+			Event: gcpCloudEvent(gcpcloud.CloudIDSEndpointEvent),
 			URN: func(settings settings, endpoint cloudIDSEndpointRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_ids_endpoint:%s", tenantID(settings), endpoint.Name), nil
 			},
@@ -501,7 +502,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyCloudRunRevision,
 			Label: "gcp cloud run revisions",
 			List:  listCloudRunRevisions,
-			Event: cloudRunRevisionEvent,
+			Event: gcpCloudEvent(gcpcloud.CloudRunRevisionEvent),
 			URN: func(settings settings, revision cloudRunRevisionRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_run_revision:%s", tenantID(settings), firstNonEmpty(revision.Name, revision.UID)), nil
 			},
@@ -510,7 +511,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyCloudRunService,
 			Label: "gcp cloud run services",
 			List:  listCloudRunServices,
-			Event: cloudRunServiceEvent,
+			Event: gcpCloudEvent(gcpcloud.CloudRunServiceEvent),
 			URN: func(settings settings, service cloudRunServiceRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_run_service:%s", tenantID(settings), firstNonEmpty(service.Name, service.UID)), nil
 			},
@@ -519,7 +520,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyCloudSQLInstance,
 			Label: "gcp cloud sql instances",
 			List:  listCloudSQLInstances,
-			Event: cloudSQLInstanceEvent,
+			Event: gcpCloudEvent(gcpcloud.CloudSQLInstanceEvent),
 			URN: func(settings settings, instance cloudSQLInstanceRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_sql_instance:%s", tenantID(settings), firstNonEmpty(instance.SelfLink, instance.Name)), nil
 			},
@@ -528,9 +529,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyContainerVuln,
 			Label: "gcp container vulnerabilities",
 			List:  listContainerVulnerabilities,
-			Event: containerVulnerabilityEvent,
+			Event: gcpCloudEvent(gcpcloud.ContainerVulnerabilityEvent),
 			URN: func(settings settings, occurrence containerVulnerabilityRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_container_vulnerability:%s", tenantID(settings), firstNonEmpty(occurrence.Name, occurrence.NoteName, occurrence.ResourceURI)), nil
+			},
+		}),
+		gcpFamily(s, gcpFamilyOptions[containerRegistryRecord]{
+			Name:  familyContainerRegistry,
+			Label: "gcp container registries",
+			List:  listContainerRegistries,
+			Event: gcpCloudEvent(gcpcloud.ContainerRegistryEvent),
+			URN: func(settings settings, registry containerRegistryRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_container_registry:%s/%s", tenantID(settings), registry.Host, settings.projectID), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[computeInstanceRecord]{
@@ -582,7 +592,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyDNSManagedZone,
 			Label: "gcp cloud dns managed zones",
 			List:  listDNSManagedZones,
-			Event: dnsManagedZoneEvent,
+			Event: gcpCloudEvent(gcpcloud.DNSManagedZoneEvent),
 			URN: func(settings settings, zone dnsManagedZoneRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_dns_managed_zone:%s", tenantID(settings), firstNonEmpty(zone.ID, zone.Name, zone.DNSName)), nil
 			},
@@ -591,7 +601,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyDNSRecordSet,
 			Label: "gcp cloud dns record sets",
 			List:  listDNSRecordSets,
-			Event: dnsRecordSetEvent,
+			Event: gcpCloudEvent(gcpcloud.DNSRecordSetEvent),
 			URN: func(settings settings, recordSet dnsRecordSetRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_dns_record_set:%s:%s:%s", tenantID(settings), sanitizeURNPart(recordSet.ManagedZoneName), sanitizeURNPart(recordSet.Name), sanitizeURNPart(recordSet.Type)), nil
 			},
@@ -600,7 +610,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyGroup,
 			Label: "gcp cloud identity groups",
 			List:  listGroups,
-			Event: groupEvent,
+			Event: gcpCloudEvent(gcpcloud.GroupEvent),
 			URN: func(settings settings, group groupRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_group:%s", tenantID(settings), firstNonEmpty(group.GroupKey.ID, group.Name)), nil
 			},
@@ -609,7 +619,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyGroupMember,
 			Label: "gcp cloud identity group memberships",
 			List:  listGroupMemberships,
-			Event: groupMembershipEvent,
+			Event: gcpCloudEvent(gcpcloud.GroupMembershipEvent),
 			URN: func(settings settings, member membershipRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_group_membership:%s:%s", tenantID(settings), settings.groupKey, firstNonEmpty(member.PreferredMemberKey.ID, member.Name)), nil
 			},
@@ -618,7 +628,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyGCSBucket,
 			Label: "gcp cloud storage buckets",
 			List:  listGCSBuckets,
-			Event: gcsBucketEvent,
+			Event: gcpCloudEvent(gcpcloud.GCSBucketEvent),
 			URN: func(settings settings, bucket gcsBucketRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_gcs_bucket:%s", tenantID(settings), firstNonEmpty(bucket.ID, bucket.Name)), nil
 			},
@@ -627,7 +637,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyGCSObject,
 			Label: "gcp cloud storage objects",
 			List:  listGCSObjects,
-			Event: gcsObjectEvent,
+			Event: gcpCloudEvent(gcpcloud.GCSObjectEvent),
 			URN: func(settings settings, object gcsObjectRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_gcs_object:%s:%s", tenantID(settings), sanitizeURNPart(object.Bucket), sanitizeURNPart(firstNonEmpty(object.Name, object.ID))), nil
 			},
@@ -645,7 +655,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyGKENodePool,
 			Label: "gcp gke node pools",
 			List:  listGKENodePools,
-			Event: gkeNodePoolEvent,
+			Event: gcpCloudEvent(gcpcloud.GKENodePoolEvent),
 			URN: func(settings settings, nodePool gkeNodePoolRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_gke_node_pool:%s", tenantID(settings), firstNonEmpty(nodePool.SelfLink, nodePool.Name)), nil
 			},
@@ -663,7 +673,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyLoggingSink,
 			Label: "gcp cloud logging project sinks",
 			List:  listLoggingSinks,
-			Event: loggingSinkEvent,
+			Event: gcpCloudEvent(gcpcloud.LoggingSinkEvent),
 			URN: func(settings settings, sink loggingSinkRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_logging_project_sink:%s", tenantID(settings), firstNonEmpty(sink.ResourceName, "projects/"+settings.projectID+"/sinks/"+sink.Name)), nil
 			},
@@ -672,7 +682,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyResourceProject,
 			Label: "gcp resource manager projects",
 			List:  listResourceManagerProjects,
-			Event: resourceManagerProjectEvent,
+			Event: gcpCloudEvent(gcpcloud.ResourceManagerProjectEvent),
 			URN: func(settings settings, project resourceManagerProjectRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_resourcemanager_project:%s", tenantID(settings), firstNonEmpty(project.ProjectID, settings.projectID)), nil
 			},
@@ -681,7 +691,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyRoleAssign,
 			Label: "gcp iam role assignments",
 			List:  listRoleAssignments,
-			Event: roleAssignmentEvent,
+			Event: gcpCloudEvent(gcpcloud.RoleAssignmentEvent),
 			URN: func(settings settings, assignment roleAssignmentRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_iam_role_assignment:%s:%s", tenantID(settings), sanitizeURNPart(assignment.Member), sanitizeURNPart(assignment.Role)), nil
 			},
@@ -690,7 +700,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyEffectivePermission,
 			Label: "gcp effective permissions",
 			List:  listRoleAssignments,
-			Event: effectivePermissionEvent,
+			Event: gcpCloudEvent(gcpcloud.EffectivePermissionEvent),
 			URN: func(settings settings, assignment roleAssignmentRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_effective_permission:%s:%s", tenantID(settings), sanitizeURNPart(assignment.Member), sanitizeURNPart(assignment.Role)), nil
 			},
@@ -717,7 +727,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyServiceAcct,
 			Label: "gcp service accounts",
 			List:  listServiceAccounts,
-			Event: serviceAccountEvent,
+			Event: gcpCloudEvent(gcpcloud.ServiceAccountEvent),
 			URN: func(settings settings, account serviceAccountRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account:%s", tenantID(settings), firstNonEmpty(account.Email, account.UniqueID, account.Name)), nil
 			},
@@ -726,7 +736,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familySAKey,
 			Label: "gcp service account keys",
 			List:  listServiceAccountKeys,
-			Event: serviceAccountKeyEvent,
+			Event: gcpCloudEvent(gcpcloud.ServiceAccountKeyEvent),
 			URN: func(settings settings, key serviceAccountKeyRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account_key:%s", tenantID(settings), firstNonEmpty(key.Name, settings.serviceAccountEmail)), nil
 			},
@@ -735,7 +745,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familySecret,
 			Label: "gcp secret manager secrets",
 			List:  listSecrets,
-			Event: secretEvent,
+			Event: gcpCloudEvent(gcpcloud.SecretEvent),
 			URN: func(settings settings, secret secretRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_secret_manager_secret:%s", tenantID(settings), secret.Name), nil
 			},
@@ -813,7 +823,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerVuln, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -850,7 +860,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, cloud_function, cloud_ids_endpoint, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_disk, compute_firewall, compute_instance, compute_network, compute_subnetwork, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, cloud_function, cloud_ids_endpoint, cloud_run_revision, cloud_run_service, cloud_sql_instance, compute_disk, compute_firewall, compute_instance, compute_network, compute_subnetwork, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, resource_exposure, resourcemanager_project, secret_manager_secret, service_account, service_account_impersonation, or service_account_key")
 	}
 	return settings, nil
 }
@@ -1371,6 +1381,16 @@ func listContainerVulnerabilities(ctx context.Context, source *Source, settings 
 	return records, response.NextPageToken, err
 }
 
+func listContainerRegistries(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]containerRegistryRecord, string, error) {
+	if strings.TrimSpace(pageToken) != "" {
+		return nil, "", nil
+	}
+	records, err := gcpcloud.ListContainerRegistries(settings.projectID, func(path string, query url.Values, target any) error {
+		return getJSON(ctx, source, settings, storageBaseURL, http.MethodGet, path, query, nil, target)
+	})
+	return records, "", err
+}
+
 func listCloudSQLInstances(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]cloudSQLInstanceRecord, string, error) {
 	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
 	addQuery(query, pageToken)
@@ -1620,30 +1640,6 @@ func listAuditRecords(ctx context.Context, source *Source, settings settings, pa
 	return records, response.NextPageToken, err
 }
 
-func serviceAccountEvent(settings settings, record serviceAccountRecord) (*primitives.Event, error) {
-	return gcpcloud.ServiceAccountEvent(gcpCloudSettings(settings), record)
-}
-
-func serviceAccountKeyEvent(settings settings, record serviceAccountKeyRecord) (*primitives.Event, error) {
-	return gcpcloud.ServiceAccountKeyEvent(gcpCloudSettings(settings), record)
-}
-
-func groupEvent(settings settings, record groupRecord) (*primitives.Event, error) {
-	return gcpcloud.GroupEvent(gcpCloudSettings(settings), record)
-}
-
-func groupMembershipEvent(settings settings, record membershipRecord) (*primitives.Event, error) {
-	return gcpcloud.GroupMembershipEvent(gcpCloudSettings(settings), record)
-}
-
-func roleAssignmentEvent(settings settings, record roleAssignmentRecord) (*primitives.Event, error) {
-	return gcpcloud.RoleAssignmentEvent(gcpCloudSettings(settings), record)
-}
-
-func effectivePermissionEvent(settings settings, record roleAssignmentRecord) (*primitives.Event, error) {
-	return gcpcloud.EffectivePermissionEvent(gcpCloudSettings(settings), record)
-}
-
 func assetMetadataEvent(settings settings, record assetMetadataRecord) (*primitives.Event, error) {
 	labels := record.Labels
 	resourceID := firstNonEmpty(record.Name, record.DisplayName)
@@ -1782,24 +1778,10 @@ func gcpCloudSettings(settings settings) gcpcloud.Settings {
 	return gcpcloud.Settings{ProjectID: settings.projectID, TenantID: tenantID(settings), Location: settings.location, CustomerID: settings.customerID, GroupKey: settings.groupKey, ServiceAccountEmail: settings.serviceAccountEmail}
 }
 
-func dnsManagedZoneEvent(settings settings, record dnsManagedZoneRecord) (*primitives.Event, error) {
-	return gcpcloud.DNSManagedZoneEvent(gcpCloudSettings(settings), record)
-}
-
-func dnsRecordSetEvent(settings settings, record dnsRecordSetRecord) (*primitives.Event, error) {
-	return gcpcloud.DNSRecordSetEvent(gcpCloudSettings(settings), record)
-}
-
-func aiDatasetEvent(settings settings, record aiDatasetRecord) (*primitives.Event, error) {
-	return gcpcloud.AIDatasetEvent(gcpCloudSettings(settings), record)
-}
-
-func aiEndpointEvent(settings settings, record aiEndpointRecord) (*primitives.Event, error) {
-	return gcpcloud.AIEndpointEvent(gcpCloudSettings(settings), record)
-}
-
-func cloudIDSEndpointEvent(settings settings, record cloudIDSEndpointRecord) (*primitives.Event, error) {
-	return gcpcloud.CloudIDSEndpointEvent(gcpCloudSettings(settings), record)
+func gcpCloudEvent[T any](build func(gcpcloud.Settings, T) (*primitives.Event, error)) func(settings, T) (*primitives.Event, error) {
+	return func(settings settings, record T) (*primitives.Event, error) {
+		return build(gcpCloudSettings(settings), record)
+	}
 }
 
 func gkeClusterEvent(settings settings, record gkeClusterRecord) (*primitives.Event, error) {
@@ -1835,64 +1817,12 @@ func gkeClusterEvent(settings settings, record gkeClusterRecord) (*primitives.Ev
 	return sourceEvent(settings, "gcp-gke-cluster-"+firstNonEmpty(record.SelfLink, record.Name), "gcp.gke_cluster", "gcp/gke_cluster/v1", payload, attributes, time.Now().UTC())
 }
 
-func gkeNodePoolEvent(settings settings, record gkeNodePoolRecord) (*primitives.Event, error) {
-	return gcpcloud.GKENodePoolEvent(gcpCloudSettings(settings), record)
-}
-
-func cloudRunServiceEvent(settings settings, record cloudRunServiceRecord) (*primitives.Event, error) {
-	return gcpcloud.CloudRunServiceEvent(gcpCloudSettings(settings), record)
-}
-
-func cloudRunRevisionEvent(settings settings, record cloudRunRevisionRecord) (*primitives.Event, error) {
-	return gcpcloud.CloudRunRevisionEvent(gcpCloudSettings(settings), record)
-}
-
-func cloudFunctionEvent(settings settings, record cloudFunctionRecord) (*primitives.Event, error) {
-	return gcpcloud.CloudFunctionEvent(gcpCloudSettings(settings), record)
-}
-
-func cloudSQLInstanceEvent(settings settings, record cloudSQLInstanceRecord) (*primitives.Event, error) {
-	return gcpcloud.CloudSQLInstanceEvent(gcpCloudSettings(settings), record)
-}
-
-func gcsBucketEvent(settings settings, record gcsBucketRecord) (*primitives.Event, error) {
-	return gcpcloud.GCSBucketEvent(gcpCloudSettings(settings), record)
-}
-
-func gcsObjectEvent(settings settings, record gcsObjectRecord) (*primitives.Event, error) {
-	return gcpcloud.GCSObjectEvent(gcpCloudSettings(settings), record)
-}
-
-func secretEvent(settings settings, record secretRecord) (*primitives.Event, error) {
-	return gcpcloud.SecretEvent(gcpCloudSettings(settings), record)
-}
-
 func kmsKeyEvent(settings settings, record kmsKeyRecord) (*primitives.Event, error) {
 	return gcpcloud.KMSKeyEvent(gcpCloudSettings(settings), record, settings.keyRing)
 }
 
-func loggingSinkEvent(settings settings, record loggingSinkRecord) (*primitives.Event, error) {
-	return gcpcloud.LoggingSinkEvent(gcpCloudSettings(settings), record)
-}
-
-func artifactRepositoryEvent(settings settings, record artifactRepositoryRecord) (*primitives.Event, error) {
-	return gcpcloud.ArtifactRepositoryEvent(gcpCloudSettings(settings), record)
-}
-
 func artifactImageEvent(settings settings, record artifactImageRecord) (*primitives.Event, error) {
 	return gcpcloud.ArtifactImageEvent(gcpCloudSettings(settings), record, settings.artifactRepository)
-}
-
-func bigQueryDatasetEvent(settings settings, record bigQueryDatasetRecord) (*primitives.Event, error) {
-	return gcpcloud.BigQueryDatasetEvent(gcpCloudSettings(settings), record)
-}
-
-func containerVulnerabilityEvent(settings settings, record containerVulnerabilityRecord) (*primitives.Event, error) {
-	return gcpcloud.ContainerVulnerabilityEvent(gcpCloudSettings(settings), record)
-}
-
-func resourceManagerProjectEvent(settings settings, record resourceManagerProjectRecord) (*primitives.Event, error) {
-	return gcpcloud.ResourceManagerProjectEvent(gcpCloudSettings(settings), record)
 }
 
 func resourceExposureEvent(settings settings, record firewallRecord) (*primitives.Event, error) {
