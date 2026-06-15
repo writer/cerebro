@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findings"
@@ -72,6 +73,7 @@ type App struct {
 	mcpOAuthService       *mcpoauth.Service
 	mcpOAuthRegisterLimit *deviceauth.TokenBucket
 	oauthEndpointLimit    *deviceauth.TokenBucket
+	connectorTransitKey   *connectorcredentials.TransitKey
 }
 
 type appServices struct {
@@ -121,6 +123,11 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 // security-sensitive surfaces fail closed when misconfigured.
 func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
+	transitKey, err := connectorTransitKeyFromConfig(cfg.ConnectorCredentials)
+	if err != nil {
+		return nil, err
+	}
+	app.connectorTransitKey = transitKey
 	if cfg.Auth.DeviceAuth.Enabled && !cfg.Auth.Enabled {
 		return nil, errDeviceAuthRequiresAPIAuth
 	}
@@ -200,12 +207,12 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	}
 	app.services.sourceOps = newSourceService(app.sources)
 	app.services.reports = app.newReportService()
-	app.services.runtimeOps = newRuntimeService(app.deps, app.sources)
+	app.services.runtimeOps = newRuntimeService(app.cfg, app.deps, app.sources)
 	app.services.claims = app.newClaimService()
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
 	app.services.graphQueries = app.newGraphQueryService()
-	app.services.graphIngestOps = newGraphIngestService(app.deps, app.sources)
+	app.services.graphIngestOps = newGraphIngestService(app.cfg, app.deps, app.sources)
 	app.services.workflowReplay = app.newWorkflowReplayService()
 	app.services.jobs = app.newJobService()
 	mux := http.NewServeMux()
@@ -226,6 +233,13 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		IdleTimeout:       2 * time.Minute,
 	}
 	return app, nil
+}
+
+func connectorTransitKeyFromConfig(credentialConfig config.ConnectorCredentialConfig) (*connectorcredentials.TransitKey, error) {
+	if strings.TrimSpace(credentialConfig.TransitPrivateKey) == "" {
+		return nil, nil
+	}
+	return connectorcredentials.NewTransitKeyFromPEM(credentialConfig.TransitPrivateKey)
 }
 
 // Handler returns the composed HTTP handler for embedding in tests or another server.
@@ -1914,7 +1928,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizePutSourceRuntimeTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntime()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := newRuntimeService(s.deps, s.sources).Put(ctx, req.Msg)
+	response, err := newRuntimeService(s.cfg, s.deps, s.sources).Put(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -1925,7 +1939,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := newRuntimeService(s.deps, s.sources).Get(ctx, req.Msg)
+	response, err := newRuntimeService(s.cfg, s.deps, s.sources).Get(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -1936,7 +1950,7 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := newRuntimeService(s.deps, s.sources).SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
+	response, err := newRuntimeService(s.cfg, s.deps, s.sources).SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
 		LeaseStore: sourceRuntimeLeaseStore(s.deps.StateStore),
 	})
 	if err != nil {
@@ -2578,7 +2592,7 @@ func (s *bootstrapService) RunGraphIngestRuntime(ctx context.Context, req *conne
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, graphIngestConnectError(err)
 	}
-	result, err := newGraphIngestService(s.deps, s.sources).RunRuntime(ctx, graphingest.RuntimeRequest{
+	result, err := newGraphIngestService(s.cfg, s.deps, s.sources).RunRuntime(ctx, graphingest.RuntimeRequest{
 		RuntimeID:       req.Msg.GetRuntimeId(),
 		PageLimit:       req.Msg.GetPageLimit(),
 		CheckpointID:    req.Msg.GetCheckpointId(),
@@ -2594,7 +2608,7 @@ func (s *bootstrapService) RunGraphIngestRuntime(ctx context.Context, req *conne
 }
 
 func (s *bootstrapService) GetGraphIngestRun(ctx context.Context, req *connect.Request[cerebrov1.GetGraphIngestRunRequest]) (*connect.Response[cerebrov1.GetGraphIngestRunResponse], error) {
-	run, err := newGraphIngestService(s.deps, s.sources).GetRun(ctx, req.Msg.GetId())
+	run, err := newGraphIngestService(s.cfg, s.deps, s.sources).GetRun(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, graphIngestConnectError(err)
 	}
@@ -2615,7 +2629,7 @@ func (s *bootstrapService) ListGraphIngestRuns(ctx context.Context, req *connect
 			return nil, graphIngestConnectError(err)
 		}
 	}
-	result, err := newGraphIngestService(s.deps, s.sources).ListRuns(ctx, graphstore.IngestRunFilter{
+	result, err := newGraphIngestService(s.cfg, s.deps, s.sources).ListRuns(ctx, graphstore.IngestRunFilter{
 		RuntimeID: req.Msg.GetRuntimeId(),
 		Status:    req.Msg.GetStatus(),
 		Limit:     int(req.Msg.GetLimit()),
@@ -2630,7 +2644,7 @@ func (s *bootstrapService) CheckGraphIngestHealth(ctx context.Context, req *conn
 	if err := authorizeGlobalGraphHealthScope(ctx); err != nil {
 		return nil, graphIngestConnectError(err)
 	}
-	result, err := newGraphIngestService(s.deps, s.sources).Health(ctx, req.Msg.GetLimit())
+	result, err := newGraphIngestService(s.cfg, s.deps, s.sources).Health(ctx, req.Msg.GetLimit())
 	if err != nil {
 		return nil, graphIngestConnectError(err)
 	}
@@ -2778,27 +2792,44 @@ func (a *App) runtimeService() *sourceruntime.Service {
 	if a != nil && a.services.runtimeOps != nil {
 		return a.services.runtimeOps
 	}
-	return newRuntimeService(a.deps, a.sources)
+	return newRuntimeService(a.cfg, a.deps, a.sources)
 }
 
 func newSourceService(sources *sourcecdk.Registry) *sourceops.Service {
 	return sourceops.New(sources)
 }
 
-func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {
+func newRuntimeService(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {
 	return sourceruntime.New(
 		sources,
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
-	).WithConfigResolver(resolveRuntimeSourceConfig)
+	).WithConfigResolver(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, deps.StateStore, sourceID, values)
+	})
 }
 
 func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	return resolveRuntimeSourceConfigWithStore(ctx, config.ConnectorCredentialConfig{}, nil, sourceID, values)
+}
+
+func resolveRuntimeSourceConfigWithStore(ctx context.Context, credentialConfig config.ConnectorCredentialConfig, store ports.StateStore, sourceID string, values map[string]string) (map[string]string, error) {
 	if err := authorizeRuntimeConfigEnvReferences(ctx, sourceID, values); err != nil {
 		return nil, err
 	}
-	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, values)
+	resolved := values
+	if hasConnectorCredentialReferences(values) {
+		vault, err := connectorCredentialVault(credentialConfig, store)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", sourceruntime.ErrRuntimeUnavailable, err)
+		}
+		resolved, err = vault.ResolveReferences(ctx, sourceID, values[sourceconfig.RuntimeTenantIDKey], values[sourceconfig.RuntimeIDKey], values)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
+		}
+	}
+	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, resolved)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
 	}
@@ -2806,6 +2837,15 @@ func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map
 		return nil, err
 	}
 	return resolved, nil
+}
+
+func hasConnectorCredentialReferences(values map[string]string) bool {
+	for _, value := range values {
+		if sourceconfig.IsCredentialReference(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func authorizeRuntimeConfigEnvReferences(ctx context.Context, sourceID string, values map[string]string) error {
@@ -2916,7 +2956,7 @@ func (a *App) graphIngestService() *graphingest.Service {
 	if a != nil && a.services.graphIngestOps != nil {
 		return a.services.graphIngestOps
 	}
-	return newGraphIngestService(a.deps, a.sources)
+	return newGraphIngestService(a.cfg, a.deps, a.sources)
 }
 
 func (a *App) workflowReplayService() *workflowprojection.Replayer {
@@ -2933,13 +2973,15 @@ func (a *App) newWorkflowReplayService() *workflowprojection.Replayer {
 	)
 }
 
-func newGraphIngestService(deps Dependencies, sources *sourcecdk.Registry) *graphingest.Service {
+func newGraphIngestService(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *graphingest.Service {
 	return graphingest.New(
 		sources,
 		sourceRuntimeStore(deps.StateStore),
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
-	).WithConfigPreparer(resolveRuntimeSourceConfig)
+	).WithConfigPreparer(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, deps.StateStore, sourceID, values)
+	})
 }
 
 func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {

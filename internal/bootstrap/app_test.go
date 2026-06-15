@@ -29,6 +29,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
@@ -419,7 +420,7 @@ func TestGraphIngestRuntimeUsesRuntimeConfigAuthorization(t *testing.T) {
 			Config:   map[string]string{"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER"},
 		},
 	}}
-	service := newGraphIngestService(Dependencies{StateStore: store, GraphStore: &stubGraphStore{}}, registry)
+	service := newGraphIngestService(config.Config{}, Dependencies{StateStore: store, GraphStore: &stubGraphStore{}}, registry)
 
 	_, err = service.RunRuntime(ctx, graphingest.RuntimeRequest{RuntimeID: "writer-github"})
 	if !errors.Is(err, errTenantForbidden) {
@@ -4848,6 +4849,70 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	}
 	if got := healthResp.Msg.GetFailedCount(); got != 1 {
 		t.Fatalf("CheckGraphIngestHealth failed_count = %d, want 1", got)
+	}
+}
+
+func TestGraphIngestResolvesConnectorCredentialRuntimeConfig(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{}}}
+	vault, err := connectorcredentials.NewVault(store, "test-connector-vault-key")
+	if err != nil {
+		t.Fatalf("NewVault() error = %v", err)
+	}
+	record, err := vault.Put(context.Background(), connectorcredentials.PlainCredential{
+		TenantID:  "writer",
+		SourceID:  "bootstrap_token",
+		RuntimeID: "runtime-token",
+		Fields: map[string]string{
+			"token": "secret-token",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() credential error = %v", err)
+	}
+	store.runtimes["runtime-token"] = &cerebrov1.SourceRuntime{
+		Id:       "runtime-token",
+		SourceId: "bootstrap_token",
+		TenantId: "writer",
+		Config: map[string]string{
+			"token": connectorcredentials.Reference(record.ID, "token"),
+		},
+	}
+	graphStore := &stubGraphStore{}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key: "test-connector-vault-key",
+		},
+	}, Dependencies{
+		StateStore: store,
+		GraphStore: graphStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/source-runtimes/runtime-token/graph-ingest-runs?page_limit=1", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/graph-ingest-runs error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close graph ingest response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("graph ingest status = %d, want 200", resp.StatusCode)
+	}
+	if source.readToken != "secret-token" {
+		t.Fatalf("source read token = %q, want decrypted credential", source.readToken)
+	}
+	if got := store.runtimes["runtime-token"].GetConfig()["token"]; strings.Contains(got, "secret-token") {
+		t.Fatalf("runtime config leaked secret: %q", got)
 	}
 }
 

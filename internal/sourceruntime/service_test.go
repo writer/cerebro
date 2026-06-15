@@ -685,6 +685,7 @@ func TestProgressConfigHashIgnoresInternalRuntimeMetadata(t *testing.T) {
 	})
 	withInternal := progressConfigHash(map[string]string{
 		"lookup_key":                           "inventory",
+		sourceconfig.RuntimeIDKey:              "writer-inventory",
 		sourceconfig.RuntimeTenantIDKey:        "writer",
 		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
 		runtimeProgressConfigHashKey:           "old-hash",
@@ -699,6 +700,7 @@ func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 		"family":                               "public_endpoint",
 		runtimeProgressConfigHashKey:           "hash",
 		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+		sourceconfig.RuntimeIDKey:              "writer-endpoint",
 		sourceconfig.RuntimeTenantIDKey:        "writer",
 	})
 	if got := config["family"]; got != "public_endpoint" {
@@ -710,6 +712,9 @@ func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 	if _, ok := config[runtimeProgressConfigHashKey]; ok {
 		t.Fatal("userConfig preserved progress config hash key")
 	}
+	if _, ok := config[sourceconfig.RuntimeIDKey]; ok {
+		t.Fatal("userConfig preserved internal runtime id key")
+	}
 	if _, ok := config[sourceconfig.RuntimeTenantIDKey]; ok {
 		t.Fatal("userConfig preserved internal runtime tenant key")
 	}
@@ -720,6 +725,12 @@ func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
 		if _, ok := values[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
 			t.Fatal("resolver input preserved caller-controlled allowlist")
 		}
+		if got := values[sourceconfig.RuntimeIDKey]; got != "writer-endpoint" {
+			t.Fatalf("resolver runtime id = %q, want writer-endpoint", got)
+		}
+		if got := values[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
+			t.Fatalf("resolver runtime tenant = %q, want writer", got)
+		}
 		return map[string]string{
 			"family":                               "public_endpoint",
 			runtimeProgressConfigHashKey:           "hash",
@@ -727,7 +738,7 @@ func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
 		}, nil
 	})
 
-	resolved, err := service.resolveConfig(context.Background(), "aws", "writer", map[string]string{
+	resolved, err := service.resolveConfig(context.Background(), "aws", "writer", "writer-endpoint", map[string]string{
 		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
 	})
 	if err != nil {
@@ -738,6 +749,9 @@ func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
 	}
 	if got := resolved[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
 		t.Fatalf("runtime tenant = %q, want writer", got)
+	}
+	if got := resolved[sourceconfig.RuntimeIDKey]; got != "writer-endpoint" {
+		t.Fatalf("runtime id = %q, want writer-endpoint", got)
 	}
 	if _, ok := resolved[runtimeProgressConfigHashKey]; ok {
 		t.Fatal("resolveConfig preserved progress hash")

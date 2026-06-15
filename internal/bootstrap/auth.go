@@ -1272,6 +1272,8 @@ func accessAuditRouteFamily(route string) string {
 		return "telemetry"
 	case strings.Contains(route, "/source-runtimes"):
 		return "source_runtime"
+	case strings.Contains(route, "/connectors"):
+		return "connector"
 	case strings.Contains(route, "/sources"):
 		return "source"
 	case strings.Contains(route, "/report-runs"), strings.Contains(route, "/reports"):
@@ -1402,6 +1404,12 @@ func fallbackAccessAuditRoute(method string, path string) string {
 				return prefix + "/sources/{sourceID}/{subresource}"
 			}
 		}
+	case path == "/connectors":
+		return prefix + "/connectors"
+	case path == "/connectors/credential-key":
+		return prefix + "/connectors/credential-key"
+	case strings.HasPrefix(path, "/connectors/") && strings.HasSuffix(path, "/connections"):
+		return prefix + "/connectors/{sourceID}/connections"
 	case path == "/source-runtimes":
 		return prefix + "/source-runtimes"
 	case strings.HasPrefix(path, "/source-runtimes/"):

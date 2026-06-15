@@ -37,6 +37,7 @@ type Store struct {
 	runtimeBlocklistReady        bool
 	grcInventoryScopeReady       bool
 	grcInventoryAssetReportReady bool
+	connectorCredentialReady     bool
 }
 
 // Open opens a Postgres-backed current-state store.

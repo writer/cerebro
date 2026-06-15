@@ -78,6 +78,8 @@ CEREBRO_JETSTREAM_SUBJECT_PREFIX=events
 
 CEREBRO_STATE_STORE_DRIVER=postgres
 CEREBRO_POSTGRES_DSN=<postgres-dsn-with-tls>
+CEREBRO_CONNECTOR_CREDENTIAL_KEY=<high-entropy-connector-vault-key>
+CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE=/var/run/secrets/cerebro/connector-transit-private-key.pem
 
 CEREBRO_GRAPH_STORE_DRIVER=neo4j
 CEREBRO_NEO4J_URI=neo4j+s://graph.example.com
@@ -132,9 +134,15 @@ spec:
               value: "postgres"
             - name: CEREBRO_GRAPH_STORE_DRIVER
               value: "neo4j"
+            - name: CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE
+              value: /var/run/secrets/cerebro/connector-transit-private-key.pem
           envFrom:
             - secretRef:
                 name: cerebro-secrets
+          volumeMounts:
+            - name: cerebro-transit-key
+              mountPath: /var/run/secrets/cerebro
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /health
@@ -156,6 +164,13 @@ spec:
             limits:
               cpu: "1000m"
               memory: "1Gi"
+      volumes:
+        - name: cerebro-transit-key
+          secret:
+            secretName: cerebro-secrets
+            items:
+              - key: connector-transit-private-key.pem
+                path: connector-transit-private-key.pem
 ```
 
 Example service:
@@ -214,6 +229,8 @@ type: Opaque
 stringData:
   CEREBRO_API_KEYS: "<random-api-key>:<principal>:<tenant-id>"
   CEREBRO_POSTGRES_DSN: "<postgres-dsn-with-tls>"
+  CEREBRO_CONNECTOR_CREDENTIAL_KEY: "<high-entropy-connector-vault-key>"
+  connector-transit-private-key.pem: "<shared-rsa-pem-from-secret-manager>"
   CEREBRO_JETSTREAM_URL: "nats://nats.example.com:4222"
   CEREBRO_NEO4J_URI: "neo4j+s://graph.example.com"
   CEREBRO_NEO4J_USERNAME: "<neo4j-user>"
