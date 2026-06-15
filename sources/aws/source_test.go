@@ -315,6 +315,121 @@ func TestCloudTrailCursorInvalidatesUnsafeTokens(t *testing.T) {
 	}
 }
 
+func TestIAMAccountPostureCollectors(t *testing.T) {
+	generated := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	source := newTestSource(t, fakeAWS{
+		accountSummary: map[string]int32{
+			"AccountAccessKeysPresent": 0,
+			"AccountMFAEnabled":        1,
+			"Users":                    3,
+		},
+		accountPasswordPolicy: &iamtypes.PasswordPolicy{
+			AllowUsersToChangePassword: true,
+			MinimumPasswordLength:      awssdk.Int32(14),
+			PasswordReusePrevention:    awssdk.Int32(24),
+			RequireLowercaseCharacters: true,
+			RequireNumbers:             true,
+			RequireSymbols:             true,
+			RequireUppercaseCharacters: true,
+		},
+		credentialReport: fakeCredentialReport{
+			generatedTime: &generated,
+			content: []byte(strings.Join([]string{
+				"user,arn,user_creation_time,password_enabled,password_last_used,password_last_changed,password_next_rotation,mfa_active,access_key_1_active,access_key_1_last_rotated,access_key_2_active,access_key_2_last_rotated",
+				"<root_account>,arn:aws:iam::123456789012:root,2026-01-01T00:00:00+00:00,false,N/A,N/A,N/A,true,false,N/A,false,N/A",
+				"admin,arn:aws:iam::123456789012:user/admin,2026-01-02T00:00:00+00:00,true,2026-06-01T00:00:00+00:00,2026-05-01T00:00:00+00:00,N/A,false,true,2026-04-01T00:00:00+00:00,false,N/A",
+			}, "\n")),
+		},
+	})
+
+	summaryPull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": "iam_account_summary"}), nil)
+	if err != nil {
+		t.Fatalf("Read(iam_account_summary) error = %v", err)
+	}
+	if got := summaryPull.Events[0].Kind; got != "aws.iam_account_summary" {
+		t.Fatalf("summary kind = %q, want aws.iam_account_summary", got)
+	}
+	if got := summaryPull.Events[0].Attributes["root_mfa_enabled"]; got != "true" {
+		t.Fatalf("root_mfa_enabled = %q, want true", got)
+	}
+	if got := summaryPull.Events[0].Attributes["root_access_keys_present"]; got != "false" {
+		t.Fatalf("root_access_keys_present = %q, want false", got)
+	}
+
+	policyPull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": "iam_account_password_policy"}), nil)
+	if err != nil {
+		t.Fatalf("Read(iam_account_password_policy) error = %v", err)
+	}
+	if got := policyPull.Events[0].Attributes["minimum_password_length"]; got != "14" {
+		t.Fatalf("minimum_password_length = %q, want 14", got)
+	}
+	if got := policyPull.Events[0].Attributes["password_reuse_prevention"]; got != "24" {
+		t.Fatalf("password_reuse_prevention = %q, want 24", got)
+	}
+
+	reportPull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": "iam_credential_report"}), nil)
+	if err != nil {
+		t.Fatalf("Read(iam_credential_report) error = %v", err)
+	}
+	if len(reportPull.Events) != 2 {
+		t.Fatalf("credential report events = %d, want 2", len(reportPull.Events))
+	}
+	if got := reportPull.Events[0].Attributes["mfa_active"]; got != "true" {
+		t.Fatalf("root mfa_active = %q, want true", got)
+	}
+	if got := reportPull.Events[1].Attributes["access_key_1_active"]; got != "true" {
+		t.Fatalf("admin access_key_1_active = %q, want true", got)
+	}
+}
+
+func TestIAMCredentialReportCollectorSkipsWhileGenerating(t *testing.T) {
+	source := newTestSource(t, fakeAWS{credentialReport: fakeCredentialReport{state: iamtypes.ReportStateTypeInprogress}})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": "iam_credential_report"}), nil)
+	if err != nil {
+		t.Fatalf("Read(iam_credential_report) error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("credential report events = %d, want 0 while report is generating", len(pull.Events))
+	}
+}
+
+func TestIAMCredentialReportCollectorWaitsForGeneratedReport(t *testing.T) {
+	stateIndex := 0
+	generated := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	source := newTestSource(t, fakeAWS{
+		credentialReport: fakeCredentialReport{
+			states:        []iamtypes.ReportStateType{iamtypes.ReportStateTypeStarted, iamtypes.ReportStateTypeInprogress, iamtypes.ReportStateTypeComplete},
+			stateIndex:    &stateIndex,
+			generatedTime: &generated,
+			content: []byte(strings.Join([]string{
+				"user,arn,user_creation_time,password_enabled,mfa_active,access_key_1_active,access_key_2_active",
+				"admin,arn:aws:iam::123456789012:user/admin,2026-01-02T00:00:00+00:00,true,false,true,false",
+			}, "\n")),
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": "iam_credential_report"}), nil)
+	if err != nil {
+		t.Fatalf("Read(iam_credential_report) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("credential report events = %d, want 1 after report is generated", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["access_key_1_active"]; got != "true" {
+		t.Fatalf("access_key_1_active = %q, want true", got)
+	}
+}
+
+func TestIAMCredentialReportCollectorSkipsNotReadyReport(t *testing.T) {
+	source := newTestSource(t, fakeAWS{credentialReport: fakeCredentialReport{err: &iamtypes.CredentialReportNotReadyException{}}})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": "iam_credential_report"}), nil)
+	if err != nil {
+		t.Fatalf("Read(iam_credential_report) error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("credential report events = %d, want 0 while report is not ready", len(pull.Events))
+	}
+}
+
 func TestParsePublicEndpointCursorRejectsLegacyStages(t *testing.T) {
 	legacyPayload, err := json.Marshal(publicEndpointCursor{Stage: publicEndpointStageEIP, Token: "old-token"})
 	if err != nil {
@@ -3851,6 +3966,9 @@ type fakeAWS struct {
 	groups                 []iamtypes.Group
 	roles                  []iamtypes.Role
 	accessKeys             []iamtypes.AccessKeyMetadata
+	accountSummary         map[string]int32
+	accountPasswordPolicy  *iamtypes.PasswordPolicy
+	credentialReport       fakeCredentialReport
 	attachedPolicies       []iamtypes.AttachedPolicy
 	managedPolicyDocuments map[string]string
 	inlinePolicyNames      []string
@@ -3865,6 +3983,15 @@ type fakeAWS struct {
 	fakeAWSRuntime
 	fakeAWSAnalytics
 	fakeAWSGovernance
+}
+
+type fakeCredentialReport struct {
+	content       []byte
+	err           error
+	state         iamtypes.ReportStateType
+	states        []iamtypes.ReportStateType
+	stateIndex    *int
+	generatedTime *time.Time
 }
 
 type fakeAWSNetwork struct {
@@ -4215,6 +4342,26 @@ func (f *recordingAWS) GetRolePolicy(ctx context.Context, input *iam.GetRolePoli
 func (f *recordingAWS) GetInstanceProfile(ctx context.Context, input *iam.GetInstanceProfileInput, options ...func(*iam.Options)) (*iam.GetInstanceProfileOutput, error) {
 	f.record("iam:GetInstanceProfile")
 	return f.fakeAWS.GetInstanceProfile(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetAccountSummary(ctx context.Context, input *iam.GetAccountSummaryInput, options ...func(*iam.Options)) (*iam.GetAccountSummaryOutput, error) {
+	f.record("iam:GetAccountSummary")
+	return f.fakeAWS.GetAccountSummary(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetAccountPasswordPolicy(ctx context.Context, input *iam.GetAccountPasswordPolicyInput, options ...func(*iam.Options)) (*iam.GetAccountPasswordPolicyOutput, error) {
+	f.record("iam:GetAccountPasswordPolicy")
+	return f.fakeAWS.GetAccountPasswordPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) GenerateCredentialReport(ctx context.Context, input *iam.GenerateCredentialReportInput, options ...func(*iam.Options)) (*iam.GenerateCredentialReportOutput, error) {
+	f.record("iam:GenerateCredentialReport")
+	return f.fakeAWS.GenerateCredentialReport(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetCredentialReport(ctx context.Context, input *iam.GetCredentialReportInput, options ...func(*iam.Options)) (*iam.GetCredentialReportOutput, error) {
+	f.record("iam:GetCredentialReport")
+	return f.fakeAWS.GetCredentialReport(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListAccounts(ctx context.Context, input *organizations.ListAccountsInput, options ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
@@ -6057,6 +6204,45 @@ func (f fakeAWS) GetInstanceProfile(_ context.Context, input *iam.GetInstancePro
 		return &iam.GetInstanceProfileOutput{InstanceProfile: &profile}, nil
 	}
 	return &iam.GetInstanceProfileOutput{InstanceProfile: &iamtypes.InstanceProfile{InstanceProfileName: awssdk.String(name)}}, nil
+}
+
+func (f fakeAWS) GetAccountSummary(context.Context, *iam.GetAccountSummaryInput, ...func(*iam.Options)) (*iam.GetAccountSummaryOutput, error) {
+	return &iam.GetAccountSummaryOutput{SummaryMap: f.accountSummary}, nil
+}
+
+func (f fakeAWS) GetAccountPasswordPolicy(context.Context, *iam.GetAccountPasswordPolicyInput, ...func(*iam.Options)) (*iam.GetAccountPasswordPolicyOutput, error) {
+	if f.accountPasswordPolicy == nil {
+		return nil, &iamtypes.NoSuchEntityException{}
+	}
+	return &iam.GetAccountPasswordPolicyOutput{PasswordPolicy: f.accountPasswordPolicy}, nil
+}
+
+func (f fakeAWS) GenerateCredentialReport(context.Context, *iam.GenerateCredentialReportInput, ...func(*iam.Options)) (*iam.GenerateCredentialReportOutput, error) {
+	state := f.credentialReport.state
+	if len(f.credentialReport.states) > 0 {
+		index := 0
+		if f.credentialReport.stateIndex != nil {
+			index = *f.credentialReport.stateIndex
+			if *f.credentialReport.stateIndex < len(f.credentialReport.states)-1 {
+				*f.credentialReport.stateIndex = *f.credentialReport.stateIndex + 1
+			}
+		}
+		if index >= len(f.credentialReport.states) {
+			index = len(f.credentialReport.states) - 1
+		}
+		state = f.credentialReport.states[index]
+	}
+	if state == "" {
+		state = iamtypes.ReportStateTypeComplete
+	}
+	return &iam.GenerateCredentialReportOutput{State: state}, nil
+}
+
+func (f fakeAWS) GetCredentialReport(context.Context, *iam.GetCredentialReportInput, ...func(*iam.Options)) (*iam.GetCredentialReportOutput, error) {
+	if f.credentialReport.err != nil {
+		return nil, f.credentialReport.err
+	}
+	return &iam.GetCredentialReportOutput{Content: f.credentialReport.content, GeneratedTime: f.credentialReport.generatedTime, ReportFormat: iamtypes.ReportFormatTypeTextCsv}, nil
 }
 
 func (f fakeAWS) ListAccounts(context.Context, *organizations.ListAccountsInput, ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {

@@ -86,6 +86,58 @@ emitted_kinds:
 	}
 }
 
+func TestCheckCloudPolicyCoverageRejectsUnmappedCloudPolicyResource(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "policies/cloud/test.json", `{"resource":"aws::unknown::thing"}`)
+	writeFile(t, root, "sources/aws/catalog.yaml", `
+id: aws
+name: AWS
+description: AWS source
+emitted_kinds:
+  - aws.access_key
+`)
+
+	issues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		t.Fatalf("checkCloudPolicyCoverage() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "has no source coverage mapping") {
+		t.Fatalf("issues = %#v, want missing source coverage mapping issue", issues)
+	}
+}
+
+func TestCloudPolicyCoverageMapsLegacyGCPResources(t *testing.T) {
+	tests := map[string]string{
+		"gcp_container_clusters":        "gke_cluster",
+		"gcp_container_node_pools":      "gke_node_pool",
+		"gcp_container_vulnerabilities": "container_vulnerability",
+		"gcp_ids_endpoints":             "cloud_ids_endpoint",
+	}
+	for resource, wantDimension := range tests {
+		if !isCloudPolicyResource(resource) {
+			t.Fatalf("isCloudPolicyResource(%q) = false, want true", resource)
+		}
+		alias, ok := cloudPolicyCoverageAliases[resource]
+		if !ok {
+			t.Fatalf("cloudPolicyCoverageAliases[%q] missing", resource)
+		}
+		if alias.SourceID != "gcp" || alias.DimensionID != wantDimension {
+			t.Fatalf("cloudPolicyCoverageAliases[%q] = %#v, want gcp/%s", resource, alias, wantDimension)
+		}
+	}
+}
+
+func TestCheckRequiredCloudCoverageDimensionsRejectsMissingMinimum(t *testing.T) {
+	issues := checkRequiredCloudCoverageDimensions(map[string]map[string]sourcecdk.CoverageDimension{
+		"azure": {
+			"aks_cluster": {ID: "aks_cluster", Support: sourcecdk.CoverageSupportSupported},
+		},
+	})
+	if !issueMessagesContain(issues, `minimum cloud coverage dimension "activity_log_alert" is missing`) {
+		t.Fatalf("issues = %#v, want missing minimum cloud coverage dimension issue", issues)
+	}
+}
+
 func TestValidateFixtureContractsSkipsSymlinkFixtures(t *testing.T) {
 	root := t.TempDir()
 	sourceDir := filepath.Join(root, "sources", "custom")
@@ -192,4 +244,13 @@ func writeFile(t *testing.T, root string, rel string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+func issueMessagesContain(issues []issue, substring string) bool {
+	for _, issue := range issues {
+		if strings.Contains(issue.message, substring) {
+			return true
+		}
+	}
+	return false
 }

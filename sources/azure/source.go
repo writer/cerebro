@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/azurearm"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
 
@@ -436,28 +437,22 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return spec, nil
 }
 
-// Spec returns static source metadata.
-func (s *Source) Spec() *cerebrov1.SourceSpec {
-	return s.spec
-}
+func (s *Source) Spec() *cerebrov1.SourceSpec { return s.spec }
 
-// Check validates that the configured Azure family is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	return s.families.Check(ctx, cfg)
 }
 
-// Discover returns Azure resource URNs for the configured family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return s.families.Discover(ctx, cfg)
 }
 
-// Read returns one page of normalized Azure events.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return s.families.Read(ctx, cfg, cursor)
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
-	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family },
+	families := []sourcecdk.Family[settings]{
 		azureFamily(s, azureFamilyOptions[activityLogRecord]{
 			Name:  familyActivityLog,
 			Label: "azure activity logs",
@@ -730,7 +725,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return azureTypedResourceURN(settings, familyVirtualMachine, vm.Resource), nil
 			},
 		}),
-	)
+	}
+	families = append(families, azurearm.Families(s, func(settings settings) int { return settings.perPage }, func(ctx context.Context, source *Source, settings settings, pageToken string, limit int, definition azurearm.Definition) ([]armTypedResourceRecord, string, error) {
+		return listARMTypedResources(ctx, source, settings, pageToken, definition.ProviderPath, definition.APIVersion, definition.Label)
+	}, func(settings settings, record armTypedResourceRecord, definition azurearm.Definition) (*primitives.Event, error) {
+		return genericARMResourceEvent(settings, record, definition.Name, definition.Kind, definition.SchemaRef)
+	}, func(settings settings, record armTypedResourceRecord, definition azurearm.Definition) (string, error) {
+		return azureTypedResourceURN(settings, definition.Name, record), nil
+	})...)
+	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
 func azureFamily[T any](source *Source, options azureFamilyOptions[T]) sourcecdk.Family[settings] {
@@ -797,7 +800,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("azure tenant_id is required")
 	}
 	switch settings.family {
-	case familyActivityLog, familyAKSCluster, familyAppService, familyAssetMetadata, familyContainerRegistry, familyCosmosAccount, familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, familyManagedDisk, familyNetworkSecurityGrp, familyPublicIPAddress, familyResourceExposure, familySQLDatabase, familySQLServer, familyStorageAccount, familyVirtualMachine, familyVirtualNetwork:
+	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAppService, "application_gateway", "application_insight", familyAssetMetadata, familyContainerRegistry, familyCosmosAccount, "databricks_workspace", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", familyManagedDisk, "metric_alert_rule", familyNetworkSecurityGrp, familyPublicIPAddress, familyResourceExposure, "role", "route_table", "security_contact", familySQLDatabase, "sql_managed_instance", familySQLServer, familyStorageAccount, familyVirtualMachine, "virtual_machine_scale_set", familyVirtualNetwork:
 		if settings.subscriptionID == "" {
 			return settings, fmt.Errorf("azure subscription_id is required when family=%q", settings.family)
 		}
@@ -1604,6 +1607,17 @@ func assetMetadataEvent(settings settings, record armResourceRecord) (*primitive
 		return nil, err
 	}
 	return sourceEvent(settings, "azure-asset-metadata-"+firstNonEmpty(resourceID, record.Type), "asset.data_sensitivity", "asset/data_sensitivity/v1", payload, attributes, time.Now().UTC())
+}
+
+func genericARMResourceEvent(settings settings, record armTypedResourceRecord, family string, kind string, schemaRef string) (*primitives.Event, error) {
+	attributes := azureResourceAttributes(settings, record, family)
+	addAzureIdentityAttributes(attributes, record.Identity)
+	setAttributes(attributes, map[string]string{"kind": kind, "public_network_access": propertyString(record, "publicNetworkAccess"), "state": firstNonEmpty(propertyString(record, "provisioningState"), propertyString(record, "status"))})
+	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, azureResourceEventID(family, record), kind, schemaRef, payload, attributes, time.Now().UTC())
 }
 
 func virtualMachineEvent(settings settings, record azureVMRecord) (*primitives.Event, error) {
@@ -2551,13 +2565,9 @@ func prefixedNext(prefix string, next string) string {
 	return prefix + ":" + next
 }
 
-func graphToken(settings settings) string {
-	return firstNonEmpty(settings.graphToken, settings.token)
-}
+func graphToken(settings settings) string { return firstNonEmpty(settings.graphToken, settings.token) }
 
-func armToken(settings settings) string {
-	return firstNonEmpty(settings.armToken, settings.token)
-}
+func armToken(settings settings) string { return firstNonEmpty(settings.armToken, settings.token) }
 
 func graphBaseURL(settings settings) string {
 	return firstNonEmpty(settings.graphBaseURL, settings.baseURL, "https://graph.microsoft.com")
@@ -2567,9 +2577,7 @@ func armBaseURL(settings settings) string {
 	return firstNonEmpty(settings.armBaseURL, settings.baseURL, "https://management.azure.com")
 }
 
-func tenantID(settings settings) string {
-	return settings.tenantID
-}
+func tenantID(settings settings) string { return settings.tenantID }
 
 func azurePrincipalType(raw string, record graphPrincipalRecord) string {
 	value := strings.ToLower(strings.TrimSpace(raw))
@@ -2647,12 +2655,7 @@ func credentialStatus(endTime string) string {
 	return "EXPIRED"
 }
 
-func boolString(value bool) string {
-	if value {
-		return "true"
-	}
-	return "false"
-}
+func boolString(value bool) string { return strconv.FormatBool(value) }
 
 func addQuery(query url.Values, key string, value string) {
 	if strings.TrimSpace(value) != "" {
@@ -2742,9 +2745,7 @@ func azureResourceTypeFromID(value string) string {
 	return "azure_resource"
 }
 
-func firstNonEmpty(values ...string) string {
-	return textutil.FirstNonEmpty(values...)
-}
+func firstNonEmpty(values ...string) string { return textutil.FirstNonEmpty(values...) }
 
 func trimEmptyAttributes(attributes map[string]string) {
 	for key, value := range attributes {

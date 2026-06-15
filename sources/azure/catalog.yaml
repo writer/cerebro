@@ -4,12 +4,16 @@ description: Azure Entra ID, RBAC, and activity/audit source.
 emitted_kinds:
   - asset.data_sensitivity
   - azure.activity_log
+  - azure.activity_log_alert
   - azure.aks_cluster
   - azure.app_role_assignment
   - azure.app_service
   - azure.application
+  - azure.application_gateway
+  - azure.application_insight
   - azure.container_registry
   - azure.cosmos_account
+  - azure.databricks_workspace
   - azure.credential
   - azure.directory_audit
   - azure.directory_role_assignment
@@ -21,26 +25,38 @@ emitted_kinds:
   - azure.key_vault
   - azure.key_vault_key
   - azure.key_vault_secret
+  - azure.load_balancer
+  - azure.log_alert
   - azure.managed_disk
+  - azure.metric_alert_rule
   - azure.network_security_group
   - azure.public_ip_address
   - azure.resource_exposure
+  - azure.role
+  - azure.route_table
+  - azure.security_contact
   - azure.service_principal
   - azure.sql_database
+  - azure.sql_managed_instance
   - azure.sql_server
   - azure.storage_account
   - azure.user
   - azure.virtual_machine
+  - azure.virtual_machine_scale_set
   - azure.virtual_network
 runtime_families:
   - activity_log
+  - activity_log_alert
   - aks_cluster
   - app_role_assignment
   - app_service
   - application
+  - application_gateway
+  - application_insight
   - asset_metadata
   - container_registry
   - cosmos_account
+  - databricks_workspace
   - credential
   - directory_audit
   - directory_role_assignment
@@ -52,14 +68,445 @@ runtime_families:
   - key_vault
   - key_vault_key
   - key_vault_secret
+  - load_balancer
+  - log_alert
   - managed_disk
+  - metric_alert_rule
   - network_security_group
   - public_ip_address
   - resource_exposure
+  - role
+  - route_table
+  - security_contact
   - service_principal
   - sql_database
+  - sql_managed_instance
   - sql_server
   - storage_account
   - user
   - virtual_machine
+  - virtual_machine_scale_set
   - virtual_network
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: azure
+  dimensions:
+    - id: activity_log
+      type: audit_event
+      title: Azure activity logs
+      families: [activity_log]
+      support: supported
+      high_value: true
+    - id: activity_log_alert
+      type: entity_family
+      title: Azure Activity Log Alert
+      families: [activity_log_alert]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [alert condition expansion, action group links]
+    - id: ad_authorization_policy
+      type: entity_family
+      title: Azure authorization policy
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [tenant-wide guest and user authorization settings]
+    - id: aks_cluster
+      type: entity_family
+      title: Azure AKS clusters
+      families: [aks_cluster]
+      support: supported
+      high_value: true
+    - id: aks_node
+      type: entity_family
+      title: Azure AKS nodes and node pools
+      families: [aks_cluster]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [per-node kubelet and node image posture]
+    - id: app_service
+      type: entity_family
+      title: Azure App Service apps
+      families: [app_service]
+      support: supported
+      high_value: true
+    - id: app_role_assignment
+      type: app_entitlement
+      title: Azure app role assignments
+      families: [app_role_assignment]
+      support: supported
+      high_value: true
+    - id: application
+      type: entity_family
+      title: Azure applications
+      families: [application]
+      support: supported
+      high_value: true
+    - id: application_container
+      type: entity_family
+      title: Azure application containers
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [container app revision and image detail]
+    - id: application_gateway
+      type: entity_family
+      title: Azure Application Gateway
+      families: [application_gateway]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [listener TLS and WAF policy detail]
+    - id: application_insight
+      type: entity_family
+      title: Azure Application Insights
+      families: [application_insight]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [alert and retention settings]
+    - id: cognitive_services_account
+      type: entity_family
+      title: Azure Cognitive Services accounts
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [network ACLs and model deployment detail]
+    - id: container_registry
+      type: entity_family
+      title: Azure Container Registry
+      families: [container_registry]
+      support: supported
+      high_value: true
+    - id: container_repository
+      type: entity_family
+      title: Azure container repositories
+      families: [container_registry]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [per-repository metadata and image tags]
+    - id: container_vulnerability
+      type: entity_family
+      title: Azure container vulnerabilities
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [Defender vulnerability finding payloads]
+    - id: cosmos_account
+      type: entity_family
+      title: Azure Cosmos DB accounts
+      families: [cosmos_account]
+      support: supported
+      high_value: true
+    - id: cosmos_postgresql
+      type: entity_family
+      title: Azure Cosmos DB for PostgreSQL
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [cluster configuration and firewall rules]
+    - id: credential
+      type: entity_family
+      title: Azure application and service principal credentials
+      families: [credential]
+      support: supported
+      high_value: true
+    - id: database
+      type: entity_family
+      title: Azure database services
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [engine-specific posture fields]
+    - id: databricks_workspace
+      type: entity_family
+      title: Azure Databricks workspaces
+      families: [databricks_workspace]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [workspace network and access settings]
+    - id: diagnostic_setting
+      type: entity_family
+      title: Azure diagnostic settings
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [target resource expansion and log category state]
+    - id: directory_audit
+      type: audit_event
+      title: Azure directory audits
+      families: [directory_audit]
+      support: supported
+      high_value: true
+    - id: directory_role_assignment
+      type: app_entitlement
+      title: Azure directory role assignments
+      families: [directory_role_assignment]
+      support: supported
+      high_value: true
+    - id: effective_permission
+      type: app_entitlement
+      title: Azure effective permissions
+      families: [effective_permission]
+      support: supported
+      high_value: true
+    - id: foundry_model_deployment
+      type: entity_family
+      title: Azure Foundry model deployments
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [model deployment runtime and network settings]
+    - id: function_app
+      type: entity_family
+      title: Azure Functions
+      families: [function_app]
+      support: supported
+      high_value: true
+    - id: group
+      type: entity_family
+      title: Azure groups
+      families: [group]
+      support: supported
+      high_value: true
+    - id: group_membership
+      type: relationship
+      title: Azure group memberships
+      families: [group_membership]
+      support: supported
+      high_value: true
+    - id: iam_role_assignment
+      type: app_entitlement
+      title: Azure RBAC role assignments
+      families: [iam_role_assignment]
+      support: supported
+      high_value: true
+    - id: key_vault
+      type: entity_family
+      title: Azure Key Vaults
+      families: [key_vault]
+      support: supported
+      high_value: true
+    - id: key_vault_key
+      type: entity_family
+      title: Azure Key Vault keys
+      families: [key_vault_key]
+      support: supported
+      high_value: true
+    - id: key_vault_secret
+      type: entity_family
+      title: Azure Key Vault secrets
+      families: [key_vault_secret]
+      support: supported
+      high_value: true
+    - id: load_balancer
+      type: entity_family
+      title: Azure Load Balancers
+      families: [load_balancer]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [frontend IP, backend pool, and rule detail]
+    - id: log_alert
+      type: entity_family
+      title: Azure log alert rules
+      families: [log_alert]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [query and action group detail]
+    - id: machine_learning_workspace
+      type: entity_family
+      title: Azure Machine Learning workspaces
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [workspace public network and private endpoint detail]
+    - id: managed_disk
+      type: entity_family
+      title: Azure managed disks
+      families: [managed_disk]
+      support: supported
+      high_value: true
+    - id: metric_alert_rule
+      type: entity_family
+      title: Azure metric alert rules
+      families: [metric_alert_rule]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [criteria and action group detail]
+    - id: defender_config
+      type: entity_family
+      title: Microsoft Defender for Cloud configuration
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [pricing plan and security setting expansion]
+    - id: network_security_group
+      type: entity_family
+      title: Azure Network Security Groups
+      families: [network_security_group]
+      support: supported
+      high_value: true
+    - id: postgresql_server
+      type: entity_family
+      title: Azure PostgreSQL servers
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [server SSL and network rule detail]
+    - id: public_ip_address
+      type: entity_family
+      title: Azure public IP addresses
+      families: [public_ip_address]
+      support: supported
+      high_value: true
+    - id: queue
+      type: entity_family
+      title: Azure Storage queues
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [per-queue ACLs and message settings]
+    - id: resource_exposure
+      type: relationship
+      title: Azure public resource exposure
+      families: [resource_exposure]
+      support: supported
+      high_value: true
+    - id: role
+      type: app_entitlement
+      title: Azure role definitions
+      families: [role]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [role definition action expansion]
+    - id: route_table
+      type: entity_family
+      title: Azure route tables
+      families: [route_table]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [route next-hop detail]
+    - id: scale_set_virtual_machine
+      type: entity_family
+      title: Azure scale set virtual machines
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [per-instance image and network posture]
+    - id: security_contact
+      type: entity_family
+      title: Azure security contacts
+      families: [security_contact]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [Defender contact notification settings]
+    - id: server_vulnerability
+      type: entity_family
+      title: Azure server vulnerabilities
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [Defender vulnerability finding payloads]
+    - id: service_principal
+      type: entity_family
+      title: Azure service principals
+      families: [service_principal]
+      support: supported
+      high_value: true
+    - id: sql_database
+      type: entity_family
+      title: Azure SQL databases
+      families: [sql_database]
+      support: supported
+      high_value: true
+    - id: sql_managed_instance
+      type: entity_family
+      title: Azure SQL managed instances
+      families: [sql_managed_instance]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [managed instance network and TDE settings]
+    - id: sql_server
+      type: entity_family
+      title: Azure SQL servers
+      families: [sql_server]
+      support: supported
+      high_value: true
+    - id: sql_server_on_virtual_machine
+      type: entity_family
+      title: Azure SQL Server on virtual machines
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [SQL VM extension configuration]
+    - id: storage_account
+      type: entity_family
+      title: Azure Storage accounts
+      families: [storage_account]
+      support: supported
+      high_value: true
+    - id: storage_blob
+      type: entity_family
+      title: Azure Storage blobs
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [object-level ACLs and content inspection]
+    - id: storage_container
+      type: entity_family
+      title: Azure Storage containers
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [container ACLs]
+    - id: subnet
+      type: entity_family
+      title: Azure subnets
+      families: [virtual_network]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [dedicated subnet entities and route table associations]
+    - id: subscription
+      type: entity_family
+      title: Azure subscriptions
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [subscription policy and security contact expansion]
+    - id: synapse_warehouse
+      type: entity_family
+      title: Azure Synapse warehouses
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [workspace SQL pool posture]
+    - id: user
+      type: entity_family
+      title: Azure users
+      families: [user]
+      support: supported
+      high_value: true
+    - id: virtual_machine
+      type: entity_family
+      title: Azure virtual machines
+      families: [virtual_machine]
+      support: supported
+      high_value: true
+    - id: virtual_machine_extension
+      type: entity_family
+      title: Azure virtual machine extensions
+      families: [asset_metadata]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [extension publisher and protected settings]
+    - id: virtual_machine_scale_set
+      type: entity_family
+      title: Azure virtual machine scale sets
+      families: [virtual_machine_scale_set]
+      support: partial
+      high_value: true
+      known_unsupported_fields: [instance and upgrade policy detail]
+    - id: virtual_network
+      type: entity_family
+      title: Azure virtual networks
+      families: [virtual_network]
+      support: supported
+      high_value: true
