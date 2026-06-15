@@ -6,16 +6,20 @@ emitted_kinds:
   - gcp.artifact_registry_image
   - gcp.artifact_registry_repository
   - gcp.audit
+  - gcp.bigquery_dataset
   - gcp.cloud_function
   - gcp.cloud_ids_endpoint
+  - gcp.cloud_run_revision
   - gcp.cloud_run_service
   - gcp.cloud_sql_instance
+  - gcp.container_vulnerability
   - gcp.compute_disk
   - gcp.compute_firewall
   - gcp.compute_instance
   - gcp.compute_network
   - gcp.compute_subnetwork
   - gcp.dns_managed_zone
+  - gcp.dns_record_set
   - gcp.effective_permission
   - gcp.gcs_bucket
   - gcp.gke_cluster
@@ -25,6 +29,7 @@ emitted_kinds:
   - gcp.iam_role_assignment
   - gcp.kms_key
   - gcp.logging_project_sink
+  - gcp.resourcemanager_project
   - gcp.resource_exposure
   - gcp.secret_manager_secret
   - gcp.service_account
@@ -35,16 +40,20 @@ runtime_families:
   - artifact_registry_image
   - artifact_registry_repository
   - audit
+  - bigquery_dataset
   - cloud_function
   - cloud_ids_endpoint
+  - cloud_run_revision
   - cloud_run_service
   - cloud_sql_instance
+  - container_vulnerability
   - compute_disk
   - compute_firewall
   - compute_instance
   - compute_network
   - compute_subnetwork
   - dns_managed_zone
+  - dns_record_set
   - effective_permission
   - gcs_bucket
   - gke_cluster
@@ -54,6 +63,7 @@ runtime_families:
   - iam_role_assignment
   - kms_key
   - logging_project_sink
+  - resourcemanager_project
   - resource_exposure
   - secret_manager_secret
   - service_account
@@ -98,10 +108,9 @@ coverage_contract:
     - id: bigquery_dataset
       type: entity_family
       title: BigQuery datasets
-      families: [asset_metadata]
-      support: partial
+      families: [bigquery_dataset]
+      support: supported
       high_value: true
-      known_unsupported_fields: [dataset ACL and CMEK detail]
     - id: cloud_function
       type: entity_family
       title: Cloud Functions
@@ -118,10 +127,9 @@ coverage_contract:
     - id: cloud_run_revision
       type: entity_family
       title: Cloud Run revisions
-      families: [asset_metadata]
-      support: partial
+      families: [cloud_run_revision]
+      support: supported
       high_value: true
-      known_unsupported_fields: [revision service account and image detail]
     - id: cloud_run_service
       type: entity_family
       title: Cloud Run services
@@ -167,10 +175,9 @@ coverage_contract:
     - id: container_vulnerability
       type: entity_family
       title: Container image vulnerabilities
-      families: [artifact_registry_image]
-      support: partial
+      families: [container_vulnerability]
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-CVE occurrence severity, active state, discovered_at, fixed package versions]
     - id: container_registry
       type: entity_family
       title: Container Registry registries
@@ -181,10 +188,9 @@ coverage_contract:
     - id: dns_managed_zone
       type: entity_family
       title: Cloud DNS managed zones
-      families: [dns_managed_zone]
-      support: partial
+      families: [dns_managed_zone, dns_record_set]
+      support: supported
       high_value: true
-      known_unsupported_fields: [recordset detail]
     - id: gcs_bucket
       type: entity_family
       title: Cloud Storage buckets
@@ -243,10 +249,10 @@ coverage_contract:
     - id: resourcemanager_project
       type: entity_family
       title: Resource Manager projects
-      families: [asset_metadata]
+      families: [resourcemanager_project]
       support: partial
       high_value: true
-      known_unsupported_fields: [project-level service and org-policy detail]
+      known_unsupported_fields: [enabled service inventory and org-policy detail]
     - id: resource_exposure
       type: relationship
       title: GCP public resource exposure
