@@ -2,6 +2,7 @@ package reports
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -152,7 +153,11 @@ func (s *Service) previousRiskActionCandidates(ctx context.Context, reportRunID 
 	if result == nil {
 		return nil, nil
 	}
-	candidates, err := riskplan.DecodeCandidates(result.AsMap()["action_candidates"])
+	content, err := json.Marshal(result.AsMap()["action_candidates"])
+	if err != nil {
+		return nil, fmt.Errorf("encode previous risk action plan candidates from %q: %w", reportRunID, err)
+	}
+	candidates, err := riskplan.DecodeCandidates(content)
 	if err != nil {
 		return nil, fmt.Errorf("decode previous risk action plan candidates from %q: %w", reportRunID, err)
 	}

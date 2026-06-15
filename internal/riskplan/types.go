@@ -80,37 +80,58 @@ type CandidateSeed struct {
 	Reasons             []string
 }
 
-// Candidate is one ranked next-best action with compatibility fields kept at top level.
+// Candidate is one ranked next-best action. Embedded contracts keep the JSON
+// shape flat while keeping the Go type cohesive.
 type Candidate struct {
-	ID                               string                                    `json:"id"`
-	Title                            string                                    `json:"title"`
-	ActionType                       string                                    `json:"action_type"`
-	ScenarioType                     string                                    `json:"scenario_type,omitempty"`
-	TargetURN                        string                                    `json:"target_urn"`
-	Owner                            string                                    `json:"owner,omitempty"`
-	PriorityScore                    int                                       `json:"priority_score"`
-	ScoreBreakdown                   ScoreBreakdown                            `json:"score_breakdown"`
-	RiskLevel                        string                                    `json:"risk_level,omitempty"`
-	ConfidenceScore                  int                                       `json:"confidence_score,omitempty"`
-	ExpectedRiskScoreReduction       int                                       `json:"expected_risk_score_reduction"`
-	ExpectedAttackPathScoreReduction int                                       `json:"expected_attack_path_score_reduction"`
-	ExpectedAttackPathCountReduction int                                       `json:"expected_attack_path_count_reduction"`
-	ExpectedReduction                ExpectedReduction                         `json:"expected_reduction"`
-	BeforeRiskScore                  int                                       `json:"before_risk_score"`
-	AfterRiskScore                   int                                       `json:"after_risk_score"`
-	FindingIDs                       []string                                  `json:"finding_ids,omitempty"`
-	RuleIDs                          []string                                  `json:"rule_ids,omitempty"`
-	RuntimeIDs                       []string                                  `json:"runtime_ids,omitempty"`
-	ResourceURNs                     []string                                  `json:"resource_urns,omitempty"`
-	ControlRefs                      []string                                  `json:"control_refs,omitempty"`
-	RiskFactors                      []RiskFactorSummary                       `json:"risk_factors,omitempty"`
-	Reasons                          []string                                  `json:"reasons,omitempty"`
-	SimulationStatus                 string                                    `json:"simulation_status"`
-	Effort                           Effort                                    `json:"effort"`
-	Ownership                        Ownership                                 `json:"ownership"`
-	Evidence                         EvidenceConfidence                        `json:"evidence"`
-	OutcomeLearning                  OutcomeLearning                           `json:"outcome_learning"`
-	RiskDelta                        findinganalysis.RiskDeltaSimulationReport `json:"risk_delta"`
+	CandidateIdentity
+	CandidateScoring
+	CandidateReferences
+	CandidateExecution
+	RiskDelta findinganalysis.RiskDeltaSimulationReport `json:"risk_delta"`
+}
+
+// CandidateIdentity identifies the action target and simulation mode.
+type CandidateIdentity struct {
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	ActionType       string `json:"action_type"`
+	ScenarioType     string `json:"scenario_type,omitempty"`
+	TargetURN        string `json:"target_urn"`
+	Owner            string `json:"owner,omitempty"`
+	RiskLevel        string `json:"risk_level,omitempty"`
+	SimulationStatus string `json:"simulation_status"`
+}
+
+// CandidateScoring contains all ranking and expected-reduction fields.
+type CandidateScoring struct {
+	PriorityScore                    int               `json:"priority_score"`
+	ScoreBreakdown                   ScoreBreakdown    `json:"score_breakdown"`
+	ConfidenceScore                  int               `json:"confidence_score,omitempty"`
+	ExpectedRiskScoreReduction       int               `json:"expected_risk_score_reduction"`
+	ExpectedAttackPathScoreReduction int               `json:"expected_attack_path_score_reduction"`
+	ExpectedAttackPathCountReduction int               `json:"expected_attack_path_count_reduction"`
+	ExpectedReduction                ExpectedReduction `json:"expected_reduction"`
+	BeforeRiskScore                  int               `json:"before_risk_score"`
+	AfterRiskScore                   int               `json:"after_risk_score"`
+}
+
+// CandidateReferences links a candidate to the findings and evidence that produced it.
+type CandidateReferences struct {
+	FindingIDs   []string            `json:"finding_ids,omitempty"`
+	RuleIDs      []string            `json:"rule_ids,omitempty"`
+	RuntimeIDs   []string            `json:"runtime_ids,omitempty"`
+	ResourceURNs []string            `json:"resource_urns,omitempty"`
+	ControlRefs  []string            `json:"control_refs,omitempty"`
+	RiskFactors  []RiskFactorSummary `json:"risk_factors,omitempty"`
+	Reasons      []string            `json:"reasons,omitempty"`
+}
+
+// CandidateExecution describes operational readiness and learned outcomes.
+type CandidateExecution struct {
+	Effort          Effort             `json:"effort"`
+	Ownership       Ownership          `json:"ownership"`
+	Evidence        EvidenceConfidence `json:"evidence"`
+	OutcomeLearning OutcomeLearning    `json:"outcome_learning"`
 }
 
 // ExpectedReduction groups all expected impact fields for newer consumers.

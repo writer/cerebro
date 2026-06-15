@@ -103,14 +103,10 @@ func Analyze(findings []*ports.FindingRecord, options Options) Plan {
 	return plan
 }
 
-// DecodeCandidates decodes prior candidates from a JSON-compatible report result.
-func DecodeCandidates(value any) ([]Candidate, error) {
-	if value == nil {
+// DecodeCandidates decodes prior candidates from a JSON report payload.
+func DecodeCandidates(content []byte) ([]Candidate, error) {
+	if len(content) == 0 {
 		return nil, nil
-	}
-	content, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
 	}
 	var candidates []Candidate
 	if err := json.Unmarshal(content, &candidates); err != nil {
@@ -323,39 +319,47 @@ func actionPlanCandidates(findings []*ports.FindingRecord, seeds []aggregatedCan
 		outcome := outcomeLearningForTarget(seed.TargetURN, options.GraphNeighborhoods)
 		breakdown := scoreBreakdown(seed, report, status, effort, ownership, outcome)
 		candidate := Candidate{
-			ID:                               actionCandidateID(seed),
-			Title:                            seed.Title,
-			ActionType:                       seed.ActionType,
-			ScenarioType:                     seed.ScenarioType,
-			TargetURN:                        seed.TargetURN,
-			Owner:                            ownership.Owner,
-			PriorityScore:                    breakdown.Total,
-			ScoreBreakdown:                   breakdown,
-			RiskLevel:                        riskLevel(seed.MaxRiskScore),
-			ConfidenceScore:                  seed.ConfidenceScore,
-			ExpectedRiskScoreReduction:       report.RiskScoreReduction,
-			ExpectedAttackPathScoreReduction: report.AttackPathScoreReduction,
-			ExpectedAttackPathCountReduction: report.AttackPathCountReduction,
-			ExpectedReduction: ExpectedReduction{
-				RiskScore:       report.RiskScoreReduction,
-				AttackPathScore: report.AttackPathScoreReduction,
-				AttackPathCount: report.AttackPathCountReduction,
+			CandidateIdentity: CandidateIdentity{
+				ID:               actionCandidateID(seed),
+				Title:            seed.Title,
+				ActionType:       seed.ActionType,
+				ScenarioType:     seed.ScenarioType,
+				TargetURN:        seed.TargetURN,
+				Owner:            ownership.Owner,
+				RiskLevel:        riskLevel(seed.MaxRiskScore),
+				SimulationStatus: status,
 			},
-			BeforeRiskScore:  report.Before.TotalRiskScore,
-			AfterRiskScore:   report.After.TotalRiskScore,
-			FindingIDs:       sortedStringSetValues(seed.FindingIDs),
-			RuleIDs:          sortedStringSetValues(seed.RuleIDs),
-			RuntimeIDs:       sortedStringSetValues(seed.RuntimeIDs),
-			ResourceURNs:     sortedStringSetValues(seed.ResourceURNs),
-			ControlRefs:      sortedStringSetValues(seed.ControlRefs),
-			RiskFactors:      riskFactorSummaries(seed.RiskFactors),
-			Reasons:          sortedStringSetValues(seed.Reasons),
-			SimulationStatus: status,
-			Effort:           effort,
-			Ownership:        ownership,
-			Evidence:         evidence,
-			OutcomeLearning:  outcome,
-			RiskDelta:        report,
+			CandidateScoring: CandidateScoring{
+				PriorityScore:                    breakdown.Total,
+				ScoreBreakdown:                   breakdown,
+				ConfidenceScore:                  seed.ConfidenceScore,
+				ExpectedRiskScoreReduction:       report.RiskScoreReduction,
+				ExpectedAttackPathScoreReduction: report.AttackPathScoreReduction,
+				ExpectedAttackPathCountReduction: report.AttackPathCountReduction,
+				ExpectedReduction: ExpectedReduction{
+					RiskScore:       report.RiskScoreReduction,
+					AttackPathScore: report.AttackPathScoreReduction,
+					AttackPathCount: report.AttackPathCountReduction,
+				},
+				BeforeRiskScore: report.Before.TotalRiskScore,
+				AfterRiskScore:  report.After.TotalRiskScore,
+			},
+			CandidateReferences: CandidateReferences{
+				FindingIDs:   sortedStringSetValues(seed.FindingIDs),
+				RuleIDs:      sortedStringSetValues(seed.RuleIDs),
+				RuntimeIDs:   sortedStringSetValues(seed.RuntimeIDs),
+				ResourceURNs: sortedStringSetValues(seed.ResourceURNs),
+				ControlRefs:  sortedStringSetValues(seed.ControlRefs),
+				RiskFactors:  riskFactorSummaries(seed.RiskFactors),
+				Reasons:      sortedStringSetValues(seed.Reasons),
+			},
+			CandidateExecution: CandidateExecution{
+				Effort:          effort,
+				Ownership:       ownership,
+				Evidence:        evidence,
+				OutcomeLearning: outcome,
+			},
+			RiskDelta: report,
 		}
 		candidates = append(candidates, candidate)
 	}

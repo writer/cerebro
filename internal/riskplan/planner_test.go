@@ -179,12 +179,12 @@ func TestAnalyzeCanIncludeUnscoredPlanningBlockers(t *testing.T) {
 func TestDiffCandidatesReportsAddedRemovedAndChanged(t *testing.T) {
 	diff := DiffCandidates(
 		[]Candidate{
-			{ID: "a", Title: "A", PriorityScore: 100, ExpectedRiskScoreReduction: 5, ExpectedAttackPathCountReduction: 1, SimulationStatus: SimulationStatusSimulated},
-			{ID: "c", Title: "C", PriorityScore: 70},
+			diffTestCandidate("a", "A", 100, 5, 1, SimulationStatusSimulated),
+			diffTestCandidate("c", "C", 70, 0, 0, ""),
 		},
 		[]Candidate{
-			{ID: "a", Title: "A", PriorityScore: 115, ExpectedRiskScoreReduction: 8, ExpectedAttackPathCountReduction: 2, SimulationStatus: SimulationStatusSimulated},
-			{ID: "b", Title: "B", PriorityScore: 20},
+			diffTestCandidate("a", "A", 115, 8, 2, SimulationStatusSimulated),
+			diffTestCandidate("b", "B", 20, 0, 0, ""),
 		},
 	)
 
@@ -199,5 +199,20 @@ func TestDiffCandidatesReportsAddedRemovedAndChanged(t *testing.T) {
 	}
 	if diff.UnchangedCount != 0 {
 		t.Fatalf("UnchangedCount = %d, want 0", diff.UnchangedCount)
+	}
+}
+
+func diffTestCandidate(id string, title string, priorityScore int, riskReduction int, pathCountReduction int, simulationStatus string) Candidate {
+	return Candidate{
+		CandidateIdentity: CandidateIdentity{
+			ID:               id,
+			Title:            title,
+			SimulationStatus: simulationStatus,
+		},
+		CandidateScoring: CandidateScoring{
+			PriorityScore:                    priorityScore,
+			ExpectedRiskScoreReduction:       riskReduction,
+			ExpectedAttackPathCountReduction: pathCountReduction,
+		},
 	}
 }
