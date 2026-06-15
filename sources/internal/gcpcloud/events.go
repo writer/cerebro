@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -651,6 +652,62 @@ type ComputeURLMapTest struct {
 	Service     string `json:"service"`
 }
 
+type ComputeTargetHTTPProxyRecord struct {
+	ID                      string          `json:"id"`
+	Name                    string          `json:"name"`
+	SelfLink                string          `json:"selfLink"`
+	Description             string          `json:"description"`
+	URLMap                  string          `json:"urlMap"`
+	Region                  string          `json:"region"`
+	ProxyBind               bool            `json:"proxyBind"`
+	Fingerprint             string          `json:"fingerprint"`
+	HTTPKeepAliveTimeoutSec int             `json:"httpKeepAliveTimeoutSec"`
+	Raw                     json.RawMessage `json:"-"`
+}
+
+type ComputeTargetHTTPSProxyRecord struct {
+	ID                      string          `json:"id"`
+	Name                    string          `json:"name"`
+	SelfLink                string          `json:"selfLink"`
+	Description             string          `json:"description"`
+	URLMap                  string          `json:"urlMap"`
+	SSLCertificates         []string        `json:"sslCertificates"`
+	CertificateMap          string          `json:"certificateMap"`
+	QUICOverride            string          `json:"quicOverride"`
+	SSLPolicy               string          `json:"sslPolicy"`
+	Region                  string          `json:"region"`
+	ProxyBind               bool            `json:"proxyBind"`
+	ServerTLSPolicy         string          `json:"serverTlsPolicy"`
+	AuthorizationPolicy     string          `json:"authorizationPolicy"`
+	Fingerprint             string          `json:"fingerprint"`
+	HTTPKeepAliveTimeoutSec int             `json:"httpKeepAliveTimeoutSec"`
+	Raw                     json.RawMessage `json:"-"`
+}
+
+type ComputeSSLCertificateRecord struct {
+	ID                      string                           `json:"id"`
+	Name                    string                           `json:"name"`
+	SelfLink                string                           `json:"selfLink"`
+	Description             string                           `json:"description"`
+	Managed                 ComputeSSLCertificateManaged     `json:"managed"`
+	SelfManaged             ComputeSSLCertificateSelfManaged `json:"selfManaged"`
+	Type                    string                           `json:"type"`
+	SubjectAlternativeNames []string                         `json:"subjectAlternativeNames"`
+	ExpireTime              string                           `json:"expireTime"`
+	Region                  string                           `json:"region"`
+	Raw                     json.RawMessage                  `json:"-"`
+}
+
+type ComputeSSLCertificateManaged struct {
+	Domains      []string          `json:"domains"`
+	Status       string            `json:"status"`
+	DomainStatus map[string]string `json:"domainStatus"`
+}
+
+type ComputeSSLCertificateSelfManaged struct {
+	Certificate string `json:"certificate"`
+}
+
 type ComputeNetworkRecord struct {
 	ID                    string                      `json:"id"`
 	Name                  string                      `json:"name"`
@@ -768,6 +825,54 @@ type ComputeDiskRecord struct {
 
 type ComputeDiskEncryptionKey struct {
 	KMSKeyName string `json:"kmsKeyName"`
+}
+
+func (record ComputeAddressRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name, record.Address)
+}
+
+func (record ComputeBackendServiceRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeDiskRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeForwardingRuleRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeNetworkRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeRouteRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeSecurityPolicyRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeSSLCertificateRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeSubnetworkRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeTargetHTTPProxyRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeTargetHTTPSProxyRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
+}
+
+func (record ComputeURLMapRecord) CerebroResourceID() string {
+	return firstNonEmpty(record.SelfLink, record.ID, record.Name)
 }
 
 type GKEClusterRecord struct {
@@ -2031,6 +2136,97 @@ func ComputeURLMapEvent(settings Settings, record ComputeURLMapRecord) (*primiti
 	return sourceEvent(settings, "gcp-compute-url-map-"+resourceID, "gcp.compute_url_map", "gcp/compute_url_map/v1", payload, attributes)
 }
 
+func ComputeTargetHTTPProxyEvent(settings Settings, record ComputeTargetHTTPProxyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	attributes := cloudResourceAttributes(settings, "compute_target_http_proxy", resourceID, record.Name, "compute_target_http_proxy", location, nil)
+	attributes["description"] = record.Description
+	attributes["protocol"] = "HTTP"
+	attributes["url_map"] = lastPathSegment(record.URLMap)
+	attributes["url_map_url"] = record.URLMap
+	attributes["proxy_bind"] = boolString(record.ProxyBind)
+	if record.HTTPKeepAliveTimeoutSec != 0 {
+		attributes["http_keep_alive_timeout_sec"] = strconv.Itoa(record.HTTPKeepAliveTimeoutSec)
+	}
+	attributes["fingerprint"] = record.Fingerprint
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-target-http-proxy-"+resourceID, "gcp.compute_target_http_proxy", "gcp/compute_target_http_proxy/v1", payload, attributes)
+}
+
+func ComputeTargetHTTPSProxyEvent(settings Settings, record ComputeTargetHTTPSProxyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	certificates := lastPathSegments(record.SSLCertificates)
+	attributes := cloudResourceAttributes(settings, "compute_target_https_proxy", resourceID, record.Name, "compute_target_https_proxy", location, nil)
+	attributes["description"] = record.Description
+	attributes["protocol"] = "HTTPS"
+	attributes["url_map"] = lastPathSegment(record.URLMap)
+	attributes["url_map_url"] = record.URLMap
+	attributes["ssl_certificates"] = strings.Join(certificates, ",")
+	attributes["ssl_certificate_urls"] = strings.Join(record.SSLCertificates, ",")
+	attributes["ssl_certificates_count"] = strconv.Itoa(len(record.SSLCertificates))
+	attributes["certificate_map"] = lastPathSegment(record.CertificateMap)
+	attributes["certificate_map_url"] = record.CertificateMap
+	attributes["certificates_configured"] = boolString(len(record.SSLCertificates) != 0 || record.CertificateMap != "")
+	attributes["quic_override"] = record.QUICOverride
+	attributes["ssl_policy"] = lastPathSegment(record.SSLPolicy)
+	attributes["ssl_policy_url"] = record.SSLPolicy
+	attributes["server_tls_policy"] = lastPathSegment(record.ServerTLSPolicy)
+	attributes["server_tls_policy_url"] = record.ServerTLSPolicy
+	attributes["authorization_policy"] = lastPathSegment(record.AuthorizationPolicy)
+	attributes["authorization_policy_url"] = record.AuthorizationPolicy
+	attributes["proxy_bind"] = boolString(record.ProxyBind)
+	attributes["tls_enabled"] = "true"
+	if record.HTTPKeepAliveTimeoutSec != 0 {
+		attributes["http_keep_alive_timeout_sec"] = strconv.Itoa(record.HTTPKeepAliveTimeoutSec)
+	}
+	attributes["fingerprint"] = record.Fingerprint
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-target-https-proxy-"+resourceID, "gcp.compute_target_https_proxy", "gcp/compute_target_https_proxy/v1", payload, attributes)
+}
+
+func ComputeSSLCertificateEvent(settings Settings, record ComputeSSLCertificateRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	certificateType := firstNonEmpty(record.Type, computeSSLCertificateType(record))
+	managedDomains := append([]string(nil), record.Managed.Domains...)
+	domainStatuses := computeSSLCertificateDomainStatuses(record.Managed.DomainStatus)
+	attributes := cloudResourceAttributes(settings, "compute_ssl_certificate", resourceID, record.Name, "compute_ssl_certificate", location, nil)
+	attributes["description"] = record.Description
+	attributes["certificate_type"] = certificateType
+	attributes["type"] = certificateType
+	attributes["managed"] = boolString(certificateType == "MANAGED" || len(managedDomains) != 0 || record.Managed.Status != "")
+	attributes["self_managed"] = boolString(certificateType == "SELF_MANAGED" || record.SelfManaged.Certificate != "")
+	attributes["managed_status"] = record.Managed.Status
+	attributes["managed_domains"] = strings.Join(managedDomains, ",")
+	attributes["managed_domains_count"] = strconv.Itoa(len(managedDomains))
+	attributes["domain_statuses"] = strings.Join(domainStatuses, ",")
+	attributes["subject_alternative_names"] = strings.Join(record.SubjectAlternativeNames, ",")
+	attributes["sans"] = strings.Join(record.SubjectAlternativeNames, ",")
+	attributes["san_count"] = strconv.Itoa(len(record.SubjectAlternativeNames))
+	attributes["expire_time"] = record.ExpireTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-ssl-certificate-"+resourceID, "gcp.compute_ssl_certificate", "gcp/compute_ssl_certificate/v1", payload, attributes)
+}
+
 func ComputeNetworkEvent(settings Settings, record ComputeNetworkRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	attributes := cloudResourceAttributes(settings, "compute_network", resourceID, record.Name, "compute_network", "global", record.Labels)
@@ -3089,6 +3285,33 @@ func addURLMapWeightedBackends(summary *computeURLMapRouteSummary, action Comput
 
 func computeURLRedirectConfigured(redirect ComputeURLMapURLRedirect) bool {
 	return redirect.HostRedirect != "" || redirect.PathRedirect != "" || redirect.PrefixRedirect != "" || redirect.RedirectResponseCode != "" || redirect.HTTPSRedirect || redirect.StripQuery
+}
+
+func computeSSLCertificateType(record ComputeSSLCertificateRecord) string {
+	switch {
+	case len(record.Managed.Domains) != 0 || record.Managed.Status != "" || len(record.Managed.DomainStatus) != 0:
+		return "MANAGED"
+	case record.SelfManaged.Certificate != "":
+		return "SELF_MANAGED"
+	default:
+		return ""
+	}
+}
+
+func computeSSLCertificateDomainStatuses(statuses map[string]string) []string {
+	if len(statuses) == 0 {
+		return nil
+	}
+	domains := make([]string, 0, len(statuses))
+	for domain := range statuses {
+		domains = append(domains, domain)
+	}
+	sort.Strings(domains)
+	values := make([]string, 0, len(domains))
+	for _, domain := range domains {
+		values = append(values, domain+"="+statuses[domain])
+	}
+	return values
 }
 
 func lastPathSegments(values []string) []string {

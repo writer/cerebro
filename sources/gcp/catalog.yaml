@@ -26,7 +26,10 @@ emitted_kinds:
   - gcp.compute_network
   - gcp.compute_route
   - gcp.compute_security_policy
+  - gcp.compute_ssl_certificate
   - gcp.compute_subnetwork
+  - gcp.compute_target_http_proxy
+  - gcp.compute_target_https_proxy
   - gcp.compute_url_map
   - gcp.dns_managed_zone
   - gcp.dns_record_set
@@ -75,7 +78,10 @@ runtime_families:
   - compute_network
   - compute_route
   - compute_security_policy
+  - compute_ssl_certificate
   - compute_subnetwork
+  - compute_target_http_proxy
+  - compute_target_https_proxy
   - compute_url_map
   - dns_managed_zone
   - dns_record_set
@@ -229,10 +235,28 @@ coverage_contract:
       families: [compute_security_policy]
       support: supported
       high_value: true
+    - id: compute_ssl_certificate
+      type: entity_family
+      title: Compute SSL certificates
+      families: [compute_ssl_certificate]
+      support: supported
+      high_value: true
     - id: compute_subnetwork
       type: entity_family
       title: Compute subnetworks
       families: [compute_subnetwork]
+      support: supported
+      high_value: true
+    - id: compute_target_http_proxy
+      type: entity_family
+      title: Compute target HTTP proxies
+      families: [compute_target_http_proxy]
+      support: supported
+      high_value: true
+    - id: compute_target_https_proxy
+      type: entity_family
+      title: Compute target HTTPS proxies
+      families: [compute_target_https_proxy]
       support: supported
       high_value: true
     - id: compute_url_map
