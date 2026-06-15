@@ -265,6 +265,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"gcp.iam_role_assignment":                   gcpIAMRoleAssignmentProjections,
 	"gcp.kms_key":                               gcpCloudResourceProjections,
 	"gcp.logging_project_sink":                  gcpCloudResourceProjections,
+	"gcp.pubsub_subscription":                   gcpCloudResourceProjections,
+	"gcp.pubsub_topic":                          gcpCloudResourceProjections,
 	"gcp.resourcemanager_project":               gcpCloudResourceProjections,
 	"gcp.resource_exposure":                     gcpResourceExposureProjections,
 	"gcp.secret_manager_secret":                 gcpCloudResourceProjections,

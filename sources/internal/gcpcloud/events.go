@@ -329,6 +329,69 @@ type CloudSQLEncryptionConfig struct {
 	KMSKeyName string `json:"kmsKeyName"`
 }
 
+type ComputeDiskRecord struct {
+	ID                string                   `json:"id"`
+	Name              string                   `json:"name"`
+	SelfLink          string                   `json:"selfLink"`
+	Zone              string                   `json:"zone"`
+	Region            string                   `json:"region"`
+	Type              string                   `json:"type"`
+	Status            string                   `json:"status"`
+	SizeGB            string                   `json:"sizeGb"`
+	Users             []string                 `json:"users"`
+	Labels            map[string]string        `json:"labels"`
+	DiskEncryptionKey ComputeDiskEncryptionKey `json:"diskEncryptionKey"`
+	Raw               json.RawMessage          `json:"-"`
+}
+
+type ComputeDiskEncryptionKey struct {
+	KMSKeyName string `json:"kmsKeyName"`
+}
+
+type GKEClusterRecord struct {
+	Name                           string                            `json:"name"`
+	SelfLink                       string                            `json:"selfLink"`
+	Location                       string                            `json:"location"`
+	Endpoint                       string                            `json:"endpoint"`
+	Status                         string                            `json:"status"`
+	Network                        string                            `json:"network"`
+	Subnetwork                     string                            `json:"subnetwork"`
+	CurrentMasterVersion           string                            `json:"currentMasterVersion"`
+	ResourceLabels                 map[string]string                 `json:"resourceLabels"`
+	NodeConfig                     GKEClusterNodeConfig              `json:"nodeConfig"`
+	PrivateClusterConfig           GKEPrivateClusterConfig           `json:"privateClusterConfig"`
+	MasterAuthorizedNetworksConfig GKEMasterAuthorizedNetworksConfig `json:"masterAuthorizedNetworksConfig"`
+	DatabaseEncryption             GKEDatabaseEncryption             `json:"databaseEncryption"`
+	Raw                            json.RawMessage                   `json:"-"`
+}
+
+type GKEClusterNodeConfig struct {
+	ServiceAccount string            `json:"serviceAccount"`
+	Tags           []string          `json:"tags"`
+	Labels         map[string]string `json:"labels"`
+}
+
+type GKEPrivateClusterConfig struct {
+	EnablePrivateNodes    bool   `json:"enablePrivateNodes"`
+	EnablePrivateEndpoint bool   `json:"enablePrivateEndpoint"`
+	MasterIpv4CidrBlock   string `json:"masterIpv4CidrBlock"`
+}
+
+type GKEMasterAuthorizedNetworksConfig struct {
+	Enabled    bool           `json:"enabled"`
+	CidrBlocks []GKECIDRBlock `json:"cidrBlocks"`
+}
+
+type GKECIDRBlock struct {
+	CidrBlock   string `json:"cidrBlock"`
+	DisplayName string `json:"displayName"`
+}
+
+type GKEDatabaseEncryption struct {
+	State   string `json:"state"`
+	KeyName string `json:"keyName"`
+}
+
 type GKENodePoolRecord struct {
 	Name             string                 `json:"name"`
 	SelfLink         string                 `json:"selfLink"`
@@ -569,6 +632,96 @@ type LoggingSinkExclusion struct {
 type LoggingSinkBQOptions struct {
 	UsePartitionedTables            bool `json:"usePartitionedTables"`
 	UsesTimestampColumnPartitioning bool `json:"usesTimestampColumnPartitioning"`
+}
+
+type PubSubTopicRecord struct {
+	Name                     string                     `json:"name"`
+	Labels                   map[string]string          `json:"labels"`
+	KMSKeyName               string                     `json:"kmsKeyName"`
+	MessageStoragePolicy     PubSubMessageStoragePolicy `json:"messageStoragePolicy"`
+	SchemaSettings           PubSubSchemaSettings       `json:"schemaSettings"`
+	MessageRetentionDuration string                     `json:"messageRetentionDuration"`
+	State                    string                     `json:"state"`
+	SatisfiesPZS             bool                       `json:"satisfiesPzs"`
+	IAMPolicy                IAMPolicy                  `json:"-"`
+	Raw                      json.RawMessage            `json:"-"`
+}
+
+type PubSubMessageStoragePolicy struct {
+	AllowedPersistenceRegions []string `json:"allowedPersistenceRegions"`
+}
+
+type PubSubSchemaSettings struct {
+	Schema          string `json:"schema"`
+	Encoding        string `json:"encoding"`
+	FirstRevisionID string `json:"firstRevisionId"`
+	LastRevisionID  string `json:"lastRevisionId"`
+}
+
+type PubSubSubscriptionRecord struct {
+	Name                          string                   `json:"name"`
+	Topic                         string                   `json:"topic"`
+	Labels                        map[string]string        `json:"labels"`
+	PushConfig                    PubSubPushConfig         `json:"pushConfig"`
+	BigQueryConfig                PubSubBigQueryConfig     `json:"bigqueryConfig"`
+	CloudStorageConfig            PubSubCloudStorageConfig `json:"cloudStorageConfig"`
+	DeadLetterPolicy              PubSubDeadLetterPolicy   `json:"deadLetterPolicy"`
+	RetryPolicy                   PubSubRetryPolicy        `json:"retryPolicy"`
+	ExpirationPolicy              PubSubExpirationPolicy   `json:"expirationPolicy"`
+	MessageRetentionDuration      string                   `json:"messageRetentionDuration"`
+	TopicMessageRetentionDuration string                   `json:"topicMessageRetentionDuration"`
+	AckDeadlineSeconds            int                      `json:"ackDeadlineSeconds"`
+	RetainAckedMessages           bool                     `json:"retainAckedMessages"`
+	EnableMessageOrdering         bool                     `json:"enableMessageOrdering"`
+	Detached                      bool                     `json:"detached"`
+	Filter                        string                   `json:"filter"`
+	State                         string                   `json:"state"`
+	IAMPolicy                     IAMPolicy                `json:"-"`
+	Raw                           json.RawMessage          `json:"-"`
+}
+
+type PubSubPushConfig struct {
+	PushEndpoint  string              `json:"pushEndpoint"`
+	Attributes    map[string]string   `json:"attributes"`
+	OIDCToken     PubSubOIDCToken     `json:"oidcToken"`
+	PubsubWrapper PubSubWrapperConfig `json:"pubsubWrapper"`
+}
+
+type PubSubWrapperConfig struct{}
+
+type PubSubOIDCToken struct {
+	ServiceAccountEmail string `json:"serviceAccountEmail"`
+	Audience            string `json:"audience"`
+}
+
+type PubSubBigQueryConfig struct {
+	Table               string `json:"table"`
+	UseTopicSchema      bool   `json:"useTopicSchema"`
+	WriteMetadata       bool   `json:"writeMetadata"`
+	DropUnknownFields   bool   `json:"dropUnknownFields"`
+	ServiceAccountEmail string `json:"serviceAccountEmail"`
+}
+
+type PubSubCloudStorageConfig struct {
+	Bucket         string `json:"bucket"`
+	FilenamePrefix string `json:"filenamePrefix"`
+	FilenameSuffix string `json:"filenameSuffix"`
+	MaxBytes       string `json:"maxBytes"`
+	MaxDuration    string `json:"maxDuration"`
+}
+
+type PubSubDeadLetterPolicy struct {
+	DeadLetterTopic     string `json:"deadLetterTopic"`
+	MaxDeliveryAttempts int    `json:"maxDeliveryAttempts"`
+}
+
+type PubSubRetryPolicy struct {
+	MinimumBackoff string `json:"minimumBackoff"`
+	MaximumBackoff string `json:"maximumBackoff"`
+}
+
+type PubSubExpirationPolicy struct {
+	TTL string `json:"ttl"`
 }
 
 type BigQueryDatasetRecord struct {
@@ -1223,6 +1376,58 @@ func CloudSQLInstanceEvent(settings Settings, record CloudSQLInstanceRecord) (*p
 	return sourceEvent(settings, "gcp-cloud-sql-instance-"+firstNonEmpty(record.SelfLink, record.Name), "gcp.cloud_sql_instance", "gcp/cloud_sql_instance/v1", payload, attributes)
 }
 
+func ComputeDiskEvent(settings Settings, record ComputeDiskRecord) (*primitives.Event, error) {
+	location := lastPathSegment(firstNonEmpty(record.Zone, record.Region))
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	attributes := cloudResourceAttributes(settings, "compute_disk", resourceID, record.Name, "compute_disk", location, record.Labels)
+	attributes["zone"] = lastPathSegment(record.Zone)
+	attributes["region"] = firstNonEmpty(lastPathSegment(record.Region), attributes["region"])
+	attributes["disk_type"] = lastPathSegment(record.Type)
+	attributes["status"] = record.Status
+	attributes["size_gb"] = record.SizeGB
+	attributes["attached_to"] = strings.Join(record.Users, ",")
+	attributes["kms_key_name"] = record.DiskEncryptionKey.KMSKeyName
+	attributes["encryption_enabled"] = boolString(record.DiskEncryptionKey.KMSKeyName != "")
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-disk-"+resourceID, "gcp.compute_disk", "gcp/compute_disk/v1", payload, attributes)
+}
+
+func GKEClusterEvent(settings Settings, record GKEClusterRecord) (*primitives.Event, error) {
+	location := firstNonEmpty(record.Location, locationFromResourceName(record.Name))
+	serviceAccountEmail := record.NodeConfig.ServiceAccount
+	publicEndpoint := record.Endpoint != "" && !record.PrivateClusterConfig.EnablePrivateEndpoint
+	attributes := cloudResourceAttributes(settings, "gke_cluster", firstNonEmpty(record.SelfLink, record.Name), record.Name, "gke_cluster", location, record.ResourceLabels)
+	attributes["status"] = record.Status
+	attributes["version"] = record.CurrentMasterVersion
+	attributes["service_account_email"] = serviceAccountEmail
+	attributes["runtime_identity"] = serviceAccountEmail
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["subnet"] = lastPathSegment(record.Subnetwork)
+	attributes["subnet_url"] = record.Subnetwork
+	attributes["network_tags"] = strings.Join(record.NodeConfig.Tags, ",")
+	attributes["security_tags"] = strings.Join(record.NodeConfig.Tags, ",")
+	attributes["endpoint"] = record.Endpoint
+	attributes["public_endpoint"] = record.Endpoint
+	attributes["private_nodes"] = boolString(record.PrivateClusterConfig.EnablePrivateNodes)
+	attributes["private_endpoint"] = boolString(record.PrivateClusterConfig.EnablePrivateEndpoint)
+	attributes["master_authorized_networks"] = boolString(record.MasterAuthorizedNetworksConfig.Enabled)
+	attributes["authorized_cidrs"] = strings.Join(gkeAuthorizedCIDRs(record), ",")
+	attributes["public"] = boolString(publicEndpoint)
+	attributes["internet_exposed"] = boolString(publicEndpoint)
+	attributes["external_exposure"] = boolString(publicEndpoint)
+	attributes["kms_key_name"] = record.DatabaseEncryption.KeyName
+	attributes["encryption_state"] = record.DatabaseEncryption.State
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-gke-cluster-"+firstNonEmpty(record.SelfLink, record.Name), "gcp.gke_cluster", "gcp/gke_cluster/v1", payload, attributes)
+}
+
 func GKENodePoolEvent(settings Settings, record GKENodePoolRecord) (*primitives.Event, error) {
 	location := firstNonEmpty(record.ClusterLocation, locationFromResourceName(record.SelfLink), locationFromResourceName(record.Name))
 	resourceID := firstNonEmpty(record.SelfLink, record.Name)
@@ -1261,6 +1466,16 @@ func GKENodePoolEvent(settings Settings, record GKENodePoolRecord) (*primitives.
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-gke-node-pool-"+resourceID, "gcp.gke_node_pool", "gcp/gke_node_pool/v1", payload, attributes)
+}
+
+func gkeAuthorizedCIDRs(record GKEClusterRecord) []string {
+	cidrs := make([]string, 0, len(record.MasterAuthorizedNetworksConfig.CidrBlocks))
+	for _, block := range record.MasterAuthorizedNetworksConfig.CidrBlocks {
+		if cidr := strings.TrimSpace(block.CidrBlock); cidr != "" {
+			cidrs = append(cidrs, cidr)
+		}
+	}
+	return cidrs
 }
 
 func GCSBucketEvent(settings Settings, record GCSBucketRecord) (*primitives.Event, error) {
@@ -1595,6 +1810,81 @@ func LoggingSinkEvent(settings Settings, record LoggingSinkRecord) (*primitives.
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-logging-project-sink-"+resourceID, "gcp.logging_project_sink", "gcp/logging_project_sink/v1", payload, attributes)
+}
+
+func PubSubTopicEvent(settings Settings, record PubSubTopicRecord) (*primitives.Event, error) {
+	iam := iamPolicySummary(record.IAMPolicy)
+	attributes := cloudResourceAttributes(settings, "pubsub_topic", record.Name, lastPathSegment(record.Name), "pubsub_topic", "global", record.Labels)
+	attributes["topic_name"] = lastPathSegment(record.Name)
+	attributes["kms_key_name"] = record.KMSKeyName
+	attributes["encryption_enabled"] = boolString(record.KMSKeyName != "")
+	attributes["message_retention_duration"] = record.MessageRetentionDuration
+	attributes["allowed_persistence_regions"] = strings.Join(record.MessageStoragePolicy.AllowedPersistenceRegions, ",")
+	attributes["allowed_persistence_regions_count"] = strconv.Itoa(len(record.MessageStoragePolicy.AllowedPersistenceRegions))
+	attributes["schema"] = record.SchemaSettings.Schema
+	attributes["schema_encoding"] = record.SchemaSettings.Encoding
+	attributes["schema_first_revision_id"] = record.SchemaSettings.FirstRevisionID
+	attributes["schema_last_revision_id"] = record.SchemaSettings.LastRevisionID
+	attributes["state"] = record.State
+	attributes["satisfies_pzs"] = boolString(record.SatisfiesPZS)
+	attributes["iam_bindings_count"] = strconv.Itoa(len(record.IAMPolicy.Bindings))
+	attributes["iam_roles"] = strings.Join(iamPolicyRoles(record.IAMPolicy), ",")
+	attributes["iam_members"] = strings.Join(iam.Members, ",")
+	attributes["iam_admin_members"] = strings.Join(iam.AdminMembers, ",")
+	attributes["public"] = boolString(iam.Public)
+	attributes["internet_exposed"] = boolString(iam.Public)
+	attributes["external_exposure"] = boolString(iam.Public)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"iam_policy": record.IAMPolicy, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-pubsub-topic-"+record.Name, "gcp.pubsub_topic", "gcp/pubsub_topic/v1", payload, attributes)
+}
+
+func PubSubSubscriptionEvent(settings Settings, record PubSubSubscriptionRecord) (*primitives.Event, error) {
+	iam := iamPolicySummary(record.IAMPolicy)
+	attributes := cloudResourceAttributes(settings, "pubsub_subscription", record.Name, lastPathSegment(record.Name), "pubsub_subscription", "global", record.Labels)
+	attributes["subscription_name"] = lastPathSegment(record.Name)
+	attributes["topic"] = record.Topic
+	attributes["topic_name"] = lastPathSegment(record.Topic)
+	attributes["state"] = record.State
+	attributes["filter"] = record.Filter
+	attributes["detached"] = boolString(record.Detached)
+	attributes["message_ordering_enabled"] = boolString(record.EnableMessageOrdering)
+	attributes["retain_acked_messages"] = boolString(record.RetainAckedMessages)
+	attributes["ack_deadline_seconds"] = strconv.Itoa(record.AckDeadlineSeconds)
+	attributes["message_retention_duration"] = record.MessageRetentionDuration
+	attributes["topic_message_retention_duration"] = record.TopicMessageRetentionDuration
+	attributes["expiration_ttl"] = record.ExpirationPolicy.TTL
+	attributes["push_configured"] = boolString(record.PushConfig.PushEndpoint != "")
+	attributes["push_endpoint"] = record.PushConfig.PushEndpoint
+	attributes["push_oidc_service_account_email"] = record.PushConfig.OIDCToken.ServiceAccountEmail
+	attributes["push_oidc_audience"] = record.PushConfig.OIDCToken.Audience
+	attributes["bigquery_table"] = record.BigQueryConfig.Table
+	attributes["bigquery_use_topic_schema"] = boolString(record.BigQueryConfig.UseTopicSchema)
+	attributes["bigquery_write_metadata"] = boolString(record.BigQueryConfig.WriteMetadata)
+	attributes["bigquery_drop_unknown_fields"] = boolString(record.BigQueryConfig.DropUnknownFields)
+	attributes["bigquery_service_account_email"] = record.BigQueryConfig.ServiceAccountEmail
+	attributes["cloud_storage_bucket"] = record.CloudStorageConfig.Bucket
+	attributes["cloud_storage_filename_prefix"] = record.CloudStorageConfig.FilenamePrefix
+	attributes["cloud_storage_filename_suffix"] = record.CloudStorageConfig.FilenameSuffix
+	attributes["dead_letter_topic"] = record.DeadLetterPolicy.DeadLetterTopic
+	attributes["dead_letter_topic_name"] = lastPathSegment(record.DeadLetterPolicy.DeadLetterTopic)
+	attributes["max_delivery_attempts"] = strconv.Itoa(record.DeadLetterPolicy.MaxDeliveryAttempts)
+	attributes["retry_minimum_backoff"] = record.RetryPolicy.MinimumBackoff
+	attributes["retry_maximum_backoff"] = record.RetryPolicy.MaximumBackoff
+	attributes["iam_bindings_count"] = strconv.Itoa(len(record.IAMPolicy.Bindings))
+	attributes["iam_roles"] = strings.Join(iamPolicyRoles(record.IAMPolicy), ",")
+	attributes["iam_members"] = strings.Join(iam.Members, ",")
+	attributes["iam_admin_members"] = strings.Join(iam.AdminMembers, ",")
+	attributes["public"] = boolString(iam.Public)
+	attributes["internet_exposed"] = boolString(iam.Public)
+	attributes["external_exposure"] = boolString(iam.Public)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"iam_policy": record.IAMPolicy, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-pubsub-subscription-"+record.Name, "gcp.pubsub_subscription", "gcp/pubsub_subscription/v1", payload, attributes)
 }
 
 func BigQueryDatasetEvent(settings Settings, record BigQueryDatasetRecord) (*primitives.Event, error) {

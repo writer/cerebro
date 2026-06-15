@@ -33,6 +33,8 @@ emitted_kinds:
   - gcp.iam_role_assignment
   - gcp.kms_key
   - gcp.logging_project_sink
+  - gcp.pubsub_subscription
+  - gcp.pubsub_topic
   - gcp.resourcemanager_project
   - gcp.resource_exposure
   - gcp.secret_manager_secret
@@ -71,6 +73,8 @@ runtime_families:
   - iam_role_assignment
   - kms_key
   - logging_project_sink
+  - pubsub_subscription
+  - pubsub_topic
   - resourcemanager_project
   - resource_exposure
   - secret_manager_secret
@@ -247,6 +251,18 @@ coverage_contract:
       type: entity_family
       title: Cloud Logging project sinks
       families: [logging_project_sink]
+      support: supported
+      high_value: true
+    - id: pubsub_subscription
+      type: entity_family
+      title: Pub/Sub subscriptions
+      families: [pubsub_subscription]
+      support: supported
+      high_value: true
+    - id: pubsub_topic
+      type: entity_family
+      title: Pub/Sub topics
+      families: [pubsub_topic]
       support: supported
       high_value: true
     - id: resourcemanager_project
