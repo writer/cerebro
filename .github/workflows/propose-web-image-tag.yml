@@ -251,6 +251,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           fi
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           safe_tag="$(printf '%s' "${IMAGE_TAG}" | tr -c 'A-Za-z0-9._-' '-')"
           branch="automation/cerebro-web-${STACK_NAME}-${safe_tag}"
@@ -294,7 +295,7 @@ jobs:
             -m "Image: ${WEB_GHCR_IMAGE}:${IMAGE_TAG}" \
             -m "Digest: ${IMAGE_DIGEST}"
 
-          git push --force-with-lease "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${branch}"
+          git push --force-with-lease origin "HEAD:${branch}"
 
           body="$(mktemp)"
           {
