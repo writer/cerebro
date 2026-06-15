@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -56,6 +57,7 @@ type connectorCatalogEntry struct {
 	HealthyRuntimes        int                             `json:"healthy_runtimes"`
 	NeedsAttentionRuntimes int                             `json:"needs_attention_runtimes"`
 	ConnectionMethods      []connectorConnectionMethodView `json:"connection_methods,omitempty"`
+	ScopeOptions           []connectorScopeOptionView      `json:"scope_options,omitempty"`
 }
 
 type connectorLibraryResponse struct {
@@ -97,23 +99,24 @@ type connectorOperationsSummary struct {
 }
 
 type connectorConnectionView struct {
-	RuntimeID               string `json:"runtime_id"`
-	SourceID                string `json:"source_id"`
-	TenantID                string `json:"tenant_id,omitempty"`
-	Family                  string `json:"family,omitempty"`
-	Status                  string `json:"status"`
-	GraphStatus             string `json:"graph_status"`
-	ContractProbeState      string `json:"contract_probe_state"`
-	LastActivityAt          string `json:"last_activity_at,omitempty"`
-	CheckpointWatermark     string `json:"checkpoint_watermark,omitempty"`
-	WatermarkLagSeconds     *int64 `json:"watermark_lag_seconds,omitempty"`
-	RecordsAccepted         uint32 `json:"records_accepted"`
-	RecordsRejected         uint32 `json:"records_rejected"`
-	EntitiesProjected       uint32 `json:"entities_projected"`
-	LinksProjected          uint32 `json:"links_projected"`
-	CursorPending           bool   `json:"cursor_pending"`
-	CheckpointCursorPresent bool   `json:"checkpoint_cursor_present"`
-	NextAction              string `json:"next_action"`
+	RuntimeID               string                `json:"runtime_id"`
+	SourceID                string                `json:"source_id"`
+	TenantID                string                `json:"tenant_id,omitempty"`
+	Family                  string                `json:"family,omitempty"`
+	Status                  string                `json:"status"`
+	GraphStatus             string                `json:"graph_status"`
+	ContractProbeState      string                `json:"contract_probe_state"`
+	LastActivityAt          string                `json:"last_activity_at,omitempty"`
+	CheckpointWatermark     string                `json:"checkpoint_watermark,omitempty"`
+	WatermarkLagSeconds     *int64                `json:"watermark_lag_seconds,omitempty"`
+	RecordsAccepted         uint32                `json:"records_accepted"`
+	RecordsRejected         uint32                `json:"records_rejected"`
+	EntitiesProjected       uint32                `json:"entities_projected"`
+	LinksProjected          uint32                `json:"links_projected"`
+	CursorPending           bool                  `json:"cursor_pending"`
+	CheckpointCursorPresent bool                  `json:"checkpoint_cursor_present"`
+	NextAction              string                `json:"next_action"`
+	ScopePolicy             *resourcescope.Policy `json:"scope_policy,omitempty"`
 }
 
 type connectorActivityView struct {
@@ -178,6 +181,15 @@ type connectorConnectionMethodView struct {
 	UnavailableReason string               `json:"unavailable_reason,omitempty"`
 }
 
+type connectorScopeOptionView struct {
+	ID        string   `json:"id"`
+	Label     string   `json:"label"`
+	Type      string   `json:"type"`
+	Families  []string `json:"families,omitempty"`
+	Support   string   `json:"support,omitempty"`
+	HighValue bool     `json:"high_value,omitempty"`
+}
+
 type connectorConnectionRequest struct {
 	RuntimeID            string                                `json:"runtime_id"`
 	TenantID             string                                `json:"tenant_id"`
@@ -185,15 +197,17 @@ type connectorConnectionRequest struct {
 	AuthMethod           string                                `json:"auth_method,omitempty"`
 	CredentialStoreID    string                                `json:"credential_store_id,omitempty"`
 	Config               map[string]string                     `json:"config"`
+	ScopePolicy          resourcescope.Policy                  `json:"scope_policy,omitempty"`
 	CredentialReferences map[string]string                     `json:"credential_references,omitempty"`
 	EncryptedCredentials connectorcredentials.EncryptedPayload `json:"encrypted_credentials"`
 }
 
 type connectorConnectionResponse struct {
-	SourceID   string                  `json:"source_id"`
-	Runtime    json.RawMessage         `json:"runtime"`
-	Credential connectorCredentialView `json:"credential"`
-	Status     string                  `json:"status,omitempty"`
+	SourceID    string                  `json:"source_id"`
+	Runtime     json.RawMessage         `json:"runtime"`
+	Credential  connectorCredentialView `json:"credential"`
+	ScopePolicy *resourcescope.Policy   `json:"scope_policy,omitempty"`
+	Status      string                  `json:"status,omitempty"`
 }
 
 type connectorCredentialView struct {
@@ -242,6 +256,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 			EmittedKinds:      append([]string{}, source.GetEmittedKinds()...),
 			Status:            "available",
 			ConnectionMethods: connectorConnectionMethods(source.GetId(), stores),
+			ScopeOptions:      a.connectorScopeOptions(source.GetId(), source.GetEmittedKinds()),
 		}
 		if count := counts[source.GetId()]; count.total > 0 {
 			entry.ConfiguredRuntimes = count.total
@@ -385,6 +400,20 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, err)
 		return
 	}
+	scopePolicy, err := connectorScopePolicy(request.ScopePolicy)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	scopeConfigValue := ""
+	if !scopePolicy.Empty() {
+		scopeConfigValue, err = resourcescope.ConfigValue(scopePolicy)
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		runtimeConfig[resourcescope.ConfigKey] = scopeConfigValue
+	}
 	if err := validateConnectorConnectionShape(sourceID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -445,10 +474,11 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 			return
 		}
 		writeJSON(w, http.StatusOK, connectorConnectionResponse{
-			SourceID:   sourceID,
-			Runtime:    runtimePayload,
-			Credential: credential,
-			Status:     "checked",
+			SourceID:    sourceID,
+			Runtime:     runtimePayload,
+			Credential:  credential,
+			ScopePolicy: connectorScopePolicyPtr(scopePolicy),
+			Status:      "checked",
 		})
 		return
 	}
@@ -477,6 +507,9 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		credential.CreatedAt = connectorcredentials.TimestampOrZero(record.CreatedAt)
 		credential.UpdatedAt = connectorcredentials.TimestampOrZero(record.UpdatedAt)
 	}
+	if scopeConfigValue != "" {
+		runtime.Config[resourcescope.ConfigKey] = scopeConfigValue
+	}
 	response, err := a.runtimeService().Put(r.Context(), &cerebrov1.PutSourceRuntimeRequest{Runtime: runtime})
 	if err != nil {
 		writeConnectorError(w, err)
@@ -488,9 +521,10 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeJSON(w, http.StatusOK, connectorConnectionResponse{
-		SourceID:   sourceID,
-		Runtime:    json.RawMessage(runtimePayload),
-		Credential: credential,
+		SourceID:    sourceID,
+		Runtime:     json.RawMessage(runtimePayload),
+		Credential:  credential,
+		ScopePolicy: connectorScopePolicyPtr(scopePolicy),
 	})
 }
 
@@ -588,6 +622,83 @@ func connectorEntryBySourceID(entries []connectorCatalogEntry, sourceID string) 
 		}
 	}
 	return connectorCatalogEntry{}, false
+}
+
+func (a *App) connectorScopeOptions(sourceID string, emittedKinds []string) []connectorScopeOptionView {
+	sourceID = strings.TrimSpace(sourceID)
+	if a != nil && a.sources != nil {
+		if source, ok := a.sources.Get(sourceID); ok {
+			if provider, ok := source.(sourcecdk.CoverageContractProvider); ok {
+				options := connectorScopeOptionsFromCoverage(provider.CoverageContract())
+				if len(options) > 0 {
+					return options
+				}
+			}
+		}
+	}
+	return connectorScopeOptionsFromKinds(emittedKinds)
+}
+
+func connectorScopeOptionsFromCoverage(contract sourcecdk.CoverageContract) []connectorScopeOptionView {
+	options := make([]connectorScopeOptionView, 0, len(contract.Dimensions))
+	for _, dimension := range contract.Dimensions {
+		if len(dimension.Families) == 0 {
+			continue
+		}
+		if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
+			continue
+		}
+		options = append(options, connectorScopeOptionView{
+			ID:        dimension.ID,
+			Label:     dimension.Title,
+			Type:      dimension.Type,
+			Families:  append([]string{}, dimension.Families...),
+			Support:   dimension.Support,
+			HighValue: dimension.HighValue,
+		})
+	}
+	sort.Slice(options, func(i, j int) bool {
+		if options[i].HighValue != options[j].HighValue {
+			return options[i].HighValue
+		}
+		return strings.ToLower(options[i].Label) < strings.ToLower(options[j].Label)
+	})
+	return options
+}
+
+func connectorScopeOptionsFromKinds(kinds []string) []connectorScopeOptionView {
+	options := make([]connectorScopeOptionView, 0, len(kinds))
+	for _, kind := range kinds {
+		kind = strings.TrimSpace(kind)
+		if kind == "" {
+			continue
+		}
+		options = append(options, connectorScopeOptionView{
+			ID:       kind,
+			Label:    connectorFieldLabel(strings.ReplaceAll(kind, ".", "_")),
+			Type:     "emitted_kind",
+			Families: []string{kind},
+			Support:  sourcecdk.CoverageSupportSupported,
+		})
+	}
+	sort.Slice(options, func(i, j int) bool { return strings.ToLower(options[i].Label) < strings.ToLower(options[j].Label) })
+	return options
+}
+
+func connectorScopePolicy(policy resourcescope.Policy) (resourcescope.Policy, error) {
+	normalized, err := resourcescope.Normalize(policy)
+	if err != nil {
+		return resourcescope.Policy{}, fmt.Errorf("%w: %w", connectorcredentials.ErrInvalidRequest, err)
+	}
+	return normalized, nil
+}
+
+func connectorScopePolicyPtr(policy resourcescope.Policy) *resourcescope.Policy {
+	if policy.Empty() {
+		return nil
+	}
+	cloned := policy
+	return &cloned
 }
 
 func (a *App) connectorHealthForSource(r *http.Request, sourceID string, tenantID string) (sourceRuntimeHealthResponse, error) {
@@ -706,6 +817,7 @@ func connectorConnectionsFromHealth(records []sourceRuntimeHealthRecord) []conne
 			CursorPending:           record.CursorPending,
 			CheckpointCursorPresent: record.CheckpointCursorPresent,
 			NextAction:              connectorConnectionNextAction(status, record),
+			ScopePolicy:             record.ScopePolicy,
 		})
 	}
 	sort.Slice(connections, func(i, j int) bool {
@@ -1382,7 +1494,7 @@ func connectorRuntimeConfig(input map[string]string) (map[string]string, error) 
 		if trimmedKey == "" {
 			continue
 		}
-		if sourceconfig.InternalKey(trimmedKey) {
+		if sourceconfig.InternalKey(trimmedKey) || trimmedKey == resourcescope.ConfigKey {
 			return nil, fmt.Errorf("%w: internal config %q cannot be supplied by connector requests", connectorcredentials.ErrInvalidRequest, trimmedKey)
 		}
 		if sourceconfig.SensitiveKey(trimmedKey) && strings.TrimSpace(value) != "" && !sourceconfig.IsCredentialReference(value) {
@@ -1400,7 +1512,7 @@ func applyConnectorCredentialReferences(config map[string]string, references map
 		if trimmedKey == "" || trimmedValue == "" {
 			return fmt.Errorf("%w: credential reference key and value are required", connectorcredentials.ErrInvalidRequest)
 		}
-		if sourceconfig.InternalKey(trimmedKey) {
+		if sourceconfig.InternalKey(trimmedKey) || trimmedKey == resourcescope.ConfigKey {
 			return fmt.Errorf("%w: internal config %q cannot be supplied by connector references", connectorcredentials.ErrInvalidRequest, trimmedKey)
 		}
 		if !sourceconfig.IsSecretReference(trimmedValue) {
@@ -1474,6 +1586,9 @@ func validateConnectorConfigFields(sourceID string, authMethod string, config ma
 		return nil
 	}
 	for key := range config {
+		if sourceconfig.InternalKey(key) || key == resourcescope.ConfigKey {
+			continue
+		}
 		if authMethod == connectorAuthMethodAWSSSOProfile && key == "profile" {
 			continue
 		}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/resourcescope"
 )
 
 // Family groups source behavior for one configured event family.
@@ -19,6 +20,7 @@ type Family[S any] struct {
 
 // FamilyEngine dispatches source operations to table-driven families.
 type FamilyEngine[S any] struct {
+	sourceID string
 	parse    func(Config) (S, error)
 	family   func(S) string
 	families map[string]Family[S]
@@ -26,6 +28,11 @@ type FamilyEngine[S any] struct {
 
 // NewFamilyEngine constructs a source family dispatcher.
 func NewFamilyEngine[S any](parse func(Config) (S, error), family func(S) string, families ...Family[S]) (*FamilyEngine[S], error) {
+	return NewFamilyEngineWithSourceID("", parse, family, families...)
+}
+
+// NewFamilyEngineWithSourceID constructs a source family dispatcher with a source id for scope policy matching.
+func NewFamilyEngineWithSourceID[S any](sourceID string, parse func(Config) (S, error), family func(S) string, families ...Family[S]) (*FamilyEngine[S], error) {
 	if parse == nil {
 		return nil, fmt.Errorf("family settings parser is required")
 	}
@@ -33,6 +40,7 @@ func NewFamilyEngine[S any](parse func(Config) (S, error), family func(S) string
 		return nil, fmt.Errorf("family name resolver is required")
 	}
 	engine := &FamilyEngine[S]{
+		sourceID: strings.TrimSpace(sourceID),
 		parse:    parse,
 		family:   family,
 		families: make(map[string]Family[S], len(families)),
@@ -65,9 +73,12 @@ func (e *FamilyEngine[S]) Names() []string {
 
 // Check validates the configured family.
 func (e *FamilyEngine[S]) Check(ctx context.Context, cfg Config) error {
-	family, settings, err := e.resolve(cfg)
+	family, settings, policy, err := e.resolve(cfg)
 	if err != nil {
 		return err
+	}
+	if policy.ExcludesFamily(e.sourceID, family.Name) {
+		return nil
 	}
 	if family.Check == nil {
 		return nil
@@ -77,9 +88,12 @@ func (e *FamilyEngine[S]) Check(ctx context.Context, cfg Config) error {
 
 // Discover returns URNs for the configured family.
 func (e *FamilyEngine[S]) Discover(ctx context.Context, cfg Config) ([]URN, error) {
-	family, settings, err := e.resolve(cfg)
+	family, settings, policy, err := e.resolve(cfg)
 	if err != nil {
 		return nil, err
+	}
+	if policy.ExcludesFamily(e.sourceID, family.Name) {
+		return nil, nil
 	}
 	if family.Discover == nil {
 		return nil, nil
@@ -89,29 +103,40 @@ func (e *FamilyEngine[S]) Discover(ctx context.Context, cfg Config) ([]URN, erro
 
 // Read reads one page for the configured family.
 func (e *FamilyEngine[S]) Read(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor) (Pull, error) {
-	family, settings, err := e.resolve(cfg)
+	family, settings, policy, err := e.resolve(cfg)
 	if err != nil {
 		return Pull{}, err
+	}
+	if policy.ExcludesFamily(e.sourceID, family.Name) {
+		return Pull{}, nil
 	}
 	if family.Read == nil {
 		return Pull{}, nil
 	}
-	return family.Read(ctx, settings, cursor)
+	pull, err := family.Read(ctx, settings, cursor)
+	if err != nil {
+		return Pull{}, err
+	}
+	return applyResourceScopePolicy(pull, policy), nil
 }
 
-func (e *FamilyEngine[S]) resolve(cfg Config) (Family[S], S, error) {
+func (e *FamilyEngine[S]) resolve(cfg Config) (Family[S], S, resourcescope.Policy, error) {
 	var zero S
 	if e == nil {
-		return Family[S]{}, zero, fmt.Errorf("family engine is required")
+		return Family[S]{}, zero, resourcescope.Policy{}, fmt.Errorf("family engine is required")
 	}
 	settings, err := e.parse(cfg)
 	if err != nil {
-		return Family[S]{}, zero, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		return Family[S]{}, zero, resourcescope.Policy{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
 	name := strings.TrimSpace(e.family(settings))
 	family, ok := e.families[name]
 	if !ok {
-		return Family[S]{}, zero, fmt.Errorf("%w: unsupported family %q", ErrInvalidConfig, name)
+		return Family[S]{}, zero, resourcescope.Policy{}, fmt.Errorf("%w: unsupported family %q", ErrInvalidConfig, name)
 	}
-	return family, settings, nil
+	policy, err := resourcescope.FromConfig(cfg.Values())
+	if err != nil {
+		return Family[S]{}, zero, resourcescope.Policy{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+	return family, settings, policy, nil
 }

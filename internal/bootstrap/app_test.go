@@ -7046,13 +7046,14 @@ func TestFindingMessageIncludesRiskFactors(t *testing.T) {
 }
 
 type bootstrapTokenSource struct {
-	id         string
-	checkToken string
-	readToken  string
+	id           string
+	emittedKinds []string
+	checkToken   string
+	readToken    string
 }
 
 func (s *bootstrapTokenSource) Spec() *cerebrov1.SourceSpec {
-	return &cerebrov1.SourceSpec{Id: s.id, Name: "Bootstrap token source"}
+	return &cerebrov1.SourceSpec{Id: s.id, Name: "Bootstrap token source", EmittedKinds: append([]string{}, s.emittedKinds...)}
 }
 
 func (s *bootstrapTokenSource) Check(_ context.Context, config sourcecdk.Config) error {

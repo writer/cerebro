@@ -152,7 +152,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog with runtime counts and credential capability state.
+          description: Connector catalog with runtime counts, credential capability state, and source resource scope options.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
@@ -166,7 +166,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog entry, runtime health summary, safe connection summaries, and recent activity.
+          description: Connector catalog entry, runtime health summary, safe connection summaries with typed scope policies, and recent activity.
         '404':
           description: Connector source was not found.
   /connectors/{sourceID}/activity:
@@ -255,6 +255,43 @@ paths:
                   description: Non-secret credential references for environment-managed or external-reference methods. Values must be server-resolvable references such as env:CEREBRO_SOURCE_<SOURCE>_<FIELD>; secret-store CLIs/controllers are expected to populate those environment values outside the browser.
                   additionalProperties:
                     type: string
+                scope_policy:
+                  type: object
+                  description: Non-secret connector scope policy. Excluded families are short-circuited before source reads; exact resources are filtered before downstream projection when the runtime can identify them.
+                  properties:
+                    mode:
+                      type: string
+                      enum:
+                        - exclude
+                    excluded_families:
+                      type: array
+                      items:
+                        type: string
+                    excluded_asset_classes:
+                      type: array
+                      items:
+                        type: string
+                    excluded_kinds:
+                      type: array
+                      items:
+                        type: string
+                    excluded_resource_urns:
+                      type: array
+                      items:
+                        type: string
+                    excluded_resources:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          urn:
+                            type: string
+                          type:
+                            type: string
+                          id:
+                            type: string
+                          reason:
+                            type: string
                 encrypted_credentials:
                   type: object
                   description: Required only when auth_method is encrypted_submission.
@@ -279,7 +316,7 @@ paths:
                       type: string
       responses:
         '200':
-          description: Stored runtime with sensitive config redacted and credential metadata.
+          description: Stored runtime with sensitive config redacted, credential metadata, and the applied typed scope policy when provided.
   /source-runtimes:
     get:
       summary: List source runtime configurations

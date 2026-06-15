@@ -2323,7 +2323,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	}
 	families = append(families, awsSecurityFamilies(s.clients)...)
 	families = append(families, awsaccount.Families(s.clients, func(clients awsClients) any { return clients.iam }, func(settings settings) string { return settings.accountID })...)
-	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family }, families...)
+	return sourcecdk.NewFamilyEngineWithSourceID("aws", parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
 func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T]) sourcecdk.Family[settings] {

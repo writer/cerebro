@@ -17,6 +17,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -944,7 +945,7 @@ func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 	}
 	redacted := make(map[string]string, len(cloned.GetConfig()))
 	for key, value := range cloned.GetConfig() {
-		if key == runtimeProgressConfigHashKey || sourceconfig.InternalKey(key) {
+		if key == runtimeProgressConfigHashKey || sourceconfig.InternalKey(key) || key == resourcescope.ConfigKey {
 			continue
 		}
 		if sensitiveConfigKey(key) {
