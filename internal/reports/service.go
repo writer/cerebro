@@ -285,6 +285,28 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 			}
 			notedFindingCount++
 			noteCount += len(finding.Notes)
+		if len(finding.RiskFactors) != 0 {
+			for _, factor := range finding.RiskFactors {
+				factorID := strings.TrimSpace(factor.FactorID)
+				if factorID == "" {
+					continue
+				}
+				entry := riskFactorCounts[factorID]
+				if entry == nil {
+					entry = &riskFactorCountEntry{
+						FactorID:             factorID,
+						Category:             strings.TrimSpace(factor.Category),
+						SeverityContribution: strings.TrimSpace(factor.SeverityContribution),
+					}
+					riskFactorCounts[factorID] = entry
+				}
+				entry.Count++
+				entry.WeightTotal += factor.Weight
+			}
+		}
+		if len(finding.Notes) != 0 {
+			notedFindingCount++
+			noteCount += len(finding.Notes)
 		}
 		if len(finding.Tickets) != 0 {
 			ticketedFindingCount++
