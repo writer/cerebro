@@ -91,6 +91,7 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("gh api /installation/repositories", action)
         self.assertIn("permission-contents: write", action)
         self.assertIn("permission-pull-requests: write", action)
+        self.assertNotIn("permission-checks: read", action)
         self.assertNotIn("permission-actions: write", action)
 
     def test_ci_mirrors_public_web_image(self) -> None:

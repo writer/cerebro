@@ -26,7 +26,6 @@ runs:
       with:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
-        permission-checks: read
         permission-contents: write
         permission-issues: write
         permission-pull-requests: write
@@ -64,9 +63,7 @@ runs:
           fi
         }
 
-        check_permission checks read
         check_permission contents write
         check_permission issues write
         check_permission pull_requests write
         check_permission statuses read
-
