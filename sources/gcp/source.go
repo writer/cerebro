@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/gcpcloud"
 )
 
 //go:embed catalog.yaml
@@ -39,6 +40,7 @@ const (
 	familyArtifactRepo        = "artifact_registry_repository"
 	familyAudit               = "audit"
 	familyCloudFunction       = "cloud_function"
+	familyCloudIDSEndpoint    = "cloud_ids_endpoint"
 	familyCloudRunService     = "cloud_run_service"
 	familyCloudSQLInstance    = "cloud_sql_instance"
 	familyComputeDisk         = "compute_disk"
@@ -46,12 +48,15 @@ const (
 	familyComputeInstance     = "compute_instance"
 	familyComputeNetwork      = "compute_network"
 	familyComputeSubnetwork   = "compute_subnetwork"
+	familyDNSManagedZone      = "dns_managed_zone"
 	familyEffectivePermission = "effective_permission"
 	familyGCSBucket           = "gcs_bucket"
 	familyGKECluster          = "gke_cluster"
+	familyGKENodePool         = "gke_node_pool"
 	familyGroup               = "group"
 	familyGroupMember         = "group_membership"
 	familyKMSKey              = "kms_key"
+	familyLoggingSink         = "logging_project_sink"
 	familyRoleAssign          = "iam_role_assignment"
 	familyResourceExposure    = "resource_exposure"
 	familySAImpersonation     = "service_account_impersonation"
@@ -103,7 +108,11 @@ type pageResponse struct {
 	Functions     []json.RawMessage `json:"functions"`
 	Secrets       []json.RawMessage `json:"secrets"`
 	CryptoKeys    []json.RawMessage `json:"cryptoKeys"`
+	Endpoints     []json.RawMessage `json:"endpoints"`
+	ManagedZones  []json.RawMessage `json:"managedZones"`
+	NodePools     []json.RawMessage `json:"nodePools"`
 	Repositories  []json.RawMessage `json:"repositories"`
+	Sinks         []json.RawMessage `json:"sinks"`
 	DockerImages  []json.RawMessage `json:"dockerImages"`
 	NextPageToken string            `json:"nextPageToken"`
 }
@@ -290,6 +299,9 @@ type computeDiskRecord struct {
 	raw               json.RawMessage
 }
 
+type cloudIDSEndpointRecord = gcpcloud.CloudIDSEndpointRecord
+type dnsManagedZoneRecord = gcpcloud.DNSManagedZoneRecord
+
 type gkeClusterRecord struct {
 	Name                           string                            `json:"name"`
 	SelfLink                       string                            `json:"selfLink"`
@@ -334,49 +346,10 @@ type gkeDatabaseEncryption struct {
 	KeyName string `json:"keyName"`
 }
 
-type cloudRunServiceRecord struct {
-	Name     string                   `json:"name"`
-	UID      string                   `json:"uid"`
-	URI      string                   `json:"uri"`
-	Ingress  string                   `json:"ingress"`
-	Labels   map[string]string        `json:"labels"`
-	Template cloudRunRevisionTemplate `json:"template"`
-	raw      json.RawMessage
-}
+type gkeNodePoolRecord = gcpcloud.GKENodePoolRecord
 
-type cloudRunRevisionTemplate struct {
-	ServiceAccount string              `json:"serviceAccount"`
-	Containers     []cloudRunContainer `json:"containers"`
-	VpcAccess      cloudRunVpcAccess   `json:"vpcAccess"`
-}
-
-type cloudRunContainer struct {
-	Image string `json:"image"`
-}
-
-type cloudRunVpcAccess struct {
-	Connector string `json:"connector"`
-	Egress    string `json:"egress"`
-}
-
-type cloudFunctionRecord struct {
-	Name          string                     `json:"name"`
-	Description   string                     `json:"description"`
-	State         string                     `json:"state"`
-	Environment   string                     `json:"environment"`
-	Labels        map[string]string          `json:"labels"`
-	ServiceConfig cloudFunctionServiceConfig `json:"serviceConfig"`
-	raw           json.RawMessage
-}
-
-type cloudFunctionServiceConfig struct {
-	ServiceAccountEmail        string `json:"serviceAccountEmail"`
-	URI                        string `json:"uri"`
-	IngressSettings            string `json:"ingressSettings"`
-	VpcConnector               string `json:"vpcConnector"`
-	VpcConnectorEgressSettings string `json:"vpcConnectorEgressSettings"`
-	KMSKeyName                 string `json:"kmsKeyName"`
-}
+type cloudRunServiceRecord = gcpcloud.CloudRunServiceRecord
+type cloudFunctionRecord = gcpcloud.CloudFunctionRecord
 
 type cloudSQLInstanceRecord struct {
 	Name                       string                   `json:"name"`
@@ -432,34 +405,7 @@ type cloudSQLEncryptionConfig struct {
 	KMSKeyName string `json:"kmsKeyName"`
 }
 
-type gcsBucketRecord struct {
-	ID               string              `json:"id"`
-	Name             string              `json:"name"`
-	Location         string              `json:"location"`
-	StorageClass     string              `json:"storageClass"`
-	Labels           map[string]string   `json:"labels"`
-	Encryption       gcsEncryption       `json:"encryption"`
-	Versioning       gcsVersioning       `json:"versioning"`
-	IAMConfiguration gcsIAMConfiguration `json:"iamConfiguration"`
-	raw              json.RawMessage
-}
-
-type gcsEncryption struct {
-	DefaultKMSKeyName string `json:"defaultKmsKeyName"`
-}
-
-type gcsVersioning struct {
-	Enabled bool `json:"enabled"`
-}
-
-type gcsIAMConfiguration struct {
-	UniformBucketLevelAccess gcsUniformBucketLevelAccess `json:"uniformBucketLevelAccess"`
-	PublicAccessPrevention   string                      `json:"publicAccessPrevention"`
-}
-
-type gcsUniformBucketLevelAccess struct {
-	Enabled bool `json:"enabled"`
-}
+type gcsBucketRecord = gcpcloud.GCSBucketRecord
 
 type secretRecord struct {
 	Name        string            `json:"name"`
@@ -522,32 +468,10 @@ type kmsCryptoKeyVersion struct {
 	Algorithm       string `json:"algorithm"`
 }
 
-type artifactRepositoryRecord struct {
-	Name         string               `json:"name"`
-	Format       string               `json:"format"`
-	Description  string               `json:"description"`
-	KMSKeyName   string               `json:"kmsKeyName"`
-	Mode         string               `json:"mode"`
-	Labels       map[string]string    `json:"labels"`
-	DockerConfig artifactDockerConfig `json:"dockerConfig"`
-	raw          json.RawMessage
-}
+type artifactRepositoryRecord = gcpcloud.ArtifactRepositoryRecord
+type artifactImageRecord = gcpcloud.ArtifactImageRecord
 
-type artifactDockerConfig struct {
-	ImmutableTags bool `json:"immutableTags"`
-}
-
-type artifactImageRecord struct {
-	Name           string   `json:"name"`
-	URI            string   `json:"uri"`
-	Tags           []string `json:"tags"`
-	ImageSizeBytes string   `json:"imageSizeBytes"`
-	MediaType      string   `json:"mediaType"`
-	UploadTime     string   `json:"uploadTime"`
-	BuildTime      string   `json:"buildTime"`
-	UpdateTime     string   `json:"updateTime"`
-	raw            json.RawMessage
-}
+type loggingSinkRecord = gcpcloud.LoggingSinkRecord
 
 type firewallRecord struct {
 	ID                    string            `json:"id"`
@@ -704,6 +628,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_function:%s", tenantID(settings), firstNonEmpty(fn.Name, fn.ServiceConfig.URI)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[cloudIDSEndpointRecord]{
+			Name:  familyCloudIDSEndpoint,
+			Label: "gcp cloud ids endpoints",
+			List:  listCloudIDSEndpoints,
+			Event: cloudIDSEndpointEvent,
+			URN: func(settings settings, endpoint cloudIDSEndpointRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_ids_endpoint:%s", tenantID(settings), endpoint.Name), nil
+			},
+		}),
 		gcpFamily(s, gcpFamilyOptions[cloudRunServiceRecord]{
 			Name:  familyCloudRunService,
 			Label: "gcp cloud run services",
@@ -767,6 +700,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_disk:%s", tenantID(settings), firstNonEmpty(disk.SelfLink, disk.ID, disk.Name)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[dnsManagedZoneRecord]{
+			Name:  familyDNSManagedZone,
+			Label: "gcp cloud dns managed zones",
+			List:  listDNSManagedZones,
+			Event: dnsManagedZoneEvent,
+			URN: func(settings settings, zone dnsManagedZoneRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_dns_managed_zone:%s", tenantID(settings), firstNonEmpty(zone.ID, zone.Name, zone.DNSName)), nil
+			},
+		}),
 		gcpFamily(s, gcpFamilyOptions[groupRecord]{
 			Name:  familyGroup,
 			Label: "gcp cloud identity groups",
@@ -803,6 +745,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_gke_cluster:%s", tenantID(settings), firstNonEmpty(cluster.SelfLink, cluster.Name)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[gkeNodePoolRecord]{
+			Name:  familyGKENodePool,
+			Label: "gcp gke node pools",
+			List:  listGKENodePools,
+			Event: gkeNodePoolEvent,
+			URN: func(settings settings, nodePool gkeNodePoolRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_gke_node_pool:%s", tenantID(settings), firstNonEmpty(nodePool.SelfLink, nodePool.Name)), nil
+			},
+		}),
 		gcpFamily(s, gcpFamilyOptions[kmsKeyRecord]{
 			Name:  familyKMSKey,
 			Label: "gcp kms keys",
@@ -810,6 +761,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: kmsKeyEvent,
 			URN: func(settings settings, key kmsKeyRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_kms_key:%s", tenantID(settings), key.Name), nil
+			},
+		}),
+		gcpFamily(s, gcpFamilyOptions[loggingSinkRecord]{
+			Name:  familyLoggingSink,
+			Label: "gcp cloud logging project sinks",
+			List:  listLoggingSinks,
+			Event: loggingSinkEvent,
+			URN: func(settings settings, sink loggingSinkRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_logging_project_sink:%s", tenantID(settings), firstNonEmpty(sink.ResourceName, "projects/"+settings.projectID+"/sinks/"+sink.Name)), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[roleAssignmentRecord]{
@@ -948,7 +908,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyArtifactRepo, familyAudit, familyCloudFunction, familyCloudRunService, familyCloudSQLInstance, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeSubnetwork, familyEffectivePermission, familyGCSBucket, familyGKECluster, familyResourceExposure, familyRoleAssign, familySecret, familyServiceAcct:
+	case familyAssetMetadata, familyArtifactRepo, familyAudit, familyCloudFunction, familyCloudIDSEndpoint, familyCloudRunService, familyCloudSQLInstance, familyComputeDisk, familyComputeFirewall, familyComputeInstance, familyComputeNetwork, familyComputeSubnetwork, familyDNSManagedZone, familyEffectivePermission, familyGCSBucket, familyGKECluster, familyGKENodePool, familyLoggingSink, familyResourceExposure, familyRoleAssign, familySecret, familyServiceAcct:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -985,7 +945,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of asset_metadata, artifact_registry_image, artifact_registry_repository, audit, cloud_function, cloud_run_service, cloud_sql_instance, compute_instance, effective_permission, gcs_bucket, gke_cluster, group, group_membership, iam_role_assignment, kms_key, resource_exposure, secret_manager_secret, service_account, service_account_impersonation, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of asset_metadata, artifact_registry_image, artifact_registry_repository, audit, cloud_function, cloud_ids_endpoint, cloud_run_service, cloud_sql_instance, compute_instance, dns_managed_zone, effective_permission, gcs_bucket, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_project_sink, resource_exposure, secret_manager_secret, service_account, service_account_impersonation, or service_account_key")
 	}
 	return settings, nil
 }
@@ -1180,6 +1140,20 @@ func listComputeDisks(ctx context.Context, source *Source, settings settings, pa
 	return records, response.NextPageToken, err
 }
 
+func listDNSManagedZones(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]dnsManagedZoneRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response pageResponse
+	path := "/dns/v1/projects/" + url.PathEscape(settings.projectID) + "/managedZones"
+	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, dnsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.ManagedZones, "gcp dns managed zone", func(record *dnsManagedZoneRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
 func computeAggregatedRawRecords(items map[string]computeScopedResources, get func(computeScopedResources) []json.RawMessage, scopeField string) []json.RawMessage {
 	rawRecords := make([]json.RawMessage, 0)
 	for scope, scoped := range items {
@@ -1227,6 +1201,54 @@ func listGKEClusters(ctx context.Context, source *Source, settings settings, pag
 	return records, response.NextPageToken, err
 }
 
+func listGKENodePools(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gkeNodePoolRecord, string, error) {
+	clusters, next, err := listGKEClusters(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]gkeNodePoolRecord, 0)
+	for _, cluster := range clusters {
+		clusterName := lastPathSegment(cluster.Name)
+		if clusterName == "" {
+			continue
+		}
+		location := firstNonEmpty(cluster.Location, locationFromResourceName(cluster.SelfLink), settings.location)
+		var response pageResponse
+		path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/clusters/" + url.PathEscape(clusterName) + "/nodePools"
+		if err := optionalGCPServiceErr(getJSON(ctx, source, settings, containerBaseURL, http.MethodGet, path, nil, nil, &response)); err != nil {
+			return nil, "", err
+		}
+		nodePools, err := decodeRecords(response.NodePools, "gcp gke node pool", func(record *gkeNodePoolRecord, raw json.RawMessage) {
+			record.ClusterName = clusterName
+			record.ClusterLocation = location
+			record.Raw = append(json.RawMessage(nil), raw...)
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		records = append(records, nodePools...)
+	}
+	return records, next, nil
+}
+
+func listCloudIDSEndpoints(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]cloudIDSEndpointRecord, string, error) {
+	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	if strings.TrimSpace(settings.filter) != "" {
+		query.Set("filter", settings.filter)
+	}
+	var response pageResponse
+	location := firstNonEmpty(settings.location, "-")
+	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/locations/" + url.PathEscape(location) + "/endpoints"
+	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, idsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.Endpoints, "gcp cloud ids endpoint", func(record *cloudIDSEndpointRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
 func listCloudRunServices(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]cloudRunServiceRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
 	addQuery(query, pageToken)
@@ -1236,7 +1258,7 @@ func listCloudRunServices(ctx context.Context, source *Source, settings settings
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Services, "gcp cloud run service", func(record *cloudRunServiceRecord, raw json.RawMessage) {
-		record.raw = append(json.RawMessage(nil), raw...)
+		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
 }
@@ -1250,7 +1272,7 @@ func listCloudFunctions(ctx context.Context, source *Source, settings settings, 
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Functions, "gcp cloud function", func(record *cloudFunctionRecord, raw json.RawMessage) {
-		record.raw = append(json.RawMessage(nil), raw...)
+		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
 }
@@ -1276,7 +1298,7 @@ func listGCSBuckets(ctx context.Context, source *Source, settings settings, page
 	if err := getJSON(ctx, source, settings, storageBaseURL, http.MethodGet, "/storage/v1/b", query, nil, &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeRecords(response.Items, "gcp storage bucket", func(record *gcsBucketRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := decodeRecords(response.Items, "gcp storage bucket", func(record *gcsBucketRecord, raw json.RawMessage) { record.Raw = append(json.RawMessage(nil), raw...) })
 	return records, response.NextPageToken, err
 }
 
@@ -1304,6 +1326,23 @@ func listKMSKeys(ctx context.Context, source *Source, settings settings, pageTok
 	return records, response.NextPageToken, err
 }
 
+func listLoggingSinks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]loggingSinkRecord, string, error) {
+	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	if strings.TrimSpace(settings.filter) != "" {
+		query.Set("filter", settings.filter)
+	}
+	var response pageResponse
+	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/sinks"
+	if err := optionalGCPServiceErr(getJSON(ctx, source, settings, loggingBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeRecords(response.Sinks, "gcp logging project sink", func(record *loggingSinkRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
 func listArtifactRepositories(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]artifactRepositoryRecord, string, error) {
 	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
 	addQuery(query, pageToken)
@@ -1313,7 +1352,7 @@ func listArtifactRepositories(ctx context.Context, source *Source, settings sett
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.Repositories, "gcp artifact registry repository", func(record *artifactRepositoryRecord, raw json.RawMessage) {
-		record.raw = append(json.RawMessage(nil), raw...)
+		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
 }
@@ -1327,7 +1366,7 @@ func listArtifactImages(ctx context.Context, source *Source, settings settings, 
 		return nil, "", err
 	}
 	records, err := decodeRecords(response.DockerImages, "gcp artifact registry image", func(record *artifactImageRecord, raw json.RawMessage) {
-		record.raw = append(json.RawMessage(nil), raw...)
+		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
 }
@@ -1661,6 +1700,18 @@ func computeDiskEvent(settings settings, record computeDiskRecord) (*primitives.
 	return sourceEvent(settings, "gcp-compute-disk-"+resourceID, "gcp.compute_disk", "gcp/compute_disk/v1", payload, attributes, time.Now().UTC())
 }
 
+func gcpCloudSettings(settings settings) gcpcloud.Settings {
+	return gcpcloud.Settings{ProjectID: settings.projectID, TenantID: tenantID(settings), Location: settings.location}
+}
+
+func dnsManagedZoneEvent(settings settings, record dnsManagedZoneRecord) (*primitives.Event, error) {
+	return gcpcloud.DNSManagedZoneEvent(gcpCloudSettings(settings), record)
+}
+
+func cloudIDSEndpointEvent(settings settings, record cloudIDSEndpointRecord) (*primitives.Event, error) {
+	return gcpcloud.CloudIDSEndpointEvent(gcpCloudSettings(settings), record)
+}
+
 func gkeClusterEvent(settings settings, record gkeClusterRecord) (*primitives.Event, error) {
 	location := firstNonEmpty(record.Location, locationFromResourceName(record.Name))
 	serviceAccountEmail := record.NodeConfig.ServiceAccount
@@ -1694,53 +1745,16 @@ func gkeClusterEvent(settings settings, record gkeClusterRecord) (*primitives.Ev
 	return sourceEvent(settings, "gcp-gke-cluster-"+firstNonEmpty(record.SelfLink, record.Name), "gcp.gke_cluster", "gcp/gke_cluster/v1", payload, attributes, time.Now().UTC())
 }
 
+func gkeNodePoolEvent(settings settings, record gkeNodePoolRecord) (*primitives.Event, error) {
+	return gcpcloud.GKENodePoolEvent(gcpCloudSettings(settings), record)
+}
+
 func cloudRunServiceEvent(settings settings, record cloudRunServiceRecord) (*primitives.Event, error) {
-	location := locationFromResourceName(record.Name)
-	publicEndpoint := cloudRunAllowsAllIngress(record.Ingress) && record.URI != ""
-	serviceAccountEmail := record.Template.ServiceAccount
-	attributes := cloudResourceAttributes(settings, familyCloudRunService, firstNonEmpty(record.Name, record.UID), lastPathSegment(record.Name), "cloud_run_service", location, record.Labels)
-	attributes["service_account_email"] = serviceAccountEmail
-	attributes["runtime_identity"] = serviceAccountEmail
-	attributes["ingress"] = record.Ingress
-	attributes["uri"] = record.URI
-	attributes["public_endpoint"] = record.URI
-	attributes["public"] = boolString(publicEndpoint)
-	attributes["internet_exposed"] = boolString(publicEndpoint)
-	attributes["external_exposure"] = boolString(publicEndpoint)
-	attributes["container_images"] = strings.Join(cloudRunImages(record), ",")
-	attributes["vpc_connector"] = record.Template.VpcAccess.Connector
-	attributes["vpc_egress"] = record.Template.VpcAccess.Egress
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "gcp-cloud-run-service-"+firstNonEmpty(record.Name, record.UID), "gcp.cloud_run_service", "gcp/cloud_run_service/v1", payload, attributes, time.Now().UTC())
+	return gcpcloud.CloudRunServiceEvent(gcpCloudSettings(settings), record)
 }
 
 func cloudFunctionEvent(settings settings, record cloudFunctionRecord) (*primitives.Event, error) {
-	location := locationFromResourceName(record.Name)
-	publicEndpoint := strings.EqualFold(record.ServiceConfig.IngressSettings, "ALLOW_ALL") && record.ServiceConfig.URI != ""
-	serviceAccountEmail := record.ServiceConfig.ServiceAccountEmail
-	attributes := cloudResourceAttributes(settings, familyCloudFunction, record.Name, lastPathSegment(record.Name), "cloud_function", location, record.Labels)
-	attributes["description"] = record.Description
-	attributes["state"] = record.State
-	attributes["environment"] = record.Environment
-	attributes["service_account_email"] = serviceAccountEmail
-	attributes["runtime_identity"] = serviceAccountEmail
-	attributes["ingress"] = record.ServiceConfig.IngressSettings
-	attributes["uri"] = record.ServiceConfig.URI
-	attributes["public_endpoint"] = record.ServiceConfig.URI
-	attributes["public"] = boolString(publicEndpoint)
-	attributes["internet_exposed"] = boolString(publicEndpoint)
-	attributes["external_exposure"] = boolString(publicEndpoint)
-	attributes["vpc_connector"] = record.ServiceConfig.VpcConnector
-	attributes["vpc_egress"] = record.ServiceConfig.VpcConnectorEgressSettings
-	attributes["kms_key_name"] = record.ServiceConfig.KMSKeyName
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "gcp-cloud-function-"+record.Name, "gcp.cloud_function", "gcp/cloud_function/v1", payload, attributes, time.Now().UTC())
+	return gcpcloud.CloudFunctionEvent(gcpCloudSettings(settings), record)
 }
 
 func cloudSQLInstanceEvent(settings settings, record cloudSQLInstanceRecord) (*primitives.Event, error) {
@@ -1777,22 +1791,7 @@ func cloudSQLInstanceEvent(settings settings, record cloudSQLInstanceRecord) (*p
 }
 
 func gcsBucketEvent(settings settings, record gcsBucketRecord) (*primitives.Event, error) {
-	attributes := cloudResourceAttributes(settings, familyGCSBucket, firstNonEmpty(record.ID, record.Name), record.Name, "gcs_bucket", record.Location, record.Labels)
-	attributes["storage_class"] = record.StorageClass
-	attributes["kms_key_name"] = record.Encryption.DefaultKMSKeyName
-	attributes["encryption_enabled"] = boolString(record.Encryption.DefaultKMSKeyName != "")
-	attributes["versioning_enabled"] = boolString(record.Versioning.Enabled)
-	attributes["uniform_bucket_level_access"] = boolString(record.IAMConfiguration.UniformBucketLevelAccess.Enabled)
-	attributes["public_access_prevention"] = record.IAMConfiguration.PublicAccessPrevention
-	if strings.EqualFold(record.IAMConfiguration.PublicAccessPrevention, "enforced") {
-		attributes["public"] = "false"
-		attributes["internet_exposed"] = "false"
-	}
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "gcp-gcs-bucket-"+firstNonEmpty(record.ID, record.Name), "gcp.gcs_bucket", "gcp/gcs_bucket/v1", payload, attributes, time.Now().UTC())
+	return gcpcloud.GCSBucketEvent(gcpCloudSettings(settings), record)
 }
 
 func secretEvent(settings settings, record secretRecord) (*primitives.Event, error) {
@@ -1831,43 +1830,16 @@ func kmsKeyEvent(settings settings, record kmsKeyRecord) (*primitives.Event, err
 	return sourceEvent(settings, "gcp-kms-key-"+record.Name, "gcp.kms_key", "gcp/kms_key/v1", payload, attributes, time.Now().UTC())
 }
 
+func loggingSinkEvent(settings settings, record loggingSinkRecord) (*primitives.Event, error) {
+	return gcpcloud.LoggingSinkEvent(gcpCloudSettings(settings), record)
+}
+
 func artifactRepositoryEvent(settings settings, record artifactRepositoryRecord) (*primitives.Event, error) {
-	location := locationFromResourceName(record.Name)
-	attributes := cloudResourceAttributes(settings, familyArtifactRepo, record.Name, lastPathSegment(record.Name), "artifact_registry_repository", location, record.Labels)
-	attributes["format"] = record.Format
-	attributes["mode"] = record.Mode
-	attributes["description"] = record.Description
-	attributes["kms_key_name"] = record.KMSKeyName
-	attributes["encryption_enabled"] = boolString(record.KMSKeyName != "")
-	attributes["immutable_tags"] = boolString(record.DockerConfig.ImmutableTags)
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "gcp-artifact-registry-repository-"+record.Name, "gcp.artifact_registry_repository", "gcp/artifact_registry_repository/v1", payload, attributes, time.Now().UTC())
+	return gcpcloud.ArtifactRepositoryEvent(gcpCloudSettings(settings), record)
 }
 
 func artifactImageEvent(settings settings, record artifactImageRecord) (*primitives.Event, error) {
-	imageURI := firstNonEmpty(record.URI, record.Name)
-	location := locationFromResourceName(settings.artifactRepository)
-	attributes := cloudResourceAttributes(settings, familyArtifactImage, imageURI, lastPathSegment(imageURI), "artifact_registry_image", location, nil)
-	attributes["artifact_repository"] = settings.artifactRepository
-	attributes["image_uri"] = imageURI
-	attributes["image_name"] = lastPathSegment(imageURI)
-	attributes["registry"] = artifactRegistryHost(imageURI)
-	attributes["repository"] = artifactRepositoryName(settings.artifactRepository)
-	attributes["digest"] = artifactImageDigest(imageURI)
-	attributes["tags"] = strings.Join(record.Tags, ",")
-	attributes["media_type"] = record.MediaType
-	attributes["image_size_bytes"] = record.ImageSizeBytes
-	attributes["uploaded_at"] = record.UploadTime
-	attributes["built_at"] = record.BuildTime
-	attributes["updated_at"] = record.UpdateTime
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID, "artifact_repository": settings.artifactRepository})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "gcp-artifact-registry-image-"+imageURI, "gcp.artifact_registry_image", "gcp/artifact_registry_image/v1", payload, attributes, time.Now().UTC())
+	return gcpcloud.ArtifactImageEvent(gcpCloudSettings(settings), record, settings.artifactRepository)
 }
 
 func resourceExposureEvent(settings settings, record firewallRecord) (*primitives.Event, error) {
@@ -2041,21 +2013,6 @@ func gkeAuthorizedCIDRs(record gkeClusterRecord) []string {
 	return cidrs
 }
 
-func cloudRunImages(record cloudRunServiceRecord) []string {
-	images := make([]string, 0, len(record.Template.Containers))
-	for _, container := range record.Template.Containers {
-		if image := strings.TrimSpace(container.Image); image != "" {
-			images = append(images, image)
-		}
-	}
-	return images
-}
-
-func cloudRunAllowsAllIngress(value string) bool {
-	normalized := strings.ToUpper(strings.TrimSpace(value))
-	return normalized == "INGRESS_TRAFFIC_ALL" || normalized == "ALL"
-}
-
 func cloudSQLIPs(record cloudSQLInstanceRecord) (string, string) {
 	publicIP := ""
 	privateIP := ""
@@ -2146,31 +2103,6 @@ func lastPathSegment(value string) string {
 	}
 	parts := strings.Split(value, "/")
 	return parts[len(parts)-1]
-}
-
-func artifactRepositoryName(value string) string {
-	parts := strings.Split(strings.Trim(value, "/"), "/")
-	for index, part := range parts {
-		if part == "repositories" && index+1 < len(parts) {
-			return parts[index+1]
-		}
-	}
-	return lastPathSegment(value)
-}
-
-func artifactRegistryHost(value string) string {
-	parts := strings.Split(strings.TrimSpace(value), "/")
-	if strings.Contains(parts[0], ".pkg.dev") {
-		return parts[0]
-	}
-	return ""
-}
-
-func artifactImageDigest(value string) string {
-	if index := strings.LastIndex(value, "@"); index >= 0 && index+1 < len(value) {
-		return value[index+1:]
-	}
-	return ""
 }
 
 func escapePathSegments(value string) string {
@@ -2513,8 +2445,10 @@ func artifactRegistryBaseURL() string { return "https://artifactregistry.googlea
 func cloudAssetBaseURL() string       { return "https://cloudasset.googleapis.com" }
 func computeBaseURL() string          { return "https://www.googleapis.com" }
 func containerBaseURL() string        { return "https://container.googleapis.com" }
+func dnsBaseURL() string              { return "https://dns.googleapis.com" }
 func functionsBaseURL() string        { return "https://cloudfunctions.googleapis.com" }
 func identityBaseURL() string         { return "https://cloudidentity.googleapis.com" }
+func idsBaseURL() string              { return "https://ids.googleapis.com" }
 func kmsBaseURL() string              { return "https://cloudkms.googleapis.com" }
 func loggingBaseURL() string          { return "https://logging.googleapis.com" }
 func resourceManagerBaseURL() string  { return "https://cloudresourcemanager.googleapis.com" }

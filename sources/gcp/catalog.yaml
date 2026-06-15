@@ -7,6 +7,7 @@ emitted_kinds:
   - gcp.artifact_registry_repository
   - gcp.audit
   - gcp.cloud_function
+  - gcp.cloud_ids_endpoint
   - gcp.cloud_run_service
   - gcp.cloud_sql_instance
   - gcp.compute_disk
@@ -14,13 +15,16 @@ emitted_kinds:
   - gcp.compute_instance
   - gcp.compute_network
   - gcp.compute_subnetwork
+  - gcp.dns_managed_zone
   - gcp.effective_permission
   - gcp.gcs_bucket
   - gcp.gke_cluster
+  - gcp.gke_node_pool
   - gcp.group
   - gcp.group_membership
   - gcp.iam_role_assignment
   - gcp.kms_key
+  - gcp.logging_project_sink
   - gcp.resource_exposure
   - gcp.secret_manager_secret
   - gcp.service_account
@@ -32,6 +36,7 @@ runtime_families:
   - artifact_registry_repository
   - audit
   - cloud_function
+  - cloud_ids_endpoint
   - cloud_run_service
   - cloud_sql_instance
   - compute_disk
@@ -39,13 +44,16 @@ runtime_families:
   - compute_instance
   - compute_network
   - compute_subnetwork
+  - dns_managed_zone
   - effective_permission
   - gcs_bucket
   - gke_cluster
+  - gke_node_pool
   - group
   - group_membership
   - iam_role_assignment
   - kms_key
+  - logging_project_sink
   - resource_exposure
   - secret_manager_secret
   - service_account
@@ -103,7 +111,7 @@ coverage_contract:
     - id: cloud_ids_endpoint
       type: entity_family
       title: Cloud IDS endpoints
-      families: [asset_metadata]
+      families: [cloud_ids_endpoint]
       support: partial
       high_value: true
       known_unsupported_fields: [notification configuration and threat log routing detail]
@@ -173,10 +181,10 @@ coverage_contract:
     - id: dns_managed_zone
       type: entity_family
       title: Cloud DNS managed zones
-      families: [asset_metadata]
+      families: [dns_managed_zone]
       support: partial
       high_value: true
-      known_unsupported_fields: [DNSSEC and recordset detail]
+      known_unsupported_fields: [recordset detail]
     - id: gcs_bucket
       type: entity_family
       title: Cloud Storage buckets
@@ -199,10 +207,9 @@ coverage_contract:
     - id: gke_node_pool
       type: entity_family
       title: GKE node pools
-      families: [gke_cluster]
-      support: partial
+      families: [gke_node_pool]
+      support: supported
       high_value: true
-      known_unsupported_fields: [dedicated node pool entities and node config detail]
     - id: group
       type: entity_family
       title: Cloud Identity groups
@@ -230,10 +237,9 @@ coverage_contract:
     - id: logging_project_sink
       type: entity_family
       title: Cloud Logging project sinks
-      families: [asset_metadata]
-      support: partial
+      families: [logging_project_sink]
+      support: supported
       high_value: true
-      known_unsupported_fields: [sink inclusion and exclusion filters]
     - id: resourcemanager_project
       type: entity_family
       title: Resource Manager projects
