@@ -236,6 +236,16 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 				Severity:     "HIGH",
 				Status:       "resolved",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				FindingRisk: ports.FindingRisk{
+					RiskFactors: []ports.FindingRiskFactor{
+						{
+							FactorID:             "external_exposure",
+							Category:             "likelihood",
+							Weight:               10,
+							SeverityContribution: "high",
+						},
+					},
+				},
 				Attributes: map[string]string{
 					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
 				},
@@ -411,6 +421,12 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	}
 	if got := riskFactorCount["factor_id"]; got != "external_exposure" {
 		t.Fatalf("risk factor count factor_id = %#v, want external_exposure", got)
+	}
+	if got := riskFactorCount["count"]; got != float64(2) {
+		t.Fatalf("risk factor count = %#v, want 2", got)
+	}
+	if got := riskFactorCount["weight_total"]; got != float64(45) {
+		t.Fatalf("risk factor weight_total = %#v, want 45", got)
 	}
 	exposureAnalysis, ok := result["exposure_analysis"].(map[string]any)
 	if !ok {
