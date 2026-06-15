@@ -22,6 +22,7 @@ const (
 	defaultPostgresMaxIdleConns    = 5
 	defaultPostgresConnMaxLifetime = 5 * time.Minute
 	defaultPostgresConnMaxIdleTime = time.Minute
+	maxConfigFileBytes             = 4 << 20
 )
 
 const (
@@ -30,7 +31,10 @@ const (
 	GraphStoreDriverNeo4j    = "neo4j"
 )
 
-var errLegacyKuzuPath = errors.New("CEREBRO_KUZU_PATH is no longer supported")
+var (
+	errConfigValueConflict = errors.New("config value and file are both set")
+	errLegacyKuzuPath      = errors.New("CEREBRO_KUZU_PATH is no longer supported")
+)
 
 // Config is the minimal bootstrap configuration for the rewrite skeleton.
 type Config struct {
@@ -278,7 +282,19 @@ func Load() (Config, error) {
 	if strings.TrimSpace(os.Getenv("CEREBRO_KUZU_PATH")) != "" {
 		return Config{}, fmt.Errorf("%w; configure Neo4j with CEREBRO_NEO4J_URI, CEREBRO_NEO4J_USERNAME, and CEREBRO_NEO4J_PASSWORD", errLegacyKuzuPath)
 	}
-	apiCredentials, err := parseAPICredentials(os.Getenv("CEREBRO_API_CREDENTIALS_JSON"))
+	apiCredentialsRaw, err := readConfigValue("CEREBRO_API_CREDENTIALS_JSON")
+	if err != nil {
+		return Config{}, err
+	}
+	apiCredentials, err := parseAPICredentials(apiCredentialsRaw)
+	if err != nil {
+		return Config{}, err
+	}
+	apiKeysRaw, err := readConfigValue("CEREBRO_API_KEYS")
+	if err != nil {
+		return Config{}, err
+	}
+	capabilityTokenSecretsRaw, err := readConfigValue("CEREBRO_CAPABILITY_TOKEN_SECRETS")
 	if err != nil {
 		return Config{}, err
 	}
@@ -330,9 +346,9 @@ func Load() (Config, error) {
 			MetricsEndpoint: strings.TrimSpace(os.Getenv("CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")),
 		},
 		Auth: AuthConfig{
-			APIKeys:                 parseAPIKeys(os.Getenv("CEREBRO_API_KEYS")),
+			APIKeys:                 parseAPIKeys(apiKeysRaw),
 			APICredentials:          apiCredentials,
-			CapabilityTokenSecrets:  parseCSV(os.Getenv("CEREBRO_CAPABILITY_TOKEN_SECRETS")),
+			CapabilityTokenSecrets:  parseCSV(capabilityTokenSecretsRaw),
 			CapabilityTokenAudience: strings.TrimSpace(os.Getenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE")),
 			AllowedTenants:          parseCSV(os.Getenv("CEREBRO_ALLOWED_TENANTS")),
 			RequestOrigin: RequestOriginConfig{
@@ -543,6 +559,26 @@ func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
 
 func (cfg AuthConfig) HasCredentialMaterial() bool {
 	return len(cfg.APIKeys) > 0 || len(cfg.APICredentials) > 0 || len(cfg.CapabilityTokenSecrets) > 0
+}
+
+func readConfigValue(name string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	filePath := strings.TrimSpace(os.Getenv(name + "_FILE"))
+	if value != "" && filePath != "" {
+		return "", fmt.Errorf("%w: %s and %s_FILE", errConfigValueConflict, name, name)
+	}
+	if filePath == "" {
+		return value, nil
+	}
+	// #nosec G304 G703 -- file path is an operator-configured mounted secret path.
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("read %s_FILE: %w", name, err)
+	}
+	if len(data) > maxConfigFileBytes {
+		return "", fmt.Errorf("%s_FILE exceeds %d bytes", name, maxConfigFileBytes)
+	}
+	return strings.TrimSpace(string(data)), nil
 }
 
 func validateRequestOriginConfig(cfg RequestOriginConfig) error {
