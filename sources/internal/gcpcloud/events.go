@@ -406,6 +406,97 @@ type CloudSQLEncryptionConfig struct {
 	KMSKeyName string `json:"kmsKeyName"`
 }
 
+type ComputeInstanceRecord struct {
+	ID                string                    `json:"id"`
+	Name              string                    `json:"name"`
+	Zone              string                    `json:"zone"`
+	MachineType       string                    `json:"machineType"`
+	Status            string                    `json:"status"`
+	Labels            map[string]string         `json:"labels"`
+	Tags              ComputeTags               `json:"tags"`
+	NetworkInterfaces []ComputeNetworkInterface `json:"networkInterfaces"`
+	ServiceAccounts   []ComputeServiceAccount   `json:"serviceAccounts"`
+	Disks             []ComputeAttachedDisk     `json:"disks"`
+	Raw               json.RawMessage           `json:"-"`
+}
+
+type ComputeTags struct {
+	Items []string `json:"items"`
+}
+
+type ComputeNetworkInterface struct {
+	Network       string                `json:"network"`
+	Subnetwork    string                `json:"subnetwork"`
+	NetworkIP     string                `json:"networkIP"`
+	AccessConfigs []ComputeAccessConfig `json:"accessConfigs"`
+}
+
+type ComputeAccessConfig struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	NatIP string `json:"natIP"`
+}
+
+type ComputeServiceAccount struct {
+	Email  string   `json:"email"`
+	Scopes []string `json:"scopes"`
+}
+
+type ComputeAttachedDisk struct {
+	Boot              bool                     `json:"boot"`
+	AutoDelete        bool                     `json:"autoDelete"`
+	Source            string                   `json:"source"`
+	DiskEncryptionKey ComputeDiskEncryptionKey `json:"diskEncryptionKey"`
+}
+
+type ComputeBackendServiceRecord struct {
+	ID                   string                                  `json:"id"`
+	Name                 string                                  `json:"name"`
+	SelfLink             string                                  `json:"selfLink"`
+	Description          string                                  `json:"description"`
+	Region               string                                  `json:"region"`
+	Protocol             string                                  `json:"protocol"`
+	PortName             string                                  `json:"portName"`
+	LoadBalancingScheme  string                                  `json:"loadBalancingScheme"`
+	SessionAffinity      string                                  `json:"sessionAffinity"`
+	LocalityLBPolicy     string                                  `json:"localityLbPolicy"`
+	TimeoutSec           int                                     `json:"timeoutSec"`
+	EnableCDN            bool                                    `json:"enableCDN"`
+	HealthChecks         []string                                `json:"healthChecks"`
+	Backends             []ComputeBackendServiceBackend          `json:"backends"`
+	ConnectionDraining   ComputeBackendServiceConnectionDraining `json:"connectionDraining"`
+	LogConfig            ComputeBackendServiceLogConfig          `json:"logConfig"`
+	IAP                  ComputeBackendServiceIAP                `json:"iap"`
+	SecurityPolicy       string                                  `json:"securityPolicy"`
+	Network              string                                  `json:"network"`
+	CustomRequestHeaders []string                                `json:"customRequestHeaders"`
+	Labels               map[string]string                       `json:"labels"`
+	Raw                  json.RawMessage                         `json:"-"`
+}
+
+type ComputeBackendServiceBackend struct {
+	Group                     string  `json:"group"`
+	BalancingMode             string  `json:"balancingMode"`
+	CapacityScaler            float64 `json:"capacityScaler"`
+	MaxUtilization            float64 `json:"maxUtilization"`
+	MaxRatePerInstance        float64 `json:"maxRatePerInstance"`
+	MaxConnectionsPerInstance int     `json:"maxConnectionsPerInstance"`
+	Failover                  bool    `json:"failover"`
+}
+
+type ComputeBackendServiceConnectionDraining struct {
+	DrainingTimeoutSec int `json:"drainingTimeoutSec"`
+}
+
+type ComputeBackendServiceLogConfig struct {
+	Enable     bool    `json:"enable"`
+	SampleRate float64 `json:"sampleRate"`
+}
+
+type ComputeBackendServiceIAP struct {
+	Enabled bool `json:"enabled"`
+}
+
 type ComputeNetworkRecord struct {
 	ID                    string                      `json:"id"`
 	Name                  string                      `json:"name"`
@@ -1592,6 +1683,80 @@ func CloudSQLInstanceEvent(settings Settings, record CloudSQLInstanceRecord) (*p
 	return sourceEvent(settings, "gcp-cloud-sql-instance-"+firstNonEmpty(record.SelfLink, record.Name), "gcp.cloud_sql_instance", "gcp/cloud_sql_instance/v1", payload, attributes)
 }
 
+func ComputeInstanceEvent(settings Settings, record ComputeInstanceRecord) (*primitives.Event, error) {
+	location := lastPathSegment(record.Zone)
+	network := firstComputeNetworkInterface(record)
+	publicIP := computePublicIP(record)
+	serviceAccountEmail := firstComputeServiceAccountEmail(record)
+	attributes := cloudResourceAttributes(settings, "compute_instance", firstNonEmpty(record.ID, record.Name), record.Name, "compute_instance", location, record.Labels)
+	attributes["zone"] = location
+	attributes["machine_type"] = lastPathSegment(record.MachineType)
+	attributes["status"] = record.Status
+	attributes["service_account_email"] = serviceAccountEmail
+	attributes["runtime_identity"] = serviceAccountEmail
+	attributes["network"] = lastPathSegment(network.Network)
+	attributes["network_url"] = network.Network
+	attributes["subnet"] = lastPathSegment(network.Subnetwork)
+	attributes["subnet_url"] = network.Subnetwork
+	attributes["private_ip"] = network.NetworkIP
+	attributes["public_ip"] = publicIP
+	attributes["public"] = boolString(publicIP != "")
+	attributes["internet_exposed"] = boolString(publicIP != "")
+	attributes["external_exposure"] = boolString(publicIP != "")
+	attributes["network_tags"] = strings.Join(record.Tags.Items, ",")
+	attributes["security_tags"] = strings.Join(record.Tags.Items, ",")
+	attributes["kms_key_name"] = computeInstanceKMSKey(record)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-instance-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_instance", "gcp/compute_instance/v1", payload, attributes)
+}
+
+func ComputeBackendServiceEvent(settings Settings, record ComputeBackendServiceRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
+	location := lastPathSegment(record.Region)
+	if location == "" {
+		location = "global"
+	}
+	external := computeBackendServiceExternal(record.LoadBalancingScheme)
+	backendNames, backendURLs, balancingModes, failoverCount := computeBackendServiceBackends(record.Backends)
+	healthCheckNames := lastPathSegments(record.HealthChecks)
+	attributes := cloudResourceAttributes(settings, "compute_backend_service", resourceID, record.Name, "compute_backend_service", location, record.Labels)
+	attributes["description"] = record.Description
+	attributes["protocol"] = record.Protocol
+	attributes["port_name"] = record.PortName
+	attributes["load_balancing_scheme"] = record.LoadBalancingScheme
+	attributes["scheme"] = record.LoadBalancingScheme
+	attributes["external_load_balancing"] = boolString(external)
+	attributes["session_affinity"] = record.SessionAffinity
+	attributes["locality_lb_policy"] = record.LocalityLBPolicy
+	attributes["timeout_sec"] = strconv.Itoa(record.TimeoutSec)
+	attributes["connection_draining_timeout_sec"] = strconv.Itoa(record.ConnectionDraining.DrainingTimeoutSec)
+	attributes["cdn_enabled"] = boolString(record.EnableCDN)
+	attributes["iap_enabled"] = boolString(record.IAP.Enabled)
+	attributes["logging_enabled"] = boolString(record.LogConfig.Enable)
+	attributes["log_sample_rate"] = strconv.FormatFloat(record.LogConfig.SampleRate, 'f', -1, 64)
+	attributes["health_checks"] = strings.Join(healthCheckNames, ",")
+	attributes["health_check_urls"] = strings.Join(record.HealthChecks, ",")
+	attributes["health_checks_count"] = strconv.Itoa(len(record.HealthChecks))
+	attributes["backend_groups"] = strings.Join(backendNames, ",")
+	attributes["backend_group_urls"] = strings.Join(backendURLs, ",")
+	attributes["backends_count"] = strconv.Itoa(len(record.Backends))
+	attributes["backend_balancing_modes"] = strings.Join(balancingModes, ",")
+	attributes["failover_backends_count"] = strconv.Itoa(failoverCount)
+	attributes["security_policy"] = lastPathSegment(record.SecurityPolicy)
+	attributes["security_policy_url"] = record.SecurityPolicy
+	attributes["network"] = lastPathSegment(record.Network)
+	attributes["network_url"] = record.Network
+	attributes["custom_request_headers_count"] = strconv.Itoa(len(record.CustomRequestHeaders))
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-compute-backend-service-"+resourceID, "gcp.compute_backend_service", "gcp/compute_backend_service/v1", payload, attributes)
+}
+
 func ComputeNetworkEvent(settings Settings, record ComputeNetworkRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.SelfLink, record.ID, record.Name)
 	attributes := cloudResourceAttributes(settings, "compute_network", resourceID, record.Name, "compute_network", "global", record.Labels)
@@ -2431,6 +2596,76 @@ func computeRouteNextHop(record ComputeRouteRecord) (string, string, string) {
 		return "ip", record.NextHopIP, record.NextHopIP
 	}
 	return "", "", ""
+}
+
+func firstComputeNetworkInterface(record ComputeInstanceRecord) ComputeNetworkInterface {
+	if len(record.NetworkInterfaces) == 0 {
+		return ComputeNetworkInterface{}
+	}
+	return record.NetworkInterfaces[0]
+}
+
+func firstComputeServiceAccountEmail(record ComputeInstanceRecord) string {
+	for _, account := range record.ServiceAccounts {
+		if email := strings.TrimSpace(account.Email); email != "" {
+			return email
+		}
+	}
+	return ""
+}
+
+func computePublicIP(record ComputeInstanceRecord) string {
+	for _, networkInterface := range record.NetworkInterfaces {
+		for _, accessConfig := range networkInterface.AccessConfigs {
+			if ip := strings.TrimSpace(accessConfig.NatIP); ip != "" {
+				return ip
+			}
+		}
+	}
+	return ""
+}
+
+func computeInstanceKMSKey(record ComputeInstanceRecord) string {
+	for _, disk := range record.Disks {
+		if key := strings.TrimSpace(disk.DiskEncryptionKey.KMSKeyName); key != "" {
+			return key
+		}
+	}
+	return ""
+}
+
+func computeBackendServiceExternal(scheme string) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(scheme)), "EXTERNAL")
+}
+
+func computeBackendServiceBackends(backends []ComputeBackendServiceBackend) ([]string, []string, []string, int) {
+	names := make([]string, 0, len(backends))
+	urls := make([]string, 0, len(backends))
+	modes := make([]string, 0, len(backends))
+	failoverCount := 0
+	for _, backend := range backends {
+		if backend.Group != "" {
+			urls = append(urls, backend.Group)
+			names = append(names, lastPathSegment(backend.Group))
+		}
+		if backend.BalancingMode != "" {
+			modes = appendUnique(modes, backend.BalancingMode)
+		}
+		if backend.Failover {
+			failoverCount++
+		}
+	}
+	return names, urls, modes, failoverCount
+}
+
+func lastPathSegments(values []string) []string {
+	segments := make([]string, 0, len(values))
+	for _, value := range values {
+		if segment := lastPathSegment(value); segment != "" {
+			segments = append(segments, segment)
+		}
+	}
+	return segments
 }
 
 func computeForwardingRuleTarget(record ComputeForwardingRuleRecord) (string, string, string) {

@@ -49,6 +49,7 @@ const (
 	familyCloudRunService                        = "cloud_run_service"
 	familyCloudSQLInstance                       = "cloud_sql_instance"
 	familyContainerRegistry, familyContainerVuln = "container_registry", "container_vulnerability"
+	familyComputeBackendService                  = "compute_backend_service"
 	familyComputeDisk                            = "compute_disk"
 	familyComputeFirewall                        = "compute_firewall"
 	familyComputeForwardingRule                  = "compute_forwarding_rule"
@@ -147,6 +148,7 @@ type computeAggregatedListResponse struct {
 }
 
 type computeScopedResources struct {
+	BackendServices []json.RawMessage `json:"backendServices"`
 	Disks           []json.RawMessage `json:"disks"`
 	ForwardingRules []json.RawMessage `json:"forwardingRules"`
 	Instances       []json.RawMessage `json:"instances"`
@@ -183,53 +185,7 @@ type assetMetadataRecord struct {
 	raw         json.RawMessage
 }
 
-type computeInstanceRecord struct {
-	ID                string                    `json:"id"`
-	Name              string                    `json:"name"`
-	Zone              string                    `json:"zone"`
-	MachineType       string                    `json:"machineType"`
-	Status            string                    `json:"status"`
-	Labels            map[string]string         `json:"labels"`
-	Tags              computeTags               `json:"tags"`
-	NetworkInterfaces []computeNetworkInterface `json:"networkInterfaces"`
-	ServiceAccounts   []computeServiceAccount   `json:"serviceAccounts"`
-	Disks             []computeDisk             `json:"disks"`
-	raw               json.RawMessage
-}
-
-type computeTags struct {
-	Items []string `json:"items"`
-}
-
-type computeNetworkInterface struct {
-	Network       string                `json:"network"`
-	Subnetwork    string                `json:"subnetwork"`
-	NetworkIP     string                `json:"networkIP"`
-	AccessConfigs []computeAccessConfig `json:"accessConfigs"`
-}
-
-type computeAccessConfig struct {
-	Name  string `json:"name"`
-	Type  string `json:"type"`
-	NatIP string `json:"natIP"`
-}
-
-type computeServiceAccount struct {
-	Email  string   `json:"email"`
-	Scopes []string `json:"scopes"`
-}
-
-type computeDisk struct {
-	Boot              bool              `json:"boot"`
-	AutoDelete        bool              `json:"autoDelete"`
-	Source            string            `json:"source"`
-	DiskEncryptionKey diskEncryptionKey `json:"diskEncryptionKey"`
-}
-
-type diskEncryptionKey struct {
-	KMSKeyName string `json:"kmsKeyName"`
-}
-
+type computeInstanceRecord = gcpcloud.ComputeInstanceRecord
 type firewallRecord = gcpcloud.ComputeFirewallRecord
 type firewallAllowed = gcpcloud.ComputeFirewallAllowed
 type serviceAccountImpersonationRecord = gcpcloud.ServiceAccountImpersonationRecord
@@ -425,11 +381,20 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_container_registry:%s/%s", tenantID(settings), registry.Host, settings.projectID), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.ComputeBackendServiceRecord]{
+			Name:  familyComputeBackendService,
+			Label: "gcp compute backend services",
+			List:  listComputeBackendServices,
+			Event: gcpCloudEvent(gcpcloud.ComputeBackendServiceEvent),
+			URN: func(settings settings, service gcpcloud.ComputeBackendServiceRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_backend_service:%s", tenantID(settings), firstNonEmpty(service.SelfLink, service.ID, service.Name)), nil
+			},
+		}),
 		gcpFamily(s, gcpFamilyOptions[computeInstanceRecord]{
 			Name:  familyComputeInstance,
 			Label: "gcp compute instances",
 			List:  listComputeInstances,
-			Event: computeInstanceEvent,
+			Event: gcpCloudEvent(gcpcloud.ComputeInstanceEvent),
 			URN: func(settings settings, instance computeInstanceRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_compute_instance:%s", tenantID(settings), firstNonEmpty(instance.ID, instance.Name)), nil
 			},
@@ -741,7 +706,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLInstance, familyContainerRegistry, familyContainerVuln, familyComputeBackendService, familyComputeDisk, familyComputeFirewall, familyComputeForwardingRule, familyComputeInstance, familyComputeNetwork, familyComputeRoute, familyComputeSubnetwork, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingSink, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familyServiceAcct, familyServiceUsageService:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -1021,7 +986,22 @@ func listComputeInstances(ctx context.Context, source *Source, settings settings
 		}
 	}
 	records, err := decodeRecords(rawRecords, "gcp compute instance", func(record *computeInstanceRecord, raw json.RawMessage) {
-		record.raw = append(json.RawMessage(nil), raw...)
+		record.Raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
+func listComputeBackendServices(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.ComputeBackendServiceRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, pageToken)
+	var response computeAggregatedListResponse
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/backendServices"
+	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	rawRecords := computeAggregatedRawRecords(response.Items, func(scoped computeScopedResources) []json.RawMessage { return scoped.BackendServices }, "")
+	records, err := decodeRecords(rawRecords, "gcp compute backend service", func(record *gcpcloud.ComputeBackendServiceRecord, raw json.RawMessage) {
+		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
 }
@@ -1737,36 +1717,6 @@ func assetMetadataEvent(settings settings, record assetMetadataRecord) (*primiti
 	return sourceEvent(settings, "gcp-asset-metadata-"+firstNonEmpty(resourceID, resourceType), "asset.data_sensitivity", "asset/data_sensitivity/v1", payload, attributes, time.Now().UTC())
 }
 
-func computeInstanceEvent(settings settings, record computeInstanceRecord) (*primitives.Event, error) {
-	location := shortLocation(record.Zone)
-	network := firstComputeNetworkInterface(record)
-	publicIP := computePublicIP(record)
-	serviceAccountEmail := firstComputeServiceAccountEmail(record)
-	attributes := cloudResourceAttributes(settings, familyComputeInstance, firstNonEmpty(record.ID, record.Name), record.Name, "compute_instance", location, record.Labels)
-	attributes["zone"] = location
-	attributes["machine_type"] = lastPathSegment(record.MachineType)
-	attributes["status"] = record.Status
-	attributes["service_account_email"] = serviceAccountEmail
-	attributes["runtime_identity"] = serviceAccountEmail
-	attributes["network"] = lastPathSegment(network.Network)
-	attributes["network_url"] = network.Network
-	attributes["subnet"] = lastPathSegment(network.Subnetwork)
-	attributes["subnet_url"] = network.Subnetwork
-	attributes["private_ip"] = network.NetworkIP
-	attributes["public_ip"] = publicIP
-	attributes["public"] = boolString(publicIP != "")
-	attributes["internet_exposed"] = boolString(publicIP != "")
-	attributes["external_exposure"] = boolString(publicIP != "")
-	attributes["network_tags"] = strings.Join(record.Tags.Items, ",")
-	attributes["security_tags"] = strings.Join(record.Tags.Items, ",")
-	attributes["kms_key_name"] = computeInstanceKMSKey(record)
-	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
-	if err != nil {
-		return nil, err
-	}
-	return sourceEvent(settings, "gcp-compute-instance-"+firstNonEmpty(record.ID, record.Name), "gcp.compute_instance", "gcp/compute_instance/v1", payload, attributes, time.Now().UTC())
-}
-
 func gcpCloudSettings(settings settings) gcpcloud.Settings {
 	return gcpcloud.Settings{ProjectID: settings.projectID, TenantID: tenantID(settings), Location: settings.location, CustomerID: settings.customerID, GroupKey: settings.groupKey, ServiceAccountEmail: settings.serviceAccountEmail}
 }
@@ -1824,87 +1774,6 @@ func serviceAccountImpersonationEvent(settings settings, record serviceAccountIm
 
 func auditEvent(settings settings, record auditRecord) (*primitives.Event, error) {
 	return gcpcloud.AuditEvent(gcpCloudSettings(settings), record)
-}
-
-func cloudResourceAttributes(settings settings, family string, resourceID string, resourceName string, resourceType string, location string, labels map[string]string) map[string]string {
-	attributes := map[string]string{
-		"domain":            tenantID(settings),
-		"family":            family,
-		"gcp_project_id":    settings.projectID,
-		"location":          location,
-		"project_id":        settings.projectID,
-		"region":            location,
-		"resource_id":       resourceID,
-		"resource_name":     firstNonEmpty(resourceName, resourceID),
-		"resource_provider": "gcp",
-		"resource_type":     resourceType,
-		"source_provider":   "gcp",
-	}
-	addLabelAttributes(attributes, labels)
-	return attributes
-}
-
-func addLabelAttributes(attributes map[string]string, labels map[string]string) {
-	if len(labels) == 0 {
-		return
-	}
-	if encoded, err := json.Marshal(labels); err == nil {
-		attributes["labels"] = string(encoded)
-	}
-	attributes["owner"] = labelLookup(labels, "owner", "application_owner", "business_owner", "service_owner")
-	attributes["team"] = labelLookup(labels, "team", "squad", "group")
-	attributes["environment"] = labelLookup(labels, "environment", "env", "stage")
-	for key, value := range labels {
-		normalized := normalizeLabelKey(key)
-		if normalized == "" || strings.TrimSpace(value) == "" {
-			continue
-		}
-		attributes["label_"+normalized] = value
-	}
-}
-
-func firstComputeNetworkInterface(record computeInstanceRecord) computeNetworkInterface {
-	if len(record.NetworkInterfaces) == 0 {
-		return computeNetworkInterface{}
-	}
-	return record.NetworkInterfaces[0]
-}
-
-func firstComputeServiceAccountEmail(record computeInstanceRecord) string {
-	for _, account := range record.ServiceAccounts {
-		if email := strings.TrimSpace(account.Email); email != "" {
-			return email
-		}
-	}
-	return ""
-}
-
-func computePublicIP(record computeInstanceRecord) string {
-	for _, networkInterface := range record.NetworkInterfaces {
-		for _, accessConfig := range networkInterface.AccessConfigs {
-			if ip := strings.TrimSpace(accessConfig.NatIP); ip != "" {
-				return ip
-			}
-		}
-	}
-	return ""
-}
-
-func computeInstanceKMSKey(record computeInstanceRecord) string {
-	for _, disk := range record.Disks {
-		if key := strings.TrimSpace(disk.DiskEncryptionKey.KMSKeyName); key != "" {
-			return key
-		}
-	}
-	return ""
-}
-
-func shortLocation(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	return lastPathSegment(value)
 }
 
 func locationFromResourceName(value string) string {
