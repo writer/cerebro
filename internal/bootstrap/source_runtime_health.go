@@ -283,6 +283,7 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	}
 	generatedAt := time.Now().UTC()
 	records := make([]sourceRuntimeHealthRecord, 0, len(runtimes))
+	visibleRuntimes := make([]*cerebrov1.SourceRuntime, 0, len(runtimes))
 	for _, runtime := range runtimes {
 		if runtime == nil {
 			continue
@@ -290,13 +291,14 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 		if requiresTenantFilter(r.Context()) && !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
 			continue
 		}
+		visibleRuntimes = append(visibleRuntimes, runtime)
 		record, err := a.sourceRuntimeHealthRecord(r.Context(), runtime, generatedAt)
 		if err != nil {
 			return sourceRuntimeHealthResponse{}, err
 		}
 		records = append(records, record)
 	}
-	coverage := a.sourceCoverageRecords(runtimes, filter, generatedAt)
+	coverage := a.sourceCoverageRecords(visibleRuntimes, filter, generatedAt)
 	return sourceRuntimeHealthResponse{
 		GeneratedAt:     generatedAt.Format(time.RFC3339Nano),
 		Runtimes:        records,
@@ -319,9 +321,6 @@ func runtimeFreshnessFromHealth(health sourceRuntimeHealthResponse) runtimeFresh
 		}
 	}
 	blindSpots := sourcecoverage.BlindSpots(health.Coverage)
-	if len(blindSpots) > 0 {
-		status = "degraded"
-	}
 	return runtimeFreshnessResponse{
 		GeneratedAt:          health.GeneratedAt,
 		Status:               status,

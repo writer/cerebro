@@ -268,7 +268,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		Evidence:           grcLimitEvidence(evidenceItems, 25),
 		Connectors:         grcConnectorItems(runtimes),
 		CoverageBlindSpots: coverageBlindSpots,
-		CoverageSummaries:  sourcecoverage.Summaries(coverageBlindSpots),
+		CoverageSummaries:  sourcecoverage.Summaries(coverage),
 		GeneratedAt:        time.Now().UTC(),
 	})
 }
