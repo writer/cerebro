@@ -11,6 +11,7 @@ emitted_kinds:
   - azure.application
   - azure.application_gateway
   - azure.application_insight
+  - azure.cognitive_services_account
   - azure.container_registry
   - azure.cosmos_account
   - azure.databricks_workspace
@@ -54,6 +55,7 @@ runtime_families:
   - application_gateway
   - application_insight
   - asset_metadata
+  - cognitive_services_account
   - container_registry
   - cosmos_account
   - databricks_workspace
@@ -166,7 +168,7 @@ coverage_contract:
     - id: cognitive_services_account
       type: entity_family
       title: Azure Cognitive Services accounts
-      families: [asset_metadata]
+      families: [cognitive_services_account]
       support: partial
       high_value: true
       known_unsupported_fields: [network ACLs and model deployment detail]

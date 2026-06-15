@@ -204,6 +204,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"azure.application_gateway":                     azureCloudResourceProjections,
 	"azure.application_insight":                     azureCloudResourceProjections,
 	"azure.asset_metadata":                          azureCloudResourceProjections,
+	"azure.cognitive_services_account":              azureCloudResourceProjections,
 	"azure.container_registry":                      azureCloudResourceProjections,
 	"azure.cosmos_account":                          azureCloudResourceProjections,
 	"azure.databricks_workspace":                    azureCloudResourceProjections,

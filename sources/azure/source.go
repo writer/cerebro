@@ -800,7 +800,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("azure tenant_id is required")
 	}
 	switch settings.family {
-	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAppService, "application_gateway", "application_insight", familyAssetMetadata, familyContainerRegistry, familyCosmosAccount, "databricks_workspace", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", familyManagedDisk, "metric_alert_rule", familyNetworkSecurityGrp, familyPublicIPAddress, familyResourceExposure, "role", "route_table", "security_contact", familySQLDatabase, "sql_managed_instance", familySQLServer, familyStorageAccount, familyVirtualMachine, "virtual_machine_scale_set", familyVirtualNetwork:
+	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAppService, "application_gateway", "application_insight", familyAssetMetadata, "cognitive_services_account", familyContainerRegistry, familyCosmosAccount, "databricks_workspace", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", familyManagedDisk, "metric_alert_rule", familyNetworkSecurityGrp, familyPublicIPAddress, familyResourceExposure, "role", "route_table", "security_contact", familySQLDatabase, "sql_managed_instance", familySQLServer, familyStorageAccount, familyVirtualMachine, "virtual_machine_scale_set", familyVirtualNetwork:
 		if settings.subscriptionID == "" {
 			return settings, fmt.Errorf("azure subscription_id is required when family=%q", settings.family)
 		}
@@ -826,7 +826,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("azure graph_token or token is required when family=%q", settings.family)
 		}
 	default:
-		return settings, fmt.Errorf("azure family must be one of activity_log, aks_cluster, app_role_assignment, app_service, application, asset_metadata, container_registry, cosmos_account, credential, directory_audit, directory_role_assignment, effective_permission, function_app, group, group_membership, iam_role_assignment, key_vault, key_vault_key, key_vault_secret, resource_exposure, service_principal, sql_database, sql_server, storage_account, user, or virtual_machine")
+		return settings, fmt.Errorf("azure family must be one of activity_log, aks_cluster, app_role_assignment, app_service, application, asset_metadata, cognitive_services_account, container_registry, cosmos_account, credential, directory_audit, directory_role_assignment, effective_permission, function_app, group, group_membership, iam_role_assignment, key_vault, key_vault_key, key_vault_secret, resource_exposure, service_principal, sql_database, sql_server, storage_account, user, or virtual_machine")
 	}
 	return settings, nil
 }
@@ -1612,7 +1612,7 @@ func assetMetadataEvent(settings settings, record armResourceRecord) (*primitive
 func genericARMResourceEvent(settings settings, record armTypedResourceRecord, family string, kind string, schemaRef string) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, family)
 	addAzureIdentityAttributes(attributes, record.Identity)
-	setAttributes(attributes, map[string]string{"kind": kind, "public_network_access": propertyString(record, "publicNetworkAccess"), "state": firstNonEmpty(propertyString(record, "provisioningState"), propertyString(record, "status"))})
+	setAttributes(attributes, map[string]string{"kind": firstNonEmpty(record.Kind, kind), "public_network_access": propertyString(record, "publicNetworkAccess"), "state": firstNonEmpty(propertyString(record, "provisioningState"), propertyString(record, "status"))})
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err
