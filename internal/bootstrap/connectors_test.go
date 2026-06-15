@@ -24,6 +24,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -138,6 +139,89 @@ func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
 	}
 	if source.checkToken != "secret-token" {
 		t.Fatalf("source check token = %q, want decrypted secret", source.checkToken)
+	}
+}
+
+func TestConnectorConnectionStoresValidatedScopePolicy(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-a",
+		"tenant_id":           "tenant-a",
+		"credential_store_id": defaultConnectorCredentialStoreID,
+		"config":              map[string]string{"family": "audit"},
+		"scope_policy": map[string]any{
+			"excluded_families":      []string{"audit"},
+			"excluded_resource_urns": []string{"urn:cerebro:tenant-a:external_asset:test"},
+		},
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/connections error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Runtime map[string]any `json:"runtime"`
+		Scope   struct {
+			ExcludedFamilies []string `json:"excluded_families"`
+		} `json:"scope_policy"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Scope.ExcludedFamilies) != 1 || payload.Scope.ExcludedFamilies[0] != "audit" {
+		t.Fatalf("scope_policy excluded_families = %#v, want [audit]", payload.Scope.ExcludedFamilies)
+	}
+	if configPayload, ok := payload.Runtime["config"].(map[string]any); ok {
+		if _, leaked := configPayload[resourcescope.ConfigKey]; leaked {
+			t.Fatalf("runtime payload leaked internal scope config: %#v", configPayload)
+		}
+	}
+	runtime := store.runtimes["runtime-a"]
+	if runtime == nil {
+		t.Fatal("stored runtime missing")
+	}
+	storedPolicy, err := resourcescope.FromConfig(runtime.GetConfig())
+	if err != nil {
+		t.Fatalf("FromConfig(stored runtime) error = %v", err)
+	}
+	if !storedPolicy.ExcludesFamily("bootstrap_token", "audit") {
+		t.Fatalf("stored scope policy does not exclude audit: %#v", storedPolicy)
 	}
 }
 
@@ -264,7 +348,7 @@ func TestConnectorConnectionRejectsUnsupportedCredentialStore(t *testing.T) {
 }
 
 func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
-	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
 	registry, err := sourcecdk.NewRegistry(source)
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
@@ -300,6 +384,10 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 				ID       string `json:"id"`
 				Saveable bool   `json:"saveable"`
 			} `json:"connection_methods"`
+			ScopeOptions []struct {
+				ID       string   `json:"id"`
+				Families []string `json:"families"`
+			} `json:"scope_options"`
 		} `json:"connectors"`
 		CredentialStores []struct {
 			ID        string `json:"id"`
@@ -314,6 +402,12 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 	}
 	if got := payload.Connectors[0].DisplayName; got != "Bootstrap token source" {
 		t.Fatalf("display_name = %q, want fallback source name", got)
+	}
+	if len(payload.Connectors[0].ScopeOptions) != 1 || payload.Connectors[0].ScopeOptions[0].ID != "bootstrap.token" {
+		t.Fatalf("scope_options = %#v, want bootstrap.token option", payload.Connectors[0].ScopeOptions)
+	}
+	if got := payload.Connectors[0].ScopeOptions[0].Families; len(got) != 1 || got[0] != "bootstrap.token" {
+		t.Fatalf("scope option families = %#v, want [bootstrap.token]", got)
 	}
 	methods := map[string]bool{}
 	for _, method := range payload.Connectors[0].ConnectionMethods {
@@ -341,6 +435,10 @@ func TestConnectorDetailSummarizesOperationsWithoutConfig(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	now := time.Date(2026, 6, 15, 16, 0, 0, 0, time.UTC)
+	rawScopePolicy, err := resourcescope.ConfigValue(resourcescope.Policy{ExcludedFamilies: []string{"audit"}})
+	if err != nil {
+		t.Fatalf("ConfigValue() error = %v", err)
+	}
 	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 		"runtime-a": {
 			Id:           "runtime-a",
@@ -356,6 +454,7 @@ func TestConnectorDetailSummarizesOperationsWithoutConfig(t *testing.T) {
 				runtimeLinksProjectedConfigKey:     "8",
 				runtimeContractProbeStateConfigKey: "passing",
 				"expected_cadence_seconds":         "14400",
+				resourcescope.ConfigKey:            rawScopePolicy,
 			},
 		},
 	}}}
@@ -392,6 +491,9 @@ func TestConnectorDetailSummarizesOperationsWithoutConfig(t *testing.T) {
 			RuntimeID       string `json:"runtime_id"`
 			RecordsAccepted uint32 `json:"records_accepted"`
 			NextAction      string `json:"next_action"`
+			ScopePolicy     struct {
+				ExcludedFamilies []string `json:"excluded_families"`
+			} `json:"scope_policy"`
 		} `json:"connections"`
 		Activity []struct {
 			Type            string `json:"type"`
@@ -422,6 +524,9 @@ func TestConnectorDetailSummarizesOperationsWithoutConfig(t *testing.T) {
 	}
 	if got := payload.Connections[0].NextAction; got != "run_graph_ingest" {
 		t.Fatalf("next_action = %q, want run_graph_ingest", got)
+	}
+	if len(payload.Connections[0].ScopePolicy.ExcludedFamilies) != 1 || payload.Connections[0].ScopePolicy.ExcludedFamilies[0] != "audit" {
+		t.Fatalf("connection scope policy = %#v, want audit exclusion", payload.Connections[0].ScopePolicy)
 	}
 	if len(payload.Activity) == 0 || payload.Activity[0].Type != "sync" {
 		t.Fatalf("activity = %#v, want sync activity", payload.Activity)

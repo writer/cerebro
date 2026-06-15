@@ -17,6 +17,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -733,11 +734,19 @@ func normalizedListFilterRuntimeIDs(filter ports.SourceRuntimeFilter) []string {
 }
 
 func restoreRedactedConfig(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) {
-	if existing == nil || incoming == nil || len(incoming.GetConfig()) == 0 {
+	if existing == nil || incoming == nil {
 		return
 	}
 	if strings.TrimSpace(existing.GetSourceId()) != strings.TrimSpace(incoming.GetSourceId()) {
 		return
+	}
+	if incoming.Config == nil {
+		incoming.Config = map[string]string{}
+	}
+	if _, ok := incoming.GetConfig()[resourcescope.ConfigKey]; !ok {
+		if preserved, ok := existing.GetConfig()[resourcescope.ConfigKey]; ok {
+			incoming.Config[resourcescope.ConfigKey] = preserved
+		}
 	}
 	for key, value := range incoming.GetConfig() {
 		if strings.TrimSpace(value) != redactedValue || !sensitiveConfigKey(key) {
@@ -944,7 +953,7 @@ func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 	}
 	redacted := make(map[string]string, len(cloned.GetConfig()))
 	for key, value := range cloned.GetConfig() {
-		if key == runtimeProgressConfigHashKey || sourceconfig.InternalKey(key) {
+		if key == runtimeProgressConfigHashKey || sourceconfig.InternalKey(key) || key == resourcescope.ConfigKey {
 			continue
 		}
 		if sensitiveConfigKey(key) {

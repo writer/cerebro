@@ -296,7 +296,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
-	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family },
+	return sourcecdk.NewFamilyEngineWithSourceID("gcp", parseSettings, func(settings settings) string { return settings.family },
 		gcpFamily(s, gcpFamilyOptions[assetMetadataRecord]{
 			Name:  familyAssetMetadata,
 			Label: "gcp asset metadata",

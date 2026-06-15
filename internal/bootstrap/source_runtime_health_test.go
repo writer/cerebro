@@ -11,6 +11,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -45,6 +46,26 @@ func TestSourceRuntimeHealthRecordIncludesScheduleReceipt(t *testing.T) {
 	}
 	if record.Status != "healthy" {
 		t.Fatalf("Status = %q, want healthy", record.Status)
+	}
+}
+
+func TestSourceRuntimeHealthRecordIgnoresMalformedStoredScopePolicy(t *testing.T) {
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "runtime-1",
+		SourceId: "generated",
+		TenantId: "tenant",
+		Config: map[string]string{
+			resourcescope.ConfigKey: "{not-json",
+		},
+	}
+
+	record, err := (&App{}).sourceRuntimeHealthRecord(context.Background(), runtime, now)
+	if err != nil {
+		t.Fatalf("sourceRuntimeHealthRecord() error = %v", err)
+	}
+	if record.ScopePolicy != nil {
+		t.Fatalf("ScopePolicy = %#v, want nil for malformed stored policy", record.ScopePolicy)
 	}
 }
 

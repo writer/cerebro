@@ -39,6 +39,7 @@ import (
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -3572,7 +3573,7 @@ func redactSourceRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRunt
 	redacted := proto.Clone(runtime).(*cerebrov1.SourceRuntime)
 	config := make(map[string]string, len(redacted.GetConfig()))
 	for key, value := range redacted.GetConfig() {
-		if key == sourceRuntimeProgressConfigHashKey {
+		if sourceconfig.InternalKey(key) || key == resourcescope.ConfigKey {
 			continue
 		}
 		if sensitiveSourceConfigKey(key) {

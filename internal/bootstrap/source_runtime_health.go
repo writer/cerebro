@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -122,6 +123,7 @@ type sourceRuntimeHealthRecord struct {
 	SourceID                  string                                `json:"source_id"`
 	TenantID                  string                                `json:"tenant_id"`
 	Family                    string                                `json:"family,omitempty"`
+	ScopePolicy               *resourcescope.Policy                 `json:"scope_policy,omitempty"`
 	EnabledState              string                                `json:"enabled_state"`
 	Status                    string                                `json:"status"`
 	LastSyncedAt              string                                `json:"last_synced_at,omitempty"`
@@ -641,6 +643,9 @@ func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.
 		// Schedule cadence/SLA is currently deployment configuration, not runtime state.
 		ScheduleContextConfigured: false,
 		GeneratedAt:               generatedAt.Format(time.RFC3339Nano),
+	}
+	if policy, err := resourcescope.FromConfig(runtime.GetConfig()); err == nil && !policy.Empty() {
+		record.ScopePolicy = &policy
 	}
 	if lastSynced := timestampValue(runtime.GetLastSyncedAt()); !lastSynced.IsZero() {
 		lastSynced = lastSynced.UTC()
