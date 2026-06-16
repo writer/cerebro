@@ -282,6 +282,8 @@ nats_cpu = _config_int("natsCpu", 512)
 nats_memory = _config_int("natsMemory", 1024)
 jetstream_subject_prefix = config.get("jetstreamSubjectPrefix") or "events"
 jetstream_stream_name = config.get("jetstreamStreamName") or "CEREBRO_EVENTS"
+jetstream_max_bytes = config.get("jetstreamMaxBytes") or ""
+jetstream_max_age = config.get("jetstreamMaxAge") or ""
 enable_jetstream_lag_probe = _config_bool("enableJetstreamLagProbe", True)
 jetstream_lag_probe_interval_seconds = _config_int("jetstreamLagProbeIntervalSeconds", 60)
 jetstream_lag_alarm_threshold = _config_int("jetstreamLagAlarmThreshold", 10000)
@@ -593,6 +595,8 @@ nats_stack = nats.create_nats_service(
     memory=nats_memory,
     stream_name=jetstream_stream_name,
     subject_prefix=jetstream_subject_prefix,
+    stream_max_bytes=jetstream_max_bytes,
+    stream_max_age=jetstream_max_age,
     enable_lag_probe=enable_jetstream_lag_probe,
     lag_probe_interval_seconds=jetstream_lag_probe_interval_seconds,
 )

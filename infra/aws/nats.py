@@ -22,6 +22,8 @@ def create_nats_service(
     memory: int = 1024,
     stream_name: str = "CEREBRO_EVENTS",
     subject_prefix: str = "events",
+    stream_max_bytes: str = "",
+    stream_max_age: str = "",
     enable_lag_probe: bool = True,
     lag_probe_interval_seconds: int = 60,
     lag_probe_image: str = "python:3.12-alpine",
@@ -110,6 +112,8 @@ def create_nats_service(
             region=region,
             stream_name=stream_name,
             subject_prefix=subject_prefix,
+            stream_max_bytes=stream_max_bytes,
+            stream_max_age=stream_max_age,
             lag_probe_image=lag_probe_image,
             lag_probe_interval_seconds=lag_probe_interval_seconds,
             enable_lag_probe=enable_lag_probe,
@@ -183,6 +187,8 @@ def _build_container_definitions(
     region: str,
     stream_name: str,
     subject_prefix: str,
+    stream_max_bytes: str,
+    stream_max_age: str,
     lag_probe_image: str,
     lag_probe_interval_seconds: int,
     enable_lag_probe: bool,
@@ -226,16 +232,20 @@ def _build_container_definitions(
                 {"name": "NATS_URL", "value": "nats://127.0.0.1:4222"},
                 {"name": "STREAM_NAME", "value": stream_name},
                 {"name": "SUBJECT_PREFIX", "value": subject_prefix},
+                {"name": "STREAM_MAX_BYTES", "value": str(stream_max_bytes or "")},
+                {"name": "STREAM_MAX_AGE", "value": str(stream_max_age or "")},
             ],
             "command": [
                 "sh",
                 "-ec",
                 (
+                    'set -- --subjects "${SUBJECT_PREFIX}.>" --storage file --retention limits '
+                    '--discard old --replicas 1; '
+                    'if [ -n "$STREAM_MAX_BYTES" ]; then set -- "$@" --max-bytes "$STREAM_MAX_BYTES"; fi; '
+                    'if [ -n "$STREAM_MAX_AGE" ]; then set -- "$@" --max-age "$STREAM_MAX_AGE"; fi; '
                     'if nats --server "$NATS_URL" stream info "$STREAM_NAME" >/dev/null 2>&1; then '
-                    'echo "JetStream stream $STREAM_NAME already exists"; exit 0; fi; '
-                    'nats --server "$NATS_URL" stream add "$STREAM_NAME" '
-                    '--subjects "${SUBJECT_PREFIX}.>" --storage file --retention limits '
-                    '--discard old --replicas 1 --defaults'
+                    'nats --server "$NATS_URL" stream edit "$STREAM_NAME" "$@" --defaults --force; '
+                    'else nats --server "$NATS_URL" stream add "$STREAM_NAME" "$@" --defaults; fi'
                 ),
             ],
             "logConfiguration": {

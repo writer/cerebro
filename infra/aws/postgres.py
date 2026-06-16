@@ -105,7 +105,7 @@ def create_postgres(
     )
 
     dsn = pulumi.Output.all(password.result, instance.address).apply(
-        lambda args: f"postgres://cerebro:{quote(args[0], safe='')}@{args[1]}:5432/cerebro?sslmode=require"
+        lambda args: f"postgres://cerebro:{quote(args[0], safe='')}@{args[1]}:5432/cerebro?sslmode=require&connect_timeout=15"
     )
     secret_version = aws.secretsmanager.SecretVersion(
         f"{name}-postgres-dsn-version",

@@ -27,6 +27,8 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
             "runtime_id=writer-example-source-user",
             "runtime_id=writer-example-source-api-key",
         ])
+        self.assertTrue(all(schedule["backend"] == "scheduler" for schedule in expansion.orchestrator_schedules))
+        self.assertTrue(all(schedule["flexibleWindowMinutes"] == 60 for schedule in expansion.orchestrator_schedules))
 
     def test_family_token_override(self) -> None:
         expansion = expand_source_runtime_rollouts([
