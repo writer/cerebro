@@ -324,10 +324,10 @@ func TestProjectSentinelOneGroupSiteLink(t *testing.T) {
 	assertProjectedLink(t, state, groupURN, relationBelongsTo, siteURN)
 }
 
-func TestProjectSentinelOneActivityLinksAgentAndThreat(t *testing.T) {
+func TestProjectSentinelOneActivityDoesNotMaterializeAuditEvent(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
-	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "s1-activity-1",
 		TenantId: "writer",
 		SourceId: "sentinelone",
@@ -340,17 +340,16 @@ func TestProjectSentinelOneActivityLinksAgentAndThreat(t *testing.T) {
 			"threat_id":           "threat-1",
 			"site_id":             "site-1",
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Project(activity) error = %v", err)
 	}
-	activityURN := "urn:cerebro:writer:sentinelone_activity:activity-1"
-	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
-	threatURN := "urn:cerebro:writer:sentinelone_threat:threat-1"
-	if state.entities[activityURN] == nil {
-		t.Fatal("activity entity missing")
+	if result.EntitiesProjected != 0 || result.LinksProjected != 0 {
+		t.Fatalf("activity projection = entities %d links %d, want no graph projection", result.EntitiesProjected, result.LinksProjected)
 	}
-	assertProjectedLink(t, state, activityURN, relationObservedOn, agentURN)
-	assertProjectedLink(t, state, activityURN, relationActedOn, threatURN)
+	if len(state.entities) != 0 || len(state.links) != 0 {
+		t.Fatalf("activity audit event should not materialize graph records: entities=%#v links=%#v", state.entities, state.links)
+	}
 }
 
 func TestProjectSentinelOneApplicationInventoryContainedByAgent(t *testing.T) {
