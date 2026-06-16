@@ -950,7 +950,7 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				"globalPolicyEvaluationMode": "ENABLE",
 				"admissionWhitelistPatterns": []map[string]any{{"namePattern": "gcr.io/google_containers/*"}},
 				"clusterAdmissionRules": map[string]any{
-					"us-central1.prod": map[string]any{
+					"us.demo": map[string]any{
 						"evaluationMode":        "REQUIRE_ATTESTATION",
 						"enforcementMode":       "ENFORCED_BLOCK_AND_AUDIT_LOG",
 						"requireAttestationsBy": []string{"projects/writer-prod/attestors/prod-builder"},
