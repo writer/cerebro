@@ -110,14 +110,14 @@ func TestSourceAuthModels(t *testing.T) {
 			name:           "oauth client credentials",
 			authModel:      "oauth_client_credentials",
 			config:         map[string]string{"client_id": "client", "client_secret": "secret"},
-			wantAuthHeader: "Bearer oauth-token",
+			wantAuthHeader: "Bearer test-token",
 			wantGrantType:  "client_credentials",
 		},
 		{
 			name:           "oauth authorization code refresh",
 			authModel:      "oauth_authorization_code",
 			config:         map[string]string{"client_id": "client", "client_secret": "secret", "refresh_token": "refresh"},
-			wantAuthHeader: "Bearer oauth-token",
+			wantAuthHeader: "Bearer test-token",
 			wantGrantType:  "refresh_token",
 		},
 		{
@@ -140,6 +140,7 @@ func TestSourceAuthModels(t *testing.T) {
 				switch r.URL.Path {
 				case "/oauth/token":
 					tokenRequests++
+					r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 					if err := r.ParseForm(); err != nil {
 						t.Fatalf("ParseForm() error = %v", err)
 					}
@@ -153,7 +154,7 @@ func TestSourceAuthModels(t *testing.T) {
 						t.Fatalf("refresh_token = %q, want refresh", r.Form.Get("refresh_token"))
 					}
 					_ = json.NewEncoder(w).Encode(map[string]any{
-						"access_token": "oauth-token",
+						"access_token": "test-token",
 						"token_type":   "Bearer",
 						"expires_in":   3600,
 					})

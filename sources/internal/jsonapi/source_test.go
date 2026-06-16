@@ -149,6 +149,7 @@ func TestReadExchangesOAuthClientCredentials(t *testing.T) {
 		switch r.URL.Path {
 		case "/oauth/token":
 			tokenRequests++
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 			if err := r.ParseForm(); err != nil {
 				t.Fatalf("ParseForm() error = %v", err)
 			}
@@ -156,13 +157,13 @@ func TestReadExchangesOAuthClientCredentials(t *testing.T) {
 				t.Fatalf("token form = %#v", r.Form)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"access_token": "oauth-token",
+				"access_token": "test-token",
 				"token_type":   "Bearer",
 				"expires_in":   3600,
 			})
 		case "/devices":
-			if got := r.Header.Get("Authorization"); got != "Bearer oauth-token" {
-				t.Fatalf("Authorization = %q, want Bearer oauth-token", got)
+			if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+				t.Fatalf("Authorization = %q, want Bearer test-token", got)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
 		default:
