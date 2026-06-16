@@ -30,6 +30,15 @@ name: GitHub
 description: GitHub source
 emitted_kinds:
   - github.audit
+coverage_contract:
+  owner_domain: source_control
+  authority_domain: github
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: Audit events
+      families: [audit]
+      support: supported
 kind_lifecycle:
   - kind: github.secret_scanning
     status: planned
@@ -86,7 +95,7 @@ emitted_kinds:
 	}
 }
 
-func TestCheckSourceCatalogsRejectsDeployableSourceWithoutCoverageContract(t *testing.T) {
+func TestCheckSourceCatalogsRejectsSourceWithoutCoverageContract(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/github/catalog.yaml", `
 id: github
@@ -95,19 +104,17 @@ description: GitHub source
 emitted_kinds:
   - github.audit
 `)
-	writeFile(t, root, "sources/github/deploy.yaml", `runtimes: []
-`)
 
 	issues, err := checkSourceCatalogs(root)
 	if err != nil {
 		t.Fatalf("checkSourceCatalogs() error = %v", err)
 	}
-	if !issueMessagesContain(issues, "coverage_contract is required for deployable sources") {
+	if !issueMessagesContain(issues, "coverage_contract is required for built-in sources") {
 		t.Fatalf("issues = %#v, want missing coverage_contract issue", issues)
 	}
 }
 
-func TestCheckSourceCatalogsAcceptsDeployableSourceWithCoverageContract(t *testing.T) {
+func TestCheckSourceCatalogsAcceptsSourceWithCoverageContract(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/github/catalog.yaml", `
 id: github
@@ -125,14 +132,12 @@ coverage_contract:
       families: [audit]
       support: supported
 `)
-	writeFile(t, root, "sources/github/deploy.yaml", `runtimes: []
-`)
 
 	issues, err := checkSourceCatalogs(root)
 	if err != nil {
 		t.Fatalf("checkSourceCatalogs() error = %v", err)
 	}
-	if issueMessagesContain(issues, "coverage_contract is required for deployable sources") {
+	if issueMessagesContain(issues, "coverage_contract is required for built-in sources") {
 		t.Fatalf("issues = %#v, want no coverage_contract issue", issues)
 	}
 }
@@ -278,6 +283,44 @@ runtimes:
 	}
 	if !issueMessagesContain(issues, "coverage_contract does not cover deploy runtime families: effective_permission") {
 		t.Fatalf("issues = %#v, want unsupported strict runtime family coverage issue", issues)
+	}
+}
+
+func TestCheckCloudPolicyCoverageRejectsUncoveredDeployRuntimeFamilyForAnySource(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "policies/custom/test.json", `{}`)
+	writeFile(t, root, "sources/okta/catalog.yaml", `
+id: okta
+name: Okta
+description: Okta source
+emitted_kinds:
+  - okta.user
+coverage_contract:
+  owner_domain: identity
+  authority_domain: okta
+  dimensions:
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+`)
+	writeFile(t, root, "sources/okta/deploy.yaml", `
+runtimes:
+  - localId: user
+    config:
+      family: user
+  - localId: authenticator
+    config:
+      family: authenticator
+`)
+
+	issues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		t.Fatalf("checkCloudPolicyCoverage() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "coverage_contract does not cover deploy runtime families: authenticator") {
+		t.Fatalf("issues = %#v, want uncovered deploy runtime family issue", issues)
 	}
 }
 

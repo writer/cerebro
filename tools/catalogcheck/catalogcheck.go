@@ -247,13 +247,8 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 			return nil
 		}
 		spec := catalog.Spec
-		hasDeployManifest, err := hasSourceDeployManifest(filepath.Dir(path))
-		if err != nil {
-			issues = append(issues, issue{path: rel, message: err.Error()})
-			return nil
-		}
-		if hasDeployManifest && catalog.CoverageContract == nil {
-			issues = append(issues, issue{path: rel, message: "coverage_contract is required for deployable sources"})
+		if catalog.CoverageContract == nil {
+			issues = append(issues, issue{path: rel, message: "coverage_contract is required for built-in sources"})
 		}
 		if spec.GetId() != "sdk" && len(spec.GetEmittedKinds()) == 0 {
 			issues = append(issues, issue{path: rel, message: "emitted_kinds is required for built-in pull sources"})

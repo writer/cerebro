@@ -5,6 +5,28 @@ emitted_kinds:
   - anthropic.user
   - anthropic.workspace
   - anthropic.api_key
+coverage_contract:
+  owner_domain: ai
+  authority_domain: anthropic
+  dimensions:
+    - id: api_keys
+      type: app_entitlement
+      title: API keys
+      families: [api_key]
+      support: supported
+      high_value: true
+    - id: users
+      type: entity_family
+      title: Organization users
+      families: [user]
+      support: supported
+      high_value: true
+    - id: workspaces
+      type: entity_family
+      title: Workspaces
+      families: [workspace]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: anthropic.user
     schema_ref: anthropic/user/v1

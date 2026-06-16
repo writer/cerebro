@@ -428,21 +428,13 @@ var minimumCloudCoverageDimensions = map[string][]string{
 	},
 }
 
-var strictCloudRuntimeCoverageSources = map[string]struct{}{
-	"aws":        {},
-	"azure":      {},
-	"cloudflare": {},
-	"gcp":        {},
-	"kubernetes": {},
-}
-
 func checkCloudPolicyCoverage(root string) ([]issue, error) {
 	dimensions, err := loadCoverageDimensions(root)
 	if err != nil {
 		return nil, err
 	}
 	issues := checkRequiredCloudCoverageDimensions(dimensions)
-	issues = append(issues, checkStrictCloudRuntimeCoverage(root, dimensions)...)
+	issues = append(issues, checkStrictDeployRuntimeCoverage(root, dimensions)...)
 	policiesRoot := filepath.Join(root, "policies")
 	err = filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -512,14 +504,19 @@ func checkRequiredCloudCoverageDimensions(dimensions map[string]map[string]sourc
 	return issues
 }
 
-func checkStrictCloudRuntimeCoverage(root string, dimensions map[string]map[string]sourcecdk.CoverageDimension) []issue {
+func checkStrictDeployRuntimeCoverage(root string, dimensions map[string]map[string]sourcecdk.CoverageDimension) []issue {
 	var issues []issue
-	for sourceID := range strictCloudRuntimeCoverageSources {
-		sourceDimensions, ok := dimensions[sourceID]
-		if !ok {
+	for sourceID, sourceDimensions := range dimensions {
+		sourceDir := filepath.Join(root, "sources", sourceID)
+		hasDeployManifest, err := hasSourceDeployManifest(sourceDir)
+		if err != nil {
+			issues = append(issues, issue{path: fmt.Sprintf("sources/%s/catalog.yaml", sourceID), message: err.Error()})
 			continue
 		}
-		deployFamilies, err := loadDeployRuntimeFamilies(filepath.Join(root, "sources", sourceID, "deploy.yaml"))
+		if !hasDeployManifest {
+			continue
+		}
+		deployFamilies, err := loadDeployRuntimeFamilies(filepath.Join(sourceDir, "deploy.yaml"))
 		if err != nil {
 			issues = append(issues, issue{path: fmt.Sprintf("sources/%s/deploy.yaml", sourceID), message: err.Error()})
 			continue

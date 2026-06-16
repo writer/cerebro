@@ -3,6 +3,16 @@ name: Cerebro
 description: Cerebro product telemetry source. Reads structured access audit telemetry exported as NDJSON archives.
 emitted_kinds:
   - cerebro.api_access
+coverage_contract:
+  owner_domain: product_telemetry
+  authority_domain: cerebro
+  dimensions:
+    - id: api_access
+      type: audit_event
+      title: API access telemetry
+      families: [access]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: cerebro.api_access
     schema_ref: cerebro/api_access/v1

@@ -8,6 +8,34 @@ emitted_kinds:
   - duo.phone
   - duo.token
   - duo.web_authn_credential
+coverage_contract:
+  owner_domain: identity
+  authority_domain: duo
+  dimensions:
+    - id: endpoints
+      type: entity_family
+      title: Endpoints
+      families: [endpoint]
+      support: supported
+      high_value: true
+    - id: groups
+      type: entity_family
+      title: Groups
+      families: [group]
+      support: supported
+      high_value: true
+    - id: mfa_devices
+      type: entity_family
+      title: MFA phones, hardware tokens, and WebAuthn credentials
+      families: [phone, token, web_authn_credential]
+      support: supported
+      high_value: true
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: duo.user
     schema_ref: duo/user/v1

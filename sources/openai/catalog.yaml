@@ -7,6 +7,40 @@ emitted_kinds:
   - openai.service_account
   - openai.api_key
   - openai.admin_api_key
+coverage_contract:
+  owner_domain: ai
+  authority_domain: openai
+  dimensions:
+    - id: admin_api_keys
+      type: app_entitlement
+      title: Organization admin API keys
+      families: [admin_api_key]
+      support: supported
+      high_value: true
+    - id: api_keys
+      type: app_entitlement
+      title: Project API keys
+      families: [api_key]
+      support: supported
+      high_value: true
+    - id: projects
+      type: entity_family
+      title: Projects
+      families: [project]
+      support: supported
+      high_value: true
+    - id: service_accounts
+      type: entity_family
+      title: Service accounts
+      families: [service_account]
+      support: supported
+      high_value: true
+    - id: users
+      type: entity_family
+      title: Organization users
+      families: [user]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: openai.user
     schema_ref: openai/user/v1

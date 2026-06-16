@@ -2,3 +2,21 @@ id: sdk
 name: SDK Push Source
 description: Generic push-based source used by SDK-onboarded applications.
 emitted_kinds: []
+coverage_contract:
+  owner_domain: platform
+  authority_domain: sdk
+  dimensions:
+    - id: pull_inventory
+      type: entity_family
+      title: Pull inventory discovery
+      support: unsupported
+      high_value: true
+      known_unsupported_fields:
+        - SDK push sources do not declare built-in emitted kinds.
+    - id: push_ingress
+      type: lifecycle_state
+      title: SDK push ingestion surface
+      support: supported
+      high_value: true
+      notes:
+        - SDK source validates push runtime configuration and does not perform pull inventory discovery.

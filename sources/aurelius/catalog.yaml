@@ -7,6 +7,40 @@ emitted_kinds:
   - aurelius.image_scan
   - aurelius.catalog_promotion
   - aurelius.policy_exception
+coverage_contract:
+  owner_domain: vulnerability_management
+  authority_domain: aurelius
+  dimensions:
+    - id: catalog_promotions
+      type: lifecycle_state
+      title: Catalog promotions
+      families: [catalog_promotion]
+      support: supported
+      high_value: true
+    - id: findings
+      type: entity_family
+      title: Findings
+      families: [finding]
+      support: supported
+      high_value: true
+    - id: image_scans
+      type: entity_family
+      title: Image scans
+      families: [image_scan]
+      support: supported
+      high_value: true
+    - id: policy_exceptions
+      type: app_entitlement
+      title: Policy exceptions
+      families: [policy_exception]
+      support: supported
+      high_value: true
+    - id: verdicts
+      type: lifecycle_state
+      title: Image policy verdicts
+      families: [verdict]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: aurelius.verdict
     schema_ref: aurelius/verdict/v1
