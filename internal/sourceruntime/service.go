@@ -740,13 +740,40 @@ func advanceRuntimeCheckpoint(runtime *cerebrov1.SourceRuntime, checkpoint *cere
 	existingWatermark := timestampValue(runtime.GetCheckpoint().GetWatermark())
 	nextWatermark := timestampValue(next.GetWatermark())
 	if !existingWatermark.IsZero() && (nextWatermark.IsZero() || existingWatermark.After(nextWatermark)) {
-		runtime.Checkpoint = cloneCheckpoint(runtime.GetCheckpoint())
+		runtime.Checkpoint = checkpointWithoutContinuationToken(runtime.GetCheckpoint())
 		return
 	}
 	if !existingWatermark.IsZero() && existingWatermark.Equal(nextWatermark) {
 		next = mergeEqualWatermarkCheckpoint(runtime.GetCheckpoint(), next)
 	}
 	runtime.Checkpoint = next
+}
+
+func checkpointWithoutContinuationToken(checkpoint *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {
+	terminal := cloneCheckpoint(checkpoint)
+	if terminal == nil {
+		return nil
+	}
+	opaque := strings.TrimSpace(terminal.GetCursorOpaque())
+	if opaque == "" {
+		return terminal
+	}
+	envelope, ok := sourcecdk.DecodeCursorEnvelope(opaque)
+	if !ok {
+		terminal.CursorOpaque = ""
+		return terminal
+	}
+	if envelope.Token == "" {
+		return terminal
+	}
+	envelope.Token = ""
+	nextOpaque, err := sourcecdk.EncodeCursorEnvelope(envelope)
+	if err != nil {
+		terminal.CursorOpaque = ""
+		return terminal
+	}
+	terminal.CursorOpaque = nextOpaque
+	return terminal
 }
 
 func mergeEqualWatermarkCheckpoint(existing *cerebrov1.SourceCheckpoint, next *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {

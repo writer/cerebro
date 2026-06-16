@@ -748,6 +748,119 @@ func TestDependabotAlertEventIncludesDismissedBy(t *testing.T) {
 	}
 }
 
+func TestSecretScanningContinuesPastWatermarkBecausePagesAreNotUpdatedOrdered(t *testing.T) {
+	watermark := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	envelope := sourcecdk.CursorEnvelope{
+		Version:             1,
+		Source:              "github",
+		Family:              familySecretScanning,
+		Mode:                "incremental_watermark",
+		ResumableCheckpoint: true,
+	}
+	sourcecdk.SetCursorWatermark(&envelope, watermark)
+	opaque, err := sourcecdk.EncodeCursorEnvelope(envelope)
+	if err != nil {
+		t.Fatalf("EncodeCursorEnvelope() error = %v", err)
+	}
+	checkpoint := &cerebrov1.SourceCheckpoint{
+		Watermark:    timestamppb.New(watermark),
+		CursorOpaque: opaque,
+	}
+	requestedPages := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/secret-scanning/alerts" {
+			http.NotFound(w, r)
+			return
+		}
+		page := r.URL.Query().Get("page")
+		requestedPages = append(requestedPages, page)
+		if page == "" || page == "1" {
+			w.Header().Set("Link", "</api/v3/orgs/writer/secret-scanning/alerts?page=2>; rel=\"next\", </api/v3/orgs/writer/secret-scanning/alerts?page=2>; rel=\"last\"")
+			if err := json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"number":      1,
+					"state":       "open",
+					"secret_type": "token",
+					"created_at":  "2026-04-24T00:00:00Z",
+					"updated_at":  "2026-04-24T11:00:00Z",
+					"repository": map[string]any{
+						"full_name": "writer/cerebro",
+					},
+				},
+			}); err != nil {
+				t.Fatalf("encode secret scanning page 1: %v", err)
+			}
+			return
+		}
+		if page == "2" {
+			if err := json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"number":      2,
+					"state":       "open",
+					"secret_type": "token",
+					"created_at":  "2026-04-01T00:00:00Z",
+					"updated_at":  "2026-04-24T14:00:00Z",
+					"repository": map[string]any{
+						"full_name": "writer/cerebro",
+					},
+				},
+			}); err != nil {
+				t.Fatalf("encode secret scanning page 2: %v", err)
+			}
+			return
+		}
+		if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+			t.Fatalf("encode empty secret scanning page: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familySecretScanning,
+		"owner":    "writer",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 0 {
+		t.Fatalf("len(first.Events) = %d, want 0", len(first.Events))
+	}
+	if first.ShortCircuitReason == sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("first.ShortCircuitReason = %q, want no watermark stop", first.ShortCircuitReason)
+	}
+	if first.NextCursor == nil || first.NextCursor.Opaque != "2" {
+		t.Fatalf("first.NextCursor = %#v, want page 2", first.NextCursor)
+	}
+
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, first.NextCursor, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(second.Events) = %d, want recently updated older-created alert", len(second.Events))
+	}
+	if got := second.Events[0].Attributes["alert_number"]; got != "2" {
+		t.Fatalf("second alert_number = %q, want 2", got)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requestedPages) != 2 || requestedPages[0] != "1" || requestedPages[1] != "2" {
+		t.Fatalf("requested pages = %#v, want first page then page 2", requestedPages)
+	}
+}
+
 func TestSecretScanningAlertEventIncludesActorLogins(t *testing.T) {
 	observedAt := time.Date(2026, 4, 24, 0, 0, 0, 0, time.UTC)
 	event, err := secretScanningAlertEvent(settings{owner: "writer"}, &gogithub.SecretScanningAlert{

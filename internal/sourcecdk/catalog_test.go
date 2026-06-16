@@ -203,6 +203,63 @@ coverage_contract:
 	}
 }
 
+func TestNewRegistryPreservesCatalogCheckpointAwareSources(t *testing.T) {
+	_, err := LoadSourceCatalog([]byte(`
+id: checkpoint_catalog_source
+name: Checkpoint Catalog Source
+emitted_kinds:
+  - checkpoint_catalog_source.event
+event_contracts:
+  - kind: checkpoint_catalog_source.event
+    schema_ref: checkpoint_catalog_source/event/v1
+    required_attributes:
+      - required_attribute
+coverage_contract:
+  owner_domain: code
+  dimensions:
+    - id: incremental
+      type: incremental_sync
+      title: Incremental sync
+      support: supported
+`))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	source := &catalogCheckpointAwareSource{
+		catalogTestSource: catalogTestSource{id: "checkpoint_catalog_source"},
+		pull:              Pull{ShortCircuitReason: PullShortCircuitReasonNotModified},
+	}
+	registry, err := NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registered, ok := registry.Get("checkpoint_catalog_source")
+	if !ok {
+		t.Fatal("registry missing checkpoint_catalog_source")
+	}
+	if _, ok := registered.(EventContractProvider); !ok {
+		t.Fatalf("registered source does not implement EventContractProvider")
+	}
+	if _, ok := registered.(CoverageContractProvider); !ok {
+		t.Fatalf("registered source does not implement CoverageContractProvider")
+	}
+	reader, ok := registered.(CheckpointAwareSource)
+	if !ok {
+		t.Fatalf("registered source does not implement CheckpointAwareSource")
+	}
+	checkpoint := &cerebrov1.SourceCheckpoint{CursorOpaque: "checkpoint"}
+	pull, err := reader.ReadWithCheckpoint(context.Background(), NewConfig(nil), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if source.seenCheckpoint != checkpoint {
+		t.Fatalf("ReadWithCheckpoint checkpoint = %p, want %p", source.seenCheckpoint, checkpoint)
+	}
+	if pull.ShortCircuitReason != PullShortCircuitReasonNotModified {
+		t.Fatalf("ShortCircuitReason = %q, want %q", pull.ShortCircuitReason, PullShortCircuitReasonNotModified)
+	}
+}
+
 type catalogTestSource struct {
 	id string
 }
@@ -221,6 +278,17 @@ func (catalogTestSource) Discover(context.Context, Config) ([]URN, error) {
 
 func (catalogTestSource) Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error) {
 	return Pull{}, nil
+}
+
+type catalogCheckpointAwareSource struct {
+	catalogTestSource
+	pull           Pull
+	seenCheckpoint *cerebrov1.SourceCheckpoint
+}
+
+func (s *catalogCheckpointAwareSource) ReadWithCheckpoint(_ context.Context, _ Config, _ *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+	s.seenCheckpoint = checkpoint
+	return s.pull, nil
 }
 
 func TestLoadCatalogRejectsInvalidLifecycleStatus(t *testing.T) {
