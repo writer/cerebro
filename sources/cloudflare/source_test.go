@@ -76,8 +76,10 @@ func TestReadCloudflareCoverageAttributes(t *testing.T) {
 		name     string
 		family   string
 		path     string
+		detail   string
 		config   map[string]string
 		payload  map[string]any
+		enriched map[string]any
 		attr     string
 		contains string
 	}{
@@ -93,17 +95,29 @@ func TestReadCloudflareCoverageAttributes(t *testing.T) {
 			name:    "account ruleset rules",
 			family:  "account_ruleset",
 			path:    "/accounts/account-1/rulesets",
+			detail:  "/accounts/account-1/rulesets/ruleset-1",
 			config:  map[string]string{"account_id": "account-1"},
-			payload: map[string]any{"id": "ruleset-1", "name": "Account WAF", "rules": []map[string]any{{"id": "rule-1", "version": "3", "action": "block"}}},
-			attr:    "rules", contains: `"version":"3"`,
+			payload: map[string]any{"id": "ruleset-1", "name": "Account WAF"},
+			enriched: map[string]any{
+				"id":    "ruleset-1",
+				"name":  "Account WAF",
+				"rules": []map[string]any{{"id": "rule-1", "version": "3", "action": "block"}},
+			},
+			attr: "rules", contains: `"version":"3"`,
 		},
 		{
 			name:    "zone ruleset rules",
 			family:  "zone_ruleset",
 			path:    "/zones/zone-1/rulesets",
+			detail:  "/zones/zone-1/rulesets/ruleset-2",
 			config:  map[string]string{"zone_id": "zone-1"},
-			payload: map[string]any{"id": "ruleset-2", "name": "Zone WAF", "rules": []map[string]any{{"id": "rule-2", "version": "7", "action": "challenge"}}},
-			attr:    "rules", contains: `"version":"7"`,
+			payload: map[string]any{"id": "ruleset-2", "name": "Zone WAF"},
+			enriched: map[string]any{
+				"id":    "ruleset-2",
+				"name":  "Zone WAF",
+				"rules": []map[string]any{{"id": "rule-2", "version": "7", "action": "challenge"}},
+			},
+			attr: "rules", contains: `"version":"7"`,
 		},
 		{
 			name:    "access application policies",
@@ -140,10 +154,14 @@ func TestReadCloudflareCoverageAttributes(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.EscapedPath(); got != tt.path {
+				switch got := r.URL.EscapedPath(); got {
+				case tt.path:
+					_ = json.NewEncoder(w).Encode(map[string]any{"result": []map[string]any{tt.payload}})
+				case tt.detail:
+					_ = json.NewEncoder(w).Encode(map[string]any{"result": tt.enriched})
+				default:
 					t.Fatalf("request path = %q, want %s", got, tt.path)
 				}
-				_ = json.NewEncoder(w).Encode(map[string]any{"result": []map[string]any{tt.payload}})
 			}))
 			defer server.Close()
 

@@ -33,6 +33,7 @@ const (
 type Family struct {
 	Name             string
 	Path             string
+	DetailPath       string
 	PathParams       []string
 	CursorParam      string
 	URNKind          string
@@ -274,7 +275,40 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			records = append(records, record)
 		}
 	}
+	if strings.TrimSpace(family.DetailPath) != "" {
+		var err error
+		records, err = s.enrichRecords(ctx, family, settings, records)
+		if err != nil {
+			return nil, "", err
+		}
+	}
 	return records, next, nil
+}
+
+func (s *Source) enrichRecords(ctx context.Context, family Family, settings settings, records []record) ([]record, error) {
+	enriched := make([]record, 0, len(records))
+	for _, original := range records {
+		path, err := resolveRecordPath(s.options.SourceID, family.DetailPath, settings.pathParams, original.Values)
+		if err != nil {
+			return nil, fmt.Errorf("%s %s detail path: %w", s.options.SourceID, settings.family, err)
+		}
+		detailSettings := settings
+		detailSettings.path = path
+		var body json.RawMessage
+		if err := s.getJSON(ctx, detailSettings, url.Values{}, &body); err != nil {
+			return nil, err
+		}
+		raw, err := detailRecordRaw(body)
+		if err != nil {
+			return nil, fmt.Errorf("%s %s detail: %w", s.options.SourceID, settings.family, err)
+		}
+		next, err := mergedRecord(family, original, raw)
+		if err != nil {
+			return nil, fmt.Errorf("%s %s detail: %w", s.options.SourceID, settings.family, err)
+		}
+		enriched = append(enriched, next)
+	}
+	return enriched, nil
 }
 
 func pageSizeParams(family Family) []string {
@@ -545,6 +579,45 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
 }
 
+func detailRecordRaw(raw json.RawMessage) (json.RawMessage, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, err
+	}
+	for _, key := range []string{"result", "data", "item", "record"} {
+		value := object[key]
+		if len(value) == 0 {
+			continue
+		}
+		var nested map[string]any
+		if err := json.Unmarshal(value, &nested); err == nil {
+			return cloneRaw(value), nil
+		}
+	}
+	if _, ok := object["id"]; ok {
+		return cloneRaw(raw), nil
+	}
+	return nil, fmt.Errorf("response did not contain a detail record")
+}
+
+func mergedRecord(family Family, original record, raw json.RawMessage) (record, error) {
+	detailValues := map[string]any{}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&detailValues); err != nil {
+		return record{}, fmt.Errorf("decode detail record: %w", err)
+	}
+	merged := cloneValues(original.Values)
+	for key, value := range detailValues {
+		merged[key] = value
+	}
+	mergedRaw, err := json.Marshal(merged)
+	if err != nil {
+		return record{}, fmt.Errorf("marshal merged detail record: %w", err)
+	}
+	return recordFromRaw(family, mergedRaw)
+}
+
 func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.URN, error) {
 	kind := firstNonEmpty(family.URNKind, family.Name)
 	urns := make([]sourcecdk.URN, 0, len(records))
@@ -734,6 +807,30 @@ func resolvePathParams(sourceID string, path string, cfg sourcecdk.Config, param
 	return resolved, values, nil
 }
 
+func resolveRecordPath(sourceID string, path string, pathParams map[string]string, values map[string]any) (string, error) {
+	resolved := strings.TrimSpace(path)
+	for {
+		start := strings.Index(resolved, "{")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(resolved[start:], "}")
+		if end < 0 {
+			return "", fmt.Errorf("%s path contains unresolved path parameter in %q", sourceID, resolved)
+		}
+		param := strings.TrimSpace(resolved[start+1 : start+end])
+		if param == "" {
+			return "", fmt.Errorf("%s path contains empty path parameter in %q", sourceID, resolved)
+		}
+		value := firstNonEmpty(pathParams[param], firstValueString(values, param))
+		if value == "" {
+			return "", &pathParamError{sourceID: sourceID, param: param}
+		}
+		resolved = resolved[:start] + url.PathEscape(value) + resolved[start+end+1:]
+	}
+	return sourcehttp.NormalizeRequestPath(sourceID, resolved)
+}
+
 func configValue(cfg sourcecdk.Config, key string) string {
 	value, ok := cfg.Lookup(key)
 	if !ok {
@@ -775,6 +872,14 @@ func attributePaths(path string) []string {
 		}
 	}
 	return paths
+}
+
+func cloneValues(values map[string]any) map[string]any {
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func dedupeRecords(records []record) []record {

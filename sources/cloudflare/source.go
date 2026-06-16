@@ -125,6 +125,7 @@ func cloudflareFamilies() []jsonapi.Family {
 		{
 			Name:             "account_ruleset",
 			Path:             "/accounts/{account_id}/rulesets",
+			DetailPath:       "/accounts/{account_id}/rulesets/{id}",
 			PathParams:       []string{"account_id"},
 			URNKind:          "cloudflare_account_ruleset",
 			IDKeys:           []string{"id"},
@@ -136,6 +137,7 @@ func cloudflareFamilies() []jsonapi.Family {
 		{
 			Name:             "zone_ruleset",
 			Path:             "/zones/{zone_id}/rulesets",
+			DetailPath:       "/zones/{zone_id}/rulesets/{id}",
 			PathParams:       []string{"zone_id"},
 			URNKind:          "cloudflare_zone_ruleset",
 			IDKeys:           []string{"id"},
