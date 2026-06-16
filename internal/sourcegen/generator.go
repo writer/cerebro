@@ -20,9 +20,10 @@ import (
 const (
 	SourceTypeJSONAPI = "json_api"
 
-	AuthModelBearerToken = "bearer_token"
-	AuthModelAPIToken    = "api_token"
-	AuthModelAPIKey      = "api_key"
+	AuthModelBearerToken            = "bearer_token"
+	AuthModelAPIToken               = "api_token"
+	AuthModelAPIKey                 = "api_key"
+	AuthModelOAuthClientCredentials = "oauth_client_credentials" // #nosec G101 -- auth model identifier, not credential material.
 
 	defaultFreshnessExpectation = 24 * time.Hour
 	defaultHealthPath           = "/healthz"
@@ -82,6 +83,10 @@ type normalizedRequest struct {
 	PackageName       string
 	DefaultFamily     string
 	DefaultPath       string
+	BaseURLTemplate   string
+	ConfigKeys        []string
+	CredentialKeys    []string
+	OAuth             *oauthClientCredentialsData
 	Families          []familyData
 }
 
@@ -95,8 +100,20 @@ type familyData struct {
 	URNKind               string
 	EventKind             string
 	SchemaRef             string
+	IDKeys                []string
+	ListKeys              []string
+	CursorParam           string
+	PageSizeParams        []string
 	RequiredAttributes    []string
 	RequiredPayloadFields []string
+}
+
+type oauthClientCredentialsData struct {
+	TokenURLTemplate        string
+	Scopes                  []string
+	ScopeSeparator          string
+	TokenParams             map[string]string
+	ExpirationBufferSeconds int
 }
 
 type generatedFile struct {
@@ -191,6 +208,10 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 	if err != nil {
 		return normalizedRequest{}, err
 	}
+	oauth, err := oauthClientCredentialsForDefinition(definition.Auth)
+	if err != nil {
+		return normalizedRequest{}, err
+	}
 	sourceID := strings.TrimSpace(definition.SourceID)
 	if !identifierPattern.MatchString(sourceID) {
 		return normalizedRequest{}, fmt.Errorf("source_id %q must start with a lowercase letter and use lowercase letters, digits, underscores, or hyphens", definition.SourceID)
@@ -236,6 +257,10 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 		TokenConfigKey:    tokenConfigKey,
 		EnvPrefix:         strings.ToUpper(strings.NewReplacer("-", "_").Replace(sourceID)),
 		PackageName:       packageName(sourceID),
+		BaseURLTemplate:   transportBaseURL(definition.Transport),
+		ConfigKeys:        fieldKeys(definition.ConfigFields),
+		CredentialKeys:    fieldKeys(definition.Auth.CredentialFields),
+		OAuth:             oauth,
 	}
 	normalized.Families, err = familiesForDefinition(normalized, definition)
 	if err != nil {
@@ -367,8 +392,10 @@ func authModelConfig(authModel string) (string, string, error) {
 		return "Bearer", "token", nil
 	case AuthModelAPIToken, AuthModelAPIKey:
 		return "Token", "api_token", nil
+	case AuthModelOAuthClientCredentials:
+		return "Bearer", "token", nil
 	default:
-		return "", "", fmt.Errorf("auth_model %q must be one of %s, %s, or %s", authModel, AuthModelBearerToken, AuthModelAPIToken, AuthModelAPIKey)
+		return "", "", fmt.Errorf("auth_model %q must be one of %s, %s, %s, or %s", authModel, AuthModelBearerToken, AuthModelAPIToken, AuthModelAPIKey, AuthModelOAuthClientCredentials)
 	}
 }
 
@@ -378,9 +405,87 @@ func executableAuthModel(authModel string) (string, error) {
 		return AuthModelBearerToken, nil
 	case AuthModelAPIToken, AuthModelAPIKey:
 		return AuthModelAPIKey, nil
+	case AuthModelOAuthClientCredentials:
+		return AuthModelOAuthClientCredentials, nil
 	default:
 		return "", fmt.Errorf("%w: auth model %q needs provider auth runtime support before sourcegen can emit executable code", errUnsupportedDefinition, authModel)
 	}
+}
+
+func oauthClientCredentialsForDefinition(auth connectordefinitions.AuthSpec) (*oauthClientCredentialsData, error) {
+	if strings.TrimSpace(auth.Model) != AuthModelOAuthClientCredentials {
+		return nil, nil
+	}
+	if strings.TrimSpace(auth.TokenURL) == "" {
+		return nil, fmt.Errorf("%w: oauth_client_credentials requires token_url", errUnsupportedDefinition)
+	}
+	if !hasCredentialField(auth.CredentialFields, "client_id") {
+		return nil, fmt.Errorf("%w: oauth_client_credentials requires client_id credential field", errUnsupportedDefinition)
+	}
+	if !hasCredentialField(auth.CredentialFields, "client_secret") {
+		return nil, fmt.Errorf("%w: oauth_client_credentials requires client_secret credential field", errUnsupportedDefinition)
+	}
+	separator := strings.TrimSpace(auth.ScopeSeparator)
+	if separator == "" {
+		separator = " "
+	}
+	buffer := auth.TokenExpirationBufferSeconds
+	if buffer == 0 {
+		buffer = 60
+	}
+	return &oauthClientCredentialsData{
+		TokenURLTemplate:        strings.TrimSpace(auth.TokenURL),
+		Scopes:                  append([]string{}, auth.Scopes...),
+		ScopeSeparator:          separator,
+		TokenParams:             cloneStringMap(auth.TokenParams),
+		ExpirationBufferSeconds: buffer,
+	}, nil
+}
+
+func transportBaseURL(transport *connectordefinitions.TransportSpec) string {
+	if transport == nil {
+		return ""
+	}
+	return strings.TrimSpace(transport.BaseURL)
+}
+
+func fieldKeys(fields []connectordefinitions.Field) []string {
+	keys := make([]string, 0, len(fields))
+	seen := map[string]struct{}{}
+	for _, field := range fields {
+		key := strings.TrimSpace(field.Key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func hasCredentialField(fields []connectordefinitions.Field, key string) bool {
+	key = strings.TrimSpace(key)
+	for _, field := range fields {
+		if strings.TrimSpace(field.Key) == key {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func normalizeIdentifiers(label string, values []string) ([]string, error) {
@@ -508,11 +613,79 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			URNKind:               urnKind,
 			EventKind:             eventKind,
 			SchemaRef:             schemaRef,
+			IDKeys:                idKeysForResource(resource),
+			ListKeys:              listKeysForResource(resource),
+			CursorParam:           cursorParamForResource(resource),
+			PageSizeParams:        pageSizeParamsForResource(resource),
 			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: requiredPayloadFields,
 		})
 	}
 	return families, nil
+}
+
+func idKeysForResource(resource connectordefinitions.ResourceFamily) []string {
+	keys := []string{}
+	for _, key := range []string{resource.IDField, resource.NameField} {
+		if key = strings.TrimSpace(key); key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return uniqueStrings(keys)
+}
+
+func listKeysForResource(resource connectordefinitions.ResourceFamily) []string {
+	keys := []string{}
+	if key := strings.TrimSpace(resource.ListKey); key != "" {
+		keys = append(keys, key)
+	}
+	selector := strings.TrimSpace(resource.RecordSelector)
+	if strings.HasPrefix(selector, "$.") && strings.HasSuffix(selector, "[*]") {
+		key := strings.TrimSuffix(strings.TrimPrefix(selector, "$."), "[*]")
+		key = strings.Trim(strings.TrimSpace(key), ".")
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return uniqueStrings(keys)
+}
+
+func cursorParamForResource(resource connectordefinitions.ResourceFamily) string {
+	if resource.Pagination == nil {
+		return ""
+	}
+	return strings.TrimSpace(resource.Pagination.CursorParam)
+}
+
+func pageSizeParamsForResource(resource connectordefinitions.ResourceFamily) []string {
+	if resource.Pagination == nil {
+		return nil
+	}
+	params := []string{}
+	if param := strings.TrimSpace(resource.Pagination.PageSizeParam); param != "" {
+		params = append(params, param)
+	}
+	if param := strings.TrimSpace(resource.Pagination.LimitParam); param != "" {
+		params = append(params, param)
+	}
+	return uniqueStrings(params)
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func executableProjectionClass(resource connectordefinitions.ResourceFamily) (string, error) {
@@ -658,20 +831,50 @@ func renderDeploy(request normalizedRequest) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "sourceId: %s\n", request.SourceID)
 	fmt.Fprintf(&b, "secretKeys:\n")
-	fmt.Fprintf(&b, "  - %s_BASE_URL\n", request.EnvPrefix)
-	fmt.Fprintf(&b, "  - %s\n", tokenEnv)
+	secretKeys := []string{}
+	if len(request.ConfigKeys) == 0 && strings.TrimSpace(request.BaseURLTemplate) == "" {
+		secretKeys = append(secretKeys, request.EnvPrefix+"_BASE_URL")
+	}
+	for _, key := range request.ConfigKeys {
+		secretKeys = append(secretKeys, envNameForConfigKey(request, key))
+	}
+	if request.OAuth != nil {
+		for _, key := range request.CredentialKeys {
+			secretKeys = append(secretKeys, envNameForConfigKey(request, key))
+		}
+	} else {
+		secretKeys = append(secretKeys, tokenEnv)
+	}
+	for _, key := range uniqueStrings(secretKeys) {
+		fmt.Fprintf(&b, "  - %s\n", key)
+	}
 	fmt.Fprintf(&b, "runtimes:\n")
 	fmt.Fprintf(&b, "  - localId: %s\n", strings.ReplaceAll(request.DefaultFamily, "_", "-"))
 	fmt.Fprintf(&b, "    config:\n")
-	fmt.Fprintf(&b, "      base_url: env:%s_BASE_URL\n", request.EnvPrefix)
+	if len(request.ConfigKeys) == 0 && strings.TrimSpace(request.BaseURLTemplate) == "" {
+		fmt.Fprintf(&b, "      base_url: env:%s_BASE_URL\n", request.EnvPrefix)
+	}
+	for _, key := range request.ConfigKeys {
+		fmt.Fprintf(&b, "      %s: env:%s\n", key, envNameForConfigKey(request, key))
+	}
 	fmt.Fprintf(&b, "      family: %s\n", request.DefaultFamily)
 	fmt.Fprintf(&b, "      failure_modes: %s\n", strings.Join(request.FailureModes, ","))
 	fmt.Fprintf(&b, "      health_path: %s\n", request.HealthPath)
 	fmt.Fprintf(&b, "      expected_cadence_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
 	fmt.Fprintf(&b, "      stale_after_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
 	fmt.Fprintf(&b, "      per_page: %q\n", "100")
-	fmt.Fprintf(&b, "      %s: env:%s\n", request.TokenConfigKey, tokenEnv)
+	if request.OAuth != nil {
+		for _, key := range request.CredentialKeys {
+			fmt.Fprintf(&b, "      %s: env:%s\n", key, envNameForConfigKey(request, key))
+		}
+	} else {
+		fmt.Fprintf(&b, "      %s: env:%s\n", request.TokenConfigKey, tokenEnv)
+	}
 	return b.String()
+}
+
+func envNameForConfigKey(request normalizedRequest, key string) string {
+	return request.EnvPrefix + "_" + strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(strings.TrimSpace(key)))
 }
 
 func renderSourceGo(request normalizedRequest) string {
@@ -694,12 +897,28 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "\tsourceID = %s\n", strconv.Quote(request.SourceID))
 	fmt.Fprintf(&b, "\tdefaultFamily = %s\n", request.Families[0].ConstName)
 	fmt.Fprintf(&b, "\tdefaultHealthPath = %s\n", strconv.Quote(request.HealthPath))
+	fmt.Fprintf(&b, "\tdefaultBaseURLTemplate = %s\n", strconv.Quote(request.BaseURLTemplate))
 	fmt.Fprintf(&b, "\ttokenScheme = %s\n", strconv.Quote(request.TokenScheme))
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, "\toauthTokenURLTemplate = %s // #nosec G101 -- token endpoint URL template, not credential material.\n", strconv.Quote(request.OAuth.TokenURLTemplate))
+		fmt.Fprintf(&b, "\toauthScopeSeparator = %s\n", strconv.Quote(request.OAuth.ScopeSeparator))
+		fmt.Fprintf(&b, "\toauthTokenExpirationBuffer = %d * time.Second\n", request.OAuth.ExpirationBufferSeconds)
+	}
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "\t%s = %s\n", family.ConstName, strconv.Quote(family.Name))
 	}
 	fmt.Fprintf(&b, ")\n\n")
-	fmt.Fprintf(&b, "type Source struct {\n\tinner *jsonapi.Source\n\tallowLoopback bool\n}\n\n")
+	templateKeys := uniqueStrings(append(append([]string{}, request.ConfigKeys...), request.CredentialKeys...))
+	fmt.Fprintf(&b, "var templateKeys = []string{%s}\n\n", quotedStrings(templateKeys))
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, "var oauthScopes = []string{%s}\n\n", quotedStrings(request.OAuth.Scopes))
+		fmt.Fprintf(&b, "var oauthTokenParams = map[string]string{%s}\n\n", renderedAttributeMap(request.OAuth.TokenParams))
+	}
+	fmt.Fprintf(&b, "type Source struct {\n\tinner *jsonapi.Source\n\tallowLoopback bool\n")
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, "\ttokenCache sourcehttp.ClientCredentialsCache\n")
+	}
+	fmt.Fprintf(&b, "}\n\n")
 	fmt.Fprintf(&b, "func New() (*Source, error) {\n")
 	fmt.Fprintf(&b, "\tspec, err := loadSpec()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n")
 	fmt.Fprintf(&b, "\tinner, err := jsonapi.New(spec, jsonapi.Options{\n")
@@ -710,6 +929,15 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t\tPath: %s,\n", strconv.Quote(family.Path))
 		fmt.Fprintf(&b, "\t\t\t\tURNKind: %s,\n", strconv.Quote(family.URNKind))
 		fmt.Fprintf(&b, "\t\t\t\tIDKeys: []string{%s},\n", quotedStrings(idKeysForFamily(family)))
+		if strings.TrimSpace(family.CursorParam) != "" {
+			fmt.Fprintf(&b, "\t\t\t\tCursorParam: %s,\n", strconv.Quote(family.CursorParam))
+		}
+		if len(family.PageSizeParams) != 0 {
+			fmt.Fprintf(&b, "\t\t\t\tPageSizeParams: []string{%s},\n", quotedStrings(family.PageSizeParams))
+		}
+		if len(family.ListKeys) != 0 {
+			fmt.Fprintf(&b, "\t\t\t\tListKeys: []string{%s},\n", quotedStrings(family.ListKeys))
+		}
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
 		fmt.Fprintf(&b, "\t\t\t\tStaticAttributes: map[string]string{%s},\n", renderedAttributeMap(staticAttributesForFamily(request, family)))
@@ -719,10 +947,17 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "\tif err != nil {\n\t\treturn nil, err\n\t}\n")
 	fmt.Fprintf(&b, "\treturn &Source{inner: inner}, nil\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) Spec() *cerebrov1.SourceSpec {\n\tif s == nil || s.inner == nil {\n\t\treturn nil\n\t}\n\treturn s.inner.Spec()\n}\n\n")
-	fmt.Fprintf(&b, "func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {\n\tif err := s.checkHealth(ctx, cfg); err != nil {\n\t\treturn err\n\t}\n\treturn s.inner.Check(ctx, cfg)\n}\n\n")
-	fmt.Fprintf(&b, "func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {\n\treturn s.inner.Discover(ctx, cfg)\n}\n\n")
-	fmt.Fprintf(&b, "func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {\n\treturn s.inner.Read(ctx, cfg, cursor)\n}\n\n")
+	fmt.Fprintf(&b, "func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn err\n\t}\n\tif err := s.checkHealth(ctx, runtimeCfg); err != nil {\n\t\treturn err\n\t}\n\treturn s.inner.Check(ctx, runtimeCfg)\n}\n\n")
+	fmt.Fprintf(&b, "func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\treturn s.inner.Discover(ctx, runtimeCfg)\n}\n\n")
+	fmt.Fprintf(&b, "func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn sourcecdk.Pull{}, err\n\t}\n\treturn s.inner.Read(ctx, runtimeCfg, cursor)\n}\n\n")
+	fmt.Fprintf(&b, "func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {\n\tvalues := cfg.Values()\n\tif strings.TrimSpace(values[\"base_url\"]) == \"\" && strings.TrimSpace(defaultBaseURLTemplate) != \"\" {\n\t\tbaseURL, err := renderTemplate(defaultBaseURLTemplate, cfg)\n\t\tif err != nil {\n\t\t\treturn sourcecdk.Config{}, err\n\t\t}\n\t\tvalues[\"base_url\"] = baseURL\n\t}\n")
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, "\tif s == nil {\n\t\treturn sourcecdk.Config{}, fmt.Errorf(\"%%s source is required\", sourceID)\n\t}\n\ttoken, err := s.tokenCache.Token(ctx, cfg, sourcehttp.ClientCredentialsOptions{\n\t\tSourceID: sourceID,\n\t\tTokenURLTemplate: oauthTokenURLTemplate,\n\t\tTemplateKeys: templateKeys,\n\t\tScopes: oauthScopes,\n\t\tScopeSeparator: oauthScopeSeparator,\n\t\tTokenParams: oauthTokenParams,\n\t\tExpirationBuffer: oauthTokenExpirationBuffer,\n\t\tAllowLoopback: s.allowLoopback,\n\t})\n\tif err != nil {\n\t\treturn sourcecdk.Config{}, err\n\t}\n\tvalues[\"token\"] = token\n")
+	}
+	fmt.Fprintf(&b, "\treturn sourcecdk.NewConfig(values), nil\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {\n\tbaseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, configValue(cfg, \"base_url\"), s != nil && s.allowLoopback)\n\tif err != nil {\n\t\treturn err\n\t}\n\tpath := firstNonEmpty(configValue(cfg, \"health_path\"), defaultHealthPath)\n\tpath, err = sourcehttp.NormalizeRequestPath(sourceID, path)\n\tif err != nil {\n\t\treturn err\n\t}\n\treq, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)\n\tif err != nil {\n\t\treturn fmt.Errorf(\"build %%s health request: %%w\", sourceID, err)\n\t}\n\treq.Header.Set(\"Accept\", \"application/json\")\n\tif token := strings.TrimSpace(firstNonEmpty(configValue(cfg, \"token\"), configValue(cfg, \"api_token\"))); token != \"\" {\n\t\treq.Header.Set(\"Authorization\", tokenScheme+\" \"+token)\n\t}\n\tclient := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID, AllowLoopback: s != nil && s.allowLoopback, Timeout: 10 * time.Second})\n\tresp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})\n\tif err != nil {\n\t\treturn err\n\t}\n\tif resp.StatusCode < 200 || resp.StatusCode >= 300 {\n\t\treturn fmt.Errorf(\"%%s health endpoint %%s returned HTTP %%d\", sourceID, path, resp.StatusCode)\n\t}\n\treturn nil\n}\n\n")
+	b.WriteString("func renderTemplate(template string, cfg sourcecdk.Config) (string, error) {\n\trendered := strings.TrimSpace(template)\n\tfor _, key := range templateKeys {\n\t\tfor _, prefix := range []string{\"config\", \"credential\", \"connection\"} {\n\t\t\tplaceholder := \"${\" + prefix + \".\" + key + \"}\"\n\t\t\tif !strings.Contains(rendered, placeholder) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tvalue, err := requiredConfigValue(cfg, key)\n\t\t\tif err != nil {\n\t\t\t\treturn \"\", err\n\t\t\t}\n\t\t\trendered = strings.ReplaceAll(rendered, placeholder, value)\n\t\t}\n\t}\n\tif strings.Contains(rendered, \"${\") {\n\t\treturn \"\", fmt.Errorf(\"%w: %s template %q contains unresolved variable\", sourcecdk.ErrInvalidConfig, sourceID, template)\n\t}\n\treturn rendered, nil\n}\n\n")
+	b.WriteString("func requiredConfigValue(cfg sourcecdk.Config, key string) (string, error) {\n\tvalue := strings.TrimSpace(configValue(cfg, key))\n\tif value == \"\" {\n\t\treturn \"\", fmt.Errorf(\"%w: %s %s is required\", sourcecdk.ErrInvalidConfig, sourceID, key)\n\t}\n\treturn value, nil\n}\n\n")
 	fmt.Fprintf(&b, "func loadSpec() (*cerebrov1.SourceSpec, error) {\n\tspecBytes, err := catalogFS.ReadFile(\"catalog.yaml\")\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"read catalog: %%w\", err)\n\t}\n\tspec, err := sourcecdk.LoadCatalog(specBytes)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"load catalog: %%w\", err)\n\t}\n\treturn spec, nil\n}\n\n")
 	fmt.Fprintf(&b, "func configValue(cfg sourcecdk.Config, key string) string {\n\tvalue, _ := cfg.Lookup(key)\n\treturn value\n}\n\n")
 	fmt.Fprintf(&b, "func firstNonEmpty(values ...string) string {\n\tfor _, value := range values {\n\t\tif strings.TrimSpace(value) != \"\" {\n\t\t\treturn strings.TrimSpace(value)\n\t\t}\n\t}\n\treturn \"\"\n}\n\n")
@@ -731,22 +966,24 @@ func renderSourceGo(request normalizedRequest) string {
 }
 
 func idKeysForFamily(family familyData) []string {
+	base := append([]string{}, family.IDKeys...)
 	switch family.Class {
 	case "evidence_cas_reference":
-		return []string{"evidence_id", "uri", "digest", "id"}
+		base = append(base, "evidence_id", "uri", "digest", "id")
 	case "finding":
-		return []string{"finding_id", "id", "resource_urn"}
+		base = append(base, "finding_id", "id", "resource_urn")
 	case "identity_user":
-		return []string{"user_id", "id", "email", "primary_email", "login"}
+		base = append(base, "user_id", "id", "email", "primary_email", "login")
 	case "identity_group":
-		return []string{"group_id", "id", "group_email", "email"}
+		base = append(base, "group_id", "id", "group_email", "email")
 	case "group_membership":
-		return []string{"membership_id", "id", "group_id", "member_id", "user_id", "email"}
+		base = append(base, "membership_id", "id", "group_id", "member_id", "user_id", "email")
 	case "audit_event":
-		return []string{"event_id", "id", "uuid", "request_id"}
+		base = append(base, "event_id", "id", "uuid", "request_id")
 	default:
-		return []string{"id", "urn", "resource_urn", "name"}
+		base = append(base, "id", "urn", "resource_urn", "name")
 	}
+	return uniqueStrings(base)
 }
 
 func attributePathsForFamily(family familyData) map[string]string {
@@ -832,23 +1069,55 @@ func staticAttributesForFamily(request normalizedRequest, family familyData) map
 }
 
 func renderSourceTestGo(request normalizedRequest) string {
-	configKey := request.TokenConfigKey
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s\n\n", request.PackageName)
 	fmt.Fprintf(&b, "import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/writer/cerebro/internal/sourcecdk\"\n)\n\n")
 	fmt.Fprintf(&b, "func TestSourceCheckAndRead(t *testing.T) {\n")
 	fmt.Fprintf(&b, "\tsource, err := New()\n\tif err != nil {\n\t\tt.Fatalf(\"New() error = %%v\", err)\n\t}\n\tsource.allowLoopbackForTest()\n")
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, "\ttokenRequests := 0\n")
+	}
 	fmt.Fprintf(&b, "\tserver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n")
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, "\t\tif r.URL.Path == \"/oauth/token\" {\n\t\t\ttokenRequests++\n\t\t\tif r.Method != http.MethodPost {\n\t\t\t\tt.Fatalf(\"token method = %%s\", r.Method)\n\t\t\t}\n\t\t\tr.Body = http.MaxBytesReader(w, r.Body, 1<<20)\n\t\t\tif err := r.ParseForm(); err != nil {\n\t\t\t\tt.Fatalf(\"ParseForm() error = %%v\", err)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"grant_type\"); got != \"client_credentials\" {\n\t\t\t\tt.Fatalf(\"grant_type = %%q\", got)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_id\"); got != \"client-id\" {\n\t\t\t\tt.Fatalf(\"client_id = %%q\", got)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_secret\"); got != \"client-secret\" {\n\t\t\t\tt.Fatalf(\"client_secret = %%q\", got)\n\t\t\t}\n\t\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"access_token\": \"test-token\", \"expires_in\": 600})\n\t\t\treturn\n\t\t}\n")
+	}
 	fmt.Fprintf(&b, "\t\tif r.Header.Get(\"Authorization\") != %s {\n\t\t\tt.Fatalf(\"Authorization = %%q\", r.Header.Get(\"Authorization\"))\n\t\t}\n", strconv.Quote(request.TokenScheme+" test-token"))
-	fmt.Fprintf(&b, "\t\tif r.URL.Path == defaultHealthPath {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n")
+	if request.HealthPath != request.DefaultPath {
+		fmt.Fprintf(&b, "\t\tif r.URL.Path == defaultHealthPath {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n")
+	}
 	fmt.Fprintf(&b, "\t\tif r.URL.Path != %s {\n\t\t\tt.Fatalf(\"path = %%q\", r.URL.Path)\n\t\t}\n", strconv.Quote(request.DefaultPath))
 	fmt.Fprintf(&b, "\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n")
 	fmt.Fprintf(&b, "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"items\": []map[string]string{{\"id\": \"record-1\", \"resource_urn\": \"urn:cerebro:tenant:runtime_asset:record-1\", \"resource_type\": \"asset\", \"resource_id\": \"record-1\", \"name\": \"Record One\", \"updated_at\": \"2026-06-01T00:00:00Z\"}}})\n")
 	fmt.Fprintf(&b, "\t}))\n\tdefer server.Close()\n")
-	fmt.Fprintf(&b, "\tcfg := sourcecdk.NewConfig(map[string]string{\"tenant_id\": \"tenant\", \"base_url\": server.URL, \"family\": defaultFamily, %s: \"test-token\"})\n", strconv.Quote(configKey))
+	fmt.Fprintf(&b, "\tcfgValues := map[string]string{\"tenant_id\": \"tenant\", \"base_url\": server.URL, \"family\": defaultFamily")
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, ", \"token_url\": server.URL + \"/oauth/token\", \"client_id\": \"client-id\", \"client_secret\": \"client-secret\"")
+		for _, key := range request.ConfigKeys {
+			if key == "base_url" || key == "family" || key == "token_url" {
+				continue
+			}
+			fmt.Fprintf(&b, ", %s: %s", strconv.Quote(key), strconv.Quote(testConfigValue(key)))
+		}
+	} else {
+		fmt.Fprintf(&b, ", %s: \"test-token\"", strconv.Quote(request.TokenConfigKey))
+	}
+	fmt.Fprintf(&b, "}\n\tcfg := sourcecdk.NewConfig(cfgValues)\n")
 	fmt.Fprintf(&b, "\tif err := source.Check(context.Background(), cfg); err != nil {\n\t\tt.Fatalf(\"Check() error = %%v\", err)\n\t}\n")
-	fmt.Fprintf(&b, "\tpull, err := source.Read(context.Background(), cfg, nil)\n\tif err != nil {\n\t\tt.Fatalf(\"Read() error = %%v\", err)\n\t}\n\tif len(pull.Events) != 1 {\n\t\tt.Fatalf(\"events = %%d, want 1\", len(pull.Events))\n\t}\n\tevent := pull.Events[0]\n\tif event.Kind != sourceID+\".\"+defaultFamily {\n\t\tt.Fatalf(\"kind = %%q\", event.Kind)\n\t}\n\tif strings.TrimSpace(event.Id) == \"\" {\n\t\tt.Fatalf(\"event id is empty: %%#v\", event)\n\t}\n}\n")
+	fmt.Fprintf(&b, "\tpull, err := source.Read(context.Background(), cfg, nil)\n\tif err != nil {\n\t\tt.Fatalf(\"Read() error = %%v\", err)\n\t}\n\tif len(pull.Events) != 1 {\n\t\tt.Fatalf(\"events = %%d, want 1\", len(pull.Events))\n\t}\n\tevent := pull.Events[0]\n")
+	if request.OAuth != nil {
+		fmt.Fprintf(&b, "\tif tokenRequests != 1 {\n\t\tt.Fatalf(\"token requests = %%d, want 1 cached token\", tokenRequests)\n\t}\n")
+	}
+	fmt.Fprintf(&b, "\tif event.Kind != %s {\n\t\tt.Fatalf(\"kind = %%q\", event.Kind)\n\t}\n\tif strings.TrimSpace(event.Id) == \"\" {\n\t\tt.Fatalf(\"event id is empty: %%#v\", event)\n\t}\n}\n", strconv.Quote(request.Families[0].EventKind))
 	return b.String()
+}
+
+func testConfigValue(key string) string {
+	switch strings.TrimSpace(key) {
+	case "domain":
+		return "example.test"
+	default:
+		return "test-" + strings.TrimSpace(key)
+	}
 }
 
 func renderReadFixture() string {

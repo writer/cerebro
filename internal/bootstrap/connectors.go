@@ -1116,6 +1116,18 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 			writeConnectorError(w, err)
 			return
 		}
+		validated, err := broker.MarkValidated(r.Context(), connectorcredentials.ValidateRequest{
+			CredentialID: result.Record.ID,
+			TenantID:     tenantID,
+			SourceID:     sourceID,
+			RuntimeID:    runtimeID,
+			Actor:        connectorCredentialActor(r),
+		})
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		result.Record = validated
 		for field, reference := range result.References {
 			runtime.Config[field] = reference
 		}
@@ -1479,6 +1491,67 @@ var connectorSchemas = map[string]connectorSchema{
 		CredentialKeys:      stringSet("token"),
 		RequiredCredentials: []string{"token"},
 	},
+}
+
+func connectorSchemaForSource(sourceID string) (connectorSchema, bool) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return connectorSchema{}, false
+	}
+	if schema, ok := connectorSchemas[sourceID]; ok {
+		return schema, true
+	}
+	entry, ok, err := connectorcatalog.BuiltinEntry(sourceID)
+	if err != nil || !ok || !entry.Generateable || entry.Status != connectorcatalog.StatusGenerateable {
+		return connectorSchema{}, false
+	}
+	return connectorSchemaFromDefinition(entry.Definition), true
+}
+
+func connectorSchemaFromDefinition(definition connectordefinitions.Definition) connectorSchema {
+	schema := connectorSchema{
+		ConfigKeys:     stringSet("family", "health_path", "base_url", "token_url", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"),
+		CredentialKeys: map[string]struct{}{},
+	}
+	for _, field := range definition.ConfigFields {
+		key := strings.TrimSpace(field.Key)
+		if key == "" {
+			continue
+		}
+		schema.ConfigKeys[key] = struct{}{}
+		if field.Required {
+			schema.RequiredConfig = append(schema.RequiredConfig, key)
+		}
+	}
+	for _, field := range definition.Auth.CredentialFields {
+		key := strings.TrimSpace(field.Key)
+		if key == "" {
+			continue
+		}
+		schema.CredentialKeys[key] = struct{}{}
+		schema.RequiredCredentials = append(schema.RequiredCredentials, key)
+	}
+	for _, family := range definition.ResourceFamilies {
+		if family.Pagination == nil {
+			continue
+		}
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.PageParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.PageSizeParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.OffsetParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.LimitParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.CursorParam)
+	}
+	schema.RequiredConfig = sortedUniqueStrings(schema.RequiredConfig)
+	schema.RequiredCredentials = sortedUniqueStrings(schema.RequiredCredentials)
+	return schema
+}
+
+func addConnectorSchemaConfigKey(keys map[string]struct{}, key string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+	keys[key] = struct{}{}
 }
 
 func connectorRuntimeCounts(runtimes []*cerebrov1.SourceRuntime) map[string]connectorRuntimeCount {
@@ -1904,7 +1977,7 @@ func (a *App) connectorReferenceTemplates(sourceID string, tenantID string, runt
 		return nil
 	}
 	required := map[string]struct{}{}
-	if schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]; ok {
+	if schema, ok := connectorSchemaForSource(sourceID); ok {
 		required = stringSet(schema.RequiredCredentials...)
 	}
 	templates := make([]connectorReferenceTemplateView, 0, len(fields))
@@ -2505,7 +2578,7 @@ func connectorDisplayName(sourceID string, fallback string) string {
 }
 
 func connectorConfigFields(sourceID string, authMethod string) []connectorFieldView {
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -2539,7 +2612,7 @@ func connectorCredentialFields(sourceID string, authMethod string) []connectorFi
 	if authMethod == connectorAuthMethodAWSSSOProfile {
 		return nil
 	}
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -3589,7 +3662,7 @@ func connectorReferenceTemplateFields(sourceID string, authMethod string, refere
 	if normalizeConnectorAuthMethod(authMethod) == connectorAuthMethodEncryptedSubmission {
 		return sortedStringKeys(references)
 	}
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok || len(schema.CredentialKeys) == 0 {
 		return sortedStringKeys(references)
 	}
@@ -3597,7 +3670,7 @@ func connectorReferenceTemplateFields(sourceID string, authMethod string, refere
 }
 
 func validateConnectorConfigFields(sourceID string, authMethod string, config map[string]string, references map[string]string) error {
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -3638,7 +3711,7 @@ func validateConnectorCredentialFields(sourceID string, authMethod string, field
 	if authMethod != connectorAuthMethodEncryptedSubmission {
 		return nil
 	}
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -3670,6 +3743,21 @@ func sortedStringKeys(values map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func sortedUniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		set[value] = struct{}{}
+	}
+	return sortedSetKeys(set)
 }
 
 func copyStringMap(values map[string]string) map[string]string {

@@ -265,6 +265,32 @@ func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
 	if got := credentialPayload["credential_store_id"]; got != defaultConnectorCredentialStoreID {
 		t.Fatalf("credential_store_id = %#v, want %q", got, defaultConnectorCredentialStoreID)
 	}
+	if got := credentialPayload["status"]; got != connectorcredentials.StatusValid {
+		t.Fatalf("credential status = %#v, want %q", got, connectorcredentials.StatusValid)
+	}
+	credentialID, ok := credentialPayload["id"].(string)
+	if !ok || credentialID == "" {
+		t.Fatalf("credential id = %#v, want non-empty string", credentialPayload["id"])
+	}
+	if got, ok := credentialPayload["last_validated_at"].(string); !ok || strings.TrimSpace(got) == "" {
+		t.Fatalf("credential last_validated_at = %#v, want validation timestamp", credentialPayload["last_validated_at"])
+	}
+	record := store.credentials[credentialID]
+	if record == nil {
+		t.Fatalf("stored credential %q missing", credentialID)
+	}
+	if record.LastValidatedAt.IsZero() {
+		t.Fatal("stored credential LastValidatedAt is zero")
+	}
+	auditTypes := map[string]bool{}
+	for _, event := range store.audit {
+		if event.CredentialID == credentialID {
+			auditTypes[event.EventType] = true
+		}
+	}
+	if !auditTypes[connectorcredentials.AuditEventStored] || !auditTypes[connectorcredentials.AuditEventValidated] {
+		t.Fatalf("credential audit types = %#v, want stored and validated", auditTypes)
+	}
 	runtime := store.runtimes["runtime-a"]
 	if runtime == nil {
 		t.Fatal("stored runtime missing")
@@ -1168,12 +1194,26 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	if jumpcloud.AuthModel != "api_key" || jumpcloud.VerificationEndpoint == "" {
 		t.Fatalf("jumpcloud auth/verification = %q/%q, want catalog metadata", jumpcloud.AuthModel, jumpcloud.VerificationEndpoint)
 	}
-	entraID := bySourceID["microsoft_entra_id"]
-	if entraID.CatalogStatus != connectorcatalog.StatusNeedsAuthExtension || entraID.RuntimeExecutable {
-		t.Fatalf("microsoft_entra_id status = %q executable=%v, want needs_auth_extension not executable", entraID.CatalogStatus, entraID.RuntimeExecutable)
+	auth0 := bySourceID["auth0"]
+	if auth0.CatalogStatus != connectorcatalog.StatusGenerateable || !auth0.RuntimeExecutable {
+		t.Fatalf("auth0 status = %q executable=%v, want generateable executable", auth0.CatalogStatus, auth0.RuntimeExecutable)
 	}
-	if entraID.ClassifierOutput != "supported" {
-		t.Fatalf("microsoft_entra_id classifier_output = %q, want supported", entraID.ClassifierOutput)
+	if auth0.AuthModel != "oauth_client_credentials" || auth0.VerificationEndpoint != "/users" {
+		t.Fatalf("auth0 auth/verification = %q/%q, want oauth client credentials /users", auth0.AuthModel, auth0.VerificationEndpoint)
+	}
+	hasNeedsAuthExtension := false
+	for _, connector := range payload.Connectors {
+		if connector.CatalogStatus != connectorcatalog.StatusNeedsAuthExtension {
+			continue
+		}
+		hasNeedsAuthExtension = true
+		if connector.RuntimeExecutable {
+			t.Fatalf("%s status = %q executable=%v, want needs_auth_extension not executable", connector.SourceID, connector.CatalogStatus, connector.RuntimeExecutable)
+		}
+		break
+	}
+	if !hasNeedsAuthExtension {
+		t.Fatal("catalog has no needs_auth_extension entries")
 	}
 	jenkins := bySourceID["jenkins"]
 	if jenkins.CatalogStatus != connectorcatalog.StatusNeedsBespokeRuntime {
@@ -1186,6 +1226,53 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		if family.ProjectionTemplate == "" || !family.HighValue {
 			t.Fatalf("jenkins family = %#v, want projection and high-value coverage", family)
 		}
+	}
+}
+
+func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
+	schema, ok := connectorSchemaForSource("auth0")
+	if !ok {
+		t.Fatal("connectorSchemaForSource(auth0) = false, want catalog-derived schema")
+	}
+	for _, key := range []string{"domain", "family", "health_path", "token_url", "per_page", "take", "from", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"} {
+		if _, ok := schema.ConfigKeys[key]; !ok {
+			t.Fatalf("auth0 config keys missing %q: %#v", key, sortedSetKeys(schema.ConfigKeys))
+		}
+	}
+	if got := strings.Join(schema.RequiredConfig, ","); got != "domain" {
+		t.Fatalf("auth0 required config = %q, want domain", got)
+	}
+	for _, key := range []string{"client_id", "client_secret"} {
+		if _, ok := schema.CredentialKeys[key]; !ok {
+			t.Fatalf("auth0 credential keys missing %q: %#v", key, sortedSetKeys(schema.CredentialKeys))
+		}
+	}
+	if got := strings.Join(schema.RequiredCredentials, ","); got != "client_id,client_secret" {
+		t.Fatalf("auth0 required credentials = %q, want client_id,client_secret", got)
+	}
+	err := validateConnectorConfigFields("auth0", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"domain":        "example.us.auth0.com",
+		"family":        "users",
+		"health_path":   "/users",
+		"per_page":      "100",
+		"client_id":     "env:AUTH0_CLIENT_ID",
+		"client_secret": "env:AUTH0_CLIENT_SECRET",
+	}, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"client_id":     "env:AUTH0_CLIENT_ID",
+		"client_secret": "env:AUTH0_CLIENT_SECRET",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorConfigFields(auth0 external reference) error = %v", err)
+	}
+	err = validateConnectorCredentialFields("auth0", connectorAuthMethodEncryptedSubmission, map[string]string{ // #nosec G101 -- Test-only credential values, not live secrets.
+		"client_id":     "auth0-client",
+		"client_secret": "auth0-secret",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorCredentialFields(auth0 encrypted submission) error = %v", err)
+	}
+	if _, ok := connectorSchemaForSource("jenkins"); ok {
+		t.Fatal("connectorSchemaForSource(jenkins) = true, want bespoke runtime entries excluded")
 	}
 }
 
