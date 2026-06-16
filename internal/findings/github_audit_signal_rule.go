@@ -37,15 +37,6 @@ type githubAuditCounterEventRule struct {
 	counterStates func(Event) []CounterEventStateUpdate
 }
 
-func newGitHubAuditCounterEventRule(config githubAuditSignalConfig, openAnchor func(map[string]string) string, closeAnchor githubAuditSignalClosePredicate) Rule {
-	return &githubAuditCounterEventRule{
-		Rule:        newGitHubAuditSignalRule(config),
-		definition:  config.definition,
-		openAnchor:  openAnchor,
-		closeAnchor: closeAnchor,
-	}
-}
-
 func newGitHubAggregateAuditCounterEventRule(config githubAuditSignalConfig, openAnchor func(map[string]string) string, closeAnchor githubAuditSignalClosePredicate, counterStates func(Event) []CounterEventStateUpdate) Rule {
 	return &githubAuditCounterEventRule{
 		Rule:          newGitHubAuditSignalRule(config),
@@ -476,33 +467,10 @@ var githubPrivateRepositoryForkingEnabledDefinition = RuleDefinition{
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
-// Note: the secret-scanning-disabled, push-protection-disabled,
-// branch-protection-disabled, and repository-made-public match configs
-// were removed when these audit-event mirror rules were retired. Their
-// RuleDefinition values (above) are preserved so the retirement wrapper
-// can keep advertising the original output_kind, control refs, and
-// references when the rule appears in the catalog. The forthcoming
-// posture graph rules will reintroduce the trigger logic in a durable
-// state-based form.
-
-var githubRepositoryCollaboratorAddedConfig = githubAuditSignalConfig{
-	definition: githubRepositoryCollaboratorAddedDefinition,
-	actions:    githubAuditActionSet("repo.add_member"),
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s was added to %s by %s", firstNonEmpty(attributes["user"], "unknown user"), githubAuditTarget(attributes), githubAuditActor(attributes))
-	},
-}
-
-var githubOrganizationOwnerAddedConfig = githubAuditSignalConfig{
-	definition: githubOrganizationOwnerAddedDefinition,
-	actions:    githubAuditActionSet("org.add_member"),
-	predicate: func(attributes map[string]string) bool {
-		return strings.EqualFold(attributes["permission"], "admin") || strings.EqualFold(attributes["permission"], "owner")
-	},
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s was added as a GitHub organization owner by %s", firstNonEmpty(attributes["user"], "unknown user"), githubAuditActor(attributes))
-	},
-}
+// Note: retired GitHub audit-event mirror rules keep their RuleDefinition
+// values above so the retirement wrapper can keep advertising the original
+// output_kind, control refs, and references when the rule appears in the
+// catalog. Their match configs were removed with the event-mirror logic.
 
 var githubCodeSecurityControlSeverities = map[string]string{
 	"business_advanced_security.disabled":                    "CRITICAL",
@@ -544,100 +512,10 @@ var githubCodeSecurityControlsDisabledConfig = githubAuditSignalConfig{
 	},
 }
 
-var githubOrgAuthControlModifiedConfig = githubAuditSignalConfig{
-	definition:        githubOrgAuthControlModifiedDefinition,
-	predicate:         githubOrgAuthControlWeakening,
-	primaryEntityType: func(map[string]string) string { return "github.org" },
-	severity: func(attributes map[string]string) string {
-		action := strings.TrimSpace(attributes["action"])
-		if action == "org.update_saml_provider_settings" {
-			return "HIGH"
-		}
-		return "CRITICAL"
-	},
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s modified GitHub organization authentication control %s for %s", githubAuditActor(attributes), strings.TrimSpace(attributes["action"]), githubAuditTarget(attributes))
-	},
-}
-
-var githubOrgIPAllowListModifiedConfig = githubAuditSignalConfig{
-	definition:        githubOrgIPAllowListModifiedDefinition,
-	predicate:         githubIPAllowListWeakeningOrExpansion,
-	primaryEntityType: func(map[string]string) string { return "github.org" },
-	severity: func(attributes map[string]string) string {
-		if strings.Contains(strings.TrimSpace(attributes["action"]), "disable") || strings.Contains(strings.TrimSpace(attributes["action"]), "destroy") {
-			return "HIGH"
-		}
-		return "MEDIUM"
-	},
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s modified GitHub organization IP allow list for %s", githubAuditActor(attributes), githubAuditTarget(attributes))
-	},
-}
-
-var githubAppIntegrationInstalledConfig = githubAuditSignalConfig{
-	definition: githubAppIntegrationInstalledDefinition,
-	actions:    githubAuditActionSet("integration_installation.create"),
-	policyID: func(attributes map[string]string) string {
-		if name := strings.TrimSpace(attributes["name"]); name != "" {
-			return "github_app:" + name
-		}
-		return ""
-	},
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s installed GitHub App integration %s for %s", githubAuditActor(attributes), firstNonEmpty(attributes["name"], "unknown app"), githubAuditTarget(attributes))
-	},
-}
-
-var githubPersonalAccessTokenCreatedConfig = githubAuditSignalConfig{
-	definition: githubPersonalAccessTokenCreatedDefinition,
-	actions:    githubAuditActionSet("personal_access_token.access_granted"),
-	predicate: func(attributes map[string]string) bool {
-		return strings.EqualFold(attributes["operation_type"], "create")
-	},
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s created or authorized a GitHub personal access token for %s", githubAuditActor(attributes), firstNonEmpty(attributes["user"], "unknown user"))
-	},
-}
-
-// githubProtectedBranchPolicyOverrideConfig was removed when the
-// per-override mirror rule was retired; durable posture coverage lives in
-// graph/current-state rules while the retired wrapper keeps stale findings
-// resolvable.
-
-var githubRepositoryRulesetModifiedConfig = githubAuditSignalConfig{
-	definition: githubRepositoryRulesetModifiedDefinition,
-	actions:    githubAuditActionSet("repository_ruleset.destroy", "repository_ruleset.update"),
-	predicate:  githubRepositoryRulesetWeakening,
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s modified GitHub repository ruleset %s for %s", githubAuditActor(attributes), firstNonEmpty(attributes["ruleset_name"], attributes["ruleset_id"], "unknown ruleset"), githubAuditTarget(attributes))
-	},
-}
-
-var githubWebhookModifiedConfig = githubAuditSignalConfig{
-	definition: githubWebhookModifiedDefinition,
-	actions:    githubAuditActionSet("hook.config_changed", "hook.create"),
-	predicate:  githubWebhookDestinationPolicyViolating,
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s modified GitHub webhook %s for %s", githubAuditActor(attributes), firstNonEmpty(attributes["hook_id"], "unknown hook"), githubAuditTarget(attributes))
-	},
-}
-
-var githubPrivateRepositoryForkingEnabledConfig = githubAuditSignalConfig{
-	definition: githubPrivateRepositoryForkingEnabledDefinition,
-	predicate:  githubPrivateRepositoryForkingEnabled,
-	primaryEntityType: func(attributes map[string]string) string {
-		scope, _ := githubPrivateRepositoryForkingScope(attributes)
-		if scope == "repo" {
-			return "github.code.repository"
-		}
-		return "github.org"
-	},
-	fingerprint: githubPrivateRepositoryForkingFingerprintInputs,
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s enabled or reset private repository forking for %s", githubAuditActor(attributes), githubAuditTarget(attributes))
-	},
-}
+// githubProtectedBranchPolicyOverrideConfig and the other retired mirror
+// configs were removed with the per-event finding implementations; durable
+// coverage lives in graph/current-state rules while retired wrappers keep
+// stale findings resolvable.
 
 // newGitHubSecretScanningDisabledRule is retired. The mirror produced one
 // finding per audit event, which collapses repeated tampering on the same
@@ -692,11 +570,11 @@ func newGitHubSelfHostedRunnerChangeRule() Rule {
 }
 
 func newGitHubRepositoryCollaboratorAddedRule() Rule {
-	return newGitHubAuditCounterEventRule(githubRepositoryCollaboratorAddedConfig, githubRepositoryCollaboratorAnchor, githubRepositoryCollaboratorCloseAnchor)
+	return newRetiredGitHubAuditRule(githubRepositoryCollaboratorAddedDefinition)
 }
 
 func newGitHubOrganizationOwnerAddedRule() Rule {
-	return newGitHubAuditCounterEventRule(githubOrganizationOwnerAddedConfig, githubOrganizationOwnerAnchor, githubOrganizationOwnerCloseAnchor)
+	return newRetiredGitHubAuditRule(githubOrganizationOwnerAddedDefinition)
 }
 
 func newGitHubCodeSecurityControlsDisabledRule() Rule {
@@ -704,19 +582,19 @@ func newGitHubCodeSecurityControlsDisabledRule() Rule {
 }
 
 func newGitHubOrgAuthControlModifiedRule() Rule {
-	return newGitHubAggregateAuditCounterEventRule(githubOrgAuthControlModifiedConfig, githubOrgPostureAnchor, githubOrgAuthControlCloseAnchor, githubOrgAuthControlCounterEventStates)
+	return newRetiredGitHubAuditRule(githubOrgAuthControlModifiedDefinition)
 }
 
 func newGitHubOrgIPAllowListModifiedRule() Rule {
-	return newGitHubAggregateAuditCounterEventRule(githubOrgIPAllowListModifiedConfig, githubOrgPostureAnchor, githubOrgIPAllowListCloseAnchor, githubOrgIPAllowListCounterEventStates)
+	return newRetiredGitHubAuditRule(githubOrgIPAllowListModifiedDefinition)
 }
 
 func newGitHubAppIntegrationInstalledRule() Rule {
-	return newGitHubAuditCounterEventRule(githubAppIntegrationInstalledConfig, githubAppIntegrationAnchor, githubAppIntegrationCloseAnchor)
+	return newRetiredGitHubAuditRule(githubAppIntegrationInstalledDefinition)
 }
 
 func newGitHubPersonalAccessTokenCreatedRule() Rule {
-	return newGitHubAuditCounterEventRule(githubPersonalAccessTokenCreatedConfig, githubPersonalAccessTokenAnchor, githubPersonalAccessTokenCloseAnchor)
+	return newRetiredGitHubAuditRule(githubPersonalAccessTokenCreatedDefinition)
 }
 
 // newGitHubProtectedBranchPolicyOverrideRule is retired. Per-event overrides
@@ -728,7 +606,7 @@ func newGitHubProtectedBranchPolicyOverrideRule() Rule {
 }
 
 func newGitHubRepositoryRulesetModifiedRule() Rule {
-	return newGitHubAuditCounterEventRule(githubRepositoryRulesetModifiedConfig, githubRepositoryRulesetAnchor, githubRepositoryRulesetCloseAnchor)
+	return newRetiredGitHubAuditRule(githubRepositoryRulesetModifiedDefinition)
 }
 
 func newGitHubCriticalResourceDeletedRule() Rule {
@@ -736,11 +614,11 @@ func newGitHubCriticalResourceDeletedRule() Rule {
 }
 
 func newGitHubWebhookModifiedRule() Rule {
-	return newGitHubAuditCounterEventRule(githubWebhookModifiedConfig, githubWebhookAnchor, githubWebhookCloseAnchor)
+	return newRetiredGitHubAuditRule(githubWebhookModifiedDefinition)
 }
 
 func newGitHubPrivateRepositoryForkingEnabledRule() Rule {
-	return newGitHubAuditCounterEventRule(githubPrivateRepositoryForkingEnabledConfig, githubPrivateRepositoryForkingAnchor, githubPrivateRepositoryForkingCloseAnchor)
+	return newRetiredGitHubAuditRule(githubPrivateRepositoryForkingEnabledDefinition)
 }
 
 func matchesGitHubSecretScanningOpenAlert(event *cerebrov1.EventEnvelope) bool {
@@ -1071,16 +949,6 @@ func githubObservedPolicyIDs(policyID string) []string {
 	return []string{strings.TrimSpace(policyID)}
 }
 
-func githubAuditActionSet(actions ...string) map[string]struct{} {
-	set := make(map[string]struct{}, len(actions))
-	for _, action := range actions {
-		if strings.TrimSpace(action) != "" {
-			set[strings.TrimSpace(action)] = struct{}{}
-		}
-	}
-	return set
-}
-
 func githubCounterEventAnchor(attributes map[string]string, fields ...string) string {
 	if len(fields) == 0 {
 		return ""
@@ -1120,112 +988,6 @@ func githubSecretScanningAlertCloseAnchor(event Event) (string, bool) {
 	default:
 		return "", false
 	}
-}
-
-func githubRepositoryCollaboratorAnchor(attributes map[string]string) string {
-	return githubCounterEventAnchor(attributes, "repo", "user")
-}
-
-func githubRepositoryCollaboratorCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	action := strings.TrimSpace(attributes["action"])
-	switch action {
-	case "member.removed", "repo.remove_member", "repository.remove_member", "repo.remove_collaborator", "repository.remove_collaborator", "org.remove_member":
-		return githubRepositoryCollaboratorAnchor(attributes), true
-	default:
-		return "", false
-	}
-}
-
-func githubOrganizationOwnerAnchor(attributes map[string]string) string {
-	return githubCounterEventAnchor(attributes, "org", "user")
-}
-
-func githubOrganizationOwnerCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	action := strings.TrimSpace(attributes["action"])
-	switch action {
-	case "member.removed", "org.remove_member", "organization.remove_member", "org.remove_owner", "organization.remove_owner":
-		return githubOrganizationOwnerAnchor(attributes), true
-	case "org.add_member", "org.update_member", "org.update_member_role", "member.role_changed", "member.updated":
-		permission := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["new_permission"], attributes["permission"], attributes["new_role"], attributes["role"])))
-		if permission != "" && permission != "admin" && permission != "owner" {
-			return githubOrganizationOwnerAnchor(attributes), true
-		}
-		return "", false
-	default:
-		return "", false
-	}
-}
-
-func githubAppIntegrationAnchor(attributes map[string]string) string {
-	return githubCounterEventAnchor(attributes, "org", "github_app_id")
-}
-
-func githubAppIntegrationCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	switch strings.TrimSpace(attributes["action"]) {
-	case "integration_installation.delete", "integration_installation.destroy", "integration_installation.suspend":
-		return githubAppIntegrationAnchor(attributes), true
-	default:
-		return "", false
-	}
-}
-
-func githubPersonalAccessTokenAnchor(attributes map[string]string) string {
-	return githubCounterEventAnchor(attributes, "user_id", "token_id")
-}
-
-func githubPersonalAccessTokenCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	if !githubPersonalAccessTokenClosed(attributes) {
-		return "", false
-	}
-	return githubPersonalAccessTokenAnchor(attributes), true
-}
-
-func githubPersonalAccessTokenClosed(attributes map[string]string) bool {
-	action := strings.TrimSpace(attributes["action"])
-	switch action {
-	case "personal_access_token.access_revoked", "personal_access_token.access_expired", "personal_access_token.expired":
-		return true
-	case "personal_access_token.access_granted":
-		return githubPersonalAccessTokenLifecycleClosed(attributes)
-	default:
-		if !strings.HasPrefix(action, "personal_access_token.") {
-			return false
-		}
-		return githubPersonalAccessTokenLifecycleClosed(attributes)
-	}
-}
-
-func githubPersonalAccessTokenLifecycleClosed(attributes map[string]string) bool {
-	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(
-		attributes["operation_type"],
-		attributes["token_state"],
-		attributes["token_status"],
-		attributes["credential_status"],
-		attributes["lifecycle_status"],
-		attributes["state"],
-		attributes["status"],
-		attributes["reason"],
-	)))
-	switch state {
-	case "remove", "removed", "revoke", "revoked", "access_revoked", "expire", "expired", "expiration", "token_expired":
-		return true
-	}
-	return containsAny(strings.ToLower(firstNonEmpty(attributes["change_type"], attributes["changes"])), "revoke", "remove", "expire", "expired")
-}
-
-func githubOrgPostureAnchor(attributes map[string]string) string {
-	org := strings.TrimSpace(firstNonEmpty(attributes["org"], attributes["organization"]))
-	if org == "" {
-		resourceID := strings.TrimSpace(attributes["resource_id"])
-		if resourceID != "" && !strings.Contains(resourceID, "/") {
-			org = resourceID
-		}
-	}
-	return githubCounterEventAnchor(map[string]string{"org": org}, "org")
 }
 
 func githubCodeSecurityControlsAnchor(attributes map[string]string) string {
@@ -1379,143 +1141,6 @@ func githubRestoredCodeSecurityControls(attributes map[string]string) []string {
 	return deduplicateStrings(restored)
 }
 
-func githubOrgAuthControlCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	if !githubOrgAuthControlsRestored(attributes) {
-		return "", false
-	}
-	return githubOrgPostureAnchor(attributes), true
-}
-
-func githubOrgAuthControlsRestored(attributes map[string]string) bool {
-	if githubOrgAuthControlWeakening(attributes) {
-		return false
-	}
-	switch strings.TrimSpace(attributes["action"]) {
-	case "oauth_app_policy.enabled",
-		"org.enable_oauth_app_restrictions",
-		"org.enable_saml_sso",
-		"org.enable_two_factor_requirement",
-		"org.require_two_factor_requirement":
-		return true
-	}
-	return findingAttributeBool(
-		attributes,
-		"auth_control_strengthened",
-		"oauth_app_restrictions_enabled",
-		"oauth_app_restrictions_enforced",
-		"saml_enabled",
-		"saml_enforced",
-		"saml_required",
-		"saml_sso_enabled",
-		"mfa_required",
-		"two_factor_enforced",
-		"two_factor_required",
-		"two_factor_requirement_enabled",
-	)
-}
-
-func githubOrgAuthControlCounterEventStates(event Event) []CounterEventStateUpdate {
-	if !githubAuditSignalKindMatcher(event) {
-		return nil
-	}
-	attributes := eventAttributes(event)
-	return githubCounterEventStateUpdates(
-		githubOrgPostureAnchor(attributes),
-		githubWeakenedAuthControls(attributes),
-		githubRestoredAuthControls(attributes),
-		event,
-	)
-}
-
-func githubRestoredAuthControls(attributes map[string]string) []string {
-	restored := []string{}
-	switch strings.TrimSpace(attributes["action"]) {
-	case "oauth_app_policy.enabled", "org.enable_oauth_app_restrictions":
-		restored = append(restored, "oauth_app_restrictions")
-	case "org.enable_saml_sso":
-		restored = append(restored, "saml")
-	case "org.enable_two_factor_requirement", "org.require_two_factor_requirement":
-		restored = append(restored, "two_factor_requirement")
-	}
-	if findingAttributeBool(attributes, "auth_control_strengthened") {
-		restored = append(restored, "auth_control", "oauth_app_restrictions", "saml", "two_factor_requirement")
-	}
-	if findingAttributeBool(attributes, "oauth_app_restrictions_enabled", "oauth_app_restrictions_enforced") {
-		restored = append(restored, "oauth_app_restrictions")
-	}
-	if findingAttributeBool(attributes, "saml_enabled", "saml_enforced", "saml_required", "saml_sso_enabled") {
-		restored = append(restored, "saml")
-	}
-	if findingAttributeBool(attributes, "mfa_required", "two_factor_enforced", "two_factor_required", "two_factor_requirement_enabled") {
-		restored = append(restored, "two_factor_requirement")
-	}
-	return deduplicateStrings(restored)
-}
-
-func githubOrgIPAllowListCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	if !githubIPAllowListRestored(attributes) {
-		return "", false
-	}
-	return githubOrgPostureAnchor(attributes), true
-}
-
-func githubIPAllowListRestored(attributes map[string]string) bool {
-	if githubIPAllowListWeakeningOrExpansion(attributes) {
-		return false
-	}
-	switch strings.TrimSpace(attributes["action"]) {
-	case "ip_allow_list.enable", "ip_allow_list.enabled", "org.enable_ip_allow_list":
-		return true
-	}
-	return findingAttributeBool(attributes, "ip_allow_list_enabled") ||
-		findingAttributeBool(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant")
-}
-
-func githubOrgIPAllowListCounterEventStates(event Event) []CounterEventStateUpdate {
-	if !githubAuditSignalKindMatcher(event) {
-		return nil
-	}
-	attributes := eventAttributes(event)
-	return githubCounterEventStateUpdates(
-		githubOrgPostureAnchor(attributes),
-		githubWeakenedIPAllowListControls(attributes),
-		githubRestoredIPAllowListControls(attributes),
-		event,
-	)
-}
-
-func githubWeakenedIPAllowListControls(attributes map[string]string) []string {
-	weakened := []string{}
-	if findingAttributeBool(attributes, "ip_allow_list_disabled") || githubAttributeExplicitlyFalse(attributes, "ip_allow_list_enabled") {
-		weakened = append(weakened, "enabled")
-	}
-	if githubAttributeExplicitlyFalse(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant") ||
-		githubNonEmptyListAttribute(attributes, "non_allowlisted_cidrs") ||
-		githubPositiveCountAttribute(attributes, "non_allowlisted_cidr_count") {
-		weakened = append(weakened, "cidrs")
-	}
-	return deduplicateStrings(weakened)
-}
-
-func githubRestoredIPAllowListControls(attributes map[string]string) []string {
-	restored := []string{}
-	switch strings.TrimSpace(attributes["action"]) {
-	case "ip_allow_list.enable", "ip_allow_list.enabled", "org.enable_ip_allow_list":
-		restored = append(restored, "enabled")
-	}
-	if findingAttributeBool(attributes, "ip_allow_list_enabled") {
-		restored = append(restored, "enabled")
-	}
-	if findingAttributeBool(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant") ||
-		githubZeroCountAttribute(attributes, "non_allowlisted_cidr_count") ||
-		githubEmptyListAttribute(attributes, "non_allowlisted_cidrs") {
-		restored = append(restored, "cidrs")
-	}
-	return deduplicateStrings(restored)
-}
-
 func githubCounterEventStateUpdates(anchor string, openKeys []string, closeKeys []string, event Event) []CounterEventStateUpdate {
 	anchor = strings.TrimSpace(anchor)
 	if anchor == "" {
@@ -1563,105 +1188,6 @@ func githubCounterEventStateUpdates(anchor string, openKeys []string, closeKeys 
 		})
 	}
 	return states
-}
-
-func githubZeroCountAttribute(attributes map[string]string, keys ...string) bool {
-	for _, key := range keys {
-		if strings.TrimSpace(attributes[key]) == "0" {
-			return true
-		}
-	}
-	return false
-}
-
-func githubEmptyListAttribute(attributes map[string]string, keys ...string) bool {
-	for _, key := range keys {
-		value, ok := attributes[key]
-		if !ok {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(value)) {
-		case "", "[]", "{}", "none", "null":
-			return true
-		}
-	}
-	return false
-}
-
-func githubRepositoryRulesetAnchor(attributes map[string]string) string {
-	return githubCounterEventAnchor(attributes, "repo", "ruleset_id")
-}
-
-func githubRepositoryRulesetCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	switch strings.TrimSpace(attributes["action"]) {
-	case "repository_ruleset.destroy":
-		return githubRepositoryRulesetAnchor(attributes), true
-	case "repository_ruleset.update":
-		if githubRepositoryRulesetRestored(attributes) {
-			return githubRepositoryRulesetAnchor(attributes), true
-		}
-		return "", false
-	default:
-		return "", false
-	}
-}
-
-func githubRepositoryRulesetRestored(attributes map[string]string) bool {
-	if githubRepositoryRulesetWeakening(attributes) {
-		return false
-	}
-	enforcement := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["new_enforcement"], attributes["enforcement"], attributes["ruleset_enforcement"])))
-	switch enforcement {
-	case "active", "enabled", "enforced":
-		return true
-	}
-	return containsAny(strings.ToLower(firstNonEmpty(attributes["operation_type"], attributes["change_type"], attributes["changes"])), "enable", "restore", "enforce")
-}
-
-func githubWebhookAnchor(attributes map[string]string) string {
-	return githubCounterEventAnchor(attributes, "repo", "hook_id")
-}
-
-func githubWebhookCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	switch strings.TrimSpace(attributes["action"]) {
-	case "hook.destroy":
-		return githubWebhookAnchor(attributes), true
-	case "hook.config_changed":
-		if githubWebhookDestinationAllowlisted(attributes) {
-			return githubWebhookAnchor(attributes), true
-		}
-		return "", false
-	default:
-		return "", false
-	}
-}
-
-func githubWebhookDestinationPolicyViolating(attributes map[string]string) bool {
-	return !githubWebhookDestinationAllowlisted(attributes)
-}
-
-func githubWebhookDestinationAllowlisted(attributes map[string]string) bool {
-	return findingAttributeBool(
-		attributes,
-		"allowlisted_destination",
-		"destination_allowlisted",
-		"hook_destination_allowlisted",
-		"hook_url_allowlisted",
-		"url_allowlisted",
-		"webhook_destination_allowlisted",
-		"webhook_url_allowlisted",
-	) || githubAttributeExplicitlyFalse(
-		attributes,
-		"destination_non_allowlisted",
-		"hook_destination_non_allowlisted",
-		"hook_url_non_allowlisted",
-		"non_allowlisted_destination",
-		"url_non_allowlisted",
-		"webhook_destination_non_allowlisted",
-		"webhook_url_non_allowlisted",
-	)
 }
 
 var githubPostureAttributeKeys = []string{
@@ -1719,10 +1245,6 @@ func githubDisabledCodeSecurityControls(attributes map[string]string) []string {
 	return disabled
 }
 
-func githubOrgAuthControlWeakening(attributes map[string]string) bool {
-	return len(githubWeakenedAuthControls(attributes)) > 0
-}
-
 func githubWeakenedAuthControls(attributes map[string]string) []string {
 	weakened := []string{}
 	if githubAttributeExplicitlyFalse(attributes, "oauth_app_restrictions_enabled", "oauth_app_restrictions_enforced") {
@@ -1739,63 +1261,6 @@ func githubWeakenedAuthControls(attributes map[string]string) []string {
 		weakened = append(weakened, "auth_control")
 	}
 	return weakened
-}
-
-func githubIPAllowListWeakeningOrExpansion(attributes map[string]string) bool {
-	if findingAttributeBool(attributes, "ip_allow_list_disabled") || githubAttributeExplicitlyFalse(attributes, "ip_allow_list_enabled") {
-		return true
-	}
-	if githubAttributeExplicitlyFalse(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant") {
-		return true
-	}
-	return githubNonEmptyListAttribute(attributes, "non_allowlisted_cidrs") || githubPositiveCountAttribute(attributes, "non_allowlisted_cidr_count")
-}
-
-func githubPrivateRepositoryForkingEnabled(attributes map[string]string) bool {
-	_, scopeID := githubPrivateRepositoryForkingScope(attributes)
-	if scopeID == "" {
-		return false
-	}
-	return findingAttributeBool(attributes, "private_repository_forking_enabled", "private_forking_enabled")
-}
-
-func githubPrivateRepositoryForkingAnchor(attributes map[string]string) string {
-	scopeID := strings.TrimSpace(attributes["posture_scope_id"])
-	if scopeID == "" {
-		_, scopeID = githubPrivateRepositoryForkingScope(attributes)
-	}
-	return githubCounterEventAnchor(map[string]string{"scope": scopeID}, "scope")
-}
-
-func githubPrivateRepositoryForkingCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	if !githubPrivateRepositoryForkingDisabled(attributes) {
-		return "", false
-	}
-	return githubPrivateRepositoryForkingAnchor(attributes), true
-}
-
-func githubPrivateRepositoryForkingDisabled(attributes map[string]string) bool {
-	if githubPrivateRepositoryForkingEnabled(attributes) {
-		return false
-	}
-	switch strings.TrimSpace(attributes["action"]) {
-	case "org.private_repository_forking_disable",
-		"private_repository_forking.disable",
-		"private_repository_forking.disabled",
-		"repo.private_repository_forking_disable",
-		"repository.private_repository_forking_disabled":
-		return true
-	}
-	return githubAttributeExplicitlyFalse(attributes, "private_repository_forking_enabled", "private_forking_enabled")
-}
-
-func githubPrivateRepositoryForkingFingerprintInputs(event *cerebrov1.EventEnvelope, _ RuleDefinition) []string {
-	_, scopeID := githubPrivateRepositoryForkingScope(eventAttributes(event))
-	if scopeID == "" {
-		return nil
-	}
-	return []string{scopeID}
 }
 
 func githubPrivateRepositoryForkingScope(attributes map[string]string) (string, string) {
@@ -1860,47 +1325,6 @@ func githubAttributeExplicitlyFalse(attributes map[string]string, keys ...string
 		}
 	}
 	return false
-}
-
-func githubNonEmptyListAttribute(attributes map[string]string, keys ...string) bool {
-	for _, key := range keys {
-		value := strings.ToLower(strings.TrimSpace(attributes[key]))
-		switch value {
-		case "", "[]", "{}", "none", "null":
-			continue
-		default:
-			return true
-		}
-	}
-	return false
-}
-
-func githubPositiveCountAttribute(attributes map[string]string, keys ...string) bool {
-	for _, key := range keys {
-		value := strings.TrimSpace(attributes[key])
-		if value != "" && value != "0" {
-			return true
-		}
-	}
-	return false
-}
-
-func githubRepositoryRulesetWeakening(attributes map[string]string) bool {
-	action := strings.TrimSpace(attributes["action"])
-	if action == "repository_ruleset.destroy" {
-		return true
-	}
-	if action != "repository_ruleset.update" {
-		return false
-	}
-	if containsAny(strings.ToLower(firstNonEmpty(attributes["operation_type"], attributes["change_type"], attributes["changes"])), "disable", "remove", "delete", "downgrade", "bypass") {
-		return true
-	}
-	enforcement := strings.ToLower(firstNonEmpty(attributes["new_enforcement"], attributes["enforcement"], attributes["ruleset_enforcement"]))
-	if enforcement == "disabled" || enforcement == "evaluate" {
-		return true
-	}
-	return findingAttributeBool(attributes, "bypass_actor_added", "required_review_removed", "required_status_check_removed", "force_pushes_allowed", "deletions_allowed")
 }
 
 // githubRetirementTag marks the rule definition so operators reading the

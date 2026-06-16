@@ -2,17 +2,8 @@ cloud-effective-admin-permission
 cloud-privilege-path-granted
 cloud-public-resource-exposure
 data-sensitive-asset-risk
-github-app-integration-installed
 github-code-security-controls-disabled
-github-org-auth-control-modified
-github-org-ip-allow-list-modified
-github-organization-owner-added
-github-personal-access-token-created
-github-private-repository-forking-enabled
-github-repository-collaborator-added
-github-repository-ruleset-modified
 github-secret-scanning-alert-created
-github-webhook-modified
 identity-admin-privilege-granted
 identity-auth-control-lifecycle-tampering
 identity-external-or-personal-group-member

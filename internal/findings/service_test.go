@@ -3847,9 +3847,12 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 
 func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 	activeRuleIDs := []string{
+		githubSecretScanningAlertCreatedRuleID,
+		githubCodeSecurityControlsDisabledRuleID,
+	}
+	retiredRuleIDs := []string{
 		githubRepositoryCollaboratorAddedRuleID,
 		githubOrganizationOwnerAddedRuleID,
-		githubCodeSecurityControlsDisabledRuleID,
 		githubOrgAuthControlModifiedRuleID,
 		githubOrgIPAllowListModifiedRuleID,
 		githubAppIntegrationInstalledRuleID,
@@ -3859,6 +3862,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubPrivateRepositoryForkingEnabledRuleID,
 	}
 	ruleIDs := append([]string(nil), activeRuleIDs...)
+	ruleIDs = append(ruleIDs, retiredRuleIDs...)
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
@@ -3876,7 +3880,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 				newGitHubAuditSignalEvent("github-audit-push-protection-disabled", map[string]string{"action": "org.secret_scanning_push_protection_disable", "resource_id": "writer", "resource_type": "org"}),
 				newGitHubAuditSignalEvent("github-audit-branch-protection-disabled", map[string]string{"action": "protected_branch.destroy", "repo": "writer/cerebro", "resource_type": "protected_branch"}),
 				newGitHubAuditSignalEvent("github-audit-repo-made-public", map[string]string{"action": "repo.access", "repo": "writer/cerebro", "previous_visibility": "private", "visibility": "public", "resource_type": "repo"}),
-				newGitHubAuditSignalEvent("github-audit-secret-alert-created", map[string]string{"action": "secret_scanning_alert.create", "repo": "writer/cerebro", "number": "12", "resource_type": "secret_scanning_alert"}),
+				newGitHubAuditSignalEvent("github-audit-secret-alert-created", map[string]string{"action": "secret_scanning_alert.create", "repo": "writer/cerebro", "number": "12", "resource_type": "secret_scanning_alert", "secret_scanning_alert.state": "open"}),
 				newGitHubAuditSignalEvent("github-audit-runner-registered", map[string]string{"action": "repo.register_self_hosted_runner", "repo": "writer/cerebro", "resource_type": "repo", "runner_ephemeral": "false", "runner_id": "777", "runner_registered": "true"}),
 				newGitHubAuditSignalEvent("github-audit-collaborator-added", map[string]string{"action": "repo.add_member", "repo": "writer/cerebro", "resource_type": "repo", "user": "octocat"}),
 				newGitHubAuditSignalEvent("github-audit-owner-added", map[string]string{"action": "org.add_member", "resource_id": "writer", "resource_type": "org", "permission": "admin", "user": "octocat"}),
@@ -3926,8 +3930,16 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 			t.Fatalf("finding %q ResourceURNs missing primary resource %q: %#v", ruleID, primaryResourceURN, findingsByRule[ruleID].ResourceURNs)
 		}
 	}
-	if got := findingsByRule[githubOrganizationOwnerAddedRuleID].Severity; got != "HIGH" {
-		t.Fatalf("organization owner severity = %q, want HIGH", got)
+	for _, ruleID := range retiredRuleIDs {
+		if got := findingCountByRule[ruleID]; got != 0 {
+			t.Fatalf("EvaluateSourceRuntimeRules() emitted %d findings for retired rule %q, want 0", got, ruleID)
+		}
+	}
+	if got := findingsByRule[githubCodeSecurityControlsDisabledRuleID].Severity; got != "CRITICAL" {
+		t.Fatalf("code security controls severity = %q, want CRITICAL", got)
+	}
+	if got := findingsByRule[githubSecretScanningAlertCreatedRuleID].Severity; got != "MEDIUM" {
+		t.Fatalf("secret scanning alert severity = %q, want MEDIUM", got)
 	}
 }
 
