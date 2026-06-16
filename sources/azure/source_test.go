@@ -768,6 +768,11 @@ func genericAzureARMTestProperties(family string) map[string]any {
 		properties["phone"] = "+14155550100"
 		properties["alertNotifications"] = "On"
 		properties["alertsToAdmins"] = "On"
+	case "server_vulnerability":
+		properties["displayName"] = "Machines should have vulnerability findings resolved"
+		properties["status"] = map[string]any{"code": "Unhealthy", "cause": "Exempt", "description": "Open server vulnerabilities exist"}
+		properties["resourceDetails"] = map[string]any{"source": "Azure", "id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1"}
+		properties["additionalData"] = map[string]any{"assessedResourceType": "Microsoft.Compute/virtualMachines", "cvss": "7.5"}
 	case "sql_managed_instance":
 		properties["administratorLogin"] = "sqladmin"
 		properties["fullyQualifiedDomainName"] = "mi-prod.database.windows.net"
@@ -834,6 +839,8 @@ func genericAzureARMExpectedAttributes(family string) map[string]string {
 		return map[string]string{"next_hop_types": "VirtualAppliance", "next_hop_ip_addresses": "10.0.0.4"}
 	case "security_contact":
 		return map[string]string{"emails": "secops@writer.com", "alert_notifications": "On", "alerts_to_admins": "On"}
+	case "server_vulnerability":
+		return map[string]string{"display_name": "Machines should have vulnerability findings resolved", "status_code": "Unhealthy", "assessed_resource_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1", "additional_data_keys": "assessedResourceType,cvss"}
 	case "sql_managed_instance":
 		return map[string]string{"subnet_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/sqlmi", "public_data_endpoint_enabled": "false"}
 	case "sql_server_on_virtual_machine":

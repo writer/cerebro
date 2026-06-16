@@ -42,6 +42,7 @@ emitted_kinds:
   - azure.role
   - azure.route_table
   - azure.security_contact
+  - azure.server_vulnerability
   - azure.service_principal
   - azure.sql_database
   - azure.sql_managed_instance
@@ -94,6 +95,7 @@ runtime_families:
   - role
   - route_table
   - security_contact
+  - server_vulnerability
   - service_principal
   - sql_database
   - sql_managed_instance
@@ -409,10 +411,10 @@ coverage_contract:
     - id: server_vulnerability
       type: entity_family
       title: Azure server vulnerabilities
-      families: [asset_metadata]
+      families: [server_vulnerability]
       support: partial
       high_value: true
-      known_unsupported_fields: [Defender vulnerability finding payloads]
+      known_unsupported_fields: [Defender subassessment detail]
     - id: service_principal
       type: entity_family
       title: Azure service principals

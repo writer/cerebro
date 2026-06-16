@@ -282,6 +282,13 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: server-vulnerability
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: server_vulnerability
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
   - localId: service-principal
     config:
       family: service_principal

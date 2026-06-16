@@ -2,6 +2,7 @@ package azurearm
 
 import (
 	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -180,6 +181,14 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "phone", stringAt(properties, "phone"))
 		set(attributes, "alert_notifications", stringAt(properties, "alertNotifications"))
 		set(attributes, "alerts_to_admins", stringAt(properties, "alertsToAdmins"))
+	case "server_vulnerability":
+		set(attributes, "display_name", stringAt(properties, "displayName"))
+		set(attributes, "status_code", stringAt(properties, "status", "code"))
+		set(attributes, "status_cause", stringAt(properties, "status", "cause"))
+		set(attributes, "status_description", stringAt(properties, "status", "description"))
+		set(attributes, "resource_source", stringAt(properties, "resourceDetails", "source"))
+		set(attributes, "assessed_resource_id", stringAt(properties, "resourceDetails", "id"))
+		set(attributes, "additional_data_keys", strings.Join(mapKeys(mapFromAny(nestedAny(properties, "additionalData"))), ","))
 	case "sql_managed_instance":
 		set(attributes, "administrator_login", stringAt(properties, "administratorLogin"))
 		set(attributes, "public_host", stringAt(properties, "fullyQualifiedDomainName"))
@@ -346,6 +355,15 @@ func mapFromAny(value any) Properties {
 		return typed
 	}
 	return nil
+}
+
+func mapKeys(values Properties) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func stringify(value any) string {
