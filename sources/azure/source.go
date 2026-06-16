@@ -1106,7 +1106,7 @@ func listSubnets(ctx context.Context, source *Source, settings settings, pageTok
 	records, err := decodeAzureRecords(rawRecords, "azure subnet", func(record *armTypedResourceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
-	return records, next, nil
+	return records, next, err
 }
 
 func listNetworkSecurityGroups(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {

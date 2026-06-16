@@ -394,6 +394,34 @@ func TestListKeyVaultChildrenDrainsVaultAndChildPages(t *testing.T) {
 	}
 }
 
+func TestListSubnetsReturnsDecodeErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/subscriptions/sub-1/providers/Microsoft.Network/virtualNetworks":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{
+				"id":       "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet",
+				"name":     "prod-vnet",
+				"type":     "Microsoft.Network/virtualNetworks",
+				"location": "eastus",
+				"properties": map[string]any{"subnets": []map[string]any{{
+					"id":   "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet/subnets/web",
+					"name": "web",
+					"tags": "malformed-tags",
+				}}},
+			}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, settings := newAzurePaginationTestSource(t, server, familySubnet)
+
+	_, _, err := listSubnets(context.Background(), source, settings, "", 10)
+	if err == nil {
+		t.Fatal("listSubnets error = nil, want decode error")
+	}
+}
+
 func TestAzureAppRoleAssignmentDerivesUserPrincipalEmail(t *testing.T) {
 	event, err := appRoleAssignmentEvent(settings{tenantID: "tenant-1"}, appRoleAssignmentRecord{
 		ID:                   "app-role-assignment-1",
