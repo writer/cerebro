@@ -1477,11 +1477,16 @@ func listAzureARMChildrenForParent(ctx context.Context, source *Source, settings
 	query := url.Values{"api-version": {definition.ChildAPIVersion}}
 	path := strings.TrimRight(parent.ID, "/") + "/" + strings.Trim(definition.ChildPath, "/")
 	if definition.Singleton {
+		var raw json.RawMessage
+		if err := getARMJSON(ctx, source, settings, path, query, &raw); err != nil {
+			return nil, "", err
+		}
 		var child armTypedResourceRecord
-		if err := getARMJSON(ctx, source, settings, path, query, &child); err != nil {
+		if err := json.Unmarshal(raw, &child); err != nil {
 			return nil, "", err
 		}
 		child = inheritAzureResourceContext(child, parent)
+		child.raw = append(json.RawMessage(nil), raw...)
 		return []azureARMChildRecord{{Resource: child, Parent: parent}}, "", nil
 	}
 	var response armPage

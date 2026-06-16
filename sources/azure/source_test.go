@@ -543,6 +543,38 @@ func TestReadAzureARMChildFamilyCarriesParentContext(t *testing.T) {
 	}
 }
 
+func TestAzureARMChildSingletonPreservesRawPayload(t *testing.T) {
+	definition := azureChildDefinitionForTest(t, "sql_managed_instance_tde")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/subscriptions/sub-1/providers/Microsoft.Sql/managedInstances":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/managedInstances/sqlmi-prod", "name": "sqlmi-prod", "type": "Microsoft.Sql/managedInstances", "location": "eastus", "properties": map[string]any{"publicDataEndpointEnabled": false}}}})
+		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/managedInstances/sqlmi-prod/encryptionProtector/current":
+			writeJSON(t, w, map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/managedInstances/sqlmi-prod/encryptionProtector/current", "name": "current", "type": "Microsoft.Sql/managedInstances/encryptionProtector", "properties": map[string]any{"serverKeyName": "customer-managed-key", "serverKeyType": "AzureKeyVault"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, settings := newAzurePaginationTestSource(t, server, definition.Name)
+
+	records, _, err := listAzureARMChildResources(context.Background(), source, settings, "", 1, definition)
+	if err != nil {
+		t.Fatalf("listAzureARMChildResources: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	event, err := azureARMChildResourceEvent(settings, records[0], definition)
+	if err != nil {
+		t.Fatalf("azureARMChildResourceEvent: %v", err)
+	}
+	payload := string(event.Payload)
+	if !strings.Contains(payload, `"raw"`) || !strings.Contains(payload, `"serverKeyName":"customer-managed-key"`) {
+		t.Fatalf("payload raw = %s", payload)
+	}
+}
+
 func TestListSubnetsReturnsDecodeErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
