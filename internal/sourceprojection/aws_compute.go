@@ -8,7 +8,23 @@ import (
 )
 
 func awsEC2InstanceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return awsComputeProjections(event, "aws_ec2_instance", "aws.ec2.instance")
+	entities, links, err := awsComputeProjections(event, "aws_ec2_instance", "aws.ec2.instance")
+	if err != nil {
+		return nil, nil, err
+	}
+	entityMap := projectedEntitiesMap(entities)
+	linkMap := projectedLinksMap(links)
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	instanceURN := ""
+	if instanceID := firstNonEmpty(attributes["resource_id"], attributes["instance_id"]); instanceID != "" {
+		instanceURN = projectionURN(tenantID, "aws_ec2_instance", instanceID)
+	}
+	addAWSEKSNodeContextLinks(entityMap, linkMap, tenantID, event.GetSourceId(), event, instanceURN, attributes)
+	return identityProjectionResult(entityMap, linkMap)
 }
 
 func awsLambdaFunctionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -155,6 +171,16 @@ func awsEKSClusterProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	attributes := event.GetAttributes()
 	clusterURN := projectionURN(tenantID, "aws_eks_cluster", firstNonEmpty(attributes["cluster_arn"], attributes["resource_id"], attributes["cluster_name"]))
 	addAWSEKSCluster(entityMap, linkMap, tenantID, event.GetSourceId(), event, clusterURN, attributes)
+	nameURN := awsEKSClusterNameURN(tenantID, attributes)
+	if nameURN != "" && clusterURN != "" && nameURN != clusterURN {
+		addAWSEKSCluster(entityMap, linkMap, tenantID, event.GetSourceId(), event, nameURN, map[string]string{
+			"cluster_arn":  attributes["cluster_arn"],
+			"cluster_name": attributes["cluster_name"],
+			"domain":       attributes["domain"],
+			"region":       attributes["region"],
+		})
+		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), nameURN, clusterURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "eks_cluster_name"}))
+	}
 	return identityProjectionResult(entityMap, linkMap)
 }
 
@@ -172,9 +198,18 @@ func awsEKSNodegroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	attributes := event.GetAttributes()
 	nodegroupURN := projectionURN(tenantID, "aws_eks_nodegroup", firstNonEmpty(attributes["nodegroup_arn"], attributes["resource_id"], attributes["nodegroup_name"]))
 	clusterURN := projectionURN(tenantID, "aws_eks_cluster", firstNonEmpty(attributes["cluster_arn"], attributes["cluster_name"]))
+	addAWSEKSNodegroup(entityMap, tenantID, event.GetSourceId(), nodegroupURN, attributes)
+	nameURN := awsEKSNodegroupNameURN(tenantID, attributes)
+	if nameURN != "" && nodegroupURN != "" && nameURN != nodegroupURN {
+		addAWSEKSNodegroup(entityMap, tenantID, event.GetSourceId(), nameURN, attributes)
+		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), nameURN, nodegroupURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "eks_nodegroup_name"}))
+	}
 	if clusterURN != "" {
 		addAWSEKSCluster(entityMap, linkMap, tenantID, event.GetSourceId(), event, clusterURN, attributes)
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), nodegroupURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "eks_nodegroup_cluster"}))
+		if nameURN != "" && nameURN != nodegroupURN {
+			addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), nameURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "eks_nodegroup_cluster_name"}))
+		}
 	}
 	return identityProjectionResult(entityMap, linkMap)
 }
@@ -367,6 +402,152 @@ func addAWSEKSCluster(entities map[string]*ports.ProjectedEntity, links map[stri
 	addCloudAccountLink(entities, links, tenantID, sourceID, event, clusterURN, attributes["domain"], "aws")
 	addAWSNetworkContextLinks(entities, links, tenantID, sourceID, event, clusterURN, attributes)
 	addEKSClusterPublicReachability(entities, links, tenantID, sourceID, event, clusterURN, attributes)
+}
+
+func addAWSEKSNodegroup(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, nodegroupURN string, attributes map[string]string) {
+	if nodegroupURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        nodegroupURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "aws.eks.nodegroup",
+		Label:      firstNonEmpty(attributes["nodegroup_name"], attributes["eks_nodegroup_name"], attributes["resource_name"], attributes["nodegroup_arn"]),
+		Attributes: map[string]string{
+			"ami_type":                              strings.TrimSpace(attributes["ami_type"]),
+			"autoscaling_groups":                    strings.TrimSpace(attributes["autoscaling_groups"]),
+			"capacity_type":                         strings.TrimSpace(attributes["capacity_type"]),
+			"cluster_arn":                           strings.TrimSpace(attributes["cluster_arn"]),
+			"cluster_name":                          strings.TrimSpace(firstNonEmpty(attributes["cluster_name"], attributes["eks_cluster_name"])),
+			"desired_size":                          strings.TrimSpace(attributes["desired_size"]),
+			"disk_size_gib":                         strings.TrimSpace(attributes["disk_size_gib"]),
+			"domain":                                strings.TrimSpace(attributes["domain"]),
+			"health_issue_codes":                    strings.TrimSpace(attributes["health_issue_codes"]),
+			"instance_types":                        strings.TrimSpace(attributes["instance_types"]),
+			"label_keys":                            strings.TrimSpace(attributes["label_keys"]),
+			"labels":                                strings.TrimSpace(attributes["labels"]),
+			"launch_template_id":                    strings.TrimSpace(attributes["launch_template_id"]),
+			"launch_template_name":                  strings.TrimSpace(attributes["launch_template_name"]),
+			"launch_template_version":               strings.TrimSpace(attributes["launch_template_version"]),
+			"max_size":                              strings.TrimSpace(attributes["max_size"]),
+			"min_size":                              strings.TrimSpace(attributes["min_size"]),
+			"node_repair_enabled":                   strings.TrimSpace(attributes["node_repair_enabled"]),
+			"node_role_arn":                         strings.TrimSpace(firstNonEmpty(attributes["node_role_arn"], attributes["role_arn"])),
+			"nodegroup_arn":                         strings.TrimSpace(attributes["nodegroup_arn"]),
+			"nodegroup_name":                        strings.TrimSpace(firstNonEmpty(attributes["nodegroup_name"], attributes["eks_nodegroup_name"])),
+			"region":                                strings.TrimSpace(attributes["region"]),
+			"release_version":                       strings.TrimSpace(attributes["release_version"]),
+			"remote_access_ec2_ssh_key":             strings.TrimSpace(attributes["remote_access_ec2_ssh_key"]),
+			"resource_id":                           strings.TrimSpace(firstNonEmpty(attributes["nodegroup_arn"], attributes["resource_id"], attributes["nodegroup_name"], attributes["eks_nodegroup_name"])),
+			"resource_name":                         strings.TrimSpace(firstNonEmpty(attributes["resource_name"], attributes["nodegroup_name"], attributes["eks_nodegroup_name"])),
+			"resource_provider":                     strings.TrimSpace(attributes["resource_provider"]),
+			"resource_type":                         strings.TrimSpace(firstNonEmpty(attributes["resource_type"], "eks_nodegroup")),
+			"state":                                 strings.TrimSpace(firstNonEmpty(attributes["state"], attributes["status"])),
+			"subnet_ids":                            strings.TrimSpace(attributes["subnet_ids"]),
+			"taint_keys":                            strings.TrimSpace(attributes["taint_keys"]),
+			"taints":                                strings.TrimSpace(attributes["taints"]),
+			"update_strategy":                       strings.TrimSpace(attributes["update_strategy"]),
+			"version":                               strings.TrimSpace(attributes["version"]),
+			"warm_pool_enabled":                     strings.TrimSpace(attributes["warm_pool_enabled"]),
+			"warm_pool_max_group_prepared_capacity": strings.TrimSpace(attributes["warm_pool_max_group_prepared_capacity"]),
+			"warm_pool_min_size":                    strings.TrimSpace(attributes["warm_pool_min_size"]),
+			"warm_pool_state":                       strings.TrimSpace(attributes["warm_pool_state"]),
+		},
+	})
+}
+
+func addAWSEKSNodeContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, instanceURN string, attributes map[string]string) {
+	if instanceURN == "" || !strings.EqualFold(attributes["eks_node"], "true") {
+		return
+	}
+	clusterName := firstNonEmpty(attributes["eks_cluster_name"], attributes["kubernetes_cluster"], attributes["cluster_name"])
+	clusterURN := ""
+	if clusterID := firstNonEmpty(attributes["eks_cluster_arn"], attributes["cluster_arn"], clusterName); clusterID != "" {
+		clusterURN = projectionURN(tenantID, "aws_eks_cluster", clusterID)
+	}
+	if clusterURN != "" {
+		addAWSEKSClusterReference(entities, tenantID, sourceID, clusterURN, map[string]string{
+			"cluster_arn":  firstNonEmpty(attributes["eks_cluster_arn"], attributes["cluster_arn"]),
+			"cluster_name": clusterName,
+			"domain":       attributes["domain"],
+			"region":       attributes["region"],
+		})
+		addLink(links, projectedLink(tenantID, sourceID, instanceURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "ec2_instance_eks_cluster"}))
+	}
+	nodegroupURN := ""
+	if nodegroupID := firstNonEmpty(attributes["eks_nodegroup_arn"], attributes["nodegroup_arn"]); nodegroupID != "" {
+		nodegroupURN = projectionURN(tenantID, "aws_eks_nodegroup", nodegroupID)
+	}
+	nodegroupURN = firstNonEmpty(nodegroupURN, awsEKSNodegroupNameURN(tenantID, attributes))
+	if nodegroupURN == "" {
+		return
+	}
+	addAWSEKSNodegroupReference(entities, tenantID, sourceID, nodegroupURN, attributes)
+	addLink(links, projectedLink(tenantID, sourceID, instanceURN, nodegroupURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "ec2_instance_eks_nodegroup"}))
+	if clusterURN != "" {
+		addLink(links, projectedLink(tenantID, sourceID, nodegroupURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "eks_nodegroup_cluster"}))
+	}
+}
+
+func addAWSEKSClusterReference(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, clusterURN string, attributes map[string]string) {
+	if clusterURN == "" || entities[clusterURN] != nil {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        clusterURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "aws.eks.cluster",
+		Label:      firstNonEmpty(attributes["cluster_name"], attributes["cluster_arn"]),
+		Attributes: map[string]string{
+			"cluster_arn":  strings.TrimSpace(attributes["cluster_arn"]),
+			"cluster_name": strings.TrimSpace(attributes["cluster_name"]),
+			"domain":       strings.TrimSpace(attributes["domain"]),
+			"region":       strings.TrimSpace(attributes["region"]),
+		},
+	})
+}
+
+func addAWSEKSNodegroupReference(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, nodegroupURN string, attributes map[string]string) {
+	if nodegroupURN == "" || entities[nodegroupURN] != nil {
+		return
+	}
+	nodegroupName := firstNonEmpty(attributes["eks_nodegroup_name"], attributes["nodegroup_name"])
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        nodegroupURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "aws.eks.nodegroup",
+		Label:      nodegroupName,
+		Attributes: map[string]string{
+			"cluster_name":   strings.TrimSpace(firstNonEmpty(attributes["eks_cluster_name"], attributes["cluster_name"], attributes["kubernetes_cluster"])),
+			"domain":         strings.TrimSpace(attributes["domain"]),
+			"nodegroup_name": strings.TrimSpace(nodegroupName),
+			"region":         strings.TrimSpace(attributes["region"]),
+			"resource_type":  "eks_nodegroup",
+		},
+	})
+}
+
+func awsEKSNodegroupNameURN(tenantID string, attributes map[string]string) string {
+	nodegroupName := firstNonEmpty(attributes["eks_nodegroup_name"], attributes["nodegroup_name"])
+	if nodegroupName == "" {
+		return ""
+	}
+	clusterName := firstNonEmpty(attributes["eks_cluster_name"], attributes["kubernetes_cluster"], attributes["cluster_name"])
+	if clusterName != "" {
+		return projectionURN(tenantID, "aws_eks_nodegroup", clusterName, nodegroupName)
+	}
+	return projectionURN(tenantID, "aws_eks_nodegroup", nodegroupName)
+}
+
+func awsEKSClusterNameURN(tenantID string, attributes map[string]string) string {
+	clusterName := firstNonEmpty(attributes["eks_cluster_name"], attributes["kubernetes_cluster"], attributes["cluster_name"])
+	if clusterName == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "aws_eks_cluster", clusterName)
 }
 
 func addEKSClusterPublicReachability(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, clusterURN string, attributes map[string]string) {

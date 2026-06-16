@@ -3460,6 +3460,10 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			Kind:     "aws.ec2_instance",
 			Attributes: map[string]string{
 				"domain":                "123456789012",
+				"eks_cluster_name":      "prod-eks",
+				"eks_node":              "true",
+				"eks_nodegroup_name":    "managed-linux",
+				"eks_nodegroup_type":    "managed",
 				"instance_id":           "i-123",
 				"network_interface_ids": "eni-1",
 				"region":                "us-east-1",
@@ -3580,18 +3584,21 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.eks_nodegroup",
 			Attributes: map[string]string{
-				"cluster_arn":       "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
-				"cluster_name":      "prod-eks",
-				"domain":            "123456789012",
-				"nodegroup_arn":     "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
-				"nodegroup_name":    "managed-linux",
-				"resource_id":       "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
-				"resource_name":     "managed-linux",
-				"resource_provider": "aws",
-				"resource_type":     "eks_nodegroup",
-				"role_arn":          "arn:aws:iam::123456789012:role/EKSNodeRole",
-				"role_name":         "EKSNodeRole",
-				"subnet_ids":        "subnet-eks",
+				"cluster_arn":        "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
+				"cluster_name":       "prod-eks",
+				"domain":             "123456789012",
+				"desired_size":       "3",
+				"health_issue_codes": "AsgInstanceLaunchFailures",
+				"label_keys":         "workload",
+				"nodegroup_arn":      "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
+				"nodegroup_name":     "managed-linux",
+				"resource_id":        "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
+				"resource_name":      "managed-linux",
+				"resource_provider":  "aws",
+				"resource_type":      "eks_nodegroup",
+				"role_arn":           "arn:aws:iam::123456789012:role/EKSNodeRole",
+				"role_name":          "EKSNodeRole",
+				"subnet_ids":         "subnet-eks",
 			},
 		},
 		{
@@ -3635,6 +3642,25 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 				"service_account": "api",
 			},
 		},
+		{
+			Id:       "aws-ec2-instance-i-456",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.ec2_instance",
+			Attributes: map[string]string{
+				"domain":             "123456789012",
+				"eks_cluster_name":   "prod-eks",
+				"eks_node":           "true",
+				"eks_nodegroup_name": "managed-linux",
+				"instance_id":        "i-456",
+				"region":             "us-east-1",
+				"resource_id":        "i-456",
+				"resource_name":      "later-node",
+				"resource_provider":  "aws",
+				"resource_type":      "ec2_instance",
+				"state":              "running",
+			},
+		},
 	}
 	for _, event := range events {
 		if _, err := service.Project(context.Background(), event); err != nil {
@@ -3648,7 +3674,9 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	ecsTaskURN := "urn:cerebro:writer:aws_ecs_task:arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234"
 	ecsTaskDefinitionURN := "urn:cerebro:writer:aws_ecs_task_definition:arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
 	eksClusterURN := "urn:cerebro:writer:aws_eks_cluster:arn:aws:eks:us-east-1:123456789012:cluster/prod-eks"
+	eksClusterNameURN := "urn:cerebro:writer:aws_eks_cluster:prod-eks"
 	eksNodegroupURN := "urn:cerebro:writer:aws_eks_nodegroup:arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid"
+	eksNodegroupNameURN := "urn:cerebro:writer:aws_eks_nodegroup:prod-eks:managed-linux"
 	eksFargateProfileURN := "urn:cerebro:writer:aws_eks_fargate_profile:arn:aws:eks:us-east-1:123456789012:fargateprofile/prod-eks/payments/uuid"
 	eksPodIdentityURN := "urn:cerebro:writer:aws_eks_pod_identity_association:arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"
 	kubernetesNamespaceURN := "urn:cerebro:writer:kubernetes_namespace:123456789012:prod-eks:payments"
@@ -3662,6 +3690,11 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	assertProjectedLink(t, state, ec2URN, relationBelongsTo, "urn:cerebro:writer:aws_subnet:subnet-1")
 	assertProjectedLink(t, state, ec2URN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationAttachedTo, ec2URN)
+	assertProjectedLink(t, state, ec2URN, relationBelongsTo, eksClusterNameURN)
+	assertProjectedLink(t, state, eksClusterNameURN, relationRepresents, eksClusterURN)
+	assertProjectedLink(t, state, ec2URN, relationBelongsTo, eksNodegroupNameURN)
+	assertProjectedLink(t, state, eksNodegroupNameURN, relationRepresents, eksNodegroupURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_ec2_instance:i-456", relationBelongsTo, eksNodegroupNameURN)
 	assertProjectedLink(t, state, lambdaURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/LambdaOrdersRole")
 	assertProjectedLink(t, state, lambdaURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-lambda")
 	assertProjectedLink(t, state, ecsServiceURN, relationBelongsTo, "urn:cerebro:writer:aws_ecs_cluster:arn:aws:ecs:us-east-1:123456789012:cluster/prod")
@@ -3675,6 +3708,18 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSExecutionRole")
 	assertProjectedLink(t, state, eksClusterURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSClusterRole")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, eksClusterURN)
+	if got := state.entities[eksNodegroupURN].Attributes["desired_size"]; got != "3" {
+		t.Fatalf("eks nodegroup desired_size = %q, want 3", got)
+	}
+	if got := state.entities[eksNodegroupURN].Attributes["health_issue_codes"]; got != "AsgInstanceLaunchFailures" {
+		t.Fatalf("eks nodegroup health_issue_codes = %q, want AsgInstanceLaunchFailures", got)
+	}
+	if got := state.entities[eksNodegroupURN].Attributes["resource_id"]; got != "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid" {
+		t.Fatalf("eks nodegroup resource_id = %q, want nodegroup ARN", got)
+	}
+	if got := state.entities[eksNodegroupURN].Attributes["resource_type"]; got != "eks_nodegroup" {
+		t.Fatalf("eks nodegroup resource_type = %q, want eks_nodegroup", got)
+	}
 	assertProjectedLink(t, state, eksNodegroupURN, relationBelongsTo, eksClusterURN)
 	assertProjectedLink(t, state, eksNodegroupURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSNodeRole")
 	assertProjectedLink(t, state, eksFargateProfileURN, relationBelongsTo, eksClusterURN)

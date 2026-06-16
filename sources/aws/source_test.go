@@ -948,8 +948,13 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				SecurityGroups:   []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-1")}},
 				State:            &ec2types.InstanceState{Name: ec2types.InstanceStateNameRunning},
 				SubnetId:         awssdk.String("subnet-1"),
-				Tags:             []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("prod-web")}},
-				VpcId:            awssdk.String("vpc-1"),
+				Tags: []ec2types.Tag{
+					{Key: awssdk.String("Name"), Value: awssdk.String("prod-web")},
+					{Key: awssdk.String("eks:cluster-name"), Value: awssdk.String(eksClusterName)},
+					{Key: awssdk.String("eks:nodegroup-name"), Value: awssdk.String("managed-linux")},
+					{Key: awssdk.String("eks:nodegroup-type"), Value: awssdk.String("managed")},
+				},
+				VpcId: awssdk.String("vpc-1"),
 			}},
 			instanceProfiles: map[string]iamtypes.InstanceProfile{
 				"WebProfile": {Roles: []iamtypes.Role{{Arn: awssdk.String(instanceRoleARN), RoleName: awssdk.String("WebInstanceRole"), RoleId: awssdk.String("AROWEB")}}},
@@ -1014,14 +1019,62 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			}},
 			eksNodegroupNames: map[string][]string{eksClusterName: []string{"managed-linux"}},
 			eksNodegroups: map[string]ekstypes.Nodegroup{awsTestEKSChildKey(eksClusterName, "managed-linux"): {
+				AmiType:       ekstypes.AMITypesAl2023X8664Standard,
+				CapacityType:  ekstypes.CapacityTypesOnDemand,
 				ClusterName:   awssdk.String(eksClusterName),
+				DiskSize:      awssdk.Int32(80),
 				InstanceTypes: []string{"m7g.large"},
-				NodegroupArn:  awssdk.String(nodegroupARN),
-				NodegroupName: awssdk.String("managed-linux"),
-				NodeRole:      awssdk.String("arn:aws:iam::123456789012:role/EKSNodeRole"),
-				Status:        ekstypes.NodegroupStatusActive,
-				Subnets:       []string{"subnet-eks"},
-				Version:       awssdk.String("1.30"),
+				Health: &ekstypes.NodegroupHealth{Issues: []ekstypes.Issue{{
+					Code:        ekstypes.NodegroupIssueCodeAsgInstanceLaunchFailures,
+					Message:     awssdk.String("launch capacity constrained"),
+					ResourceIds: []string{"i-eks-node"},
+				}}},
+				Labels: map[string]string{"workload": "payments"},
+				LaunchTemplate: &ekstypes.LaunchTemplateSpecification{
+					Id:      awssdk.String("lt-123"),
+					Version: awssdk.String("7"),
+				},
+				NodeRepairConfig: &ekstypes.NodeRepairConfig{
+					Enabled:                            awssdk.Bool(true),
+					MaxParallelNodesRepairedCount:      awssdk.Int32(1),
+					MaxParallelNodesRepairedPercentage: awssdk.Int32(20),
+				},
+				NodegroupArn:   awssdk.String(nodegroupARN),
+				NodegroupName:  awssdk.String("managed-linux"),
+				NodeRole:       awssdk.String("arn:aws:iam::123456789012:role/EKSNodeRole"),
+				ReleaseVersion: awssdk.String("1.30.1-20260601"),
+				RemoteAccess: &ekstypes.RemoteAccessConfig{
+					Ec2SshKey:            awssdk.String("eks-node-key"),
+					SourceSecurityGroups: []string{"sg-admin"},
+				},
+				Resources: &ekstypes.NodegroupResources{
+					AutoScalingGroups:         []ekstypes.AutoScalingGroup{{Name: awssdk.String("eks-prod-managed-asg")}},
+					RemoteAccessSecurityGroup: awssdk.String("sg-remote"),
+				},
+				ScalingConfig: &ekstypes.NodegroupScalingConfig{
+					DesiredSize: awssdk.Int32(3),
+					MaxSize:     awssdk.Int32(6),
+					MinSize:     awssdk.Int32(2),
+				},
+				Status:  ekstypes.NodegroupStatusActive,
+				Subnets: []string{"subnet-eks"},
+				Taints: []ekstypes.Taint{{
+					Effect: ekstypes.TaintEffectNoSchedule,
+					Key:    awssdk.String("dedicated"),
+					Value:  awssdk.String("payments"),
+				}},
+				UpdateConfig: &ekstypes.NodegroupUpdateConfig{
+					MaxUnavailable:           awssdk.Int32(1),
+					MaxUnavailablePercentage: awssdk.Int32(33),
+					UpdateStrategy:           ekstypes.NodegroupUpdateStrategiesDefault,
+				},
+				Version: awssdk.String("1.30"),
+				WarmPoolConfig: &ekstypes.WarmPoolConfig{
+					Enabled:                  awssdk.Bool(true),
+					MaxGroupPreparedCapacity: awssdk.Int32(8),
+					MinSize:                  awssdk.Int32(1),
+					PoolState:                ekstypes.WarmPoolStateStopped,
+				},
 			}},
 			eksFargateNames: map[string][]string{eksClusterName: []string{"payments"}},
 			eksFargateProfiles: map[string]ekstypes.FargateProfile{awsTestEKSChildKey(eksClusterName, "payments"): {
@@ -1058,6 +1111,12 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				}
 				if got := event.Attributes["network_interface_ids"]; got != "eni-1" {
 					t.Fatalf("ec2 network_interface_ids = %q, want eni-1", got)
+				}
+				if got := event.Attributes["eks_cluster_name"]; got != eksClusterName {
+					t.Fatalf("ec2 eks_cluster_name = %q, want %q", got, eksClusterName)
+				}
+				if got := event.Attributes["eks_nodegroup_name"]; got != "managed-linux" {
+					t.Fatalf("ec2 eks_nodegroup_name = %q, want managed-linux", got)
 				}
 			},
 		},
@@ -1118,6 +1177,30 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
 				if got := event.Attributes["role_name"]; got != "EKSNodeRole" {
 					t.Fatalf("eks nodegroup role_name = %q, want EKSNodeRole", got)
+				}
+				for key, want := range map[string]string{
+					"autoscaling_groups":                    "eks-prod-managed-asg",
+					"desired_size":                          "3",
+					"disk_size_gib":                         "80",
+					"health_issue_codes":                    "AsgInstanceLaunchFailures",
+					"label_keys":                            "workload",
+					"launch_template_id":                    "lt-123",
+					"max_size":                              "6",
+					"min_size":                              "2",
+					"node_repair_enabled":                   "true",
+					"release_version":                       "1.30.1-20260601",
+					"remote_access_ec2_ssh_key":             "eks-node-key",
+					"security_group_ids":                    "sg-admin,sg-remote",
+					"taint_keys":                            "dedicated",
+					"update_strategy":                       "DEFAULT",
+					"warm_pool_enabled":                     "true",
+					"warm_pool_max_group_prepared_capacity": "8",
+					"warm_pool_min_size":                    "1",
+					"warm_pool_state":                       "STOPPED",
+				} {
+					if got := event.Attributes[key]; got != want {
+						t.Fatalf("eks nodegroup %s = %q, want %q", key, got, want)
+					}
 				}
 			},
 		},

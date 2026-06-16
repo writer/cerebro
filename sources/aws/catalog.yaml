@@ -651,10 +651,9 @@ coverage_contract:
     - id: eks_node
       type: entity_family
       title: AWS EKS nodes
-      families: [eks_nodegroup]
-      support: partial
+      families: [ec2_instance, eks_nodegroup]
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-node kubelet and node certificate posture]
     - id: eks_nodegroup
       type: entity_family
       title: AWS EKS node groups
