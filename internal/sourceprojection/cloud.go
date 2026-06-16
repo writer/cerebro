@@ -176,7 +176,7 @@ func addCloudFindingCorrelation(entities map[string]*ports.ProjectedEntity, link
 		return
 	}
 	affectedType := cloudFindingAffectedResourceType(provider, firstNonEmpty(attributes["affected_resource_type"], attributes["assessed_resource_type"]), affectedIDRaw)
-	affectedID := cloudFindingAffectedResourceID(provider, affectedType, affectedIDRaw)
+	affectedID := cloudFindingAffectedResourceID(provider, affectedType, affectedIDRaw, firstNonEmpty(attributes["affected_resource_name"], attributes["assessed_resource_name"]))
 	affectedURN := projectionURN(tenantID, provider+"_"+affectedType, affectedID)
 	if affectedURN == "" || affectedURN == resourceURN {
 		return
@@ -296,30 +296,67 @@ func cloudFindingAffectedResourceType(provider string, rawType string, resourceI
 	return firstNonEmpty(normalized, "resource")
 }
 
-func cloudFindingAffectedResourceID(provider string, resourceType string, resourceID string) string {
+func cloudFindingAffectedResourceID(provider string, resourceType string, resourceID string, resourceName string) string {
 	resourceID = strings.TrimSpace(resourceID)
-	if provider == "gcp" && resourceType == "gcs_bucket" {
-		return firstNonEmpty(gcpBucketNameFromResourceID(resourceID), resourceID)
+	resourceName = strings.TrimSpace(resourceName)
+	if provider == "gcp" {
+		switch resourceType {
+		case "gcs_bucket":
+			return firstNonEmpty(gcpBucketNameFromResourceID(resourceID), resourceID)
+		case "compute_instance":
+			return firstNonEmpty(resourceName, gcpNamedResourceSegment(resourceID, "instances"), cloudLastPathSegment(resourceID), resourceID)
+		case "cloud_sql_instance":
+			return firstNonEmpty(gcpServiceSelfLink(resourceID, "sqladmin.googleapis.com", "sql/v1beta4"), resourceID)
+		case "gke_cluster":
+			return firstNonEmpty(gcpServiceSelfLink(resourceID, "container.googleapis.com", "v1"), resourceID)
+		}
 	}
 	return resourceID
 }
 
-func gcpBucketNameFromResourceID(value string) string {
+func gcpServiceSelfLink(value string, host string, apiPrefix string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
 	}
-	if strings.HasPrefix(strings.ToLower(value), "gs://") {
-		bucket, _, _ := strings.Cut(value[len("gs://"):], "/")
-		return strings.TrimSpace(bucket)
+	lower := strings.ToLower(value)
+	normalizedHost := strings.ToLower(strings.Trim(host, "/"))
+	if strings.HasPrefix(lower, "https://"+normalizedHost+"/") || strings.HasPrefix(lower, "http://"+normalizedHost+"/") {
+		return value
+	}
+	for _, prefix := range []string{"//" + normalizedHost + "/", normalizedHost + "/"} {
+		if strings.HasPrefix(lower, prefix) {
+			path := strings.TrimLeft(value[len(prefix):], "/")
+			if path == "" {
+				return ""
+			}
+			return "https://" + normalizedHost + "/" + strings.Trim(apiPrefix, "/") + "/" + path
+		}
+	}
+	return ""
+}
+
+func gcpNamedResourceSegment(value string, marker string) string {
+	value = strings.TrimSpace(value)
+	marker = strings.Trim(strings.TrimSpace(marker), "/")
+	if value == "" || marker == "" {
+		return ""
 	}
 	parts := strings.Split(strings.Trim(value, "/"), "/")
 	for index := 0; index+1 < len(parts); index++ {
-		if strings.EqualFold(parts[index], "buckets") && strings.TrimSpace(parts[index+1]) != "" {
+		if strings.EqualFold(parts[index], marker) && strings.TrimSpace(parts[index+1]) != "" {
 			return strings.TrimSpace(parts[index+1])
 		}
 	}
 	return ""
+}
+
+func gcpBucketNameFromResourceID(value string) string {
+	if strings.HasPrefix(strings.ToLower(value), "gs://") {
+		bucket, _, _ := strings.Cut(value[len("gs://"):], "/")
+		return strings.TrimSpace(bucket)
+	}
+	return gcpNamedResourceSegment(value, "buckets")
 }
 
 func azureResourceTypeFromID(resourceID string) string {

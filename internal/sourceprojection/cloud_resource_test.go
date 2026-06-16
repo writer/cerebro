@@ -230,6 +230,48 @@ func TestCloudFindingAffectedResourceTypeUsesCanonicalGraphNamespaces(t *testing
 	}
 }
 
+func TestCloudFindingAffectedResourceIDUsesCanonicalGCPKeys(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		resourceType string
+		id           string
+		resourceName string
+		want         string
+	}{
+		{
+			name:         "storage bucket",
+			resourceType: "gcs_bucket",
+			id:           "//storage.googleapis.com/projects/_/buckets/data",
+			want:         "data",
+		},
+		{
+			name:         "compute instance",
+			resourceType: "compute_instance",
+			id:           "//compute.googleapis.com/projects/writer-prod/zones/us-central1-a/instances/web-1",
+			resourceName: "web-1",
+			want:         "web-1",
+		},
+		{
+			name:         "cloud sql instance",
+			resourceType: "cloud_sql_instance",
+			id:           "//sqladmin.googleapis.com/projects/writer-prod/instances/prod-sql",
+			want:         "https://sqladmin.googleapis.com/sql/v1beta4/projects/writer-prod/instances/prod-sql",
+		},
+		{
+			name:         "gke cluster",
+			resourceType: "gke_cluster",
+			id:           "//container.googleapis.com/projects/writer-prod/locations/us-central1/clusters/prod",
+			want:         "https://container.googleapis.com/v1/projects/writer-prod/locations/us-central1/clusters/prod",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cloudFindingAffectedResourceID("gcp", tt.resourceType, tt.id, tt.resourceName); got != tt.want {
+				t.Fatalf("cloudFindingAffectedResourceID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProjectAWSAppRunnerServiceLinksAccountExposureOwnerAndRuntimeRole(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
