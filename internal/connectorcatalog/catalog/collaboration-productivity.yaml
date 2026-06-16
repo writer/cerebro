@@ -686,6 +686,109 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-google_drive
+      tenant_id: builtin_catalog
+      source_id: google_drive
+      display_name: "Google Drive"
+      description: "Google Drive connector definition catalog entry for high-value document, shared drive, and audit resources."
+      categories:
+        - document_management
+        - collaboration
+      auth:
+        model: oauth_authorization_code
+        authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+        token_url: "https://oauth2.googleapis.com/token"
+        scopes:
+          - https://www.googleapis.com/auth/drive.metadata.readonly
+          - https://www.googleapis.com/auth/admin.reports.audit.readonly
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://www.googleapis.com/drive/v3"
+        verification:
+          method: GET
+          path: /about?fields=user
+          expect_status: [200]
+      resource_families:
+        - id: files
+          label: Files
+          path: /files
+          method: GET
+          record_selector: "$.files[*]"
+          id_field: id
+          event:
+            kind: google_drive.files
+            schema_ref: google_drive/files/v1
+          projection:
+            template: asset
+          coverage:
+            - id: files
+              type: entity_family
+              title: Files
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: shared_drives
+          label: Shared drives
+          path: /drives
+          method: GET
+          record_selector: "$.drives[*]"
+          id_field: id
+          event:
+            kind: google_drive.shared_drives
+            schema_ref: google_drive/shared_drives/v1
+          projection:
+            template: asset
+          coverage:
+            - id: shared_drives
+              type: entity_family
+              title: Shared drives
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: changes
+          label: Drive changes
+          path: /changes
+          method: GET
+          record_selector: "$.changes[*]"
+          id_field: fileId
+          event:
+            kind: google_drive.changes
+            schema_ref: google_drive/changes/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: changes
+              type: audit_event
+              title: Drive changes
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-jira
       tenant_id: builtin_catalog
       source_id: jira
