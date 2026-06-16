@@ -337,6 +337,14 @@ config:
     type: string
     default: CEREBRO_EVENTS
     description: JetStream stream name bootstrapped for Cerebro events
+  cerebro:jetstreamMaxBytes:
+    type: string
+    default: ""
+    description: Optional JetStream max bytes limit passed to the stream bootstrapper
+  cerebro:jetstreamMaxAge:
+    type: string
+    default: ""
+    description: Optional JetStream max age limit passed to the stream bootstrapper
   cerebro:enableJetstreamLagProbe:
     type: boolean
     default: true

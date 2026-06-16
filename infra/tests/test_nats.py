@@ -26,6 +26,8 @@ class NatsContainerDefinitionTest(unittest.TestCase):
                 region="us-east-1",
                 stream_name="CEREBRO_EVENTS",
                 subject_prefix="events",
+                stream_max_bytes="128849018880",
+                stream_max_age="168h",
                 lag_probe_image="probe:latest",
                 lag_probe_interval_seconds=60,
                 enable_lag_probe=True,
@@ -36,6 +38,10 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         self.assertEqual(by_name["nats"]["user"], "10001")
         self.assertIs(by_name["nats"]["readonlyRootFilesystem"], True)
         self.assertEqual(by_name["jetstream-bootstrap"]["user"], "10001")
+        bootstrap_env = {item["name"]: item["value"] for item in by_name["jetstream-bootstrap"]["environment"]}
+        self.assertEqual(bootstrap_env["STREAM_MAX_BYTES"], "128849018880")
+        self.assertEqual(bootstrap_env["STREAM_MAX_AGE"], "168h")
+        self.assertIn("stream edit", " ".join(by_name["jetstream-bootstrap"]["command"]))
         self.assertEqual(by_name["jetstream-lag-probe"]["user"], "10001")
         self.assertIs(by_name["jetstream-lag-probe"]["readonlyRootFilesystem"], True)
 

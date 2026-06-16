@@ -130,7 +130,7 @@ def _schedule(runtime_id: str, config: dict[str, Any], index: int) -> dict[str, 
         "scheduleExpression": expression,
         "taskCount": _positive_int(config.get("taskCount"), "schedule.taskCount", 1),
         "backend": _schedule_backend(config.get("backend")),
-        "flexibleWindowMinutes": _positive_int(config.get("flexibleWindowMinutes"), "schedule.flexibleWindowMinutes", 15),
+        "flexibleWindowMinutes": _positive_int(config.get("flexibleWindowMinutes"), "schedule.flexibleWindowMinutes", 60),
         "state": _schedule_state(config.get("state") or config.get("scheduleState")),
         "command": [
             "orchestrator",
@@ -144,7 +144,7 @@ def _schedule(runtime_id: str, config: dict[str, Any], index: int) -> dict[str, 
 
 
 def _schedule_backend(value: Any) -> str:
-    backend = _string(value) or "eventbridge"
+    backend = _string(value) or "scheduler"
     if backend not in {"eventbridge", "scheduler"}:
         raise SourceRuntimeRolloutError("schedule.backend must be eventbridge or scheduler")
     return backend

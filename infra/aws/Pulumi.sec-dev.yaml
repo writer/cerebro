@@ -51,7 +51,7 @@ config:
   cerebro:apiLatencyP95AlarmThresholdSeconds: 3
   cerebro:webLatencyP95AlarmThresholdSeconds: 3
   cerebro:dashboardLatencyP95AlarmThresholdMs: 3000
-  cerebro:postgresInstanceClass: db.t4g.small
+  cerebro:postgresInstanceClass: db.t4g.medium
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3
   cerebro:postgresMaxAllocatedStorage: 200
@@ -64,10 +64,12 @@ config:
   cerebro:cacheDefaultTTL: 30s
   cerebro:cacheStaleTTL: 5m
   cerebro:cacheMaxPayloadBytes: 1048576
-  cerebro:natsCpu: 512
-  cerebro:natsMemory: 1024
+  cerebro:natsCpu: 1024
+  cerebro:natsMemory: 2048
   cerebro:jetstreamStreamName: CEREBRO_EVENTS
   cerebro:jetstreamSubjectPrefix: events
+  cerebro:jetstreamMaxBytes: "128849018880"
+  cerebro:jetstreamMaxAge: 168h
   cerebro:enableJetstreamLagProbe: true
   cerebro:jetstreamLagProbeIntervalSeconds: 60
   cerebro:jetstreamLagAlarmThreshold: 1000
