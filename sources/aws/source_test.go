@@ -494,6 +494,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyBackupProtected, kind: "aws.backup_protected_resource"},
 		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point"},
 		{family: familyBedrockCustomModel, kind: "aws.bedrock_custom_model"},
+		{family: familyBedrockProvisionedModelThroughput, kind: "aws.bedrock_provisioned_model_throughput"},
 		{family: familyCodeBuildProject, kind: "aws.codebuild_project"},
 		{family: familyCodeBuildSourceCredential, kind: "aws.codebuild_source_credential"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location"},
@@ -1865,6 +1866,95 @@ func TestReadAWSBedrockCustomModelInventoryEvent(t *testing.T) {
 	}
 	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
 		t.Fatal("payload contains custom model hyperparameter value")
+	}
+}
+
+func TestReadAWSBedrockProvisionedModelThroughputInventoryEvent(t *testing.T) {
+	throughputARN := "arn:aws:bedrock:us-east-1:123456789012:provisioned-model/research-throughput"
+	modelARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
+	foundationModelARN := "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"
+	guardrailARN := "arn:aws:bedrock:us-east-1:123456789012:guardrail/gr-123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{
+			fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+				bedrockProvisionedThroughputs: []bedrocktypes.ProvisionedModelSummary{{
+					CommitmentDuration:       bedrocktypes.CommitmentDurationOneMonth,
+					CreationTime:             timePtr("2026-04-23T00:00:00Z"),
+					DesiredModelArn:          awssdk.String(modelARN),
+					DesiredModelUnits:        awssdk.Int32(2),
+					FoundationModelArn:       awssdk.String(foundationModelARN),
+					LastModifiedTime:         timePtr("2026-04-24T00:00:00Z"),
+					ModelArn:                 awssdk.String(modelARN),
+					ModelUnits:               awssdk.Int32(2),
+					ProvisionedModelArn:      awssdk.String(throughputARN),
+					ProvisionedModelName:     awssdk.String("research-throughput"),
+					Status:                   bedrocktypes.ProvisionedModelStatusInService,
+					CommitmentExpirationTime: timePtr("2026-05-23T00:00:00Z"),
+				}},
+				bedrockProvisionedThroughputDetails: map[string]bedrock.GetProvisionedModelThroughputOutput{throughputARN: {
+					CommitmentDuration:       bedrocktypes.CommitmentDurationOneMonth,
+					CreationTime:             timePtr("2026-04-23T00:00:00Z"),
+					DesiredModelArn:          awssdk.String(modelARN),
+					DesiredModelUnits:        awssdk.Int32(2),
+					FoundationModelArn:       awssdk.String(foundationModelARN),
+					LastModifiedTime:         timePtr("2026-04-24T00:00:00Z"),
+					ModelArn:                 awssdk.String(modelARN),
+					ModelUnits:               awssdk.Int32(2),
+					ProvisionedModelArn:      awssdk.String(throughputARN),
+					ProvisionedModelName:     awssdk.String("research-throughput"),
+					Status:                   bedrocktypes.ProvisionedModelStatusInService,
+					CommitmentExpirationTime: timePtr("2026-05-23T00:00:00Z"),
+				}},
+				bedrockEnforcedGuardrails: []bedrocktypes.AccountEnforcedGuardrailOutputConfiguration{{
+					GuardrailArn:     awssdk.String(guardrailARN),
+					GuardrailId:      awssdk.String("gr-123"),
+					GuardrailVersion: awssdk.String("1"),
+					ModelEnforcement: &bedrocktypes.ModelEnforcement{IncludedModels: []string{modelARN}},
+					Owner:            bedrocktypes.ConfigurationOwnerAccount,
+				}},
+				bedrockTags: map[string][]bedrocktypes.Tag{throughputARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}}},
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyBedrockProvisionedModelThroughput}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyBedrockProvisionedModelThroughput, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.bedrock_provisioned_model_throughput" {
+		t.Fatalf("kind = %q, want aws.bedrock_provisioned_model_throughput", got)
+	}
+	for key, want := range map[string]string{
+		"account_enforced_guardrail_arns":     guardrailARN,
+		"account_enforced_guardrail_count":    "1",
+		"account_enforced_guardrail_ids":      "gr-123",
+		"commitment_duration":                 "OneMonth",
+		"desired_model_arn":                   modelARN,
+		"desired_model_units":                 "2",
+		"foundation_model_arn":                foundationModelARN,
+		"guardrail_arns":                      guardrailARN,
+		"guardrail_enforcement_state":         "account_enforced",
+		"guardrail_identifier":                guardrailARN,
+		"guardrail_identifiers":               guardrailARN,
+		"guardrail_versions":                  "1",
+		"matched_enforced_guardrail_count":    "1",
+		"model_arn":                           modelARN,
+		"model_units":                         "2",
+		"provisioned_model_arn":               throughputARN,
+		"provisioned_model_name":              "research-throughput",
+		"provisioned_model_throughput_arn":    throughputARN,
+		"provisioned_model_throughput_name":   "research-throughput",
+		"provisioned_model_throughput_status": "InService",
+		"resource_status":                     "InService",
+		"resource_type":                       "bedrock_provisioned_model_throughput",
+		"team":                                "ml",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -4158,6 +4248,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		notebookARN := "arn:aws:sagemaker:us-east-1:123456789012:notebook-instance/research-notebook"
 		trainingJobARN := "arn:aws:sagemaker:us-east-1:123456789012:training-job/research-training"
 		bedrockCustomModelARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
+		bedrockProvisionedThroughputARN := "arn:aws:bedrock:us-east-1:123456789012:provisioned-model/research-throughput"
 		fake.s3Buckets = []s3types.Bucket{{Name: awssdk.String("prod-data")}}
 		fake.s3Tags = map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
 		fake.s3Encryption = map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {}}
@@ -4211,7 +4302,13 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			OwnerAccountId:    awssdk.String("123456789012"),
 		}}
 		fake.bedrockCustomModelDetails = map[string]bedrock.GetCustomModelOutput{bedrockCustomModelARN: {CreationTime: timePtr("2026-04-23T00:00:00Z"), ModelArn: awssdk.String(bedrockCustomModelARN), ModelName: awssdk.String("research-model")}}
-		fake.bedrockTags = map[string][]bedrocktypes.Tag{bedrockCustomModelARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}}}
+		fake.bedrockProvisionedThroughputs = []bedrocktypes.ProvisionedModelSummary{{CreationTime: timePtr("2026-04-23T00:00:00Z"), ModelArn: awssdk.String(bedrockCustomModelARN), ModelUnits: awssdk.Int32(1), ProvisionedModelArn: awssdk.String(bedrockProvisionedThroughputARN), ProvisionedModelName: awssdk.String("research-throughput"), Status: bedrocktypes.ProvisionedModelStatusInService}}
+		fake.bedrockProvisionedThroughputDetails = map[string]bedrock.GetProvisionedModelThroughputOutput{bedrockProvisionedThroughputARN: {CreationTime: timePtr("2026-04-23T00:00:00Z"), ModelArn: awssdk.String(bedrockCustomModelARN), ModelUnits: awssdk.Int32(1), ProvisionedModelArn: awssdk.String(bedrockProvisionedThroughputARN), ProvisionedModelName: awssdk.String("research-throughput"), Status: bedrocktypes.ProvisionedModelStatusInService}}
+		fake.bedrockEnforcedGuardrails = []bedrocktypes.AccountEnforcedGuardrailOutputConfiguration{{GuardrailArn: awssdk.String("arn:aws:bedrock:us-east-1:123456789012:guardrail/gr-123"), GuardrailId: awssdk.String("gr-123")}}
+		fake.bedrockTags = map[string][]bedrocktypes.Tag{
+			bedrockCustomModelARN:           {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			bedrockProvisionedThroughputARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+		}
 		fake.codeBuildProjects = []string{"orders-build"}
 		fake.codeBuildProjectDetail = map[string]codebuildtypes.Project{"orders-build": {
 			Arn:         awssdk.String("arn:aws:codebuild:us-east-1:123456789012:project/orders-build"),
@@ -4469,6 +4566,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyBedrockCustomModel,
 			seed:    cloudAssetData,
 			wantAPI: []string{"bedrock:GetCustomModel", "bedrock:GetResourcePolicy", "bedrock:ListCustomModels", "bedrock:ListTagsForResource"},
+		},
+		{
+			family:  familyBedrockProvisionedModelThroughput,
+			seed:    cloudAssetData,
+			wantAPI: []string{"bedrock:GetProvisionedModelThroughput", "bedrock:ListEnforcedGuardrailsConfiguration", "bedrock:ListProvisionedModelThroughputs", "bedrock:ListTagsForResource"},
 		},
 		{
 			family:  familySageMakerEndpointConfig,
@@ -5633,25 +5735,28 @@ type fakeAWSRuntime struct {
 }
 
 type fakeAWSRuntimeApplication struct {
-	appRunnerSummaries         []apprunnertypes.ServiceSummary
-	appRunnerServices          map[string]apprunnertypes.Service
-	appRunnerTags              map[string][]apprunnertypes.Tag
-	appSyncAPIs                []appsynctypes.GraphqlApi
-	appSyncDataSources         map[string][]appsynctypes.DataSource
-	appSyncResolvers           map[string]map[string][]appsynctypes.Resolver
-	appSyncTags                map[string]map[string]string
-	appSyncTypes               map[string][]appsynctypes.Type
-	bedrockCustomModels        []bedrocktypes.CustomModelSummary
-	bedrockCustomModelDetails  map[string]bedrock.GetCustomModelOutput
-	bedrockResourcePolicies    map[string]string
-	bedrockTags                map[string][]bedrocktypes.Tag
-	codeBuildProjects          []string
-	codeBuildProjectDetail     map[string]codebuildtypes.Project
-	codeBuildSourceCredentials []codebuildtypes.SourceCredentialsInfo
-	sfnStateMachines           []sfntypes.StateMachineListItem
-	sfnStateMachineDetails     map[string]sfn.DescribeStateMachineOutput
-	sfnActivities              []sfntypes.ActivityListItem
-	sfnTags                    map[string][]sfntypes.Tag
+	appRunnerSummaries                  []apprunnertypes.ServiceSummary
+	appRunnerServices                   map[string]apprunnertypes.Service
+	appRunnerTags                       map[string][]apprunnertypes.Tag
+	appSyncAPIs                         []appsynctypes.GraphqlApi
+	appSyncDataSources                  map[string][]appsynctypes.DataSource
+	appSyncResolvers                    map[string]map[string][]appsynctypes.Resolver
+	appSyncTags                         map[string]map[string]string
+	appSyncTypes                        map[string][]appsynctypes.Type
+	bedrockCustomModels                 []bedrocktypes.CustomModelSummary
+	bedrockCustomModelDetails           map[string]bedrock.GetCustomModelOutput
+	bedrockEnforcedGuardrails           []bedrocktypes.AccountEnforcedGuardrailOutputConfiguration
+	bedrockProvisionedThroughputDetails map[string]bedrock.GetProvisionedModelThroughputOutput
+	bedrockProvisionedThroughputs       []bedrocktypes.ProvisionedModelSummary
+	bedrockResourcePolicies             map[string]string
+	bedrockTags                         map[string][]bedrocktypes.Tag
+	codeBuildProjects                   []string
+	codeBuildProjectDetail              map[string]codebuildtypes.Project
+	codeBuildSourceCredentials          []codebuildtypes.SourceCredentialsInfo
+	sfnStateMachines                    []sfntypes.StateMachineListItem
+	sfnStateMachineDetails              map[string]sfn.DescribeStateMachineOutput
+	sfnActivities                       []sfntypes.ActivityListItem
+	sfnTags                             map[string][]sfntypes.Tag
 }
 
 type fakeAWSRuntimeEventing struct {
@@ -6984,6 +7089,21 @@ func (f recordingBedrock) GetCustomModel(ctx context.Context, input *bedrock.Get
 	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.GetCustomModel(ctx, input, options...)
 }
 
+func (f recordingBedrock) ListProvisionedModelThroughputs(ctx context.Context, input *bedrock.ListProvisionedModelThroughputsInput, options ...func(*bedrock.Options)) (*bedrock.ListProvisionedModelThroughputsOutput, error) {
+	f.fake.record("bedrock:ListProvisionedModelThroughputs")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.ListProvisionedModelThroughputs(ctx, input, options...)
+}
+
+func (f recordingBedrock) GetProvisionedModelThroughput(ctx context.Context, input *bedrock.GetProvisionedModelThroughputInput, options ...func(*bedrock.Options)) (*bedrock.GetProvisionedModelThroughputOutput, error) {
+	f.fake.record("bedrock:GetProvisionedModelThroughput")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.GetProvisionedModelThroughput(ctx, input, options...)
+}
+
+func (f recordingBedrock) ListEnforcedGuardrailsConfiguration(ctx context.Context, input *bedrock.ListEnforcedGuardrailsConfigurationInput, options ...func(*bedrock.Options)) (*bedrock.ListEnforcedGuardrailsConfigurationOutput, error) {
+	f.fake.record("bedrock:ListEnforcedGuardrailsConfiguration")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.ListEnforcedGuardrailsConfiguration(ctx, input, options...)
+}
+
 func (f recordingBedrock) GetResourcePolicy(ctx context.Context, input *bedrock.GetResourcePolicyInput, options ...func(*bedrock.Options)) (*bedrock.GetResourcePolicyOutput, error) {
 	f.fake.record("bedrock:GetResourcePolicy")
 	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.GetResourcePolicy(ctx, input, options...)
@@ -7005,6 +7125,19 @@ func (f fakeBedrock) ListCustomModels(context.Context, *bedrock.ListCustomModels
 func (f fakeBedrock) GetCustomModel(_ context.Context, input *bedrock.GetCustomModelInput, _ ...func(*bedrock.Options)) (*bedrock.GetCustomModelOutput, error) {
 	detail := f.runtime.bedrockCustomModelDetails[awssdk.ToString(input.ModelIdentifier)]
 	return &detail, nil
+}
+
+func (f fakeBedrock) ListProvisionedModelThroughputs(context.Context, *bedrock.ListProvisionedModelThroughputsInput, ...func(*bedrock.Options)) (*bedrock.ListProvisionedModelThroughputsOutput, error) {
+	return &bedrock.ListProvisionedModelThroughputsOutput{ProvisionedModelSummaries: f.runtime.bedrockProvisionedThroughputs}, nil
+}
+
+func (f fakeBedrock) GetProvisionedModelThroughput(_ context.Context, input *bedrock.GetProvisionedModelThroughputInput, _ ...func(*bedrock.Options)) (*bedrock.GetProvisionedModelThroughputOutput, error) {
+	detail := f.runtime.bedrockProvisionedThroughputDetails[awssdk.ToString(input.ProvisionedModelId)]
+	return &detail, nil
+}
+
+func (f fakeBedrock) ListEnforcedGuardrailsConfiguration(context.Context, *bedrock.ListEnforcedGuardrailsConfigurationInput, ...func(*bedrock.Options)) (*bedrock.ListEnforcedGuardrailsConfigurationOutput, error) {
+	return &bedrock.ListEnforcedGuardrailsConfigurationOutput{GuardrailsConfig: f.runtime.bedrockEnforcedGuardrails}, nil
 }
 
 func (f fakeBedrock) GetResourcePolicy(_ context.Context, input *bedrock.GetResourcePolicyInput, _ ...func(*bedrock.Options)) (*bedrock.GetResourcePolicyOutput, error) {
