@@ -136,6 +136,18 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "storage_size_gb", stringAt(properties, "storageSizeInGB"))
 		set(attributes, "zone_redundant", stringAt(properties, "zoneRedundant"))
 		set(attributes, "proxy_override", stringAt(properties, "proxyOverride"))
+	case "subnet":
+		set(attributes, "address_prefix", stringAt(properties, "addressPrefix"))
+		set(attributes, "address_prefixes", strings.Join(stringsAt(properties, "addressPrefixes"), ","))
+		set(attributes, "network_security_group_id", stringAt(properties, "networkSecurityGroup", "id"))
+		set(attributes, "route_table_id", stringAt(properties, "routeTable", "id"))
+		set(attributes, "nat_gateway_id", stringAt(properties, "natGateway", "id"))
+		set(attributes, "service_endpoint_services", strings.Join(valuesFromArray(properties, []string{"serviceEndpoints"}, "service"), ","))
+		set(attributes, "delegation_names", strings.Join(valuesFromArray(properties, []string{"delegations"}, "name"), ","))
+		set(attributes, "private_endpoint_network_policies", stringAt(properties, "privateEndpointNetworkPolicies"))
+		set(attributes, "private_link_service_network_policies", stringAt(properties, "privateLinkServiceNetworkPolicies"))
+		set(attributes, "ip_configuration_ids", strings.Join(valuesFromArray(properties, []string{"ipConfigurations"}, "id"), ","))
+		set(attributes, "application_gateway_ip_configuration_ids", strings.Join(valuesFromArray(properties, []string{"applicationGatewayIPConfigurations"}, "id"), ","))
 	case "virtual_machine_scale_set":
 		set(attributes, "upgrade_mode", stringAt(properties, "upgradePolicy", "mode"))
 		set(attributes, "overprovision", stringAt(properties, "overprovision"))

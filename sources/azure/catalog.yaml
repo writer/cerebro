@@ -42,6 +42,7 @@ emitted_kinds:
   - azure.sql_managed_instance
   - azure.sql_server
   - azure.storage_account
+  - azure.subnet
   - azure.user
   - azure.virtual_machine
   - azure.virtual_machine_scale_set
@@ -87,6 +88,7 @@ runtime_families:
   - sql_managed_instance
   - sql_server
   - storage_account
+  - subnet
   - user
   - virtual_machine
   - virtual_machine_scale_set
@@ -455,10 +457,9 @@ coverage_contract:
     - id: subnet
       type: entity_family
       title: Azure subnets
-      families: [virtual_network]
-      support: partial
+      families: [subnet]
+      support: supported
       high_value: true
-      known_unsupported_fields: [dedicated subnet entities and route table associations]
     - id: subscription
       type: entity_family
       title: Azure subscriptions
