@@ -89,10 +89,43 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 		inspector2: fakeAWSInspector2Findings{findings: []inspector2types.Finding{{
 			AwsAccountId: awssdk.String("123456789012"),
 			FindingArn:   awssdk.String("arn:aws:inspector2:us-east-1:123456789012:finding/inspector-finding-1"),
+			FixAvailable: inspector2types.FixAvailableYes,
+			PackageVulnerabilityDetails: &inspector2types.PackageVulnerabilityDetails{
+				Cvss: []inspector2types.CvssScore{{
+					BaseScore:     awssdk.Float64(7.5),
+					ScoringVector: awssdk.String("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"),
+					Source:        awssdk.String("NVD"),
+					Version:       awssdk.String("3.1"),
+				}},
+				Source:          awssdk.String("NVD"),
+				SourceUrl:       awssdk.String("https://nvd.nist.gov/vuln/detail/CVE-2026-12345"),
+				VendorSeverity:  awssdk.String("HIGH"),
+				VulnerabilityId: awssdk.String("CVE-2026-12345"),
+				VulnerablePackages: []inspector2types.VulnerablePackage{{
+					Arch:            awssdk.String("x86_64"),
+					FilePath:        awssdk.String("/usr/lib/libssl.so"),
+					FixedInVersion:  awssdk.String("3.0.12-r1"),
+					Name:            awssdk.String("openssl"),
+					PackageManager:  inspector2types.PackageManagerOs,
+					Remediation:     awssdk.String("apk upgrade openssl"),
+					SourceLayerHash: awssdk.String("sha256:layer"),
+					Version:         awssdk.String("3.0.11-r0"),
+				}},
+			},
 			Resources: []inspector2types.Resource{{
-				Id:     awssdk.String("i-123"),
+				Id:     awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders@sha256:abc"),
 				Region: awssdk.String("us-east-1"),
-				Type:   inspector2types.ResourceType("AWS_EC2_INSTANCE"),
+				Type:   inspector2types.ResourceTypeAwsEcrContainerImage,
+				Details: &inspector2types.ResourceDetails{
+					AwsEcrContainerImage: &inspector2types.AwsEcrContainerImageDetails{
+						Architecture:   awssdk.String("amd64"),
+						ImageHash:      awssdk.String("sha256:abc"),
+						ImageTags:      []string{"prod"},
+						Platform:       awssdk.String("linux"),
+						Registry:       awssdk.String("123456789012"),
+						RepositoryName: awssdk.String("orders"),
+					},
+				},
 			}},
 			Severity: inspector2types.Severity("HIGH"),
 			Status:   inspector2types.FindingStatus("ACTIVE"),
@@ -158,7 +191,7 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 		{family: familyGuardDutyDetector, kind: "aws.guardduty_detector", attr: "status", want: "ENABLED"},
 		{family: familyGuardDutyFinding, kind: "aws.guardduty_finding", attr: "affected_resource_id", want: "i-123"},
 		{family: familySecurityHubFinding, kind: "aws.securityhub_finding", attr: "affected_resource_id", want: "arn:aws:s3:::prod-data"},
-		{family: familyInspector2Finding, kind: "aws.inspector2_finding", attr: "affected_resource_type", want: "AWS_EC2_INSTANCE"},
+		{family: familyInspector2Finding, kind: "aws.inspector2_finding", attr: "fixed_version", want: "3.0.12-r1"},
 		{family: familyMacie2Finding, kind: "aws.macie2_finding", attr: "internet_exposed", want: "true"},
 		{family: familyWAFV2WebACL, kind: "aws.wafv2_web_acl", attr: "default_action", want: "block", config: map[string]string{"wafv2_scope": "CLOUDFRONT"}},
 		{family: familyNetworkFirewall, kind: "aws.network_firewall", attr: "vpc_id", want: "vpc-1"},
@@ -186,6 +219,36 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 	}
 	if fake.lastWAFV2Scope != wafv2types.ScopeCloudfront {
 		t.Fatalf("wafv2 scope = %q, want CLOUDFRONT", fake.lastWAFV2Scope)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyInspector2Finding}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyInspector2Finding, err)
+	}
+	event := pull.Events[0]
+	for key, want := range map[string]string{
+		"affected_resource_type": "AWS_ECR_CONTAINER_IMAGE",
+		"cve_id":                 "CVE-2026-12345",
+		"cvss_score":             "7.5",
+		"fixed_version":          "3.0.12-r1",
+		"image_digest":           "sha256:abc",
+		"image_repository":       "orders",
+		"image_uri":              "123456789012.dkr.ecr.us-east-1.amazonaws.com/orders@sha256:abc",
+		"package":                "openssl",
+		"package_manager":        "OS",
+		"source_layer_hash":      "sha256:layer",
+		"vulnerability_id":       "CVE-2026-12345",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("inspector2 attribute %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestInspector2ImageRegistryUsesPartitionSuffix(t *testing.T) {
+	resource := &inspector2types.Resource{Region: awssdk.String("cn-north-1")}
+	image := &inspector2types.AwsEcrContainerImageDetails{Registry: awssdk.String("123456789012")}
+	if got, want := inspector2ImageRegistry(resource, image), "123456789012.dkr.ecr.cn-north-1.amazonaws.com.cn"; got != want {
+		t.Fatalf("inspector2ImageRegistry() = %q, want %q", got, want)
 	}
 }
 

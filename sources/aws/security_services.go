@@ -699,6 +699,7 @@ func inspector2FindingEvent(settings settings, finding inspector2types.Finding) 
 	attributes["severity"] = string(finding.Severity)
 	attributes["status"] = string(finding.Status)
 	attributes["title"] = title
+	putAttributes(attributes, inspector2ContainerVulnerabilityAttributes(finding, resource))
 	if finding.InspectorScore != nil {
 		attributes["inspector_score"] = strconv.FormatFloat(*finding.InspectorScore, 'f', -1, 64)
 	}
@@ -710,6 +711,158 @@ func inspector2FindingEvent(settings settings, finding inspector2types.Finding) 
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-inspector2-finding-"+firstNonEmpty(findingARN, affectedResourceID), "aws.inspector2_finding", "aws/inspector2_finding/v1", payload, attributes, firstTime(finding.LastObservedAt, finding.UpdatedAt, finding.FirstObservedAt))
+}
+
+func inspector2ContainerVulnerabilityAttributes(finding inspector2types.Finding, resource *inspector2types.Resource) map[string]string {
+	attributes := map[string]string{}
+	image := inspector2ECRImage(resource)
+	if image != nil {
+		imageURI := inspector2ImageURI(resource, image)
+		registry := inspector2ImageRegistry(resource, image)
+		putAttributes(attributes, map[string]string{
+			"digest":               awssdk.ToString(image.ImageHash),
+			"ecr_registry_id":      awssdk.ToString(image.Registry),
+			"ecr_repository_name":  awssdk.ToString(image.RepositoryName),
+			"image_architecture":   awssdk.ToString(image.Architecture),
+			"image_digest":         awssdk.ToString(image.ImageHash),
+			"image_in_use_count":   int64PtrString(image.InUseCount),
+			"image_last_in_use_at": timePtrString(image.LastInUseAt),
+			"image_platform":       awssdk.ToString(image.Platform),
+			"image_pushed_at":      timePtrString(image.PushedAt),
+			"image_registry":       registry,
+			"image_repository":     awssdk.ToString(image.RepositoryName),
+			"image_tags":           strings.Join(cleanStrings(image.ImageTags), ","),
+			"image_uri":            imageURI,
+			"registry":             registry,
+			"repository":           awssdk.ToString(image.RepositoryName),
+		})
+	}
+	details := finding.PackageVulnerabilityDetails
+	if details != nil {
+		cvss := inspector2FirstCVSS(details.Cvss)
+		putAttributes(attributes, map[string]string{
+			"cve_id":                   inspector2CVEID(awssdk.ToString(details.VulnerabilityId)),
+			"cvss_score":               floatAttrString(cvss.BaseScore),
+			"cvss_source":              awssdk.ToString(cvss.Source),
+			"cvss_vector":              awssdk.ToString(cvss.ScoringVector),
+			"cvss_version":             awssdk.ToString(cvss.Version),
+			"reference_urls":           strings.Join(cleanStrings(details.ReferenceUrls), ","),
+			"related_vulnerabilities":  strings.Join(cleanStrings(details.RelatedVulnerabilities), ","),
+			"vendor_created_at":        timePtrString(details.VendorCreatedAt),
+			"vendor_severity":          awssdk.ToString(details.VendorSeverity),
+			"vendor_updated_at":        timePtrString(details.VendorUpdatedAt),
+			"vulnerability_id":         awssdk.ToString(details.VulnerabilityId),
+			"vulnerability_source":     awssdk.ToString(details.Source),
+			"vulnerability_source_url": awssdk.ToString(details.SourceUrl),
+			"vulnerable_packages":      inspector2VulnerablePackagesJSON(details.VulnerablePackages),
+		})
+		if pkg := inspector2FirstVulnerablePackage(details.VulnerablePackages); pkg != nil {
+			putAttributes(attributes, map[string]string{
+				"fixed_version":     awssdk.ToString(pkg.FixedInVersion),
+				"installed_version": awssdk.ToString(pkg.Version),
+				"package":           awssdk.ToString(pkg.Name),
+				"package_arch":      awssdk.ToString(pkg.Arch),
+				"package_epoch":     strconv.FormatInt(int64(pkg.Epoch), 10),
+				"package_file_path": awssdk.ToString(pkg.FilePath),
+				"package_manager":   string(pkg.PackageManager),
+				"package_name":      awssdk.ToString(pkg.Name),
+				"package_release":   awssdk.ToString(pkg.Release),
+				"remediation":       awssdk.ToString(pkg.Remediation),
+				"source_layer_hash": awssdk.ToString(pkg.SourceLayerHash),
+				"version":           awssdk.ToString(pkg.Version),
+			})
+		}
+	}
+	if finding.Epss != nil {
+		attributes["epss_score"] = strconv.FormatFloat(finding.Epss.Score, 'f', -1, 64)
+	}
+	if finding.Remediation != nil && finding.Remediation.Recommendation != nil {
+		attributes["remediation"] = firstNonEmpty(attributes["remediation"], awssdk.ToString(finding.Remediation.Recommendation.Text))
+		attributes["remediation_url"] = awssdk.ToString(finding.Remediation.Recommendation.Url)
+	}
+	return attributes
+}
+
+func inspector2ECRImage(resource *inspector2types.Resource) *inspector2types.AwsEcrContainerImageDetails {
+	if resource == nil || resource.Details == nil {
+		return nil
+	}
+	return resource.Details.AwsEcrContainerImage
+}
+
+func inspector2ImageURI(resource *inspector2types.Resource, image *inspector2types.AwsEcrContainerImageDetails) string {
+	if image == nil {
+		return ""
+	}
+	registry := inspector2ImageRegistry(resource, image)
+	repository := awssdk.ToString(image.RepositoryName)
+	digest := awssdk.ToString(image.ImageHash)
+	if registry == "" || repository == "" {
+		return ""
+	}
+	if digest != "" {
+		return registry + "/" + repository + "@" + digest
+	}
+	tags := cleanStrings(image.ImageTags)
+	if len(tags) > 0 {
+		return registry + "/" + repository + ":" + tags[0]
+	}
+	return registry + "/" + repository
+}
+
+func inspector2ImageRegistry(resource *inspector2types.Resource, image *inspector2types.AwsEcrContainerImageDetails) string {
+	registry := awssdk.ToString(image.Registry)
+	if registry == "" {
+		return ""
+	}
+	region := ""
+	if resource != nil {
+		region = awssdk.ToString(resource.Region)
+	}
+	if region == "" {
+		return registry
+	}
+	return registry + ".dkr.ecr." + region + "." + awsDNSSuffix(region)
+}
+
+func inspector2FirstCVSS(scores []inspector2types.CvssScore) inspector2types.CvssScore {
+	if len(scores) == 0 {
+		return inspector2types.CvssScore{}
+	}
+	return scores[0]
+}
+
+func inspector2FirstVulnerablePackage(packages []inspector2types.VulnerablePackage) *inspector2types.VulnerablePackage {
+	if len(packages) == 0 {
+		return nil
+	}
+	return &packages[0]
+}
+
+func inspector2CVEID(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(strings.ToUpper(trimmed), "CVE-") {
+		return trimmed
+	}
+	return ""
+}
+
+func inspector2VulnerablePackagesJSON(packages []inspector2types.VulnerablePackage) string {
+	if len(packages) == 0 {
+		return ""
+	}
+	payload, err := json.Marshal(packages)
+	if err != nil {
+		return ""
+	}
+	return string(payload)
+}
+
+func timePtrString(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func macie2FindingEvent(settings settings, finding macie2types.Finding) (*primitives.Event, error) {

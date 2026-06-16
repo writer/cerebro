@@ -514,9 +514,8 @@ coverage_contract:
       type: entity_family
       title: AWS container vulnerabilities
       families: [inspector2_finding]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-image package fix detail]
     - id: datasync_location
       type: entity_family
       title: AWS DataSync locations
