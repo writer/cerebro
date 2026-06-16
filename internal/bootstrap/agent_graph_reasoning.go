@@ -36,6 +36,7 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, err)
 		return
 	}
+	clearLongRunningWriteDeadline(w)
 	response, err := service.Reason(r.Context(), request)
 	if err != nil {
 		writeGRCError(w, err)

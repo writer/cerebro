@@ -156,6 +156,10 @@ func collectURNs(value any, out map[string]bool) {
 		for _, urn := range summaryURNPattern.FindAllString(typed, -1) {
 			out[urn] = true
 		}
+	case []string:
+		for _, item := range typed {
+			collectURNs(item, out)
+		}
 	case []any:
 		for _, item := range typed {
 			collectURNs(item, out)

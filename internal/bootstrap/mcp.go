@@ -355,6 +355,9 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if request.Method == "tools/call" && mcpToolNameFromParams(request.Method, request.Params) == "cerebro.graph.reason" {
+		clearLongRunningWriteDeadline(w)
+	}
 	response := app.handleMCPRequest(r, request)
 	mcpWriteJSONRPC(w, response)
 	mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusOK, mcpResponseErrorCode(response), mcpResponseOutcome(response), mcpResponseToolErrorKind(response), time.Since(started), mcpTelemetryDetails{
