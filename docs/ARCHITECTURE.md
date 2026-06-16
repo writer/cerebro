@@ -41,6 +41,12 @@ The service can start without optional stores and serve lightweight routes such 
 
 Kuzu and embedded/in-memory database backends are intentionally rejected by config and arch tests.
 
+See [`DURABILITY_CONTRACT.md`](./DURABILITY_CONTRACT.md) for the current
+write-path contract. Source runtime sync and workflow writes are event-backed
+before projection. SDK/runtime claim writes are currently Postgres-backed and
+project from persisted claim state until a `claim.v1.*` event family exists.
+Neo4j remains a projection in both cases; it is not a source of truth.
+
 ## API boundaries
 
 - Connect RPCs live under the generated `BootstrapService` path from `proto/cerebro/v1/bootstrap.proto`.

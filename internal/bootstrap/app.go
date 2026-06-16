@@ -2810,11 +2810,7 @@ func (a *App) reportService() *reports.Service {
 }
 
 func (a *App) newReportService() *reports.Service {
-	return reports.New(
-		findingStore(a.deps.StateStore),
-		graphQueryStore(a.deps.GraphStore),
-		reportStore(a.deps.StateStore),
-	)
+	return newReportFeatureService(newReportFeatureDeps(a.deps))
 }
 
 func (a *App) runtimeService() *sourceruntime.Service {
@@ -2825,18 +2821,11 @@ func (a *App) runtimeService() *sourceruntime.Service {
 }
 
 func newSourceService(sources *sourcecdk.Registry) *sourceops.Service {
-	return sourceops.New(sources)
+	return newSourceFeatureService(newSourceFeatureDeps(sources))
 }
 
 func newRuntimeService(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {
-	return sourceruntime.New(
-		sources,
-		sourceRuntimeStore(deps.StateStore),
-		deps.AppendLog,
-		sourceProjector(deps.StateStore, deps.GraphStore),
-	).WithConfigResolver(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, cfg.ConnectorSecretStores, deps.StateStore, sourceID, values)
-	})
+	return newRuntimeFeatureService(cfg, newRuntimeFeatureDeps(deps, sources))
 }
 
 func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
@@ -2910,12 +2899,7 @@ func (a *App) claimService() *claims.Service {
 }
 
 func (a *App) newClaimService() *claims.Service {
-	return claims.New(
-		sourceRuntimeStore(a.deps.StateStore),
-		claimStore(a.deps.StateStore),
-		sourceProjectionStateStore(a.deps.StateStore),
-		sourceProjectionGraphStore(a.deps.GraphStore),
-	)
+	return newClaimFeatureService(newClaimFeatureDeps(a.deps))
 }
 
 func (a *App) findingService() *findings.Service {
@@ -2926,14 +2910,7 @@ func (a *App) findingService() *findings.Service {
 }
 
 func (a *App) newFindingService() *findings.Service {
-	return findings.New(
-		sourceRuntimeStore(a.deps.StateStore),
-		eventReplayer(a.deps.AppendLog),
-		findingStore(a.deps.StateStore),
-		findingEvaluationRunStore(a.deps.StateStore),
-		findingEvidenceStore(a.deps.StateStore),
-		claimStore(a.deps.StateStore),
-	).WithFindingCandidateStore(findingCandidateStore(a.deps.StateStore)).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(a.deps.GraphStore)).WithAppendLog(a.deps.AppendLog)
+	return newFindingWorkflowFeatureService(newFindingFeatureDeps(a.deps))
 }
 
 const (
@@ -2972,10 +2949,7 @@ func (a *App) knowledgeService() *knowledge.Service {
 }
 
 func (a *App) newKnowledgeService() *knowledge.Service {
-	return knowledge.New(
-		graphQueryStore(a.deps.GraphStore),
-		sourceProjectionGraphStore(a.deps.GraphStore),
-	).WithAppendLog(a.deps.AppendLog)
+	return newKnowledgeFeatureService(newKnowledgeFeatureDeps(a.deps))
 }
 
 func (a *App) graphQueryService() *graphquery.Service {
@@ -2986,7 +2960,7 @@ func (a *App) graphQueryService() *graphquery.Service {
 }
 
 func (a *App) newGraphQueryService() *graphquery.Service {
-	return graphquery.New(graphQueryStore(a.deps.GraphStore))
+	return newGraphQueryFeatureService(newGraphQueryFeatureDeps(a.deps))
 }
 
 func (a *App) graphIngestService() *graphingest.Service {
@@ -3004,21 +2978,11 @@ func (a *App) workflowReplayService() *workflowprojection.Replayer {
 }
 
 func (a *App) newWorkflowReplayService() *workflowprojection.Replayer {
-	return workflowprojection.NewReplayer(
-		eventReplayer(a.deps.AppendLog),
-		sourceProjectionGraphStore(a.deps.GraphStore),
-	)
+	return newWorkflowReplayFeatureService(newWorkflowReplayFeatureDeps(a.deps))
 }
 
 func newGraphIngestService(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *graphingest.Service {
-	return graphingest.New(
-		sources,
-		sourceRuntimeStore(deps.StateStore),
-		sourceProjector(nil, deps.GraphStore),
-		deps.GraphStore,
-	).WithConfigPreparer(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, cfg.ConnectorSecretStores, deps.StateStore, sourceID, values)
-	})
+	return newGraphIngestFeatureService(cfg, newGraphIngestFeatureDeps(deps, sources))
 }
 
 func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {

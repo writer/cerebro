@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -36,15 +35,11 @@ LIMIT 25`,
 		},
 		Summary: "Review `urn:cerebro:writer:asset:alpha` first.",
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphAgentLLM: llm}, nil)
+	app := New(graphReasoningAuthConfig(), Dependencies{GraphStore: graphStore, GraphAgentLLM: llm}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	body := []byte(`{"tenant_id":"writer","question":"Which scoped asset should I review?","scope_urn":"urn:cerebro:writer:asset:alpha"}`)
-	resp, err := server.Client().Post(server.URL+"/api/v1/agent-platform/graph/reason", "application/json", bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("POST graph reason error = %v", err)
-	}
+	resp := postAgentGraphReason(t, server, `{"question":"Which scoped asset should I review?","scope_urn":"urn:cerebro:writer:asset:alpha"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -59,6 +54,9 @@ LIMIT 25`,
 	if response.TraceID == "" || response.QueryPlan == nil || response.Cypher == nil {
 		t.Fatalf("response missing trace/query/cypher: %#v", response)
 	}
+	if response.TenantID != "writer" {
+		t.Fatalf("tenant_id = %q, want authenticated tenant writer", response.TenantID)
+	}
 	if len(response.Rows) != 1 || response.Rows[0]["entity_urn"] != "urn:cerebro:writer:asset:alpha" {
 		t.Fatalf("rows = %#v", response.Rows)
 	}
@@ -67,15 +65,27 @@ LIMIT 25`,
 	}
 }
 
-func TestHandleAgentPlatformGraphReasonRequiresLLM(t *testing.T) {
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: &stubGraphStore{}}, nil)
+func TestHandleAgentPlatformGraphReasonRejectsTenantOverride(t *testing.T) {
+	app := New(graphReasoningAuthConfig(), Dependencies{
+		GraphStore:    &stubGraphStore{},
+		GraphAgentLLM: graphagent.NewStubLLMClient(),
+	}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Post(server.URL+"/api/v1/agent-platform/graph/reason", "application/json", strings.NewReader(`{"tenant_id":"writer","question":"hello"}`))
-	if err != nil {
-		t.Fatalf("POST graph reason error = %v", err)
+	resp := postAgentGraphReason(t, server, `{"tenant_id":"other","question":"hello"}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusForbidden)
 	}
+}
+
+func TestHandleAgentPlatformGraphReasonRequiresLLM(t *testing.T) {
+	app := New(graphReasoningAuthConfig(), Dependencies{GraphStore: &stubGraphStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp := postAgentGraphReason(t, server, `{"question":"hello"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
@@ -113,4 +123,34 @@ func (r *writeDeadlineRecorder) SetWriteDeadline(deadline time.Time) error {
 	r.deadline = deadline
 	r.deadlineSet = true
 	return nil
+}
+
+func graphReasoningAuthConfig() config.Config {
+	return config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "test-key",
+				Principal: "tester",
+				TenantID:  "writer",
+			}},
+		},
+	}
+}
+
+func postAgentGraphReason(t *testing.T, server *httptest.Server, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/graph/reason", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST graph reason error = %v", err)
+	}
+	return resp
 }

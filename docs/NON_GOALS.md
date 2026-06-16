@@ -80,12 +80,12 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ## Graph And Cypher
 
-### Neo4j is a projection, not a write target.
+### Neo4j is a projection, not a store of record.
 
-- The graph is rebuildable from JetStream. Cerebro will not treat any graph node, edge, or property as authoritative if it cannot be reproduced from `entity.*`, `event.*`, or `workflow.v1.*` events. Direct `Neo4jSession.Run` writes from anywhere outside `internal/graphingest`, `internal/sourceprojection`, and `internal/workflowprojection` are out of scope.
+- The graph is rebuildable from durable Cerebro records. Source runtime and workflow graph state must be reproducible from JetStream `entity.*`, `event.*`, or `workflow.v1.*` events. SDK/runtime claim graph state is currently reproducible from Postgres claim rows, as documented in [`docs/DURABILITY_CONTRACT.md`](./DURABILITY_CONTRACT.md), until a `claim.v1.*` event family exists. Direct `Neo4jSession.Run` writes from anywhere outside `internal/graphingest`, `internal/sourceprojection`, `internal/workflowprojection`, and the documented claim projection path are out of scope.
 - Why: the graph drifts the moment two paths can write to it independently. Replayability is the property that lets findings, reports, and reasoning trust traversal results.
-- Enforced in: [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) "Graph projection", workflow durability packages in `internal/workflowevents` and `internal/workflowprojection`, and graph write arch tests.
-- What would change this: a workflow concept whose durability genuinely cannot be modeled as an event-and-projector pair, ratified before code that writes to Neo4j directly is merged.
+- Enforced in: [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) "Store boundaries", [`docs/DURABILITY_CONTRACT.md`](./DURABILITY_CONTRACT.md), workflow durability packages in `internal/workflowevents` and `internal/workflowprojection`, and graph write arch tests.
+- What would change this: a workflow or claim concept whose durability genuinely cannot be modeled as either an event-and-projector pair or a documented current-state-backed rebuild source, ratified before code that writes to Neo4j directly is merged.
 
 ### The graph is not a general-purpose graph database product.
 
