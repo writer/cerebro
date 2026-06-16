@@ -549,6 +549,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
 		{family: familyMacie2Finding, kind: "aws.macie2_finding"},
+		{family: familyNetworkACL, kind: "aws.network_acl"},
 		{family: familyNetworkFirewall, kind: "aws.network_firewall"},
 		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyOpenSearchDomain, kind: "aws.opensearch_domain"},
@@ -582,6 +583,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy"},
 		{family: familyOrganizationsRoot, kind: "aws.organizations_root"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
+		{family: familyVPCFlowLog, kind: "aws.vpc_flow_log"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
 		{family: familyRoute53ResolverEndpoint, kind: "aws.route53_resolver_endpoint"},
@@ -604,6 +606,70 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
+			}
+		})
+	}
+}
+
+func TestReadAWSNetworkACLAndFlowLogEvents(t *testing.T) {
+	source := newTestSource(t, fakeAWS{fakeAWSNetwork: fakeAWSNetwork{fakeAWSNetworkExposure: fakeAWSNetworkExposure{
+		networkACLs: []ec2types.NetworkAcl{{
+			NetworkAclId: awssdk.String("acl-123"),
+			VpcId:        awssdk.String("vpc-123"),
+			Associations: []ec2types.NetworkAclAssociation{{SubnetId: awssdk.String("subnet-123")}},
+			Entries: []ec2types.NetworkAclEntry{
+				{
+					CidrBlock:  awssdk.String("0.0.0.0/0"),
+					Egress:     awssdk.Bool(false),
+					PortRange:  &ec2types.PortRange{From: awssdk.Int32(22), To: awssdk.Int32(22)},
+					Protocol:   awssdk.String("6"),
+					RuleAction: ec2types.RuleActionAllow,
+				},
+				{
+					CidrBlock:  awssdk.String("10.0.0.0/8"),
+					Egress:     awssdk.Bool(true),
+					Protocol:   awssdk.String("-1"),
+					RuleAction: ec2types.RuleActionAllow,
+				},
+			},
+		}},
+		flowLogs: []ec2types.FlowLog{{
+			DeliverLogsStatus:      awssdk.String("SUCCESS"),
+			DestinationOptions:     &ec2types.DestinationOptionsResponse{FileFormat: ec2types.DestinationFileFormatPlainText, HiveCompatiblePartitions: awssdk.Bool(true), PerHourPartition: awssdk.Bool(true)},
+			FlowLogId:              awssdk.String("fl-123"),
+			FlowLogStatus:          awssdk.String("ACTIVE"),
+			LogDestination:         awssdk.String("arn:aws:logs:us-east-1:123456789012:log-group:/aws/vpc/flowlogs/prod"),
+			LogDestinationType:     ec2types.LogDestinationTypeCloudWatchLogs,
+			LogGroupName:           awssdk.String("/aws/vpc/flowlogs/prod"),
+			MaxAggregationInterval: awssdk.Int32(60),
+			ResourceId:             awssdk.String("vpc-123"),
+			TrafficType:            ec2types.TrafficTypeAll,
+		}},
+	}}})
+
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyNetworkACL, kind: "aws.network_acl", attr: "allows_admin_ports_from_internet", want: "true"},
+		{family: familyVPCFlowLog, kind: "aws.vpc_flow_log", attr: "log_destination_type", want: string(ec2types.LogDestinationTypeCloudWatchLogs)},
+		{family: familyVPCFlowLog, kind: "aws.vpc_flow_log", attr: "vpc_id", want: "vpc-123"},
+	} {
+		t.Run(tt.family+"/"+tt.attr, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
 	}
@@ -3082,8 +3148,31 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.subnets = []ec2types.Subnet{{SubnetId: awssdk.String("subnet-123"), VpcId: awssdk.String("vpc-123")}}
 		fake.securityGroups = []ec2types.SecurityGroup{{GroupId: awssdk.String("sg-123"), VpcId: awssdk.String("vpc-123")}}
 		fake.routeTables = []ec2types.RouteTable{{RouteTableId: awssdk.String("rtb-123"), VpcId: awssdk.String("vpc-123")}}
+		fake.networkACLs = []ec2types.NetworkAcl{{
+			NetworkAclId: awssdk.String("acl-123"),
+			VpcId:        awssdk.String("vpc-123"),
+			Associations: []ec2types.NetworkAclAssociation{{SubnetId: awssdk.String("subnet-123")}},
+			Entries: []ec2types.NetworkAclEntry{{
+				CidrBlock:  awssdk.String("0.0.0.0/0"),
+				Egress:     awssdk.Bool(false),
+				PortRange:  &ec2types.PortRange{From: awssdk.Int32(22), To: awssdk.Int32(22)},
+				Protocol:   awssdk.String("6"),
+				RuleAction: ec2types.RuleActionAllow,
+			}},
+		}}
 		fake.internetGateways = []ec2types.InternetGateway{{InternetGatewayId: awssdk.String("igw-123")}}
 		fake.natGateways = []ec2types.NatGateway{{NatGatewayId: awssdk.String("nat-123"), VpcId: awssdk.String("vpc-123"), SubnetId: awssdk.String("subnet-123")}}
+		fake.flowLogs = []ec2types.FlowLog{{
+			FlowLogId:              awssdk.String("fl-123"),
+			FlowLogStatus:          awssdk.String("ACTIVE"),
+			LogDestinationType:     ec2types.LogDestinationTypeCloudWatchLogs,
+			LogGroupName:           awssdk.String("/aws/vpc/flowlogs/prod"),
+			ResourceId:             awssdk.String("vpc-123"),
+			TrafficType:            ec2types.TrafficTypeAll,
+			DeliverLogsStatus:      awssdk.String("SUCCESS"),
+			DestinationOptions:     &ec2types.DestinationOptionsResponse{FileFormat: ec2types.DestinationFileFormatPlainText},
+			MaxAggregationInterval: awssdk.Int32(60),
+		}}
 		fake.vpcEndpoints = []ec2types.VpcEndpoint{{VpcEndpointId: awssdk.String("vpce-123"), VpcId: awssdk.String("vpc-123")}}
 	}
 	cloudAssetData := func(fake *recordingAWS) {
@@ -3302,6 +3391,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"ec2:DescribeRouteTables"},
 		},
 		{
+			family:  familyNetworkACL,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeNetworkAcls"},
+		},
+		{
 			family:  familyInternetGateway,
 			seed:    networkSubstrateData,
 			wantAPI: []string{"ec2:DescribeInternetGateways"},
@@ -3310,6 +3404,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyNATGateway,
 			seed:    networkSubstrateData,
 			wantAPI: []string{"ec2:DescribeNatGateways"},
+		},
+		{
+			family:  familyVPCFlowLog,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeFlowLogs"},
 		},
 		{
 			family:  familyVPCEndpoint,
@@ -4183,8 +4282,10 @@ type fakeAWSNetworkExposure struct {
 	vpcs              []ec2types.Vpc
 	subnets           []ec2types.Subnet
 	routeTables       []ec2types.RouteTable
+	networkACLs       []ec2types.NetworkAcl
 	internetGateways  []ec2types.InternetGateway
 	natGateways       []ec2types.NatGateway
+	flowLogs          []ec2types.FlowLog
 	vpcEndpoints      []ec2types.VpcEndpoint
 	hostedZones       []route53types.HostedZone
 	recordSets        []route53types.ResourceRecordSet
@@ -4705,6 +4806,11 @@ func (f *recordingAWS) DescribeRouteTables(ctx context.Context, input *ec2.Descr
 	return f.fakeAWS.DescribeRouteTables(ctx, input, options...)
 }
 
+func (f *recordingAWS) DescribeNetworkAcls(ctx context.Context, input *ec2.DescribeNetworkAclsInput, options ...func(*ec2.Options)) (*ec2.DescribeNetworkAclsOutput, error) {
+	f.record("ec2:DescribeNetworkAcls")
+	return f.fakeAWS.DescribeNetworkAcls(ctx, input, options...)
+}
+
 func (f *recordingAWS) DescribeInternetGateways(ctx context.Context, input *ec2.DescribeInternetGatewaysInput, options ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
 	f.record("ec2:DescribeInternetGateways")
 	return f.fakeAWS.DescribeInternetGateways(ctx, input, options...)
@@ -4713,6 +4819,11 @@ func (f *recordingAWS) DescribeInternetGateways(ctx context.Context, input *ec2.
 func (f *recordingAWS) DescribeNatGateways(ctx context.Context, input *ec2.DescribeNatGatewaysInput, options ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
 	f.record("ec2:DescribeNatGateways")
 	return f.fakeAWS.DescribeNatGateways(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeFlowLogs(ctx context.Context, input *ec2.DescribeFlowLogsInput, options ...func(*ec2.Options)) (*ec2.DescribeFlowLogsOutput, error) {
+	f.record("ec2:DescribeFlowLogs")
+	return f.fakeAWS.DescribeFlowLogs(ctx, input, options...)
 }
 
 func (f *recordingAWS) DescribeVpcEndpoints(ctx context.Context, input *ec2.DescribeVpcEndpointsInput, options ...func(*ec2.Options)) (*ec2.DescribeVpcEndpointsOutput, error) {
@@ -6837,12 +6948,20 @@ func (f fakeAWS) DescribeRouteTables(context.Context, *ec2.DescribeRouteTablesIn
 	return &ec2.DescribeRouteTablesOutput{RouteTables: f.routeTables}, nil
 }
 
+func (f fakeAWS) DescribeNetworkAcls(context.Context, *ec2.DescribeNetworkAclsInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkAclsOutput, error) {
+	return &ec2.DescribeNetworkAclsOutput{NetworkAcls: f.networkACLs}, nil
+}
+
 func (f fakeAWS) DescribeInternetGateways(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
 	return &ec2.DescribeInternetGatewaysOutput{InternetGateways: f.internetGateways}, nil
 }
 
 func (f fakeAWS) DescribeNatGateways(context.Context, *ec2.DescribeNatGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
 	return &ec2.DescribeNatGatewaysOutput{NatGateways: f.natGateways}, nil
+}
+
+func (f fakeAWS) DescribeFlowLogs(context.Context, *ec2.DescribeFlowLogsInput, ...func(*ec2.Options)) (*ec2.DescribeFlowLogsOutput, error) {
+	return &ec2.DescribeFlowLogsOutput{FlowLogs: f.flowLogs}, nil
 }
 
 func (f fakeAWS) DescribeVpcEndpoints(context.Context, *ec2.DescribeVpcEndpointsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcEndpointsOutput, error) {

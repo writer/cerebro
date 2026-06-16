@@ -215,6 +215,36 @@ func TestProjectAWSNetworkSubstrateRelationships(t *testing.T) {
 			},
 		},
 		{
+			Id:       "nacl-1",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.network_acl",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"network_acl_id":    "acl-123",
+				"resource_id":       "acl-123",
+				"resource_provider": "aws",
+				"resource_type":     "network_acl",
+				"subnet_ids":        "subnet-123",
+				"vpc_id":            "vpc-123",
+			},
+		},
+		{
+			Id:       "flow-1",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.vpc_flow_log",
+			Attributes: map[string]string{
+				"domain":                "123456789012",
+				"flow_log_id":           "fl-123",
+				"monitored_resource_id": "vpc-123",
+				"resource_id":           "fl-123",
+				"resource_provider":     "aws",
+				"resource_type":         "vpc_flow_log",
+				"vpc_id":                "vpc-123",
+			},
+		},
+		{
 			Id:       "endpoint-1",
 			TenantId: "writer",
 			SourceId: "aws",
@@ -239,6 +269,8 @@ func TestProjectAWSNetworkSubstrateRelationships(t *testing.T) {
 	subnetURN := "urn:cerebro:writer:aws_subnet:subnet-123"
 	securityGroupURN := "urn:cerebro:writer:aws_security_group:sg-123"
 	routeTableURN := "urn:cerebro:writer:aws_route_table:rtb-123"
+	networkACLURN := "urn:cerebro:writer:aws_network_acl:acl-123"
+	vpcFlowLogURN := "urn:cerebro:writer:aws_vpc_flow_log:fl-123"
 	vpcEndpointURN := "urn:cerebro:writer:aws_vpc_endpoint:vpce-123"
 	vpcURN := "urn:cerebro:writer:aws_vpc:vpc-123"
 	accountURN := "urn:cerebro:writer:cloud_account:123456789012"
@@ -257,6 +289,13 @@ func TestProjectAWSNetworkSubstrateRelationships(t *testing.T) {
 		wantProjectedLink(routeTableURN, relationAssociatedWith, subnetURN),
 		wantProjectedLink(routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_internet_gateway:igw-123"),
 		wantProjectedLink(routeTableURN, relationDependsOn, "urn:cerebro:writer:aws_nat_gateway:nat-123"),
+		wantProjectedLink(networkACLURN, relationBelongsTo, accountURN),
+		wantProjectedLink(networkACLURN, relationBelongsTo, vpcURN),
+		wantProjectedLink(networkACLURN, relationHasClassification, classificationURN),
+		wantProjectedLink(networkACLURN, relationAssociatedWith, subnetURN),
+		wantProjectedLink(vpcFlowLogURN, relationBelongsTo, accountURN),
+		wantProjectedLink(vpcFlowLogURN, relationHasClassification, classificationURN),
+		wantProjectedLink(vpcFlowLogURN, relationAssociatedWith, vpcURN),
 		wantProjectedLink(vpcEndpointURN, relationBelongsTo, accountURN),
 		wantProjectedLink(vpcEndpointURN, relationBelongsTo, vpcURN),
 		wantProjectedLink(vpcEndpointURN, relationBelongsTo, subnetURN),
