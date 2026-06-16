@@ -1,6 +1,7 @@
 package archtests
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,31 @@ func TestGrandfatheredSourceLOCBudgetsRatchetDownToCurrentSize(t *testing.T) {
 		}
 		if lines != budget {
 			t.Fatalf("sources/%s has %d Go LOC but grandfathered budget is %d; keep legacy source budgets as exact no-growth ceilings", name, lines, budget)
+		}
+	}
+}
+
+func TestGrandfatheredSourceExtractionPlanIsDocumented(t *testing.T) {
+	root := repoRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, "docs", "SOURCE_CDK_EXTRACTION.md"))
+	if err != nil {
+		t.Fatalf("read docs/SOURCE_CDK_EXTRACTION.md: %v", err)
+	}
+	text := string(body)
+	for _, marker := range []string{
+		"New source packages must stay at or below 300 nonblank Go LOC",
+		"exact no-growth ceilings",
+		"Move provider client construction, retry policy, and pagination loops",
+		"Keep normalization, graph projection, persistence, and finding logic outside",
+	} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("docs/SOURCE_CDK_EXTRACTION.md missing extraction marker %q", marker)
+		}
+	}
+	for name, budget := range grandfatheredSourcePackageLOCBudgets {
+		marker := fmt.Sprintf("| `%s` | %d |", name, budget)
+		if !strings.Contains(text, marker) {
+			t.Fatalf("docs/SOURCE_CDK_EXTRACTION.md missing grandfathered source marker %q", marker)
 		}
 	}
 }
