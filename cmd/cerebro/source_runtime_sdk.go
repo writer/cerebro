@@ -10,7 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcegen"
 )
 
-const sourceRuntimeSDKNewUsage = "usage: %s source-runtime sdk [new <source-id> [source_type=json_api] [auth_model=bearer_token|api_token|api_key] [asset_schemas=<schema[,schema]>] [finding_schemas=<schema[,schema]>] [freshness_expectation=<duration>] [failure_modes=<mode[,mode]>] [name=<name>] [description=<description>] [health_path=<path>] [output_dir=<dir>] [dry_run=true] [force=true] | classify <definition.json>]"
+const sourceRuntimeSDKNewUsage = "usage: %s source-runtime sdk [new <source-id> [definition=<definition.json>] [source_type=json_api] [auth_model=bearer_token|api_token|api_key] [asset_schemas=<schema[,schema]>] [finding_schemas=<schema[,schema]>] [freshness_expectation=<duration>] [failure_modes=<mode[,mode]>] [name=<name>] [description=<description>] [health_path=<path>] [output_dir=<dir>] [dry_run=true] [force=true] | classify <definition.json>]"
 
 func runSourceRuntimeSDK(args []string) error {
 	if len(args) == 0 {
@@ -22,7 +22,7 @@ func runSourceRuntimeSDK(args []string) error {
 		if err != nil {
 			return err
 		}
-		result, err := sourcegen.Generate(request)
+		result, err := generateSourceRuntimeSDK(request)
 		if err != nil {
 			return err
 		}
@@ -34,13 +34,37 @@ func runSourceRuntimeSDK(args []string) error {
 	}
 }
 
+func generateSourceRuntimeSDK(request sourcegen.Request) (*sourcegen.Result, error) {
+	if strings.TrimSpace(request.DefinitionPath) == "" {
+		return sourcegen.Generate(request)
+	}
+	definition, err := readConnectorDefinition(request.DefinitionPath)
+	if err != nil {
+		return nil, err
+	}
+	if request.SourceID != "" && strings.TrimSpace(definition.SourceID) != "" && strings.TrimSpace(request.SourceID) != strings.TrimSpace(definition.SourceID) {
+		return nil, fmt.Errorf("source id %q does not match definition source_id %q", request.SourceID, definition.SourceID)
+	}
+	if strings.TrimSpace(definition.SourceID) == "" {
+		definition.SourceID = strings.TrimSpace(request.SourceID)
+	}
+	return sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
+		Definition:           definition,
+		FreshnessExpectation: request.FreshnessExpectation,
+		HealthPath:           request.HealthPath,
+		OutputDir:            request.OutputDir,
+		DryRun:               request.DryRun,
+		Force:                request.Force,
+	})
+}
+
 func runSourceRuntimeSDKClassify(args []string) error {
 	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
 		return usageError(fmt.Sprintf(sourceRuntimeSDKNewUsage, os.Args[0]))
 	}
-	payload, err := os.ReadFile(strings.TrimSpace(args[0])) // #nosec G304 -- operator-provided CLI path.
+	payload, err := readConnectorDefinitionPayload(args[0])
 	if err != nil {
-		return fmt.Errorf("read connector definition: %w", err)
+		return err
 	}
 	var definitions []connectordefinitions.Definition
 	if err := json.Unmarshal(payload, &definitions); err == nil {
@@ -61,12 +85,33 @@ func runSourceRuntimeSDKClassify(args []string) error {
 	return printJSON(report)
 }
 
+func readConnectorDefinition(path string) (connectordefinitions.Definition, error) {
+	payload, err := readConnectorDefinitionPayload(path)
+	if err != nil {
+		return connectordefinitions.Definition{}, err
+	}
+	var definition connectordefinitions.Definition
+	if err := json.Unmarshal(payload, &definition); err != nil {
+		return connectordefinitions.Definition{}, fmt.Errorf("decode connector definition: %w", err)
+	}
+	return definition, nil
+}
+
+func readConnectorDefinitionPayload(path string) ([]byte, error) {
+	payload, err := os.ReadFile(strings.TrimSpace(path)) // #nosec G304 -- operator-provided CLI path.
+	if err != nil {
+		return nil, fmt.Errorf("read connector definition: %w", err)
+	}
+	return payload, nil
+}
+
 func parseSourceRuntimeSDKNewArgs(args []string) (sourcegen.Request, error) {
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		return sourcegen.Request{}, usageError(fmt.Sprintf(sourceRuntimeSDKNewUsage, os.Args[0]))
 	}
 	allowedKeys := map[string]struct{}{
 		"source_type":           {},
+		"definition":            {},
 		"auth_model":            {},
 		"asset_schemas":         {},
 		"finding_schemas":       {},
@@ -106,6 +151,7 @@ func parseSourceRuntimeSDKNewArgs(args []string) (sourcegen.Request, error) {
 	return sourcegen.Request{
 		SourceID:             strings.TrimSpace(args[0]),
 		SourceType:           firstNonEmptyCLI(values["source_type"], sourcegen.SourceTypeJSONAPI),
+		DefinitionPath:       strings.TrimSpace(values["definition"]),
 		AuthModel:            firstNonEmptyCLI(values["auth_model"], sourcegen.AuthModelBearerToken),
 		AssetSchemas:         splitCSV(values["asset_schemas"]),
 		FindingSchemas:       splitCSV(values["finding_schemas"]),

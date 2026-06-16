@@ -94,6 +94,56 @@ func TestRunSourceRuntimeSDKDryRunThroughSourceRuntimeCommand(t *testing.T) {
 	}
 }
 
+func TestRunSourceRuntimeSDKNewFromDefinitionDryRun(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "definition.json")
+	payload := []byte(`{
+		"schema_version": "cerebro.integration/v1",
+		"id": "tenant-a-example_idp",
+		"tenant_id": "tenant-a",
+		"source_id": "example_idp",
+		"display_name": "Example IDP",
+		"auth": {
+			"model": "bearer_token",
+			"credential_fields": [{"key": "token", "secret": true, "reference_only": true}]
+		},
+		"transport": {
+			"base_url": "https://api.example.test",
+			"verification": {"path": "/v1/me"}
+		},
+		"resource_families": [{
+			"id": "users",
+			"path": "/v1/users",
+			"record_selector": "$.data[*]",
+			"id_field": "id",
+			"event": {"kind": "example_idp.user", "schema_ref": "example_idp/user/v1"},
+			"projection": {"template": "identity_user"},
+			"coverage": [{"type": "entity_family", "support": "supported"}]
+		}]
+	}`)
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatalf("write definition: %v", err)
+	}
+	stdout := captureCommandStdout(t, func() {
+		err := runSourceRuntime([]string{"sdk", "new", "example_idp", "definition=" + path, "dry_run=true"})
+		if err != nil {
+			t.Fatalf("runSourceRuntime sdk new definition dry-run error = %v", err)
+		}
+	})
+	var result struct {
+		SourceID  string   `json:"source_id"`
+		AuthModel string   `json:"auth_model"`
+		DryRun    bool     `json:"dry_run"`
+		Files     []string `json:"files"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("unmarshal definition dry-run output: %v\n%s", err, stdout)
+	}
+	if result.SourceID != "example_idp" || result.AuthModel != "bearer_token" || !result.DryRun || len(result.Files) == 0 {
+		t.Fatalf("definition dry-run result = %#v", result)
+	}
+}
+
 func TestRunSourceRuntimeSDKClassify(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "definition.json")

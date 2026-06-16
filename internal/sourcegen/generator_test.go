@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/tools/sourcedeploy"
 )
@@ -112,6 +113,124 @@ func TestGenerateDryRunDoesNotWriteFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outputDir, "sources/demo_source/source.go")); !os.IsNotExist(err) {
 		t.Fatalf("source.go exists after dry run, err=%v", err)
+	}
+}
+
+func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-example_idp",
+			TenantID:      "tenant-a",
+			SourceID:      "example_idp",
+			DisplayName:   "Example IDP",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/me",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/v1/users",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example_idp.user",
+					SchemaRef: "example_idp/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{
+					Type:    "entity_family",
+					Support: "supported",
+				}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	if result.SourceID != "example_idp" || result.AuthModel != AuthModelBearerToken {
+		t.Fatalf("result = %#v", result)
+	}
+	catalog := readGeneratedFile(t, outputDir, "sources/example_idp/catalog.yaml")
+	for _, want := range []string{"- example_idp.user", "families: [users]", "schema_ref: example_idp/user/v1"} {
+		if !strings.Contains(catalog, want) {
+			t.Fatalf("catalog missing %q:\n%s", want, catalog)
+		}
+	}
+	if _, err := sourcecdk.LoadSourceCatalog([]byte(catalog)); err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v\n%s", err, catalog)
+	}
+	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/example_idp.go")
+	for _, want := range []string{"exampleIdpUsersProjections", "identityUserProjections", `Provider: "example_idp"`} {
+		if !strings.Contains(projection, want) {
+			t.Fatalf("projection missing %q:\n%s", want, projection)
+		}
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/example_idp/source_test.go")
+	if strings.Contains(sourceTest, "evidence_cas_uri") {
+		t.Fatalf("definition generated source test should not assume EvidenceCAS fields:\n%s", sourceTest)
+	}
+}
+
+func TestGenerateDefinitionRejectsUnsupportedAuth(t *testing.T) {
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-a-example",
+			TenantID:    "tenant-a",
+			SourceID:    "example",
+			DisplayName: "Example",
+			Auth: connectordefinitions.AuthSpec{
+				Model:            "oauth_authorization_code",
+				AuthorizationURL: "https://example.test/oauth/authorize",
+				TokenURL:         "https://example.test/oauth/token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "client_secret",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/me",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/v1/users",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example.user",
+					SchemaRef: "example/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}},
+		},
+		OutputDir: t.TempDir(),
+	})
+	if err == nil {
+		t.Fatal("GenerateDefinition() error = nil, want unsupported auth error")
+	}
+	if !errors.Is(err, errUnsupportedDefinition) {
+		t.Fatalf("GenerateDefinition() error = %v, want errUnsupportedDefinition", err)
 	}
 }
 
