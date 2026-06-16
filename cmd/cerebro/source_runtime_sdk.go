@@ -42,20 +42,36 @@ func generateSourceRuntimeSDK(request sourcegen.Request) (*sourcegen.Result, err
 	if err != nil {
 		return nil, err
 	}
-	if request.SourceID != "" && strings.TrimSpace(definition.SourceID) != "" && strings.TrimSpace(request.SourceID) != strings.TrimSpace(definition.SourceID) {
-		return nil, fmt.Errorf("source id %q does not match definition source_id %q", request.SourceID, definition.SourceID)
-	}
 	if strings.TrimSpace(definition.SourceID) == "" {
 		definition.SourceID = strings.TrimSpace(request.SourceID)
 	}
+	normalizedDefinition, err := connectordefinitions.Normalize(definition)
+	if err != nil {
+		return nil, err
+	}
+	requestSourceID, err := normalizeConnectorSourceID(request.SourceID)
+	if err != nil {
+		return nil, err
+	}
+	if requestSourceID != "" && normalizedDefinition.SourceID != "" && requestSourceID != normalizedDefinition.SourceID {
+		return nil, fmt.Errorf("source id %q does not match definition source_id %q", request.SourceID, definition.SourceID)
+	}
 	return sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
-		Definition:           definition,
+		Definition:           normalizedDefinition,
 		FreshnessExpectation: request.FreshnessExpectation,
 		HealthPath:           request.HealthPath,
 		OutputDir:            request.OutputDir,
 		DryRun:               request.DryRun,
 		Force:                request.Force,
 	})
+}
+
+func normalizeConnectorSourceID(sourceID string) (string, error) {
+	normalized, err := connectordefinitions.Normalize(connectordefinitions.Definition{SourceID: sourceID})
+	if err != nil {
+		return "", err
+	}
+	return normalized.SourceID, nil
 }
 
 func runSourceRuntimeSDKClassify(args []string) error {
