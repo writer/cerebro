@@ -331,6 +331,9 @@ func TestConnectorDefinitionValidateDoesNotRequireStore(t *testing.T) {
 	if validation.Validation.Status != connectordefinitions.ValidationBlocked {
 		t.Fatalf("validation status = %q, want blocked", validation.Validation.Status)
 	}
+	if validation.Support.Verdict != connectordefinitions.SupportVerdictBespokeRequired {
+		t.Fatalf("support verdict = %q, want bespoke_required; report=%#v", validation.Support.Verdict, validation.Support)
+	}
 	if len(validation.Promotion.RequiredGates) == 0 {
 		t.Fatalf("required gates = %#v, want blocking gates", validation.Promotion.RequiredGates)
 	}

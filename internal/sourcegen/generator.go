@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/writer/cerebro/internal/connectordefinitions"
 )
 
 const (
@@ -28,18 +30,30 @@ const (
 
 var errMissingSchemas = errors.New("at least one asset_schemas or finding_schemas entry is required")
 var errGeneratedNameCollision = errors.New("generated source names collide")
+var errUnsupportedDefinition = errors.New("connector definition is not executable by sourcegen")
 
 // Request describes a generated Source Runtime SDK integration.
 type Request struct {
 	SourceID             string
 	SourceType           string
 	AuthModel            string
+	DefinitionPath       string
 	AssetSchemas         []string
 	FindingSchemas       []string
 	FreshnessExpectation string
 	FailureModes         []string
 	Name                 string
 	Description          string
+	HealthPath           string
+	OutputDir            string
+	DryRun               bool
+	Force                bool
+}
+
+// DefinitionRequest describes a generated integration backed by a connector definition.
+type DefinitionRequest struct {
+	Definition           connectordefinitions.Definition
+	FreshnessExpectation string
 	HealthPath           string
 	OutputDir            string
 	DryRun               bool
@@ -98,6 +112,20 @@ func Generate(request Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	return generateNormalized(normalized)
+}
+
+// GenerateDefinition writes a Source Runtime SDK scaffold from a validated
+// integration definition, or returns the file plan in dry-run mode.
+func GenerateDefinition(request DefinitionRequest) (*Result, error) {
+	normalized, err := normalizeDefinitionRequest(request)
+	if err != nil {
+		return nil, err
+	}
+	return generateNormalized(normalized)
+}
+
+func generateNormalized(normalized normalizedRequest) (*Result, error) {
 	files, err := renderFiles(normalized)
 	if err != nil {
 		return nil, err
@@ -138,6 +166,90 @@ func Generate(request Request) (*Result, error) {
 		}
 	}
 	return result, nil
+}
+
+func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, error) {
+	definition, err := connectordefinitions.Normalize(request.Definition)
+	if err != nil {
+		return normalizedRequest{}, err
+	}
+	report, err := connectordefinitions.Classify(definition, connectordefinitions.DefaultGrammar())
+	if err != nil {
+		return normalizedRequest{}, err
+	}
+	if report.Validation.Status == connectordefinitions.ValidationBlocked {
+		return normalizedRequest{}, fmt.Errorf("%w: definition validation is blocked: %s", errUnsupportedDefinition, strings.Join(report.MissingFeatures, ", "))
+	}
+	if report.Verdict != connectordefinitions.SupportVerdictSupported {
+		return normalizedRequest{}, fmt.Errorf("%w: definition is outside the generic grammar: %s", errUnsupportedDefinition, strings.Join(report.MissingFeatures, ", "))
+	}
+	authModel, err := executableAuthModel(definition.Auth.Model)
+	if err != nil {
+		return normalizedRequest{}, err
+	}
+	tokenScheme, tokenConfigKey, err := authModelConfig(authModel)
+	if err != nil {
+		return normalizedRequest{}, err
+	}
+	sourceID := strings.TrimSpace(definition.SourceID)
+	if !identifierPattern.MatchString(sourceID) {
+		return normalizedRequest{}, fmt.Errorf("source_id %q must start with a lowercase letter and use lowercase letters, digits, underscores, or hyphens", definition.SourceID)
+	}
+	failureModes := []string{"api_error", "auth_error", "rate_limit", "schema_drift"}
+	freshness, err := parseFreshnessExpectation(request.FreshnessExpectation)
+	if err != nil {
+		return normalizedRequest{}, err
+	}
+	healthPath := strings.TrimSpace(request.HealthPath)
+	if healthPath == "" && definition.Transport != nil && definition.Transport.Verification != nil {
+		healthPath = strings.TrimSpace(definition.Transport.Verification.Path)
+	}
+	if healthPath == "" {
+		healthPath = defaultHealthPath
+	}
+	if !strings.HasPrefix(healthPath, "/") || strings.Contains(healthPath, "?") || strings.Contains(healthPath, "#") {
+		return normalizedRequest{}, fmt.Errorf("health_path must be an absolute path without query or fragment")
+	}
+	if strings.ContainsAny(healthPath, "\r\n\t ") {
+		return normalizedRequest{}, fmt.Errorf("health_path must not contain whitespace")
+	}
+	outputDir := strings.TrimSpace(request.OutputDir)
+	if outputDir == "" {
+		outputDir = "."
+	}
+	normalized := normalizedRequest{
+		Request: Request{
+			SourceID:             sourceID,
+			SourceType:           SourceTypeJSONAPI,
+			AuthModel:            authModel,
+			FreshnessExpectation: freshness.String(),
+			FailureModes:         failureModes,
+			Name:                 firstNonEmptyString(definition.DisplayName, titleFromID(sourceID)+" Source Runtime"),
+			Description:          firstNonEmptyString(definition.Description, fmt.Sprintf("%s source runtime generated from a connector definition.", titleFromID(sourceID))),
+			HealthPath:           healthPath,
+			OutputDir:            outputDir,
+			DryRun:               request.DryRun,
+			Force:                request.Force,
+		},
+		FreshnessDuration: freshness,
+		TokenScheme:       tokenScheme,
+		TokenConfigKey:    tokenConfigKey,
+		EnvPrefix:         strings.ToUpper(strings.NewReplacer("-", "_").Replace(sourceID)),
+		PackageName:       packageName(sourceID),
+	}
+	normalized.Families, err = familiesForDefinition(normalized, definition)
+	if err != nil {
+		return normalizedRequest{}, err
+	}
+	if len(normalized.Families) == 0 {
+		return normalizedRequest{}, fmt.Errorf("%w: definition must include at least one executable resource family", errUnsupportedDefinition)
+	}
+	if err := validateGeneratedFamilies(normalized.Families); err != nil {
+		return normalizedRequest{}, err
+	}
+	normalized.DefaultFamily = normalized.Families[0].Name
+	normalized.DefaultPath = normalized.Families[0].Path
+	return normalized, nil
 }
 
 func normalizeRequest(request Request) (normalizedRequest, error) {
@@ -260,6 +372,17 @@ func authModelConfig(authModel string) (string, string, error) {
 	}
 }
 
+func executableAuthModel(authModel string) (string, error) {
+	switch strings.TrimSpace(authModel) {
+	case AuthModelBearerToken, "bearer":
+		return AuthModelBearerToken, nil
+	case AuthModelAPIToken, AuthModelAPIKey:
+		return AuthModelAPIKey, nil
+	default:
+		return "", fmt.Errorf("%w: auth model %q needs provider auth runtime support before sourcegen can emit executable code", errUnsupportedDefinition, authModel)
+	}
+}
+
 func normalizeIdentifiers(label string, values []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(values))
@@ -347,6 +470,98 @@ func familiesForRequest(request normalizedRequest) []familyData {
 	return families
 }
 
+func familiesForDefinition(request normalizedRequest, definition connectordefinitions.Definition) ([]familyData, error) {
+	families := make([]familyData, 0, len(definition.ResourceFamilies))
+	for _, resource := range definition.ResourceFamilies {
+		class, err := executableProjectionClass(resource)
+		if err != nil {
+			return nil, err
+		}
+		name := strings.TrimSpace(resource.ID)
+		eventKind := strings.TrimSpace(resource.Event.Kind)
+		if eventKind == "" {
+			eventKind = request.SourceID + "." + name
+		}
+		schemaRef := strings.TrimSpace(resource.Event.SchemaRef)
+		if schemaRef == "" {
+			schemaRef = request.SourceID + "/" + name + "/v1"
+		}
+		urnKind := strings.TrimSpace(resource.Event.URNKind)
+		if urnKind == "" {
+			urnKind = "runtime_" + name
+		}
+		requiredAttributes := resource.Event.RequiredAttributes
+		if len(requiredAttributes) == 0 {
+			requiredAttributes = requiredAttributesForClass(class)
+		}
+		requiredPayloadFields := resource.Event.RequiredPayloadFields
+		if len(requiredPayloadFields) == 0 {
+			requiredPayloadFields = []string{firstNonEmptyString(resource.IDField, "id")}
+		}
+		families = append(families, familyData{
+			Name:                  name,
+			Schema:                schemaNameFromRef(schemaRef, name),
+			Class:                 class,
+			ConstName:             "family" + pascalIdentifier(name),
+			ProjectorName:         lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
+			Path:                  resource.Path,
+			URNKind:               urnKind,
+			EventKind:             eventKind,
+			SchemaRef:             schemaRef,
+			RequiredAttributes:    requiredAttributes,
+			RequiredPayloadFields: requiredPayloadFields,
+		})
+	}
+	return families, nil
+}
+
+func executableProjectionClass(resource connectordefinitions.ResourceFamily) (string, error) {
+	template := ""
+	if resource.Projection != nil {
+		template = strings.TrimSpace(resource.Projection.Template)
+	}
+	if template == "" {
+		return "", fmt.Errorf("%w: family %q needs a projection template before sourcegen can emit executable code", errUnsupportedDefinition, resource.ID)
+	}
+	switch template {
+	case "asset", "cloud_resource", "endpoint_device", "repository":
+		return "asset", nil
+	case "finding", "vulnerability":
+		return "finding", nil
+	case "identity_user", "identity_group", "group_membership", "audit_event", "evidence_cas_reference":
+		return template, nil
+	default:
+		return "", fmt.Errorf("%w: projection template %q is not executable by sourcegen yet", errUnsupportedDefinition, template)
+	}
+}
+
+func requiredAttributesForClass(class string) []string {
+	switch class {
+	case "finding":
+		return []string{"tenant_id", "source_event_id", "finding_id", "resource_urn", "severity", "status"}
+	case "identity_user":
+		return []string{"tenant_id", "source_event_id", "user_id"}
+	case "identity_group":
+		return []string{"tenant_id", "source_event_id", "group_id"}
+	case "group_membership":
+		return []string{"tenant_id", "source_event_id", "group_id", "member_id"}
+	case "audit_event":
+		return []string{"tenant_id", "source_event_id", "event_type", "actor_id"}
+	case "evidence_cas_reference":
+		return []string{"tenant_id", "source_event_id", "evidence_id", "evidence_type", "evidence_cas_uri", "evidence_cas_digest"}
+	default:
+		return []string{"tenant_id", "source_event_id", "resource_urn", "resource_type", "resource_id"}
+	}
+}
+
+func schemaNameFromRef(schemaRef string, fallback string) string {
+	parts := strings.Split(strings.Trim(schemaRef, "/"), "/")
+	if len(parts) >= 2 && strings.TrimSpace(parts[len(parts)-2]) != "" {
+		return strings.TrimSpace(parts[len(parts)-2])
+	}
+	return fallback
+}
+
 func validateGeneratedFamilies(families []familyData) error {
 	seen := map[string]string{}
 	for _, family := range families {
@@ -401,6 +616,24 @@ func renderCatalog(request normalizedRequest) string {
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - %s\n", family.EventKind)
 	}
+	fmt.Fprintf(&b, "coverage_contract:\n")
+	fmt.Fprintf(&b, "  owner_domain: source_runtime\n")
+	fmt.Fprintf(&b, "  authority_domain: %s\n", request.SourceID)
+	fmt.Fprintf(&b, "  dimensions:\n")
+	for _, family := range request.Families {
+		fmt.Fprintf(&b, "    - id: %s\n", family.Name)
+		fmt.Fprintf(&b, "      type: entity_family\n")
+		fmt.Fprintf(&b, "      title: %s\n", yamlString(titleFromID(family.Name)))
+		fmt.Fprintf(&b, "      families: [%s]\n", family.Name)
+		fmt.Fprintf(&b, "      support: partial\n")
+		fmt.Fprintf(&b, "      high_value: true\n")
+		fmt.Fprintf(&b, "      notes:\n")
+		fmt.Fprintf(&b, "        - Generated Source Runtime SDK mapping requires provider field review before certification.\n")
+	}
+	fmt.Fprintf(&b, "    - id: incremental_sync\n")
+	fmt.Fprintf(&b, "      type: incremental_sync\n")
+	fmt.Fprintf(&b, "      title: Incremental cursor sync\n")
+	fmt.Fprintf(&b, "      support: planned\n")
 	fmt.Fprintf(&b, "event_contracts:\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - kind: %s\n", family.EventKind)
@@ -503,6 +736,14 @@ func idKeysForFamily(family familyData) []string {
 		return []string{"evidence_id", "uri", "digest", "id"}
 	case "finding":
 		return []string{"finding_id", "id", "resource_urn"}
+	case "identity_user":
+		return []string{"user_id", "id", "email", "primary_email", "login"}
+	case "identity_group":
+		return []string{"group_id", "id", "group_email", "email"}
+	case "group_membership":
+		return []string{"membership_id", "id", "group_id", "member_id", "user_id", "email"}
+	case "audit_event":
+		return []string{"event_id", "id", "uuid", "request_id"}
 	default:
 		return []string{"id", "urn", "resource_urn", "name"}
 	}
@@ -530,6 +771,44 @@ func attributePathsForFamily(family familyData) map[string]string {
 		base["status"] = "status|state"
 		base["title"] = "title|name|summary"
 		base["description"] = "description|summary"
+	case "identity_user":
+		base["user_id"] = "user_id|id|uid"
+		base["email"] = "email|primary_email|profile.email"
+		base["primary_email"] = "primary_email|email|profile.email"
+		base["login"] = "login|username|email|profile.login"
+		base["display_name"] = "display_name|name|profile.display_name|profile.name"
+		base["domain"] = "domain|tenant_domain|organization_domain"
+		base["status"] = "status|state|lifecycle_state"
+		base["created_at"] = "created_at|created|profile.created_at"
+		base["last_login_at"] = "last_login_at|last_login|last_seen_at"
+		base["department"] = "department|profile.department"
+		base["job_title"] = "job_title|title|profile.title"
+		base["manager"] = "manager|profile.manager"
+	case "identity_group":
+		base["group_id"] = "group_id|id"
+		base["group_email"] = "group_email|email"
+		base["group_name"] = "group_name|name|display_name"
+		base["domain"] = "domain|tenant_domain|organization_domain"
+		base["description"] = "description|summary"
+	case "group_membership":
+		base["group_id"] = "group_id|group.id|groupId"
+		base["group_email"] = "group_email|group.email"
+		base["group_name"] = "group_name|group.name"
+		base["member_id"] = "member_id|member.id|user_id|user.id|id"
+		base["member_user_id"] = "member_user_id|user_id|user.id|member.id"
+		base["member_email"] = "member_email|user_email|email|member.email|user.email"
+		base["member_name"] = "member_name|name|member.name|user.name"
+		base["member_type"] = "member_type|type|member.type"
+		base["role"] = "role|membership_role"
+	case "audit_event":
+		base["event_type"] = "event_type|event_name|action|type"
+		base["actor_id"] = "actor_id|actor.id|actorId|user_id|user.id"
+		base["actor_email"] = "actor_email|actor.email|email|user.email"
+		base["actor_name"] = "actor_name|actor.name|user.name"
+		base["resource_id"] = "resource_id|target_id|target.id|resource.id|object_id"
+		base["resource_type"] = "resource_type|target_type|target.type|object_type"
+		base["resource_name"] = "resource_name|target_name|target.name|resource.name|object_name"
+		base["resource_email"] = "resource_email|target_email|target.email"
 	case "evidence_cas_reference":
 		base["evidence_id"] = "evidence_id|id|uri"
 		base["evidence_type"] = "evidence_type|type"
@@ -564,11 +843,11 @@ func renderSourceTestGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "\t\tif r.URL.Path == defaultHealthPath {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n")
 	fmt.Fprintf(&b, "\t\tif r.URL.Path != %s {\n\t\t\tt.Fatalf(\"path = %%q\", r.URL.Path)\n\t\t}\n", strconv.Quote(request.DefaultPath))
 	fmt.Fprintf(&b, "\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n")
-	fmt.Fprintf(&b, "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"items\": []map[string]string{{\"id\": \"record-1\", \"resource_urn\": \"urn:cerebro:tenant:runtime_asset:record-1\", \"resource_type\": \"asset\", \"resource_id\": \"record-1\", \"name\": \"Record One\", \"updated_at\": \"2026-06-01T00:00:00Z\", \"evidence_cas_uri\": \"cas://cases/record-1\", \"evidence_cas_digest\": \"sha256:test\"}}})\n")
+	fmt.Fprintf(&b, "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"items\": []map[string]string{{\"id\": \"record-1\", \"resource_urn\": \"urn:cerebro:tenant:runtime_asset:record-1\", \"resource_type\": \"asset\", \"resource_id\": \"record-1\", \"name\": \"Record One\", \"updated_at\": \"2026-06-01T00:00:00Z\"}}})\n")
 	fmt.Fprintf(&b, "\t}))\n\tdefer server.Close()\n")
 	fmt.Fprintf(&b, "\tcfg := sourcecdk.NewConfig(map[string]string{\"tenant_id\": \"tenant\", \"base_url\": server.URL, \"family\": defaultFamily, %s: \"test-token\"})\n", strconv.Quote(configKey))
 	fmt.Fprintf(&b, "\tif err := source.Check(context.Background(), cfg); err != nil {\n\t\tt.Fatalf(\"Check() error = %%v\", err)\n\t}\n")
-	fmt.Fprintf(&b, "\tpull, err := source.Read(context.Background(), cfg, nil)\n\tif err != nil {\n\t\tt.Fatalf(\"Read() error = %%v\", err)\n\t}\n\tif len(pull.Events) != 1 {\n\t\tt.Fatalf(\"events = %%d, want 1\", len(pull.Events))\n\t}\n\tevent := pull.Events[0]\n\tif event.Kind != sourceID+\".\"+defaultFamily {\n\t\tt.Fatalf(\"kind = %%q\", event.Kind)\n\t}\n\tif !strings.Contains(event.Attributes[\"evidence_cas_uri\"], \"record-1\") {\n\t\tt.Fatalf(\"evidence_cas_uri = %%q\", event.Attributes[\"evidence_cas_uri\"])\n\t}\n}\n")
+	fmt.Fprintf(&b, "\tpull, err := source.Read(context.Background(), cfg, nil)\n\tif err != nil {\n\t\tt.Fatalf(\"Read() error = %%v\", err)\n\t}\n\tif len(pull.Events) != 1 {\n\t\tt.Fatalf(\"events = %%d, want 1\", len(pull.Events))\n\t}\n\tevent := pull.Events[0]\n\tif event.Kind != sourceID+\".\"+defaultFamily {\n\t\tt.Fatalf(\"kind = %%q\", event.Kind)\n\t}\n\tif strings.TrimSpace(event.Id) == \"\" {\n\t\tt.Fatalf(\"event id is empty: %%#v\", event)\n\t}\n}\n")
 	return b.String()
 }
 
@@ -652,13 +931,25 @@ func renderProjectionGo(request normalizedRequest) string {
 	sourcePrefix := lowerCamelIdentifier(request.SourceID)
 	var b strings.Builder
 	fmt.Fprintf(&b, "package sourceprojection\n\n")
-	fmt.Fprintf(&b, "import (\n\t\"strings\"\n\n\tcerebrov1 \"github.com/writer/cerebro/gen/cerebro/v1\"\n\t\"github.com/writer/cerebro/internal/ports\"\n)\n\n")
+	if projectionNeedsStrings(request.Families) {
+		fmt.Fprintf(&b, "import (\n\t\"strings\"\n\n\tcerebrov1 \"github.com/writer/cerebro/gen/cerebro/v1\"\n\t\"github.com/writer/cerebro/internal/ports\"\n)\n\n")
+	} else {
+		fmt.Fprintf(&b, "import (\n\tcerebrov1 \"github.com/writer/cerebro/gen/cerebro/v1\"\n\t\"github.com/writer/cerebro/internal/ports\"\n)\n\n")
+	}
 	for _, family := range request.Families {
 		switch family.Class {
 		case "asset":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sAssetProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
 		case "finding":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sFindingProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+		case "identity_user":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityUserProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
+		case "identity_group":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityGroupProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
+		case "group_membership":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityGroupMembershipProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
+		case "audit_event":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityAuditProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
 		default:
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn runtimeEvidenceProjections(event)\n}\n\n", family.ProjectorName)
 		}
@@ -674,9 +965,17 @@ func renderProjectionGo(request normalizedRequest) string {
 	return b.String()
 }
 
+func projectionNeedsStrings(families []familyData) bool {
+	return firstFamilyClass(families, "asset").Name != "" || firstFamilyClass(families, "finding").Name != ""
+}
+
 func renderProjectionTestGo(request normalizedRequest) string {
 	assetFamily := firstFamilyClass(request.Families, "asset")
 	findingFamily := firstFamilyClass(request.Families, "finding")
+	userFamily := firstFamilyClass(request.Families, "identity_user")
+	groupFamily := firstFamilyClass(request.Families, "identity_group")
+	membershipFamily := firstFamilyClass(request.Families, "group_membership")
+	auditFamily := firstFamilyClass(request.Families, "audit_event")
 	evidenceFamily := firstFamilyClass(request.Families, "evidence_cas_reference")
 	var b strings.Builder
 	fmt.Fprintf(&b, "package sourceprojection\n\n")
@@ -691,9 +990,31 @@ func renderProjectionTestGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"finding_id\": \"finding-1\", \"title\": \"Finding One\", \"severity\": \"high\", \"status\": \"open\", \"resource_urn\": \"urn:cerebro:tenant:runtime_asset:asset-1\", \"evidence_id\": \"evidence-1\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(findingFamily.EventKind))
 		fmt.Fprintf(&b, "\tentities, links, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 {\n\t\tt.Fatal(\"expected projected finding\")\n\t}\n\tif len(links) == 0 {\n\t\tt.Fatal(\"expected projected finding links\")\n\t}\n}\n\n", findingFamily.ProjectorName)
 	}
-	fmt.Fprintf(&b, "func Test%sEvidenceCASProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
-	fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"evidence_id\": \"evidence-1\", \"evidence_type\": \"evidence_cas.artifact\", \"source_event_id\": \"provider-event-1\", \"evidence_cas_uri\": \"cas://cases/evidence-1\", \"evidence_cas_digest\": \"sha256:test\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(evidenceFamily.EventKind))
-	fmt.Fprintf(&b, "\tentities, _, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tvar foundEvidence bool\n\tfor _, entity := range entities {\n\t\tif entity.EntityType == \"runtime.evidence\" {\n\t\t\tfoundEvidence = true\n\t\t}\n\t}\n\tif !foundEvidence {\n\t\tt.Fatalf(\"entities = %%#v\", entities)\n\t}\n}\n", evidenceFamily.ProjectorName)
+	if userFamily.Class == "identity_user" {
+		fmt.Fprintf(&b, "func Test%sIdentityUserProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
+		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"user_id\": \"user-1\", \"email\": \"user@example.test\", \"display_name\": \"User One\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(userFamily.EventKind))
+		fmt.Fprintf(&b, "\tentities, _, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 {\n\t\tt.Fatal(\"expected projected identity user\")\n\t}\n}\n\n", userFamily.ProjectorName)
+	}
+	if groupFamily.Class == "identity_group" {
+		fmt.Fprintf(&b, "func Test%sIdentityGroupProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
+		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"group_id\": \"group-1\", \"group_email\": \"group@example.test\", \"group_name\": \"Group One\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(groupFamily.EventKind))
+		fmt.Fprintf(&b, "\tentities, _, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 {\n\t\tt.Fatal(\"expected projected identity group\")\n\t}\n}\n\n", groupFamily.ProjectorName)
+	}
+	if membershipFamily.Class == "group_membership" {
+		fmt.Fprintf(&b, "func Test%sGroupMembershipProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
+		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"group_id\": \"group-1\", \"group_email\": \"group@example.test\", \"member_id\": \"user-1\", \"member_email\": \"user@example.test\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(membershipFamily.EventKind))
+		fmt.Fprintf(&b, "\tentities, links, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 || len(links) == 0 {\n\t\tt.Fatalf(\"entities/links = %%d/%%d, want membership projection\", len(entities), len(links))\n\t}\n}\n\n", membershipFamily.ProjectorName)
+	}
+	if auditFamily.Class == "audit_event" {
+		fmt.Fprintf(&b, "func Test%sAuditProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
+		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"event_type\": \"user.login\", \"actor_id\": \"user-1\", \"actor_email\": \"user@example.test\", \"resource_id\": \"app-1\", \"resource_type\": \"application\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(auditFamily.EventKind))
+		fmt.Fprintf(&b, "\tentities, links, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 || len(links) == 0 {\n\t\tt.Fatalf(\"entities/links = %%d/%%d, want audit projection\", len(entities), len(links))\n\t}\n}\n\n", auditFamily.ProjectorName)
+	}
+	if evidenceFamily.Class == "evidence_cas_reference" {
+		fmt.Fprintf(&b, "func Test%sEvidenceCASProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
+		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"evidence_id\": \"evidence-1\", \"evidence_type\": \"evidence_cas.artifact\", \"source_event_id\": \"provider-event-1\", \"evidence_cas_uri\": \"cas://cases/evidence-1\", \"evidence_cas_digest\": \"sha256:test\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(evidenceFamily.EventKind))
+		fmt.Fprintf(&b, "\tentities, _, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tvar foundEvidence bool\n\tfor _, entity := range entities {\n\t\tif entity.EntityType == \"runtime.evidence\" {\n\t\t\tfoundEvidence = true\n\t\t}\n\t}\n\tif !foundEvidence {\n\t\tt.Fatalf(\"entities = %%#v\", entities)\n\t}\n}\n", evidenceFamily.ProjectorName)
+	}
 	return b.String()
 }
 
@@ -792,4 +1113,13 @@ func titleFromID(value string) string {
 		parts[index] = string(runes)
 	}
 	return strings.Join(parts, " ")
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

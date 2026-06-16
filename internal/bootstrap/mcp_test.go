@@ -98,6 +98,13 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		if tool["outputSchema"] == nil {
 			t.Fatalf("tool missing outputSchema: %#v", item)
 		}
+		if name == "cerebro.connector_definitions.validate" {
+			outputSchema := tool["outputSchema"].(map[string]any)
+			properties := outputSchema["properties"].(map[string]any)
+			if properties["support"] == nil {
+				t.Fatalf("%s outputSchema missing support report: %#v", name, outputSchema)
+			}
+		}
 		annotations := tool["annotations"].(map[string]any)
 		if annotations["readOnlyHint"] != true {
 			t.Fatalf("tool missing readOnlyHint annotation: %#v", item)
@@ -141,6 +148,54 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		if !names[want] {
 			t.Fatalf("tools/list missing %s in %#v", want, names)
 		}
+	}
+}
+
+func TestMCPConnectorDefinitionValidateReturnsSupportReport(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.connector_definitions.validate",
+			"arguments": map[string]any{
+				"definition": map[string]any{
+					"schema_version": "cerebro.integration/v1",
+					"id":             "writer-example_idp",
+					"tenant_id":      "writer",
+					"source_id":      "example_idp",
+					"display_name":   "Example IDP",
+					"auth": map[string]any{
+						"model":             "bearer_token",
+						"credential_fields": []any{map[string]any{"key": "token", "secret": true, "reference_only": true}},
+					},
+					"transport": map[string]any{
+						"base_url":     "https://api.example.test",
+						"verification": map[string]any{"path": "/v1/me"},
+					},
+					"resource_families": []any{map[string]any{
+						"id":              "users",
+						"path":            "/v1/users",
+						"record_selector": "$.data[*]",
+						"id_field":        "id",
+						"event":           map[string]any{"kind": "example_idp.user", "schema_ref": "example_idp/user/v1"},
+						"projection":      map[string]any{"template": "identity_user"},
+						"coverage":        []any{map[string]any{"type": "entity_family", "support": "supported"}},
+					}},
+				},
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("tools/call error = %#v", response["error"])
+	}
+	structured := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	support := structured["support"].(map[string]any)
+	if support["verdict"] != "supported" || support["source_id"] != "example_idp" {
+		t.Fatalf("support report = %#v", support)
 	}
 }
 

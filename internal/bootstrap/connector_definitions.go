@@ -35,6 +35,7 @@ type connectorDefinitionValidationResponse struct {
 	Definition  connectordefinitions.Definition       `json:"definition"`
 	Validation  connectordefinitions.ValidationResult `json:"validation"`
 	Promotion   connectordefinitions.PromotionState   `json:"promotion"`
+	Support     connectordefinitions.SupportReport    `json:"support"`
 }
 
 type connectorDefinitionPromotionResponse struct {
@@ -109,11 +110,17 @@ func (a *App) handleValidateConnectorDefinition(w http.ResponseWriter, r *http.R
 		writeConnectorError(w, fmt.Errorf("%w: %w", connectorcredentials.ErrInvalidRequest, err))
 		return
 	}
+	support, err := connectordefinitions.Classify(normalized, connectordefinitions.DefaultGrammar())
+	if err != nil {
+		writeConnectorError(w, fmt.Errorf("%w: %w", connectorcredentials.ErrInvalidRequest, err))
+		return
+	}
 	writeJSON(w, http.StatusOK, connectorDefinitionValidationResponse{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Definition:  normalized,
 		Validation:  normalized.Validation,
 		Promotion:   normalized.Promotion,
+		Support:     support,
 	})
 }
 

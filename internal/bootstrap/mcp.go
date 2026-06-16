@@ -703,10 +703,15 @@ func (app *App) mcpValidateConnectorDefinition(r *http.Request, args map[string]
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
 	}
+	support, err := connectordefinitions.Classify(normalized, connectordefinitions.DefaultGrammar())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+	}
 	return map[string]any{
 		"definition": normalized,
 		"validation": normalized.Validation,
 		"promotion":  normalized.Promotion,
+		"support":    support,
 		"metadata":   mcpResponseMetadata(0, 1, nil),
 	}, nil
 }
@@ -1659,6 +1664,7 @@ func mcpTools() []mcpTool {
 				"definition": map[string]any{"type": "object"},
 				"validation": map[string]any{"type": "object"},
 				"promotion":  map[string]any{"type": "object"},
+				"support":    map[string]any{"type": "object"},
 			}),
 			Annotations: mcpReadOnlyAnnotations("Validate Connector Definition"),
 		},
