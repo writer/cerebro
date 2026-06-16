@@ -58,12 +58,30 @@ func awsRouteTableProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	})
 }
 
+func awsNetworkACLProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateProjectionsWithContext(event, addAWSNetworkVPCContextLink, func(projection *awsNetworkSubstrateProjection) {
+		for _, subnetID := range splitCloudAttributeList(projection.attributes["subnet_ids"]) {
+			subnetURN := projection.addAWSNetworkNode("aws_subnet", "aws.subnet", subnetID)
+			projection.addLink(subnetURN, relationAssociatedWith, "aws_network_acl_subnet")
+		}
+	})
+}
+
 func awsInternetGatewayProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return awsNetworkSubstrateProjections(event, nil)
 }
 
 func awsNATGatewayProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return awsNetworkSubstrateProjections(event, nil)
+}
+
+func awsVPCFlowLogProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return awsNetworkSubstrateProjectionsWithContext(event, nil, func(projection *awsNetworkSubstrateProjection) {
+		vpcURN := projection.addAWSNetworkNode("aws_vpc", "aws.vpc", projection.attributes["vpc_id"])
+		if vpcURN != "" {
+			projection.addLink(vpcURN, relationAssociatedWith, "aws_vpc_flow_log_resource")
+		}
+	})
 }
 
 func awsVPCEndpointProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

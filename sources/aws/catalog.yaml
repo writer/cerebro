@@ -36,8 +36,10 @@ emitted_kinds:
   - aws.subnet
   - aws.security_group
   - aws.route_table
+  - aws.network_acl
   - aws.internet_gateway
   - aws.nat_gateway
+  - aws.vpc_flow_log
   - aws.vpc_endpoint
   - aws.ecr_repository
   - aws.ecs_service
@@ -175,8 +177,10 @@ runtime_families:
   - subnet
   - security_group
   - route_table
+  - network_acl
   - internet_gateway
   - nat_gateway
+  - vpc_flow_log
   - vpc_endpoint
   - ecr_repository
   - ecs_service
@@ -966,10 +970,9 @@ coverage_contract:
     - id: network_acl
       type: entity_family
       title: AWS network ACLs
-      families: [asset_metadata]
-      support: partial
+      families: [network_acl]
+      support: supported
       high_value: true
-      known_unsupported_fields: [rule expansion and subnet associations]
     - id: opensearch_domain
       type: entity_family
       title: AWS OpenSearch domains
@@ -1232,10 +1235,9 @@ coverage_contract:
     - id: vpc_flow_log
       type: entity_family
       title: AWS VPC Flow Logs
-      families: [vpc]
-      support: partial
+      families: [vpc_flow_log]
+      support: supported
       high_value: true
-      known_unsupported_fields: [dedicated flow log entities and destination encryption detail]
     - id: vpclattice_listener
       type: entity_family
       title: AWS VPC Lattice listeners

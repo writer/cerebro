@@ -276,6 +276,22 @@ func TestCloudPolicyCoverageMapsGCPExpansionTargets(t *testing.T) {
 	}
 }
 
+func TestCloudPolicyCoverageMapsAWSNetworkExpansionTargets(t *testing.T) {
+	tests := map[string]string{
+		"aws::ec2::network_acl":  "network_acl",
+		"aws::ec2::vpc_flow_log": "vpc_flow_log",
+	}
+	for resource, wantDimension := range tests {
+		alias, ok := cloudPolicyCoverageAliases[resource]
+		if !ok {
+			t.Fatalf("cloudPolicyCoverageAliases[%q] missing", resource)
+		}
+		if alias.SourceID != "aws" || alias.DimensionID != wantDimension {
+			t.Fatalf("cloudPolicyCoverageAliases[%q] = %#v, want aws/%s", resource, alias, wantDimension)
+		}
+	}
+}
+
 func TestCheckCloudPolicyCoverageRejectsUncoveredStrictRuntimeFamily(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "policies/cloud/test.json", `{"resource":"gcp::compute::instance"}`)
