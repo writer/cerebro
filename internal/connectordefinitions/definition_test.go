@@ -185,13 +185,14 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 		SourceID:      "example",
 		DisplayName:   "Example",
 		Categories:    []string{"identity", "identity", "audit"},
+		//nolint:gosec // Test auth descriptor only; no credential value is stored.
 		Auth: AuthSpec{
 			Model:            "oauth_authorization_code",
 			AuthorizationURL: "https://example.test/oauth/authorize",
 			TokenURL:         "https://example.test/oauth/token",
 			Scopes:           []string{"users.read", "audit.read"},
 			CredentialFields: []Field{{
-				Key:           "client_secret",
+				Key:           "oauth_client_reference",
 				Secret:        true,
 				ReferenceOnly: true,
 			}},

@@ -98,7 +98,7 @@ func readConnectorDefinition(path string) (connectordefinitions.Definition, erro
 }
 
 func readConnectorDefinitionPayload(path string) ([]byte, error) {
-	payload, err := os.ReadFile(strings.TrimSpace(path)) // #nosec G304 -- operator-provided CLI path.
+	payload, err := os.ReadFile(strings.TrimSpace(path)) // #nosec G304,G703 -- operator-provided CLI path.
 	if err != nil {
 		return nil, fmt.Errorf("read connector definition: %w", err)
 	}

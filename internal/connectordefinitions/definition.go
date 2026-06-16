@@ -678,7 +678,7 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		if family.EventKind == "" {
 			family.EventKind = family.ID
 		}
-		family.Event = normalizeEventMapping(family.ID, family.EventKind, family.Event)
+		family.Event = normalizeEventMapping(family.Event)
 		family.Pagination = normalizePaginationSpec(family.Pagination)
 		family.Incremental = normalizeIncrementalSpec(family.Incremental)
 		family.Projection = normalizeProjectionSpec(family.Projection)
@@ -752,7 +752,7 @@ func normalizeIncrementalSpec(incremental *IncrementalSpec) *IncrementalSpec {
 	return &next
 }
 
-func normalizeEventMapping(familyID string, legacyKind string, event EventMappingSpec) EventMappingSpec {
+func normalizeEventMapping(event EventMappingSpec) EventMappingSpec {
 	event.Kind = strings.TrimSpace(event.Kind)
 	event.SchemaRef = strings.TrimSpace(event.SchemaRef)
 	event.URNKind = strings.TrimSpace(event.URNKind)

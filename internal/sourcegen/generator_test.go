@@ -193,12 +193,13 @@ func TestGenerateDefinitionRejectsUnsupportedAuth(t *testing.T) {
 			TenantID:    "tenant-a",
 			SourceID:    "example",
 			DisplayName: "Example",
+			//nolint:gosec // Test auth descriptor only; no credential value is stored.
 			Auth: connectordefinitions.AuthSpec{
 				Model:            "oauth_authorization_code",
 				AuthorizationURL: "https://example.test/oauth/authorize",
 				TokenURL:         "https://example.test/oauth/token",
 				CredentialFields: []connectordefinitions.Field{{
-					Key:           "client_secret",
+					Key:           "oauth_client_reference",
 					Secret:        true,
 					ReferenceOnly: true,
 				}},
