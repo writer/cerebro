@@ -59,6 +59,7 @@ const (
 	familySQLDatabase         = "sql_database"
 	familySQLServer           = "sql_server"
 	familyStorageAccount      = "storage_account"
+	familySubnet              = "subnet"
 	familyUser                = "user"
 	familyVirtualMachine      = "virtual_machine"
 	familyVirtualNetwork      = "virtual_network"
@@ -707,6 +708,17 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return azureTypedResourceURN(settings, familyStorageAccount, account), nil
 			},
 		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familySubnet,
+			Label: "azure subnets",
+			List:  listSubnets,
+			Event: func(settings settings, subnet armTypedResourceRecord) (*primitives.Event, error) {
+				return genericARMResourceEvent(settings, subnet, familySubnet, "azure.subnet", "azure/subnet/v1")
+			},
+			URN: func(settings settings, subnet armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familySubnet, subnet), nil
+			},
+		}),
 		azureFamily(s, azureFamilyOptions[userRecord]{
 			Name:  familyUser,
 			Label: "azure users",
@@ -800,7 +812,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("azure tenant_id is required")
 	}
 	switch settings.family {
-	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAppService, "application_gateway", "application_insight", familyAssetMetadata, "cognitive_services_account", familyContainerRegistry, familyCosmosAccount, "databricks_workspace", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", "machine_learning_workspace", familyManagedDisk, "metric_alert_rule", familyNetworkSecurityGrp, familyPublicIPAddress, familyResourceExposure, "role", "route_table", "security_contact", familySQLDatabase, "sql_managed_instance", familySQLServer, familyStorageAccount, familyVirtualMachine, "virtual_machine_scale_set", familyVirtualNetwork:
+	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAppService, "application_gateway", "application_insight", familyAssetMetadata, "cognitive_services_account", familyContainerRegistry, familyCosmosAccount, "databricks_workspace", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", "machine_learning_workspace", familyManagedDisk, "metric_alert_rule", familyNetworkSecurityGrp, familyPublicIPAddress, familyResourceExposure, "role", "route_table", "security_contact", familySQLDatabase, "sql_managed_instance", familySQLServer, familyStorageAccount, familySubnet, familyVirtualMachine, "virtual_machine_scale_set", familyVirtualNetwork:
 		if settings.subscriptionID == "" {
 			return settings, fmt.Errorf("azure subscription_id is required when family=%q", settings.family)
 		}
@@ -1078,6 +1090,23 @@ func listVirtualMachines(ctx context.Context, source *Source, settings settings,
 
 func listVirtualNetworks(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
 	return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.Network/virtualNetworks", "2023-09-01", "azure virtual network")
+}
+
+func listSubnets(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+	virtualNetworks, next, err := listVirtualNetworks(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	rawRecords, err := azurearm.SubnetRecords(virtualNetworks, func(network armTypedResourceRecord) string { return network.ID }, func(network armTypedResourceRecord) string { return network.Location }, func(network armTypedResourceRecord) []any {
+		return propertyArray(network, "subnets")
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records, err := decodeAzureRecords(rawRecords, "azure subnet", func(record *armTypedResourceRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, next, err
 }
 
 func listNetworkSecurityGroups(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
@@ -1556,8 +1585,8 @@ func effectivePermissionEvent(settings settings, record armRoleAssignmentRecord)
 		"permission":         roleName,
 		"privilege_level":    privilegeLevel(admin),
 		"resource_id":        scope,
-		"resource_name":      azureResourceNameFromID(scope),
-		"resource_type":      azureResourceTypeFromID(scope),
+		"resource_name":      azurearm.ResourceNameFromID(scope),
+		"resource_type":      azurearm.ResourceTypeFromID(scope),
 		"role_assignment_id": firstNonEmpty(record.ID, record.Name),
 		"role_id":            firstNonEmpty(record.Properties.RoleDefinitionID, roleName),
 		"role_name":          roleName,
@@ -1914,7 +1943,7 @@ func azureResourcePayload(settings settings) map[string]any {
 func azureResourceAttributes(settings settings, record armTypedResourceRecord, family string) map[string]string {
 	tags := record.Tags
 	resourceID := firstNonEmpty(record.ID, record.Name)
-	provider := firstNonEmpty(azureProviderFromType(record.Type), azureProviderFromID(record.ID), "azure")
+	provider := firstNonEmpty(azurearm.ProviderFromType(record.Type), azurearm.ProviderFromID(record.ID), "azure")
 	attributes := map[string]string{
 		"cloud_provider":    "azure",
 		"domain":            tenantID(settings),
@@ -1925,7 +1954,7 @@ func azureResourceAttributes(settings settings, record armTypedResourceRecord, f
 		"owner":             tagLookup(tags, "owner", "application_owner", "business_owner", "service_owner"),
 		"provider":          provider,
 		"region":            record.Location,
-		"resource_group":    azureResourceGroupFromID(resourceID),
+		"resource_group":    azurearm.ResourceGroupFromID(resourceID),
 		"resource_id":       resourceID,
 		"resource_name":     firstNonEmpty(record.Name, resourceID),
 		"resource_provider": provider,
@@ -2249,34 +2278,6 @@ func uniqueStrings(values []string) []string {
 	}
 	sort.Strings(unique)
 	return unique
-}
-
-func azureProviderFromType(value string) string {
-	parts := strings.Split(strings.TrimSpace(value), "/")
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[0]
-}
-
-func azureProviderFromID(value string) string {
-	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
-	for i, part := range parts {
-		if strings.EqualFold(part, "providers") && i+1 < len(parts) {
-			return parts[i+1]
-		}
-	}
-	return ""
-}
-
-func azureResourceGroupFromID(value string) string {
-	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
-	for i, part := range parts {
-		if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
-			return parts[i+1]
-		}
-	}
-	return ""
 }
 
 func sourceEvent(settings settings, id string, kind string, schemaRef string, payload []byte, attributes map[string]string, occurredAt time.Time) (*primitives.Event, error) {
@@ -2717,32 +2718,6 @@ func crownJewelFromTags(tags map[string]string) bool {
 		}
 	}
 	return strings.EqualFold(criticalityFromTags(tags), "critical")
-}
-
-func azureResourceNameFromID(value string) string {
-	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[len(parts)-1]
-}
-
-func azureResourceTypeFromID(value string) string {
-	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
-	for i, part := range parts {
-		if strings.EqualFold(part, "providers") && i+2 < len(parts) {
-			return parts[i+1] + "/" + parts[i+2]
-		}
-	}
-	if len(parts) >= 2 && strings.EqualFold(parts[0], "subscriptions") {
-		if len(parts) == 2 {
-			return "subscription"
-		}
-		if len(parts) >= 4 && strings.EqualFold(parts[2], "resourceGroups") {
-			return "resource_group"
-		}
-	}
-	return "azure_resource"
 }
 
 func firstNonEmpty(values ...string) string { return textutil.FirstNonEmpty(values...) }

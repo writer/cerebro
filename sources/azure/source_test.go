@@ -77,6 +77,7 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 		{family: familySQLDatabase, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.sql_database"},
 		{family: familySQLServer, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.sql_server"},
 		{family: familyStorageAccount, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.storage_account"},
+		{family: familySubnet, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.subnet"},
 		{family: familyUser, kind: "azure.user"},
 		{family: familyVirtualMachine, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.virtual_machine"},
 		{family: familyVirtualNetwork, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.virtual_network"},
@@ -228,6 +229,7 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 		{family: familySQLServer, kind: "azure.sql_server", attr: "public_network_access", want: "Enabled"},
 		{family: familySQLDatabase, kind: "azure.sql_database", attr: "backup_storage_redundancy", want: "Geo"},
 		{family: familyKeyVault, kind: "azure.key_vault", attr: "purge_protection_enabled", want: "true"},
+		{family: familySubnet, kind: "azure.subnet", attr: "route_table_id", want: "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/routeTables/route-table-prod"},
 		{family: familyKeyVaultKey, kind: "azure.key_vault_key", attr: "recovery_level", want: "Recoverable+Purgeable"},
 		{family: familyKeyVaultSecret, kind: "azure.key_vault_secret", attr: "content_type", want: "connection-string"},
 		{family: familyCosmosAccount, kind: "azure.cosmos_account", attr: "local_auth_disabled", want: "true"},
@@ -392,6 +394,34 @@ func TestListKeyVaultChildrenDrainsVaultAndChildPages(t *testing.T) {
 	}
 }
 
+func TestListSubnetsReturnsDecodeErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/subscriptions/sub-1/providers/Microsoft.Network/virtualNetworks":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{
+				"id":       "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet",
+				"name":     "prod-vnet",
+				"type":     "Microsoft.Network/virtualNetworks",
+				"location": "eastus",
+				"properties": map[string]any{"subnets": []map[string]any{{
+					"id":   "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet/subnets/web",
+					"name": "web",
+					"tags": "malformed-tags",
+				}}},
+			}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, settings := newAzurePaginationTestSource(t, server, familySubnet)
+
+	_, _, err := listSubnets(context.Background(), source, settings, "", 10)
+	if err == nil {
+		t.Fatal("listSubnets error = nil, want decode error")
+	}
+}
+
 func TestAzureAppRoleAssignmentDerivesUserPrincipalEmail(t *testing.T) {
 	event, err := appRoleAssignmentEvent(settings{tenantID: "tenant-1"}, appRoleAssignmentRecord{
 		ID:                   "app-role-assignment-1",
@@ -547,7 +577,7 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/vm1-pip":
 			writeJSON(t, w, map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/vm1-pip", "name": "vm1-pip", "type": "Microsoft.Network/publicIPAddresses", "location": "eastus", "properties": map[string]any{"ipAddress": "203.0.113.10", "dnsSettings": map[string]any{"fqdn": "vm1.eastus.cloudapp.azure.com"}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Network/virtualNetworks":
-			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet", "name": "prod-vnet", "type": "Microsoft.Network/virtualNetworks", "location": "eastus", "tags": map[string]string{"env": "prod"}, "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []string{"10.0.0.0/16"}}, "enableDdosProtection": true, "subnets": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet/subnets/web", "name": "web"}}}}}})
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet", "name": "prod-vnet", "type": "Microsoft.Network/virtualNetworks", "location": "eastus", "tags": map[string]string{"env": "prod"}, "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []string{"10.0.0.0/16"}}, "enableDdosProtection": true, "subnets": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/prod-vnet/subnets/web", "name": "web", "properties": map[string]any{"addressPrefix": "10.0.1.0/24", "networkSecurityGroup": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/networkSecurityGroups/web-nsg"}, "routeTable": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/routeTables/route-table-prod"}, "serviceEndpoints": []map[string]any{{"service": "Microsoft.Storage"}}, "delegations": []map[string]any{{"name": "aci-delegation"}}, "privateEndpointNetworkPolicies": "Disabled", "privateLinkServiceNetworkPolicies": "Enabled"}}}}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Network/publicIPAddresses":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/vm1-pip", "name": "vm1-pip", "type": "Microsoft.Network/publicIPAddresses", "location": "eastus", "sku": map[string]string{"name": "Standard"}, "properties": map[string]any{"ipAddress": "203.0.113.10", "publicIPAllocationMethod": "Static", "publicIPAddressVersion": "IPv4", "dnsSettings": map[string]any{"fqdn": "vm1.eastus.cloudapp.azure.com"}}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Compute/disks":

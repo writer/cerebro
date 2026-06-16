@@ -281,6 +281,13 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: subnet
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: subnet
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
   - localId: user
     config:
       family: user

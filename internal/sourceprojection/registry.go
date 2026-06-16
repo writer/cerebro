@@ -240,6 +240,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"azure.sql_managed_instance":                    azureCloudResourceProjections,
 	"azure.sql_server":                              azureCloudResourceProjections,
 	"azure.storage_account":                         azureCloudResourceProjections,
+	"azure.subnet":                                  azureSubnetProjections,
 	"azure.user":                                    azureUserProjections,
 	"azure.virtual_machine":                         azureCloudResourceProjections,
 	"azure.virtual_machine_scale_set":               azureCloudResourceProjections,
