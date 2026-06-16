@@ -44,6 +44,9 @@ func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"backstage.component":                           backstageComponentProjections,
+	"auth0.audit_events":                            auth0AuditEventsProjections,
+	"auth0.roles":                                   auth0RolesProjections,
+	"auth0.users":                                   auth0UsersProjections,
 	"aurelius.catalog_promotion":                    aureliusCatalogPromotionProjections,
 	"aurelius.finding":                              aureliusFindingProjections,
 	"aurelius.image_scan":                           aureliusImageScanProjections,
