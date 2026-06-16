@@ -547,29 +547,50 @@ func ecsServiceEvent(settings settings, record awsECSService) (*primitives.Event
 	taskDefinitionARN := awssdk.ToString(service.TaskDefinition)
 	roleARN := awssdk.ToString(service.RoleArn)
 	attributes := map[string]string{
-		"cluster_arn":                record.ClusterARN,
-		"cluster_name":               path.Base(record.ClusterARN),
-		"desired_count":              strconv.FormatInt(int64(service.DesiredCount), 10),
-		"domain":                     settings.accountID,
-		"family":                     familyECSService,
-		"launch_type":                string(service.LaunchType),
-		"network_security_group_ids": strings.Join(ecsServiceSecurityGroupIDs(service), ","),
-		"network_subnet_ids":         strings.Join(ecsServiceSubnetIDs(service), ","),
-		"pending_count":              strconv.FormatInt(int64(service.PendingCount), 10),
-		"platform_version":           awssdk.ToString(service.PlatformVersion),
-		"region":                     settings.region,
-		"resource_id":                serviceARN,
-		"resource_name":              serviceName,
-		"resource_provider":          "aws",
-		"resource_type":              "ecs_service",
-		"role_arn":                   roleARN,
-		"role_name":                  roleNameFromARN(roleARN),
-		"running_count":              strconv.FormatInt(int64(service.RunningCount), 10),
-		"scheduling_strategy":        string(service.SchedulingStrategy),
-		"service_arn":                serviceARN,
-		"service_name":               serviceName,
-		"status":                     awssdk.ToString(service.Status),
-		"task_definition_arn":        taskDefinitionARN,
+		"cluster_arn":                         record.ClusterARN,
+		"cluster_name":                        path.Base(record.ClusterARN),
+		"assign_public_ip":                    ecsServiceAssignPublicIP(service),
+		"desired_count":                       strconv.FormatInt(int64(service.DesiredCount), 10),
+		"domain":                              settings.accountID,
+		"capacity_providers":                  strings.Join(ecsServiceCapacityProviders(service), ","),
+		"deployment_circuit_breaker_enabled":  ecsServiceDeploymentCircuitBreakerEnabled(service),
+		"deployment_circuit_breaker_rollback": ecsServiceDeploymentCircuitBreakerRollback(service),
+		"deployment_controller_type":          ecsServiceDeploymentControllerType(service),
+		"deployment_maximum_percent":          int32AttrString(ecsServiceDeploymentMaximumPercent(service)),
+		"deployment_minimum_healthy_percent":  int32AttrString(ecsServiceDeploymentMinimumHealthyPercent(service)),
+		"deployment_strategy":                 ecsServiceDeploymentStrategy(service),
+		"enable_ecs_managed_tags":             strconv.FormatBool(service.EnableECSManagedTags),
+		"enable_execute_command":              strconv.FormatBool(service.EnableExecuteCommand),
+		"family":                              familyECSService,
+		"fargate_capacity_provider":           boolString(ecsServiceUsesFargateCapacityProvider(service)),
+		"fargate_service":                     boolString(ecsServiceIsFargate(service)),
+		"launch_type":                         string(service.LaunchType),
+		"launch_type_effective":               ecsServiceEffectiveLaunchType(service),
+		"load_balancer_container_names":       strings.Join(ecsServiceLoadBalancerContainerNames(service), ","),
+		"load_balancer_container_ports":       strings.Join(ecsServiceLoadBalancerContainerPorts(service), ","),
+		"load_balancer_target_group_arns":     strings.Join(ecsServiceLoadBalancerTargetGroups(service), ","),
+		"network_security_group_ids":          strings.Join(ecsServiceSecurityGroupIDs(service), ","),
+		"network_subnet_ids":                  strings.Join(ecsServiceSubnetIDs(service), ","),
+		"pending_count":                       strconv.FormatInt(int64(service.PendingCount), 10),
+		"platform_family":                     awssdk.ToString(service.PlatformFamily),
+		"platform_version":                    awssdk.ToString(service.PlatformVersion),
+		"propagate_tags":                      string(service.PropagateTags),
+		"region":                              settings.region,
+		"resource_id":                         serviceARN,
+		"resource_name":                       serviceName,
+		"resource_provider":                   "aws",
+		"resource_type":                       "ecs_service",
+		"role_arn":                            roleARN,
+		"role_name":                           roleNameFromARN(roleARN),
+		"running_count":                       strconv.FormatInt(int64(service.RunningCount), 10),
+		"scheduling_strategy":                 string(service.SchedulingStrategy),
+		"service_arn":                         serviceARN,
+		"service_name":                        serviceName,
+		"service_registry_arns":               strings.Join(ecsServiceRegistryARNs(service), ","),
+		"status":                              awssdk.ToString(service.Status),
+		"task_definition_arn":                 taskDefinitionARN,
+		"task_definition_family":              ecsTaskDefinitionFamily(taskDefinitionARN),
+		"task_definition_revision":            ecsTaskDefinitionRevision(taskDefinitionARN),
 	}
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "cluster_arn": record.ClusterARN, "service": service})
 	if err != nil {
@@ -585,34 +606,37 @@ func ecsTaskEvent(settings settings, record awsECSTask) (*primitives.Event, erro
 	serviceName := ecsTaskServiceName(task)
 	serviceARN := ecsServiceARN(settings, record.ClusterARN, serviceName)
 	attributes := map[string]string{
-		"cluster_arn":            record.ClusterARN,
-		"cluster_name":           path.Base(record.ClusterARN),
-		"cpu":                    awssdk.ToString(task.Cpu),
-		"desired_status":         awssdk.ToString(task.DesiredStatus),
-		"domain":                 settings.accountID,
-		"enable_execute_command": strconv.FormatBool(task.EnableExecuteCommand),
-		"family":                 familyECSTask,
-		"group":                  awssdk.ToString(task.Group),
-		"health_status":          string(task.HealthStatus),
-		"last_status":            awssdk.ToString(task.LastStatus),
-		"launch_type":            string(task.LaunchType),
-		"memory":                 awssdk.ToString(task.Memory),
-		"network_interface_ids":  strings.Join(ecsTaskNetworkInterfaceIDs(record), ","),
-		"platform_family":        awssdk.ToString(task.PlatformFamily),
-		"platform_version":       awssdk.ToString(task.PlatformVersion),
-		"private_ips":            strings.Join(ecsTaskPrivateIPs(record), ","),
-		"region":                 settings.region,
-		"resource_id":            taskARN,
-		"resource_name":          firstNonEmpty(path.Base(taskARN), taskARN),
-		"resource_provider":      "aws",
-		"resource_type":          "ecs_task",
-		"security_group_ids":     strings.Join(ecsTaskSecurityGroupIDs(record), ","),
-		"service_arn":            serviceARN,
-		"service_name":           serviceName,
-		"subnet_ids":             strings.Join(ecsTaskSubnetIDs(record), ","),
-		"task_arn":               taskARN,
-		"task_definition_arn":    taskDefinitionARN,
-		"vpc_id":                 ecsTaskVPCID(record),
+		"cluster_arn":                record.ClusterARN,
+		"cluster_name":               path.Base(record.ClusterARN),
+		"capacity_provider_name":     awssdk.ToString(task.CapacityProviderName),
+		"cpu":                        awssdk.ToString(task.Cpu),
+		"desired_status":             awssdk.ToString(task.DesiredStatus),
+		"domain":                     settings.accountID,
+		"enable_execute_command":     strconv.FormatBool(task.EnableExecuteCommand),
+		"family":                     familyECSTask,
+		"fargate_task":               boolString(task.LaunchType == ecstypes.LaunchTypeFargate),
+		"group":                      awssdk.ToString(task.Group),
+		"health_status":              string(task.HealthStatus),
+		"last_status":                awssdk.ToString(task.LastStatus),
+		"launch_type":                string(task.LaunchType),
+		"memory":                     awssdk.ToString(task.Memory),
+		"network_interface_ids":      strings.Join(ecsTaskNetworkInterfaceIDs(record), ","),
+		"ephemeral_storage_size_gib": ecsTaskEphemeralStorageSizeGiB(task),
+		"platform_family":            awssdk.ToString(task.PlatformFamily),
+		"platform_version":           awssdk.ToString(task.PlatformVersion),
+		"private_ips":                strings.Join(ecsTaskPrivateIPs(record), ","),
+		"region":                     settings.region,
+		"resource_id":                taskARN,
+		"resource_name":              firstNonEmpty(path.Base(taskARN), taskARN),
+		"resource_provider":          "aws",
+		"resource_type":              "ecs_task",
+		"security_group_ids":         strings.Join(ecsTaskSecurityGroupIDs(record), ","),
+		"service_arn":                serviceARN,
+		"service_name":               serviceName,
+		"subnet_ids":                 strings.Join(ecsTaskSubnetIDs(record), ","),
+		"task_arn":                   taskARN,
+		"task_definition_arn":        taskDefinitionARN,
+		"vpc_id":                     ecsTaskVPCID(record),
 	}
 	addTimeAttribute(attributes, "created_at", task.CreatedAt)
 	addTimeAttribute(attributes, "started_at", task.StartedAt)
@@ -628,28 +652,34 @@ func ecsTaskDefinitionEvent(settings settings, task ecstypes.TaskDefinition) (*p
 	taskRoleARN := awssdk.ToString(task.TaskRoleArn)
 	executionRoleARN := awssdk.ToString(task.ExecutionRoleArn)
 	attributes := map[string]string{
-		"container_images":         strings.Join(ecsContainerImages(task.ContainerDefinitions), ","),
-		"container_names":          strings.Join(ecsContainerNames(task.ContainerDefinitions), ","),
-		"cpu":                      awssdk.ToString(task.Cpu),
-		"domain":                   settings.accountID,
-		"execution_role_arn":       executionRoleARN,
-		"execution_role_name":      roleNameFromARN(executionRoleARN),
-		"family":                   familyECSTaskDefinition,
-		"memory":                   awssdk.ToString(task.Memory),
-		"network_mode":             string(task.NetworkMode),
-		"region":                   settings.region,
-		"relationship":             "runs_as",
-		"requires_compatibilities": strings.Join(ecsCompatibilities(task.RequiresCompatibilities), ","),
-		"resource_id":              taskARN,
-		"resource_name":            firstNonEmpty(awssdk.ToString(task.Family), taskARN),
-		"resource_provider":        "aws",
-		"resource_type":            "ecs_task_definition",
-		"revision":                 strconv.FormatInt(int64(task.Revision), 10),
-		"status":                   string(task.Status),
-		"task_definition_arn":      taskARN,
-		"task_family":              awssdk.ToString(task.Family),
-		"task_role_arn":            taskRoleARN,
-		"task_role_name":           roleNameFromARN(taskRoleARN),
+		"container_images":                strings.Join(ecsContainerImages(task.ContainerDefinitions), ","),
+		"container_names":                 strings.Join(ecsContainerNames(task.ContainerDefinitions), ","),
+		"container_count":                 strconv.FormatInt(int64(len(task.ContainerDefinitions)), 10),
+		"cpu":                             awssdk.ToString(task.Cpu),
+		"domain":                          settings.accountID,
+		"execution_role_arn":              executionRoleARN,
+		"execution_role_name":             roleNameFromARN(executionRoleARN),
+		"family":                          familyECSTaskDefinition,
+		"fargate_compatible":              boolString(ecsTaskDefinitionFargateCompatible(task)),
+		"awsvpc_required":                 boolString(task.NetworkMode == ecstypes.NetworkModeAwsvpc),
+		"ephemeral_storage_size_gib":      ecsTaskDefinitionEphemeralStorageSizeGiB(task),
+		"memory":                          awssdk.ToString(task.Memory),
+		"network_mode":                    string(task.NetworkMode),
+		"runtime_cpu_architecture":        ecsTaskDefinitionCPUArchitecture(task),
+		"runtime_operating_system_family": ecsTaskDefinitionOperatingSystemFamily(task),
+		"region":                          settings.region,
+		"relationship":                    "runs_as",
+		"requires_compatibilities":        strings.Join(ecsCompatibilities(task.RequiresCompatibilities), ","),
+		"resource_id":                     taskARN,
+		"resource_name":                   firstNonEmpty(awssdk.ToString(task.Family), taskARN),
+		"resource_provider":               "aws",
+		"resource_type":                   "ecs_task_definition",
+		"revision":                        strconv.FormatInt(int64(task.Revision), 10),
+		"status":                          string(task.Status),
+		"task_definition_arn":             taskARN,
+		"task_family":                     awssdk.ToString(task.Family),
+		"task_role_arn":                   taskRoleARN,
+		"task_role_name":                  roleNameFromARN(taskRoleARN),
 	}
 	addTimeAttribute(attributes, "registered_at", task.RegisteredAt)
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "task_definition": task})
@@ -1148,6 +1178,140 @@ func ecsServiceSubnetIDs(service ecstypes.Service) []string {
 	return cleanStrings(service.NetworkConfiguration.AwsvpcConfiguration.Subnets)
 }
 
+func ecsServiceAssignPublicIP(service ecstypes.Service) string {
+	if service.NetworkConfiguration == nil || service.NetworkConfiguration.AwsvpcConfiguration == nil {
+		return ""
+	}
+	return string(service.NetworkConfiguration.AwsvpcConfiguration.AssignPublicIp)
+}
+
+func ecsServiceCapacityProviders(service ecstypes.Service) []string {
+	providers := make([]string, 0, len(service.CapacityProviderStrategy))
+	for _, item := range service.CapacityProviderStrategy {
+		providers = append(providers, awssdk.ToString(item.CapacityProvider))
+	}
+	return cleanStrings(providers)
+}
+
+func ecsServiceUsesFargateCapacityProvider(service ecstypes.Service) bool {
+	for _, provider := range ecsServiceCapacityProviders(service) {
+		switch strings.ToUpper(strings.TrimSpace(provider)) {
+		case "FARGATE", "FARGATE_SPOT":
+			return true
+		}
+	}
+	return false
+}
+
+func ecsServiceIsFargate(service ecstypes.Service) bool {
+	return service.LaunchType == ecstypes.LaunchTypeFargate || ecsServiceUsesFargateCapacityProvider(service)
+}
+
+func ecsServiceEffectiveLaunchType(service ecstypes.Service) string {
+	if service.LaunchType != "" {
+		return string(service.LaunchType)
+	}
+	if ecsServiceUsesFargateCapacityProvider(service) {
+		return string(ecstypes.LaunchTypeFargate)
+	}
+	return ""
+}
+
+func ecsServiceDeploymentControllerType(service ecstypes.Service) string {
+	if service.DeploymentController == nil {
+		return ""
+	}
+	return string(service.DeploymentController.Type)
+}
+
+func ecsServiceDeploymentMaximumPercent(service ecstypes.Service) *int32 {
+	if service.DeploymentConfiguration == nil {
+		return nil
+	}
+	return service.DeploymentConfiguration.MaximumPercent
+}
+
+func ecsServiceDeploymentMinimumHealthyPercent(service ecstypes.Service) *int32 {
+	if service.DeploymentConfiguration == nil {
+		return nil
+	}
+	return service.DeploymentConfiguration.MinimumHealthyPercent
+}
+
+func ecsServiceDeploymentStrategy(service ecstypes.Service) string {
+	if service.DeploymentConfiguration == nil {
+		return ""
+	}
+	return string(service.DeploymentConfiguration.Strategy)
+}
+
+func ecsServiceDeploymentCircuitBreakerEnabled(service ecstypes.Service) string {
+	if service.DeploymentConfiguration == nil || service.DeploymentConfiguration.DeploymentCircuitBreaker == nil {
+		return ""
+	}
+	return strconv.FormatBool(service.DeploymentConfiguration.DeploymentCircuitBreaker.Enable)
+}
+
+func ecsServiceDeploymentCircuitBreakerRollback(service ecstypes.Service) string {
+	if service.DeploymentConfiguration == nil || service.DeploymentConfiguration.DeploymentCircuitBreaker == nil {
+		return ""
+	}
+	return strconv.FormatBool(service.DeploymentConfiguration.DeploymentCircuitBreaker.Rollback)
+}
+
+func ecsServiceLoadBalancerTargetGroups(service ecstypes.Service) []string {
+	values := make([]string, 0, len(service.LoadBalancers))
+	for _, loadBalancer := range service.LoadBalancers {
+		values = append(values, awssdk.ToString(loadBalancer.TargetGroupArn))
+	}
+	return cleanStrings(values)
+}
+
+func ecsServiceLoadBalancerContainerNames(service ecstypes.Service) []string {
+	values := make([]string, 0, len(service.LoadBalancers))
+	for _, loadBalancer := range service.LoadBalancers {
+		values = append(values, awssdk.ToString(loadBalancer.ContainerName))
+	}
+	return cleanStrings(values)
+}
+
+func ecsServiceLoadBalancerContainerPorts(service ecstypes.Service) []string {
+	values := make([]string, 0, len(service.LoadBalancers))
+	for _, loadBalancer := range service.LoadBalancers {
+		if loadBalancer.ContainerPort != nil {
+			values = append(values, strconv.FormatInt(int64(*loadBalancer.ContainerPort), 10))
+		}
+	}
+	return cleanStrings(values)
+}
+
+func ecsServiceRegistryARNs(service ecstypes.Service) []string {
+	values := make([]string, 0, len(service.ServiceRegistries))
+	for _, registry := range service.ServiceRegistries {
+		values = append(values, awssdk.ToString(registry.RegistryArn))
+	}
+	return cleanStrings(values)
+}
+
+func ecsTaskDefinitionFamily(taskDefinitionARN string) string {
+	value := strings.TrimSpace(path.Base(taskDefinitionARN))
+	if value == "" {
+		return ""
+	}
+	if index := strings.LastIndex(value, ":"); index > 0 {
+		return value[:index]
+	}
+	return value
+}
+
+func ecsTaskDefinitionRevision(taskDefinitionARN string) string {
+	value := strings.TrimSpace(path.Base(taskDefinitionARN))
+	if index := strings.LastIndex(value, ":"); index >= 0 && index+1 < len(value) {
+		return value[index+1:]
+	}
+	return ""
+}
+
 func ecsContainerNames(definitions []ecstypes.ContainerDefinition) []string {
 	names := make([]string, 0, len(definitions))
 	for _, definition := range definitions {
@@ -1174,6 +1338,51 @@ func ecsCompatibilities(values []ecstypes.Compatibility) []string {
 		out = append(out, string(value))
 	}
 	return cleanStrings(out)
+}
+
+func ecsTaskDefinitionFargateCompatible(task ecstypes.TaskDefinition) bool {
+	for _, compatibility := range task.RequiresCompatibilities {
+		if compatibility == ecstypes.CompatibilityFargate {
+			return true
+		}
+	}
+	for _, compatibility := range task.Compatibilities {
+		if compatibility == ecstypes.CompatibilityFargate {
+			return true
+		}
+	}
+	return false
+}
+
+func ecsTaskDefinitionEphemeralStorageSizeGiB(task ecstypes.TaskDefinition) string {
+	if task.EphemeralStorage == nil {
+		return ""
+	}
+	return strconv.FormatInt(int64(task.EphemeralStorage.SizeInGiB), 10)
+}
+
+func ecsTaskDefinitionCPUArchitecture(task ecstypes.TaskDefinition) string {
+	if task.RuntimePlatform == nil {
+		return ""
+	}
+	return string(task.RuntimePlatform.CpuArchitecture)
+}
+
+func ecsTaskDefinitionOperatingSystemFamily(task ecstypes.TaskDefinition) string {
+	if task.RuntimePlatform == nil {
+		return ""
+	}
+	return string(task.RuntimePlatform.OperatingSystemFamily)
+}
+
+func ecsTaskEphemeralStorageSizeGiB(task ecstypes.Task) string {
+	if task.EphemeralStorage != nil {
+		return strconv.FormatInt(int64(task.EphemeralStorage.SizeInGiB), 10)
+	}
+	if task.FargateEphemeralStorage != nil {
+		return strconv.FormatInt(int64(task.FargateEphemeralStorage.SizeInGiB), 10)
+	}
+	return ""
 }
 
 func ecsTaskAttachmentNetworkInterfaceIDs(task ecstypes.Task) []string {
