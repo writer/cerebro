@@ -9,6 +9,10 @@ import (
 // ErrConnectorCredentialNotFound indicates that a stored connector credential does not exist.
 var ErrConnectorCredentialNotFound = errors.New("connector credential not found")
 
+// ErrConnectorCredentialIdempotencyConflict indicates that another request stored
+// a connector credential with the same scoped idempotency key first.
+var ErrConnectorCredentialIdempotencyConflict = errors.New("connector credential idempotency conflict")
+
 // ConnectorCredentialRecord stores one encrypted connector credential envelope.
 type ConnectorCredentialRecord struct {
 	ID                   string

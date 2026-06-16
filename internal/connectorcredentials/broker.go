@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -98,29 +99,12 @@ func (b *Broker) StoreEncrypted(ctx context.Context, request StoreEncryptedReque
 		authMethod = "encrypted_submission"
 	}
 	if idempotencyKey != "" {
-		existing, err := b.vault.store.ListConnectorCredentials(ctx, ports.ConnectorCredentialFilter{
-			TenantID:       tenantID,
-			SourceID:       sourceID,
-			RuntimeID:      runtimeID,
-			IdempotencyKey: idempotencyKey,
-			Limit:          1,
-		})
+		result, found, err := b.replayStoreEncrypted(ctx, sourceID, tenantID, runtimeID, idempotencyKey)
 		if err != nil {
 			return StoreEncryptedResult{}, err
 		}
-		if len(existing) > 0 {
-			record := existing[0]
-			if err := authorizeRecord(record, sourceID, tenantID, runtimeID); err != nil {
-				return StoreEncryptedResult{}, err
-			}
-			if err := authorizeRecordStatus(record); err != nil {
-				return StoreEncryptedResult{}, err
-			}
-			return StoreEncryptedResult{
-				Record:     record,
-				References: referencesForFields(record.ID, record.Fields),
-				Created:    false,
-			}, nil
+		if found {
+			return result, nil
 		}
 	}
 	if !encryptedPayloadPresent(request.EncryptedCredentials) {
@@ -171,6 +155,15 @@ func (b *Broker) StoreEncrypted(ctx context.Context, request StoreEncryptedReque
 		PreviousCredentialID: previousCredentialID,
 	})
 	if err != nil {
+		if idempotencyKey != "" && errors.Is(err, ports.ErrConnectorCredentialIdempotencyConflict) {
+			result, found, replayErr := b.replayStoreEncrypted(ctx, sourceID, tenantID, runtimeID, idempotencyKey)
+			if replayErr != nil {
+				return StoreEncryptedResult{}, replayErr
+			}
+			if found {
+				return result, nil
+			}
+		}
 		return StoreEncryptedResult{}, err
 	}
 	eventType := AuditEventStored
@@ -185,6 +178,34 @@ func (b *Broker) StoreEncrypted(ctx context.Context, request StoreEncryptedReque
 		References: referencesForFields(record.ID, SortedFieldNames(fields)),
 		Created:    true,
 	}, nil
+}
+
+func (b *Broker) replayStoreEncrypted(ctx context.Context, sourceID string, tenantID string, runtimeID string, idempotencyKey string) (StoreEncryptedResult, bool, error) {
+	existing, err := b.vault.store.ListConnectorCredentials(ctx, ports.ConnectorCredentialFilter{
+		TenantID:       tenantID,
+		SourceID:       sourceID,
+		RuntimeID:      runtimeID,
+		IdempotencyKey: idempotencyKey,
+		Limit:          1,
+	})
+	if err != nil {
+		return StoreEncryptedResult{}, false, err
+	}
+	if len(existing) == 0 {
+		return StoreEncryptedResult{}, false, nil
+	}
+	record := existing[0]
+	if err := authorizeRecord(record, sourceID, tenantID, runtimeID); err != nil {
+		return StoreEncryptedResult{}, false, err
+	}
+	if err := authorizeRecordStatus(record); err != nil {
+		return StoreEncryptedResult{}, false, err
+	}
+	return StoreEncryptedResult{
+		Record:     record,
+		References: referencesForFields(record.ID, record.Fields),
+		Created:    false,
+	}, true, nil
 }
 
 func (b *Broker) List(ctx context.Context, filter ports.ConnectorCredentialFilter) ([]*ports.ConnectorCredentialRecord, error) {

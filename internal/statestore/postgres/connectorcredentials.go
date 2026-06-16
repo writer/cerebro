@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -147,9 +149,24 @@ DO UPDATE SET tenant_id = EXCLUDED.tenant_id,
 		nullableTime(credential.LastUsedAt),
 		nullableTime(credential.LastValidatedAt),
 	); err != nil {
+		if isConnectorCredentialIdempotencyConflict(err) {
+			return fmt.Errorf("%w: %s", ports.ErrConnectorCredentialIdempotencyConflict, strings.TrimSpace(credential.IdempotencyKey))
+		}
 		return fmt.Errorf("upsert connector credential %q: %w", id, err)
 	}
 	return nil
+}
+
+func isConnectorCredentialIdempotencyConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	if pgErr.Code != "23505" {
+		return false
+	}
+	return strings.Contains(pgErr.ConstraintName, "connector_credentials_idempotency_idx") ||
+		strings.Contains(pgErr.Message, "connector_credentials_idempotency_idx")
 }
 
 func (s *Store) GetConnectorCredential(ctx context.Context, credentialID string) (*ports.ConnectorCredentialRecord, error) {

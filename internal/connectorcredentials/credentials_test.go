@@ -19,6 +19,8 @@ type memoryStore struct {
 	records         map[string]*ports.ConnectorCredentialRecord
 	audit           []*ports.ConnectorCredentialAuditRecord
 	metadataUpdates int
+	putErr          error
+	putErrRecord    *ports.ConnectorCredentialRecord
 }
 
 func (s *memoryStore) Ping(context.Context) error { return nil }
@@ -26,6 +28,13 @@ func (s *memoryStore) Ping(context.Context) error { return nil }
 func (s *memoryStore) PutConnectorCredential(_ context.Context, record *ports.ConnectorCredentialRecord) error {
 	if s.records == nil {
 		s.records = map[string]*ports.ConnectorCredentialRecord{}
+	}
+	if s.putErr != nil {
+		if s.putErrRecord != nil {
+			cloned := cloneMemoryCredential(s.putErrRecord)
+			s.records[cloned.ID] = &cloned
+		}
+		return s.putErr
 	}
 	cloned := cloneMemoryCredential(record)
 	s.records[record.ID] = &cloned
@@ -207,6 +216,73 @@ func TestVaultStoresEncryptedCredentialReferences(t *testing.T) {
 	}
 	if _, err := vault.ResolveReferences(context.Background(), "github", "tenant-a", "runtime-b", map[string]string{"token": Reference(record.ID, "token")}); err == nil {
 		t.Fatal("ResolveReferences() runtime mismatch error = nil, want error")
+	}
+}
+
+func TestBrokerStoreEncryptedReplaysConcurrentIdempotencyConflict(t *testing.T) {
+	transit, err := NewTransitKey()
+	if err != nil {
+		t.Fatalf("NewTransitKey() error = %v", err)
+	}
+	now := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
+	winner := &ports.ConnectorCredentialRecord{
+		ID:                   "credential-winner",
+		TenantID:             "tenant-a",
+		SourceID:             "github",
+		RuntimeID:            "runtime-a",
+		CredentialStoreID:    "cerebro_vault",
+		AuthMethod:           "encrypted_submission",
+		Status:               StatusValid,
+		KeyID:                "test-vault-key",
+		Fields:               []string{"token"},
+		Sealed:               []byte("sealed"),
+		CreatedBy:            "alice",
+		UpdatedBy:            "alice",
+		IdempotencyKey:       "request-1",
+		CreatedAt:            now,
+		UpdatedAt:            now,
+		PreviousCredentialID: "",
+	}
+	store := &memoryStore{
+		putErr:       ports.ErrConnectorCredentialIdempotencyConflict,
+		putErrRecord: winner,
+	}
+	vault, err := NewVault(store, "test-vault-key")
+	if err != nil {
+		t.Fatalf("NewVault() error = %v", err)
+	}
+	broker := NewBroker(vault, transit)
+	payload, err := encryptForTransit(
+		transit,
+		[]byte(`{"token":"secret-token"}`),
+		TransitAdditionalData(transit.PublicKey().KeyID, "github", "tenant-a", "runtime-a", "cerebro_vault"),
+	)
+	if err != nil {
+		t.Fatalf("encryptForTransit() error = %v", err)
+	}
+	result, err := broker.StoreEncrypted(context.Background(), StoreEncryptedRequest{
+		SourceID:             "github",
+		TenantID:             "tenant-a",
+		RuntimeID:            "runtime-a",
+		CredentialStoreID:    "cerebro_vault",
+		Actor:                "alice",
+		IdempotencyKey:       "request-1",
+		EncryptedCredentials: payload,
+	})
+	if err != nil {
+		t.Fatalf("StoreEncrypted() error = %v", err)
+	}
+	if result.Created {
+		t.Fatal("StoreEncrypted() Created = true, want replayed result")
+	}
+	if result.Record == nil || result.Record.ID != winner.ID {
+		t.Fatalf("StoreEncrypted() record ID = %v, want %s", result.Record, winner.ID)
+	}
+	if got := result.References["token"]; got != Reference(winner.ID, "token") {
+		t.Fatalf("replayed token reference = %q, want %q", got, Reference(winner.ID, "token"))
+	}
+	if got := len(store.audit); got != 0 {
+		t.Fatalf("audit rows after replay = %d, want 0", got)
 	}
 }
 
