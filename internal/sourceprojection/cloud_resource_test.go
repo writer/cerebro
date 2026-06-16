@@ -91,6 +91,31 @@ func TestProjectCloudFindingsCorrelatesSecurityFindingAndAffectedResource(t *tes
 			affectedType:       "aws.s3.bucket",
 		},
 		{
+			name: "aws guardduty ec2 instance",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "aws-guardduty-finding-1",
+				TenantId: "writer",
+				SourceId: "aws",
+				Kind:     "aws.guardduty_finding",
+				Attributes: map[string]string{
+					"affected_resource_id":   "i-123",
+					"affected_resource_name": "i-123",
+					"affected_resource_type": "Instance",
+					"finding_arn":            "arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1",
+					"resource_id":            "arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1",
+					"resource_name":          "Credential exfiltration",
+					"resource_provider":      "aws",
+					"resource_type":          "guardduty_finding",
+					"severity":               "HIGH",
+					"status":                 "ACTIVE",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:aws_guardduty_finding:arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1",
+			securityFindingURN: "urn:cerebro:writer:security_finding:aws:arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1",
+			affectedURN:        "urn:cerebro:writer:aws_ec2_instance:i-123",
+			affectedType:       "aws.ec2.instance",
+		},
+		{
 			name: "gcp security command center",
 			event: &cerebrov1.EventEnvelope{
 				Id:       "gcp-security-center-finding-1",

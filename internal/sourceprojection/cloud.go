@@ -271,7 +271,7 @@ func cloudFindingAffectedResourceType(provider string, rawType string, resourceI
 	switch provider + ":" + normalized {
 	case "aws:awss3bucket", "aws:s3bucket":
 		return "s3_bucket"
-	case "aws:awsec2instance", "aws:ec2instance":
+	case "aws:awsec2instance", "aws:ec2instance", "aws:instance":
 		return "ec2_instance"
 	case "aws:awsiamrole", "aws:iamrole":
 		return "iam_role"
