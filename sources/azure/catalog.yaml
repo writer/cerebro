@@ -9,12 +9,16 @@ emitted_kinds:
   - azure.app_role_assignment
   - azure.app_service
   - azure.application
+  - azure.application_container
   - azure.application_gateway
   - azure.application_insight
   - azure.cognitive_services_account
   - azure.container_registry
   - azure.cosmos_account
+  - azure.cosmos_postgresql
   - azure.databricks_workspace
+  - azure.defender_config
+  - azure.diagnostic_setting
   - azure.credential
   - azure.directory_audit
   - azure.directory_role_assignment
@@ -32,6 +36,7 @@ emitted_kinds:
   - azure.managed_disk
   - azure.metric_alert_rule
   - azure.network_security_group
+  - azure.postgresql_server
   - azure.public_ip_address
   - azure.resource_exposure
   - azure.role
@@ -41,6 +46,7 @@ emitted_kinds:
   - azure.sql_database
   - azure.sql_managed_instance
   - azure.sql_server
+  - azure.sql_server_on_virtual_machine
   - azure.storage_account
   - azure.subnet
   - azure.user
@@ -54,13 +60,17 @@ runtime_families:
   - app_role_assignment
   - app_service
   - application
+  - application_container
   - application_gateway
   - application_insight
   - asset_metadata
   - cognitive_services_account
   - container_registry
   - cosmos_account
+  - cosmos_postgresql
   - databricks_workspace
+  - defender_config
+  - diagnostic_setting
   - credential
   - directory_audit
   - directory_role_assignment
@@ -78,6 +88,7 @@ runtime_families:
   - managed_disk
   - metric_alert_rule
   - network_security_group
+  - postgresql_server
   - public_ip_address
   - resource_exposure
   - role
@@ -87,6 +98,7 @@ runtime_families:
   - sql_database
   - sql_managed_instance
   - sql_server
+  - sql_server_on_virtual_machine
   - storage_account
   - subnet
   - user
@@ -150,10 +162,9 @@ coverage_contract:
     - id: application_container
       type: entity_family
       title: Azure application containers
-      families: [asset_metadata]
-      support: partial
+      families: [application_container]
+      support: supported
       high_value: true
-      known_unsupported_fields: [container app revision and image detail]
     - id: application_gateway
       type: entity_family
       title: Azure Application Gateway
@@ -203,10 +214,10 @@ coverage_contract:
     - id: cosmos_postgresql
       type: entity_family
       title: Azure Cosmos DB for PostgreSQL
-      families: [asset_metadata]
+      families: [cosmos_postgresql]
       support: partial
       high_value: true
-      known_unsupported_fields: [cluster configuration and firewall rules]
+      known_unsupported_fields: [firewall rules]
     - id: credential
       type: entity_family
       title: Azure application and service principal credentials
@@ -216,10 +227,10 @@ coverage_contract:
     - id: database
       type: entity_family
       title: Azure database services
-      families: [asset_metadata]
+      families: [cosmos_postgresql, postgresql_server, sql_database, sql_managed_instance]
       support: partial
       high_value: true
-      known_unsupported_fields: [engine-specific posture fields]
+      known_unsupported_fields: [additional engine-specific services]
     - id: databricks_workspace
       type: entity_family
       title: Azure Databricks workspaces
@@ -229,10 +240,10 @@ coverage_contract:
     - id: diagnostic_setting
       type: entity_family
       title: Azure diagnostic settings
-      families: [asset_metadata]
+      families: [diagnostic_setting]
       support: partial
       high_value: true
-      known_unsupported_fields: [target resource expansion and log category state]
+      known_unsupported_fields: [resource-scoped diagnostic setting expansion]
     - id: directory_audit
       type: audit_event
       title: Azure directory audits
@@ -334,10 +345,10 @@ coverage_contract:
     - id: defender_config
       type: entity_family
       title: Microsoft Defender for Cloud configuration
-      families: [asset_metadata]
+      families: [defender_config]
       support: partial
       high_value: true
-      known_unsupported_fields: [pricing plan and security setting expansion]
+      known_unsupported_fields: [security setting expansion beyond pricing tiers]
     - id: network_security_group
       type: entity_family
       title: Azure Network Security Groups
@@ -347,10 +358,10 @@ coverage_contract:
     - id: postgresql_server
       type: entity_family
       title: Azure PostgreSQL servers
-      families: [asset_metadata]
+      families: [postgresql_server]
       support: partial
       high_value: true
-      known_unsupported_fields: [server SSL and network rule detail]
+      known_unsupported_fields: [firewall rule detail]
     - id: public_ip_address
       type: entity_family
       title: Azure public IP addresses
@@ -430,10 +441,9 @@ coverage_contract:
     - id: sql_server_on_virtual_machine
       type: entity_family
       title: Azure SQL Server on virtual machines
-      families: [asset_metadata]
-      support: partial
+      families: [sql_server_on_virtual_machine]
+      support: supported
       high_value: true
-      known_unsupported_fields: [SQL VM extension configuration]
     - id: storage_account
       type: entity_family
       title: Azure Storage accounts

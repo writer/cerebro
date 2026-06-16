@@ -652,6 +652,14 @@ func genericAzureARMTestProperties(family string) map[string]any {
 		properties["scopes"] = []any{"/subscriptions/sub-1"}
 		properties["condition"] = map[string]any{"allOf": []any{map[string]any{"field": "category", "equals": "Administrative"}, map[string]any{"field": "operationName", "containsAny": []any{"Microsoft.Compute/virtualMachines/write"}}}}
 		properties["actions"] = map[string]any{"actionGroups": []any{map[string]any{"actionGroupId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}}}
+	case "application_container":
+		properties["managedEnvironmentId"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.App/managedEnvironments/apps-prod"
+		properties["workloadProfileName"] = "Consumption"
+		properties["latestRevisionName"] = "api--000002"
+		properties["latestRevisionFqdn"] = "api--000002.witty.azurecontainerapps.io"
+		properties["outboundIpAddresses"] = []any{"203.0.113.20"}
+		properties["configuration"] = map[string]any{"activeRevisionsMode": "Multiple", "ingress": map[string]any{"external": true, "fqdn": "api.writer.com", "targetPort": 8080, "transport": "auto"}}
+		properties["template"] = map[string]any{"containers": []any{map[string]any{"name": "api", "image": "acrprod.azurecr.io/writer/api:prod"}}}
 	case "application_gateway":
 		properties["operationalState"] = "Running"
 		properties["frontendIPConfigurations"] = []any{map[string]any{"id": "frontend-1", "name": "appgw-frontend", "properties": map[string]any{"publicIPAddress": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/appgw-pip"}}}}
@@ -673,11 +681,34 @@ func genericAzureARMTestProperties(family string) map[string]any {
 		properties["customSubDomainName"] = "openai-prod"
 		properties["disableLocalAuth"] = true
 		properties["networkAcls"] = map[string]any{"defaultAction": "Deny", "bypass": "AzureServices", "virtualNetworkRules": []any{map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/ai"}}, "ipRules": []any{map[string]any{"value": "203.0.113.10"}}}
+	case "cosmos_postgresql":
+		properties["postgresqlVersion"] = "16"
+		properties["citusVersion"] = "12.1"
+		properties["administratorLogin"] = "citus"
+		properties["coordinatorServerEdition"] = "GeneralPurpose"
+		properties["coordinatorVCores"] = 4
+		properties["nodeServerEdition"] = "MemoryOptimized"
+		properties["nodeVCores"] = 8
+		properties["nodeCount"] = 3
+		properties["enableHa"] = true
+		properties["preferredPrimaryZone"] = "1"
 	case "databricks_workspace":
 		properties["managedResourceGroupId"] = "/subscriptions/sub-1/resourceGroups/databricks-managed"
 		properties["requiredNsgRules"] = "NoAzureDatabricksRules"
 		properties["parameters"] = map[string]any{"customPublicSubnetName": map[string]any{"value": "dbx-public"}, "customPrivateSubnetName": map[string]any{"value": "dbx-private"}, "natGatewayName": map[string]any{"value": "dbx-nat"}}
 		properties["accessConnector"] = map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Databricks/accessConnectors/dbx-connector"}
+	case "defender_config":
+		properties["pricingTier"] = "Standard"
+		properties["subPlan"] = "P2"
+		properties["freeTrialRemainingTime"] = "PT0S"
+		properties["extensions"] = []any{map[string]any{"name": "AgentlessVmScanning", "isEnabled": "True"}, map[string]any{"name": "MdeDesignatedSubscription", "isEnabled": "False"}}
+	case "diagnostic_setting":
+		properties["workspaceId"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.OperationalInsights/workspaces/law-prod"
+		properties["storageAccountId"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/logarchive"
+		properties["eventHubAuthorizationRuleId"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.EventHub/namespaces/secops/authorizationRules/send"
+		properties["eventHubName"] = "security"
+		properties["logs"] = []any{map[string]any{"category": "Administrative", "enabled": true}, map[string]any{"category": "Security", "enabled": true}}
+		properties["metrics"] = []any{map[string]any{"category": "AllMetrics", "enabled": false}}
 	case "load_balancer":
 		properties["frontendIPConfigurations"] = []any{map[string]any{"id": "frontend-lb", "name": "lb-frontend", "properties": map[string]any{"publicIPAddress": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/lb-pip"}, "subnet": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/web"}}}}
 		properties["backendAddressPools"] = []any{map[string]any{"name": "backend-web"}}
@@ -713,6 +744,16 @@ func genericAzureARMTestProperties(family string) map[string]any {
 		properties["targetResourceRegion"] = "eastus"
 		properties["criteria"] = map[string]any{"odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria", "allOf": []any{map[string]any{"metricName": "Percentage CPU", "operator": "GreaterThan", "threshold": 90}}}
 		properties["actions"] = []any{map[string]any{"actionGroupId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}}
+	case "postgresql_server":
+		properties["version"] = "16"
+		properties["administratorLogin"] = "pgadmin"
+		properties["fullyQualifiedDomainName"] = "pg-prod.postgres.database.azure.com"
+		properties["storage"] = map[string]any{"storageSizeGB": 256}
+		properties["backup"] = map[string]any{"backupRetentionDays": 14, "geoRedundantBackup": "Enabled"}
+		properties["highAvailability"] = map[string]any{"mode": "ZoneRedundant"}
+		properties["availabilityZone"] = "1"
+		properties["network"] = map[string]any{"publicNetworkAccess": "Disabled", "delegatedSubnetResourceId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/postgres", "privateDnsZoneArmResourceId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/privateDnsZones/privatelink.postgres.database.azure.com"}
+		properties["authConfig"] = map[string]any{"activeDirectoryAuth": "Enabled", "passwordAuth": "Disabled"}
 	case "role":
 		properties["roleName"] = "Security Reader"
 		properties["type"] = "BuiltInRole"
@@ -737,6 +778,18 @@ func genericAzureARMTestProperties(family string) map[string]any {
 		properties["vCores"] = 8
 		properties["storageSizeInGB"] = 512
 		properties["zoneRedundant"] = true
+	case "sql_server_on_virtual_machine":
+		properties["virtualMachineResourceId"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/sqlvm-prod"
+		properties["sqlImageOffer"] = "SQL2019-WS2019"
+		properties["sqlImageSku"] = "Enterprise"
+		properties["sqlServerLicenseType"] = "AHUB"
+		properties["sqlManagement"] = "Full"
+		properties["leastPrivilegeMode"] = "Enabled"
+		properties["assessmentSettings"] = map[string]any{"enable": true}
+		properties["autoPatchingSettings"] = map[string]any{"enable": true}
+		properties["autoBackupSettings"] = map[string]any{"enable": true}
+		properties["keyVaultCredentialSettings"] = map[string]any{"enable": false}
+		properties["serverConfigurationsManagementSettings"] = map[string]any{"sqlConnectivityUpdateSettings": map[string]any{"connectivityType": "PRIVATE"}, "sqlStorageUpdateSettings": map[string]any{"diskConfigurationType": "NEW"}}
 	case "virtual_machine_scale_set":
 		properties["upgradePolicy"] = map[string]any{"mode": "Automatic"}
 		properties["overprovision"] = true
@@ -751,20 +804,30 @@ func genericAzureARMExpectedAttributes(family string) map[string]string {
 	switch family {
 	case "activity_log_alert":
 		return map[string]string{"condition_fields": "category,operationName", "action_group_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}
+	case "application_container":
+		return map[string]string{"container_images": "acrprod.azurecr.io/writer/api:prod", "ingress_external": "true", "latest_revision_fqdn": "api--000002.witty.azurecontainerapps.io"}
 	case "application_gateway":
 		return map[string]string{"http_listener_names": "https-listener", "ssl_policy_min_protocol_version": "TLSv1_2", "waf_firewall_mode": "Prevention"}
 	case "application_insight":
 		return map[string]string{"retention_in_days": "90", "disable_local_auth": "true"}
 	case "cognitive_services_account":
 		return map[string]string{"network_default_action": "Deny", "virtual_network_subnet_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/ai"}
+	case "cosmos_postgresql":
+		return map[string]string{"postgresql_version": "16", "node_count": "3", "ha_enabled": "true"}
 	case "databricks_workspace":
 		return map[string]string{"managed_resource_group_id": "/subscriptions/sub-1/resourceGroups/databricks-managed", "private_subnet_name": "dbx-private"}
+	case "defender_config":
+		return map[string]string{"pricing_tier": "Standard", "sub_plan": "P2", "extension_names": "AgentlessVmScanning,MdeDesignatedSubscription"}
+	case "diagnostic_setting":
+		return map[string]string{"workspace_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.OperationalInsights/workspaces/law-prod", "log_categories": "Administrative,Security", "metric_enabled_states": "false"}
 	case "load_balancer":
 		return map[string]string{"backend_pool_names": "backend-web", "load_balancing_rule_names": "https-rule", "public_ip_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/lb-pip"}
 	case "log_alert":
 		return map[string]string{"query": "SecurityEvent | count", "action_group_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}
 	case "metric_alert_rule":
 		return map[string]string{"criteria_metric_names": "Percentage CPU", "criteria_thresholds": "90", "action_group_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}
+	case "postgresql_server":
+		return map[string]string{"public_host": "pg-prod.postgres.database.azure.com", "storage_size_gb": "256", "delegated_subnet_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/postgres", "auth_password_enabled": "Disabled"}
 	case "role":
 		return map[string]string{"role_name": "Security Reader", "actions": "Microsoft.Security/*/read"}
 	case "route_table":
@@ -773,6 +836,8 @@ func genericAzureARMExpectedAttributes(family string) map[string]string {
 		return map[string]string{"emails": "secops@writer.com", "alert_notifications": "On", "alerts_to_admins": "On"}
 	case "sql_managed_instance":
 		return map[string]string{"subnet_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/sqlmi", "public_data_endpoint_enabled": "false"}
+	case "sql_server_on_virtual_machine":
+		return map[string]string{"virtual_machine_resource_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/sqlvm-prod", "sql_management": "Full", "assessment_enabled": "true"}
 	case "virtual_machine_scale_set":
 		return map[string]string{"upgrade_mode": "Automatic", "subnet_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/vmss"}
 	}

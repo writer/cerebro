@@ -48,6 +48,13 @@ runtimes:
       graph_token: env:AZURE_GRAPH_TOKEN
       per_page: "100"
       tenant_id: env:AZURE_TENANT_ID
+  - localId: application-container
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: application_container
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
   - localId: application-gateway
     config:
       arm_token: env:AZURE_ARM_TOKEN
@@ -90,10 +97,31 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: cosmos-postgresql
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: cosmos_postgresql
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
   - localId: databricks-workspace
     config:
       arm_token: env:AZURE_ARM_TOKEN
       family: databricks_workspace
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: defender-config
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: defender_config
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: diagnostic-setting
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: diagnostic_setting
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
@@ -212,6 +240,13 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: postgresql-server
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: postgresql_server
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
   - localId: public-ip-address
     config:
       arm_token: env:AZURE_ARM_TOKEN
@@ -271,6 +306,13 @@ runtimes:
     config:
       arm_token: env:AZURE_ARM_TOKEN
       family: sql_server
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: sql-server-on-virtual-machine
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: sql_server_on_virtual_machine
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
