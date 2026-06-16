@@ -23,6 +23,17 @@ var panopticonCuratedCaseControlRefs = []ports.FindingControlRef{
 	{FrameworkName: "ISO 27001:2022", ControlID: "A.5.24"},
 }
 
+var panopticonCaseSignalAttributeKeys = []string{
+	"lookup_table",
+	"preprocessing_decision",
+	"preprocessing_reason",
+	"upstream_alert_count",
+	"upstream_alert_ids",
+	"upstream_detection_id",
+	"upstream_detection_name",
+	"upstream_siem",
+}
+
 type panopticonCuratedCaseRule struct {
 	Rule
 	definition RuleDefinition
@@ -147,6 +158,7 @@ func buildPanopticonCuratedCaseFinding(ctx context.Context, runtime *cerebrov1.S
 	if url != "" {
 		findingAttributes["case_url"] = url
 	}
+	mergePanopticonCaseFindingAttributes(findingAttributes, panopticonCaseSignalAttributes(event, attrs))
 	for key, value := range attrs {
 		if _, exists := findingAttributes[key]; !exists {
 			findingAttributes[key] = strings.TrimSpace(value)
@@ -158,15 +170,19 @@ func buildPanopticonCuratedCaseFinding(ctx context.Context, runtime *cerebrov1.S
 	}
 	trimEmptyAttributes(findingAttributes)
 	fingerprint := hashFindingFingerprint(panopticonCuratedCaseRuleID, event.GetTenantId(), caseID)
+	graphEvidenceAttributes := map[string]string{
+		"case_id":              caseID,
+		"case_status":          status,
+		"case_title":           title,
+		"event_id":             strings.TrimSpace(event.GetId()),
+		"primary_resource_urn": projectedContext.PrimaryResourceURN,
+		"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
+	}
+	for _, key := range panopticonCaseSignalAttributeKeys {
+		graphEvidenceAttributes[key] = findingAttributes[key]
+	}
 	graphRows := []*cerebrov1.GraphEvidenceRow{
-		newGraphEvidenceRow("panopticon_case", map[string]string{
-			"case_id":              caseID,
-			"case_status":          status,
-			"case_title":           title,
-			"event_id":             strings.TrimSpace(event.GetId()),
-			"primary_resource_urn": projectedContext.PrimaryResourceURN,
-			"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
-		}),
+		newGraphEvidenceRow("panopticon_case", graphEvidenceAttributes),
 	}
 	return &ports.FindingRecord{
 		ID:                fingerprint,
@@ -277,20 +293,185 @@ func panopticonCaseSummary(caseID string, title string, status string) string {
 	return fmt.Sprintf("Panopticon escalated %s as case %s with status %s after SIEM preprocessing", label, caseID, status)
 }
 
+func panopticonCaseSignalAttributes(event *cerebrov1.EventEnvelope, attrs map[string]string) map[string]string {
+	payload := panopticonCasePayloadObject(event)
+	attributes := map[string]string{}
+	alertIDs := firstNonEmpty(attrs["upstream_alert_ids"], strings.Join(panopticonCasePayloadAlertIDs(payload), ","))
+	if alertIDs != "" {
+		attributes["upstream_alert_ids"] = alertIDs
+	}
+	if count := firstNonEmpty(
+		attrs["upstream_alert_count"],
+		panopticonCaseMapString(payload, "upstream_alert_count", "alert_count", "alerts_count", "source_alert_count"),
+		panopticonAlertIDCount(alertIDs),
+	); count != "" {
+		attributes["upstream_alert_count"] = count
+	}
+	if value := firstNonEmpty(
+		attrs["upstream_siem"],
+		panopticonCaseMapString(payload, "upstream_siem", "siem", "source_system", "alert_source_system", "alert_source", "event_source", "provider", "vendor"),
+		panopticonCasePayloadAlertString(payload, "upstream_siem", "siem", "source_system", "alert_source_system", "alert_source", "event_source", "source", "provider", "vendor"),
+	); value != "" {
+		attributes["upstream_siem"] = value
+	}
+	if value := firstNonEmpty(
+		attrs["upstream_detection_id"],
+		panopticonCaseMapString(payload, "upstream_detection_id", "detection_id", "rule_id", "alert_rule_id", "panther_rule_id"),
+		panopticonCasePayloadAlertString(payload, "upstream_detection_id", "detection_id", "rule_id", "alert_rule_id", "panther_rule_id"),
+	); value != "" {
+		attributes["upstream_detection_id"] = value
+	}
+	if value := firstNonEmpty(
+		attrs["upstream_detection_name"],
+		panopticonCaseMapString(payload, "upstream_detection_name", "detection_name", "rule_name", "alert_rule_name", "panther_rule_name"),
+		panopticonCasePayloadAlertString(payload, "upstream_detection_name", "detection_name", "rule_name", "alert_rule_name", "panther_rule_name", "title"),
+	); value != "" {
+		attributes["upstream_detection_name"] = value
+	}
+	if value := firstNonEmpty(
+		attrs["preprocessing_decision"],
+		panopticonCaseMapString(payload, "preprocessing_decision", "triage_decision", "decision", "disposition", "classification", "case_disposition"),
+	); value != "" {
+		attributes["preprocessing_decision"] = value
+	}
+	if value := firstNonEmpty(
+		attrs["preprocessing_reason"],
+		panopticonCaseMapString(payload, "preprocessing_reason", "triage_reason", "decision_reason", "reason", "rationale", "lookup_reason"),
+	); value != "" {
+		attributes["preprocessing_reason"] = value
+	}
+	if value := firstNonEmpty(
+		attrs["lookup_table"],
+		panopticonCaseMapString(payload, "lookup_table", "lookup_table_id", "allowlist_table", "decision_table"),
+	); value != "" {
+		attributes["lookup_table"] = value
+	}
+	if len(attributes) == 0 {
+		return nil
+	}
+	return attributes
+}
+
+func mergePanopticonCaseFindingAttributes(dst map[string]string, src map[string]string) {
+	for key, value := range src {
+		trimmedKey := strings.TrimSpace(key)
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedKey == "" || trimmedValue == "" {
+			continue
+		}
+		if strings.TrimSpace(dst[trimmedKey]) == "" {
+			dst[trimmedKey] = trimmedValue
+		}
+	}
+}
+
 func panopticonCasePayloadString(event *cerebrov1.EventEnvelope, keys ...string) string {
+	payload := panopticonCasePayloadObject(event)
+	return panopticonCaseMapString(payload, keys...)
+}
+
+func panopticonCasePayloadObject(event *cerebrov1.EventEnvelope) map[string]interface{} {
 	if event == nil || len(event.GetPayload()) == 0 {
-		return ""
+		return nil
 	}
 	var payload map[string]interface{}
 	if err := json.Unmarshal(event.GetPayload(), &payload); err != nil {
-		return ""
+		return nil
 	}
+	return payload
+}
+
+func panopticonCaseMapString(payload map[string]interface{}, keys ...string) string {
 	for _, key := range keys {
 		if value := panopticonPayloadScalarString(payload[strings.TrimSpace(key)]); value != "" {
 			return value
 		}
 	}
 	return ""
+}
+
+func panopticonCasePayloadAlertString(payload map[string]interface{}, keys ...string) string {
+	for _, collectionKey := range []string{"alerts", "source_alerts", "upstream_alerts", "related_alerts"} {
+		switch alerts := payload[collectionKey].(type) {
+		case []interface{}:
+			for _, alert := range alerts {
+				alertMap, ok := alert.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if value := panopticonCaseMapString(alertMap, keys...); value != "" {
+					return value
+				}
+			}
+		case []map[string]interface{}:
+			for _, alertMap := range alerts {
+				if value := panopticonCaseMapString(alertMap, keys...); value != "" {
+					return value
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func panopticonCasePayloadAlertIDs(payload map[string]interface{}) []string {
+	var ids []string
+	seen := map[string]struct{}{}
+	add := func(value string) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return
+		}
+		if _, ok := seen[trimmed]; ok {
+			return
+		}
+		seen[trimmed] = struct{}{}
+		ids = append(ids, trimmed)
+	}
+	for _, key := range []string{"upstream_alert_ids", "alert_ids", "source_alert_ids", "related_alert_ids"} {
+		collectPanopticonCaseAlertIDs(payload[strings.TrimSpace(key)], add)
+	}
+	for _, key := range []string{"alerts", "source_alerts", "upstream_alerts", "related_alerts"} {
+		collectPanopticonCaseAlertIDs(payload[strings.TrimSpace(key)], add)
+	}
+	return ids
+}
+
+func collectPanopticonCaseAlertIDs(value interface{}, add func(string)) {
+	switch typed := value.(type) {
+	case string:
+		for _, part := range strings.FieldsFunc(typed, func(r rune) bool {
+			return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+		}) {
+			add(part)
+		}
+	case []interface{}:
+		for _, item := range typed {
+			collectPanopticonCaseAlertIDs(item, add)
+		}
+	case []string:
+		for _, item := range typed {
+			add(item)
+		}
+	case []map[string]interface{}:
+		for _, item := range typed {
+			collectPanopticonCaseAlertIDs(item, add)
+		}
+	case map[string]interface{}:
+		add(panopticonCaseMapString(typed, "alert_id", "id", "external_id", "panther_alert_id"))
+	}
+}
+
+func panopticonAlertIDCount(alertIDs string) string {
+	if strings.TrimSpace(alertIDs) == "" {
+		return ""
+	}
+	var count int
+	collectPanopticonCaseAlertIDs(alertIDs, func(string) { count++ })
+	if count == 0 {
+		return ""
+	}
+	return strconv.Itoa(count)
 }
 
 func panopticonPayloadScalarString(value interface{}) string {

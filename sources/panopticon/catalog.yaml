@@ -11,13 +11,13 @@ coverage_contract:
   dimensions:
     - id: alerts
       type: lifecycle_state
-      title: Alerts
+      title: Raw alerts for evidence and enrichment
       families: [alert]
       support: supported
-      high_value: true
+      high_value: false
     - id: cases
       type: lifecycle_state
-      title: Cases
+      title: Curated cases
       families: [case]
       support: supported
       high_value: true

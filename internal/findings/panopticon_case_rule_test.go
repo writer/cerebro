@@ -76,6 +76,23 @@ func TestPanopticonCuratedCaseFindingRule(t *testing.T) {
 	if got := finding.Attributes["upstream_signal_boundary"]; got != "panopticon_case" {
 		t.Fatalf("upstream_signal_boundary = %q, want panopticon_case", got)
 	}
+	for key, want := range map[string]string{
+		"lookup_table":            "chrome_extensions_risk",
+		"preprocessing_decision":  "escalated",
+		"preprocessing_reason":    "extension matched risky lookup table",
+		"upstream_alert_count":    "1",
+		"upstream_alert_ids":      "alert-case-123",
+		"upstream_detection_id":   "panther_chrome_extension_installed",
+		"upstream_detection_name": "Chrome extension installed",
+		"upstream_siem":           "Panther",
+	} {
+		if got := finding.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+		}
+		if got := finding.GraphEvidenceRows[0].GetAttributes()[key]; got != want {
+			t.Fatalf("GraphEvidenceRows[0].Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
 	if !containsTrimmed(finding.ResourceURNs, "urn:cerebro:writer:panopticon_case:case-123") {
 		t.Fatalf("ResourceURNs = %#v, want Panopticon case URN", finding.ResourceURNs)
 	}
@@ -124,17 +141,23 @@ func TestPanopticonCuratedCaseRuleIgnoresAlerts(t *testing.T) {
 
 func panopticonCaseEventAt(id string, caseID string, status string, title string, severity string, occurredAt time.Time) *cerebrov1.EventEnvelope {
 	payload, _ := json.Marshal(map[string]interface{}{
-		"case_id":  caseID,
-		"status":   status,
-		"title":    title,
-		"severity": severity,
-		"case_url": "https://panopticon.example.test/cases/" + caseID,
+		"case_id":                caseID,
+		"status":                 status,
+		"title":                  title,
+		"severity":               severity,
+		"case_url":               "https://panopticon.example.test/cases/" + caseID,
+		"lookup_table":           "chrome_extensions_risk",
+		"preprocessing_decision": "escalated",
+		"preprocessing_reason":   "extension matched risky lookup table",
 		"alerts": []map[string]interface{}{
 			{
-				"alert_id": "alert-" + caseID,
-				"severity": severity,
-				"status":   status,
-				"title":    title,
+				"alert_id":  "alert-" + caseID,
+				"rule_id":   "panther_chrome_extension_installed",
+				"rule_name": "Chrome extension installed",
+				"severity":  severity,
+				"source":    "Panther",
+				"status":    status,
+				"title":     title,
 			},
 		},
 	})
