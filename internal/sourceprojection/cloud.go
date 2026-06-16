@@ -275,6 +275,12 @@ func cloudFindingAffectedResourceType(provider string, rawType string, resourceI
 		return "ec2_instance"
 	case "aws:awsiamrole", "aws:iamrole", "aws:iam_role":
 		return "role"
+	case "aws:awsiamuser", "aws:iamuser", "aws:iam_user":
+		return "user"
+	case "aws:awsiamgroup", "aws:iamgroup", "aws:iam_group":
+		return "group"
+	case "aws:awsiamaccesskey", "aws:iamaccesskey", "aws:iam_access_key", "aws:accesskey", "aws:access_key":
+		return "credential"
 	case "aws:awslambdafunction", "aws:lambdafunction":
 		return "lambda_function"
 	case "aws:awsrdsdbinstance", "aws:rdsdbinstance":

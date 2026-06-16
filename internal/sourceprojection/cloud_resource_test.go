@@ -207,6 +207,29 @@ func TestProjectCloudFindingsCorrelatesSecurityFindingAndAffectedResource(t *tes
 	}
 }
 
+func TestCloudFindingAffectedResourceTypeUsesCanonicalGraphNamespaces(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		provider string
+		rawType  string
+		id       string
+		want     string
+	}{
+		{name: "aws iam role", provider: "aws", rawType: "AWS::IAM::Role", id: "arn:aws:iam::123456789012:role/AdminRole", want: "role"},
+		{name: "aws iam user", provider: "aws", rawType: "AWS::IAM::User", id: "arn:aws:iam::123456789012:user/Alice", want: "user"},
+		{name: "aws iam group", provider: "aws", rawType: "AWS::IAM::Group", id: "arn:aws:iam::123456789012:group/Admins", want: "group"},
+		{name: "aws iam access key", provider: "aws", rawType: "AwsIamAccessKey", id: "AKIA123", want: "credential"},
+		{name: "aws guardduty instance", provider: "aws", rawType: "Instance", id: "i-123", want: "ec2_instance"},
+		{name: "gcp storage bucket", provider: "gcp", rawType: "google.cloud.storage.Bucket", id: "//storage.googleapis.com/projects/_/buckets/data", want: "gcs_bucket"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cloudFindingAffectedResourceType(tt.provider, tt.rawType, tt.id); got != tt.want {
+				t.Fatalf("cloudFindingAffectedResourceType() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProjectAWSAppRunnerServiceLinksAccountExposureOwnerAndRuntimeRole(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
