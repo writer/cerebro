@@ -39,6 +39,20 @@ func TestParseSourceRuntimeSDKNewArgs(t *testing.T) {
 	}
 }
 
+func TestParseSourceRuntimeSDKNewArgsCatalogDefinition(t *testing.T) {
+	request, err := parseSourceRuntimeSDKNewArgs([]string{
+		"jumpcloud",
+		"catalog=true",
+		"dry_run=true",
+	})
+	if err != nil {
+		t.Fatalf("parseSourceRuntimeSDKNewArgs() error = %v", err)
+	}
+	if request.SourceID != "jumpcloud" || !request.CatalogDefinition || !request.DryRun {
+		t.Fatalf("request = %#v, want catalog dry-run for jumpcloud", request)
+	}
+}
+
 func TestParseSourceRuntimeSDKNewArgsRequiresKeyValue(t *testing.T) {
 	_, err := parseSourceRuntimeSDKNewArgs([]string{"demo_source", "not-key-value"})
 	if err == nil {
@@ -188,6 +202,42 @@ func TestRunSourceRuntimeSDKNewFromDefinitionComparesNormalizedSourceID(t *testi
 	}
 	if result.SourceID != "example_idp" {
 		t.Fatalf("SourceID = %q, want example_idp", result.SourceID)
+	}
+}
+
+func TestRunSourceRuntimeSDKNewFromBuiltinCatalogDryRun(t *testing.T) {
+	stdout := captureCommandStdout(t, func() {
+		err := runSourceRuntime([]string{"sdk", "new", "jumpcloud", "catalog=true", "dry_run=true"})
+		if err != nil {
+			t.Fatalf("runSourceRuntime sdk new catalog dry-run error = %v", err)
+		}
+	})
+	var result struct {
+		SourceID  string   `json:"source_id"`
+		AuthModel string   `json:"auth_model"`
+		DryRun    bool     `json:"dry_run"`
+		Files     []string `json:"files"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("unmarshal catalog dry-run output: %v\n%s", err, stdout)
+	}
+	if result.SourceID != "jumpcloud" || result.AuthModel != "api_key" || !result.DryRun || len(result.Files) == 0 {
+		t.Fatalf("catalog dry-run result = %#v", result)
+	}
+}
+
+func TestRunSourceRuntimeSDKNewRejectsCatalogAndDefinition(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "definition.json")
+	if err := os.WriteFile(path, []byte(`{"source_id":"jumpcloud"}`), 0o600); err != nil {
+		t.Fatalf("write definition: %v", err)
+	}
+	err := runSourceRuntime([]string{"sdk", "new", "jumpcloud", "catalog=true", "definition=" + path, "dry_run=true"})
+	if err == nil {
+		t.Fatal("runSourceRuntime sdk new catalog+definition error = nil, want error")
+	}
+	if got := err.Error(); got != "catalog=true cannot be combined with definition" {
+		t.Fatalf("error = %q, want catalog/definition conflict", got)
 	}
 }
 

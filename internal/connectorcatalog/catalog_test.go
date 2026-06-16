@@ -175,6 +175,19 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	)
 }
 
+func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
+	entry, ok, err := BuiltinEntry("JumpCloud")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry() ok = false, want true")
+	}
+	if entry.Definition.SourceID != "jumpcloud" || entry.Status != StatusGenerateable {
+		t.Fatalf("entry = %#v, want generateable jumpcloud", entry)
+	}
+}
+
 func minimalDefinitionYAML() string {
 	return `
 entries:

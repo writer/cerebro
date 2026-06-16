@@ -29,6 +29,16 @@ definition, rejects contradictory supported/missing feature IDs, requires
 high-value coverage, and dry-runs sourcegen for entries classified as supported.
 The checker prints the catalog status summary that should be used in PR notes.
 
+Generateable entries can be promoted one integration at a time from the catalog:
+
+```sh
+go run ./cmd/cerebro source-runtime sdk new <source_id> catalog=true dry_run=true
+```
+
+Drop `dry_run=true` when the generated files are ready to review, then wire the
+new source loader and projection registry entries called out in the generator
+receipt.
+
 External open-source catalogs can inform naming and resource-family choices only
 when their licenses are permissive enough for this repository. Useful references
 found during the initial pass:

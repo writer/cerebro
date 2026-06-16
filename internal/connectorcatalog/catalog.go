@@ -103,6 +103,24 @@ func Builtin() (Analysis, error) {
 	return builtinAnalysis, builtinErr
 }
 
+// BuiltinEntry returns one embedded connector-definition catalog entry by source ID.
+func BuiltinEntry(sourceID string) (Entry, bool, error) {
+	normalized, err := normalizeSourceID(sourceID)
+	if err != nil {
+		return Entry{}, false, err
+	}
+	analysis, err := Builtin()
+	if err != nil {
+		return Entry{}, false, err
+	}
+	for _, entry := range analysis.Entries {
+		if entry.Definition.SourceID == normalized {
+			return entry, true, nil
+		}
+	}
+	return Entry{}, false, nil
+}
+
 // AnalyzeDir reads a filesystem directory containing catalog files.
 func AnalyzeDir(dir string, options Options) (Analysis, error) {
 	dir = filepath.Clean(strings.TrimSpace(dir))
@@ -349,6 +367,14 @@ func normalizeClassifierOutput(value string) string {
 	default:
 		return ""
 	}
+}
+
+func normalizeSourceID(sourceID string) (string, error) {
+	definition, err := connectordefinitions.Normalize(connectordefinitions.Definition{SourceID: sourceID})
+	if err != nil {
+		return "", err
+	}
+	return definition.SourceID, nil
 }
 
 func statusForReport(report connectordefinitions.SupportReport) string {
