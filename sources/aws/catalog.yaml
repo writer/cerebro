@@ -14,6 +14,7 @@ emitted_kinds:
   - aws.backup_protected_resource
   - aws.backup_recovery_point
   - aws.codebuild_project
+  - aws.codebuild_source_credential
   - aws.cloudtrail
   - aws.config_recorder
   - aws.dynamodb_backup
