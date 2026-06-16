@@ -848,7 +848,6 @@ func nodeAttributes(st settings, node v1.Node) map[string]string {
 	add(attrs, "external_ip", nodeAddress(node, v1.NodeExternalIP))
 	add(attrs, "kernel_version", node.Status.NodeInfo.KernelVersion)
 	add(attrs, "kubelet_version", node.Status.NodeInfo.KubeletVersion)
-	add(attrs, "kube_proxy_version", node.Status.NodeInfo.KubeProxyVersion)
 	add(attrs, "container_runtime_version", node.Status.NodeInfo.ContainerRuntimeVersion)
 	add(attrs, "os_image", node.Status.NodeInfo.OSImage)
 	add(attrs, "operating_system", node.Status.NodeInfo.OperatingSystem)

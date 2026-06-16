@@ -63,7 +63,6 @@ func TestReadNodesEmitsKubeletPosture(t *testing.T) {
 					Architecture:            "amd64",
 					ContainerRuntimeVersion: "containerd://1.7.0",
 					KernelVersion:           "6.1.0",
-					KubeProxyVersion:        "v1.35.0",
 					KubeletVersion:          "v1.35.0",
 					OperatingSystem:         "linux",
 					OSImage:                 "Bottlerocket OS",
