@@ -149,7 +149,7 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "version", stringAt(properties, "version"))
 		set(attributes, "administrator_login", stringAt(properties, "administratorLogin"))
 		set(attributes, "public_host", stringAt(properties, "fullyQualifiedDomainName"))
-		set(attributes, "storage_mb", stringAt(properties, "storage", "storageSizeGB"))
+		set(attributes, "storage_size_gb", stringAt(properties, "storage", "storageSizeGB"))
 		set(attributes, "backup_retention_days", stringAt(properties, "backup", "backupRetentionDays"))
 		set(attributes, "geo_redundant_backup", stringAt(properties, "backup", "geoRedundantBackup"))
 		set(attributes, "high_availability_mode", stringAt(properties, "highAvailability", "mode"))
