@@ -5,6 +5,13 @@ emitted_kinds:
   - auth0.users
   - auth0.roles
   - auth0.audit_events
+families:
+  - id: users
+    incremental: watermark
+  - id: roles
+    incremental: watermark
+  - id: audit_events
+    incremental: watermark
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: auth0
@@ -36,7 +43,11 @@ coverage_contract:
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      families: [users, roles, audit_events]
+      support: supported
+      high_value: true
+      notes:
+        - Watermark filtering is applied from durable source checkpoints; provider page continuation cursors are preserved when present.
 event_contracts:
   - kind: auth0.users
     schema_ref: auth0/users/v1

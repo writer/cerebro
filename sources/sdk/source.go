@@ -13,6 +13,8 @@ import (
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
+const inventoryURNsKey = "inventory_urns"
+
 // Source is the builtin push-oriented source used by SDK onboarders.
 type Source struct {
 	spec *cerebrov1.SourceSpec
@@ -41,15 +43,47 @@ func (s *Source) Check(_ context.Context, cfg sourcecdk.Config) error {
 	if integration, ok := cfg.Lookup("integration"); !ok || strings.TrimSpace(integration) == "" {
 		return fmt.Errorf("%w: sdk integration is required", sourcecdk.ErrInvalidConfig)
 	}
+	if _, err := inventoryURNs(cfg); err != nil {
+		return err
+	}
 	return nil
 }
 
-// Discover returns no URNs because SDK runtimes push directly into the write surface.
-func (s *Source) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
-	return nil, nil
+// Discover returns optional inventory URNs declared by the SDK runtime config.
+func (s *Source) Discover(_ context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return inventoryURNs(cfg)
 }
 
 // Read returns an empty pull because SDK runtimes push directly into the write surface.
 func (s *Source) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return sourcecdk.Pull{}, nil
+}
+
+func inventoryURNs(cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
+	raw, _ := cfg.Lookup(inventoryURNsKey)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\t'
+	})
+	urns := make([]sourcecdk.URN, 0, len(fields))
+	seen := map[sourcecdk.URN]struct{}{}
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		urn, err := sourcecdk.ParseURN(field)
+		if err != nil {
+			return nil, fmt.Errorf("%w: sdk %s contains invalid urn %q: %v", sourcecdk.ErrInvalidConfig, inventoryURNsKey, field, err)
+		}
+		if _, ok := seen[urn]; ok {
+			continue
+		}
+		seen[urn] = struct{}{}
+		urns = append(urns, urn)
+	}
+	return urns, nil
 }

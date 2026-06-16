@@ -74,3 +74,50 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("event id is empty: %#v", event)
 	}
 }
+
+func TestReadWithCheckpointUsesIncrementalWatermark(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "test-token", "expires_in": 600})
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/users" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token_url": server.URL + "/oauth/token", "client_id": "client-id", "client_secret": "client-secret", "domain": "example.test"})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() first error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("first events = %d, want 1", len(first.Events))
+	}
+	if first.Checkpoint == nil || !sourcecdk.ResumableCursorOpaque(first.Checkpoint.GetCursorOpaque()) {
+		t.Fatalf("first checkpoint is not resumable: %#v", first.Checkpoint)
+	}
+
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() second error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("second events = %d, want 0", len(second.Events))
+	}
+	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("second short circuit = %q, want %q", second.ShortCircuitReason, sourcecdk.PullShortCircuitReasonWatermarkReached)
+	}
+}

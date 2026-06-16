@@ -284,7 +284,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `backstage` | Backstage catalog source | components |
 | `cerebro` | Cerebro product access telemetry source backed by structured NDJSON archives | API access audit events |
-| `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records |
+| `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records, Gateway rules, Workers scripts |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
 | `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |
 | `email_domain_health` | Email domain authentication posture source (SPF, DKIM, DMARC, MX, MTA-STS) | health |
@@ -300,7 +300,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `openai` | OpenAI organization source | users, projects, service accounts, API keys, admin API keys |
 | `pagerduty` | PagerDuty incident management source | users, teams, services, schedules, escalation policies, integrations, vendors |
 | `panopticon` | Panopticon security operations API source | cases by default; alerts and IOCs explicitly |
-| `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
+| `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; optional declared inventory URN discovery; preview reads are empty |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
 | `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
 | `slack` | Slack workspace source | teams, users, channels, user groups |

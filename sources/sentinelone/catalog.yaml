@@ -70,4 +70,7 @@ coverage_contract:
       support: partial
       high_value: true
       known_unsupported_fields:
-        - investigation owner and exception workflow state
+        - Cerebro remediation workflow assignment, exception, SLA, and approval state
+      notes:
+        - SentinelOne threat mitigation and investigation fields are surfaced as provider lifecycle evidence.
+        - Cerebro finding remediation lifecycle remains owned by the finding/workflow surfaces and their typed action boundaries.

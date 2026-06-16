@@ -65,6 +65,8 @@ coverage_contract:
       support: partial
       high_value: true
       known_unsupported_fields: [inherited parent account rules]
+      notes:
+        - Configured account Gateway rule metadata, filters, actions, precedence, enabled state, and traffic settings are surfaced.
     - id: load_balancer_pools
       type: entity_family
       title: Load balancer pools
@@ -96,6 +98,8 @@ coverage_contract:
       support: partial
       high_value: true
       known_unsupported_fields: [script content and secret binding values]
+      notes:
+        - Worker script metadata and binding names/types are surfaced; source code and secret values remain intentionally out of scope.
     - id: zones
       type: entity_family
       title: Zones

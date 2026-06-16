@@ -44,8 +44,11 @@ coverage_contract:
     - id: remediation_state
       type: remediation_state
       title: Vulnerability remediation lifecycle state
-      families: [vulnerability]
-      support: unsupported
+      families: [vulnerability, dns_alert]
+      support: partial
       high_value: true
       known_unsupported_fields:
-        - remediation workflow state
+        - Cerebro remediation workflow assignment, exception, SLA, and approval state
+      notes:
+        - VulnView vulnerability and DNS alert state attributes are surfaced as provider lifecycle evidence.
+        - Cerebro finding remediation lifecycle remains owned by the finding/workflow surfaces and their typed action boundaries.
