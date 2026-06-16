@@ -116,6 +116,31 @@ func TestProjectCloudFindingsCorrelatesSecurityFindingAndAffectedResource(t *tes
 			affectedType:       "aws.ec2.instance",
 		},
 		{
+			name: "aws security hub iam role",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "aws-securityhub-role-finding-1",
+				TenantId: "writer",
+				SourceId: "aws",
+				Kind:     "aws.securityhub_finding",
+				Attributes: map[string]string{
+					"affected_resource_id":   "arn:aws:iam::123456789012:role/AdminRole",
+					"affected_resource_name": "AdminRole",
+					"affected_resource_type": "AWS::IAM::Role",
+					"finding_id":             "arn:aws:securityhub:us-east-1:123456789012:finding/role-1",
+					"resource_id":            "arn:aws:securityhub:us-east-1:123456789012:finding/role-1",
+					"resource_name":          "Admin role finding",
+					"resource_provider":      "aws",
+					"resource_type":          "securityhub_finding",
+					"severity":               "HIGH",
+					"status":                 "ACTIVE",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:aws_securityhub_finding:arn:aws:securityhub:us-east-1:123456789012:finding/role-1",
+			securityFindingURN: "urn:cerebro:writer:security_finding:aws:arn:aws:securityhub:us-east-1:123456789012:finding/role-1",
+			affectedURN:        "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole",
+			affectedType:       "aws.role",
+		},
+		{
 			name: "gcp security command center",
 			event: &cerebrov1.EventEnvelope{
 				Id:       "gcp-security-center-finding-1",
