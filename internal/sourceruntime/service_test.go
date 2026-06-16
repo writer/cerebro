@@ -1541,6 +1541,40 @@ func TestSyncRuntimePassesCheckpointAndPersistsShortCircuitReason(t *testing.T) 
 	}
 }
 
+func TestSyncRuntimePersistsReconciliationReason(t *testing.T) {
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Events:               []*cerebrov1.EventEnvelope{runtimeTestEvent("event-1", "checkpoint_aware", "checkpoint_aware.event")},
+		ReconciliationReason: sourcecdk.PullReconciliationReasonMaxConsecutiveSkips,
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:       "writer-checkpoint-aware",
+			SourceId: "checkpoint_aware",
+			TenantId: "writer",
+		},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("EventsAppended = %d, want 1", resp.GetEventsAppended())
+	}
+	stored := store.runtimes["writer-checkpoint-aware"]
+	if got := stored.GetConfig()[runtimeReconciliationReasonConfigKey]; got != "max_consecutive_skips" {
+		t.Fatalf("reconciliation reason = %q, want max_consecutive_skips", got)
+	}
+	if got := stored.GetConfig()[runtimeShortCircuitReasonConfigKey]; got != "" {
+		t.Fatalf("short circuit reason = %q, want empty", got)
+	}
+}
+
 func TestSyncRuntimeDoesNotRegressCheckpointWatermark(t *testing.T) {
 	newer := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	older := newer.Add(-time.Hour)

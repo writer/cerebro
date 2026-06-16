@@ -76,10 +76,11 @@ func (c Config) Values() map[string]string {
 
 // Pull is one page of source output.
 type Pull struct {
-	Events             []*primitives.Event
-	Checkpoint         *cerebrov1.SourceCheckpoint
-	NextCursor         *cerebrov1.SourceCursor
-	ShortCircuitReason PullShortCircuitReason
+	Events               []*primitives.Event
+	Checkpoint           *cerebrov1.SourceCheckpoint
+	NextCursor           *cerebrov1.SourceCursor
+	ShortCircuitReason   PullShortCircuitReason
+	ReconciliationReason PullReconciliationReason
 }
 
 // PullShortCircuitReason describes source work that intentionally produced no
@@ -92,6 +93,19 @@ const (
 	PullShortCircuitReasonNotModified           PullShortCircuitReason = "not_modified"
 	PullShortCircuitReasonCheckpointAdvanced    PullShortCircuitReason = "checkpoint_advanced"
 	PullShortCircuitReasonWatermarkReached      PullShortCircuitReason = "watermark_reached"
+)
+
+// PullReconciliationReason describes why a source intentionally bypassed an
+// otherwise-unchanged freshness probe and ran a normal reconciliation.
+type PullReconciliationReason string
+
+const (
+	PullReconciliationReasonMaxSkipDuration        PullReconciliationReason = "max_skip_duration"
+	PullReconciliationReasonMaxConsecutiveSkips    PullReconciliationReason = "max_consecutive_skips"
+	PullReconciliationReasonReconciliationInterval PullReconciliationReason = "reconciliation_interval"
+	PullReconciliationReasonCanaryManifestChanged  PullReconciliationReason = "canary_manifest_version_changed"
+	PullReconciliationReasonSourceConfigChanged    PullReconciliationReason = "source_config_changed"
+	PullReconciliationReasonCanaryStateMissing     PullReconciliationReason = "canary_state_missing"
 )
 
 // NotModifiedPull returns a not_modified short-circuit when a checkpoint was

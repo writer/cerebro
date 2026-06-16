@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/githubaudit"
+	"github.com/writer/cerebro/sources/internal/githubcanary"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -482,6 +484,213 @@ func TestReadLiveGitHubRepositoryPreviewIncludesOwnerLogin(t *testing.T) {
 	}
 }
 
+func TestRepositoryMetadataCanaryShortCircuitsUnchangedInventory(t *testing.T) {
+	var canaryRequests int
+	var fullRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("per_page") == "1" {
+			canaryRequests++
+		} else {
+			fullRequests++
+		}
+		encodeRepositoryPage(t, w, "2026-04-23T00:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+		"per_page": "10",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("first events = %d, want 1", len(first.Events))
+	}
+	if metadata := sourcecdk.CheckpointFingerprint(first.Checkpoint, "github", familyRepository); metadata[sourcecdk.CanaryHashKey] == "" {
+		t.Fatalf("first checkpoint metadata = %#v, want canary hash", metadata)
+	}
+
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("second events = %d, want short-circuit", len(second.Events))
+	}
+	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("second reason = %q, want not_modified", second.ShortCircuitReason)
+	}
+	if canaryRequests != 2 || fullRequests != 1 {
+		t.Fatalf("requests canary/full = %d/%d, want 2/1", canaryRequests, fullRequests)
+	}
+}
+
+func TestRepositoryMetadataCanaryFallsThroughWhenChanged(t *testing.T) {
+	var fullRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("per_page") != "1" {
+			fullRequests++
+		}
+		encodeRepositoryPage(t, w, "2026-04-24T00:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+		"per_page": "10",
+	})
+	checkpoint := sourcecdk.ReconciledFingerprintCheckpoint(nil, "github", familyRepository, time.Date(2026, 4, 23, 0, 0, 0, 0, time.UTC), map[string]string{
+		sourcecdk.CanaryHashKey:       "old-hash",
+		sourcecdk.CanaryConfidenceKey: sourcecdk.CanaryConfidenceHeuristic,
+		sourcecdk.ManifestVersionKey:  githubcanary.RepositoryManifestVersion,
+		sourcecdk.CanaryConfigHashKey: sourcecdk.ConfigHash(cfg.Values()),
+	}, time.Date(2026, 4, 23, 0, 0, 0, 0, time.UTC))
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want changed canary full read", len(pull.Events))
+	}
+	if pull.ShortCircuitReason != "" {
+		t.Fatalf("ShortCircuitReason = %q, want empty on changed canary", pull.ShortCircuitReason)
+	}
+	if fullRequests != 1 {
+		t.Fatalf("full requests = %d, want 1", fullRequests)
+	}
+}
+
+func TestRepositoryMetadataCanaryForcesReconciliationAfterMaxSkips(t *testing.T) {
+	var fullRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("per_page") != "1" {
+			fullRequests++
+		}
+		encodeRepositoryPage(t, w, "2026-04-23T00:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+		"per_page": "10",
+	})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	checkpoint := first.Checkpoint
+	for i := 0; i < githubcanary.MaxConsecutiveSkips; i++ {
+		checkpoint = sourcecdk.SkippedFingerprintCheckpoint(checkpoint, "github", familyRepository, sourcecdk.CheckpointFingerprint(checkpoint, "github", familyRepository), time.Now().Add(time.Duration(i)*time.Minute))
+	}
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(forced) error = %v", err)
+	}
+	if pull.ReconciliationReason != sourcecdk.PullReconciliationReasonMaxConsecutiveSkips {
+		t.Fatalf("ReconciliationReason = %q, want max_consecutive_skips", pull.ReconciliationReason)
+	}
+	if fullRequests != 2 {
+		t.Fatalf("full requests = %d, want initial and forced full reads", fullRequests)
+	}
+}
+
+func TestRepositoryMetadataCanaryReturnsProviderError(t *testing.T) {
+	var fullRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("per_page") == "1" {
+			http.Error(w, `{"message":"unavailable"}`, http.StatusInternalServerError)
+			return
+		}
+		fullRequests++
+		encodeRepositoryPage(t, w, "2026-04-23T00:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+	})
+
+	if _, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil); err == nil {
+		t.Fatal("ReadWithCheckpoint() error = nil, want canary provider error")
+	}
+	if fullRequests != 0 {
+		t.Fatalf("full requests = %d, want canary failure before full read", fullRequests)
+	}
+}
+
+func encodeRepositoryPage(t *testing.T, w http.ResponseWriter, updatedAt string) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode([]map[string]any{{
+		"id":             1,
+		"name":           "cerebro",
+		"full_name":      "writer/cerebro",
+		"html_url":       "https://github.com/writer/cerebro",
+		"visibility":     "public",
+		"default_branch": "main",
+		"private":        false,
+		"archived":       false,
+		"fork":           false,
+		"created_at":     "2026-04-22T00:00:00Z",
+		"updated_at":     updatedAt,
+		"owner":          map[string]any{"login": "writer"},
+	}}); err != nil {
+		t.Fatalf("encode repos response: %v", err)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	server := httptest.NewServer(newGitHubAPIHandler(t))
 	defer server.Close()
@@ -677,6 +886,217 @@ func TestGitHubAuditFreshnessProbeShortCircuitsUnchangedAuditLog(t *testing.T) {
 	}
 }
 
+func TestOrgInventoryAuditLogCanaryShortCircuitsWhenAuthorizedUnchanged(t *testing.T) {
+	var auditRequests int
+	var memberRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/audit-log":
+			auditRequests++
+			if got := r.URL.Query().Get("order"); got != "desc" {
+				t.Fatalf("audit canary order = %q, want desc", got)
+			}
+			encodeAuditCanaryEntry(t, w, "audit-doc-1")
+		case "/api/v3/orgs/writer/members":
+			memberRequests++
+			encodeOrgMembers(t, w)
+		case "/api/v3/orgs/writer/outside_collaborators":
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode outside collaborators: %v", err)
+			}
+		case "/api/v3/orgs/writer/installations":
+			if err := json.NewEncoder(w).Encode(map[string]any{"installations": []map[string]any{}}); err != nil {
+				t.Fatalf("encode installations: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"audit_log_canary": "true",
+		"base_url":         server.URL,
+		"family":           familyOrgInventory,
+		"owner":            "writer",
+		"token":            "test-token",
+	})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) == 0 {
+		t.Fatal("first Events = 0, want org inventory read")
+	}
+	if metadata := sourcecdk.CheckpointFingerprint(first.Checkpoint, "github", familyOrgInventory); metadata[sourcecdk.CanaryKindKey] != githubcanary.AuditLogKind {
+		t.Fatalf("first checkpoint metadata = %#v, want audit-log canary", metadata)
+	}
+
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("second Events = %d, want short-circuit", len(second.Events))
+	}
+	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("second ShortCircuitReason = %q, want not_modified", second.ShortCircuitReason)
+	}
+	if auditRequests != 2 || memberRequests != 1 {
+		t.Fatalf("audit/member requests = %d/%d, want 2/1", auditRequests, memberRequests)
+	}
+}
+
+func TestOrgInventoryAuditLogCanaryFallsThroughWhenAuthorizedChanged(t *testing.T) {
+	var auditRequests int
+	var memberRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/audit-log":
+			auditRequests++
+			encodeAuditCanaryEntry(t, w, "audit-doc-"+strconv.Itoa(auditRequests))
+		case "/api/v3/orgs/writer/members":
+			memberRequests++
+			encodeOrgMembers(t, w)
+		case "/api/v3/orgs/writer/outside_collaborators":
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode outside collaborators: %v", err)
+			}
+		case "/api/v3/orgs/writer/installations":
+			if err := json.NewEncoder(w).Encode(map[string]any{"installations": []map[string]any{}}); err != nil {
+				t.Fatalf("encode installations: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"audit_log_canary": "true",
+		"base_url":         server.URL,
+		"family":           familyOrgInventory,
+		"owner":            "writer",
+		"token":            "test-token",
+	})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) == 0 {
+		t.Fatal("second Events = 0, want changed canary full read")
+	}
+	if second.ShortCircuitReason != "" {
+		t.Fatalf("second ShortCircuitReason = %q, want empty changed canary", second.ShortCircuitReason)
+	}
+	if auditRequests != 2 || memberRequests != 2 {
+		t.Fatalf("audit/member requests = %d/%d, want 2/2", auditRequests, memberRequests)
+	}
+}
+
+func TestOrgInventoryAuditLogCanaryUnauthorizedFallsBack(t *testing.T) {
+	var memberRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/audit-log":
+			http.Error(w, `{"message":"Resource not accessible by integration"}`, http.StatusForbidden)
+		case "/api/v3/orgs/writer/members":
+			memberRequests++
+			encodeOrgMembers(t, w)
+		case "/api/v3/orgs/writer/outside_collaborators":
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode outside collaborators: %v", err)
+			}
+		case "/api/v3/orgs/writer/installations":
+			if err := json.NewEncoder(w).Encode(map[string]any{"installations": []map[string]any{}}); err != nil {
+				t.Fatalf("encode installations: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"audit_log_canary": "true",
+		"base_url":         server.URL,
+		"family":           familyOrgInventory,
+		"owner":            "writer",
+		"token":            "test-token",
+	})
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) == 0 {
+		t.Fatal("Events = 0, want fallback org inventory read")
+	}
+	if pull.ShortCircuitReason != "" {
+		t.Fatalf("ShortCircuitReason = %q, want empty fallback", pull.ShortCircuitReason)
+	}
+	if memberRequests != 1 {
+		t.Fatalf("member requests = %d, want 1", memberRequests)
+	}
+}
+
+func TestOrgInventoryAuditLogCanaryProviderError(t *testing.T) {
+	var memberRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/audit-log":
+			http.Error(w, `{"message":"unavailable"}`, http.StatusInternalServerError)
+		case "/api/v3/orgs/writer/members":
+			memberRequests++
+			encodeOrgMembers(t, w)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"audit_log_canary": "true",
+		"base_url":         server.URL,
+		"family":           familyOrgInventory,
+		"owner":            "writer",
+		"token":            "test-token",
+	})
+	if _, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil); err == nil {
+		t.Fatal("ReadWithCheckpoint() error = nil, want audit canary provider error")
+	}
+	if memberRequests != 0 {
+		t.Fatalf("member requests = %d, want canary error before fallback read", memberRequests)
+	}
+}
+
 func TestGitHubAuditFreshnessProbeForcesReconcileAfterMaxSkips(t *testing.T) {
 	auditQueries := []url.Values{}
 	auditEntry := map[string]any{
@@ -865,6 +1285,31 @@ func TestGitHubAuditFreshnessCheckpointDoesNotExposeProviderMetadata(t *testing.
 	}
 	if got := envelope.Extra[sourcecdk.FamilyFreshnessExtraResourceID]; got != "latest_event" {
 		t.Fatalf("canary resource id = %q, want opaque latest_event", got)
+	}
+}
+
+func encodeAuditCanaryEntry(t *testing.T, w http.ResponseWriter, documentID string) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode([]map[string]any{{
+		"@timestamp":   1776916397852,
+		"_document_id": documentID,
+		"action":       "org.update_member",
+		"actor":        "octocat",
+		"created_at":   1776916397852,
+		"org":          "writer",
+	}}); err != nil {
+		t.Fatalf("encode audit canary entry: %v", err)
+	}
+}
+
+func encodeOrgMembers(t *testing.T, w http.ResponseWriter) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode([]map[string]any{{
+		"login":    "octocat",
+		"id":       1,
+		"html_url": "https://github.com/octocat",
+	}}); err != nil {
+		t.Fatalf("encode org members: %v", err)
 	}
 }
 

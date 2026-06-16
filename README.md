@@ -289,7 +289,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `email_domain_health` | Email domain authentication posture source (SPF, DKIM, DMARC, MX, MTA-STS) | health |
 | `evidence_cas` | EvidenceCAS content-addressed evidence reference source | object manifests |
 | `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | audit, groups, IAM role assignments, service accounts, resource exposure |
-| `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests |
+| `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests; repository and optional org-inventory audit-log freshness probes |
 | `google_workspace` | Google Workspace Directory and Admin audit source | audit, groups, group members, role assignments, users |
 | `grc` | Governance/risk/compliance source | configured GRC families |
 | `kandji` | Kandji device/application/vulnerability source | devices, applications, vulnerabilities |
