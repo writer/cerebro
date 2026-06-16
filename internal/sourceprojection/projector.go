@@ -1244,17 +1244,22 @@ func githubSelfHostedRunnerProjection(tenantID string, attributes map[string]str
 }
 
 func githubAuditProjectsSelfHostedRunner(attributes map[string]string) bool {
-	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	action := strings.TrimSpace(attributes["action"])
+	return githubSelfHostedRunnerAuditAction(action)
+}
+
+func githubSelfHostedRunnerAuditAction(action string) bool {
+	action = strings.ToLower(strings.TrimSpace(action))
 	if action == "" {
 		return false
 	}
 	// GitHub audit rows such as workflows.prepared_workflow_job include per-job
 	// GitHub-hosted runner IDs. Those are ephemeral execution details, not
 	// customer-managed self-hosted runner assets.
-	if !strings.Contains(action, "self_hosted_runner") {
+	if strings.HasPrefix(action, "workflows.") {
 		return false
 	}
-	return true
+	return strings.Contains(action, "self_hosted_runner")
 }
 
 func githubRunnerScope(scope string) (string, string) {

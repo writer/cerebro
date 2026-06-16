@@ -2369,6 +2369,27 @@ func TestProjectGitHubAuditSkipsWorkflowJobHostedRunnerInventory(t *testing.T) {
 	}
 }
 
+func TestGitHubSelfHostedRunnerAuditActionClassifiesAssetLifecycleOnly(t *testing.T) {
+	for _, tc := range []struct {
+		action string
+		want   bool
+	}{
+		{action: "repo.register_self_hosted_runner", want: true},
+		{action: "repo.remove_self_hosted_runner", want: true},
+		{action: "org.register_self_hosted_runner", want: true},
+		{action: "business.remove_self_hosted_runner", want: true},
+		{action: "workflows.prepared_workflow_job", want: false},
+		{action: "workflows.completed_workflow_run", want: false},
+		{action: "repo.runner_group_updated", want: false},
+		{action: "repo.register_runner", want: false},
+		{action: "", want: false},
+	} {
+		if got := githubSelfHostedRunnerAuditAction(tc.action); got != tc.want {
+			t.Fatalf("githubSelfHostedRunnerAuditAction(%q) = %v, want %v", tc.action, got, tc.want)
+		}
+	}
+}
+
 // Missing actor_id alone is not enough to call an audit actor a credential:
 // GitHub git audit rows for real users can also omit actor_id. The source
 // resolves those actors through /users/{login} and stamps actor_type=User, and
