@@ -97,7 +97,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-cortex_xsoar
@@ -149,6 +149,7 @@ entries:
           label: Cases
           path: /v1/cases
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: cortex_xsoar.findings
@@ -674,7 +675,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-new_relic
@@ -725,6 +726,7 @@ entries:
           label: Alerts
           path: /v1/alerts
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: new_relic.findings
@@ -768,7 +770,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-panther
@@ -820,6 +822,7 @@ entries:
           label: Detections
           path: /v1/detections
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: panther.findings
@@ -959,7 +962,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-splunk_cloud
@@ -1011,6 +1014,7 @@ entries:
           label: Detections
           path: /v1/detections
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: splunk_cloud.findings
@@ -1152,7 +1156,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-tines
@@ -1204,6 +1208,7 @@ entries:
           label: Cases
           path: /v1/cases
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: tines.findings
@@ -1247,7 +1252,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-torq
@@ -1302,6 +1307,7 @@ entries:
           label: Cases
           path: /v1/cases
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: torq.findings

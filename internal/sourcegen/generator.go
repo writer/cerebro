@@ -23,6 +23,11 @@ const (
 	AuthModelBearerToken = "bearer_token"
 	AuthModelAPIToken    = "api_token"
 	AuthModelAPIKey      = "api_key"
+	AuthModelBasic       = "basic"
+	AuthModelOAuthAuthz  = "oauth_authorization_code"
+	AuthModelOAuthClient = "oauth_client_credentials"
+	AuthModelJWT         = "jwt"
+	AuthModelSignature   = "signature"
 
 	defaultFreshnessExpectation = 24 * time.Hour
 	defaultHealthPath           = "/healthz"
@@ -78,6 +83,10 @@ type normalizedRequest struct {
 	FreshnessDuration time.Duration
 	TokenScheme       string
 	TokenConfigKey    string
+	AuthTokenURL      string
+	OAuthScopes       []string
+	OAuthTokenParams  map[string]string
+	OAuthTokenMethod  string
 	EnvPrefix         string
 	PackageName       string
 	DefaultFamily     string
@@ -207,8 +216,8 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 	if healthPath == "" {
 		healthPath = defaultHealthPath
 	}
-	if !strings.HasPrefix(healthPath, "/") || strings.Contains(healthPath, "?") || strings.Contains(healthPath, "#") {
-		return normalizedRequest{}, fmt.Errorf("health_path must be an absolute path without query or fragment")
+	if !strings.HasPrefix(healthPath, "/") || strings.Contains(healthPath, "#") {
+		return normalizedRequest{}, fmt.Errorf("health_path must be an absolute path without fragment")
 	}
 	if strings.ContainsAny(healthPath, "\r\n\t ") {
 		return normalizedRequest{}, fmt.Errorf("health_path must not contain whitespace")
@@ -234,6 +243,10 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 		FreshnessDuration: freshness,
 		TokenScheme:       tokenScheme,
 		TokenConfigKey:    tokenConfigKey,
+		AuthTokenURL:      strings.TrimSpace(definition.Auth.TokenURL),
+		OAuthScopes:       append([]string(nil), definition.Auth.Scopes...),
+		OAuthTokenParams:  cloneStringMap(definition.Auth.TokenParams),
+		OAuthTokenMethod:  strings.TrimSpace(definition.Auth.TokenRequestAuthMethod),
 		EnvPrefix:         strings.ToUpper(strings.NewReplacer("-", "_").Replace(sourceID)),
 		PackageName:       packageName(sourceID),
 	}
@@ -298,8 +311,8 @@ func normalizeRequest(request Request) (normalizedRequest, error) {
 	if healthPath == "" {
 		healthPath = defaultHealthPath
 	}
-	if !strings.HasPrefix(healthPath, "/") || strings.Contains(healthPath, "?") || strings.Contains(healthPath, "#") {
-		return normalizedRequest{}, fmt.Errorf("health_path must be an absolute path without query or fragment")
+	if !strings.HasPrefix(healthPath, "/") || strings.Contains(healthPath, "#") {
+		return normalizedRequest{}, fmt.Errorf("health_path must be an absolute path without fragment")
 	}
 	if strings.ContainsAny(healthPath, "\r\n\t ") {
 		return normalizedRequest{}, fmt.Errorf("health_path must not contain whitespace")
@@ -367,8 +380,14 @@ func authModelConfig(authModel string) (string, string, error) {
 		return "Bearer", "token", nil
 	case AuthModelAPIToken, AuthModelAPIKey:
 		return "Token", "api_token", nil
+	case AuthModelBasic:
+		return "Basic", "token", nil
+	case AuthModelOAuthAuthz, AuthModelOAuthClient, AuthModelJWT:
+		return "Bearer", "token", nil
+	case AuthModelSignature:
+		return "Signature", "token", nil
 	default:
-		return "", "", fmt.Errorf("auth_model %q must be one of %s, %s, or %s", authModel, AuthModelBearerToken, AuthModelAPIToken, AuthModelAPIKey)
+		return "", "", fmt.Errorf("auth_model %q must be executable by a JSON API runtime", authModel)
 	}
 }
 
@@ -378,6 +397,16 @@ func executableAuthModel(authModel string) (string, error) {
 		return AuthModelBearerToken, nil
 	case AuthModelAPIToken, AuthModelAPIKey:
 		return AuthModelAPIKey, nil
+	case AuthModelBasic:
+		return AuthModelBasic, nil
+	case AuthModelOAuthAuthz:
+		return AuthModelOAuthAuthz, nil
+	case AuthModelOAuthClient:
+		return AuthModelOAuthClient, nil
+	case AuthModelJWT:
+		return AuthModelJWT, nil
+	case AuthModelSignature:
+		return AuthModelSignature, nil
 	default:
 		return "", fmt.Errorf("%w: auth model %q needs provider auth runtime support before sourcegen can emit executable code", errUnsupportedDefinition, authModel)
 	}
@@ -681,12 +710,10 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "\t\"context\"\n")
 	fmt.Fprintf(&b, "\t\"embed\"\n")
 	fmt.Fprintf(&b, "\t\"fmt\"\n")
-	fmt.Fprintf(&b, "\t\"net/http\"\n")
 	fmt.Fprintf(&b, "\t\"strings\"\n")
-	fmt.Fprintf(&b, "\t\"time\"\n\n")
+	fmt.Fprintf(&b, "\n")
 	fmt.Fprintf(&b, "\tcerebrov1 \"github.com/writer/cerebro/gen/cerebro/v1\"\n")
 	fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/internal/sourcecdk\"\n")
-	fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/internal/sourcehttp\"\n")
 	fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/sources/internal/jsonapi\"\n")
 	fmt.Fprintf(&b, ")\n\n")
 	fmt.Fprintf(&b, "//go:embed catalog.yaml\nvar catalogFS embed.FS\n\n")
@@ -703,7 +730,20 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "func New() (*Source, error) {\n")
 	fmt.Fprintf(&b, "\tspec, err := loadSpec()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n")
 	fmt.Fprintf(&b, "\tinner, err := jsonapi.New(spec, jsonapi.Options{\n")
-	fmt.Fprintf(&b, "\t\tSourceID: sourceID,\n\t\tDefaultFamily: defaultFamily,\n\t\tRequireTenantID: true,\n\t\tTokenScheme: tokenScheme,\n\t\tFamilies: []jsonapi.Family{\n")
+	fmt.Fprintf(&b, "\t\tSourceID: sourceID,\n\t\tDefaultFamily: defaultFamily,\n\t\tRequireTenantID: true,\n\t\tAuthModel: %s,\n\t\tTokenScheme: tokenScheme,\n", strconv.Quote(request.AuthModel))
+	if strings.TrimSpace(request.AuthTokenURL) != "" {
+		fmt.Fprintf(&b, "\t\tOAuthTokenURL: %s,\n", strconv.Quote(request.AuthTokenURL))
+	}
+	if len(request.OAuthScopes) != 0 {
+		fmt.Fprintf(&b, "\t\tOAuthScopes: []string{%s},\n", quotedStrings(request.OAuthScopes))
+	}
+	if len(request.OAuthTokenParams) != 0 {
+		fmt.Fprintf(&b, "\t\tOAuthTokenParams: map[string]string{%s},\n", renderedAttributeMap(request.OAuthTokenParams))
+	}
+	if strings.TrimSpace(request.OAuthTokenMethod) != "" {
+		fmt.Fprintf(&b, "\t\tOAuthTokenRequestAuthMethod: %s,\n", strconv.Quote(request.OAuthTokenMethod))
+	}
+	fmt.Fprintf(&b, "\t\tFamilies: []jsonapi.Family{\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "\t\t\t{\n")
 		fmt.Fprintf(&b, "\t\t\t\tName: %s,\n", family.ConstName)
@@ -722,7 +762,7 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {\n\tif err := s.checkHealth(ctx, cfg); err != nil {\n\t\treturn err\n\t}\n\treturn s.inner.Check(ctx, cfg)\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {\n\treturn s.inner.Discover(ctx, cfg)\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {\n\treturn s.inner.Read(ctx, cfg, cursor)\n}\n\n")
-	fmt.Fprintf(&b, "func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {\n\tbaseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, configValue(cfg, \"base_url\"), s != nil && s.allowLoopback)\n\tif err != nil {\n\t\treturn err\n\t}\n\tpath := firstNonEmpty(configValue(cfg, \"health_path\"), defaultHealthPath)\n\tpath, err = sourcehttp.NormalizeRequestPath(sourceID, path)\n\tif err != nil {\n\t\treturn err\n\t}\n\treq, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)\n\tif err != nil {\n\t\treturn fmt.Errorf(\"build %%s health request: %%w\", sourceID, err)\n\t}\n\treq.Header.Set(\"Accept\", \"application/json\")\n\tif token := strings.TrimSpace(firstNonEmpty(configValue(cfg, \"token\"), configValue(cfg, \"api_token\"))); token != \"\" {\n\t\treq.Header.Set(\"Authorization\", tokenScheme+\" \"+token)\n\t}\n\tclient := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID, AllowLoopback: s != nil && s.allowLoopback, Timeout: 10 * time.Second})\n\tresp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})\n\tif err != nil {\n\t\treturn err\n\t}\n\tif resp.StatusCode < 200 || resp.StatusCode >= 300 {\n\t\treturn fmt.Errorf(\"%%s health endpoint %%s returned HTTP %%d\", sourceID, path, resp.StatusCode)\n\t}\n\treturn nil\n}\n\n")
+	fmt.Fprintf(&b, "func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {\n\tpath := firstNonEmpty(configValue(cfg, \"health_path\"), defaultHealthPath)\n\treturn s.inner.CheckPath(ctx, cfg, path, nil)\n}\n\n")
 	fmt.Fprintf(&b, "func loadSpec() (*cerebrov1.SourceSpec, error) {\n\tspecBytes, err := catalogFS.ReadFile(\"catalog.yaml\")\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"read catalog: %%w\", err)\n\t}\n\tspec, err := sourcecdk.LoadCatalog(specBytes)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"load catalog: %%w\", err)\n\t}\n\treturn spec, nil\n}\n\n")
 	fmt.Fprintf(&b, "func configValue(cfg sourcecdk.Config, key string) string {\n\tvalue, _ := cfg.Lookup(key)\n\treturn value\n}\n\n")
 	fmt.Fprintf(&b, "func firstNonEmpty(values ...string) string {\n\tfor _, value := range values {\n\t\tif strings.TrimSpace(value) != \"\" {\n\t\t\treturn strings.TrimSpace(value)\n\t\t}\n\t}\n\treturn \"\"\n}\n\n")
@@ -1038,6 +1078,17 @@ func renderedAttributeMap(values map[string]string) string {
 		parts = append(parts, strconv.Quote(key)+": "+strconv.Quote(values[key]))
 	}
 	return strings.Join(parts, ", ")
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func yamlString(value string) string {

@@ -1154,8 +1154,8 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(payload.Connectors) < 101 {
-		t.Fatalf("connectors len = %d, want fixture source plus 100 catalog definitions", len(payload.Connectors))
+	if len(payload.Connectors) < 109 {
+		t.Fatalf("connectors len = %d, want fixture source plus 108 catalog definitions", len(payload.Connectors))
 	}
 	bySourceID := map[string]catalogConnector{}
 	for _, connector := range payload.Connectors {
@@ -1169,15 +1169,15 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		t.Fatalf("jumpcloud auth/verification = %q/%q, want catalog metadata", jumpcloud.AuthModel, jumpcloud.VerificationEndpoint)
 	}
 	entraID := bySourceID["microsoft_entra_id"]
-	if entraID.CatalogStatus != connectorcatalog.StatusNeedsAuthExtension || entraID.RuntimeExecutable {
-		t.Fatalf("microsoft_entra_id status = %q executable=%v, want needs_auth_extension not executable", entraID.CatalogStatus, entraID.RuntimeExecutable)
+	if entraID.CatalogStatus != connectorcatalog.StatusGenerateable || !entraID.RuntimeExecutable {
+		t.Fatalf("microsoft_entra_id status = %q executable=%v, want generateable executable", entraID.CatalogStatus, entraID.RuntimeExecutable)
 	}
 	if entraID.ClassifierOutput != "supported" {
 		t.Fatalf("microsoft_entra_id classifier_output = %q, want supported", entraID.ClassifierOutput)
 	}
 	jenkins := bySourceID["jenkins"]
-	if jenkins.CatalogStatus != connectorcatalog.StatusNeedsBespokeRuntime {
-		t.Fatalf("jenkins status = %q, want needs_bespoke_runtime", jenkins.CatalogStatus)
+	if jenkins.CatalogStatus != connectorcatalog.StatusGenerateable || !jenkins.RuntimeExecutable {
+		t.Fatalf("jenkins status = %q executable=%v, want generateable executable", jenkins.CatalogStatus, jenkins.RuntimeExecutable)
 	}
 	if len(jenkins.ResourceFamilies) < 2 {
 		t.Fatalf("jenkins resource families = %#v, want high-value catalog families", jenkins.ResourceFamilies)

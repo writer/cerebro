@@ -120,7 +120,7 @@ entries:
 	}
 }
 
-func TestAnalyzeDirMarksOAuthSupportedDefinitionAsAuthExtension(t *testing.T) {
+func TestAnalyzeDirMarksOAuthSupportedDefinitionAsGenerateable(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogFile(t, root, strings.ReplaceAll(strings.ReplaceAll(minimalDefinitionYAML(),
 		"model: bearer_token", "model: oauth_client_credentials\n        token_url: https://api.example.test/oauth/token"),
@@ -133,11 +133,11 @@ func TestAnalyzeDirMarksOAuthSupportedDefinitionAsAuthExtension(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	if got := analysis.Entries[0].Status; got != StatusNeedsAuthExtension {
-		t.Fatalf("status = %q, want %q", got, StatusNeedsAuthExtension)
+	if got := analysis.Entries[0].Status; got != StatusGenerateable {
+		t.Fatalf("status = %q, want %q", got, StatusGenerateable)
 	}
-	if analysis.Summary.NeedsAuthExtension != 1 {
-		t.Fatalf("summary = %#v, want auth extension count", analysis.Summary)
+	if analysis.Summary.Generateable != 1 {
+		t.Fatalf("summary = %#v, want generateable count", analysis.Summary)
 	}
 }
 
@@ -155,14 +155,14 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Entries) != 108 {
 		t.Fatalf("entries len = %d, want 108", len(analysis.Entries))
 	}
-	if analysis.Summary.Generateable == 0 {
-		t.Fatalf("summary = %#v, want at least one generateable entry", analysis.Summary)
+	if analysis.Summary.Generateable != 108 {
+		t.Fatalf("summary = %#v, want all entries generateable", analysis.Summary)
 	}
-	if analysis.Summary.NeedsAuthExtension == 0 {
-		t.Fatalf("summary = %#v, want at least one auth-extension entry", analysis.Summary)
+	if analysis.Summary.NeedsAuthExtension != 0 {
+		t.Fatalf("summary = %#v, want no auth-extension entries", analysis.Summary)
 	}
-	if analysis.Summary.NeedsBespokeRuntime == 0 {
-		t.Fatalf("summary = %#v, want at least one bespoke-runtime entry", analysis.Summary)
+	if analysis.Summary.NeedsBespokeRuntime != 0 {
+		t.Fatalf("summary = %#v, want no bespoke-runtime entries", analysis.Summary)
 	}
 	counted := analysis.Summary.CatalogReady + analysis.Summary.Generateable + analysis.Summary.NeedsAuthExtension + analysis.Summary.NeedsBespokeRuntime
 	if counted != analysis.Summary.Total {
@@ -234,9 +234,9 @@ func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {
 	for sourceID, wantStatus := range map[string]string{
 		"checkr":        StatusGenerateable,
 		"ethena":        StatusGenerateable,
-		"google_drive":  StatusNeedsAuthExtension,
+		"google_drive":  StatusGenerateable,
 		"hitrust_mycsf": StatusGenerateable,
-		"ramp":          StatusNeedsAuthExtension,
+		"ramp":          StatusGenerateable,
 		"rippling":      StatusGenerateable,
 		"segment":       StatusGenerateable,
 		"swif_ai":       StatusGenerateable,
@@ -251,6 +251,47 @@ func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {
 		if entry.Status != wantStatus {
 			t.Fatalf("BuiltinEntry(%q) status = %q, want %q", sourceID, entry.Status, wantStatus)
 		}
+	}
+}
+
+func TestBuiltinCatalogPreviouslyBlockedEntriesAreGenerateable(t *testing.T) {
+	cases := []struct {
+		sourceID string
+		family   string
+	}{
+		{"argo_cd", "findings"},
+		{"jenkins", "findings"},
+		{"netsuite", "assets"},
+		{"linear", "projects"},
+		{"microsoft_teams", "content_assets"},
+		{"monday_com", "projects"},
+		{"mend_io", "findings"},
+		{"qualys_vmdr", "findings"},
+		{"wiz", "findings"},
+		{"cortex_xsoar", "findings"},
+		{"new_relic", "findings"},
+		{"panther", "findings"},
+		{"splunk_cloud", "findings"},
+		{"tines", "findings"},
+		{"torq", "findings"},
+	}
+	for _, test := range cases {
+		t.Run(test.sourceID+"/"+test.family, func(t *testing.T) {
+			entry, ok, err := BuiltinEntry(test.sourceID)
+			if err != nil {
+				t.Fatalf("BuiltinEntry() error = %v", err)
+			}
+			if !ok {
+				t.Fatal("BuiltinEntry() ok = false, want true")
+			}
+			if entry.Status != StatusGenerateable || !entry.Generateable {
+				t.Fatalf("status = %q generateable=%v, want generateable", entry.Status, entry.Generateable)
+			}
+			family := catalogFamily(t, entry.Definition.ResourceFamilies, test.family)
+			if family.RecordSelector == "" && family.ListKey == "" {
+				t.Fatalf("family %s selector/list key is empty: %#v", test.family, family)
+			}
+		})
 	}
 }
 
@@ -291,6 +332,17 @@ entries:
           coverage:
             - {type: entity_family, support: partial, high_value: true}
 `
+}
+
+func catalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string) connectordefinitions.ResourceFamily {
+	t.Helper()
+	for _, family := range families {
+		if family.ID == id {
+			return family
+		}
+	}
+	t.Fatalf("family %s not found in %#v", id, families)
+	return connectordefinitions.ResourceFamily{}
 }
 
 func writeCatalogFile(t *testing.T, root string, content string) {

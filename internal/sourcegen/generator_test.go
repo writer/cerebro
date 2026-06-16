@@ -186,8 +186,9 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 }
 
-func TestGenerateDefinitionRejectsUnsupportedAuth(t *testing.T) {
-	_, err := GenerateDefinition(DefinitionRequest{
+func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-a-example",
 			TenantID:    "tenant-a",
@@ -225,13 +226,19 @@ func TestGenerateDefinitionRejectsUnsupportedAuth(t *testing.T) {
 				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
 			}},
 		},
-		OutputDir: t.TempDir(),
+		OutputDir: outputDir,
 	})
-	if err == nil {
-		t.Fatal("GenerateDefinition() error = nil, want unsupported auth error")
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
 	}
-	if !errors.Is(err, errUnsupportedDefinition) {
-		t.Fatalf("GenerateDefinition() error = %v, want errUnsupportedDefinition", err)
+	if result.AuthModel != AuthModelOAuthAuthz {
+		t.Fatalf("AuthModel = %q, want %q", result.AuthModel, AuthModelOAuthAuthz)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/example/source.go")
+	for _, want := range []string{`AuthModel:`, `"oauth_authorization_code"`, `OAuthTokenURL:`, `"https://example.test/oauth/token"`} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
 	}
 }
 

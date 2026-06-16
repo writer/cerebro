@@ -1,6 +1,10 @@
 package sourceregistry
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/writer/cerebro/internal/connectorcatalog"
+)
 
 func TestBuiltin(t *testing.T) {
 	registry, err := Builtin()
@@ -132,5 +136,40 @@ func TestBuiltin(t *testing.T) {
 	}
 	if trustedEndpoint.Spec().Name != "Trusted Endpoint" {
 		t.Fatalf("trusted_endpoint Spec().Name = %q, want %q", trustedEndpoint.Spec().Name, "Trusted Endpoint")
+	}
+}
+
+func TestBuiltinRegistersGenerateableCatalogSources(t *testing.T) {
+	registry, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+	for _, sourceID := range []string{"linear", "microsoft_teams", "wiz"} {
+		source, ok := registry.Get(sourceID)
+		if !ok {
+			t.Fatalf("Get(%s) = false, want catalog runtime source", sourceID)
+		}
+		if source.Spec().Id != sourceID {
+			t.Fatalf("%s Spec().Id = %q", sourceID, source.Spec().Id)
+		}
+	}
+}
+
+func TestBuiltinRegistersEveryGenerateableCatalogSource(t *testing.T) {
+	registry, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+	catalog, err := connectorcatalog.Builtin()
+	if err != nil {
+		t.Fatalf("connectorcatalog.Builtin() error = %v", err)
+	}
+	for _, entry := range catalog.Entries {
+		if entry.Status != connectorcatalog.StatusGenerateable {
+			t.Fatalf("%s status = %q, want generateable", entry.Definition.SourceID, entry.Status)
+		}
+		if _, ok := registry.Get(entry.Definition.SourceID); !ok {
+			t.Fatalf("registry missing generateable catalog source %s", entry.Definition.SourceID)
+		}
 	}
 }

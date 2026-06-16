@@ -1,0 +1,22 @@
+id: catalogruntime
+name: Catalog Runtime
+description: Dynamic runtime adapter for connector catalog definitions.
+emitted_kinds:
+  - catalogruntime.definition
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: catalogruntime
+  dimensions:
+    - id: catalog_definitions
+      type: entity_family
+      title: Catalog runtime definitions
+      families: [definition]
+      support: supported
+      high_value: true
+event_contracts:
+  - kind: catalogruntime.definition
+    schema_ref: catalogruntime/definition/v1
+    required_attributes:
+      - source_system
+    required_payload_fields:
+      - id
