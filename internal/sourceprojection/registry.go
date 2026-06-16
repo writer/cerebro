@@ -371,6 +371,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"grc.user":                                      grcUserProjections,
 	"grc.integration":                               grcIntegrationProjections,
 	"kubernetes.service_account":                    kubernetesServiceAccountProjections,
+	"kubernetes.rbac_binding":                       kubernetesRBACBindingProjections,
+	"kubernetes.rbac_role":                          kubernetesRBACRoleProjections,
 	"kubernetes.workload":                           kubernetesWorkloadProjections,
 	"kubernetes.workload_identity_binding":          kubernetesWorkloadIdentityBindingProjections,
 	"anthropic.api_key":                             genericInventoryProjections,
