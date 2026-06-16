@@ -5,3 +5,33 @@ emitted_kinds:
   - kandji.application
   - kandji.device
   - kandji.vulnerability
+coverage_contract:
+  owner_domain: endpoint
+  authority_domain: kandji
+  dimensions:
+    - id: devices
+      type: entity_family
+      title: Apple endpoint devices
+      families: [device]
+      support: supported
+      high_value: true
+    - id: applications
+      type: entity_family
+      title: Installed applications
+      families: [application]
+      support: supported
+      high_value: true
+    - id: vulnerabilities
+      type: entity_family
+      title: Endpoint application vulnerabilities
+      families: [vulnerability]
+      support: supported
+      high_value: true
+    - id: remediation_state
+      type: remediation_state
+      title: Vulnerability remediation lifecycle state
+      families: [vulnerability]
+      support: partial
+      high_value: true
+      known_unsupported_fields:
+        - remediation workflow assignee and SLA state

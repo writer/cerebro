@@ -3,6 +3,30 @@ name: Email Domain Health
 description: Email authentication posture source. Probes SPF, DKIM, DMARC, MX, and related DNS records for configured tenant mail domains.
 emitted_kinds:
   - email_domain_health.health
+coverage_contract:
+  owner_domain: security
+  authority_domain: dns
+  dimensions:
+    - id: email_authentication_posture
+      type: entity_family
+      title: Email authentication posture
+      families: [health]
+      support: supported
+      high_value: true
+    - id: dns_record_checks
+      type: entity_family
+      title: SPF, DKIM, DMARC, MX, and related DNS checks
+      families: [health]
+      support: supported
+      high_value: true
+    - id: remediation_state
+      type: remediation_state
+      title: Domain remediation lifecycle state
+      families: [health]
+      support: unsupported
+      high_value: true
+      known_unsupported_fields:
+        - remediation workflow state
 event_contracts:
   - kind: email_domain_health.health
     schema_ref: email_domain_health/health/v1

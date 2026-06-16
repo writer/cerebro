@@ -14,3 +14,67 @@ emitted_kinds:
   - grc.person
   - grc.user
   - grc.integration
+coverage_contract:
+  owner_domain: compliance
+  authority_domain: grc
+  dimensions:
+    - id: frameworks
+      type: entity_family
+      title: GRC frameworks
+      families: [framework]
+      support: supported
+      high_value: true
+    - id: controls
+      type: entity_family
+      title: GRC controls
+      families: [control]
+      support: supported
+      high_value: true
+    - id: control_tests
+      type: lifecycle_state
+      title: Control test status
+      families: [control_test]
+      support: supported
+      high_value: true
+    - id: policies
+      type: entity_family
+      title: Policies and documents
+      families: [policy, document]
+      support: supported
+      high_value: true
+    - id: vendors
+      type: entity_family
+      title: Vendors
+      families: [vendor]
+      support: supported
+      high_value: true
+    - id: vulnerabilities
+      type: entity_family
+      title: Vulnerabilities
+      families: [vulnerability]
+      support: supported
+      high_value: true
+    - id: vulnerable_assets
+      type: relationship
+      title: Vulnerability to asset relationships
+      families: [vulnerable_asset]
+      support: supported
+      high_value: true
+    - id: risk_scenarios
+      type: entity_family
+      title: Risk scenarios
+      families: [risk_scenario]
+      support: supported
+      high_value: true
+    - id: people
+      type: entity_family
+      title: People and users
+      families: [person, user]
+      support: supported
+      high_value: true
+    - id: integrations
+      type: entity_family
+      title: GRC integrations
+      families: [integration]
+      support: supported
+      high_value: true

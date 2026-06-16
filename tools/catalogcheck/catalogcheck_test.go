@@ -86,6 +86,57 @@ emitted_kinds:
 	}
 }
 
+func TestCheckSourceCatalogsRejectsDeployableSourceWithoutCoverageContract(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/github/catalog.yaml", `
+id: github
+name: GitHub
+description: GitHub source
+emitted_kinds:
+  - github.audit
+`)
+	writeFile(t, root, "sources/github/deploy.yaml", `runtimes: []
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "coverage_contract is required for deployable sources") {
+		t.Fatalf("issues = %#v, want missing coverage_contract issue", issues)
+	}
+}
+
+func TestCheckSourceCatalogsAcceptsDeployableSourceWithCoverageContract(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/github/catalog.yaml", `
+id: github
+name: GitHub
+description: GitHub source
+emitted_kinds:
+  - github.audit
+coverage_contract:
+  owner_domain: source_control
+  authority_domain: github
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: Audit events
+      families: [audit]
+      support: supported
+`)
+	writeFile(t, root, "sources/github/deploy.yaml", `runtimes: []
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if issueMessagesContain(issues, "coverage_contract is required for deployable sources") {
+		t.Fatalf("issues = %#v, want no coverage_contract issue", issues)
+	}
+}
+
 func TestCheckCloudPolicyCoverageRejectsUnmappedCloudPolicyResource(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "policies/cloud/test.json", `{"resource":"aws::unknown::thing"}`)
