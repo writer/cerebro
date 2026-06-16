@@ -96,3 +96,28 @@ func TestServiceReasonPreservesUnsupportedQuery(t *testing.T) {
 		t.Fatalf("fallback reason = %q", response.Provenance.FallbackReason)
 	}
 }
+
+func TestRowURNsIncludesStringSlices(t *testing.T) {
+	urns := rowURNs([]map[string]any{{
+		"resource_urns": []string{
+			"urn:cerebro:writer:asset:beta",
+			"urn:cerebro:writer:asset:alpha",
+		},
+		"nested": []any{
+			map[string]any{"finding_urn": "urn:cerebro:writer:finding:finding-1"},
+		},
+	}})
+	want := []string{
+		"urn:cerebro:writer:asset:alpha",
+		"urn:cerebro:writer:asset:beta",
+		"urn:cerebro:writer:finding:finding-1",
+	}
+	if len(urns) != len(want) {
+		t.Fatalf("urns = %#v, want %#v", urns, want)
+	}
+	for i := range want {
+		if urns[i] != want[i] {
+			t.Fatalf("urns = %#v, want %#v", urns, want)
+		}
+	}
+}
