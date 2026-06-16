@@ -1173,6 +1173,9 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		RuntimeExecutable    bool                    `json:"runtime_executable"`
 		VerificationEndpoint string                  `json:"verification_endpoint"`
 		ResourceFamilies     []catalogResourceFamily `json:"resource_families"`
+		AccessStatus         string                  `json:"access_status"`
+		SetupAllowed         bool                    `json:"setup_allowed"`
+		Requestable          bool                    `json:"requestable"`
 	}
 	var payload struct {
 		Connectors []catalogConnector `json:"connectors"`
@@ -1190,6 +1193,9 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	jumpcloud := bySourceID["jumpcloud"]
 	if jumpcloud.CatalogStatus != connectorcatalog.StatusGenerateable || !jumpcloud.RuntimeExecutable {
 		t.Fatalf("jumpcloud status = %q executable=%v, want generateable executable", jumpcloud.CatalogStatus, jumpcloud.RuntimeExecutable)
+	}
+	if jumpcloud.AccessStatus != connectorAccessCatalogOnly || jumpcloud.SetupAllowed || !jumpcloud.Requestable {
+		t.Fatalf("jumpcloud access = %q setup=%v requestable=%v, want catalog-only requestable", jumpcloud.AccessStatus, jumpcloud.SetupAllowed, jumpcloud.Requestable)
 	}
 	if jumpcloud.AuthModel != "api_key" || jumpcloud.VerificationEndpoint == "" {
 		t.Fatalf("jumpcloud auth/verification = %q/%q, want catalog metadata", jumpcloud.AuthModel, jumpcloud.VerificationEndpoint)
@@ -1273,6 +1279,95 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	}
 	if _, ok := connectorSchemaForSource("jenkins"); ok {
 		t.Fatal("connectorSchemaForSource(jenkins) = true, want bespoke runtime entries excluded")
+	}
+}
+
+func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+		ConnectorAccess: config.ConnectorAccessConfig{
+			HiddenSources:     []string{"auth0"},
+			RestrictedSources: []string{"bootstrap_token", "jumpcloud"},
+			RestrictionReason: "limited preview",
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Connectors []struct {
+			SourceID          string `json:"source_id"`
+			AccessStatus      string `json:"access_status"`
+			AccessReason      string `json:"access_reason"`
+			SetupAllowed      bool   `json:"setup_allowed"`
+			Requestable       bool   `json:"requestable"`
+			ConnectionMethods []struct {
+				ID string `json:"id"`
+			} `json:"connection_methods"`
+		} `json:"connectors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	bySourceID := map[string]struct {
+		SourceID          string `json:"source_id"`
+		AccessStatus      string `json:"access_status"`
+		AccessReason      string `json:"access_reason"`
+		SetupAllowed      bool   `json:"setup_allowed"`
+		Requestable       bool   `json:"requestable"`
+		ConnectionMethods []struct {
+			ID string `json:"id"`
+		} `json:"connection_methods"`
+	}{}
+	for _, connector := range payload.Connectors {
+		bySourceID[connector.SourceID] = connector
+	}
+	if _, ok := bySourceID["auth0"]; ok {
+		t.Fatal("auth0 was returned despite connector hidden source config")
+	}
+	bootstrapToken := bySourceID["bootstrap_token"]
+	if bootstrapToken.AccessStatus != connectorAccessRestricted || bootstrapToken.AccessReason != "limited preview" || bootstrapToken.SetupAllowed || !bootstrapToken.Requestable || len(bootstrapToken.ConnectionMethods) != 0 {
+		t.Fatalf("bootstrap_token access = %#v, want restricted without setup methods", bootstrapToken)
+	}
+	jumpcloud := bySourceID["jumpcloud"]
+	if jumpcloud.AccessStatus != connectorAccessRestricted || jumpcloud.AccessReason != "limited preview" || jumpcloud.SetupAllowed || !jumpcloud.Requestable {
+		t.Fatalf("jumpcloud access = %#v, want restricted catalog metadata", jumpcloud)
+	}
+
+	preflightResp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST /connectors/bootstrap_token/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := preflightResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close preflight response: %v", closeErr)
+		}
+	}()
+	if preflightResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("restricted preflight status = %d, want 403", preflightResp.StatusCode)
 	}
 }
 

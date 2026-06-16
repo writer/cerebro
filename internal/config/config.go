@@ -54,6 +54,7 @@ type Config struct {
 	Auth                  AuthConfig
 	ConnectorCredentials  ConnectorCredentialConfig
 	ConnectorSecretStores ConnectorSecretStoreConfig
+	ConnectorAccess       ConnectorAccessConfig
 	OTEL                  OpenTelemetryConfig
 	RateLimit             RateLimitConfig
 }
@@ -128,6 +129,13 @@ type ConnectorCredentialConfig struct {
 type ConnectorSecretStoreConfig struct {
 	Enabled           []string
 	AWSSecretsManager AWSSecretsManagerStoreConfig
+}
+
+// ConnectorAccessConfig controls connector catalog visibility and setup gates.
+type ConnectorAccessConfig struct {
+	HiddenSources     []string
+	RestrictedSources []string
+	RestrictionReason string
 }
 
 // AWSSecretsManagerStoreConfig controls AWS Secrets Manager reference resolution.
@@ -406,6 +414,11 @@ func Load() (Config, error) {
 				ExternalID: strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID")),
 				Endpoint:   strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ENDPOINT")),
 			},
+		},
+		ConnectorAccess: ConnectorAccessConfig{
+			HiddenSources:     parseCSV(os.Getenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES")),
+			RestrictedSources: parseCSV(os.Getenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES")),
+			RestrictionReason: strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_RESTRICTION_REASON")),
 		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),
