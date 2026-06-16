@@ -79,12 +79,14 @@ const (
 	familyRoleAssign                                                                                                                                                                                     = "iam_role_assignment"
 	familyResourceExposure                                                                                                                                                                               = "resource_exposure"
 	familySAImpersonation                                                                                                                                                                                = "service_account_impersonation"
+	familySecurityCenterFinding                                                                                                                                                                          = "security_center_finding"
 	familyServiceAcct                                                                                                                                                                                    = "service_account"
 	familyServiceUsageService, familySpannerDatabase, familySpannerInstance                                                                                                                              = "service_usage_service", "spanner_database", "spanner_instance"
 	familySAKey                                                                                                                                                                                          = "service_account_key"
 	gcpCloudPlatformScope                                                                                                                                                                                = "https://www.googleapis.com/auth/cloud-platform"
 	familySecret, familySecretVersion                                                                                                                                                                    = "secret_manager_secret", "secret_manager_version"
 	familyVPCAccessConnector                                                                                                                                                                             = "vpc_access_connector"
+	familyWorkloadIdentityPool, familyWorkloadIdentityProvider                                                                                                                                           = "workload_identity_pool", "workload_identity_provider"
 )
 
 // Source reads GCP IAM, Cloud Identity, and Cloud Audit surfaces.
@@ -113,51 +115,13 @@ type settings struct {
 	perPage                                             int
 }
 
-type pageResponse struct {
-	Accounts      []json.RawMessage `json:"accounts"`
-	Policies      []json.RawMessage `json:"policies"`
-	Groups        []json.RawMessage `json:"groups"`
-	Items         []json.RawMessage `json:"items"`
-	Memberships   []json.RawMessage `json:"memberships"`
-	Entries       []json.RawMessage `json:"entries"`
-	Keys          []json.RawMessage `json:"keys"`
-	Results       []json.RawMessage `json:"results"`
-	Clusters      []json.RawMessage `json:"clusters"`
-	Datasets      []json.RawMessage `json:"datasets"`
-	Services      []json.RawMessage `json:"services"`
-	Revisions     []json.RawMessage `json:"revisions"`
-	Functions     []json.RawMessage `json:"functions"`
-	Secrets       []json.RawMessage `json:"secrets"`
-	CryptoKeys    []json.RawMessage `json:"cryptoKeys"`
-	Endpoints     []json.RawMessage `json:"endpoints"`
-	ManagedZones  []json.RawMessage `json:"managedZones"`
-	RRSets        []json.RawMessage `json:"rrsets"`
-	NodePools     []json.RawMessage `json:"nodePools"`
-	Repositories  []json.RawMessage `json:"repositories"`
-	Occurrences   []json.RawMessage `json:"occurrences"`
-	Sinks         []json.RawMessage `json:"sinks"`
-	DockerImages  []json.RawMessage `json:"dockerImages"`
-	NextPageToken string            `json:"nextPageToken"`
-}
-
-type certificateManagerPageResponse struct {
-	Certificates          []json.RawMessage `json:"certificates"`
-	CertificateMaps       []json.RawMessage `json:"certificateMaps"`
-	CertificateMapEntries []json.RawMessage `json:"certificateMapEntries"`
-	DNSAuthorizations     []json.RawMessage `json:"dnsAuthorizations"`
-	NextPageToken         string            `json:"nextPageToken"`
-}
-
-type vpcAccessPageResponse struct {
-	Connectors    []json.RawMessage `json:"connectors"`
-	NextPageToken string            `json:"nextPageToken"`
-}
-
-type pubSubPageResponse struct {
-	Subscriptions []json.RawMessage `json:"subscriptions"`
-	Topics        []json.RawMessage `json:"topics"`
-	NextPageToken string            `json:"nextPageToken"`
-}
+type pageResponse = gcpcloud.GenericPageResponse
+type certificateManagerPageResponse = gcpcloud.CertificateManagerPageResponse
+type vpcAccessPageResponse = gcpcloud.VPCAccessPageResponse
+type securityCenterFindingsPageResponse = gcpcloud.SecurityCenterFindingsPageResponse
+type workloadIdentityPoolsPageResponse = gcpcloud.WorkloadIdentityPoolsPageResponse
+type workloadIdentityProvidersPageResponse = gcpcloud.WorkloadIdentityProvidersPageResponse
+type pubSubPageResponse = gcpcloud.PubSubPageResponse
 
 type computeAggregatedListResponse struct {
 	Items         map[string]computeScopedResources `json:"items"`
@@ -642,6 +606,9 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account_impersonation:%s:%s", tenantID(settings), gcpcloud.SanitizeURNPart(binding.Member), gcpcloud.SanitizeURNPart(binding.Role)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.SecurityCenterFindingRecord]{Name: familySecurityCenterFinding, Label: "gcp security command center findings", List: listSecurityCenterFindings, Event: gcpCloudEvent(gcpcloud.SecurityCenterFindingEvent), URN: func(settings settings, finding gcpcloud.SecurityCenterFindingRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_security_center_finding:%s", tenantID(settings), firstNonEmpty(finding.Finding.Name, finding.Finding.ResourceName, finding.Resource.Name)), nil
+		}}),
 		gcpFamily(s, gcpFamilyOptions[serviceAccountRecord]{
 			Name:  familyServiceAcct,
 			Label: "gcp service accounts",
@@ -678,6 +645,8 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.SecretVersionRecord]{Name: familySecretVersion, Label: "gcp secret manager versions", List: listSecretVersions, Event: gcpCloudEvent(gcpcloud.SecretVersionEvent), URN: func(settings settings, version gcpcloud.SecretVersionRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_secret_manager_version:%s", tenantID(settings), version.Name), nil
 		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.WorkloadIdentityPoolRecord]{Name: familyWorkloadIdentityPool, Label: "gcp workload identity pools", List: listWorkloadIdentityPools, Event: gcpCloudEvent(gcpcloud.WorkloadIdentityPoolEvent), URN: gcpResourceURN[gcpcloud.WorkloadIdentityPoolRecord]("gcp_workload_identity_pool")}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.WorkloadIdentityProviderRecord]{Name: familyWorkloadIdentityProvider, Label: "gcp workload identity providers", List: listWorkloadIdentityProviders, Event: gcpCloudEvent(gcpcloud.WorkloadIdentityProviderEvent), URN: gcpResourceURN[gcpcloud.WorkloadIdentityProviderRecord]("gcp_workload_identity_provider")}),
 	)
 }
 
@@ -751,7 +720,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyBigQueryTable, familyBigtableInstance, familyBigtableTable, familyCertificateManagerCertificate, familyCertificateManagerCertificateMap, familyCertificateManagerCertificateMapEntry, familyCertificateManagerDNSAuthorization, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLDatabase, familyCloudSQLInstance, familyCloudSQLUser, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeExternalVPNGateway, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeInstanceGroup, familyComputeInstanceGroupMgr, familyComputeInstanceTemplate, familyComputeInterconnect, familyComputeInterconnectAttachment, familyComputeNetworkEndpointGroup, familyComputeNetworkFirewallPolicy, familyComputeNetwork, familyComputePacketMirroring, familyComputeRoute, familyComputeRouter, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeTargetVPNGateway, familyComputeURLMap, familyComputeVPNGateway, familyComputeVPNTunnel, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingMetric, familyLoggingSink, familyMonitoringAlertPolicy, familyMonitoringNotificationChannel, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familySecretVersion, familyServiceAcct, familyServiceUsageService, familySpannerDatabase, familySpannerInstance, familyVPCAccessConnector:
+	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBigQueryDataset, familyBigQueryTable, familyBigtableInstance, familyBigtableTable, familyCertificateManagerCertificate, familyCertificateManagerCertificateMap, familyCertificateManagerCertificateMapEntry, familyCertificateManagerDNSAuthorization, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLDatabase, familyCloudSQLInstance, familyCloudSQLUser, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeExternalVPNGateway, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeInstanceGroup, familyComputeInstanceGroupMgr, familyComputeInstanceTemplate, familyComputeInterconnect, familyComputeInterconnectAttachment, familyComputeNetworkEndpointGroup, familyComputeNetworkFirewallPolicy, familyComputeNetwork, familyComputePacketMirroring, familyComputeRoute, familyComputeRouter, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeTargetVPNGateway, familyComputeURLMap, familyComputeVPNGateway, familyComputeVPNTunnel, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingMetric, familyLoggingSink, familyMonitoringAlertPolicy, familyMonitoringNotificationChannel, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familySecretVersion, familySecurityCenterFinding, familyServiceAcct, familyServiceUsageService, familySpannerDatabase, familySpannerInstance, familyVPCAccessConnector, familyWorkloadIdentityPool, familyWorkloadIdentityProvider:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -788,7 +757,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, bigquery_table, bigtable_instance, bigtable_table, certificate_manager_certificate, certificate_manager_certificate_map, certificate_manager_certificate_map_entry, certificate_manager_dns_authorization, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_database, cloud_sql_instance, cloud_sql_user, compute_address, compute_backend_bucket, compute_backend_service, compute_disk, compute_external_vpn_gateway, compute_firewall, compute_forwarding_rule, compute_health_check, compute_instance, compute_instance_group, compute_instance_group_manager, compute_instance_template, compute_interconnect, compute_interconnect_attachment, compute_network_endpoint_group, compute_network_firewall_policy, compute_network, compute_packet_mirroring, compute_route, compute_router, compute_security_policy, compute_ssl_certificate, compute_ssl_policy, compute_subnetwork, compute_target_grpc_proxy, compute_target_http_proxy, compute_target_https_proxy, compute_target_ssl_proxy, compute_target_tcp_proxy, compute_target_vpn_gateway, compute_url_map, compute_vpn_gateway, compute_vpn_tunnel, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_metric, logging_project_sink, monitoring_alert_policy, monitoring_notification_channel, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, secret_manager_version, service_account, service_account_impersonation, service_usage_service, spanner_database, spanner_instance, vpc_access_connector, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, bigquery_dataset, bigquery_table, bigtable_instance, bigtable_table, certificate_manager_certificate, certificate_manager_certificate_map, certificate_manager_certificate_map_entry, certificate_manager_dns_authorization, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_database, cloud_sql_instance, cloud_sql_user, compute_address, compute_backend_bucket, compute_backend_service, compute_disk, compute_external_vpn_gateway, compute_firewall, compute_forwarding_rule, compute_health_check, compute_instance, compute_instance_group, compute_instance_group_manager, compute_instance_template, compute_interconnect, compute_interconnect_attachment, compute_network_endpoint_group, compute_network_firewall_policy, compute_network, compute_packet_mirroring, compute_route, compute_router, compute_security_policy, compute_ssl_certificate, compute_ssl_policy, compute_subnetwork, compute_target_grpc_proxy, compute_target_http_proxy, compute_target_https_proxy, compute_target_ssl_proxy, compute_target_tcp_proxy, compute_target_vpn_gateway, compute_url_map, compute_vpn_gateway, compute_vpn_tunnel, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_metric, logging_project_sink, monitoring_alert_policy, monitoring_notification_channel, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, secret_manager_version, security_center_finding, service_account, service_account_impersonation, service_usage_service, spanner_database, spanner_instance, vpc_access_connector, workload_identity_pool, workload_identity_provider, or service_account_key")
 	}
 	return settings, nil
 }
@@ -818,6 +787,29 @@ func listServiceAccountKeys(ctx context.Context, source *Source, settings settin
 		record.Raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
+}
+
+func listWorkloadIdentityPools(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.WorkloadIdentityPoolRecord, string, error) {
+	location := firstNonEmpty(settings.location, "global")
+	projectID := url.PathEscape(settings.projectID)
+	path := "/v1/projects/" + projectID + "/locations/" + url.PathEscape(location) + "/workloadIdentityPools"
+	return listPagedRecords[gcpcloud.WorkloadIdentityPoolRecord, workloadIdentityPoolsPageResponse](ctx, source, settings, pageToken, limit, serviceBaseURL, path, "pageSize", "gcp workload identity pool", func(response workloadIdentityPoolsPageResponse) []json.RawMessage {
+		return response.WorkloadIdentityPools
+	}, true, false, nil)
+}
+
+func listWorkloadIdentityProviders(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.WorkloadIdentityProviderRecord, string, error) {
+	pools, next, err := listWorkloadIdentityPools(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records, err := gcpcloud.CollectWorkloadIdentityProviders(pools, func(poolName string, providerPageToken string) ([]gcpcloud.WorkloadIdentityProviderRecord, string, error) {
+		path := "/v1/" + gcpcloud.EscapePathSegments(poolName) + "/providers"
+		return listPagedRecords[gcpcloud.WorkloadIdentityProviderRecord, workloadIdentityProvidersPageResponse](ctx, source, settings, providerPageToken, limit, serviceBaseURL, path, "pageSize", "gcp workload identity provider", func(response workloadIdentityProvidersPageResponse) []json.RawMessage {
+			return response.WorkloadIdentityPoolProviders
+		}, true, false, nil)
+	})
+	return records, next, err
 }
 
 func listGroups(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]groupRecord, string, error) {
@@ -1821,6 +1813,13 @@ func listServiceAccountImpersonation(ctx context.Context, source *Source, settin
 	return records, "", nil
 }
 
+func listSecurityCenterFindings(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.SecurityCenterFindingRecord, string, error) {
+	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/sources/-/findings"
+	return listPagedRecords[gcpcloud.SecurityCenterFindingRecord, securityCenterFindingsPageResponse](ctx, source, settings, pageToken, limit, securityCenterBaseURL, path, "pageSize", "gcp security command center finding", func(response securityCenterFindingsPageResponse) []json.RawMessage {
+		return response.ListFindingsResults
+	}, true, true, nil)
+}
+
 func listAuditRecords(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]auditRecord, string, error) {
 	body := map[string]any{"resourceNames": []string{"projects/" + settings.projectID}, "pageSize": limit}
 	if settings.filter != "" {
@@ -2145,6 +2144,7 @@ func pubSubBaseURL() string             { return "https://pubsub.googleapis.com"
 func resourceManagerBaseURL() string    { return "https://cloudresourcemanager.googleapis.com" }
 func runBaseURL() string                { return "https://run.googleapis.com" }
 func secretManagerBaseURL() string      { return "https://secretmanager.googleapis.com" }
+func securityCenterBaseURL() string     { return "https://securitycenter.googleapis.com" }
 func serviceBaseURL() string            { return "https://iam.googleapis.com" }
 func serviceUsageBaseURL() string       { return "https://serviceusage.googleapis.com" }
 func sqlBaseURL() string                { return "https://sqladmin.googleapis.com" }

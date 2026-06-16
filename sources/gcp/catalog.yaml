@@ -81,6 +81,7 @@ emitted_kinds:
   - gcp.resource_exposure
   - gcp.secret_manager_secret
   - gcp.secret_manager_version
+  - gcp.security_center_finding
   - gcp.service_account
   - gcp.service_account_impersonation
   - gcp.service_account_key
@@ -88,6 +89,8 @@ emitted_kinds:
   - gcp.spanner_database
   - gcp.spanner_instance
   - gcp.vpc_access_connector
+  - gcp.workload_identity_pool
+  - gcp.workload_identity_provider
 runtime_families:
   - asset_metadata
   - aiplatform_dataset
@@ -168,6 +171,7 @@ runtime_families:
   - resource_exposure
   - secret_manager_secret
   - secret_manager_version
+  - security_center_finding
   - service_account
   - service_account_impersonation
   - service_account_key
@@ -175,6 +179,8 @@ runtime_families:
   - spanner_database
   - spanner_instance
   - vpc_access_connector
+  - workload_identity_pool
+  - workload_identity_provider
 coverage_contract:
   owner_domain: cloud
   authority_domain: gcp
@@ -653,6 +659,12 @@ coverage_contract:
       families: [secret_manager_version]
       support: supported
       high_value: true
+    - id: security_center_finding
+      type: entity_family
+      title: Security Command Center findings
+      families: [security_center_finding]
+      support: supported
+      high_value: true
     - id: service_account
       type: entity_family
       title: Service accounts
@@ -693,5 +705,17 @@ coverage_contract:
       type: entity_family
       title: Serverless VPC Access connectors
       families: [vpc_access_connector]
+      support: supported
+      high_value: true
+    - id: workload_identity_pool
+      type: entity_family
+      title: Workload Identity pools
+      families: [workload_identity_pool]
+      support: supported
+      high_value: true
+    - id: workload_identity_provider
+      type: entity_family
+      title: Workload Identity providers
+      families: [workload_identity_provider]
       support: supported
       high_value: true
