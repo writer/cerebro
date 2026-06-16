@@ -55,6 +55,8 @@ func defaultRuntimeFamily(sourceID string) string {
 		return "audit"
 	case "sentinelone":
 		return "threat"
+	case "security_reviewer":
+		return "finding"
 	default:
 		return ""
 	}
