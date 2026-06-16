@@ -54,6 +54,8 @@ func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 
 func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformContract)
+	registerHTTPRoute(mux, "GET /api/v1/agent-platform/capabilities", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilities)
+	registerHTTPRoute(mux, "POST /api/v1/agent-platform/capability-decisions", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilityDecision)
 }
 
 func (app *App) registerOAuthRoutes(mux *http.ServeMux) {

@@ -110,6 +110,106 @@ func TestConnectorInfrastructureIsFirstClass(t *testing.T) {
 	}
 }
 
+func TestListCapabilitiesFiltersAndTotals(t *testing.T) {
+	defaultOn := true
+	registry := ListCapabilities(CapabilityRegistryFilter{
+		DomainID:  "connectors",
+		DefaultOn: &defaultOn,
+	})
+
+	if registry.Version != ContractVersion {
+		t.Fatalf("version = %q, want %q", registry.Version, ContractVersion)
+	}
+	if registry.Totals.Capabilities == 0 {
+		t.Fatal("filtered registry must include connector capabilities")
+	}
+	if registry.Totals.DefaultOff != 0 {
+		t.Fatalf("default_off = %d, want 0", registry.Totals.DefaultOff)
+	}
+	if registry.Totals.ByDomain["connectors"] != registry.Totals.Capabilities {
+		t.Fatalf("connector total = %d, want %d", registry.Totals.ByDomain["connectors"], registry.Totals.Capabilities)
+	}
+	for _, capability := range registry.Capabilities {
+		if capability.DomainID != "connectors" || !capability.DefaultOn {
+			t.Fatalf("capability does not match filter: %+v", capability)
+		}
+	}
+}
+
+func TestDecideCapabilityAllowsDefaultOnCapability(t *testing.T) {
+	decision, ok := DecideCapability(CapabilityDecisionRequest{
+		CapabilityID:    "grc-ask",
+		TenantID:        "tenant-1",
+		ActorID:         "actor-1",
+		RequestedScopes: []string{"cosmo.security.read"},
+	})
+	if !ok {
+		t.Fatal("grc-ask capability missing")
+	}
+	if !decision.Enabled {
+		t.Fatalf("decision enabled = false, blockers = %+v", decision.Blockers)
+	}
+	if decision.Reason != "default_enabled" {
+		t.Fatalf("reason = %q, want default_enabled", decision.Reason)
+	}
+	if decision.TenantID != "tenant-1" || decision.ActorID != "actor-1" {
+		t.Fatalf("decision lost caller context: %+v", decision)
+	}
+	if len(decision.RuntimeEvents) == 0 || len(decision.Provenance) == 0 {
+		t.Fatalf("decision must carry runtime events and provenance: %+v", decision)
+	}
+}
+
+func TestDecideCapabilityReportsControlPlaneBlockers(t *testing.T) {
+	decision, ok := DecideCapability(CapabilityDecisionRequest{
+		CapabilityID:        "connector-oauth-mcp",
+		RequestedScopes:     []string{"cosmo.security.read"},
+		EvalStatusOverrides: map[string]string{"connector-oauth-mcp": "failed"},
+	})
+	if !ok {
+		t.Fatal("connector-oauth-mcp capability missing")
+	}
+	if decision.Enabled {
+		t.Fatal("decision enabled = true, want blocked")
+	}
+	for _, want := range []string{"missing_scope", "connector_readiness_unknown", "eval_not_passing"} {
+		if !decisionHasBlocker(decision, want) {
+			t.Fatalf("decision missing blocker %q: %+v", want, decision.Blockers)
+		}
+	}
+	if len(decision.RequiredConnectors) == 0 {
+		t.Fatal("decision must carry required connector dependencies")
+	}
+	if decision.ConnectorInfrastructure == nil || len(decision.ConnectorInfrastructure.AuthModels) == 0 {
+		t.Fatal("connector decision must include connector infrastructure")
+	}
+}
+
+func TestDecideCapabilityPreviewGate(t *testing.T) {
+	blocked, ok := DecideCapability(CapabilityDecisionRequest{
+		CapabilityID:    "runtime-response-actions",
+		RequestedScopes: []string{"runtime.response.write"},
+	})
+	if !ok {
+		t.Fatal("runtime-response-actions capability missing")
+	}
+	if blocked.Enabled || !decisionHasBlocker(blocked, "preview_required") {
+		t.Fatalf("default-off capability must require preview: %+v", blocked)
+	}
+
+	allowed, ok := DecideCapability(CapabilityDecisionRequest{
+		CapabilityID:    "runtime-response-actions",
+		RequestedScopes: []string{"runtime.response.write"},
+		AllowPreview:    true,
+	})
+	if !ok {
+		t.Fatal("runtime-response-actions capability missing")
+	}
+	if !allowed.Enabled || allowed.Reason != "preview_allowed" {
+		t.Fatalf("preview decision = %+v, want enabled preview_allowed", allowed)
+	}
+}
+
 func TestRuntimeEventsAreUniqueAndReplayable(t *testing.T) {
 	ids := map[string]bool{}
 	terminalCount := 0
@@ -202,6 +302,15 @@ func provenanceRequirementBySurface(surface string) (ProvenanceRequirement, bool
 func containsString(values []string, needle string) bool {
 	for _, value := range values {
 		if value == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func decisionHasBlocker(decision CapabilityDecision, code string) bool {
+	for _, blocker := range decision.Blockers {
+		if blocker.Code == code {
 			return true
 		}
 	}
