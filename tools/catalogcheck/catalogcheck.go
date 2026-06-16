@@ -14,6 +14,7 @@ import (
 	findinganalysis "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceprojection"
+	"gopkg.in/yaml.v3"
 )
 
 type issue struct {
@@ -246,6 +247,13 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 			issues = append(issues, issue{path: rel, message: err.Error()})
 			return nil
 		}
+		var runtimeCatalog struct {
+			RuntimeFamilies []string `yaml:"runtime_families"`
+		}
+		if err := yaml.Unmarshal(content, &runtimeCatalog); err != nil {
+			issues = append(issues, issue{path: rel, message: "unmarshal runtime families: " + err.Error()})
+			return nil
+		}
 		spec := catalog.Spec
 		if catalog.CoverageContract == nil {
 			issues = append(issues, issue{path: rel, message: "coverage_contract is required for built-in sources"})
@@ -265,6 +273,7 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 				issues = append(issues, issue{path: rel, message: fmt.Sprintf("event contract kind %q is not an emitted kind", contract.Kind)})
 			}
 		}
+		issues = append(issues, validateRuntimeFamilyFixtures(root, filepath.Dir(path), runtimeCatalog.RuntimeFamilies)...)
 		issues = append(issues, validateFixtureContracts(root, filepath.Dir(path), catalog.EventContracts)...)
 		return nil
 	})
@@ -275,6 +284,40 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 		return nil, err
 	}
 	return issues, nil
+}
+
+func validateRuntimeFamilyFixtures(root string, sourceDir string, runtimeFamilies []string) []issue {
+	if len(runtimeFamilies) == 0 {
+		return nil
+	}
+	var issues []issue
+	for _, family := range runtimeFamilies {
+		family = strings.TrimSpace(family)
+		if family == "" {
+			continue
+		}
+		for _, prefix := range []string{"discover", "read"} {
+			name := fmt.Sprintf("%s_%s.json", prefix, family)
+			path := filepath.Join(sourceDir, "testdata", name)
+			info, err := os.Lstat(path)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					issues = append(issues, issue{path: slashRel(root, filepath.Join(sourceDir, "catalog.yaml")), message: fmt.Sprintf("runtime family fixture %q is required", name)})
+					continue
+				}
+				issues = append(issues, issue{path: slashRel(root, path), message: "stat runtime family fixture: " + err.Error()})
+				continue
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				issues = append(issues, issue{path: slashRel(root, path), message: "symlinked runtime family fixture is not allowed"})
+				continue
+			}
+			if info.IsDir() {
+				issues = append(issues, issue{path: slashRel(root, path), message: "runtime family fixture must be a file"})
+			}
+		}
+	}
+	return issues
 }
 
 func hasSourceDeployManifest(sourceDir string) (bool, error) {
