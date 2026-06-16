@@ -470,9 +470,72 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 	if got := storeStatuses[connectorStoreAWSSecretsManager]; got != "needs_configuration" {
 		t.Fatalf("aws secrets manager status = %q, want needs_configuration", got)
 	}
-	if got := storePrefixes[connectorStoreAWSSecretsManager]; len(got) != 2 || got[0] != "env:" || got[1] != "aws-sm:" {
-		t.Fatalf("aws secrets manager prefixes = %#v, want env and aws-sm", got)
+	if got := storePrefixes[connectorStoreAWSSecretsManager]; len(got) != 1 || got[0] != "env:" {
+		t.Fatalf("aws secrets manager prefixes = %#v, want env only until native resolver is configured", got)
 	}
+}
+
+func TestConnectorCatalogAdvertisesAWSSecretStoreEnvProjectionUntilNativeConfigured(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		CredentialStores []struct {
+			ID                         string   `json:"id"`
+			Available                  bool     `json:"available"`
+			Detail                     string   `json:"detail"`
+			ReferencePrefixes          []string `json:"reference_prefixes"`
+			ReferenceNamespaceTemplate string   `json:"reference_namespace_template"`
+			ReferenceFieldTemplate     string   `json:"reference_field_template"`
+			NativeResolutionAvailable  bool     `json:"native_resolution_available"`
+		} `json:"credential_stores"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	for _, store := range payload.CredentialStores {
+		if store.ID != connectorStoreAWSSecretsManager {
+			continue
+		}
+		if !store.Available || store.NativeResolutionAvailable || store.Detail != "ready via env projection" {
+			t.Fatalf("aws secret store = %#v, want env projection availability", store)
+		}
+		if len(store.ReferencePrefixes) != 1 || store.ReferencePrefixes[0] != "env:" {
+			t.Fatalf("aws reference prefixes = %#v, want env only", store.ReferencePrefixes)
+		}
+		if store.ReferenceNamespaceTemplate != "CEREBRO_SOURCE_<SOURCE>_*" {
+			t.Fatalf("aws reference namespace template = %q", store.ReferenceNamespaceTemplate)
+		}
+		if store.ReferenceFieldTemplate != "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>" {
+			t.Fatalf("aws reference field template = %q", store.ReferenceFieldTemplate)
+		}
+		return
+	}
+	t.Fatalf("aws secret store missing: %#v", payload.CredentialStores)
 }
 
 func TestConnectorCatalogAdvertisesConfiguredAWSSecretStore(t *testing.T) {
@@ -1395,6 +1458,141 @@ func TestConnectorPreflightValidatesWithoutPersisting(t *testing.T) {
 	}
 	if checks["source_check"] != "passed" {
 		t.Fatalf("source_check status = %q, want passed; checks=%#v", checks["source_check"], checks)
+	}
+}
+
+func TestConnectorPreflightReturnsReferencePlanWhenReferencesMissing(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-west-2",
+			},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-external",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodExternalReference,
+		"credential_store_id": connectorStoreAWSSecretsManager,
+		"config":              map[string]string{"family": "audit"},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status             string `json:"status"`
+		CredentialBoundary struct {
+			ReferenceTemplates []struct {
+				Field     string `json:"field"`
+				Required  bool   `json:"required"`
+				Reference string `json:"reference"`
+			} `json:"reference_templates"`
+		} `json:"credential_boundary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "blocked" {
+		t.Fatalf("preflight status = %q, want blocked", payload.Status)
+	}
+	if len(payload.CredentialBoundary.ReferenceTemplates) != 1 {
+		t.Fatalf("reference templates = %#v, want token template", payload.CredentialBoundary.ReferenceTemplates)
+	}
+	template := payload.CredentialBoundary.ReferenceTemplates[0]
+	if template.Field != "token" || !template.Required || template.Reference != "aws-sm:us-west-2:cerebro/tenant-a/bootstrap_token/runtime-external/credentials#token" {
+		t.Fatalf("reference template = %#v", template)
+	}
+}
+
+func TestConnectorPreflightBlocksUnscopedAWSReferenceAsCredentialBoundary(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-west-2",
+			},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-external",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodExternalReference,
+		"credential_store_id": connectorStoreAWSSecretsManager,
+		"config":              map[string]string{"family": "audit"},
+		"credential_references": map[string]string{
+			"token": "aws-sm:us-west-2:shared/credentials#token", // #nosec G101 -- reference string, not secret material.
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status string `json:"status"`
+		Checks []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"checks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "blocked" {
+		t.Fatalf("preflight status = %q, want blocked", payload.Status)
+	}
+	checks := map[string]string{}
+	for _, check := range payload.Checks {
+		checks[check.ID] = check.Status
+	}
+	if checks["credential_boundary"] != "blocked" {
+		t.Fatalf("credential_boundary status = %q, want blocked; checks=%#v", checks["credential_boundary"], checks)
+	}
+	if _, ok := checks["source_check"]; ok {
+		t.Fatalf("source_check ran for unscoped reference; checks=%#v", checks)
 	}
 }
 

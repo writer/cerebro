@@ -110,6 +110,18 @@ func TestResolverRejectsDisabledNativeStore(t *testing.T) {
 	}
 }
 
+func TestResolverRequiresConfiguredAWSRegionForNativeReferences(t *testing.T) {
+	resolver := NewResolver(config.ConnectorSecretStoreConfig{
+		Enabled: []string{StoreAWSSecretsManager},
+	})
+	_, err := resolver.ResolveReferences(context.Background(), map[string]string{
+		"value": "aws-sm:us-east-1:cerebro/tenant-a/aws/runtime-a/credentials#value",
+	})
+	if err == nil {
+		t.Fatal("ResolveReferences() error = nil, want resolver unavailable without configured region")
+	}
+}
+
 func TestAuthorizeRuntimeReferencesRequiresScopedAWSSecret(t *testing.T) {
 	err := AuthorizeRuntimeReferences("aws", "tenant-a", "runtime-a", map[string]string{
 		"value": "aws-sm:us-east-1:cerebro/tenant-a/aws/runtime-a/credentials#value",
@@ -123,6 +135,21 @@ func TestAuthorizeRuntimeReferencesRequiresScopedAWSSecret(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("AuthorizeRuntimeReferences(unscoped) error = nil, want invalid reference")
+	}
+}
+
+func TestAuthorizeRuntimeReferencesRejectsNonCanonicalRuntimeScope(t *testing.T) {
+	if got := RuntimeSecretPrefix("prod/aws", "aws", "runtime-a"); got != "" {
+		t.Fatalf("RuntimeSecretPrefix(unsafe tenant) = %q, want empty", got)
+	}
+	if got := RuntimeSecretPrefix("prod_aws", "aws", "runtime-a"); got != "cerebro/prod_aws/aws/runtime-a/" {
+		t.Fatalf("RuntimeSecretPrefix(canonical tenant) = %q, want canonical prefix", got)
+	}
+	err := AuthorizeRuntimeReferences("aws", "prod/aws", "runtime-a", map[string]string{
+		"value": "aws-sm:us-east-1:cerebro/prod_aws/aws/runtime-a/credentials#value",
+	})
+	if err == nil {
+		t.Fatal("AuthorizeRuntimeReferences(non-canonical tenant) error = nil, want invalid reference")
 	}
 }
 

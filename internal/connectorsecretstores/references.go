@@ -38,6 +38,7 @@ var (
 	ErrResolverUnavailable = errors.New("connector secret-store resolver unavailable")
 
 	awsRegionPrefixPattern = regexp.MustCompile(`^[a-z]{2}(-gov)?-[a-z0-9-]+-\d$`)
+	referencePathPattern   = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 )
 
 // Reference is the parsed, non-secret address of a value in an operator-managed
@@ -174,11 +175,21 @@ func RuntimeSecretPrefix(tenantID string, sourceID string, runtimeID string) str
 	return "cerebro/" + tenantSegment + "/" + sourceSegment + "/" + runtimeSegment + "/"
 }
 
+// RuntimeCredentialSecretName returns the single operator-managed AWS Secrets
+// Manager name that stores credential JSON for a runtime.
+func RuntimeCredentialSecretName(tenantID string, sourceID string, runtimeID string) string {
+	prefix := RuntimeSecretPrefix(tenantID, sourceID, runtimeID)
+	if prefix == "" {
+		return ""
+	}
+	return prefix + "credentials"
+}
+
 // AuthorizeRuntimeReferences checks that native references are constrained to
 // the requesting runtime's secret namespace before any backend resolver uses
 // operator credentials to fetch them.
 func AuthorizeRuntimeReferences(sourceID string, tenantID string, runtimeID string, values map[string]string) error {
-	prefix := RuntimeSecretPrefix(tenantID, sourceID, runtimeID)
+	expectedSecretName := RuntimeCredentialSecretName(tenantID, sourceID, runtimeID)
 	for key, value := range values {
 		ref, ok, err := ParseReference(value)
 		if err != nil {
@@ -187,11 +198,12 @@ func AuthorizeRuntimeReferences(sourceID string, tenantID string, runtimeID stri
 		if !ok || ref.StoreID != StoreAWSSecretsManager {
 			continue
 		}
-		if prefix == "" {
-			return fmt.Errorf("%w: aws-sm reference %q requires tenant, source, and runtime scope", ErrInvalidReference, strings.TrimSpace(key))
+		if expectedSecretName == "" {
+			return fmt.Errorf("%w: aws-sm reference %q requires canonical tenant, source, and runtime scope", ErrInvalidReference, strings.TrimSpace(key))
 		}
-		if !strings.HasPrefix(awsSecretName(ref.SecretID), prefix) {
-			return fmt.Errorf("%w: aws-sm reference %q must use scoped secret prefix %q", ErrInvalidReference, strings.TrimSpace(key), prefix)
+		secretName := awsSecretName(ref.SecretID)
+		if secretName != expectedSecretName && !strings.HasPrefix(secretName, expectedSecretName+"-") {
+			return fmt.Errorf("%w: aws-sm reference %q must use scoped secret %q", ErrInvalidReference, strings.TrimSpace(key), expectedSecretName)
 		}
 	}
 	return nil
@@ -253,7 +265,7 @@ func (r *Resolver) Resolve(ctx context.Context, ref Reference) (string, error) {
 	}
 	switch ref.StoreID {
 	case StoreAWSSecretsManager:
-		if strings.TrimSpace(r.cfg.AWSSecretsManager.Region) == "" && strings.TrimSpace(ref.Region) == "" {
+		if strings.TrimSpace(r.cfg.AWSSecretsManager.Region) == "" {
 			return "", fmt.Errorf("%w: CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION is required", ErrResolverUnavailable)
 		}
 		client, err := r.awsClientFactory(ctx, r.cfg.AWSSecretsManager, ref)
@@ -318,22 +330,11 @@ func awsSecretName(secretID string) string {
 }
 
 func referencePathSegment(value string) string {
-	var builder strings.Builder
-	for _, char := range strings.TrimSpace(value) {
-		switch {
-		case char >= 'a' && char <= 'z':
-			builder.WriteRune(char)
-		case char >= 'A' && char <= 'Z':
-			builder.WriteRune(char)
-		case char >= '0' && char <= '9':
-			builder.WriteRune(char)
-		case char == '-' || char == '_' || char == '.':
-			builder.WriteRune(char)
-		default:
-			builder.WriteByte('_')
-		}
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || !referencePathPattern.MatchString(trimmed) {
+		return ""
 	}
-	return strings.Trim(builder.String(), "_")
+	return trimmed
 }
 
 func newAWSSecretsManagerClient(ctx context.Context, cfg config.AWSSecretsManagerStoreConfig, ref Reference) (awsSecretsManagerAPI, error) {
