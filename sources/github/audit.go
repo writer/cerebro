@@ -16,6 +16,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubaudit"
 )
 
 type auditPayload struct {
@@ -46,7 +47,7 @@ type auditPayload struct {
 }
 
 func (s *Source) checkAudit(ctx context.Context, client *gogithub.Client, settings settings) error {
-	_, _, err := client.Organizations.GetAuditLog(ctx, settings.owner, auditOptions(settings, "", 1))
+	_, _, err := client.Organizations.GetAuditLog(ctx, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, "", 1))
 	if err != nil {
 		return wrapLookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
 	}
@@ -64,14 +65,29 @@ func (s *Source) discoverAudit(ctx context.Context, client *gogithub.Client, set
 	return []sourcecdk.URN{urn}, nil
 }
 
-func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	readCheckpoint, shortCircuit, err := sourcecdk.BeginFamilyFreshnessRead("github", familyAudit, cursor, checkpoint, func(checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.ChangeProbe, error) {
+		probe, err := githubaudit.LatestEventChangeProbe(ctx, settings.owner, settings.auditInclude, settings.auditPhrase, checkpoint, func(ctx context.Context, opts *gogithub.GetAuditLogOptions) ([]*gogithub.AuditEntry, *gogithub.Response, error) {
+			return client.Organizations.GetAuditLog(ctx, settings.owner, opts)
+		})
+		if err != nil {
+			return sourcecdk.ChangeProbe{}, wrapLookupError(fmt.Sprintf("github audit log canary for org %s", settings.owner), err)
+		}
+		return probe, nil
+	})
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	if shortCircuit != nil {
+		return *shortCircuit, nil
+	}
 	after := readAuditCursor(cursor)
-	entries, resp, err := client.Organizations.GetAuditLog(ctx, settings.owner, auditOptions(settings, after, settings.perPage))
+	entries, resp, err := client.Organizations.GetAuditLog(ctx, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, after, settings.perPage))
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
 	}
 	if len(entries) == 0 {
-		return sourcecdk.Pull{}, nil
+		return sourcecdk.NotModifiedPull(readCheckpoint), nil
 	}
 	events := make([]*primitives.Event, 0, len(entries))
 	actorResolutionCache := map[string]auditActorResolution{}
@@ -83,10 +99,8 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 		// can't tell a bot apart from a user. Resolution returns
 		// Type=Bot for GitHub Apps, Type=Organization for org-self
 		// events, Type=Unresolved for deleted/placeholder logins
-		// (deploy_key, retired bot apps), and Type=User otherwise. The
-		// shared cache keeps the per-pull cost at one /users/{login}
-		// call per unique actor, which is well within the 5000/hour
-		// authenticated rate limit for any realistic audit volume.
+		// (deploy_key, retired bot apps), and Type=User otherwise.
+		// Resolutions are cached per page to avoid repeated actor lookups.
 		actorResolution := auditActorResolution{}
 		if strings.TrimSpace(entry.GetActor()) != "" {
 			actorResolution = resolveAuditActor(ctx, client, entry.GetActor(), actorResolutionCache)
@@ -100,37 +114,22 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 	nextCursor := nextAuditCursor(resp)
 	pull := sourcecdk.Pull{
 		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
+		Checkpoint: sourcecdk.FamilyFreshnessCheckpointFromCheckpoint("github", familyAudit, readCheckpoint, &cerebrov1.SourceCheckpoint{
 			Watermark:    events[len(events)-1].OccurredAt,
 			CursorOpaque: checkpointAuditCursor(entries, nextCursor),
-		},
+		}),
 	}
 	if nextCursor != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: sourcecdk.FamilyFreshnessCursor("github", familyAudit, readCheckpoint, nextCursor)}
 	}
 	return pull, nil
-}
-
-func auditOptions(settings settings, after string, perPage int) *gogithub.GetAuditLogOptions {
-	opts := &gogithub.GetAuditLogOptions{
-		Include: gogithub.String(settings.auditInclude),
-		Order:   gogithub.String(settings.auditOrder),
-		ListCursorOptions: gogithub.ListCursorOptions{
-			After:   after,
-			PerPage: perPage,
-		},
-	}
-	if settings.auditPhrase != "" {
-		opts.Phrase = gogithub.String(settings.auditPhrase)
-	}
-	return opts
 }
 
 func readAuditCursor(cursor *cerebrov1.SourceCursor) string {
 	if cursor == nil {
 		return ""
 	}
-	return strings.TrimSpace(cursor.GetOpaque())
+	return strings.TrimSpace(sourcecdk.CursorToken(cursor))
 }
 
 type auditActorResolution struct {
