@@ -884,7 +884,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-linear
@@ -936,6 +936,7 @@ entries:
           label: Projects
           path: /v1/projects
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: linear.projects
@@ -1078,7 +1079,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-microsoft_teams
@@ -1133,6 +1134,7 @@ entries:
           label: "Content assets"
           path: /v1/resources
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: microsoft_teams.content_assets
@@ -1276,7 +1278,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-monday_com
@@ -1328,6 +1330,7 @@ entries:
           label: Projects
           path: /v1/projects
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: monday_com.projects

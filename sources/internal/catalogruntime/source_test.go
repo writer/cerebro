@@ -1,0 +1,247 @@
+package catalogruntime
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcecdk"
+)
+
+func TestSourceCheckAndReadDefinition(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+		if got := r.Header.Get("Authorization"); got != wantAuth {
+			t.Fatalf("Authorization = %q, want %q", got, wantAuth)
+		}
+		switch r.URL.Path {
+		case "/me":
+			w.WriteHeader(http.StatusNoContent)
+		case "/users":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "U1", "email": "alice@example.com", "updated_at": "2026-06-01T00:00:00Z"}},
+			})
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth: connectordefinitions.AuthSpec{
+			Model: "basic",
+		},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL: server.URL,
+			Verification: &connectordefinitions.VerificationSpec{
+				Path:         "/me",
+				ExpectStatus: []int{http.StatusNoContent},
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "users",
+			Path:           "/users",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "example.users",
+				SchemaRef: "example/users/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"username":  "alice",
+		"password":  "secret",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Kind != "example.users" {
+		t.Fatalf("events = %#v, want example.users event", pull.Events)
+	}
+}
+
+func TestSourceAuthModels(t *testing.T) {
+	tests := []struct {
+		name           string
+		authModel      string
+		config         map[string]string
+		wantAuthHeader string
+		wantGrantType  string
+	}{
+		{
+			name:           "bearer token",
+			authModel:      "bearer_token",
+			config:         map[string]string{"token": "bearer-token"},
+			wantAuthHeader: "Bearer bearer-token",
+		},
+		{
+			name:           "api key",
+			authModel:      "api_key",
+			config:         map[string]string{"api_key": "api-token"},
+			wantAuthHeader: "Token api-token",
+		},
+		{
+			name:           "basic",
+			authModel:      "basic",
+			config:         map[string]string{"username": "alice", "password": "secret"},
+			wantAuthHeader: "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:secret")),
+		},
+		{
+			name:           "oauth client credentials",
+			authModel:      "oauth_client_credentials",
+			config:         map[string]string{"client_id": "client", "client_secret": "secret"},
+			wantAuthHeader: "Bearer test-token",
+			wantGrantType:  "client_credentials",
+		},
+		{
+			name:           "oauth authorization code refresh",
+			authModel:      "oauth_authorization_code",
+			config:         map[string]string{"client_id": "client", "client_secret": "secret", "refresh_token": "refresh"},
+			wantAuthHeader: "Bearer test-token",
+			wantGrantType:  "refresh_token",
+		},
+		{
+			name:           "jwt",
+			authModel:      "jwt",
+			config:         map[string]string{"jwt": "jwt-token"},
+			wantAuthHeader: "Bearer jwt-token",
+		},
+		{
+			name:           "signature",
+			authModel:      "signature",
+			config:         map[string]string{"signature": "signature-token"},
+			wantAuthHeader: "Signature signature-token",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tokenRequests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/oauth/token":
+					tokenRequests++
+					r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+					if err := r.ParseForm(); err != nil {
+						t.Fatalf("ParseForm() error = %v", err)
+					}
+					if got := r.Form.Get("grant_type"); got != test.wantGrantType {
+						t.Fatalf("grant_type = %q, want %q", got, test.wantGrantType)
+					}
+					if r.Form.Get("client_id") != "client" || r.Form.Get("client_secret") != "secret" {
+						t.Fatalf("oauth client form = %#v", r.Form)
+					}
+					if test.wantGrantType == "refresh_token" && r.Form.Get("refresh_token") != "refresh" {
+						t.Fatalf("refresh_token = %q, want refresh", r.Form.Get("refresh_token"))
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"access_token": "test-token",
+						"token_type":   "Bearer",
+						"expires_in":   3600,
+					})
+				case "/me":
+					if got := r.Header.Get("Authorization"); got != test.wantAuthHeader {
+						t.Fatalf("Authorization = %q, want %q", got, test.wantAuthHeader)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					t.Fatalf("unexpected path %q", r.URL.Path)
+				}
+			}))
+			defer server.Close()
+
+			definition := authTestDefinition(server.URL, test.authModel)
+			if test.wantGrantType != "" {
+				definition.Auth.TokenURL = server.URL + "/oauth/token"
+				definition.Auth.TokenRequestAuthMethod = "client_secret_post"
+			}
+			if test.authModel == "oauth_authorization_code" {
+				definition.Auth.AuthorizationURL = server.URL + "/oauth/authorize"
+			}
+			source, err := NewDefinition(definition)
+			if err != nil {
+				t.Fatalf("NewDefinition() error = %v", err)
+			}
+			source.inner.AllowLoopbackBaseURL = true
+			cfg := map[string]string{"tenant_id": "tenant"}
+			for key, value := range test.config {
+				cfg[key] = value
+			}
+			if err := source.Check(context.Background(), sourcecdk.NewConfig(cfg)); err != nil {
+				t.Fatalf("Check() error = %v", err)
+			}
+			if test.wantGrantType != "" && tokenRequests != 1 {
+				t.Fatalf("tokenRequests = %d, want 1", tokenRequests)
+			}
+		})
+	}
+}
+
+func TestProjectionFieldsOverrideClassDefaults(t *testing.T) {
+	attrs := attributePaths(connectordefinitions.ResourceFamily{
+		ID: "findings",
+		Projection: &connectordefinitions.ProjectionSpec{
+			Template: "finding",
+			Fields: map[string]string{
+				"severity": "data.cvss_label",
+				"status":   "data.lifecycle",
+			},
+		},
+	}, "finding")
+	if attrs["severity"] != "data.cvss_label" {
+		t.Fatalf("severity = %q, want projection override", attrs["severity"])
+	}
+	if attrs["status"] != "data.lifecycle" {
+		t.Fatalf("status = %q, want projection override", attrs["status"])
+	}
+	if attrs["title"] == "" {
+		t.Fatal("title default missing")
+	}
+}
+
+func authTestDefinition(baseURL string, authModel string) connectordefinitions.Definition {
+	return connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: authModel},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL: baseURL,
+			Verification: &connectordefinitions.VerificationSpec{
+				Path:         "/me",
+				ExpectStatus: []int{http.StatusNoContent},
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "users",
+			Path:           "/users",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "example.users",
+				SchemaRef: "example/users/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+		}},
+	}
+}

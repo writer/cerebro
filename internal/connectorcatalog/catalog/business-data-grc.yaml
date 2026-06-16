@@ -1066,7 +1066,7 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
-  - classifier_output: bespoke_required
+  - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
       id: builtin-netsuite
@@ -1120,6 +1120,7 @@ entries:
           label: "Business records"
           path: /v1/records
           method: GET
+          record_selector: "$.data[*]"
           id_field: id
           event:
             kind: netsuite.assets

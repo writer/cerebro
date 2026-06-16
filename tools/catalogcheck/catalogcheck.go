@@ -283,6 +283,9 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 			return nil
 		}
 		rel := slashRel(root, path)
+		if filepath.Base(filepath.Dir(path)) == "catalogruntime" {
+			return nil
+		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			issues = append(issues, issue{path: rel, message: "symlinked source catalogs are not allowed"})
 			return nil

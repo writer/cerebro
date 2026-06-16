@@ -2,6 +2,7 @@ package jsonapi
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net"
@@ -115,6 +116,141 @@ func TestReadPagesJSONAPIRecords(t *testing.T) {
 	}
 	if got := requests[1].URL.Query().Get("cursor"); got != "page-2" {
 		t.Fatalf("second cursor query = %q, want page-2", got)
+	}
+}
+
+func TestReadUsesBasicAuth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+		if got := r.Header.Get("Authorization"); got != want {
+			t.Fatalf("Authorization = %q, want %q", got, want)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
+	}))
+	defer server.Close()
+
+	source := newCustomAuthTestSource(t, server.URL, "basic")
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"username":  "alice",
+		"password":  "secret",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+}
+
+func TestReadExchangesOAuthClientCredentials(t *testing.T) {
+	tokenRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			tokenRequests++
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm() error = %v", err)
+			}
+			if r.Form.Get("grant_type") != "client_credentials" || r.Form.Get("client_id") != "client-1" || r.Form.Get("client_secret") != "secret-1" || r.Form.Get("scope") != "read:devices" {
+				t.Fatalf("token form = %#v", r.Form)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-token",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			})
+		case "/devices":
+			if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+				t.Fatalf("Authorization = %q, want Bearer test-token", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	source := newOAuthTestSource(t, server.URL, server.URL+"/oauth/token")
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"client_id":     "client-1",
+		"client_secret": "secret-1",
+	})
+	for i := 0; i < 2; i++ {
+		pull, err := source.Read(context.Background(), cfg, nil)
+		if err != nil {
+			t.Fatalf("Read(%d) error = %v", i, err)
+		}
+		if len(pull.Events) != 1 {
+			t.Fatalf("Read(%d) events = %d, want 1", i, len(pull.Events))
+		}
+	}
+	if tokenRequests != 1 {
+		t.Fatalf("token requests = %d, want cached token reuse", tokenRequests)
+	}
+}
+
+func TestOAuthCacheKeySeparatesTenantAndClientSecret(t *testing.T) {
+	tokenRequests := 0
+	deviceRequests := 0
+	wantAuth := []string{"Bearer token-1", "Bearer token-2", "Bearer token-3"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			tokenRequests++
+			if tokenRequests > len(wantAuth) {
+				t.Fatalf("unexpected extra token request")
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm() error = %v", err)
+			}
+			if r.Form.Get("client_id") != "client-1" || r.Form.Get("client_secret") == "" {
+				t.Fatalf("token form = %#v", r.Form)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": wantAuth[tokenRequests-1][len("Bearer "):],
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			})
+		case "/devices":
+			if deviceRequests >= len(wantAuth) {
+				t.Fatalf("unexpected extra device request")
+			}
+			if got := r.Header.Get("Authorization"); got != wantAuth[deviceRequests] {
+				t.Fatalf("Authorization = %q, want %q", got, wantAuth[deviceRequests])
+			}
+			deviceRequests++
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	source := newOAuthTestSource(t, server.URL, server.URL+"/oauth/token")
+	for _, cfg := range []map[string]string{
+		{"tenant_id": "tenant-a", "client_id": "client-1", "client_secret": "secret-1"},
+		{"tenant_id": "tenant-b", "client_id": "client-1", "client_secret": "secret-1"},
+		{"tenant_id": "tenant-b", "client_id": "client-1", "client_secret": "secret-2"},
+	} {
+		if _, err := source.Read(context.Background(), sourcecdk.NewConfig(cfg), nil); err != nil {
+			t.Fatalf("Read(%#v) error = %v", cfg, err)
+		}
+	}
+	if tokenRequests != len(wantAuth) {
+		t.Fatalf("token requests = %d, want %d", tokenRequests, len(wantAuth))
+	}
+}
+
+func TestResolveConfigTemplateRejectsRecursiveConfig(t *testing.T) {
+	_, err := resolveConfigTemplate("test", "${config.loop}", sourcecdk.NewConfig(map[string]string{
+		"loop": "${config.loop}",
+	}))
+	if err == nil {
+		t.Fatal("resolveConfigTemplate() error = nil, want recursion error")
 	}
 }
 
@@ -663,6 +799,50 @@ func newCustomTestSource(t *testing.T, baseURL string, family Family) *Source {
 		RequireTenantID: true,
 		TokenScheme:     "Bearer",
 		Families:        []Family{family},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.AllowLoopbackBaseURL = true
+	return source
+}
+
+func newCustomAuthTestSource(t *testing.T, baseURL string, authModel string) *Source {
+	t.Helper()
+	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{
+		SourceID:        "test",
+		DefaultBaseURL:  baseURL,
+		DefaultFamily:   "device",
+		RequireTenantID: true,
+		AuthModel:       authModel,
+		Families: []Family{{
+			Name:   "device",
+			Path:   "/devices",
+			IDKeys: []string{"id"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.AllowLoopbackBaseURL = true
+	return source
+}
+
+func newOAuthTestSource(t *testing.T, baseURL string, tokenURL string) *Source {
+	t.Helper()
+	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{
+		SourceID:        "test",
+		DefaultBaseURL:  baseURL,
+		DefaultFamily:   "device",
+		RequireTenantID: true,
+		AuthModel:       "oauth_client_credentials",
+		OAuthTokenURL:   tokenURL,
+		OAuthScopes:     []string{"read:devices"},
+		Families: []Family{{
+			Name:   "device",
+			Path:   "/devices",
+			IDKeys: []string{"id"},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

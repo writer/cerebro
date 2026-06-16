@@ -178,6 +178,22 @@ coverage_contract:
 	}
 }
 
+func TestCheckSourceCatalogsSkipsCatalogRuntimeAdapter(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/catalogruntime/catalog.yaml", `
+id: catalogruntime
+name: Catalog Runtime Adapter
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v, want adapter package skipped", issues)
+	}
+}
+
 func TestCheckSourceCatalogsRejectsRuntimeFamilyMissingFixturePair(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/aws/catalog.yaml", `

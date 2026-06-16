@@ -1196,8 +1196,8 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	if payload.GeneratedAt == "" || payload.CatalogVersion != connectordefinitions.SchemaVersionIntegrationV1 || payload.CatalogSourceCommit == "" {
 		t.Fatalf("catalog response metadata generated=%q version=%q commit=%q, want populated catalog contract", payload.GeneratedAt, payload.CatalogVersion, payload.CatalogSourceCommit)
 	}
-	if len(payload.Connectors) < 101 {
-		t.Fatalf("connectors len = %d, want fixture source plus 100 catalog definitions", len(payload.Connectors))
+	if len(payload.Connectors) < 109 {
+		t.Fatalf("connectors len = %d, want fixture source plus 108 catalog definitions", len(payload.Connectors))
 	}
 	bySourceID := map[string]catalogConnector{}
 	for _, connector := range payload.Connectors {
@@ -1219,6 +1219,13 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	if jumpcloud.AuthModel != "api_key" || jumpcloud.VerificationEndpoint == "" {
 		t.Fatalf("jumpcloud auth/verification = %q/%q, want catalog metadata", jumpcloud.AuthModel, jumpcloud.VerificationEndpoint)
 	}
+	entraID := bySourceID["microsoft_entra_id"]
+	if entraID.CatalogStatus != connectorcatalog.StatusGenerateable || !entraID.RuntimeExecutable {
+		t.Fatalf("microsoft_entra_id status = %q executable=%v, want generateable executable", entraID.CatalogStatus, entraID.RuntimeExecutable)
+	}
+	if entraID.ClassifierOutput != "supported" {
+		t.Fatalf("microsoft_entra_id classifier_output = %q, want supported", entraID.ClassifierOutput)
+	}
 	auth0 := bySourceID["auth0"]
 	if auth0.CatalogStatus != connectorcatalog.StatusGenerateable || !auth0.RuntimeExecutable {
 		t.Fatalf("auth0 status = %q executable=%v, want generateable executable", auth0.CatalogStatus, auth0.RuntimeExecutable)
@@ -1226,23 +1233,9 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	if auth0.AuthModel != "oauth_client_credentials" || auth0.VerificationEndpoint != "/users" {
 		t.Fatalf("auth0 auth/verification = %q/%q, want oauth client credentials /users", auth0.AuthModel, auth0.VerificationEndpoint)
 	}
-	hasNeedsAuthExtension := false
-	for _, connector := range payload.Connectors {
-		if connector.CatalogStatus != connectorcatalog.StatusNeedsAuthExtension {
-			continue
-		}
-		hasNeedsAuthExtension = true
-		if connector.RuntimeExecutable {
-			t.Fatalf("%s status = %q executable=%v, want needs_auth_extension not executable", connector.SourceID, connector.CatalogStatus, connector.RuntimeExecutable)
-		}
-		break
-	}
-	if !hasNeedsAuthExtension {
-		t.Fatal("catalog has no needs_auth_extension entries")
-	}
 	jenkins := bySourceID["jenkins"]
-	if jenkins.CatalogStatus != connectorcatalog.StatusNeedsBespokeRuntime {
-		t.Fatalf("jenkins status = %q, want needs_bespoke_runtime", jenkins.CatalogStatus)
+	if jenkins.CatalogStatus != connectorcatalog.StatusGenerateable || !jenkins.RuntimeExecutable {
+		t.Fatalf("jenkins status = %q executable=%v, want generateable executable", jenkins.CatalogStatus, jenkins.RuntimeExecutable)
 	}
 	if len(jenkins.ResourceFamilies) < 2 {
 		t.Fatalf("jenkins resource families = %#v, want high-value catalog families", jenkins.ResourceFamilies)
@@ -1296,8 +1289,12 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validateConnectorCredentialFields(auth0 encrypted submission) error = %v", err)
 	}
-	if _, ok := connectorSchemaForSource("jenkins"); ok {
-		t.Fatal("connectorSchemaForSource(jenkins) = true, want bespoke runtime entries excluded")
+	jenkinsSchema, ok := connectorSchemaForSource("jenkins")
+	if !ok {
+		t.Fatal("connectorSchemaForSource(jenkins) = false, want catalog-derived schema")
+	}
+	if got := strings.Join(jenkinsSchema.RequiredCredentials, ","); got != "password,username" {
+		t.Fatalf("jenkins required credentials = %q, want password,username", got)
 	}
 }
 

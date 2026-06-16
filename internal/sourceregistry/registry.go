@@ -3,6 +3,7 @@ package sourceregistry
 import (
 	"fmt"
 
+	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
@@ -10,6 +11,7 @@ import (
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
 	backstagesource "github.com/writer/cerebro/sources/backstage"
+	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
@@ -234,11 +236,31 @@ var builtinSourceLoaders = []builtinSourceLoader{
 // Builtin constructs the in-process source registry for the rewrite skeleton.
 func Builtin() (*sourcecdk.Registry, error) {
 	sources := make([]sourcecdk.Source, 0, len(builtinSourceLoaders))
+	registered := map[string]struct{}{}
 	for _, loader := range builtinSourceLoaders {
 		source, err := loader.load()
 		if err != nil {
 			return nil, fmt.Errorf("load %s source: %w", loader.name, err)
 		}
+		if spec := source.Spec(); spec != nil {
+			registered[spec.Id] = struct{}{}
+		}
+		sources = append(sources, source)
+	}
+	catalog, err := connectorcatalog.Builtin()
+	if err != nil {
+		return nil, fmt.Errorf("load connector definition catalog: %w", err)
+	}
+	for _, entry := range catalog.Entries {
+		sourceID := entry.Definition.SourceID
+		if _, ok := registered[sourceID]; ok || entry.Status != connectorcatalog.StatusGenerateable {
+			continue
+		}
+		source, err := catalogruntimesource.New(entry)
+		if err != nil {
+			return nil, fmt.Errorf("load catalog source %s: %w", sourceID, err)
+		}
+		registered[sourceID] = struct{}{}
 		sources = append(sources, source)
 	}
 	registry, err := sourcecdk.NewRegistry(sources...)
