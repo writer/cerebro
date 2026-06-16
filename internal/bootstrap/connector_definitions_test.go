@@ -159,6 +159,150 @@ func TestConnectorDefinitionCreateListAndPromote(t *testing.T) {
 	}
 }
 
+func TestConnectorDefinitionCreateUsesScopedPrincipalTenant(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "admin-key",
+				Principal: "admin",
+				TenantID:  "tenant-a",
+			}},
+		},
+	}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createBody, err := json.Marshal(connectordefinitions.Definition{
+		SourceID:    "example_api",
+		DisplayName: "Example API",
+		Auth: connectordefinitions.AuthSpec{
+			Model: "none",
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:      "assets",
+			Path:    "/v1/assets",
+			IDField: "id",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal create body: %v", err)
+	}
+	createReq, err := http.NewRequest(http.MethodPost, server.URL+"/connector-definitions", bytes.NewReader(createBody))
+	if err != nil {
+		t.Fatalf("NewRequest create: %v", err)
+	}
+	createReq.Header.Set("Authorization", "Bearer admin-key")
+	createReq.Header.Set("Content-Type", "application/json")
+	createResp, err := server.Client().Do(createReq)
+	if err != nil {
+		t.Fatalf("POST /connector-definitions error = %v", err)
+	}
+	defer closeResponseBody(t, createResp)
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connector-definitions status = %d, want 200", createResp.StatusCode)
+	}
+	var created connectorDefinitionResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if created.Definition.TenantID != "tenant-a" {
+		t.Fatalf("definition tenant_id = %q, want tenant-a", created.Definition.TenantID)
+	}
+}
+
+func TestConnectorDefinitionCreateRejectsCrossTenantBody(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "admin-key",
+				Principal: "admin",
+				TenantID:  "tenant-a",
+			}},
+		},
+	}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createReq, err := http.NewRequest(http.MethodPost, server.URL+"/connector-definitions", stringsReader(t, `{
+		"tenant_id": "tenant-b",
+		"source_id": "example_api",
+		"display_name": "Example API",
+		"runtime": "json_api",
+		"auth": {"model": "none"},
+		"resource_families": [{"id": "assets", "path": "/v1/assets", "id_field": "id"}]
+	}`))
+	if err != nil {
+		t.Fatalf("NewRequest create: %v", err)
+	}
+	createReq.Header.Set("Authorization", "Bearer admin-key")
+	createReq.Header.Set("Content-Type", "application/json")
+	createResp, err := server.Client().Do(createReq)
+	if err != nil {
+		t.Fatalf("POST /connector-definitions error = %v", err)
+	}
+	defer closeResponseBody(t, createResp)
+	if createResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST /connector-definitions status = %d, want 403", createResp.StatusCode)
+	}
+}
+
+func TestConnectorDefinitionUpdateRejectsTenantReassignment(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createResp, err := server.Client().Post(server.URL+"/connector-definitions", "application/json", stringsReader(t, `{
+		"tenant_id": "tenant-a",
+		"source_id": "example_api",
+		"display_name": "Example API",
+		"runtime": "json_api",
+		"auth": {"model": "none"},
+		"resource_families": [{"id": "assets", "path": "/v1/assets", "id_field": "id"}]
+	}`))
+	if err != nil {
+		t.Fatalf("POST /connector-definitions error = %v", err)
+	}
+	defer closeResponseBody(t, createResp)
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connector-definitions status = %d, want 200", createResp.StatusCode)
+	}
+	var created connectorDefinitionResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	updateReq, err := http.NewRequest(http.MethodPut, server.URL+"/connector-definitions/"+created.Definition.ID, stringsReader(t, `{
+		"id": "`+created.Definition.ID+`",
+		"tenant_id": "tenant-b",
+		"source_id": "example_api",
+		"display_name": "Example API",
+		"runtime": "json_api",
+		"auth": {"model": "none"},
+		"resource_families": [{"id": "assets", "path": "/v1/assets", "id_field": "id"}]
+	}`))
+	if err != nil {
+		t.Fatalf("NewRequest update: %v", err)
+	}
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateResp, err := server.Client().Do(updateReq)
+	if err != nil {
+		t.Fatalf("PUT /connector-definitions/{id} error = %v", err)
+	}
+	defer closeResponseBody(t, updateResp)
+	if updateResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("PUT /connector-definitions/{id} status = %d, want 403", updateResp.StatusCode)
+	}
+}
+
 func TestConnectorDefinitionValidateDoesNotRequireStore(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())

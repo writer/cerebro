@@ -269,6 +269,9 @@ func (a *App) saveConnectorDefinition(ctx context.Context, definition connectord
 		if err := authorizeTenantID(ctx, existing.TenantID); err != nil {
 			return connectordefinitions.Definition{}, err
 		}
+		if existing.TenantID != normalized.TenantID {
+			return connectordefinitions.Definition{}, errTenantForbidden
+		}
 		version = existing.CurrentVersion + 1
 	case errors.Is(err, ports.ErrConnectorDefinitionNotFound):
 	default:
