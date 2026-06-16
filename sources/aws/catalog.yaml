@@ -27,6 +27,7 @@ emitted_kinds:
   - aws.ebs_snapshot
   - aws.ebs_volume
   - aws.ec2_ebs_encryption_by_default
+  - aws.ec2_ami
   - aws.athena_data_catalog
   - aws.athena_workgroup
   - aws.cloudwatch_alarm
@@ -168,6 +169,7 @@ runtime_families:
   - ebs_snapshot
   - ebs_volume
   - ec2_ebs_encryption_by_default
+  - ec2_ami
   - athena_data_catalog
   - athena_workgroup
   - cloudwatch_alarm
@@ -549,10 +551,9 @@ coverage_contract:
     - id: ec2_ami
       type: entity_family
       title: AWS EC2 AMIs
-      families: [asset_metadata]
-      support: partial
+      families: [ec2_ami]
+      support: supported
       high_value: true
-      known_unsupported_fields: [public launch permission and source image lineage]
     - id: ec2_ebs_encryption_by_default
       type: entity_family
       title: AWS EC2 EBS encryption by default

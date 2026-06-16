@@ -84,6 +84,18 @@ func listEC2Instances(ctx context.Context, clients awsClients, settings settings
 	return records, awssdk.ToString(output.NextToken), nil
 }
 
+func listEC2AMIs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.Image, string, error) {
+	output, err := clients.ec2.DescribeImages(ctx, &ec2.DescribeImagesInput{
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
+		NextToken:  stringPtr(cursor),
+		Owners:     []string{"self"},
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return output.Images, awssdk.ToString(output.NextToken), nil
+}
+
 func listLambdaFunctions(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]lambdatypes.FunctionConfiguration, string, error) {
 	output, err := clients.lambda.ListFunctions(ctx, &lambda.ListFunctionsInput{
 		Marker:   stringPtr(cursor),
@@ -446,6 +458,46 @@ func ec2InstanceEvent(settings settings, record awsEC2Instance) (*primitives.Eve
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-ec2-instance-"+instanceID, "aws.ec2_instance", "aws/ec2_instance/v1", payload, attributes, firstTime(instance.LaunchTime))
+}
+
+func ec2AMIEvent(settings settings, image ec2types.Image) (*primitives.Event, error) {
+	imageID := awssdk.ToString(image.ImageId)
+	tags := ec2Tags(image.Tags)
+	name := firstNonEmpty(awssdk.ToString(image.Name), ec2NameTag(image.Tags), imageID)
+	public := awssdk.ToBool(image.Public)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyEC2AMI, imageID, name, "ec2_ami", tags)
+	attributes["architecture"] = string(image.Architecture)
+	attributes["arn"] = ec2ImageARN(settings, imageID)
+	attributes["boot_mode"] = string(image.BootMode)
+	attributes["creation_date"] = awssdk.ToString(image.CreationDate)
+	attributes["deprecation_time"] = awssdk.ToString(image.DeprecationTime)
+	attributes["description"] = awssdk.ToString(image.Description)
+	attributes["ena_support"] = boolString(awssdk.ToBool(image.EnaSupport))
+	attributes["image_allowed"] = boolString(awssdk.ToBool(image.ImageAllowed))
+	attributes["image_id"] = imageID
+	attributes["image_location"] = awssdk.ToString(image.ImageLocation)
+	attributes["image_owner_alias"] = awssdk.ToString(image.ImageOwnerAlias)
+	attributes["image_type"] = string(image.ImageType)
+	attributes["imds_support"] = string(image.ImdsSupport)
+	attributes["internet_exposed"] = boolString(public)
+	attributes["is_public"] = boolString(public)
+	attributes["last_launched_time"] = awssdk.ToString(image.LastLaunchedTime)
+	attributes["owner_id"] = awssdk.ToString(image.OwnerId)
+	attributes["platform"] = string(image.Platform)
+	attributes["platform_details"] = awssdk.ToString(image.PlatformDetails)
+	attributes["public"] = boolString(public)
+	attributes["root_device_name"] = awssdk.ToString(image.RootDeviceName)
+	attributes["root_device_type"] = string(image.RootDeviceType)
+	attributes["source_image_id"] = awssdk.ToString(image.SourceImageId)
+	attributes["source_image_region"] = awssdk.ToString(image.SourceImageRegion)
+	attributes["source_instance_id"] = awssdk.ToString(image.SourceInstanceId)
+	attributes["state"] = string(image.State)
+	attributes["virtualization_type"] = string(image.VirtualizationType)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "image": image, "public": public})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-ec2-ami-"+imageID, "aws.ec2_ami", "aws/ec2_ami/v1", payload, attributes, parseAWSStringTime(awssdk.ToString(image.CreationDate)))
 }
 
 func lambdaFunctionEvent(settings settings, fn lambdatypes.FunctionConfiguration) (*primitives.Event, error) {
@@ -894,6 +946,13 @@ func ec2InstanceARN(settings settings, instanceID string) string {
 		return ""
 	}
 	return fmt.Sprintf("arn:aws:ec2:%s:%s:instance/%s", settings.region, settings.accountID, instanceID)
+}
+
+func ec2ImageARN(settings settings, imageID string) string {
+	if strings.TrimSpace(imageID) == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:ec2:%s::image/%s", settings.region, imageID)
 }
 
 func ec2InstanceProfileARN(instance ec2types.Instance) string {
