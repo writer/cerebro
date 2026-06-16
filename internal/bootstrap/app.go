@@ -29,6 +29,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
+	"github.com/writer/cerebro/internal/findingapi"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
@@ -429,7 +430,7 @@ func (a *App) handleResolveFinding(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, normalizeIDLookupError(err, ports.ErrFindingNotFound))
 		return
 	}
-	options, err := findingStatusUpdateOptions(request.GetExpectedStatus(), timestampValue(request.GetLastObservedBefore()), request.GetStatusSource())
+	options, err := findingapi.StatusUpdateOptions(request.GetExpectedStatus(), timestampValue(request.GetLastObservedBefore()), request.GetStatusSource())
 	if err != nil {
 		writeFindingError(w, err)
 		return
@@ -459,7 +460,7 @@ func (a *App) handleSuppressFinding(w http.ResponseWriter, r *http.Request) {
 		writeFindingError(w, normalizeIDLookupError(err, ports.ErrFindingNotFound))
 		return
 	}
-	options, err := findingStatusUpdateOptions(request.GetExpectedStatus(), timestampValue(request.GetLastObservedBefore()), request.GetStatusSource())
+	options, err := findingapi.StatusUpdateOptions(request.GetExpectedStatus(), timestampValue(request.GetLastObservedBefore()), request.GetStatusSource())
 	if err != nil {
 		writeFindingError(w, err)
 		return
@@ -587,16 +588,7 @@ func (a *App) handleLinkFindingExternalRef(w http.ResponseWriter, r *http.Reques
 		writeFindingError(w, normalizeIDLookupError(err, ports.ErrFindingNotFound))
 		return
 	}
-	finding, err := a.findingService().LinkFindingExternalRef(r.Context(), request.GetId(), ports.FindingExternalRef{
-		System:               request.GetSystem(),
-		Kind:                 request.GetKind(),
-		ExternalID:           request.GetExternalId(),
-		URL:                  request.GetUrl(),
-		ExternalStatus:       request.GetExternalStatus(),
-		ExternalStatusReason: request.GetExternalStatusReason(),
-		LifecycleOwner:       request.GetLifecycleOwner(),
-		ObservedAt:           timestampValue(request.GetObservedAt()),
-	})
+	finding, err := a.findingService().LinkFindingExternalRef(r.Context(), request.GetId(), findingapi.ExternalRefFromLinkRequest(request))
 	if err != nil {
 		writeFindingError(w, err)
 		return
@@ -1911,14 +1903,7 @@ func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.R
 }
 
 func (s *bootstrapService) ListFindingRules(_ context.Context, _ *connect.Request[cerebrov1.ListFindingRulesRequest]) (*connect.Response[cerebrov1.ListFindingRulesResponse], error) {
-	return connect.NewResponse(findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).ListRules()), nil
+	return connect.NewResponse(s.findingCoreService().ListRules()), nil
 }
 
 func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[cerebrov1.RunReportRequest]) (*connect.Response[cerebrov1.RunReportResponse], error) {
@@ -2077,14 +2062,7 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
-	response, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).ListFindings(ctx, findings.ListRequest{
+	response, err := s.findingCoreService().ListFindings(ctx, findings.ListRequest{
 		RuntimeID:   req.Msg.GetRuntimeId(),
 		FindingID:   req.Msg.GetFindingId(),
 		RuleID:      req.Msg.GetRuleId(),
@@ -2106,14 +2084,7 @@ func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[
 	if err := authorizeFindingIDTenant(ctx, findingStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingNotFound))
 	}
-	finding, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).GetFinding(ctx, req.Msg.GetId())
+	finding, err := s.findingCoreService().GetFinding(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2124,14 +2095,7 @@ func (s *bootstrapService) ListFindingCandidates(ctx context.Context, req *conne
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
-	response, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).ListFindingCandidates(ctx, findings.ListCandidatesRequest{
+	response, err := s.findingCandidateService().ListFindingCandidates(ctx, findings.ListCandidatesRequest{
 		RuntimeID:   req.Msg.GetRuntimeId(),
 		CandidateID: req.Msg.GetCandidateId(),
 		RuleID:      req.Msg.GetRuleId(),
@@ -2146,14 +2110,7 @@ func (s *bootstrapService) ListFindingCandidates(ctx context.Context, req *conne
 }
 
 func (s *bootstrapService) GetFindingCandidate(ctx context.Context, req *connect.Request[cerebrov1.GetFindingCandidateRequest]) (*connect.Response[cerebrov1.GetFindingCandidateResponse], error) {
-	service := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore))
+	service := s.findingCandidateService()
 	candidate, err := service.GetFindingCandidate(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, findingConnectError(err)
@@ -2168,14 +2125,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingCandidates(ctx context.Co
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).EvaluateSourceRuntimeCandidateRules(ctx, findings.EvaluateCandidateRulesRequest{
+	response, err := s.findingCandidateService().EvaluateSourceRuntimeCandidateRules(ctx, findings.EvaluateCandidateRulesRequest{
 		RuntimeID:  req.Msg.GetId(),
 		RuleIDs:    req.Msg.GetRuleIds(),
 		EventLimit: req.Msg.GetEventLimit(),
@@ -2187,14 +2137,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingCandidates(ctx context.Co
 }
 
 func (s *bootstrapService) PromoteFindingCandidate(ctx context.Context, req *connect.Request[cerebrov1.PromoteFindingCandidateRequest]) (*connect.Response[cerebrov1.PromoteFindingCandidateResponse], error) {
-	service := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog)
+	service := s.findingWorkflowService()
 	candidate, err := service.GetFindingCandidate(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, findingConnectError(err)
@@ -2221,14 +2164,7 @@ func (s *bootstrapService) PromoteFindingCandidate(ctx context.Context, req *con
 }
 
 func (s *bootstrapService) RejectFindingCandidate(ctx context.Context, req *connect.Request[cerebrov1.RejectFindingCandidateRequest]) (*connect.Response[cerebrov1.RejectFindingCandidateResponse], error) {
-	service := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog)
+	service := s.findingWorkflowService()
 	candidate, err := service.GetFindingCandidate(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, findingConnectError(err)
@@ -2254,18 +2190,11 @@ func (s *bootstrapService) ResolveFinding(ctx context.Context, req *connect.Requ
 	if err := authorizeFindingIDTenant(ctx, findingStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingNotFound))
 	}
-	options, err := findingStatusUpdateOptions(req.Msg.GetExpectedStatus(), timestampValue(req.Msg.GetLastObservedBefore()), req.Msg.GetStatusSource())
+	options, err := findingapi.StatusUpdateOptions(req.Msg.GetExpectedStatus(), timestampValue(req.Msg.GetLastObservedBefore()), req.Msg.GetStatusSource())
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	finding, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog).ResolveFindingWithOptions(ctx, req.Msg.GetId(), req.Msg.GetReason(), options)
+	finding, err := s.findingWorkflowService().ResolveFindingWithOptions(ctx, req.Msg.GetId(), req.Msg.GetReason(), options)
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2277,18 +2206,11 @@ func (s *bootstrapService) SuppressFinding(ctx context.Context, req *connect.Req
 	if err := authorizeFindingIDTenant(ctx, findingStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingNotFound))
 	}
-	options, err := findingStatusUpdateOptions(req.Msg.GetExpectedStatus(), timestampValue(req.Msg.GetLastObservedBefore()), req.Msg.GetStatusSource())
+	options, err := findingapi.StatusUpdateOptions(req.Msg.GetExpectedStatus(), timestampValue(req.Msg.GetLastObservedBefore()), req.Msg.GetStatusSource())
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	finding, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog).SuppressFindingWithOptions(ctx, req.Msg.GetId(), req.Msg.GetReason(), options)
+	finding, err := s.findingWorkflowService().SuppressFindingWithOptions(ctx, req.Msg.GetId(), req.Msg.GetReason(), options)
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2300,14 +2222,7 @@ func (s *bootstrapService) AssignFinding(ctx context.Context, req *connect.Reque
 	if err := authorizeFindingIDTenant(ctx, findingStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingNotFound))
 	}
-	finding, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).AssignFinding(ctx, req.Msg.GetId(), req.Msg.GetAssignee())
+	finding, err := s.findingCoreService().AssignFinding(ctx, req.Msg.GetId(), req.Msg.GetAssignee())
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2323,14 +2238,7 @@ func (s *bootstrapService) SetFindingDueDate(ctx context.Context, req *connect.R
 	if req.Msg.GetDueAt() != nil {
 		dueAt = req.Msg.GetDueAt().AsTime()
 	}
-	finding, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).SetFindingDueDate(ctx, req.Msg.GetId(), dueAt)
+	finding, err := s.findingCoreService().SetFindingDueDate(ctx, req.Msg.GetId(), dueAt)
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2342,14 +2250,7 @@ func (s *bootstrapService) AddFindingNote(ctx context.Context, req *connect.Requ
 	if err := authorizeFindingIDTenant(ctx, findingStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingNotFound))
 	}
-	finding, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog).AddFindingNote(ctx, req.Msg.GetId(), req.Msg.GetNote())
+	finding, err := s.findingWorkflowService().AddFindingNote(ctx, req.Msg.GetId(), req.Msg.GetNote())
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2361,14 +2262,7 @@ func (s *bootstrapService) LinkFindingTicket(ctx context.Context, req *connect.R
 	if err := authorizeFindingIDTenant(ctx, findingStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingNotFound))
 	}
-	finding, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog).LinkFindingTicket(
+	finding, err := s.findingWorkflowService().LinkFindingTicket(
 		ctx,
 		req.Msg.GetId(),
 		req.Msg.GetUrl(),
@@ -2386,23 +2280,7 @@ func (s *bootstrapService) LinkFindingExternalRef(ctx context.Context, req *conn
 	if err := authorizeFindingIDTenant(ctx, findingStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingNotFound))
 	}
-	finding, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog).LinkFindingExternalRef(ctx, req.Msg.GetId(), ports.FindingExternalRef{
-		System:               req.Msg.GetSystem(),
-		Kind:                 req.Msg.GetKind(),
-		ExternalID:           req.Msg.GetExternalId(),
-		URL:                  req.Msg.GetUrl(),
-		ExternalStatus:       req.Msg.GetExternalStatus(),
-		ExternalStatusReason: req.Msg.GetExternalStatusReason(),
-		LifecycleOwner:       req.Msg.GetLifecycleOwner(),
-		ObservedAt:           timestampValue(req.Msg.GetObservedAt()),
-	})
+	finding, err := s.findingWorkflowService().LinkFindingExternalRef(ctx, req.Msg.GetId(), findingapi.ExternalRefFromLinkRequest(req.Msg))
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2414,14 +2292,7 @@ func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
-	response, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).ListEvidence(ctx, findings.ListEvidenceRequest{
+	response, err := s.findingCoreService().ListEvidence(ctx, findings.ListEvidenceRequest{
 		RuntimeID:    req.Msg.GetRuntimeId(),
 		FindingID:    req.Msg.GetFindingId(),
 		RunID:        req.Msg.GetRunId(),
@@ -2444,14 +2315,7 @@ func (s *bootstrapService) ListFindingEvaluationRuns(ctx context.Context, req *c
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(err)
 	}
-	response, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).ListEvaluationRuns(ctx, findings.ListEvaluationRunsRequest{
+	response, err := s.findingCoreService().ListEvaluationRuns(ctx, findings.ListEvaluationRunsRequest{
 		RuntimeID: req.Msg.GetRuntimeId(),
 		RuleID:    req.Msg.GetRuleId(),
 		Status:    req.Msg.GetStatus(),
@@ -2466,14 +2330,7 @@ func (s *bootstrapService) ListFindingEvaluationRuns(ctx context.Context, req *c
 }
 
 func (s *bootstrapService) GetFindingEvaluationRun(ctx context.Context, req *connect.Request[cerebrov1.GetFindingEvaluationRunRequest]) (*connect.Response[cerebrov1.GetFindingEvaluationRunResponse], error) {
-	run, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).GetEvaluationRun(ctx, req.Msg.GetId())
+	run, err := s.findingCoreService().GetEvaluationRun(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2484,14 +2341,7 @@ func (s *bootstrapService) GetFindingEvaluationRun(ctx context.Context, req *con
 }
 
 func (s *bootstrapService) GetFindingEvidence(ctx context.Context, req *connect.Request[cerebrov1.GetFindingEvidenceRequest]) (*connect.Response[cerebrov1.GetFindingEvidenceResponse], error) {
-	evidence, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).GetEvidence(ctx, req.Msg.GetId())
+	evidence, err := s.findingCoreService().GetEvidence(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
@@ -2505,14 +2355,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+	response, err := s.findingCoreService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
 		RuntimeID:  req.Msg.GetId(),
 		RuleIDs:    req.Msg.GetRuleIds(),
 		EventLimit: req.Msg.GetEventLimit(),
@@ -2528,14 +2371,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := findings.New(
-		sourceRuntimeStore(s.deps.StateStore),
-		eventReplayer(s.deps.AppendLog),
-		findingStore(s.deps.StateStore),
-		findingEvaluationRunStore(s.deps.StateStore),
-		findingEvidenceStore(s.deps.StateStore),
-		claimStore(s.deps.StateStore),
-	).EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
+	response, err := s.findingCoreService().EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID:  req.Msg.GetId(),
 		RuleID:     req.Msg.GetRuleId(),
 		EventLimit: req.Msg.GetEventLimit(),
@@ -2988,6 +2824,18 @@ func (a *App) findingService() *findings.Service {
 
 func (a *App) newFindingService() *findings.Service {
 	return newFindingWorkflowFeatureService(newFindingFeatureDeps(a.deps))
+}
+
+func (s *bootstrapService) findingCoreService() *findings.Service {
+	return newFindingCoreFeatureService(newFindingFeatureDeps(s.deps))
+}
+
+func (s *bootstrapService) findingCandidateService() *findings.Service {
+	return newFindingCandidateFeatureService(newFindingFeatureDeps(s.deps))
+}
+
+func (s *bootstrapService) findingWorkflowService() *findings.Service {
+	return newFindingWorkflowFeatureService(newFindingFeatureDeps(s.deps))
 }
 
 const (
@@ -3835,7 +3683,7 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		ControlRefs:       findingControlRefMessages(finding.ControlRefs),
 		Notes:             findingNoteMessages(finding.Notes),
 		Tickets:           findingTicketMessages(finding.Tickets),
-		ExternalRefs:      findingExternalRefMessages(finding.ExternalRefs),
+		ExternalRefs:      findingapi.ExternalRefMessages(finding.ExternalRefs),
 		RiskScore:         boundedInt32(finding.RiskScore),
 		LikelihoodScore:   boundedInt32(finding.LikelihoodScore),
 		ImpactScore:       boundedInt32(finding.ImpactScore),
@@ -3950,35 +3798,6 @@ func findingTicketMessages(values []ports.FindingTicket) []*cerebrov1.FindingTic
 	return messages
 }
 
-func findingExternalRefMessages(values []ports.FindingExternalRef) []*cerebrov1.FindingExternalRef {
-	if len(values) == 0 {
-		return nil
-	}
-	messages := make([]*cerebrov1.FindingExternalRef, 0, len(values))
-	for _, value := range values {
-		system := strings.TrimSpace(value.System)
-		kind := strings.TrimSpace(value.Kind)
-		externalID := strings.TrimSpace(value.ExternalID)
-		if system == "" || kind == "" || externalID == "" {
-			continue
-		}
-		message := &cerebrov1.FindingExternalRef{
-			System:               system,
-			Kind:                 kind,
-			ExternalId:           externalID,
-			Url:                  strings.TrimSpace(value.URL),
-			ExternalStatus:       strings.TrimSpace(value.ExternalStatus),
-			ExternalStatusReason: strings.TrimSpace(value.ExternalStatusReason),
-			LifecycleOwner:       strings.TrimSpace(value.LifecycleOwner),
-		}
-		if !value.ObservedAt.IsZero() {
-			message.ObservedAt = timestamppb.New(value.ObservedAt.UTC())
-		}
-		messages = append(messages, message)
-	}
-	return messages
-}
-
 func findingStatusMessage(status string) cerebrov1.FindingStatus {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "open":
@@ -4029,21 +3848,6 @@ func parseFindingStatus(raw string) (cerebrov1.FindingStatus, error) {
 	default:
 		return cerebrov1.FindingStatus_FINDING_STATUS_UNSPECIFIED, fmt.Errorf("%w: unsupported finding status %q", errInvalidHTTPRequest, raw)
 	}
-}
-
-func findingStatusUpdateOptions(expectedStatus string, lastObservedBefore time.Time, statusSource string) (findings.FindingStatusUpdateOptions, error) {
-	options := findings.FindingStatusUpdateOptions{
-		LastObservedBefore: lastObservedBefore.UTC(),
-		Source:             strings.TrimSpace(statusSource),
-	}
-	if expected := strings.TrimSpace(expectedStatus); expected != "" {
-		parsed, err := parseFindingStatus(expected)
-		if err != nil {
-			return options, err
-		}
-		options.ExpectedStatus = findingStatusString(parsed)
-	}
-	return options, nil
 }
 
 func parseFindingOrder(raw string) (cerebrov1.FindingOrder, error) {

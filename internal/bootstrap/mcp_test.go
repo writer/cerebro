@@ -221,6 +221,7 @@ func mcpDomainSurfaceCorpus(t *testing.T) string {
 		"docs/MCP_DROID_SETUP.md",
 		"docs/FINDINGS_PLATFORM_ARCHITECTURE.md",
 	} {
+		// #nosec G304 -- fixed repo-relative guardrail paths derived from runtime.Caller.
 		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatalf("read %s: %v", rel, err)
