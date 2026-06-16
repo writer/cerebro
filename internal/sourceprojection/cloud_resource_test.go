@@ -170,6 +170,40 @@ func TestProjectAWSSageMakerEndpointConfigLinksRuntimeRole(t *testing.T) {
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
 }
 
+func TestProjectAWSSageMakerModelLinksRuntimeRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:sagemaker:us-east-1:123456789012:model/research-model"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerModelRole"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-sagemaker-model-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.sagemaker_model",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-model",
+			"resource_provider": "aws",
+			"resource_type":     "sagemaker_model",
+			"role_arn":          roleARN,
+			"role_name":         "service-role/SageMakerModelRole",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_sagemaker_model:" + resourceARN
+	roleURN := "urn:cerebro:writer:aws_role:" + roleARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.sagemaker.model" {
+		t.Fatalf("sagemaker model entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
+}
+
 func TestProjectAWSStreamingCloudResourceMetadata(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
