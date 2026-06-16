@@ -12,7 +12,13 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-const latestEventKind = "audit_log_latest_event"
+const (
+	latestEventKind       = "audit_log_latest_event"
+	latestEventResourceID = "latest_event"
+
+	FreshnessMaxSkipCount = 24
+	FreshnessMaxSkipAge   = 24 * time.Hour
+)
 
 // ListFunc fetches GitHub audit entries with caller-supplied options.
 type ListFunc func(context.Context, *gogithub.GetAuditLogOptions) ([]*gogithub.AuditEntry, *gogithub.Response, error)
@@ -33,6 +39,17 @@ func Options(include string, phrase string, order string, after string, perPage 
 	return opts
 }
 
+// FreshnessReadOptions returns the bounded policy for GitHub audit's heuristic
+// latest-event canary.
+func FreshnessReadOptions() sourcecdk.FamilyFreshnessReadOptions {
+	return sourcecdk.FamilyFreshnessReadOptions{
+		Confidence:     sourcecdk.FamilyFreshnessConfidenceHeuristic,
+		MaxSkipCount:   FreshnessMaxSkipCount,
+		MaxSkipAge:     FreshnessMaxSkipAge,
+		ProbeErrorMode: sourcecdk.FamilyFreshnessProbeErrorFailOpen,
+	}
+}
+
 // LatestEventChangeProbe fetches the newest audit-log event and returns a
 // heuristic family freshness ChangeProbe.
 func LatestEventChangeProbe(ctx context.Context, owner string, include string, phrase string, checkpoint *cerebrov1.SourceCheckpoint, list ListFunc) (sourcecdk.ChangeProbe, error) {
@@ -44,20 +61,16 @@ func LatestEventChangeProbe(ctx context.Context, owner string, include string, p
 }
 
 func latestEventProbe(owner string, include string, phrase string, entries []*gogithub.AuditEntry, observedAt time.Time) sourcecdk.FamilyFreshnessProbe {
-	resourceID := "org:" + strings.TrimSpace(owner)
 	updatedAt := time.Time{}
-	hashParts := []string{latestEventKind, resourceID, "empty", include, phrase}
+	hashParts := []string{latestEventKind, latestEventResourceID, strings.TrimSpace(owner), "empty", include, phrase}
 	if len(entries) > 0 && entries[0] != nil {
 		entry := entries[0]
 		updatedAt = occurredAt(entry)
-		if eventID := eventID(entry, updatedAt); eventID != "" {
-			resourceID = eventID
-		}
-		hashParts = []string{latestEventKind, resourceID, updatedAt.Format(time.RFC3339Nano), entry.GetAction(), entry.GetActor(), include, phrase}
+		hashParts = []string{latestEventKind, latestEventResourceID, strings.TrimSpace(owner), eventID(entry, updatedAt), updatedAt.Format(time.RFC3339Nano), entry.GetAction(), entry.GetActor(), include, phrase}
 	}
 	return sourcecdk.FamilyFreshnessProbe{
 		Kind:       latestEventKind,
-		ResourceID: resourceID,
+		ResourceID: latestEventResourceID,
 		ObservedAt: observedAt,
 		UpdatedAt:  updatedAt,
 		Hash:       sourcecdk.FamilyFreshnessHash(hashParts...),

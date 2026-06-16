@@ -3,6 +3,7 @@ package sourcecdk
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,9 @@ const (
 	FamilyFreshnessExtraUpdatedAt  = "canary_updated_at"
 	FamilyFreshnessExtraHash       = "canary_hash"
 	FamilyFreshnessExtraConfidence = "canary_confidence"
+	FamilyFreshnessExtraSkipCount  = "canary_skip_count"
+	FamilyFreshnessExtraFullReadAt = "canary_full_read_at"
+	FamilyFreshnessExtraReason     = "canary_reconcile_reason"
 )
 
 // FamilyFreshnessConfidence describes whether an unchanged freshness canary is
@@ -31,6 +35,23 @@ type FamilyFreshnessConfidence string
 const (
 	FamilyFreshnessConfidenceAuthoritative FamilyFreshnessConfidence = "authoritative"
 	FamilyFreshnessConfidenceHeuristic     FamilyFreshnessConfidence = "heuristic"
+)
+
+// FamilyFreshnessProbeErrorMode controls what BeginFamilyFreshnessReadWithOptions
+// does when the cheap metadata probe fails.
+type FamilyFreshnessProbeErrorMode string
+
+const (
+	FamilyFreshnessProbeErrorFailClosed FamilyFreshnessProbeErrorMode = "fail_closed"
+	FamilyFreshnessProbeErrorFailOpen   FamilyFreshnessProbeErrorMode = "fail_open"
+)
+
+const (
+	FamilyFreshnessReasonInitial      = "initial"
+	FamilyFreshnessReasonChanged      = "changed"
+	FamilyFreshnessReasonShortCircuit = "short_circuit"
+	FamilyFreshnessReasonMaxSkipCount = "max_skip_count"
+	FamilyFreshnessReasonMaxSkipAge   = "max_skip_age"
 )
 
 // FamilyFreshnessProbe is the normalized provider canary stored in
@@ -43,6 +64,29 @@ type FamilyFreshnessProbe struct {
 	UpdatedAt  time.Time
 	Hash       string
 	Confidence FamilyFreshnessConfidence
+	SkipCount  int
+	FullReadAt time.Time
+	Reason     string
+}
+
+// FamilyFreshnessReadOptions makes probe policy explicit for connectors that
+// use freshness metadata before a normal family read.
+type FamilyFreshnessReadOptions struct {
+	Confidence     FamilyFreshnessConfidence
+	MaxSkipCount   int
+	MaxSkipAge     time.Duration
+	ProbeErrorMode FamilyFreshnessProbeErrorMode
+	Now            func() time.Time
+}
+
+// FamilyFreshnessCheckpointInfo describes freshness metadata restored from a
+// checkpoint without exposing provider-specific hash or resource fields.
+type FamilyFreshnessCheckpointInfo struct {
+	Source     string
+	Family     string
+	Confidence FamilyFreshnessConfidence
+	SkipCount  int
+	Reason     string
 }
 
 // FamilyFreshnessHash returns a stable digest for the provider fields that
@@ -75,15 +119,45 @@ func FamilyFreshnessProbeFromCheckpoint(source string, family string, checkpoint
 	if !ok || !familyFreshnessEnvelopeMatches(envelope, source, family) {
 		return FamilyFreshnessProbe{}, false
 	}
+	return familyFreshnessProbeFromEnvelope(envelope)
+}
+
+// FamilyFreshnessInfoFromCheckpoint restores bounded freshness metadata for
+// runtime health and telemetry without exposing provider canary identities.
+func FamilyFreshnessInfoFromCheckpoint(checkpoint *cerebrov1.SourceCheckpoint) (FamilyFreshnessCheckpointInfo, bool) {
+	if checkpoint == nil {
+		return FamilyFreshnessCheckpointInfo{}, false
+	}
+	envelope, ok := DecodeCursorEnvelope(checkpoint.GetCursorOpaque())
+	if !ok {
+		return FamilyFreshnessCheckpointInfo{}, false
+	}
+	probe, ok := familyFreshnessProbeFromEnvelope(envelope)
+	if !ok {
+		return FamilyFreshnessCheckpointInfo{}, false
+	}
+	return FamilyFreshnessCheckpointInfo{
+		Source:     strings.TrimSpace(envelope.Source),
+		Family:     strings.TrimSpace(envelope.Family),
+		Confidence: probe.Confidence,
+		SkipCount:  probe.SkipCount,
+		Reason:     probe.Reason,
+	}, true
+}
+
+func familyFreshnessProbeFromEnvelope(envelope CursorEnvelope) (FamilyFreshnessProbe, bool) {
 	extra := envelope.Extra
 	probe := FamilyFreshnessProbe{
 		Kind:       strings.TrimSpace(extra[FamilyFreshnessExtraKind]),
 		ResourceID: strings.TrimSpace(extra[FamilyFreshnessExtraResourceID]),
 		Hash:       strings.TrimSpace(extra[FamilyFreshnessExtraHash]),
 		Confidence: normalizeFamilyFreshnessConfidence(extra[FamilyFreshnessExtraConfidence]),
+		SkipCount:  parseFamilyFreshnessInt(extra[FamilyFreshnessExtraSkipCount]),
+		Reason:     normalizeFamilyFreshnessReason(extra[FamilyFreshnessExtraReason]),
 	}
 	probe.ObservedAt = parseFamilyFreshnessTime(extra[FamilyFreshnessExtraObservedAt])
 	probe.UpdatedAt = parseFamilyFreshnessTime(extra[FamilyFreshnessExtraUpdatedAt])
+	probe.FullReadAt = parseFamilyFreshnessTime(extra[FamilyFreshnessExtraFullReadAt])
 	probe, valid := normalizeFamilyFreshnessProbe(probe)
 	if !valid || probe.Hash == "" {
 		return FamilyFreshnessProbe{}, false
@@ -114,14 +188,25 @@ func FamilyFreshnessChangeProbe(source string, family string, checkpoint *cerebr
 // BeginFamilyFreshnessRead restores probe metadata from continuation cursors
 // and runs a start-of-family freshness probe when no provider cursor is active.
 func BeginFamilyFreshnessRead(source string, family string, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, probe func(*cerebrov1.SourceCheckpoint) (ChangeProbe, error)) (*cerebrov1.SourceCheckpoint, *Pull, error) {
+	return BeginFamilyFreshnessReadWithOptions(source, family, cursor, checkpoint, probe, FamilyFreshnessReadOptions{})
+}
+
+// BeginFamilyFreshnessReadWithOptions restores probe metadata from continuation
+// cursors, applies explicit stale-heuristic policy, and runs a start-of-family
+// freshness probe when no provider cursor is active.
+func BeginFamilyFreshnessReadWithOptions(source string, family string, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, probe func(*cerebrov1.SourceCheckpoint) (ChangeProbe, error), options FamilyFreshnessReadOptions) (*cerebrov1.SourceCheckpoint, *Pull, error) {
 	readCheckpoint := FamilyFreshnessCheckpointFromCursor(source, family, cursor, checkpoint)
 	if strings.TrimSpace(CursorToken(cursor)) != "" || probe == nil {
 		return readCheckpoint, nil, nil
 	}
 	change, err := probe(checkpoint)
 	if err != nil {
+		if normalizeFamilyFreshnessProbeErrorMode(options.ProbeErrorMode) == FamilyFreshnessProbeErrorFailOpen {
+			return readCheckpoint, nil, nil
+		}
 		return nil, nil, err
 	}
+	change = applyFamilyFreshnessReadOptions(source, family, checkpoint, change, options)
 	if change.Unchanged {
 		reason := change.ShortCircuitReason
 		if reason == "" {
@@ -164,13 +249,34 @@ func FamilyFreshnessCheckpoint(source string, family string, checkpoint *cerebro
 	envelope.Extra[FamilyFreshnessExtraResourceID] = normalized.ResourceID
 	if !normalized.ObservedAt.IsZero() {
 		envelope.Extra[FamilyFreshnessExtraObservedAt] = normalized.ObservedAt.UTC().Format(time.RFC3339Nano)
+	} else {
+		delete(envelope.Extra, FamilyFreshnessExtraObservedAt)
 	}
 	if !normalized.UpdatedAt.IsZero() {
 		envelope.Extra[FamilyFreshnessExtraUpdatedAt] = normalized.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	} else {
+		delete(envelope.Extra, FamilyFreshnessExtraUpdatedAt)
 	}
 	envelope.Extra[FamilyFreshnessExtraHash] = normalized.Hash
 	if normalized.Confidence != "" {
 		envelope.Extra[FamilyFreshnessExtraConfidence] = string(normalized.Confidence)
+	} else {
+		delete(envelope.Extra, FamilyFreshnessExtraConfidence)
+	}
+	if normalized.SkipCount > 0 {
+		envelope.Extra[FamilyFreshnessExtraSkipCount] = strconv.Itoa(normalized.SkipCount)
+	} else {
+		delete(envelope.Extra, FamilyFreshnessExtraSkipCount)
+	}
+	if !normalized.FullReadAt.IsZero() {
+		envelope.Extra[FamilyFreshnessExtraFullReadAt] = normalized.FullReadAt.UTC().Format(time.RFC3339Nano)
+	} else {
+		delete(envelope.Extra, FamilyFreshnessExtraFullReadAt)
+	}
+	if normalized.Reason != "" {
+		envelope.Extra[FamilyFreshnessExtraReason] = normalized.Reason
+	} else {
+		delete(envelope.Extra, FamilyFreshnessExtraReason)
 	}
 	encoded, err := EncodeCursorEnvelope(envelope)
 	if err != nil {
@@ -220,7 +326,12 @@ func normalizeFamilyFreshnessProbe(probe FamilyFreshnessProbe) (FamilyFreshnessP
 	probe.Hash = strings.TrimSpace(probe.Hash)
 	probe.ObservedAt = probe.ObservedAt.UTC()
 	probe.UpdatedAt = probe.UpdatedAt.UTC()
+	probe.FullReadAt = probe.FullReadAt.UTC()
 	probe.Confidence = normalizeFamilyFreshnessConfidence(string(probe.Confidence))
+	if probe.SkipCount < 0 {
+		probe.SkipCount = 0
+	}
+	probe.Reason = normalizeFamilyFreshnessReason(probe.Reason)
 	if probe.Hash == "" {
 		probe.Hash = FamilyFreshnessHash(
 			probe.Kind,
@@ -232,12 +343,108 @@ func normalizeFamilyFreshnessProbe(probe FamilyFreshnessProbe) (FamilyFreshnessP
 	return probe, probe.Kind != "" && probe.Hash != ""
 }
 
+func applyFamilyFreshnessReadOptions(source string, family string, checkpoint *cerebrov1.SourceCheckpoint, change ChangeProbe, options FamilyFreshnessReadOptions) ChangeProbe {
+	nextProbe, hasNext := FamilyFreshnessProbeFromCheckpoint(source, family, change.Checkpoint)
+	if !hasNext {
+		return change
+	}
+	previousProbe, hasPrevious := FamilyFreshnessProbeFromCheckpoint(source, family, checkpoint)
+	now := familyFreshnessNow(options)
+	if nextProbe.ObservedAt.IsZero() {
+		nextProbe.ObservedAt = now
+	}
+	if options.Confidence != "" {
+		nextProbe.Confidence = options.Confidence
+	}
+	if !change.Unchanged {
+		nextProbe.SkipCount = 0
+		nextProbe.FullReadAt = nextProbe.ObservedAt
+		if hasPrevious {
+			nextProbe.Reason = FamilyFreshnessReasonChanged
+		} else {
+			nextProbe.Reason = FamilyFreshnessReasonInitial
+		}
+		change.Checkpoint = FamilyFreshnessCheckpoint(source, family, change.Checkpoint, nextProbe)
+		return change
+	}
+	nextProbe.FullReadAt = previousProbe.FullReadAt
+	forceReason := familyFreshnessForceReason(previousProbe, hasPrevious, options, now)
+	if forceReason != "" {
+		nextProbe.SkipCount = 0
+		nextProbe.FullReadAt = nextProbe.ObservedAt
+		nextProbe.Reason = forceReason
+		change.Unchanged = false
+		change.ShortCircuitReason = ""
+		change.Checkpoint = FamilyFreshnessCheckpoint(source, family, change.Checkpoint, nextProbe)
+		return change
+	}
+	if hasPrevious {
+		nextProbe.SkipCount = previousProbe.SkipCount + 1
+	}
+	nextProbe.Reason = FamilyFreshnessReasonShortCircuit
+	change.Checkpoint = FamilyFreshnessCheckpoint(source, family, change.Checkpoint, nextProbe)
+	return change
+}
+
+func familyFreshnessForceReason(previous FamilyFreshnessProbe, hasPrevious bool, options FamilyFreshnessReadOptions, now time.Time) string {
+	if !hasPrevious {
+		return ""
+	}
+	if options.MaxSkipCount > 0 && previous.SkipCount >= options.MaxSkipCount {
+		return FamilyFreshnessReasonMaxSkipCount
+	}
+	if options.MaxSkipAge > 0 {
+		if previous.FullReadAt.IsZero() {
+			return FamilyFreshnessReasonMaxSkipAge
+		}
+		if !now.IsZero() && !previous.FullReadAt.After(now) && now.Sub(previous.FullReadAt) >= options.MaxSkipAge {
+			return FamilyFreshnessReasonMaxSkipAge
+		}
+	}
+	return ""
+}
+
+func familyFreshnessNow(options FamilyFreshnessReadOptions) time.Time {
+	if options.Now != nil {
+		if now := options.Now().UTC(); !now.IsZero() {
+			return now
+		}
+	}
+	return time.Now().UTC()
+}
+
 func normalizeFamilyFreshnessConfidence(confidence string) FamilyFreshnessConfidence {
 	switch FamilyFreshnessConfidence(strings.ToLower(strings.TrimSpace(confidence))) {
 	case FamilyFreshnessConfidenceAuthoritative:
 		return FamilyFreshnessConfidenceAuthoritative
 	case FamilyFreshnessConfidenceHeuristic:
 		return FamilyFreshnessConfidenceHeuristic
+	default:
+		return ""
+	}
+}
+
+func normalizeFamilyFreshnessProbeErrorMode(mode FamilyFreshnessProbeErrorMode) FamilyFreshnessProbeErrorMode {
+	switch FamilyFreshnessProbeErrorMode(strings.ToLower(strings.TrimSpace(string(mode)))) {
+	case FamilyFreshnessProbeErrorFailOpen:
+		return FamilyFreshnessProbeErrorFailOpen
+	default:
+		return FamilyFreshnessProbeErrorFailClosed
+	}
+}
+
+func normalizeFamilyFreshnessReason(reason string) string {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case FamilyFreshnessReasonInitial:
+		return FamilyFreshnessReasonInitial
+	case FamilyFreshnessReasonChanged:
+		return FamilyFreshnessReasonChanged
+	case FamilyFreshnessReasonShortCircuit:
+		return FamilyFreshnessReasonShortCircuit
+	case FamilyFreshnessReasonMaxSkipCount:
+		return FamilyFreshnessReasonMaxSkipCount
+	case FamilyFreshnessReasonMaxSkipAge:
+		return FamilyFreshnessReasonMaxSkipAge
 	default:
 		return ""
 	}
@@ -253,6 +460,14 @@ func parseFamilyFreshnessTime(value string) time.Time {
 		return time.Time{}
 	}
 	return parsed.UTC()
+}
+
+func parseFamilyFreshnessInt(value string) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 0 {
+		return 0
+	}
+	return parsed
 }
 
 func familyFreshnessEnvelopeMatches(envelope CursorEnvelope, source string, family string) bool {

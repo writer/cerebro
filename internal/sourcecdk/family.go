@@ -17,6 +17,7 @@ type Family[S any] struct {
 	Check                func(context.Context, S) error
 	Discover             func(context.Context, S) ([]URN, error)
 	Probe                func(context.Context, S, *cerebrov1.SourceCheckpoint) (ChangeProbe, error)
+	ProbeOptions         FamilyFreshnessReadOptions
 	Read                 func(context.Context, S, *cerebrov1.SourceCursor) (Pull, error)
 	ReadWithCheckpoint   func(context.Context, S, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint) (Pull, error)
 }
@@ -130,7 +131,13 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 	if family.Probe != nil {
 		probe, err := family.Probe(ctx, settings, checkpoint)
 		if err != nil {
-			return Pull{}, err
+			if normalizeFamilyFreshnessProbeErrorMode(family.ProbeOptions.ProbeErrorMode) == FamilyFreshnessProbeErrorFailOpen {
+				probe = ChangeProbe{}
+			} else {
+				return Pull{}, err
+			}
+		} else {
+			probe = applyFamilyFreshnessReadOptions(e.sourceID, family.Name, checkpoint, probe, family.ProbeOptions)
 		}
 		if probe.Unchanged {
 			reason := probe.ShortCircuitReason
