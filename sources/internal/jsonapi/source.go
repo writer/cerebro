@@ -28,8 +28,9 @@ import (
 )
 
 const (
-	defaultPageSize = 100
-	maxPageSize     = 500
+	defaultPageSize             = 100
+	maxPageSize                 = 500
+	maxConfigTemplateExpansions = 32
 )
 
 // Family describes one JSON API collection exposed by a first-class source.
@@ -1111,10 +1112,13 @@ func resolvePathParams(sourceID string, path string, cfg sourcecdk.Config, param
 
 func resolveConfigTemplate(sourceID string, value string, cfg sourcecdk.Config) (string, error) {
 	resolved := strings.TrimSpace(value)
-	for {
+	for expansions := 0; ; expansions++ {
 		start := strings.Index(resolved, "${config.")
 		if start < 0 {
 			return resolved, nil
+		}
+		if expansions >= maxConfigTemplateExpansions {
+			return "", fmt.Errorf("%s config template exceeded %d expansions in %q", sourceID, maxConfigTemplateExpansions, value)
 		}
 		end := strings.Index(resolved[start:], "}")
 		if end < 0 {
@@ -1168,8 +1172,10 @@ func normalizedAuthModel(value string) string {
 func oauthCacheKey(settings settings, grantType string) string {
 	return strings.Join([]string{
 		grantType,
+		settings.tenantID,
 		settings.tokenURL,
 		settings.clientID,
+		stableID(settings.clientSecret),
 		settings.refreshToken,
 		strings.Join(nonEmpty(settings.oauthScopes), " "),
 	}, "\x00")

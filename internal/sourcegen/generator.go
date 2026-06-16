@@ -1124,7 +1124,7 @@ func renderSourceTestGo(request normalizedRequest) string {
 	}
 	fmt.Fprintf(&b, "\t\tif r.Header.Get(\"Authorization\") != %s {\n\t\t\tt.Fatalf(\"Authorization = %%q\", r.Header.Get(\"Authorization\"))\n\t\t}\n", strconv.Quote(request.TokenScheme+" test-token"))
 	if request.HealthPath != request.DefaultPath {
-		fmt.Fprintf(&b, "\t\tif r.URL.Path == defaultHealthPath {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n")
+		fmt.Fprintf(&b, "\t\tif r.URL.RequestURI() == defaultHealthPath {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n")
 	}
 	fmt.Fprintf(&b, "\t\tif r.URL.Path != %s {\n\t\t\tt.Fatalf(\"path = %%q\", r.URL.Path)\n\t\t}\n", strconv.Quote(request.DefaultPath))
 	fmt.Fprintf(&b, "\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n")

@@ -88,7 +88,7 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	}
 	sourceTest := readGeneratedFile(t, outputDir, "sources/demo_source/source_test.go")
 	authCheck := strings.Index(sourceTest, `r.Header.Get("Authorization")`)
-	healthCheck := strings.Index(sourceTest, `r.URL.Path == defaultHealthPath`)
+	healthCheck := strings.Index(sourceTest, `r.URL.RequestURI() == defaultHealthPath`)
 	if authCheck < 0 || healthCheck < 0 || authCheck > healthCheck {
 		t.Fatalf("generated source test must assert health auth before health short-circuit:\n%s", sourceTest)
 	}
@@ -183,6 +183,57 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	sourceTest := readGeneratedFile(t, outputDir, "sources/example_idp/source_test.go")
 	if strings.Contains(sourceTest, "evidence_cas_uri") {
 		t.Fatalf("definition generated source test should not assume EvidenceCAS fields:\n%s", sourceTest)
+	}
+}
+
+func TestGenerateDefinitionHealthPathWithQueryUsesRequestURI(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-query_health",
+			TenantID:      "tenant-a",
+			SourceID:      "query_health",
+			DisplayName:   "Query Health",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/about?fields=user",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/users",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "query_health.user",
+					SchemaRef: "query_health/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+				Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/query_health/source.go")
+	if !strings.Contains(source, `"/about?fields=user"`) {
+		t.Fatalf("generated source missing query health path:\n%s", source)
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/query_health/source_test.go")
+	if !strings.Contains(sourceTest, `r.URL.RequestURI() == defaultHealthPath`) {
+		t.Fatalf("generated source test does not compare RequestURI:\n%s", sourceTest)
 	}
 }
 

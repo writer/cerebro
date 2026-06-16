@@ -192,6 +192,68 @@ func TestReadExchangesOAuthClientCredentials(t *testing.T) {
 	}
 }
 
+func TestOAuthCacheKeySeparatesTenantAndClientSecret(t *testing.T) {
+	tokenRequests := 0
+	deviceRequests := 0
+	wantAuth := []string{"Bearer token-1", "Bearer token-2", "Bearer token-3"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			tokenRequests++
+			if tokenRequests > len(wantAuth) {
+				t.Fatalf("unexpected extra token request")
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm() error = %v", err)
+			}
+			if r.Form.Get("client_id") != "client-1" || r.Form.Get("client_secret") == "" {
+				t.Fatalf("token form = %#v", r.Form)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": wantAuth[tokenRequests-1][len("Bearer "):],
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			})
+		case "/devices":
+			if deviceRequests >= len(wantAuth) {
+				t.Fatalf("unexpected extra device request")
+			}
+			if got := r.Header.Get("Authorization"); got != wantAuth[deviceRequests] {
+				t.Fatalf("Authorization = %q, want %q", got, wantAuth[deviceRequests])
+			}
+			deviceRequests++
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	source := newOAuthTestSource(t, server.URL, server.URL+"/oauth/token")
+	for _, cfg := range []map[string]string{
+		{"tenant_id": "tenant-a", "client_id": "client-1", "client_secret": "secret-1"},
+		{"tenant_id": "tenant-b", "client_id": "client-1", "client_secret": "secret-1"},
+		{"tenant_id": "tenant-b", "client_id": "client-1", "client_secret": "secret-2"},
+	} {
+		if _, err := source.Read(context.Background(), sourcecdk.NewConfig(cfg), nil); err != nil {
+			t.Fatalf("Read(%#v) error = %v", cfg, err)
+		}
+	}
+	if tokenRequests != len(wantAuth) {
+		t.Fatalf("token requests = %d, want %d", tokenRequests, len(wantAuth))
+	}
+}
+
+func TestResolveConfigTemplateRejectsRecursiveConfig(t *testing.T) {
+	_, err := resolveConfigTemplate("test", "${config.loop}", sourcecdk.NewConfig(map[string]string{
+		"loop": "${config.loop}",
+	}))
+	if err == nil {
+		t.Fatal("resolveConfigTemplate() error = nil, want recursion error")
+	}
+}
+
 func TestReadPreservesNextCursorForEmptyPage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

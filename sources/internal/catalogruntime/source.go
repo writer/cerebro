@@ -222,13 +222,6 @@ func attributePaths(resource connectordefinitions.ResourceFamily, class string) 
 	if resource.NameField != "" {
 		attrs["resource_name"] = resource.NameField + "|" + attrs["resource_name"]
 	}
-	if resource.Projection != nil {
-		for key, value := range resource.Projection.Fields {
-			if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
-				attrs[strings.TrimSpace(key)] = strings.TrimSpace(value)
-			}
-		}
-	}
 	switch class {
 	case "finding":
 		attrs["finding_id"] = "finding_id|id"
@@ -253,6 +246,13 @@ func attributePaths(resource connectordefinitions.ResourceFamily, class string) 
 		attrs["event_type"] = "event_type|event_name|action|type"
 		attrs["actor_id"] = "actor_id|actor.id|actorId|user_id|user.id"
 		attrs["actor_email"] = "actor_email|actor.email|email|user.email"
+	}
+	if resource.Projection != nil {
+		for key, value := range resource.Projection.Fields {
+			if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+				attrs[strings.TrimSpace(key)] = strings.TrimSpace(value)
+			}
+		}
 	}
 	return attrs
 }

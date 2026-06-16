@@ -196,6 +196,28 @@ func TestSourceAuthModels(t *testing.T) {
 	}
 }
 
+func TestProjectionFieldsOverrideClassDefaults(t *testing.T) {
+	attrs := attributePaths(connectordefinitions.ResourceFamily{
+		ID: "findings",
+		Projection: &connectordefinitions.ProjectionSpec{
+			Template: "finding",
+			Fields: map[string]string{
+				"severity": "data.cvss_label",
+				"status":   "data.lifecycle",
+			},
+		},
+	}, "finding")
+	if attrs["severity"] != "data.cvss_label" {
+		t.Fatalf("severity = %q, want projection override", attrs["severity"])
+	}
+	if attrs["status"] != "data.lifecycle" {
+		t.Fatalf("status = %q, want projection override", attrs["status"])
+	}
+	if attrs["title"] == "" {
+		t.Fatal("title default missing")
+	}
+}
+
 func authTestDefinition(baseURL string, authModel string) connectordefinitions.Definition {
 	return connectordefinitions.Definition{
 		ID:          "tenant-example",
