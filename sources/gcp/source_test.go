@@ -71,6 +71,8 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyAIEndpoint, kind: "gcp.aiplatform_endpoint"},
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image"},
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository"},
+		{family: familyBinaryAuthorizationAttestor, kind: "gcp.binary_authorization_attestor"},
+		{family: familyBinaryAuthorizationPolicy, kind: "gcp.binary_authorization_policy"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset"},
 		{family: familyBigQueryTable, kind: "gcp.bigquery_table"},
 		{family: familyBigtableInstance, kind: "gcp.bigtable_instance"},
@@ -830,6 +832,8 @@ func TestReadLiveGCPSecurityCoveragePreview(t *testing.T) {
 		want   string
 	}{
 		{family: familySecurityCenterFinding, kind: "gcp.security_center_finding", attr: "severity", want: "HIGH"},
+		{family: familyBinaryAuthorizationAttestor, kind: "gcp.binary_authorization_attestor", attr: "public_keys_count", want: "2"},
+		{family: familyBinaryAuthorizationPolicy, kind: "gcp.binary_authorization_policy", attr: "requires_attestation", want: "true"},
 		{family: familyWorkloadIdentityPool, kind: "gcp.workload_identity_pool", attr: "pool_id", want: "github"},
 		{family: familyWorkloadIdentityProvider, kind: "gcp.workload_identity_provider", attr: "provider_type", want: "oidc"},
 	} {
@@ -939,6 +943,45 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"keys": []map[string]any{{"name": "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1", "keyType": "USER_MANAGED", "validAfterTime": "2026-04-23T00:00:00Z"}}})
 		case "/v1/projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com:getIamPolicy":
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/iam.serviceAccountTokenCreator", "members": []string{"user:admin@writer.com"}}}})
+		case "/v1/projects/writer-prod/policy":
+			writeJSON(t, w, map[string]any{
+				"name":                       "projects/writer-prod/policy",
+				"description":                "prod deploy admission policy",
+				"globalPolicyEvaluationMode": "ENABLE",
+				"admissionWhitelistPatterns": []map[string]any{{"namePattern": "gcr.io/google_containers/*"}},
+				"clusterAdmissionRules": map[string]any{
+					"us-central1.prod": map[string]any{
+						"evaluationMode":        "REQUIRE_ATTESTATION",
+						"enforcementMode":       "ENFORCED_BLOCK_AND_AUDIT_LOG",
+						"requireAttestationsBy": []string{"projects/writer-prod/attestors/prod-builder"},
+					},
+				},
+				"defaultAdmissionRule": map[string]any{
+					"evaluationMode":        "REQUIRE_ATTESTATION",
+					"enforcementMode":       "ENFORCED_BLOCK_AND_AUDIT_LOG",
+					"requireAttestationsBy": []string{"projects/writer-prod/attestors/prod-builder"},
+				},
+				"updateTime": "2026-04-24T00:00:00Z",
+				"etag":       "policy-etag",
+			})
+		case "/v1/projects/writer-prod/attestors":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("binary authorization attestors pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"attestors": []map[string]any{{
+				"name":        "projects/writer-prod/attestors/prod-builder",
+				"description": "prod build attestor",
+				"updateTime":  "2026-04-24T00:00:00Z",
+				"etag":        "attestor-etag",
+				"userOwnedGrafeasNote": map[string]any{
+					"noteReference":                 "projects/writer-prod/notes/prod-builder",
+					"delegationServiceAccountEmail": "service-123@gcp-sa-binaryauthorization.iam.gserviceaccount.com",
+					"publicKeys": []map[string]any{
+						{"id": "pgp-key", "comment": "release signing key", "asciiArmoredPgpPublicKey": "-----BEGIN PGP PUBLIC KEY BLOCK-----"},
+						{"id": "prod-builder-pkix", "comment": "kms signing key", "pkixPublicKey": map[string]string{"publicKeyPem": "-----BEGIN PUBLIC KEY-----", "signatureAlgorithm": "ECDSA_P256_SHA256"}},
+					},
+				},
+			}}})
 		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools":
 			if got := r.URL.Query().Get("pageSize"); got != "10" {
 				t.Fatalf("workload identity pools pageSize = %q, want 10", got)

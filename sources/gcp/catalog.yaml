@@ -8,6 +8,8 @@ emitted_kinds:
   - gcp.artifact_registry_image
   - gcp.artifact_registry_repository
   - gcp.audit
+  - gcp.binary_authorization_attestor
+  - gcp.binary_authorization_policy
   - gcp.bigquery_dataset
   - gcp.bigquery_table
   - gcp.bigtable_instance
@@ -98,6 +100,8 @@ runtime_families:
   - artifact_registry_image
   - artifact_registry_repository
   - audit
+  - binary_authorization_attestor
+  - binary_authorization_policy
   - bigquery_dataset
   - bigquery_table
   - bigtable_instance
@@ -213,6 +217,18 @@ coverage_contract:
       type: audit_event
       title: GCP audit logs
       families: [audit]
+      support: supported
+      high_value: true
+    - id: binary_authorization_attestor
+      type: entity_family
+      title: Binary Authorization attestors
+      families: [binary_authorization_attestor]
+      support: supported
+      high_value: true
+    - id: binary_authorization_policy
+      type: entity_family
+      title: Binary Authorization policy
+      families: [binary_authorization_policy]
       support: supported
       high_value: true
     - id: bigquery_dataset

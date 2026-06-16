@@ -259,6 +259,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"gcp.aiplatform_dataset":                        gcpCloudResourceProjections,
 	"gcp.aiplatform_endpoint":                       gcpCloudResourceProjections,
 	"gcp.audit":                                     gcpAuditProjections,
+	"gcp.binary_authorization_attestor":             gcpCloudResourceProjections,
+	"gcp.binary_authorization_policy":               gcpCloudResourceProjections,
 	"gcp.bigquery_dataset":                          gcpCloudResourceProjections,
 	"gcp.bigquery_table":                            gcpCloudResourceProjections,
 	"gcp.bigtable_instance":                         gcpCloudResourceProjections,
