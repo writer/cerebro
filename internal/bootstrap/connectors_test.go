@@ -24,6 +24,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
@@ -1166,22 +1167,34 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		HighValue          bool   `json:"high_value"`
 	}
 	type catalogConnector struct {
-		SourceID             string                  `json:"source_id"`
-		CatalogStatus        string                  `json:"catalog_status"`
-		ClassifierOutput     string                  `json:"classifier_output"`
-		AuthModel            string                  `json:"auth_model"`
-		RuntimeExecutable    bool                    `json:"runtime_executable"`
-		VerificationEndpoint string                  `json:"verification_endpoint"`
-		ResourceFamilies     []catalogResourceFamily `json:"resource_families"`
-		AccessStatus         string                  `json:"access_status"`
-		SetupAllowed         bool                    `json:"setup_allowed"`
-		Requestable          bool                    `json:"requestable"`
+		SourceID              string                        `json:"source_id"`
+		CatalogStatus         string                        `json:"catalog_status"`
+		ClassifierOutput      string                        `json:"classifier_output"`
+		AuthModel             string                        `json:"auth_model"`
+		RuntimeExecutable     bool                          `json:"runtime_executable"`
+		VerificationEndpoint  string                        `json:"verification_endpoint"`
+		ResourceFamilies      []catalogResourceFamily       `json:"resource_families"`
+		CatalogSchemaVersion  string                        `json:"catalog_schema_version"`
+		CatalogCurrentVersion int                           `json:"catalog_current_version"`
+		CatalogSourcePath     string                        `json:"catalog_source_path"`
+		DefinitionOrigin      string                        `json:"definition_origin"`
+		ReadinessStage        string                        `json:"readiness_stage"`
+		IntegrationDepth      connectorIntegrationDepthView `json:"integration_depth"`
+		AccessStatus          string                        `json:"access_status"`
+		SetupAllowed          bool                          `json:"setup_allowed"`
+		Requestable           bool                          `json:"requestable"`
 	}
 	var payload struct {
-		Connectors []catalogConnector `json:"connectors"`
+		Connectors          []catalogConnector `json:"connectors"`
+		GeneratedAt         string             `json:"generated_at"`
+		CatalogVersion      string             `json:"catalog_version"`
+		CatalogSourceCommit string             `json:"catalog_source_commit"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
+	}
+	if payload.GeneratedAt == "" || payload.CatalogVersion != connectordefinitions.SchemaVersionIntegrationV1 || payload.CatalogSourceCommit == "" {
+		t.Fatalf("catalog response metadata generated=%q version=%q commit=%q, want populated catalog contract", payload.GeneratedAt, payload.CatalogVersion, payload.CatalogSourceCommit)
 	}
 	if len(payload.Connectors) < 101 {
 		t.Fatalf("connectors len = %d, want fixture source plus 100 catalog definitions", len(payload.Connectors))
@@ -1196,6 +1209,12 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	}
 	if jumpcloud.AccessStatus != connectorAccessCatalogOnly || jumpcloud.SetupAllowed || !jumpcloud.Requestable {
 		t.Fatalf("jumpcloud access = %q setup=%v requestable=%v, want catalog-only requestable", jumpcloud.AccessStatus, jumpcloud.SetupAllowed, jumpcloud.Requestable)
+	}
+	if jumpcloud.DefinitionOrigin != connectorDefinitionOriginCatalog || jumpcloud.CatalogSchemaVersion != connectordefinitions.SchemaVersionIntegrationV1 || jumpcloud.CatalogSourcePath == "" {
+		t.Fatalf("jumpcloud catalog provenance = origin %q schema %q version %d path %q, want builtin catalog provenance", jumpcloud.DefinitionOrigin, jumpcloud.CatalogSchemaVersion, jumpcloud.CatalogCurrentVersion, jumpcloud.CatalogSourcePath)
+	}
+	if jumpcloud.ReadinessStage != connectorReadinessStageSourcegenReady || jumpcloud.IntegrationDepth.Score == 0 || jumpcloud.IntegrationDepth.ResourceFamilies == 0 {
+		t.Fatalf("jumpcloud readiness/depth = %q/%#v, want sourcegen-ready depth signal", jumpcloud.ReadinessStage, jumpcloud.IntegrationDepth)
 	}
 	if jumpcloud.AuthModel != "api_key" || jumpcloud.VerificationEndpoint == "" {
 		t.Fatalf("jumpcloud auth/verification = %q/%q, want catalog metadata", jumpcloud.AuthModel, jumpcloud.VerificationEndpoint)
@@ -1297,9 +1316,11 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
 		},
 		ConnectorAccess: config.ConnectorAccessConfig{
-			HiddenSources:     []string{"auth0"},
-			RestrictedSources: []string{"bootstrap_token", "jumpcloud"},
-			RestrictionReason: "limited preview",
+			HiddenSources:       []string{"auth0", "duo"},
+			RestrictedSources:   []string{"bootstrap_token", "duo", "jumpcloud"},
+			RestrictionReason:   "limited preview",
+			RequestAccessURL:    "https://access.example.com/request?source={source_id}&tenant={tenant_id}",
+			RequestAccessAction: "Request in Access Hub",
 		},
 	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
 	server := httptest.NewServer(app.Handler())
@@ -1319,12 +1340,16 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 	}
 	var payload struct {
 		Connectors []struct {
-			SourceID          string `json:"source_id"`
-			AccessStatus      string `json:"access_status"`
-			AccessReason      string `json:"access_reason"`
-			SetupAllowed      bool   `json:"setup_allowed"`
-			Requestable       bool   `json:"requestable"`
-			ConnectionMethods []struct {
+			SourceID            string `json:"source_id"`
+			AccessStatus        string `json:"access_status"`
+			AccessReason        string `json:"access_reason"`
+			SetupAllowed        bool   `json:"setup_allowed"`
+			Requestable         bool   `json:"requestable"`
+			RequestableReason   string `json:"requestable_reason"`
+			RequestAccessURL    string `json:"request_access_url"`
+			RequestAccessAction string `json:"request_access_action"`
+			ReadinessStage      string `json:"readiness_stage"`
+			ConnectionMethods   []struct {
 				ID string `json:"id"`
 			} `json:"connection_methods"`
 		} `json:"connectors"`
@@ -1333,12 +1358,16 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	bySourceID := map[string]struct {
-		SourceID          string `json:"source_id"`
-		AccessStatus      string `json:"access_status"`
-		AccessReason      string `json:"access_reason"`
-		SetupAllowed      bool   `json:"setup_allowed"`
-		Requestable       bool   `json:"requestable"`
-		ConnectionMethods []struct {
+		SourceID            string `json:"source_id"`
+		AccessStatus        string `json:"access_status"`
+		AccessReason        string `json:"access_reason"`
+		SetupAllowed        bool   `json:"setup_allowed"`
+		Requestable         bool   `json:"requestable"`
+		RequestableReason   string `json:"requestable_reason"`
+		RequestAccessURL    string `json:"request_access_url"`
+		RequestAccessAction string `json:"request_access_action"`
+		ReadinessStage      string `json:"readiness_stage"`
+		ConnectionMethods   []struct {
 			ID string `json:"id"`
 		} `json:"connection_methods"`
 	}{}
@@ -1348,9 +1377,15 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 	if _, ok := bySourceID["auth0"]; ok {
 		t.Fatal("auth0 was returned despite connector hidden source config")
 	}
+	if _, ok := bySourceID["duo"]; ok {
+		t.Fatal("duo was returned despite hidden source precedence over restricted source config")
+	}
 	bootstrapToken := bySourceID["bootstrap_token"]
 	if bootstrapToken.AccessStatus != connectorAccessRestricted || bootstrapToken.AccessReason != "limited preview" || bootstrapToken.SetupAllowed || !bootstrapToken.Requestable || len(bootstrapToken.ConnectionMethods) != 0 {
 		t.Fatalf("bootstrap_token access = %#v, want restricted without setup methods", bootstrapToken)
+	}
+	if bootstrapToken.RequestableReason != "limited preview" || bootstrapToken.RequestAccessAction != "Request in Access Hub" || bootstrapToken.RequestAccessURL != "https://access.example.com/request?source=bootstrap_token&tenant=" || bootstrapToken.ReadinessStage != connectorReadinessStageAPIRestricted {
+		t.Fatalf("bootstrap_token request metadata = %#v, want requestable restricted connector", bootstrapToken)
 	}
 	jumpcloud := bySourceID["jumpcloud"]
 	if jumpcloud.AccessStatus != connectorAccessRestricted || jumpcloud.AccessReason != "limited preview" || jumpcloud.SetupAllowed || !jumpcloud.Requestable {
@@ -1368,6 +1403,18 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 	}()
 	if preflightResp.StatusCode != http.StatusForbidden {
 		t.Fatalf("restricted preflight status = %d, want 403", preflightResp.StatusCode)
+	}
+	hiddenResp, err := server.Client().Post(server.URL+"/connectors/duo/preflight", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST /connectors/duo/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := hiddenResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close hidden response: %v", closeErr)
+		}
+	}()
+	if hiddenResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("hidden+restricted preflight status = %d, want hidden precedence 404", hiddenResp.StatusCode)
 	}
 }
 
