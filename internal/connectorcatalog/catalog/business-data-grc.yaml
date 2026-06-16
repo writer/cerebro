@@ -199,6 +199,102 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-checkr
+      tenant_id: builtin_catalog
+      source_id: checkr
+      display_name: Checkr
+      description: "Checkr connector definition catalog entry for high-value background-check and access resources."
+      categories:
+        - background_checks
+        - hr
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.checkr.com"
+        verification:
+          method: GET
+          path: /v1/account
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Access accounts
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: checkr.users
+            schema_ref: checkr/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Access accounts
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_href"
+            page_size_param: per_page
+            page_size: 100
+        - id: candidates
+          label: Candidates
+          path: /v1/candidates
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: checkr.candidates
+            schema_ref: checkr/candidates/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: candidates
+              type: entity_family
+              title: Candidates
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_href"
+            page_size_param: per_page
+            page_size: 100
+        - id: background_checks
+          label: Background checks
+          path: /v1/reports
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: checkr.background_checks
+            schema_ref: checkr/background_checks/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: background_checks
+              type: audit_event
+              title: Background checks
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_href"
+            page_size_param: per_page
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-cockroachdb_cloud
       tenant_id: builtin_catalog
       source_id: cockroachdb_cloud
@@ -487,6 +583,102 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-ethena
+      tenant_id: builtin_catalog
+      source_id: ethena
+      display_name: Ethena
+      description: "Ethena connector definition catalog entry for high-value security training and learner resources."
+      categories:
+        - security_training
+        - grc
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.goethena.com"
+        verification:
+          method: GET
+          path: /v1/me
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Learners
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: ethena.users
+            schema_ref: ethena/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Learners
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: training_statuses
+          label: Training statuses
+          path: /v1/training/statuses
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: ethena.training_statuses
+            schema_ref: ethena/training_statuses/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: training_statuses
+              type: audit_event
+              title: Training statuses
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: course_assignments
+          label: Course assignments
+          path: /v1/course-assignments
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: ethena.course_assignments
+            schema_ref: ethena/course_assignments/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: course_assignments
+              type: audit_event
+              title: Course assignments
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-freshservice
       tenant_id: builtin_catalog
       source_id: freshservice
@@ -571,6 +763,102 @@ entries:
             - id: audit_events
               type: audit_event
               title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-hitrust_mycsf
+      tenant_id: builtin_catalog
+      source_id: hitrust_mycsf
+      display_name: "HITRUST MyCSF"
+      description: "HITRUST MyCSF connector definition catalog entry for high-value assessment, control, and evidence resources."
+      categories:
+        - grc
+        - audit
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.api_base_url}"
+        verification:
+          method: GET
+          path: /api/v1/me
+          expect_status: [200]
+      resource_families:
+        - id: assessments
+          label: Assessments
+          path: /api/v1/assessments
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: hitrust_mycsf.assessments
+            schema_ref: hitrust_mycsf/assessments/v1
+          projection:
+            template: asset
+          coverage:
+            - id: assessments
+              type: entity_family
+              title: Assessments
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: controls
+          label: Controls
+          path: /api/v1/controls
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: hitrust_mycsf.controls
+            schema_ref: hitrust_mycsf/controls/v1
+          projection:
+            template: asset
+          coverage:
+            - id: controls
+              type: entity_family
+              title: Controls
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: evidence
+          label: Evidence
+          path: /api/v1/evidence
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: hitrust_mycsf.evidence
+            schema_ref: hitrust_mycsf/evidence/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: evidence
+              type: audit_event
+              title: Evidence
               families: [audit_events]
               support: partial
               high_value: true
@@ -1073,6 +1361,205 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-ramp
+      tenant_id: builtin_catalog
+      source_id: ramp
+      display_name: Ramp
+      description: "Ramp connector definition catalog entry for high-value finance, card, and user resources."
+      categories:
+        - finance
+        - business
+      auth:
+        model: oauth_client_credentials
+        token_url: "https://api.ramp.com/developer/v1/token"
+        scopes:
+          - users:read
+          - cards:read
+          - transactions:read
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.ramp.com/developer/v1"
+        verification:
+          method: GET
+          path: /users
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: ramp.users
+            schema_ref: ramp/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: cards
+          label: Cards
+          path: /cards
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: ramp.cards
+            schema_ref: ramp/cards/v1
+          projection:
+            template: asset
+          coverage:
+            - id: cards
+              type: entity_family
+              title: Cards
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: transactions
+          label: Transactions
+          path: /transactions
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: ramp.transactions
+            schema_ref: ramp/transactions/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: transactions
+              type: audit_event
+              title: Transactions
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-rippling
+      tenant_id: builtin_catalog
+      source_id: rippling
+      display_name: Rippling
+      description: "Rippling connector definition catalog entry for high-value HR, identity, device, and background-check resources."
+      categories:
+        - hr
+        - endpoint
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://rest.ripplingapis.com"
+        verification:
+          method: GET
+          path: /companies
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Workers
+          path: /workers
+          method: GET
+          record_selector: "$.results[*]"
+          id_field: id
+          event:
+            kind: rippling.users
+            schema_ref: rippling/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Workers
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next"
+            page_size_param: limit
+            page_size: 100
+        - id: devices
+          label: Devices
+          path: /devices
+          method: GET
+          record_selector: "$.results[*]"
+          id_field: id
+          event:
+            kind: rippling.devices
+            schema_ref: rippling/devices/v1
+          projection:
+            template: endpoint_device
+          coverage:
+            - id: devices
+              type: entity_family
+              title: Devices
+              families: [devices]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next"
+            page_size_param: limit
+            page_size: 100
+        - id: background_checks
+          label: Background checks
+          path: /background-checks
+          method: GET
+          record_selector: "$.results[*]"
+          id_field: id
+          event:
+            kind: rippling.background_checks
+            schema_ref: rippling/background_checks/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: background_checks
+              type: audit_event
+              title: Background checks
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-salesforce
       tenant_id: builtin_catalog
       source_id: salesforce
@@ -1265,6 +1752,102 @@ entries:
             cursor_param: cursor
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-segment
+      tenant_id: builtin_catalog
+      source_id: segment
+      display_name: Segment
+      description: "Segment connector definition catalog entry for high-value workspace, source, and access resources."
+      categories:
+        - data
+        - customer_data
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.segmentapis.com"
+        verification:
+          method: GET
+          path: /workspaces
+          expect_status: [200]
+      resource_families:
+        - id: workspaces
+          label: Workspaces
+          path: /workspaces
+          method: GET
+          record_selector: "$.workspaces[*]"
+          id_field: id
+          event:
+            kind: segment.workspaces
+            schema_ref: segment/workspaces/v1
+          projection:
+            template: asset
+          coverage:
+            - id: workspaces
+              type: entity_family
+              title: Workspaces
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.pagination.next"
+            page_size_param: count
+            page_size: 100
+        - id: users
+          label: IAM users
+          path: /users
+          method: GET
+          record_selector: "$.users[*]"
+          id_field: id
+          event:
+            kind: segment.users
+            schema_ref: segment/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: IAM users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.pagination.next"
+            page_size_param: count
+            page_size: 100
+        - id: sources
+          label: Sources
+          path: /sources
+          method: GET
+          record_selector: "$.sources[*]"
+          id_field: id
+          event:
+            kind: segment.sources
+            schema_ref: segment/sources/v1
+          projection:
+            template: asset
+          coverage:
+            - id: sources
+              type: entity_family
+              title: Sources
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.pagination.next"
+            page_size_param: count
             page_size: 100
   - classifier_output: supported
     definition:
