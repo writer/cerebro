@@ -187,6 +187,28 @@ func TestProjectCloudFindingsCorrelatesSecurityFindingAndAffectedResource(t *tes
 			affectedURN:        "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1",
 			affectedType:       "azure.virtual.machine",
 		},
+		{
+			name: "azure sql database vulnerability",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "azure-sql-database-vulnerability-1",
+				TenantId: "writer",
+				SourceId: "azure",
+				Kind:     "azure.server_vulnerability",
+				Attributes: map[string]string{
+					"assessed_resource_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-prod/databases/appdb",
+					"display_name":         "Database vulnerability",
+					"resource_id":          "/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-2",
+					"resource_name":        "Database vulnerability",
+					"resource_provider":    "azure",
+					"resource_type":        "server_vulnerability",
+					"status_code":          "Unhealthy",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:azure_server_vulnerability:/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-2",
+			securityFindingURN: "urn:cerebro:writer:security_finding:azure:/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-2",
+			affectedURN:        "urn:cerebro:writer:azure_sql_database:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-prod/databases/appdb",
+			affectedType:       "azure.sql.database",
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			state := &projectionRecorder{}

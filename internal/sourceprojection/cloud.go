@@ -409,9 +409,10 @@ func azureResourceTypeFromID(resourceID string) string {
 	case "microsoft.storage/storageaccounts":
 		return "storage_account"
 	case "microsoft.sql/servers":
+		if len(segments) >= 4 && strings.EqualFold(segments[3], "databases") {
+			return "sql_database"
+		}
 		return "sql_server"
-	case "microsoft.sql/servers/databases":
-		return "sql_database"
 	default:
 		return rawType
 	}
