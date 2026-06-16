@@ -24,6 +24,8 @@ type awsEFSFileSystem struct {
 type awsEFSMountTarget struct {
 	MountTarget    efstypes.MountTargetDescription
 	SecurityGroups []string
+	FileSystem     *efstypes.FileSystemDescription `json:"file_system,omitempty"`
+	Tags           map[string]string               `json:"tags,omitempty"`
 }
 
 type awsEFSAccessPoint struct {
@@ -65,6 +67,31 @@ func listEFSAccessPoints(ctx context.Context, clients awsClients, _ settings, cu
 		records = append(records, awsEFSAccessPoint{AccessPoint: accessPoint, Tags: efsTagMap(accessPoint.Tags)})
 	}
 	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listEFSMountTargets(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsEFSMountTarget, string, error) {
+	out, err := clients.efs.DescribeFileSystems(ctx, &efs.DescribeFileSystemsInput{
+		Marker:   stringPtr(cursor),
+		MaxItems: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	var records []awsEFSMountTarget
+	for _, fileSystem := range out.FileSystems {
+		mountTargets, err := listAllEFSMountTargets(ctx, clients, awssdk.ToString(fileSystem.FileSystemId))
+		if err != nil {
+			return nil, "", err
+		}
+		tags := efsTagMap(fileSystem.Tags)
+		fileSystemCopy := fileSystem
+		for _, mountTarget := range mountTargets {
+			mountTarget.FileSystem = &fileSystemCopy
+			mountTarget.Tags = tags
+			records = append(records, mountTarget)
+		}
+	}
+	return records, awssdk.ToString(out.NextMarker), nil
 }
 
 func efsFileSystemEvent(settings settings, record awsEFSFileSystem) (*primitives.Event, error) {
@@ -145,6 +172,50 @@ func efsAccessPointEvent(settings settings, record awsEFSAccessPoint) (*primitiv
 	return sourceEvent(settings, "aws-efs-access-point-"+firstNonEmpty(arn, id), "aws.efs_access_point", "aws/efs_access_point/v1", payload, attributes, time.Now().UTC())
 }
 
+func efsMountTargetEvent(settings settings, record awsEFSMountTarget) (*primitives.Event, error) {
+	mountTarget := record.MountTarget
+	id := awssdk.ToString(mountTarget.MountTargetId)
+	arn := efsMountTargetARN(settings, id)
+	name := id
+	fileSystemID := awssdk.ToString(mountTarget.FileSystemId)
+	fileSystemARN := ""
+	fileSystemName := ""
+	encrypted := ""
+	kmsKeyID := ""
+	if record.FileSystem != nil {
+		fileSystemARN = awssdk.ToString(record.FileSystem.FileSystemArn)
+		fileSystemName = firstNonEmpty(awssdk.ToString(record.FileSystem.Name), fileSystemID)
+		encrypted = boolString(awssdk.ToBool(record.FileSystem.Encrypted))
+		kmsKeyID = awssdk.ToString(record.FileSystem.KmsKeyId)
+	}
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyEFSMountTarget, firstNonEmpty(arn, id), name, "efs_mount_target", record.Tags)
+	attributes["arn"] = arn
+	attributes["mount_target_arn"] = arn
+	attributes["mount_target_id"] = id
+	attributes["file_system_id"] = fileSystemID
+	attributes["file_system_arn"] = fileSystemARN
+	attributes["file_system_name"] = fileSystemName
+	attributes["state"] = string(mountTarget.LifeCycleState)
+	attributes["owner_id"] = awssdk.ToString(mountTarget.OwnerId)
+	attributes["availability_zone_id"] = awssdk.ToString(mountTarget.AvailabilityZoneId)
+	attributes["availability_zone_name"] = awssdk.ToString(mountTarget.AvailabilityZoneName)
+	attributes["ip_address"] = awssdk.ToString(mountTarget.IpAddress)
+	attributes["ipv6_address"] = awssdk.ToString(mountTarget.Ipv6Address)
+	attributes["network_interface_id"] = awssdk.ToString(mountTarget.NetworkInterfaceId)
+	attributes["network_interface_ids"] = awssdk.ToString(mountTarget.NetworkInterfaceId)
+	attributes["security_group_ids"] = strings.Join(cleanStrings(record.SecurityGroups), ",")
+	attributes["subnet_id"] = awssdk.ToString(mountTarget.SubnetId)
+	attributes["subnet_ids"] = awssdk.ToString(mountTarget.SubnetId)
+	attributes["vpc_id"] = awssdk.ToString(mountTarget.VpcId)
+	attributes["encrypted"] = encrypted
+	attributes["kms_key_id"] = kmsKeyID
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "file_system": record.FileSystem, "mount_target": mountTarget, "security_groups": record.SecurityGroups, "tags": record.Tags})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-efs-mount-target-"+firstNonEmpty(arn, id), "aws.efs_mount_target", "aws/efs_mount_target/v1", payload, attributes, time.Now().UTC())
+}
+
 func listAllEFSMountTargets(ctx context.Context, clients awsClients, fileSystemID string) ([]awsEFSMountTarget, error) {
 	if strings.TrimSpace(fileSystemID) == "" {
 		return nil, nil
@@ -183,6 +254,13 @@ func listAllEFSMountTargets(ctx context.Context, clients awsClients, fileSystemI
 			return records, nil
 		}
 	}
+}
+
+func efsMountTargetARN(settings settings, mountTargetID string) string {
+	if mountTargetID == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:elasticfilesystem:%s:%s:mount-target/%s", settings.region, settings.accountID, mountTargetID)
 }
 
 func efsTagMap(tags []efstypes.Tag) map[string]string {

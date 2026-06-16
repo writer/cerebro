@@ -107,6 +107,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.ecs_task_definition":                       awsECSTaskDefinitionProjections,
 	"aws.efs_access_point":                          awsCloudResourceProjections,
 	"aws.efs_file_system":                           awsCloudResourceProjections,
+	"aws.efs_mount_target":                          awsDataResourceProjections,
 	"aws.eks_cluster":                               awsEKSClusterProjections,
 	"aws.eks_nodegroup":                             awsEKSNodegroupProjections,
 	"aws.eks_fargate_profile":                       awsEKSFargateProfileProjections,
