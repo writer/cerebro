@@ -247,6 +247,14 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 			return nil
 		}
 		spec := catalog.Spec
+		hasDeployManifest, err := hasSourceDeployManifest(filepath.Dir(path))
+		if err != nil {
+			issues = append(issues, issue{path: rel, message: err.Error()})
+			return nil
+		}
+		if hasDeployManifest && catalog.CoverageContract == nil {
+			issues = append(issues, issue{path: rel, message: "coverage_contract is required for deployable sources"})
+		}
 		if spec.GetId() != "sdk" && len(spec.GetEmittedKinds()) == 0 {
 			issues = append(issues, issue{path: rel, message: "emitted_kinds is required for built-in pull sources"})
 		}
@@ -272,6 +280,17 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 		return nil, err
 	}
 	return issues, nil
+}
+
+func hasSourceDeployManifest(sourceDir string) (bool, error) {
+	info, err := os.Lstat(filepath.Join(sourceDir, "deploy.yaml"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat deploy.yaml: %w", err)
+	}
+	return !info.IsDir(), nil
 }
 
 func validateFixtureContracts(root string, sourceDir string, contracts []sourcecdk.EventContract) []issue {

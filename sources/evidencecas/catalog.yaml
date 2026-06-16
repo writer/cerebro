@@ -3,6 +3,28 @@ name: EvidenceCAS
 description: EvidenceCAS evidence manifest source.
 emitted_kinds:
   - evidence_cas.object
+coverage_contract:
+  owner_domain: compliance
+  authority_domain: evidence_cas
+  dimensions:
+    - id: evidence_objects
+      type: entity_family
+      title: Evidence manifest objects
+      families: [object]
+      support: supported
+      high_value: true
+    - id: integrity_metadata
+      type: entity_family
+      title: Evidence URI and digest metadata
+      families: [object]
+      support: supported
+      high_value: true
+    - id: source_event_links
+      type: relationship
+      title: Source event evidence links
+      families: [object]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: evidence_cas.object
     schema_ref: evidence_cas/object/v1
