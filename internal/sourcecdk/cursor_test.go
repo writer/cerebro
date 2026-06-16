@@ -89,6 +89,45 @@ func TestCursorPageReadsEnvelopeToken(t *testing.T) {
 	}
 }
 
+func TestCursorAfterOrPageReadsTypedTokens(t *testing.T) {
+	after, page, err := CursorAfterOrPage(&cerebrov1.SourceCursor{Opaque: "after:cursor-2"})
+	if err != nil {
+		t.Fatalf("CursorAfterOrPage(after) error = %v", err)
+	}
+	if after != "cursor-2" || page != "" {
+		t.Fatalf("CursorAfterOrPage(after) = %q/%q, want cursor-2/empty", after, page)
+	}
+	after, page, err = CursorAfterOrPage(&cerebrov1.SourceCursor{Opaque: "page:2"})
+	if err != nil {
+		t.Fatalf("CursorAfterOrPage(page) error = %v", err)
+	}
+	if after != "" || page != "2" {
+		t.Fatalf("CursorAfterOrPage(page) = %q/%q, want empty/2", after, page)
+	}
+	after, page, err = CursorAfterOrPage(&cerebrov1.SourceCursor{Opaque: "2"})
+	if err != nil {
+		t.Fatalf("CursorAfterOrPage(legacy) error = %v", err)
+	}
+	if after != "" || page != "" {
+		t.Fatalf("CursorAfterOrPage(legacy) = %q/%q, want empty/empty", after, page)
+	}
+	if _, _, err := CursorAfterOrPage(&cerebrov1.SourceCursor{Opaque: "page:0"}); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("CursorAfterOrPage(page:0) error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestNextAfterOrPageCursorPrefersAfter(t *testing.T) {
+	if got := NextAfterOrPageCursor("cursor-2", "3", 4); got != "after:cursor-2" {
+		t.Fatalf("NextAfterOrPageCursor(after) = %q, want after cursor", got)
+	}
+	if got := NextAfterOrPageCursor("", "3", 4); got != "page:3" {
+		t.Fatalf("NextAfterOrPageCursor(token) = %q, want page token", got)
+	}
+	if got := NextAfterOrPageCursor("", "", 4); got != "page:4" {
+		t.Fatalf("NextAfterOrPageCursor(page) = %q, want page fallback", got)
+	}
+}
+
 func TestIncrementalWatermarkFiltersBoundaryEvents(t *testing.T) {
 	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	events := []*primitives.Event{

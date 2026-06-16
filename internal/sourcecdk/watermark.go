@@ -132,6 +132,27 @@ func IncrementalWatermarkCheckpointWithToken(checkpoint *cerebrov1.SourceCheckpo
 	return checkpoint
 }
 
+// IncrementalWatermarkPull filters events against the durable watermark and
+// attaches a continuation token only when the watermark boundary was not
+// reached.
+func IncrementalWatermarkPull(source string, family string, events []*primitives.Event, checkpoint *cerebrov1.SourceCheckpoint, nextCursor string) Pull {
+	state := IncrementalWatermarkCheckpointState(source, family, checkpoint)
+	filtered, reachedWatermark := IncrementalWatermarkEvents(events, state)
+	pull := Pull{
+		Events:     filtered,
+		Checkpoint: IncrementalWatermarkCheckpoint(source, family, filtered, state),
+	}
+	if reachedWatermark {
+		pull.ShortCircuitReason = PullShortCircuitReasonWatermarkReached
+		return pull
+	}
+	if nextCursor = strings.TrimSpace(nextCursor); nextCursor != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
+		pull.Checkpoint = IncrementalWatermarkCheckpointWithToken(pull.Checkpoint, nextCursor)
+	}
+	return pull
+}
+
 // EmptyIncrementalWatermarkPull returns an unchanged pull when a source page is
 // empty but a previous incremental watermark exists.
 func EmptyIncrementalWatermarkPull(source string, family string, checkpoint *cerebrov1.SourceCheckpoint) Pull {

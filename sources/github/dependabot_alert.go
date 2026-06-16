@@ -81,22 +81,7 @@ func (s *Source) readDependabotAlerts(ctx context.Context, client *gogithub.Clie
 		}
 		events = append(events, event)
 	}
-	state := sourcecdk.IncrementalWatermarkCheckpointState("github", familyDependabot, checkpoint)
-	events, reachedWatermark := sourcecdk.IncrementalWatermarkEvents(events, state)
-	nextCursor := nextAuditCursor(resp)
-	pull := sourcecdk.Pull{
-		Events:     events,
-		Checkpoint: sourcecdk.IncrementalWatermarkCheckpoint("github", familyDependabot, events, state),
-	}
-	if reachedWatermark {
-		pull.ShortCircuitReason = sourcecdk.PullShortCircuitReasonWatermarkReached
-		return pull, nil
-	}
-	if nextCursor != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
-		pull.Checkpoint = sourcecdk.IncrementalWatermarkCheckpointWithToken(pull.Checkpoint, nextCursor)
-	}
-	return pull, nil
+	return sourcecdk.IncrementalWatermarkPull("github", familyDependabot, events, checkpoint, nextAuditCursor(resp)), nil
 }
 
 func dependabotAlertOptions(settings settings, after string, perPage int) *gogithub.ListAlertsOptions {
