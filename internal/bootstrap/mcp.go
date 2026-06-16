@@ -1437,15 +1437,12 @@ func (app *App) mcpGraphPaths(r *http.Request, args map[string]any) (any, error)
 
 func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error) {
 	request := graphagent.AskRequest{
-		TenantID: mcpTenantArg(r, args),
+		TenantID: mcpStringArg(args, "tenant_id"),
 		Question: mcpStringArg(args, "question"),
 		ScopeURN: mcpStringArg(args, "scope_urn"),
 		Model:    mcpStringArg(args, "model"),
 	}
-	if request.TenantID == "" && requiresTenantFilter(r.Context()) {
-		return nil, errTenantForbidden
-	}
-	if err := authorizeTenantID(r.Context(), request.TenantID); err != nil {
+	if err := forceGraphReasoningTenant(r.Context(), &request); err != nil {
 		return nil, err
 	}
 	if request.ScopeURN != "" {
@@ -1933,7 +1930,6 @@ func mcpTools() []mcpTool {
 			Title:       "Graph Reasoning",
 			Description: "Answer a tenant-scoped graph question with query plan, guarded Cypher, rows, graph evidence, citations, and provenance.",
 			InputSchema: mcpObjectSchema(map[string]any{
-				"tenant_id": map[string]any{"type": "string"},
 				"question":  map[string]any{"type": "string"},
 				"scope_urn": map[string]any{"type": "string"},
 				"model":     map[string]any{"type": "string"},

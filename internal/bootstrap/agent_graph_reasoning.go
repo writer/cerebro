@@ -1,9 +1,11 @@
 package bootstrap
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
@@ -17,7 +19,7 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
 		return
 	}
-	if err := authorizeTenantID(r.Context(), request.TenantID); err != nil {
+	if err := forceGraphReasoningTenant(r.Context(), &request); err != nil {
 		writeGRCError(w, err)
 		return
 	}
@@ -42,6 +44,28 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func forceGraphReasoningTenant(ctx context.Context, request *graphagent.AskRequest) error {
+	if request == nil {
+		return nil
+	}
+	requestedTenantID := strings.TrimSpace(request.TenantID)
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok {
+		request.TenantID = requestedTenantID
+		return nil
+	}
+	tenantID := strings.TrimSpace(auth.principal.TenantID)
+	if tenantID == "" {
+		return errTenantForbidden
+	}
+	if requestedTenantID != "" && requestedTenantID != tenantID {
+		recordAccessAuditRequestedTenant(ctx, requestedTenantID)
+		return errTenantForbidden
+	}
+	request.TenantID = tenantID
+	return authorizeTenantID(ctx, tenantID)
 }
 
 func (a *App) newGraphReasoningService() (*graphagent.Service, error) {

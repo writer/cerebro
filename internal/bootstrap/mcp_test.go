@@ -1808,9 +1808,29 @@ LIMIT 25`,
 	if provenance["surface"] != "graph-reasoning" || provenance["citation_status"] != "valid" {
 		t.Fatalf("graph.reason provenance = %#v", provenance)
 	}
+	if content["tenant_id"] != "writer" {
+		t.Fatalf("graph.reason tenant_id = %#v, want authenticated tenant writer", content["tenant_id"])
+	}
 	metadata := content["metadata"].(map[string]any)
 	if metadata["returned"] != float64(1) || metadata["stateless"] != true {
 		t.Fatalf("graph.reason metadata = %#v", metadata)
+	}
+
+	overrideResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.reason",
+			"arguments": map[string]any{
+				"tenant_id": "other",
+				"question":  "Which asset should I review first?",
+			},
+		},
+	})
+	overrideResult := overrideResponse["result"].(map[string]any)
+	if overrideResult["isError"] != true || !strings.Contains(overrideResult["content"].([]any)[0].(map[string]any)["text"].(string), "tenant forbidden") {
+		t.Fatalf("graph.reason tenant override response = %#v", overrideResponse)
 	}
 }
 

@@ -148,7 +148,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GRCAskRequest'
+              $ref: '#/components/schemas/AgentPlatformGraphReasonRequest'
       responses:
         '200':
           description: Structured graph reasoning envelope with query plan, validation, rows, graph context, citations, and provenance.
@@ -3325,6 +3325,32 @@ components:
           $ref: '#/components/schemas/AgentPlatformGraphStageTimings'
         provenance:
           $ref: '#/components/schemas/AgentPlatformGraphReasonProvenance'
+    AgentPlatformGraphReasonRequest:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        scope_urn:
+          type: string
+          description: Optional Cerebro URN inside the authenticated tenant to focus graph reasoning.
+        model:
+          type: string
+          default: claude-sonnet-4-6
+        history:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role:
+                type: string
+                enum: [user, assistant]
+              content:
+                type: string
     AgentPlatformGraphQueryPlanEvent:
       type: object
       required:
