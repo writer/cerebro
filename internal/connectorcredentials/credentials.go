@@ -624,18 +624,6 @@ func authorizeRecordStatus(record *ports.ConnectorCredentialRecord) error {
 	}
 }
 
-func shouldTrackCredentialUse(lastUsedAt time.Time, now time.Time) bool {
-	if lastUsedAt.IsZero() {
-		return true
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	cutoff := now.UTC().Add(-credentialUseTrackingInterval)
-	lastUsedAt = lastUsedAt.UTC()
-	return lastUsedAt.Before(cutoff) || lastUsedAt.Equal(cutoff)
-}
-
 func credentialAAD(id string, tenantID string, sourceID string, runtimeID string, keyID string) []byte {
 	return []byte(strings.Join([]string{
 		strings.TrimSpace(id),

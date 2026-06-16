@@ -276,28 +276,6 @@ func TestBrokerResolveReferencesThrottlesUsedAudit(t *testing.T) {
 	}
 }
 
-func TestShouldTrackCredentialUse(t *testing.T) {
-	now := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
-	tests := []struct {
-		name       string
-		lastUsedAt time.Time
-		want       bool
-	}{
-		{name: "never used", want: true},
-		{name: "inside interval", lastUsedAt: now.Add(-credentialUseTrackingInterval + time.Second), want: false},
-		{name: "at interval", lastUsedAt: now.Add(-credentialUseTrackingInterval), want: true},
-		{name: "older than interval", lastUsedAt: now.Add(-credentialUseTrackingInterval - time.Second), want: true},
-		{name: "future timestamp", lastUsedAt: now.Add(time.Minute), want: false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldTrackCredentialUse(tt.lastUsedAt, now); got != tt.want {
-				t.Fatalf("shouldTrackCredentialUse() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestTransitKeyDecryptsHybridPayload(t *testing.T) {
 	transit, err := NewTransitKey()
 	if err != nil {
