@@ -15,7 +15,16 @@ type Family[S any] struct {
 	Name     string
 	Check    func(context.Context, S) error
 	Discover func(context.Context, S) ([]URN, error)
+	Probe    func(context.Context, S, *cerebrov1.SourceCheckpoint) (ChangeProbe, error)
 	Read     func(context.Context, S, *cerebrov1.SourceCursor) (Pull, error)
+}
+
+// ChangeProbe is an optional cheap pre-read result for families that can test
+// whether provider data changed before fetching and projecting the full page.
+type ChangeProbe struct {
+	Unchanged          bool
+	Checkpoint         *cerebrov1.SourceCheckpoint
+	ShortCircuitReason PullShortCircuitReason
 }
 
 // FamilyEngine dispatches source operations to table-driven families.
@@ -103,12 +112,31 @@ func (e *FamilyEngine[S]) Discover(ctx context.Context, cfg Config) ([]URN, erro
 
 // Read reads one page for the configured family.
 func (e *FamilyEngine[S]) Read(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor) (Pull, error) {
+	return e.ReadWithCheckpoint(ctx, cfg, cursor, nil)
+}
+
+// ReadWithCheckpoint reads one page and lets families short-circuit with a
+// cheap provider change probe when they support one.
+func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
 	family, settings, policy, err := e.resolve(cfg)
 	if err != nil {
 		return Pull{}, err
 	}
 	if policy.ExcludesFamily(e.sourceID, family.Name) {
-		return Pull{}, nil
+		return Pull{ShortCircuitReason: PullShortCircuitReasonScopeExcluded}, nil
+	}
+	if family.Probe != nil {
+		probe, err := family.Probe(ctx, settings, checkpoint)
+		if err != nil {
+			return Pull{}, err
+		}
+		if probe.Unchanged {
+			reason := probe.ShortCircuitReason
+			if reason == "" {
+				reason = PullShortCircuitReasonNotModified
+			}
+			return Pull{Checkpoint: probe.Checkpoint, ShortCircuitReason: reason}, nil
+		}
 	}
 	if family.Read == nil {
 		return Pull{}, nil

@@ -76,10 +76,23 @@ func (c Config) Values() map[string]string {
 
 // Pull is one page of source output.
 type Pull struct {
-	Events     []*primitives.Event
-	Checkpoint *cerebrov1.SourceCheckpoint
-	NextCursor *cerebrov1.SourceCursor
+	Events             []*primitives.Event
+	Checkpoint         *cerebrov1.SourceCheckpoint
+	NextCursor         *cerebrov1.SourceCursor
+	ShortCircuitReason PullShortCircuitReason
 }
+
+// PullShortCircuitReason describes source work that intentionally produced no
+// new append-log events.
+type PullShortCircuitReason string
+
+const (
+	PullShortCircuitReasonScopeExcluded         PullShortCircuitReason = "scope_excluded"
+	PullShortCircuitReasonResourceScopeFiltered PullShortCircuitReason = "resource_scope_filtered"
+	PullShortCircuitReasonNotModified           PullShortCircuitReason = "not_modified"
+	PullShortCircuitReasonCheckpointAdvanced    PullShortCircuitReason = "checkpoint_advanced"
+	PullShortCircuitReasonWatermarkReached      PullShortCircuitReason = "watermark_reached"
+)
 
 // Source is the common integration contract for the rewrite.
 type Source interface {
@@ -87,6 +100,14 @@ type Source interface {
 	Check(context.Context, Config) error
 	Discover(context.Context, Config) ([]URN, error)
 	Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error)
+}
+
+// CheckpointAwareSource can use the last durable checkpoint while deciding how
+// much remote data to fetch. Source runtimes still pass the normal page cursor
+// for continuation, and provide checkpoint separately so legacy cursor formats
+// do not need to carry watermark metadata.
+type CheckpointAwareSource interface {
+	ReadWithCheckpoint(context.Context, Config, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint) (Pull, error)
 }
 
 // EventContractProvider lets sources attach catalog-level per-kind validation to emitted events.

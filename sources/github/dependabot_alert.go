@@ -64,14 +64,14 @@ func (s *Source) discoverDependabotAlerts(ctx context.Context, client *gogithub.
 	return []sourcecdk.URN{urn}, nil
 }
 
-func (s *Source) readDependabotAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	after := readDependabotCursor(cursor)
+func (s *Source) readDependabotAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	after := sourcecdk.CursorToken(cursor)
 	alerts, resp, err := client.Dependabot.ListRepoAlerts(ctx, settings.owner, settings.repo, dependabotAlertOptions(settings, after, settings.perPage))
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github dependabot alerts for repo %s/%s", settings.owner, settings.repo), err)
 	}
 	if len(alerts) == 0 {
-		return sourcecdk.Pull{}, nil
+		return sourcecdk.EmptyIncrementalWatermarkPull("github", familyDependabot, checkpoint), nil
 	}
 	events := make([]*primitives.Event, 0, len(alerts))
 	for _, alert := range alerts {
@@ -81,16 +81,20 @@ func (s *Source) readDependabotAlerts(ctx context.Context, client *gogithub.Clie
 		}
 		events = append(events, event)
 	}
+	state := sourcecdk.IncrementalWatermarkCheckpointState("github", familyDependabot, checkpoint)
+	events, reachedWatermark := sourcecdk.IncrementalWatermarkEvents(events, state)
 	nextCursor := nextAuditCursor(resp)
 	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: checkpointDependabotCursor(alerts, nextCursor),
-		},
+		Events:     events,
+		Checkpoint: sourcecdk.IncrementalWatermarkCheckpoint("github", familyDependabot, events, state),
+	}
+	if reachedWatermark {
+		pull.ShortCircuitReason = sourcecdk.PullShortCircuitReasonWatermarkReached
+		return pull, nil
 	}
 	if nextCursor != "" {
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
+		pull.Checkpoint = sourcecdk.IncrementalWatermarkCheckpointWithToken(pull.Checkpoint, nextCursor)
 	}
 	return pull, nil
 }
@@ -105,23 +109,6 @@ func dependabotAlertOptions(settings settings, after string, perPage int) *gogit
 			PerPage: perPage,
 		},
 	}
-}
-
-func readDependabotCursor(cursor *cerebrov1.SourceCursor) string {
-	if cursor == nil {
-		return ""
-	}
-	return strings.TrimSpace(cursor.GetOpaque())
-}
-
-func checkpointDependabotCursor(alerts []*gogithub.DependabotAlert, cursor string) string {
-	if cursor != "" {
-		return cursor
-	}
-	if len(alerts) == 0 {
-		return ""
-	}
-	return strconv.Itoa(alerts[len(alerts)-1].GetNumber())
 }
 
 func dependabotAlertEvent(settings settings, alert *gogithub.DependabotAlert) (*primitives.Event, error) {
