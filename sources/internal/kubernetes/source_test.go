@@ -158,6 +158,39 @@ func TestReadServicesEmitsExternalEndpointDetails(t *testing.T) {
 	}
 }
 
+func TestReadServicesEmitsEmptyPortsPayload(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.clientFactory = func(settings) (clientset, error) {
+		return fake.NewSimpleClientset(&v1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "catalog", Namespace: "payments", UID: types.UID("service-external-name")},
+			Spec:       v1.ServiceSpec{Type: v1.ServiceTypeExternalName, ExternalName: "catalog.example.com"},
+		}), nil
+	}
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"tenant_id": "writer", "family": familyService, "kubeconfig_path": "/tmp/kubeconfig", "cluster_id": "prod-cluster"}), nil)
+	if err != nil {
+		t.Fatalf("Read(service) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	var payload struct {
+		Ports []v1.ServicePort `json:"ports"`
+	}
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal service payload: %v", err)
+	}
+	if payload.Ports == nil {
+		t.Fatalf("payload ports = nil, want empty array; payload=%s", string(pull.Events[0].Payload))
+	}
+	if len(payload.Ports) != 0 {
+		t.Fatalf("len(payload.Ports) = %d, want 0", len(payload.Ports))
+	}
+}
+
 func TestReadIngressesEmitsTLSRulesAndBackends(t *testing.T) {
 	source, err := New()
 	if err != nil {
@@ -218,6 +251,45 @@ func TestReadIngressesEmitsTLSRulesAndBackends(t *testing.T) {
 	}
 	if got := event.Attributes["rules"]; !strings.Contains(got, "payments.example.com:/-") || !strings.Contains(got, "payments:443") {
 		t.Fatalf("rules = %q", got)
+	}
+}
+
+func TestReadIngressesEmitsEmptyRulesPayload(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.clientFactory = func(settings) (clientset, error) {
+		return fake.NewSimpleClientset(&networkingv1.Ingress{
+			ObjectMeta: metav1.ObjectMeta{Name: "default-only", Namespace: "payments", UID: types.UID("ingress-default-only")},
+			Spec: networkingv1.IngressSpec{DefaultBackend: &networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{
+				Name: "default-backend",
+				Port: networkingv1.ServiceBackendPort{Number: 80},
+			}}},
+		}), nil
+	}
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"tenant_id": "writer", "family": familyIngress, "kubeconfig_path": "/tmp/kubeconfig", "cluster_id": "prod-cluster"}), nil)
+	if err != nil {
+		t.Fatalf("Read(ingress) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	var payload struct {
+		Rules []networkingv1.IngressRule `json:"rules"`
+	}
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal ingress payload: %v", err)
+	}
+	if payload.Rules == nil {
+		t.Fatalf("payload rules = nil, want empty array; payload=%s", string(pull.Events[0].Payload))
+	}
+	if len(payload.Rules) != 0 {
+		t.Fatalf("len(payload.Rules) = %d, want 0", len(payload.Rules))
+	}
+	if got := pull.Events[0].Attributes["backend_services"]; got != "default-backend:80" {
+		t.Fatalf("backend_services = %q, want default-backend:80", got)
 	}
 }
 

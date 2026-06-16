@@ -1026,7 +1026,7 @@ func ingressPayload(ingress networkingv1.Ingress) map[string]any {
 		"name":                    ingress.Name,
 		"namespace":               ingress.Namespace,
 		"ingress_class_name":      ingress.Spec.IngressClassName,
-		"rules":                   ingress.Spec.Rules,
+		"rules":                   ingressPayloadRules(ingress.Spec.Rules),
 		"tls":                     ingress.Spec.TLS,
 		"default_backend":         ingress.Spec.DefaultBackend,
 		"load_balancer_ingress":   ingress.Status.LoadBalancer.Ingress,
@@ -1114,7 +1114,7 @@ func servicePayload(service v1.Service) map[string]any {
 		"external_ips":            service.Spec.ExternalIPs,
 		"external_name":           service.Spec.ExternalName,
 		"ip_families":             service.Spec.IPFamilies,
-		"ports":                   service.Spec.Ports,
+		"ports":                   servicePayloadPorts(service.Spec.Ports),
 		"selector":                service.Spec.Selector,
 		"load_balancer_ingress":   service.Status.LoadBalancer.Ingress,
 		"load_balancer_ips":       serviceLoadBalancerIPs(service),
@@ -1122,6 +1122,20 @@ func servicePayload(service v1.Service) map[string]any {
 		"labels":                  service.Labels,
 		"annotations":             service.Annotations,
 	}
+}
+
+func ingressPayloadRules(rules []networkingv1.IngressRule) []networkingv1.IngressRule {
+	if rules == nil {
+		return []networkingv1.IngressRule{}
+	}
+	return rules
+}
+
+func servicePayloadPorts(ports []v1.ServicePort) []v1.ServicePort {
+	if ports == nil {
+		return []v1.ServicePort{}
+	}
+	return ports
 }
 
 func serviceAccountPayload(account v1.ServiceAccount) map[string]any {
