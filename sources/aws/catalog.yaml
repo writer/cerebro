@@ -91,6 +91,7 @@ emitted_kinds:
   - aws.iam_credential_report
   - aws.iam_group
   - aws.iam_group_membership
+  - aws.iam_policy
   - aws.iam_role
   - aws.iam_role_assignment
   - aws.iam_role_trust
@@ -236,6 +237,7 @@ runtime_families:
   - iam_credential_report
   - iam_group
   - iam_group_membership
+  - iam_policy
   - iam_role
   - iam_role_assignment
   - iam_role_trust
@@ -823,10 +825,9 @@ coverage_contract:
     - id: iam_policy
       type: app_entitlement
       title: AWS IAM policies
-      families: [asset_metadata]
-      support: partial
+      families: [iam_policy]
+      support: supported
       high_value: true
-      known_unsupported_fields: [policy document action and resource expansion]
     - id: iam_role
       type: entity_family
       title: AWS IAM roles
