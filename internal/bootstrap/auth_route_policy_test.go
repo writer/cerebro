@@ -73,6 +73,21 @@ func TestFindingLifecycleHTTPRoutesRequireWriteScope(t *testing.T) {
 	}
 }
 
+func TestConnectorCredentialBrokerHTTPRouteRequiresWriteScope(t *testing.T) {
+	policy := httpRoutePolicyFor(http.MethodPost, "/connectors/aws/credentials")
+	if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {
+		t.Fatalf("POST /connectors/{sourceID}/credentials policy = %#v, want connector credential write scope", policy)
+	}
+	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+	if err := authorizePrincipalScope(readOnly, scopeConnectorCredentialsWrite); err == nil {
+		t.Fatal("read-only scoped principal authorized for connector credential write scope")
+	}
+	writer := authPrincipal{Scopes: []string{scopeConnectorCredentialsWrite}}
+	if err := authorizePrincipalScope(writer, scopeConnectorCredentialsWrite); err != nil {
+		t.Fatalf("connector credential writer rejected: %v", err)
+	}
+}
+
 func TestFindingLifecycleConnectProceduresRequireWriteScope(t *testing.T) {
 	for _, procedure := range []string{
 		cerebrov1connect.BootstrapServiceResolveFindingProcedure,
