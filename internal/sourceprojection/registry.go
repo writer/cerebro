@@ -63,6 +63,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.access_analyzer":                           awsCloudResourceProjections,
 	"aws.acm_certificate":                           awsCloudResourceProjections,
 	"aws.apprunner_service":                         awsCloudResourceProjections,
+	"aws.appsync_graphql_api":                       awsCloudResourceProjections,
 	"aws.asset_metadata":                            awsCloudResourceProjections,
 	"aws.batch_compute_environment":                 awsCloudResourceProjections,
 	"aws.batch_job_queue":                           awsCloudResourceProjections,

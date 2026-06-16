@@ -17,6 +17,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5
 	github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5
+	github.com/aws/aws-sdk-go-v2/service/appsync v1.53.4
 	github.com/aws/aws-sdk-go-v2/service/athena v1.58.3
 	github.com/aws/aws-sdk-go-v2/service/backup v1.57.5
 	github.com/aws/aws-sdk-go-v2/service/batch v1.65.5
