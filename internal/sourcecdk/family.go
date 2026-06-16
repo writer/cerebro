@@ -128,6 +128,7 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 	if policy.ExcludesFamily(e.sourceID, family.Name) {
 		return Pull{ShortCircuitReason: PullShortCircuitReasonScopeExcluded}, nil
 	}
+	readCheckpoint := checkpoint
 	if family.Probe != nil {
 		probe, err := family.Probe(ctx, settings, checkpoint)
 		if err != nil {
@@ -146,9 +147,12 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 			}
 			return Pull{Checkpoint: probe.Checkpoint, ShortCircuitReason: reason}, nil
 		}
+		if probe.Checkpoint != nil {
+			readCheckpoint = probe.Checkpoint
+		}
 	}
 	if family.ReadWithCheckpoint != nil {
-		pull, err := family.ReadWithCheckpoint(ctx, settings, cursor, checkpoint)
+		pull, err := family.ReadWithCheckpoint(ctx, settings, cursor, readCheckpoint)
 		if err != nil {
 			return Pull{}, err
 		}
@@ -162,7 +166,7 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 		return Pull{}, err
 	}
 	if family.IncrementalWatermark && e.sourceID != "" {
-		readCheckpoint := IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, checkpoint)
+		readCheckpoint := IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, readCheckpoint)
 		next := ""
 		if pull.NextCursor != nil {
 			next = CursorToken(pull.NextCursor)
