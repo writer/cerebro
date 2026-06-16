@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 )
 
@@ -20,6 +21,35 @@ var gcsContentEmailRE = regexp.MustCompile(`[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{
 var gcsContentClassificationRE = regexp.MustCompile(`\b(restricted|confidential|internal|public)\b`)
 var gcsContentSecretRE = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|passwd|private[_-]?key)\s*[:=]\s*["']?[a-z0-9_./+=\-]{12,}`)
 var gcsContentSSNRE = regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)
+
+const FindingCheckpointLookback = 2 * time.Minute
+
+func CheckpointStart(checkpoint *cerebrov1.SourceCheckpoint, lookback time.Duration) (time.Time, bool) {
+	if checkpoint == nil || checkpoint.GetWatermark() == nil {
+		return time.Time{}, false
+	}
+	watermark := checkpoint.GetWatermark().AsTime().UTC()
+	if watermark.IsZero() {
+		return time.Time{}, false
+	}
+	if lookback > 0 {
+		watermark = watermark.Add(-lookback)
+	}
+	return watermark, true
+}
+
+func CombineFilters(existing string, incremental string) string {
+	existing = strings.TrimSpace(existing)
+	incremental = strings.TrimSpace(incremental)
+	switch {
+	case existing == "":
+		return incremental
+	case incremental == "":
+		return existing
+	default:
+		return "(" + existing + ") AND (" + incremental + ")"
+	}
+}
 
 type Settings struct {
 	ProjectID           string
@@ -5457,7 +5487,16 @@ func SecurityCenterFindingEvent(settings Settings, record SecurityCenterFindingR
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "gcp-security-center-finding-"+resourceID, "gcp.security_center_finding", "gcp/security_center_finding/v1", payload, attributes)
+	return sourceEventAt(settings, "gcp-security-center-finding-"+resourceID, "gcp.security_center_finding", "gcp/security_center_finding/v1", payload, attributes, securityCenterFindingOccurredAt(record))
+}
+
+func securityCenterFindingOccurredAt(record SecurityCenterFindingRecord) time.Time {
+	for _, value := range []string{record.Finding.EventTime, record.Finding.CreateTime} {
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value)); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Now().UTC()
 }
 
 func WorkloadIdentityPoolEvent(settings Settings, record WorkloadIdentityPoolRecord) (*primitives.Event, error) {

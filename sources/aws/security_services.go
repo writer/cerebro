@@ -212,10 +212,11 @@ func awsSecurityFamilies(clientFactory awsClientFactory) []sourcecdk.Family[sett
 			CursorFallback: func(finding securityhubtypes.AwsSecurityFinding) string { return awssdk.ToString(finding.Id) },
 		}),
 		awsFamily(clientFactory, awsFamilyOptions[inspector2types.Finding]{
-			Name:  familyInspector2Finding,
-			Label: "aws inspector2 findings",
-			List:  listInspector2Findings,
-			Event: inspector2FindingEvent,
+			Name:               familyInspector2Finding,
+			Label:              "aws inspector2 findings",
+			List:               listInspector2Findings,
+			ListWithCheckpoint: listInspector2FindingsWithCheckpoint,
+			Event:              inspector2FindingEvent,
 			URN: func(settings settings, finding inspector2types.Finding) (string, error) {
 				resourceID := ""
 				if resource := firstInspector2Resource(finding.Resources); resource != nil {
@@ -409,10 +410,11 @@ func listSecurityHubFindingsWithCheckpoint(ctx context.Context, clients awsClien
 }
 
 func listInspector2Findings(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]inspector2types.Finding, string, error) {
-	out, err := clients.inspector2.ListFindings(ctx, &inspector2.ListFindingsInput{
-		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
-		NextToken:  stringPtr(cursor),
-	})
+	return listInspector2FindingsWithCheckpoint(ctx, clients, settings{}, cursor, limit, nil)
+}
+
+func listInspector2FindingsWithCheckpoint(ctx context.Context, clients awsClients, _ settings, cursor string, limit int, checkpoint *cerebrov1.SourceCheckpoint) ([]inspector2types.Finding, string, error) {
+	out, err := clients.inspector2.ListFindings(ctx, awssecurity.Inspector2ListFindingsInput(boundedAWSPageSizeInt32(limit, 1, 100), cursor, checkpoint, awsFindingCheckpointLookback))
 	if err != nil {
 		return nil, "", err
 	}
@@ -707,7 +709,7 @@ func inspector2FindingEvent(settings settings, finding inspector2types.Finding) 
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "aws-inspector2-finding-"+firstNonEmpty(findingARN, affectedResourceID), "aws.inspector2_finding", "aws/inspector2_finding/v1", payload, attributes, firstTime(finding.UpdatedAt, finding.LastObservedAt, finding.FirstObservedAt))
+	return sourceEvent(settings, "aws-inspector2-finding-"+firstNonEmpty(findingARN, affectedResourceID), "aws.inspector2_finding", "aws/inspector2_finding/v1", payload, attributes, firstTime(finding.LastObservedAt, finding.UpdatedAt, finding.FirstObservedAt))
 }
 
 func macie2FindingEvent(settings settings, finding macie2types.Finding) (*primitives.Event, error) {

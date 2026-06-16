@@ -7,9 +7,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/oauth2"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/gcpcloud"
 )
@@ -857,6 +860,95 @@ func TestReadLiveGCPSecurityCoveragePreview(t *testing.T) {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadLiveGCPSecurityCenterFindingsWithCheckpoint(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	var gotOrderBy string
+	var gotFilter string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v2/projects/writer-prod/sources/-/findings" {
+			http.NotFound(w, r)
+			return
+		}
+		gotOrderBy = r.URL.Query().Get("orderBy")
+		gotFilter = r.URL.Query().Get("filter")
+		writeJSON(t, w, map[string]any{"listFindingsResults": []map[string]any{
+			{
+				"finding": map[string]any{
+					"name":         "projects/writer-prod/sources/123/findings/new-finding",
+					"parent":       "projects/writer-prod/sources/123",
+					"resourceName": "//storage.googleapis.com/projects/_/buckets/data-new",
+					"state":        "ACTIVE",
+					"category":     "PUBLIC_BUCKET_ACL",
+					"severity":     "HIGH",
+					"eventTime":    watermark.Add(time.Hour).Format(time.RFC3339Nano),
+					"createTime":   watermark.Add(time.Hour).Format(time.RFC3339Nano),
+				},
+				"resource": map[string]any{
+					"name":          "//storage.googleapis.com/projects/_/buckets/data-new",
+					"displayName":   "data-new",
+					"type":          "google.cloud.storage.Bucket",
+					"service":       "storage.googleapis.com",
+					"location":      "US",
+					"cloudProvider": "GOOGLE_CLOUD_PLATFORM",
+					"projectName":   "//cloudresourcemanager.googleapis.com/projects/writer-prod",
+				},
+			},
+			{
+				"finding": map[string]any{
+					"name":         "projects/writer-prod/sources/123/findings/old-finding",
+					"parent":       "projects/writer-prod/sources/123",
+					"resourceName": "//storage.googleapis.com/projects/_/buckets/data-old",
+					"state":        "ACTIVE",
+					"category":     "PUBLIC_BUCKET_ACL",
+					"severity":     "LOW",
+					"eventTime":    watermark.Add(-time.Hour).Format(time.RFC3339Nano),
+					"createTime":   watermark.Add(-time.Hour).Format(time.RFC3339Nano),
+				},
+				"resource": map[string]any{
+					"name":          "//storage.googleapis.com/projects/_/buckets/data-old",
+					"displayName":   "data-old",
+					"type":          "google.cloud.storage.Bucket",
+					"service":       "storage.googleapis.com",
+					"location":      "US",
+					"cloudProvider": "GOOGLE_CLOUD_PLATFORM",
+					"projectName":   "//cloudresourcemanager.googleapis.com/projects/writer-prod",
+				},
+			},
+		}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familySecurityCenterFinding,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil, &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(security_center_finding) error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetAttributes()["finding_name"] != "projects/writer-prod/sources/123/findings/new-finding" {
+		t.Fatalf("events = %#v, want only new Security Command Center finding", pull.Events)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+	if gotOrderBy != "event_time desc" {
+		t.Fatalf("orderBy = %q, want event_time desc", gotOrderBy)
+	}
+	wantFilter := `event_time >= "` + watermark.Add(-gcpcloud.FindingCheckpointLookback).Format(time.RFC3339Nano) + `"`
+	if gotFilter != wantFilter {
+		t.Fatalf("filter = %q, want %q", gotFilter, wantFilter)
+	}
+	if got := pull.Checkpoint.GetWatermark().AsTime(); !got.Equal(watermark.Add(time.Hour)) {
+		t.Fatalf("checkpoint watermark = %s, want %s", got, watermark.Add(time.Hour))
 	}
 }
 

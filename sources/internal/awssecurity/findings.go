@@ -7,6 +7,8 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/guardduty"
 	guarddutytypes "github.com/aws/aws-sdk-go-v2/service/guardduty/types"
+	"github.com/aws/aws-sdk-go-v2/service/inspector2"
+	inspector2types "github.com/aws/aws-sdk-go-v2/service/inspector2/types"
 	"github.com/aws/aws-sdk-go-v2/service/macie2"
 	macie2types "github.com/aws/aws-sdk-go-v2/service/macie2/types"
 	"github.com/aws/aws-sdk-go-v2/service/securityhub"
@@ -42,6 +44,23 @@ func SecurityHubGetFindingsInput(maxResults int32, token string, checkpoint *cer
 	if start, ok := checkpointStart(checkpoint, lookback); ok {
 		input.Filters = &securityhubtypes.AwsSecurityFindingFilters{
 			UpdatedAt: []securityhubtypes.DateFilter{{Start: awssdk.String(start.Format(time.RFC3339Nano))}},
+		}
+	}
+	return input
+}
+
+func Inspector2ListFindingsInput(maxResults int32, token string, checkpoint *cerebrov1.SourceCheckpoint, lookback time.Duration) *inspector2.ListFindingsInput {
+	input := &inspector2.ListFindingsInput{
+		MaxResults: awssdk.Int32(maxResults),
+		NextToken:  stringPtr(token),
+		SortCriteria: &inspector2types.SortCriteria{
+			Field:     inspector2types.SortFieldLastObservedAt,
+			SortOrder: inspector2types.SortOrderDesc,
+		},
+	}
+	if start, ok := checkpointStart(checkpoint, lookback); ok {
+		input.FilterCriteria = &inspector2types.FilterCriteria{
+			LastObservedAt: []inspector2types.DateFilter{{StartInclusive: awssdk.Time(start)}},
 		}
 	}
 	return input
