@@ -1042,8 +1042,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
-// ReadWithCheckpoint lets AWS families with provider-supported update ordering
-// stop once they reach the durable runtime watermark.
+// ReadWithCheckpoint lets AWS families with provider-supported update ordering stop once they reach the durable runtime watermark.
 func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }

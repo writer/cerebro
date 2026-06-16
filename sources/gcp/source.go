@@ -34,7 +34,6 @@ const (
 	defaultFamily                                                                                                                                                                                        = familyAudit
 	defaultPageSize                                                                                                                                                                                      = 10
 	gcsObjectContentSampleBytes                                                                                                                                                                          = 64 << 10
-	gcpFindingCheckpointLookback                                                                                                                                                                         = 2 * time.Minute
 	maxPageSize                                                                                                                                                                                          = 200
 	familyAssetMetadata                                                                                                                                                                                  = "asset_metadata"
 	familyAIDataset                                                                                                                                                                                      = "aiplatform_dataset"
@@ -261,8 +260,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
-// ReadWithCheckpoint lets GCP families with provider-supported event ordering
-// stop once they reach the durable runtime watermark.
+// ReadWithCheckpoint lets GCP families with provider-supported event ordering stop once they reach the durable runtime watermark.
 func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }
@@ -362,54 +360,24 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.CertificateManagerCertificateMapRecord]{Name: familyCertificateManagerCertificateMap, Label: "gcp certificate manager certificate maps", List: listCertificateManagerCertificateMaps, Event: gcpCloudEvent(gcpcloud.CertificateManagerCertificateMapEvent), URN: gcpResourceURN[gcpcloud.CertificateManagerCertificateMapRecord]("gcp_certificate_manager_certificate_map")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.CertificateManagerCertificateMapEntryRecord]{Name: familyCertificateManagerCertificateMapEntry, Label: "gcp certificate manager certificate map entries", List: listCertificateManagerCertificateMapEntries, Event: gcpCloudEvent(gcpcloud.CertificateManagerCertificateMapEntryEvent), URN: gcpResourceURN[gcpcloud.CertificateManagerCertificateMapEntryRecord]("gcp_certificate_manager_certificate_map_entry")}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.CertificateManagerDNSAuthorizationRecord]{Name: familyCertificateManagerDNSAuthorization, Label: "gcp certificate manager dns authorizations", List: listCertificateManagerDNSAuthorizations, Event: gcpCloudEvent(gcpcloud.CertificateManagerDNSAuthorizationEvent), URN: gcpResourceURN[gcpcloud.CertificateManagerDNSAuthorizationRecord]("gcp_certificate_manager_dns_authorization")}),
-		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudFunctionRecord]{
-			Name:  familyCloudFunction,
-			Label: "gcp cloud functions",
-			List:  listCloudFunctions,
-			Event: gcpCloudEvent(gcpcloud.CloudFunctionEvent),
-			URN: func(settings settings, fn gcpcloud.CloudFunctionRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_function:%s", tenantID(settings), firstNonEmpty(fn.Name, fn.ServiceConfig.URI)), nil
-			},
-		}),
-		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudIDSEndpointRecord]{
-			Name:  familyCloudIDSEndpoint,
-			Label: "gcp cloud ids endpoints",
-			List:  listCloudIDSEndpoints,
-			Event: gcpCloudEvent(gcpcloud.CloudIDSEndpointEvent),
-			URN: func(settings settings, endpoint gcpcloud.CloudIDSEndpointRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_ids_endpoint:%s", tenantID(settings), endpoint.Name), nil
-			},
-		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudFunctionRecord]{Name: familyCloudFunction, Label: "gcp cloud functions", List: listCloudFunctions, Event: gcpCloudEvent(gcpcloud.CloudFunctionEvent), URN: func(settings settings, fn gcpcloud.CloudFunctionRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_function:%s", tenantID(settings), firstNonEmpty(fn.Name, fn.ServiceConfig.URI)), nil
+		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudIDSEndpointRecord]{Name: familyCloudIDSEndpoint, Label: "gcp cloud ids endpoints", List: listCloudIDSEndpoints, Event: gcpCloudEvent(gcpcloud.CloudIDSEndpointEvent), URN: func(settings settings, endpoint gcpcloud.CloudIDSEndpointRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_ids_endpoint:%s", tenantID(settings), endpoint.Name), nil
+		}}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudSchedulerJobRecord]{Name: familyCloudSchedulerJob, Label: "gcp cloud scheduler jobs", List: listCloudSchedulerJobs, Event: gcpCloudEvent(gcpcloud.CloudSchedulerJobEvent), URN: func(settings settings, job gcpcloud.CloudSchedulerJobRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_scheduler_job:%s", tenantID(settings), firstNonEmpty(job.Name, settings.projectID)), nil
 		}}),
-		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudRunRevisionRecord]{
-			Name:  familyCloudRunRevision,
-			Label: "gcp cloud run revisions",
-			List:  listCloudRunRevisions,
-			Event: gcpCloudEvent(gcpcloud.CloudRunRevisionEvent),
-			URN: func(settings settings, revision gcpcloud.CloudRunRevisionRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_run_revision:%s", tenantID(settings), firstNonEmpty(revision.Name, revision.UID)), nil
-			},
-		}),
-		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudRunServiceRecord]{
-			Name:  familyCloudRunService,
-			Label: "gcp cloud run services",
-			List:  listCloudRunServices,
-			Event: gcpCloudEvent(gcpcloud.CloudRunServiceEvent),
-			URN: func(settings settings, service gcpcloud.CloudRunServiceRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_run_service:%s", tenantID(settings), firstNonEmpty(service.Name, service.UID)), nil
-			},
-		}),
-		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudSQLInstanceRecord]{
-			Name:  familyCloudSQLInstance,
-			Label: "gcp cloud sql instances",
-			List:  listCloudSQLInstances,
-			Event: gcpCloudEvent(gcpcloud.CloudSQLInstanceEvent),
-			URN: func(settings settings, instance gcpcloud.CloudSQLInstanceRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_sql_instance:%s", tenantID(settings), firstNonEmpty(instance.SelfLink, instance.Name)), nil
-			},
-		}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudRunRevisionRecord]{Name: familyCloudRunRevision, Label: "gcp cloud run revisions", List: listCloudRunRevisions, Event: gcpCloudEvent(gcpcloud.CloudRunRevisionEvent), URN: func(settings settings, revision gcpcloud.CloudRunRevisionRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_run_revision:%s", tenantID(settings), firstNonEmpty(revision.Name, revision.UID)), nil
+		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudRunServiceRecord]{Name: familyCloudRunService, Label: "gcp cloud run services", List: listCloudRunServices, Event: gcpCloudEvent(gcpcloud.CloudRunServiceEvent), URN: func(settings settings, service gcpcloud.CloudRunServiceRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_run_service:%s", tenantID(settings), firstNonEmpty(service.Name, service.UID)), nil
+		}}),
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudSQLInstanceRecord]{Name: familyCloudSQLInstance, Label: "gcp cloud sql instances", List: listCloudSQLInstances, Event: gcpCloudEvent(gcpcloud.CloudSQLInstanceEvent), URN: func(settings settings, instance gcpcloud.CloudSQLInstanceRecord) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_sql_instance:%s", tenantID(settings), firstNonEmpty(instance.SelfLink, instance.Name)), nil
+		}}),
 		gcpFamily(s, gcpFamilyOptions[gcpcloud.CloudSQLDatabaseRecord]{Name: familyCloudSQLDatabase, Label: "gcp cloud sql databases", List: listCloudSQLDatabases, Event: gcpCloudEvent(gcpcloud.CloudSQLDatabaseEvent), URN: func(settings settings, database gcpcloud.CloudSQLDatabaseRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_cloud_sql_database:%s", tenantID(settings), gcpcloud.CloudSQLDatabaseResourceID(settings.projectID, database)), nil
 		}}),
@@ -1839,40 +1807,13 @@ func listSecurityCenterFindings(ctx context.Context, source *Source, settings se
 func listSecurityCenterFindingsWithCheckpoint(ctx context.Context, source *Source, settings settings, pageToken string, limit int, checkpoint *cerebrov1.SourceCheckpoint) ([]gcpcloud.SecurityCenterFindingRecord, string, error) {
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/sources/-/findings"
 	readSettings := settings
-	if start, ok := gcpCheckpointStart(checkpoint, gcpFindingCheckpointLookback); ok {
-		readSettings.filter = combineGCPFilters(readSettings.filter, fmt.Sprintf(`event_time >= "%s"`, start.Format(time.RFC3339Nano)))
+	if start, ok := gcpcloud.CheckpointStart(checkpoint, gcpcloud.FindingCheckpointLookback); ok {
+		readSettings.filter = gcpcloud.CombineFilters(readSettings.filter, fmt.Sprintf(`event_time >= "%s"`, start.Format(time.RFC3339Nano)))
 	}
 	query := url.Values{"orderBy": {"event_time desc"}}
 	return listPagedRecords[gcpcloud.SecurityCenterFindingRecord, securityCenterFindingsPageResponse](ctx, source, readSettings, pageToken, limit, securityCenterBaseURL, path, "pageSize", "gcp security command center finding", func(response securityCenterFindingsPageResponse) []json.RawMessage {
 		return response.ListFindingsResults
 	}, true, true, query)
-}
-
-func gcpCheckpointStart(checkpoint *cerebrov1.SourceCheckpoint, lookback time.Duration) (time.Time, bool) {
-	if checkpoint == nil || checkpoint.GetWatermark() == nil {
-		return time.Time{}, false
-	}
-	watermark := checkpoint.GetWatermark().AsTime().UTC()
-	if watermark.IsZero() {
-		return time.Time{}, false
-	}
-	if lookback > 0 {
-		watermark = watermark.Add(-lookback)
-	}
-	return watermark, true
-}
-
-func combineGCPFilters(existing string, incremental string) string {
-	existing = strings.TrimSpace(existing)
-	incremental = strings.TrimSpace(incremental)
-	switch {
-	case existing == "":
-		return incremental
-	case incremental == "":
-		return existing
-	default:
-		return "(" + existing + ") AND (" + incremental + ")"
-	}
 }
 
 func listAuditRecords(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]auditRecord, string, error) {

@@ -943,7 +943,7 @@ func TestReadLiveGCPSecurityCenterFindingsWithCheckpoint(t *testing.T) {
 	if gotOrderBy != "event_time desc" {
 		t.Fatalf("orderBy = %q, want event_time desc", gotOrderBy)
 	}
-	wantFilter := `event_time >= "` + watermark.Add(-gcpFindingCheckpointLookback).Format(time.RFC3339Nano) + `"`
+	wantFilter := `event_time >= "` + watermark.Add(-gcpcloud.FindingCheckpointLookback).Format(time.RFC3339Nano) + `"`
 	if gotFilter != wantFilter {
 		t.Fatalf("filter = %q, want %q", gotFilter, wantFilter)
 	}
