@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/connectordefinitions"
 )
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
@@ -186,6 +188,46 @@ func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
 	if entry.Definition.SourceID != "jumpcloud" || entry.Status != StatusGenerateable {
 		t.Fatalf("entry = %#v, want generateable jumpcloud", entry)
 	}
+}
+
+func TestBuiltinCatalogAuth0UsesManagementAPIShape(t *testing.T) {
+	entry, ok, err := BuiltinEntry("auth0")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(auth0) ok = false, want true")
+	}
+	definition := entry.Definition
+	if definition.Transport == nil || definition.Transport.BaseURL != "https://${config.domain}/api/v2" {
+		t.Fatalf("auth0 transport = %#v, want Management API v2 base", definition.Transport)
+	}
+	if definition.Transport.Verification == nil || definition.Transport.Verification.Path != "/users" {
+		t.Fatalf("auth0 verification = %#v, want /users", definition.Transport.Verification)
+	}
+	if got := definition.Auth.TokenParams["audience"]; got != "https://${config.domain}/api/v2/" {
+		t.Fatalf("auth0 audience token param = %q", got)
+	}
+	if len(definition.ConfigFields) != 1 || definition.ConfigFields[0].Key != "domain" || !definition.ConfigFields[0].Required {
+		t.Fatalf("auth0 config fields = %#v, want required domain", definition.ConfigFields)
+	}
+	assertCatalogFamily(t, definition.ResourceFamilies, "users", "/users", "$[*]", "user_id")
+	assertCatalogFamily(t, definition.ResourceFamilies, "roles", "/roles", "$[*]", "id")
+	assertCatalogFamily(t, definition.ResourceFamilies, "audit_events", "/logs", "$[*]", "log_id")
+}
+
+func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, selector string, idField string) {
+	t.Helper()
+	for _, family := range families {
+		if family.ID != id {
+			continue
+		}
+		if family.Path != path || family.RecordSelector != selector || family.IDField != idField {
+			t.Fatalf("family %s = %#v, want path=%s selector=%s id_field=%s", id, family, path, selector, idField)
+		}
+		return
+	}
+	t.Fatalf("family %s not found in %#v", id, families)
 }
 
 func minimalDefinitionYAML() string {
