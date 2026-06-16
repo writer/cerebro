@@ -224,7 +224,14 @@ func (a *App) handleListRuntimeFreshness(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, http.StatusOK, runtimeFreshnessFromHealth(health))
 }
-
+func (a *App) handleGetConnectorCoverage(w http.ResponseWriter, r *http.Request) {
+	health, err := a.listSourceRuntimeHealth(r)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sourcecoverage.BuildScopedReport(health.Coverage, r.URL.Query().Get("tenant_id"), r.URL.Query().Get("source_id"), health.GeneratedAt))
+}
 func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthResponse, error) {
 	limit, err := uint32QueryParam(r, "limit")
 	if err != nil {

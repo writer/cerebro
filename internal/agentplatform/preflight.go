@@ -12,19 +12,20 @@ const (
 )
 
 type AgentRunPreflightRequest struct {
-	TenantID              string            `json:"tenant_id,omitempty"`
-	ActorID               string            `json:"actor_id,omitempty"`
-	CapabilityIDs         []string          `json:"capability_ids,omitempty"`
-	Question              string            `json:"question,omitempty"`
-	ScopeURN              string            `json:"scope_urn,omitempty"`
-	Model                 string            `json:"model,omitempty"`
-	RequestedScopes       []string          `json:"requested_scopes,omitempty"`
-	ScopeUnrestricted     bool              `json:"scope_unrestricted,omitempty"`
-	ConnectorReadiness    map[string]string `json:"connector_readiness,omitempty"`
-	EvalStatusOverrides   map[string]string `json:"eval_status_overrides,omitempty"`
-	AllowPreview          bool              `json:"allow_preview,omitempty"`
-	SelectionReason       string            `json:"selection_reason,omitempty"`
-	ProvenanceRequirement string            `json:"provenance_requirement,omitempty"`
+	TenantID              string                `json:"tenant_id,omitempty"`
+	ActorID               string                `json:"actor_id,omitempty"`
+	CapabilityIDs         []string              `json:"capability_ids,omitempty"`
+	Question              string                `json:"question,omitempty"`
+	ScopeURN              string                `json:"scope_urn,omitempty"`
+	Model                 string                `json:"model,omitempty"`
+	RequestedScopes       []string              `json:"requested_scopes,omitempty"`
+	ScopeUnrestricted     bool                  `json:"scope_unrestricted,omitempty"`
+	ConnectorReadiness    map[string]string     `json:"connector_readiness,omitempty"`
+	EvalStatusOverrides   map[string]string     `json:"eval_status_overrides,omitempty"`
+	AllowPreview          bool                  `json:"allow_preview,omitempty"`
+	SelectionReason       string                `json:"selection_reason,omitempty"`
+	ProvenanceRequirement string                `json:"provenance_requirement,omitempty"`
+	CoverageContext       *AgentCoverageContext `json:"coverage_context,omitempty"`
 }
 
 type AgentRunPreflight struct {
@@ -41,6 +42,7 @@ type AgentRunPreflight struct {
 	CapabilityDecisions  []CapabilityDecision        `json:"capability_decisions"`
 	GraphContext         AgentGraphPlanningContext   `json:"graph_context"`
 	ConnectorContext     []AgentConnectorGraphNode   `json:"connector_context"`
+	CoverageContext      *AgentCoverageContext       `json:"coverage_context,omitempty"`
 	Policy               AgentPolicyDecision         `json:"policy"`
 	WriteBack            AgentWriteBackContract      `json:"write_back"`
 	RuntimeEvents        []string                    `json:"runtime_events"`
@@ -48,22 +50,59 @@ type AgentRunPreflight struct {
 }
 
 type AgentGraphPlanningContext struct {
-	TenantID           string             `json:"tenant_id,omitempty"`
-	ScopeURN           string             `json:"scope_urn,omitempty"`
-	ScopeTenantID      string             `json:"scope_tenant_id,omitempty"`
-	ReasoningSurface   string             `json:"reasoning_surface"`
-	ReadOnly           bool               `json:"read_only"`
-	CitationRequired   bool               `json:"citation_required"`
-	ProvenanceRequired bool               `json:"provenance_required"`
-	Budget             AgentContextBudget `json:"budget"`
-	QueryModes         []string           `json:"query_modes"`
-	ProvenanceSurfaces []string           `json:"provenance_surfaces"`
+	TenantID           string                   `json:"tenant_id,omitempty"`
+	ScopeURN           string                   `json:"scope_urn,omitempty"`
+	ScopeTenantID      string                   `json:"scope_tenant_id,omitempty"`
+	ReasoningSurface   string                   `json:"reasoning_surface"`
+	ReadOnly           bool                     `json:"read_only"`
+	CitationRequired   bool                     `json:"citation_required"`
+	ProvenanceRequired bool                     `json:"provenance_required"`
+	Budget             AgentContextBudget       `json:"budget"`
+	QueryModes         []string                 `json:"query_modes"`
+	SemanticViews      []AgentSemanticGraphView `json:"semantic_views"`
+	ProvenanceSurfaces []string                 `json:"provenance_surfaces"`
+}
+
+type AgentSemanticGraphView struct {
+	ID               string   `json:"id"`
+	Purpose          string   `json:"purpose"`
+	QueryMode        string   `json:"query_mode"`
+	RequiredEvidence []string `json:"required_evidence,omitempty"`
 }
 
 type AgentContextBudget struct {
 	MaxRows     int `json:"max_rows"`
 	MaxDepth    int `json:"max_depth"`
 	MaxChildren int `json:"max_children"`
+}
+
+type AgentCoverageContext struct {
+	Version             string                   `json:"version"`
+	TenantID            string                   `json:"tenant_id,omitempty"`
+	SourceID            string                   `json:"source_id,omitempty"`
+	GeneratedAt         string                   `json:"generated_at,omitempty"`
+	TotalDimensions     int                      `json:"total_dimensions"`
+	HighValueDimensions int                      `json:"high_value_dimensions"`
+	BlindSpotCount      int                      `json:"blind_spot_count"`
+	UnconfiguredCount   int                      `json:"unconfigured_count"`
+	StaleCount          int                      `json:"stale_count"`
+	FailedCount         int                      `json:"failed_count"`
+	UnsupportedCount    int                      `json:"unsupported_count"`
+	PartialCount        int                      `json:"partial_count"`
+	TopBlindSpots       []AgentCoverageBlindSpot `json:"top_blind_spots,omitempty"`
+}
+
+type AgentCoverageBlindSpot struct {
+	SourceID      string   `json:"source_id"`
+	DimensionID   string   `json:"dimension_id"`
+	DimensionType string   `json:"dimension_type"`
+	Title         string   `json:"title"`
+	State         string   `json:"state"`
+	SupportLevel  string   `json:"support_level"`
+	RuntimeID     string   `json:"runtime_id,omitempty"`
+	Family        string   `json:"family,omitempty"`
+	Warning       string   `json:"warning,omitempty"`
+	Notes         []string `json:"notes,omitempty"`
 }
 
 type AgentConnectorGraphNode struct {
@@ -188,6 +227,7 @@ func PreflightAgentRun(request AgentRunPreflightRequest) AgentRunPreflight {
 		CapabilityDecisions:  decisions,
 		GraphContext:         graphContext,
 		ConnectorContext:     connectorContext,
+		CoverageContext:      cloneCoverageContext(request.CoverageContext),
 		Policy:               policy,
 		WriteBack:            writeBack,
 		RuntimeEvents:        runtimeEvents,
@@ -211,6 +251,7 @@ func normalizeAgentRunPreflightRequest(request AgentRunPreflightRequest) AgentRu
 	if request.EvalStatusOverrides == nil {
 		request.EvalStatusOverrides = map[string]string{}
 	}
+	request.CoverageContext = cloneCoverageContext(request.CoverageContext)
 	return request
 }
 
@@ -229,6 +270,7 @@ func agentGraphPlanningContext(request AgentRunPreflightRequest, decisions []Cap
 			MaxChildren: defaultGraphContextChildren,
 		},
 		QueryModes:         []string{"read_only_cypher", "bounded_neighborhood", "citation_grounded_summary"},
+		SemanticViews:      agentSemanticGraphViews(),
 		ProvenanceSurfaces: agentPreflightProvenance(decisions),
 	}
 }
@@ -309,6 +351,7 @@ func agentPolicyDecision(request AgentRunPreflightRequest, decisions []Capabilit
 		}
 		checks = append(checks, AgentPolicyCheck{ID: "connector:" + connector.SourceID, Status: status, Message: message, Fields: []string{connector.NodeURN}})
 	}
+	checks = append(checks, agentCoveragePolicyChecks(request.CoverageContext)...)
 	passing := true
 	for _, check := range checks {
 		if check.Status == "blocked" {
@@ -322,6 +365,51 @@ func agentPolicyDecision(request AgentRunPreflightRequest, decisions []Capabilit
 		TenantID:     request.TenantID,
 		Checks:       checks,
 	}
+}
+
+func agentSemanticGraphViews() []AgentSemanticGraphView {
+	return []AgentSemanticGraphView{
+		{ID: "source_coverage", Purpose: "Explain which connector-backed facts are present, stale, partial, unsupported, or missing.", QueryMode: "coverage_report", RequiredEvidence: []string{"connector_coverage_report"}},
+		{ID: "graph_provenance", Purpose: "Explain why a node, edge, or finding exists in the graph and which projection metadata supports it.", QueryMode: "provenance_lookup", RequiredEvidence: []string{"projection_class", "source_id", "runtime_id"}},
+		{ID: "effective_entitlements", Purpose: "Read tenant-scoped identity, group, role, entitlement, and capability paths.", QueryMode: "bounded_cypher", RequiredEvidence: []string{"tenant_id", "source_urns", "citation_status"}},
+		{ID: "remediation_lifecycle", Purpose: "Read finding status, external lifecycle references, decisions, actions, outcomes, and reopen signals.", QueryMode: "bounded_cypher", RequiredEvidence: []string{"workflow_event", "external_ref", "finding_status"}},
+		{ID: "attack_paths", Purpose: "Read composed reachability and privilege paths with graph citations.", QueryMode: "bounded_cypher", RequiredEvidence: []string{"path_nodes", "path_relations", "citation_status"}},
+	}
+}
+
+func agentCoveragePolicyChecks(context *AgentCoverageContext) []AgentPolicyCheck {
+	if context == nil {
+		return []AgentPolicyCheck{{ID: "coverage_context", Status: "not_applicable", Message: "No connector coverage context was supplied."}}
+	}
+	if context.BlindSpotCount == 0 {
+		return []AgentPolicyCheck{{ID: "coverage_context", Status: "pass", Message: "No high-value connector blind spots are reported.", Fields: []string{context.TenantID}}}
+	}
+	fields := make([]string, 0, len(context.TopBlindSpots)+1)
+	fields = append(fields, context.TenantID)
+	for _, blindSpot := range context.TopBlindSpots {
+		if blindSpot.SourceID != "" && blindSpot.DimensionID != "" {
+			fields = append(fields, blindSpot.SourceID+":"+blindSpot.DimensionID)
+		}
+	}
+	return []AgentPolicyCheck{{
+		ID:      "coverage_context",
+		Status:  "warning",
+		Message: "Connector coverage has high-value blind spots; graph answers must preserve coverage caveats.",
+		Fields:  uniqueSortedStrings(fields),
+	}}
+}
+
+func cloneCoverageContext(context *AgentCoverageContext) *AgentCoverageContext {
+	if context == nil {
+		return nil
+	}
+	cloned := *context
+	cloned.TopBlindSpots = make([]AgentCoverageBlindSpot, len(context.TopBlindSpots))
+	for i, blindSpot := range context.TopBlindSpots {
+		cloned.TopBlindSpots[i] = blindSpot
+		cloned.TopBlindSpots[i].Notes = cloneStrings(blindSpot.Notes)
+	}
+	return &cloned
 }
 
 func agentPreflightRuntimeEvents(decisions []CapabilityDecision) []string {
