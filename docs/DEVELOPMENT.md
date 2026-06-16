@@ -63,7 +63,7 @@ make graph-rebuild-dryrun
 - Append-log-backed sync and replay use NATS JetStream.
 - Graph projection and query operations use Neo4j/Aura.
 - Runtime finding behavior lives in Go rule packages under `internal/findings/`.
-- JSON policy files under `policies/` are catalog/control metadata, not a runtime Cedar evaluator.
+- JSON policy files under `policies/` are the authoring catalog for generated policy rules. Run `make policy-rule-generate` after policy edits, then `make detection-catalog-generate`.
 
 ## Before Opening A PR
 

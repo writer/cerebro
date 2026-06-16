@@ -2,9 +2,9 @@
 
 ## Overview
 
-The `policies/` tree is a checked-in security policy and control-mapping catalog. It is validated by `make catalog-check` and documented here for authoring consistency.
+The `policies/` tree is the checked-in authoring catalog for security policy and control mappings. It is validated by `make catalog-check` and documented here for authoring consistency.
 
-The current bootstrap server does not evaluate these JSON files at request time. Runtime findings are produced by Go rule implementations in `internal/findings/` and source/runtime projections. Treat this catalog as compliance and policy metadata unless a future change explicitly wires a runtime evaluator.
+Policies are generated into Go rule definitions in `internal/findings/policy_rule_catalog_gen.go` with `make policy-rule-generate`. The generated policy rules register in the built-in `policy` rule pack, publish auditor-facing control refs in `internal/findings/public_detection_catalog.json`, and evaluate dedicated `policy.evidence` / `policy.result` events that identify a failed `policy_id`, `check_id`, or `rule_id`.
 
 ## Policy Structure
 
@@ -40,6 +40,7 @@ The current bootstrap server does not evaluate these JSON files at request time.
 | `principal` | string | No | Principal pattern for access control |
 | `action` | string | No | Action pattern for access control |
 | `resource` | string | No | Resource pattern for access control |
+| `query` | string | Conditional | SQL/evidence query for query-backed policy rules when `conditions` is not present |
 
 ### Severity Levels
 
@@ -593,7 +594,12 @@ cerebro policy test custom-check-name sample-asset.json
 
 ### Step 5: Deploy
 
-Place the policy file in the appropriate `policies/` subdirectory and restart Cerebro.
+Place the policy file in the appropriate `policies/` subdirectory, then regenerate the rule and detection catalogs:
+
+```bash
+make policy-rule-generate
+make detection-catalog-generate
+```
 
 ---
 

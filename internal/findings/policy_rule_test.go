@@ -1,0 +1,109 @@
+package findings
+
+import (
+	"context"
+	"testing"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
+)
+
+func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
+	definition := RuleDefinition{
+		ID:                "policy-test",
+		Name:              "Policy Test",
+		Description:       "Policy test description",
+		SourceID:          policyRuleSourceID,
+		EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
+		OutputKind:        policyRuleOutputKind,
+		Severity:          "HIGH",
+		Status:            "active",
+		Maturity:          RuleMaturityCandidate,
+		Tags:              []string{"policy", "test"},
+		FalsePositives:    []string{"Approved exception."},
+		Runbook:           "Review policy evidence.",
+		FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
+		ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
+		Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
+	}
+	rule := newPolicyCatalogRule(policyRuleConfig{
+		Definition:   definition,
+		EvidenceMode: "query",
+		Category:     "compliance",
+		Query:        "SELECT id FROM resources WHERE failing = true",
+	})
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-policy", SourceId: policyRuleSourceID}
+	event := &cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant-1",
+		SourceId: policyRuleSourceID,
+		Kind:     policyRuleResultEventKind,
+		Attributes: map[string]string{
+			"policy_id":    "policy-test",
+			"result":       "failed",
+			"resource_urn": "urn:cerebro:tenant-1:test:resource-1",
+			"resource_id":  "resource-1",
+		},
+	}
+	findings, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if got := len(findings); got != 1 {
+		t.Fatalf("len(findings) = %d, want 1", got)
+	}
+	finding := findings[0]
+	if finding.RuleID != "policy-test" || finding.PolicyID != "policy-test" || finding.CheckID != "policy-test" {
+		t.Fatalf("finding identifiers = rule:%q policy:%q check:%q", finding.RuleID, finding.PolicyID, finding.CheckID)
+	}
+	if finding.Severity != "HIGH" {
+		t.Fatalf("Severity = %q, want HIGH", finding.Severity)
+	}
+	if got := len(finding.ControlRefs); got != 1 {
+		t.Fatalf("len(ControlRefs) = %d, want 1", got)
+	}
+	if got := finding.Attributes["policy_query_present"]; got != "true" {
+		t.Fatalf("policy_query_present = %q, want true", got)
+	}
+}
+
+func TestPolicyCatalogRuleIgnoresPassingEvidence(t *testing.T) {
+	rule := newPolicyCatalogRule(policyRuleConfig{
+		Definition: RuleDefinition{
+			ID:                "policy-pass-test",
+			Name:              "Policy Pass Test",
+			Description:       "Policy pass test description",
+			SourceID:          policyRuleSourceID,
+			EventKinds:        []string{policyRuleEvidenceKind},
+			OutputKind:        policyRuleOutputKind,
+			Severity:          "LOW",
+			Status:            "active",
+			Maturity:          RuleMaturityCandidate,
+			Tags:              []string{"policy", "test"},
+			FalsePositives:    []string{"Approved exception."},
+			Runbook:           "Review policy evidence.",
+			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
+			ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
+			Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
+		},
+	})
+	findings, err := rule.Evaluate(context.Background(),
+		&cerebrov1.SourceRuntime{Id: "runtime-policy", SourceId: policyRuleSourceID},
+		&cerebrov1.EventEnvelope{
+			Id:       "event-1",
+			TenantId: "tenant-1",
+			SourceId: policyRuleSourceID,
+			Kind:     policyRuleEvidenceKind,
+			Attributes: map[string]string{
+				"policy_id": "policy-pass-test",
+				"result":    "passed",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("len(findings) = %d, want 0", len(findings))
+	}
+}

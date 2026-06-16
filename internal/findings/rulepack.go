@@ -124,6 +124,12 @@ func builtinRulePacks() []RulePack {
 				newEmailDomainAuthenticationMisconfiguredRule(),
 			},
 		},
+		{
+			ID:          "policy",
+			Name:        "Policy",
+			Description: "Generated compliance policy checks and evidence mappings.",
+			Rules:       newPolicyCatalogRules(),
+		},
 	}
 }
 
