@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pathlib
 import subprocess
+import sys
 import tempfile
 
 try:
@@ -66,7 +67,7 @@ def audit_python_sdk() -> int:
             requirements.write(dependency + "\n")
         requirements_path = pathlib.Path(requirements.name)
     try:
-        return run(["python3", "-m", "pip_audit", "--requirement", str(requirements_path)])
+        return run([sys.executable, "-m", "pip_audit", "--requirement", str(requirements_path)])
     finally:
         requirements_path.unlink(missing_ok=True)
 
