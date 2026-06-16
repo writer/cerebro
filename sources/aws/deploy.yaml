@@ -214,6 +214,13 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  - localId: ec2-ami
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: ec2_ami
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
   - localId: vpc
     config:
       account_id: env:AWS_ACCOUNT_ID

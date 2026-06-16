@@ -496,6 +496,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEBSSnapshot, kind: "aws.ebs_snapshot"},
 		{family: familyEBSVolume, kind: "aws.ebs_volume"},
 		{family: familyEC2EBSEncryptionByDefault, kind: "aws.ec2_ebs_encryption_by_default"},
+		{family: familyEC2AMI, kind: "aws.ec2_ami"},
 		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
 		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
@@ -1409,6 +1410,60 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadAWSEC2AMIInventoryEvent(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		compute: fakeAWSCompute{
+			images: []ec2types.Image{{
+				Architecture:       ec2types.ArchitectureValuesX8664,
+				CreationDate:       awssdk.String("2026-04-23T00:00:00Z"),
+				Description:        awssdk.String("Golden web AMI"),
+				ImageId:            awssdk.String("ami-123"),
+				ImageType:          ec2types.ImageTypeValuesMachine,
+				Name:               awssdk.String("golden-web"),
+				OwnerId:            awssdk.String("123456789012"),
+				Public:             awssdk.Bool(true),
+				RootDeviceName:     awssdk.String("/dev/xvda"),
+				RootDeviceType:     ec2types.DeviceTypeEbs,
+				SourceImageId:      awssdk.String("ami-base"),
+				SourceImageRegion:  awssdk.String("us-west-2"),
+				SourceInstanceId:   awssdk.String("i-source"),
+				State:              ec2types.ImageStateAvailable,
+				Tags:               []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("golden-web")}},
+				VirtualizationType: ec2types.VirtualizationTypeHvm,
+			}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyEC2AMI}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyEC2AMI, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.ec2_ami" {
+		t.Fatalf("kind = %q, want aws.ec2_ami", got)
+	}
+	for key, want := range map[string]string{
+		"architecture":        "x86_64",
+		"image_id":            "ami-123",
+		"is_public":           "true",
+		"public":              "true",
+		"resource_name":       "golden-web",
+		"resource_type":       "ec2_ami",
+		"root_device_type":    "ebs",
+		"source_image_id":     "ami-base",
+		"source_image_region": "us-west-2",
+		"source_instance_id":  "i-source",
+		"state":               "available",
+		"virtualization_type": "hvm",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -3125,6 +3180,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		clusterARN := "arn:aws:ecs:us-east-1:123456789012:cluster/prod"
 		eksClusterName := "prod-eks"
 		eksClusterARN := "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks"
+		fake.compute.images = []ec2types.Image{{ImageId: awssdk.String("ami-123"), Name: awssdk.String("golden-web"), Public: awssdk.Bool(true)}}
 		fake.compute.instances = []ec2types.Instance{{InstanceId: awssdk.String("i-123"), IamInstanceProfile: &ec2types.IamInstanceProfile{Arn: awssdk.String(profileARN)}}}
 		fake.compute.instanceProfiles = map[string]iamtypes.InstanceProfile{"WebProfile": {Roles: []iamtypes.Role{{Arn: awssdk.String("arn:aws:iam::123456789012:role/WebInstanceRole"), RoleName: awssdk.String("WebInstanceRole")}}}}
 		fake.compute.lambdaFunctions = []lambdatypes.FunctionConfiguration{{FunctionArn: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders"), FunctionName: awssdk.String("orders"), Role: awssdk.String("arn:aws:iam::123456789012:role/LambdaOrdersRole")}}
@@ -3369,6 +3425,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyEC2Instance,
 			seed:    computeData,
 			wantAPI: []string{"ec2:DescribeInstances", "iam:GetInstanceProfile"},
+		},
+		{
+			family:  familyEC2AMI,
+			seed:    computeData,
+			wantAPI: []string{"ec2:DescribeImages"},
 		},
 		{
 			family:  familyVPC,
@@ -4519,6 +4580,7 @@ type fakeAWSGovernance struct {
 }
 
 type fakeAWSCompute struct {
+	images                   []ec2types.Image
 	instances                []ec2types.Instance
 	instanceProfiles         map[string]iamtypes.InstanceProfile
 	lambdaFunctions          []lambdatypes.FunctionConfiguration
@@ -4834,6 +4896,11 @@ func (f *recordingAWS) DescribeVpcEndpoints(ctx context.Context, input *ec2.Desc
 func (f *recordingAWS) DescribeInstances(ctx context.Context, input *ec2.DescribeInstancesInput, options ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
 	f.record("ec2:DescribeInstances")
 	return f.fakeAWS.DescribeInstances(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeImages(ctx context.Context, input *ec2.DescribeImagesInput, options ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+	f.record("ec2:DescribeImages")
+	return f.fakeAWS.DescribeImages(ctx, input, options...)
 }
 
 func (f *recordingAWS) DescribeAddresses(ctx context.Context, input *ec2.DescribeAddressesInput, options ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {
@@ -6747,6 +6814,21 @@ func paginateEC2Instances(values []ec2types.Instance, marker string, limit int) 
 	return values[start : start+limit], next
 }
 
+func paginateEC2Images(values []ec2types.Image, marker string, limit int) ([]ec2types.Image, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
 func paginateLambdaFunctions(values []lambdatypes.FunctionConfiguration, marker string, limit int) ([]lambdatypes.FunctionConfiguration, string) {
 	start := 0
 	if marker != "" {
@@ -6971,6 +7053,11 @@ func (f fakeAWS) DescribeVpcEndpoints(context.Context, *ec2.DescribeVpcEndpoints
 func (f fakeAWS) DescribeInstances(_ context.Context, input *ec2.DescribeInstancesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
 	instances, next := paginateEC2Instances(f.compute.instances, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
 	return &ec2.DescribeInstancesOutput{Reservations: []ec2types.Reservation{{Instances: instances}}, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeAWS) DescribeImages(_ context.Context, input *ec2.DescribeImagesInput, _ ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+	images, next := paginateEC2Images(f.compute.images, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &ec2.DescribeImagesOutput{Images: images, NextToken: stringPtr(next)}, nil
 }
 
 func (f fakeAWS) DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {

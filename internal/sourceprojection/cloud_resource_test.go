@@ -466,6 +466,14 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			entityType:   "aws.ec2.ebs.encryption.by.default",
 		},
 		{
+			name:         "ec2 ami",
+			kind:         "aws.ec2_ami",
+			resourceID:   "ami-123",
+			resourceType: "ec2_ami",
+			entityType:   "aws.ec2.ami",
+			public:       true,
+		},
+		{
 			name:         "guardduty detector",
 			kind:         "aws.guardduty_detector",
 			resourceID:   "arn:aws:guardduty:us-east-1:123456789012:detector/detector-1",
