@@ -14,10 +14,11 @@ const (
 )
 
 const (
-	FindingRecorded      = FindingsV1Prefix + ".recorded"
-	FindingStatusChanged = FindingsV1Prefix + ".status_changed"
-	FindingNoteAdded     = FindingsV1Prefix + ".note_added"
-	FindingTicketLinked  = FindingsV1Prefix + ".ticket_linked"
+	FindingRecorded          = FindingsV1Prefix + ".recorded"
+	FindingStatusChanged     = FindingsV1Prefix + ".status_changed"
+	FindingNoteAdded         = FindingsV1Prefix + ".note_added"
+	FindingTicketLinked      = FindingsV1Prefix + ".ticket_linked"
+	FindingExternalRefLinked = FindingsV1Prefix + ".external_ref_linked"
 
 	APIAccessAudit = AuditV1Prefix + ".api_access"
 

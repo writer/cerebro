@@ -142,6 +142,10 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			evaluationErr := fmt.Errorf("project graph rule %q finding %q anchor: %w", spec.GetId(), stored.ID, err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
+		if err := s.projectFindingExternalRefs(ctx, stored); err != nil {
+			evaluationErr := fmt.Errorf("project graph rule %q finding %q external refs: %w", spec.GetId(), stored.ID, err)
+			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+		}
 		if isNewFinding {
 			if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
 				evaluationErr := fmt.Errorf("project graph rule %q finding %q action recommendations: %w", spec.GetId(), stored.ID, err)

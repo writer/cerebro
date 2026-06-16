@@ -1643,7 +1643,8 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 	if err := authorizeFindingIDTenant(r.Context(), findingStore(app.deps.StateStore), findingID); err != nil {
 		return nil, mcpNormalizeIDLookupError(err, ports.ErrFindingNotFound)
 	}
-	if _, err := app.findingService().GetFinding(r.Context(), findingID); err != nil {
+	finding, err := app.findingService().GetFinding(r.Context(), findingID)
+	if err != nil {
 		return nil, err
 	}
 	action := strings.TrimSpace(mcpStringArg(args, "action"))
@@ -1670,7 +1671,52 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 	default:
 		return nil, fmt.Errorf("%w: unsupported action %q", errInvalidHTTPRequest, action)
 	}
-	return findingapi.NewMCPActionProposal(findingapi.MCPArguments(args), findingID, action), nil
+	proposal := findingapi.NewMCPActionProposal(findingapi.MCPArguments(args), findingID, action)
+	mcpApplyExternalLifecycleProposal(proposal, finding, action)
+	return proposal, nil
+}
+
+func mcpApplyExternalLifecycleProposal(proposal findingapi.MCPActionProposalPayload, finding *ports.FindingRecord, action string) {
+	ref, ok := mcpExternalOwnedRef(finding)
+	if !ok {
+		return
+	}
+	proposal["lifecycle_owner"] = "external_owned"
+	proposal["external_system"] = strings.TrimSpace(ref.System)
+	proposal["external_ref_kind"] = strings.TrimSpace(ref.Kind)
+	proposal["external_id"] = strings.TrimSpace(ref.ExternalID)
+	proposal["external_status"] = strings.TrimSpace(ref.ExternalStatus)
+	proposal["external_status_reason"] = strings.TrimSpace(ref.ExternalStatusReason)
+	proposal["external_url"] = strings.TrimSpace(ref.URL)
+	if strings.TrimSpace(action) == "update_status" {
+		proposal["handoff_required"] = true
+		proposal["recommended_action"] = "update_external_ref"
+		proposal["status_source"] = "external_lifecycle:" + strings.TrimSpace(ref.System)
+		proposal["proposal_note"] = "Lifecycle is owned by " + strings.TrimSpace(ref.System) + " " + strings.TrimSpace(ref.Kind) + "; update the external case or source and let Cerebro refresh the finding status."
+	}
+}
+
+func mcpExternalOwnedRef(finding *ports.FindingRecord) (ports.FindingExternalRef, bool) {
+	if finding == nil {
+		return ports.FindingExternalRef{}, false
+	}
+	for _, ref := range finding.ExternalRefs {
+		if strings.EqualFold(strings.TrimSpace(ref.LifecycleOwner), "external_owned") {
+			return ref, true
+		}
+	}
+	if !strings.EqualFold(strings.TrimSpace(finding.Attributes["lifecycle_owner"]), "external_owned") {
+		return ports.FindingExternalRef{}, false
+	}
+	return ports.FindingExternalRef{
+		System:               finding.Attributes["external_ref_system"],
+		Kind:                 finding.Attributes["external_ref_kind"],
+		ExternalID:           finding.Attributes["external_ref_id"],
+		URL:                  finding.Attributes["case_url"],
+		ExternalStatus:       finding.Attributes["external_ref_status"],
+		ExternalStatusReason: finding.Attributes["status_reason"],
+		LifecycleOwner:       "external_owned",
+	}, true
 }
 
 func (app *App) mcpProposeRuntimeRefresh(r *http.Request, args map[string]any) (any, error) {

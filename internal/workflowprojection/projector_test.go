@@ -365,6 +365,34 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		t.Fatal("resource finding link missing")
 	}
 
+	externalRefEvent, err := workflowevents.NewFindingExternalRefLinkedEvent(workflowevents.FindingExternalRefLinked{
+		Finding:        finding,
+		System:         "panopticon",
+		Kind:           "case",
+		ExternalID:     "case-123",
+		URL:            "https://panopticon.example/cases/123",
+		ExternalStatus: "investigating",
+		LifecycleOwner: "external_owned",
+		LinkedAt:       "2026-04-27T12:35:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingExternalRefLinkedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), externalRefEvent); err != nil {
+		t.Fatalf("Project(external ref) error = %v", err)
+	}
+	externalRefURN := findingExternalRefURN("writer", "panopticon", "case", "case-123")
+	externalRefEntity := graph.entities[externalRefURN]
+	if externalRefEntity == nil {
+		t.Fatal("external ref entity missing")
+	}
+	if got := externalRefEntity.Attributes["lifecycle_owner"]; got != "external_owned" {
+		t.Fatalf("external ref lifecycle_owner = %q, want external_owned", got)
+	}
+	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+externalRefURN]; !ok {
+		t.Fatal("finding external ref link missing")
+	}
+
 	finding.Status = "resolved"
 	manualStatusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
 		Finding:     finding,

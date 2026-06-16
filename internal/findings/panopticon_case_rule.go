@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	panopticonCuratedCaseRuleID = "panopticon-curated-case"
-	panopticonSourceID          = "panopticon"
-	panopticonCaseEventKind     = "panopticon.case"
+	panopticonCuratedCaseRuleID         = "panopticon-curated-case"
+	panopticonSourceID                  = "panopticon"
+	panopticonCaseEventKind             = "panopticon.case"
+	maxPanopticonCaseAlertEvidencePaths = 20
 )
 
 var panopticonCuratedCaseControlRefs = []ports.FindingControlRef{
@@ -32,6 +33,26 @@ var panopticonCaseSignalAttributeKeys = []string{
 	"upstream_detection_id",
 	"upstream_detection_name",
 	"upstream_siem",
+}
+
+// panopticonClosedCaseStatuses is the source-of-truth case status map Cerebro
+// uses to mirror Panopticon lifecycle state without locally closing cases.
+var panopticonClosedCaseStatuses = map[string]struct{}{
+	"accepted_risk":  {},
+	"archived":       {},
+	"canceled":       {},
+	"cancelled":      {},
+	"closed":         {},
+	"complete":       {},
+	"completed":      {},
+	"dismissed":      {},
+	"done":           {},
+	"duplicate":      {},
+	"false_positive": {},
+	"ignored":        {},
+	"resolved":       {},
+	"risk_accepted":  {},
+	"suppressed":     {},
 }
 
 type panopticonCuratedCaseRule struct {
@@ -182,7 +203,7 @@ func buildPanopticonCuratedCaseFinding(ctx context.Context, runtime *cerebrov1.S
 		graphEvidenceAttributes[key] = findingAttributes[key]
 	}
 	graphRows := []*cerebrov1.GraphEvidenceRow{
-		newGraphEvidenceRow("panopticon_case", graphEvidenceAttributes),
+		newGraphEvidenceRow("panopticon_case", graphEvidenceAttributes, panopticonCaseAlertEvidencePaths(event, caseID, title, projectedContext.PrimaryResourceURN, findingAttributes)...),
 	}
 	return &ports.FindingRecord{
 		ID:                fingerprint,
@@ -230,18 +251,78 @@ func panopticonCaseAnchor(caseID string) string {
 	return "panopticon.case:" + caseID
 }
 
+func panopticonCaseAlertEvidencePaths(event *cerebrov1.EventEnvelope, caseID string, caseTitle string, caseURN string, attrs map[string]string) []*cerebrov1.GraphEvidencePath {
+	caseURN = strings.TrimSpace(caseURN)
+	if caseURN == "" || strings.TrimSpace(attrs["upstream_alert_ids"]) == "" {
+		return nil
+	}
+	tenantID := ""
+	if event != nil {
+		tenantID = strings.TrimSpace(event.GetTenantId())
+	}
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(attrs["tenant_id"])
+	}
+	if tenantID == "" {
+		return nil
+	}
+	observedAt := ""
+	if event != nil && event.GetOccurredAt() != nil {
+		observedAt = event.GetOccurredAt().AsTime().UTC().Format(time.RFC3339Nano)
+	}
+	paths := []*cerebrov1.GraphEvidencePath{}
+	collectPanopticonCaseAlertIDs(attrs["upstream_alert_ids"], func(alertID string) {
+		if len(paths) >= maxPanopticonCaseAlertEvidencePaths {
+			return
+		}
+		alertID = strings.TrimSpace(alertID)
+		if alertID == "" {
+			return
+		}
+		paths = append(paths, newGraphEvidencePath(
+			caseURN,
+			firstNonEmpty(caseTitle, caseID),
+			"panopticon.case",
+			"contains",
+			panopticonAlertEvidenceURN(tenantID, alertID),
+			alertID,
+			"panopticon.alert",
+			map[string]string{
+				"case_id":                 strings.TrimSpace(caseID),
+				"upstream_alert_id":       alertID,
+				"upstream_siem":           attrs["upstream_siem"],
+				"upstream_detection_id":   attrs["upstream_detection_id"],
+				"upstream_detection_name": attrs["upstream_detection_name"],
+				"preprocessing_decision":  attrs["preprocessing_decision"],
+				"preprocessing_reason":    attrs["preprocessing_reason"],
+				"lookup_table":            attrs["lookup_table"],
+				"observed_at":             observedAt,
+			},
+		))
+	})
+	return paths
+}
+
+func panopticonAlertEvidenceURN(tenantID string, alertID string) string {
+	return fmt.Sprintf("urn:cerebro:%s:panopticon_alert:%s", strings.TrimSpace(tenantID), strings.TrimSpace(alertID))
+}
+
 func panopticonCaseSourceOpen(status string) bool {
+	normalized := normalizePanopticonCaseStatus(status)
+	if normalized == "" {
+		return false
+	}
+	if _, closed := panopticonClosedCaseStatuses[normalized]; closed {
+		return false
+	}
+	return true
+}
+
+func normalizePanopticonCaseStatus(status string) string {
 	normalized := strings.ToLower(strings.TrimSpace(status))
 	normalized = strings.ReplaceAll(normalized, "-", "_")
 	normalized = strings.ReplaceAll(normalized, " ", "_")
-	switch normalized {
-	case "":
-		return false
-	case "closed", "resolved", "complete", "completed", "done", "dismissed", "archived", "cancelled", "canceled", "false_positive", "duplicate", "accepted_risk", "risk_accepted", "suppressed", "ignored":
-		return false
-	default:
-		return true
-	}
+	return normalized
 }
 
 func panopticonCaseSeverity(event *cerebrov1.EventEnvelope, attrs map[string]string) string {

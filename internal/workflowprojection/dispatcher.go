@@ -36,6 +36,8 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		return s.projectFindingNote(ctx, event)
 	case workflowevents.EventKindFindingTicketLinked:
 		return s.projectFindingTicket(ctx, event)
+	case workflowevents.EventKindFindingExternalRefLinked:
+		return s.projectFindingExternalRef(ctx, event)
 	case workflowevents.EventKindFindingStatusChanged:
 		return s.projectFindingStatus(ctx, event)
 	case workflowevents.EventKindFindingTombstoned:
@@ -53,6 +55,8 @@ func workflowProjectionKind(kind string) string {
 		return workflowevents.EventKindFindingNoteAdded
 	case securityevents.FindingTicketLinked:
 		return workflowevents.EventKindFindingTicketLinked
+	case securityevents.FindingExternalRefLinked:
+		return workflowevents.EventKindFindingExternalRefLinked
 	case securityevents.FindingStatusChanged:
 		return workflowevents.EventKindFindingStatusChanged
 	default:

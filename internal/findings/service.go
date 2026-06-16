@@ -377,6 +377,10 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
+			if err := s.projectFindingExternalRefs(ctx, stored); err != nil {
+				evaluationErr := fmt.Errorf("project finding %q external refs: %w", stored.ID, err)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
+			}
 			if isNewFinding {
 				if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
 					evaluationErr := fmt.Errorf("project finding %q action recommendations: %w", stored.ID, err)
@@ -515,6 +519,12 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				}
 				if err := s.projectFindingAnchor(ctx, stored); err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)); failErr != nil {
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+					}
+					break
+				}
+				if err := s.projectFindingExternalRefs(ctx, stored); err != nil {
+					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q external refs: %w", stored.ID, err)); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
@@ -1350,6 +1360,9 @@ func (s *Service) LinkFindingExternalRef(ctx context.Context, id string, ref por
 	})
 	if err != nil {
 		return nil, fmt.Errorf("link external ref to finding %q: %w", findingID, err)
+	}
+	if err := s.projectFindingExternalRef(ctx, finding, ref); err != nil {
+		return nil, fmt.Errorf("project finding %q external ref: %w", findingID, err)
 	}
 	return finding, nil
 }
