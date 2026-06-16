@@ -92,6 +92,7 @@ emitted_kinds:
   - aws.iam_role
   - aws.iam_role_assignment
   - aws.iam_role_trust
+  - aws.iam_saml_provider
   - aws.iam_user
   - aws.identity_center_account_assignment
   - aws.identity_center_permission_set
@@ -234,6 +235,7 @@ runtime_families:
   - iam_role
   - iam_role_assignment
   - iam_role_trust
+  - iam_saml_provider
   - iam_user
   - identity_center_account_assignment
   - identity_center_permission_set
@@ -844,10 +846,9 @@ coverage_contract:
     - id: iam_saml_provider
       type: entity_family
       title: AWS IAM SAML providers
-      families: [asset_metadata]
-      support: partial
+      families: [iam_saml_provider]
+      support: supported
       high_value: true
-      known_unsupported_fields: [metadata expiration and signing certificate detail]
     - id: iam_user
       type: entity_family
       title: AWS IAM users

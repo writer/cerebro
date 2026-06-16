@@ -571,6 +571,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyWAFV2WebACL, kind: "aws.wafv2_web_acl"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust"},
+		{family: familyIAMSAMLProvider, kind: "aws.iam_saml_provider"},
 		{family: familyIAMGroup, kind: "aws.iam_group"},
 		{family: familyIAMMembership, config: map[string]string{"group_name": "Security"}, kind: "aws.iam_group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
@@ -736,6 +737,57 @@ func TestReadAWSIAMUserPreview(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["email"]; got != "admin@writer.com" {
 		t.Fatalf("email = %q, want admin@writer.com", got)
+	}
+}
+
+func TestReadAWSIAMSAMLProviderInventoryEvent(t *testing.T) {
+	providerARN := "arn:aws:iam::123456789012:saml-provider/Okta"
+	createDate := time.Now().UTC().Add(-72 * time.Hour)
+	validUntil := time.Now().UTC().Add(-48 * time.Hour)
+	source := newTestSource(t, fakeAWS{
+		samlProviders: []iamtypes.SAMLProviderListEntry{{
+			Arn:        awssdk.String(providerARN),
+			CreateDate: &createDate,
+			ValidUntil: &validUntil,
+		}},
+		samlProviderDetails: map[string]iam.GetSAMLProviderOutput{
+			providerARN: {
+				AssertionEncryptionMode: iamtypes.AssertionEncryptionModeTypeAllowed,
+				CreateDate:              &createDate,
+				SAMLMetadataDocument:    awssdk.String("<EntityDescriptor entityID=\"https://idp.example.com\"/>"),
+				SAMLProviderUUID:        awssdk.String("saml-uuid"),
+				Tags:                    []iamtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("identity@writer.com")}},
+				ValidUntil:              &validUntil,
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyIAMSAMLProvider}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyIAMSAMLProvider, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.iam_saml_provider" {
+		t.Fatalf("kind = %q, want aws.iam_saml_provider", got)
+	}
+	for key, want := range map[string]string{
+		"assertion_encryption_mode": "Allowed",
+		"expired":                   "true",
+		"metadata_document_present": "true",
+		"provider_arn":              providerARN,
+		"provider_name":             "Okta",
+		"provider_uuid":             "saml-uuid",
+		"resource_type":             "iam_saml_provider",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	days, err := strconv.Atoi(event.Attributes["valid_until_days"])
+	if err != nil || days >= 0 {
+		t.Fatalf("valid_until_days = %q, want negative integer", event.Attributes["valid_until_days"])
 	}
 }
 
@@ -3087,6 +3139,8 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.users = []iamtypes.User{{UserName: awssdk.String("admin@writer.com"), UserId: awssdk.String("AIDAADMIN")}}
 		fake.groups = []iamtypes.Group{{GroupName: awssdk.String("Security"), GroupId: awssdk.String("AGPSECURITY")}}
 		fake.roles = []iamtypes.Role{{RoleName: awssdk.String("AdminRole"), RoleId: awssdk.String("AROADMIN"), Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole")}}
+		fake.samlProviders = []iamtypes.SAMLProviderListEntry{{Arn: awssdk.String("arn:aws:iam::123456789012:saml-provider/Okta")}}
+		fake.samlProviderDetails = map[string]iam.GetSAMLProviderOutput{"arn:aws:iam::123456789012:saml-provider/Okta": {SAMLProviderUUID: awssdk.String("saml-uuid")}}
 		fake.attachedPolicies = []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("AdministratorAccess"), PolicyArn: awssdk.String("arn:aws:iam::aws:policy/AdministratorAccess")}}
 		fake.managedPolicyDocuments = map[string]string{"arn:aws:iam::aws:policy/AdministratorAccess": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}`}
 		fake.inlinePolicyNames = []string{"InlineAdmin"}
@@ -3774,6 +3828,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"iam:ListRoles"},
 		},
 		{
+			family:  familyIAMSAMLProvider,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:GetSAMLProvider", "iam:ListSAMLProviders"},
+		},
+		{
 			family:  familyIAMUser,
 			wantAPI: []string{"iam:ListUsers"},
 		},
@@ -4301,6 +4360,8 @@ type fakeAWS struct {
 	users                  []iamtypes.User
 	groups                 []iamtypes.Group
 	roles                  []iamtypes.Role
+	samlProviders          []iamtypes.SAMLProviderListEntry
+	samlProviderDetails    map[string]iam.GetSAMLProviderOutput
 	accessKeys             []iamtypes.AccessKeyMetadata
 	accountSummary         map[string]int32
 	accountPasswordPolicy  *iamtypes.PasswordPolicy
@@ -4625,6 +4686,16 @@ func (f *recordingAWS) ListGroups(ctx context.Context, input *iam.ListGroupsInpu
 func (f *recordingAWS) ListRoles(ctx context.Context, input *iam.ListRolesInput, options ...func(*iam.Options)) (*iam.ListRolesOutput, error) {
 	f.record("iam:ListRoles")
 	return f.fakeAWS.ListRoles(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListSAMLProviders(ctx context.Context, input *iam.ListSAMLProvidersInput, options ...func(*iam.Options)) (*iam.ListSAMLProvidersOutput, error) {
+	f.record("iam:ListSAMLProviders")
+	return f.fakeAWS.ListSAMLProviders(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetSAMLProvider(ctx context.Context, input *iam.GetSAMLProviderInput, options ...func(*iam.Options)) (*iam.GetSAMLProviderOutput, error) {
+	f.record("iam:GetSAMLProvider")
+	return f.fakeAWS.GetSAMLProvider(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListAccessKeys(ctx context.Context, input *iam.ListAccessKeysInput, options ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error) {
@@ -6538,6 +6609,19 @@ func (f fakeAWS) ListGroups(context.Context, *iam.ListGroupsInput, ...func(*iam.
 
 func (f fakeAWS) ListRoles(context.Context, *iam.ListRolesInput, ...func(*iam.Options)) (*iam.ListRolesOutput, error) {
 	return &iam.ListRolesOutput{Roles: f.roles}, nil
+}
+
+func (f fakeAWS) ListSAMLProviders(context.Context, *iam.ListSAMLProvidersInput, ...func(*iam.Options)) (*iam.ListSAMLProvidersOutput, error) {
+	return &iam.ListSAMLProvidersOutput{SAMLProviderList: f.samlProviders}, nil
+}
+
+func (f fakeAWS) GetSAMLProvider(_ context.Context, input *iam.GetSAMLProviderInput, _ ...func(*iam.Options)) (*iam.GetSAMLProviderOutput, error) {
+	if f.samlProviderDetails != nil {
+		if detail, ok := f.samlProviderDetails[awssdk.ToString(input.SAMLProviderArn)]; ok {
+			return &detail, nil
+		}
+	}
+	return &iam.GetSAMLProviderOutput{}, nil
 }
 
 func (f fakeAWS) ListAccessKeys(context.Context, *iam.ListAccessKeysInput, ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error) {
