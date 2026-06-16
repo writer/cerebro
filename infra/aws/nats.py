@@ -239,13 +239,13 @@ def _build_container_definitions(
                 "sh",
                 "-ec",
                 (
-                    'set -- --subjects "${SUBJECT_PREFIX}.>" --storage file --retention limits '
-                    '--discard old --replicas 1; '
+                    'set -- --subjects "${SUBJECT_PREFIX}.>" --discard old --replicas 1; '
                     'if [ -n "$STREAM_MAX_BYTES" ]; then set -- "$@" --max-bytes "$STREAM_MAX_BYTES"; fi; '
                     'if [ -n "$STREAM_MAX_AGE" ]; then set -- "$@" --max-age "$STREAM_MAX_AGE"; fi; '
                     'if nats --server "$NATS_URL" stream info "$STREAM_NAME" >/dev/null 2>&1; then '
                     'nats --server "$NATS_URL" stream edit "$STREAM_NAME" "$@" --defaults --force; '
-                    'else nats --server "$NATS_URL" stream add "$STREAM_NAME" "$@" --defaults; fi'
+                    'else nats --server "$NATS_URL" stream add "$STREAM_NAME" "$@" '
+                    '--storage file --retention limits --defaults; fi'
                 ),
             ],
             "logConfiguration": {

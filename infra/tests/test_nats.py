@@ -41,7 +41,11 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         bootstrap_env = {item["name"]: item["value"] for item in by_name["jetstream-bootstrap"]["environment"]}
         self.assertEqual(bootstrap_env["STREAM_MAX_BYTES"], "128849018880")
         self.assertEqual(bootstrap_env["STREAM_MAX_AGE"], "168h")
-        self.assertIn("stream edit", " ".join(by_name["jetstream-bootstrap"]["command"]))
+        bootstrap_command = " ".join(by_name["jetstream-bootstrap"]["command"])
+        self.assertIn("stream edit", bootstrap_command)
+        self.assertIn("stream add", bootstrap_command)
+        self.assertIn("stream add \"$STREAM_NAME\" \"$@\" --storage file --retention limits", bootstrap_command)
+        self.assertNotIn("stream edit \"$STREAM_NAME\" \"$@\" --storage", bootstrap_command)
         self.assertEqual(by_name["jetstream-lag-probe"]["user"], "10001")
         self.assertIs(by_name["jetstream-lag-probe"]["readonlyRootFilesystem"], True)
 
