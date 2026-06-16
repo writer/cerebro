@@ -1,0 +1,1451 @@
+# Developer platform, source control, CI/CD, artifact, and release connector definitions.
+# Entries are sorted by source_id for deterministic review.
+entries:
+  - classifier_output: bespoke_required
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-argo_cd
+      tenant_id: builtin_catalog
+      source_id: argo_cd
+      display_name: "Argo CD"
+      description: "Argo CD connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - ci
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.server_url}"
+        verification:
+          method: GET
+          path: /api/v1/session/userinfo
+          expect_status: [200]
+      resource_families:
+        - id: pipelines
+          label: Pipelines
+          path: /v1/pipelines
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: argo_cd.pipelines
+            schema_ref: argo_cd/pipelines/v1
+          projection:
+            template: asset
+          coverage:
+            - id: pipelines
+              type: entity_family
+              title: Pipelines
+              families: [pipelines]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: findings
+          label: Findings
+          path: /v1/findings
+          method: GET
+          id_field: id
+          event:
+            kind: argo_cd.findings
+            schema_ref: argo_cd/findings/v1
+          projection:
+            template: finding
+          coverage:
+            - id: findings
+              type: remediation_state
+              title: "Build findings"
+              families: [findings]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: argo_cd.audit_events
+            schema_ref: argo_cd/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-azure_devops
+      tenant_id: builtin_catalog
+      source_id: azure_devops
+      display_name: "Azure DevOps"
+      description: "Azure DevOps connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - code
+      auth:
+        model: oauth_authorization_code
+        authorization_url: "https://dev.azure.com/${config.organization}/oauth/authorize"
+        token_url: "https://dev.azure.com/${config.organization}/oauth/token"
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://dev.azure.com/${config.organization}"
+        verification:
+          method: GET
+          path: /_apis/projects
+          expect_status: [200]
+      resource_families:
+        - id: repositories
+          label: Repositories
+          path: /v1/repositories
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: azure_devops.repositories
+            schema_ref: azure_devops/repositories/v1
+          projection:
+            template: repository
+          coverage:
+            - id: repositories
+              type: entity_family
+              title: Repositories
+              families: [repositories]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: azure_devops.users
+            schema_ref: azure_devops/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: azure_devops.audit_events
+            schema_ref: azure_devops/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-bitbucket_cloud
+      tenant_id: builtin_catalog
+      source_id: bitbucket_cloud
+      display_name: "Bitbucket Cloud"
+      description: "Bitbucket Cloud connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - code
+      auth:
+        model: oauth_authorization_code
+        authorization_url: "https://api.bitbucket.org/oauth/authorize"
+        token_url: "https://api.bitbucket.org/oauth/token"
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.bitbucket.org"
+        verification:
+          method: GET
+          path: /2.0/user
+          expect_status: [200]
+      resource_families:
+        - id: repositories
+          label: Repositories
+          path: /v1/repositories
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: bitbucket_cloud.repositories
+            schema_ref: bitbucket_cloud/repositories/v1
+          projection:
+            template: repository
+          coverage:
+            - id: repositories
+              type: entity_family
+              title: Repositories
+              families: [repositories]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: bitbucket_cloud.users
+            schema_ref: bitbucket_cloud/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: bitbucket_cloud.audit_events
+            schema_ref: bitbucket_cloud/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-buildkite
+      tenant_id: builtin_catalog
+      source_id: buildkite
+      display_name: Buildkite
+      description: "Buildkite connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - ci
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.buildkite.com"
+        verification:
+          method: GET
+          path: /v2/user
+          expect_status: [200]
+      resource_families:
+        - id: pipelines
+          label: Pipelines
+          path: /v1/pipelines
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: buildkite.pipelines
+            schema_ref: buildkite/pipelines/v1
+          projection:
+            template: asset
+          coverage:
+            - id: pipelines
+              type: entity_family
+              title: Pipelines
+              families: [pipelines]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: findings
+          label: Findings
+          path: /v1/findings
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: buildkite.findings
+            schema_ref: buildkite/findings/v1
+          projection:
+            template: finding
+          coverage:
+            - id: findings
+              type: remediation_state
+              title: "Build findings"
+              families: [findings]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: buildkite.audit_events
+            schema_ref: buildkite/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-circleci
+      tenant_id: builtin_catalog
+      source_id: circleci
+      display_name: CircleCI
+      description: "CircleCI connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - ci
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://circleci.com/api"
+        verification:
+          method: GET
+          path: /v2/me
+          expect_status: [200]
+      resource_families:
+        - id: pipelines
+          label: Pipelines
+          path: /v1/pipelines
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: circleci.pipelines
+            schema_ref: circleci/pipelines/v1
+          projection:
+            template: asset
+          coverage:
+            - id: pipelines
+              type: entity_family
+              title: Pipelines
+              families: [pipelines]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: findings
+          label: Findings
+          path: /v1/findings
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: circleci.findings
+            schema_ref: circleci/findings/v1
+          projection:
+            template: finding
+          coverage:
+            - id: findings
+              type: remediation_state
+              title: "Build findings"
+              families: [findings]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: circleci.audit_events
+            schema_ref: circleci/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-docker_hub
+      tenant_id: builtin_catalog
+      source_id: docker_hub
+      display_name: "Docker Hub"
+      description: "Docker Hub connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - artifacts
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://hub.docker.com"
+        verification:
+          method: GET
+          path: /v2/user/
+          expect_status: [200]
+      resource_families:
+        - id: repositories
+          label: Repositories
+          path: /v1/repositories
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: docker_hub.repositories
+            schema_ref: docker_hub/repositories/v1
+          projection:
+            template: repository
+          coverage:
+            - id: repositories
+              type: entity_family
+              title: Repositories
+              families: [repositories]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: docker_hub.users
+            schema_ref: docker_hub/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: docker_hub.audit_events
+            schema_ref: docker_hub/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-gitlab
+      tenant_id: builtin_catalog
+      source_id: gitlab
+      display_name: GitLab
+      description: "GitLab connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - code
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://gitlab.com/api"
+        verification:
+          method: GET
+          path: /v4/user
+          expect_status: [200]
+      resource_families:
+        - id: repositories
+          label: Repositories
+          path: /v1/repositories
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: gitlab.repositories
+            schema_ref: gitlab/repositories/v1
+          projection:
+            template: repository
+          coverage:
+            - id: repositories
+              type: entity_family
+              title: Repositories
+              families: [repositories]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: gitlab.users
+            schema_ref: gitlab/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: gitlab.audit_events
+            schema_ref: gitlab/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-harness
+      tenant_id: builtin_catalog
+      source_id: harness
+      display_name: Harness
+      description: "Harness connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - ci
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://app.harness.io"
+        verification:
+          method: GET
+          path: /gateway/ng/api/user/currentUser
+          expect_status: [200]
+      resource_families:
+        - id: pipelines
+          label: Pipelines
+          path: /v1/pipelines
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: harness.pipelines
+            schema_ref: harness/pipelines/v1
+          projection:
+            template: asset
+          coverage:
+            - id: pipelines
+              type: entity_family
+              title: Pipelines
+              families: [pipelines]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: findings
+          label: Findings
+          path: /v1/findings
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: harness.findings
+            schema_ref: harness/findings/v1
+          projection:
+            template: finding
+          coverage:
+            - id: findings
+              type: remediation_state
+              title: "Build findings"
+              families: [findings]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: harness.audit_events
+            schema_ref: harness/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: bespoke_required
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-jenkins
+      tenant_id: builtin_catalog
+      source_id: jenkins
+      display_name: Jenkins
+      description: "Jenkins connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - ci
+      auth:
+        model: basic
+        credential_fields:
+          - key: username
+            reference_only: true
+          - key: password
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.jenkins_url}"
+        verification:
+          method: GET
+          path: /api/json
+          expect_status: [200]
+      resource_families:
+        - id: pipelines
+          label: Pipelines
+          path: /v1/pipelines
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: jenkins.pipelines
+            schema_ref: jenkins/pipelines/v1
+          projection:
+            template: asset
+          coverage:
+            - id: pipelines
+              type: entity_family
+              title: Pipelines
+              families: [pipelines]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: findings
+          label: Findings
+          path: /v1/findings
+          method: GET
+          id_field: id
+          event:
+            kind: jenkins.findings
+            schema_ref: jenkins/findings/v1
+          projection:
+            template: finding
+          coverage:
+            - id: findings
+              type: remediation_state
+              title: "Build findings"
+              families: [findings]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: jenkins.audit_events
+            schema_ref: jenkins/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-jfrog_artifactory_xray
+      tenant_id: builtin_catalog
+      source_id: jfrog_artifactory_xray
+      display_name: "JFrog Artifactory/Xray"
+      description: "JFrog Artifactory/Xray connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - artifacts
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.jfrog_url}"
+        verification:
+          method: GET
+          path: /xray/api/v1/system/ping
+          expect_status: [200]
+      resource_families:
+        - id: assets
+          label: Assets
+          path: /v1/assets
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: jfrog_artifactory_xray.assets
+            schema_ref: jfrog_artifactory_xray/assets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: assets
+              type: entity_family
+              title: Assets
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: findings
+          label: Findings
+          path: /v1/findings
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: jfrog_artifactory_xray.findings
+            schema_ref: jfrog_artifactory_xray/findings/v1
+          projection:
+            template: finding
+          coverage:
+            - id: findings
+              type: remediation_state
+              title: Findings
+              families: [findings]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: vulnerabilities
+          label: Vulnerabilities
+          path: /v1/vulnerabilities
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: jfrog_artifactory_xray.vulnerabilities
+            schema_ref: jfrog_artifactory_xray/vulnerabilities/v1
+          projection:
+            template: vulnerability
+          coverage:
+            - id: vulnerabilities
+              type: remediation_state
+              title: Vulnerabilities
+              families: [vulnerabilities]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-launchdarkly
+      tenant_id: builtin_catalog
+      source_id: launchdarkly
+      display_name: LaunchDarkly
+      description: "LaunchDarkly connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - feature_flags
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://app.launchdarkly.com/api"
+        verification:
+          method: GET
+          path: /v2/account
+          expect_status: [200]
+      resource_families:
+        - id: repositories
+          label: Repositories
+          path: /v1/repositories
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: launchdarkly.repositories
+            schema_ref: launchdarkly/repositories/v1
+          projection:
+            template: repository
+          coverage:
+            - id: repositories
+              type: entity_family
+              title: Repositories
+              families: [repositories]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: launchdarkly.users
+            schema_ref: launchdarkly/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: launchdarkly.audit_events
+            schema_ref: launchdarkly/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-pulumi_cloud
+      tenant_id: builtin_catalog
+      source_id: pulumi_cloud
+      display_name: "Pulumi Cloud"
+      description: "Pulumi Cloud connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - iac
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.pulumi.com/api"
+        verification:
+          method: GET
+          path: /user
+          expect_status: [200]
+      resource_families:
+        - id: repositories
+          label: Repositories
+          path: /v1/repositories
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: pulumi_cloud.repositories
+            schema_ref: pulumi_cloud/repositories/v1
+          projection:
+            template: repository
+          coverage:
+            - id: repositories
+              type: entity_family
+              title: Repositories
+              families: [repositories]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: pulumi_cloud.users
+            schema_ref: pulumi_cloud/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: pulumi_cloud.audit_events
+            schema_ref: pulumi_cloud/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-sentry
+      tenant_id: builtin_catalog
+      source_id: sentry
+      display_name: Sentry
+      description: "Sentry connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - observability
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://sentry.io/api"
+        verification:
+          method: GET
+          path: /0/organizations/
+          expect_status: [200]
+      resource_families:
+        - id: assets
+          label: Assets
+          path: /v1/assets
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: sentry.assets
+            schema_ref: sentry/assets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: assets
+              type: entity_family
+              title: Assets
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: findings
+          label: Findings
+          path: /v1/findings
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: sentry.findings
+            schema_ref: sentry/findings/v1
+          projection:
+            template: finding
+          coverage:
+            - id: findings
+              type: remediation_state
+              title: Findings
+              families: [findings]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: vulnerabilities
+          label: Vulnerabilities
+          path: /v1/vulnerabilities
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: sentry.vulnerabilities
+            schema_ref: sentry/vulnerabilities/v1
+          projection:
+            template: vulnerability
+          coverage:
+            - id: vulnerabilities
+              type: remediation_state
+              title: Vulnerabilities
+              families: [vulnerabilities]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-sonarcloud
+      tenant_id: builtin_catalog
+      source_id: sonarcloud
+      display_name: SonarCloud
+      description: "SonarCloud connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - code_quality
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://sonarcloud.io/api"
+        verification:
+          method: GET
+          path: /authentication/validate
+          expect_status: [200]
+      resource_families:
+        - id: assets
+          label: Assets
+          path: /v1/assets
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: sonarcloud.assets
+            schema_ref: sonarcloud/assets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: assets
+              type: entity_family
+              title: Assets
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: findings
+          label: Findings
+          path: /v1/findings
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: sonarcloud.findings
+            schema_ref: sonarcloud/findings/v1
+          projection:
+            template: finding
+          coverage:
+            - id: findings
+              type: remediation_state
+              title: Findings
+              families: [findings]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: vulnerabilities
+          label: Vulnerabilities
+          path: /v1/vulnerabilities
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: sonarcloud.vulnerabilities
+            schema_ref: sonarcloud/vulnerabilities/v1
+          projection:
+            template: vulnerability
+          coverage:
+            - id: vulnerabilities
+              type: remediation_state
+              title: Vulnerabilities
+              families: [vulnerabilities]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-terraform_cloud
+      tenant_id: builtin_catalog
+      source_id: terraform_cloud
+      display_name: "Terraform Cloud"
+      description: "Terraform Cloud connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - iac
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://app.terraform.io/api"
+        verification:
+          method: GET
+          path: /v2/account/details
+          expect_status: [200]
+      resource_families:
+        - id: repositories
+          label: Repositories
+          path: /v1/repositories
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: terraform_cloud.repositories
+            schema_ref: terraform_cloud/repositories/v1
+          projection:
+            template: repository
+          coverage:
+            - id: repositories
+              type: entity_family
+              title: Repositories
+              families: [repositories]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: terraform_cloud.users
+            schema_ref: terraform_cloud/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: terraform_cloud.audit_events
+            schema_ref: terraform_cloud/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100

@@ -138,13 +138,7 @@ func AnalyzeFS(fsys fs.FS, dir string, options Options) (Analysis, error) {
 		if err != nil {
 			return fmt.Errorf("read %s: %w", path, err)
 		}
-		entries, issues := decodeEntries(path, payload)
-		for _, entry := range entries {
-			raw = append(raw, loadedEntry{path: path, entry: entry})
-		}
-		for _, issue := range issues {
-			raw = append(raw, loadedEntry{path: path, issues: []Issue{issue}})
-		}
+		raw = appendDecodedEntries(raw, path, payload)
 		return nil
 	})
 	if err != nil {
@@ -160,6 +154,17 @@ type loadedEntry struct {
 	path   string
 	entry  RawEntry
 	issues []Issue
+}
+
+func appendDecodedEntries(raw []loadedEntry, path string, payload []byte) []loadedEntry {
+	entries, issues := decodeEntries(path, payload)
+	for _, entry := range entries {
+		raw = append(raw, loadedEntry{path: path, entry: entry})
+	}
+	for _, issue := range issues {
+		raw = append(raw, loadedEntry{path: path, issues: []Issue{issue}})
+	}
+	return raw
 }
 
 func analyzeEntries(raw []loadedEntry, options Options) Analysis {
@@ -233,18 +238,7 @@ func analyzeEntries(raw []loadedEntry, options Options) Analysis {
 				entry.Status = StatusGenerateable
 			}
 		}
-		analysis.Summary.Total++
-		analysis.Summary.ByAuthModel[definition.Auth.Model]++
-		switch entry.Status {
-		case StatusGenerateable:
-			analysis.Summary.Generateable++
-		case StatusNeedsAuthExtension:
-			analysis.Summary.NeedsAuthExtension++
-		case StatusNeedsBespokeRuntime:
-			analysis.Summary.NeedsBespokeRuntime++
-		default:
-			analysis.Summary.CatalogReady++
-		}
+		analysis.Summary.record(entry)
 		analysis.Entries = append(analysis.Entries, entry)
 	}
 	sort.SliceStable(analysis.Entries, func(i int, j int) bool {
@@ -263,6 +257,21 @@ func analyzeEntries(raw []loadedEntry, options Options) Analysis {
 		analysis.Summary.ByAuthModel = nil
 	}
 	return analysis
+}
+
+func (s *Summary) record(entry Entry) {
+	s.Total++
+	s.ByAuthModel[entry.Definition.Auth.Model]++
+	switch entry.Status {
+	case StatusGenerateable:
+		s.Generateable++
+	case StatusNeedsAuthExtension:
+		s.NeedsAuthExtension++
+	case StatusNeedsBespokeRuntime:
+		s.NeedsBespokeRuntime++
+	default:
+		s.CatalogReady++
+	}
 }
 
 func decodeEntries(path string, payload []byte) ([]RawEntry, []Issue) {
