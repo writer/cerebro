@@ -166,6 +166,16 @@ func (s *catalogContractSource) EventContracts() []EventContract {
 	return cloneEventContracts(s.contracts)
 }
 
+func (s *catalogContractSource) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+	if s == nil || sourceIsNil(s.Source) {
+		return Pull{}, fmt.Errorf("source is required")
+	}
+	if reader, ok := s.Source.(CheckpointAwareSource); ok {
+		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+	}
+	return s.Read(ctx, cfg, cursor)
+}
+
 func sourceWithCatalogEventContracts(source Source, sourceID string) Source {
 	if _, ok := source.(EventContractProvider); ok {
 		return source
@@ -187,6 +197,27 @@ func (s *catalogCoverageSource) CoverageContract() CoverageContract {
 		return CoverageContract{}
 	}
 	return cloneCoverageContract(s.coverage)
+}
+
+func (s *catalogCoverageSource) EventContracts() []EventContract {
+	if s == nil {
+		return nil
+	}
+	provider, ok := s.Source.(EventContractProvider)
+	if !ok {
+		return nil
+	}
+	return cloneEventContracts(provider.EventContracts())
+}
+
+func (s *catalogCoverageSource) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+	if s == nil || sourceIsNil(s.Source) {
+		return Pull{}, fmt.Errorf("source is required")
+	}
+	if reader, ok := s.Source.(CheckpointAwareSource); ok {
+		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+	}
+	return s.Read(ctx, cfg, cursor)
 }
 
 func sourceWithCatalogCoverageContract(source Source, sourceID string) Source {

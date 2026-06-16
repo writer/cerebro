@@ -80,19 +80,18 @@ func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.
 		events = append(events, event)
 	}
 	state := sourcecdk.IncrementalWatermarkCheckpointState("github", familySecretScanning, checkpoint)
-	events, reachedWatermark := sourcecdk.IncrementalWatermarkEvents(events, state)
-	nextPage := page + 1
+	events, _ = sourcecdk.IncrementalWatermarkEvents(events, state)
+	// GitHub's secret scanning API does not expose updated_at ordering in the
+	// client version we use, so an older-created page can still contain a
+	// recently updated alert. Keep filtering by watermark, but keep paginating.
 	pull := sourcecdk.Pull{
 		Events:     events,
 		Checkpoint: sourcecdk.IncrementalWatermarkCheckpoint("github", familySecretScanning, events, state),
 	}
-	if reachedWatermark {
-		pull.ShortCircuitReason = sourcecdk.PullShortCircuitReasonWatermarkReached
-		return pull, nil
-	}
 	if resp != nil && resp.NextPage > 0 {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(nextPage)}
-		pull.Checkpoint = sourcecdk.IncrementalWatermarkCheckpointWithToken(pull.Checkpoint, strconv.Itoa(nextPage))
+		nextPage := strconv.Itoa(resp.NextPage)
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextPage}
+		pull.Checkpoint = sourcecdk.IncrementalWatermarkCheckpointWithToken(pull.Checkpoint, nextPage)
 	}
 	return pull, nil
 }

@@ -1492,6 +1492,20 @@ func TestSyncRuntimePassesCheckpointAndPersistsShortCircuitReason(t *testing.T) 
 func TestSyncRuntimeDoesNotRegressCheckpointWatermark(t *testing.T) {
 	newer := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	older := newer.Add(-time.Hour)
+	existingEnvelope := sourcecdk.CursorEnvelope{
+		Version:             1,
+		Source:              "github",
+		Family:              "pull_request",
+		Mode:                "incremental_watermark",
+		ResumableCheckpoint: true,
+		Token:               "2",
+		BoundaryIDs:         []string{"newer"},
+	}
+	sourcecdk.SetCursorWatermark(&existingEnvelope, newer)
+	existingCursor, err := sourcecdk.EncodeCursorEnvelope(existingEnvelope)
+	if err != nil {
+		t.Fatalf("EncodeCursorEnvelope(existing) error = %v", err)
+	}
 	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
 		Checkpoint: &cerebrov1.SourceCheckpoint{
 			Watermark:    timestamppb.New(older),
@@ -1509,7 +1523,7 @@ func TestSyncRuntimeDoesNotRegressCheckpointWatermark(t *testing.T) {
 			TenantId: "writer",
 			Checkpoint: &cerebrov1.SourceCheckpoint{
 				Watermark:    timestamppb.New(newer),
-				CursorOpaque: "newer",
+				CursorOpaque: existingCursor,
 			},
 		},
 	}}
@@ -1522,8 +1536,15 @@ func TestSyncRuntimeDoesNotRegressCheckpointWatermark(t *testing.T) {
 	if got := stored.GetCheckpoint().GetWatermark().AsTime(); !got.Equal(newer) {
 		t.Fatalf("stored watermark = %s, want %s", got, newer)
 	}
-	if got := stored.GetCheckpoint().GetCursorOpaque(); got != "newer" {
-		t.Fatalf("stored checkpoint cursor = %q, want newer", got)
+	storedEnvelope, ok := sourcecdk.DecodeCursorEnvelope(stored.GetCheckpoint().GetCursorOpaque())
+	if !ok {
+		t.Fatal("stored checkpoint cursor is not an envelope")
+	}
+	if storedEnvelope.Token != "" {
+		t.Fatalf("stored token = %q, want terminal checkpoint without continuation token", storedEnvelope.Token)
+	}
+	if got := storedEnvelope.BoundaryIDs; len(got) != 1 || got[0] != "newer" {
+		t.Fatalf("stored boundary IDs = %#v, want newer", got)
 	}
 	if got := stored.GetConfig()[runtimeShortCircuitReasonConfigKey]; got != "checkpoint_advanced" {
 		t.Fatalf("short circuit reason = %q, want checkpoint_advanced", got)
