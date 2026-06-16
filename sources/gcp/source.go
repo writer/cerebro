@@ -313,10 +313,11 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[auditRecord]{
-			Name:  familyAudit,
-			Label: "gcp audit logs",
-			List:  listAuditRecords,
-			Event: auditEvent,
+			Name:               familyAudit,
+			Label:              "gcp audit logs",
+			List:               listAuditRecords,
+			ListWithCheckpoint: listAuditRecordsWithCheckpoint,
+			Event:              auditEvent,
 			Discover: func(ctx context.Context, source *Source, settings settings) ([]sourcecdk.URN, error) {
 				if err := gcpcloud.CheckList(ctx, source, settings, tenantID(settings), listAuditRecords, "gcp audit logs"); err != nil {
 					return nil, err
@@ -1225,16 +1226,23 @@ func listDNSManagedZones(ctx context.Context, source *Source, settings settings,
 }
 
 func listDNSRecordSets(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.DNSRecordSetRecord, string, error) {
-	zones, next, err := listDNSManagedZones(ctx, source, settings, pageToken, limit)
+	parentToken, startIndex, childToken, _, err := sourcecdk.DecodeChildPageCursor("gcp", familyDNSRecordSet, pageToken)
+	if err != nil {
+		return nil, "", err
+	}
+	zones, next, err := listDNSManagedZones(ctx, source, settings, parentToken, limit)
 	if err != nil {
 		return nil, "", err
 	}
 	records := make([]gcpcloud.DNSRecordSetRecord, 0)
-	for _, zone := range zones {
+	for index := startIndex; index < len(zones); index++ {
+		zone := zones[index]
 		if strings.TrimSpace(zone.Name) == "" {
+			childToken = ""
 			continue
 		}
 		query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+		gcpcloud.AddPageToken(query, childToken)
 		var response pageResponse
 		path := "/dns/v1/projects/" + url.PathEscape(settings.projectID) + "/managedZones/" + url.PathEscape(zone.Name) + "/rrsets"
 		if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, dnsBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
@@ -1250,6 +1258,13 @@ func listDNSRecordSets(ctx context.Context, source *Source, settings settings, p
 			return nil, "", err
 		}
 		records = append(records, recordSets...)
+		if response.NextPageToken != "" {
+			return records, sourcecdk.EncodeChildPageCursor("gcp", familyDNSRecordSet, parentToken, index, response.NextPageToken), nil
+		}
+		childToken = ""
+		if len(records) != 0 {
+			return records, sourcecdk.NextChildPageCursor("gcp", familyDNSRecordSet, parentToken, next, index+1, len(zones)), nil
+		}
 	}
 	return records, next, nil
 }
@@ -1335,16 +1350,23 @@ func listCloudRunServices(ctx context.Context, source *Source, settings settings
 }
 
 func listCloudRunRevisions(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.CloudRunRevisionRecord, string, error) {
-	services, next, err := listCloudRunServices(ctx, source, settings, pageToken, limit)
+	parentToken, startIndex, childToken, _, err := sourcecdk.DecodeChildPageCursor("gcp", familyCloudRunRevision, pageToken)
+	if err != nil {
+		return nil, "", err
+	}
+	services, next, err := listCloudRunServices(ctx, source, settings, parentToken, limit)
 	if err != nil {
 		return nil, "", err
 	}
 	records := make([]gcpcloud.CloudRunRevisionRecord, 0)
-	for _, service := range services {
+	for index := startIndex; index < len(services); index++ {
+		service := services[index]
 		if strings.TrimSpace(service.Name) == "" {
+			childToken = ""
 			continue
 		}
 		query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+		gcpcloud.AddPageToken(query, childToken)
 		var response pageResponse
 		path := "/v2/" + gcpcloud.EscapePathSegments(service.Name) + "/revisions"
 		if err := gcpcloud.OptionalServiceErr(getJSON(ctx, source, settings, runBaseURL, http.MethodGet, path, query, nil, &response)); err != nil {
@@ -1359,6 +1381,13 @@ func listCloudRunRevisions(ctx context.Context, source *Source, settings setting
 			return nil, "", err
 		}
 		records = append(records, revisions...)
+		if response.NextPageToken != "" {
+			return records, sourcecdk.EncodeChildPageCursor("gcp", familyCloudRunRevision, parentToken, index, response.NextPageToken), nil
+		}
+		childToken = ""
+		if len(records) != 0 {
+			return records, sourcecdk.NextChildPageCursor("gcp", familyCloudRunRevision, parentToken, next, index+1, len(services)), nil
+		}
 	}
 	return records, next, nil
 }
@@ -1480,44 +1509,54 @@ func listGCSBuckets(ctx context.Context, source *Source, settings settings, page
 }
 
 func listGCSObjects(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.GCSObjectRecord, string, error) {
-	buckets, next, err := listGCSBuckets(ctx, source, settings, pageToken, limit)
+	parentToken, startIndex, childToken, _, err := sourcecdk.DecodeChildPageCursor("gcp", familyGCSObject, pageToken)
+	if err != nil {
+		return nil, "", err
+	}
+	buckets, next, err := listGCSBuckets(ctx, source, settings, parentToken, limit)
 	if err != nil {
 		return nil, "", err
 	}
 	records := make([]gcpcloud.GCSObjectRecord, 0)
-	for _, bucket := range buckets {
+	for index := startIndex; index < len(buckets); index++ {
+		bucket := buckets[index]
 		bucketName := firstNonEmpty(bucket.Name, bucket.ID)
 		if strings.TrimSpace(bucketName) == "" {
+			childToken = ""
 			continue
 		}
 		path := "/storage/v1/b/" + url.PathEscape(bucketName) + "/o"
-		objects, err := gcpcloud.CollectPages(func(objectPageToken string) ([]gcpcloud.GCSObjectRecord, string, error) {
-			query := url.Values{"maxResults": {strconv.Itoa(limit)}, "projection": {"full"}}
-			gcpcloud.AddPageToken(query, objectPageToken)
-			if strings.TrimSpace(settings.filter) != "" {
-				query.Set("prefix", settings.filter)
+		query := url.Values{"maxResults": {strconv.Itoa(limit)}, "projection": {"full"}}
+		gcpcloud.AddPageToken(query, childToken)
+		if strings.TrimSpace(settings.filter) != "" {
+			query.Set("prefix", settings.filter)
+		}
+		var response pageResponse
+		if err := getJSON(ctx, source, settings, storageBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+			return nil, "", err
+		}
+		objects, err := gcpcloud.DecodeRecords(response.Items, "gcp storage object", func(record *gcpcloud.GCSObjectRecord, raw json.RawMessage) {
+			if strings.TrimSpace(record.Bucket) == "" {
+				record.Bucket = bucketName
 			}
-			var response pageResponse
-			if err := getJSON(ctx, source, settings, storageBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
-				return nil, "", err
-			}
-			objects, err := gcpcloud.DecodeRecords(response.Items, "gcp storage object", func(record *gcpcloud.GCSObjectRecord, raw json.RawMessage) {
-				if strings.TrimSpace(record.Bucket) == "" {
-					record.Bucket = bucketName
-				}
-				record.BucketLocation = bucket.Location
-				record.Raw = append(json.RawMessage(nil), raw...)
-			})
-			gcpcloud.EnrichGCSObjectContentInspections(objects, func(object gcpcloud.GCSObjectRecord) ([]byte, bool, error) {
-				path, query := gcpcloud.GCSObjectContentMediaRequest(object)
-				return getBytes(ctx, source, settings, storageBaseURL, http.MethodGet, path, query, nil, gcsObjectContentSampleBytes)
-			})
-			return objects, response.NextPageToken, err
+			record.BucketLocation = bucket.Location
+			record.Raw = append(json.RawMessage(nil), raw...)
 		})
 		if err != nil {
 			return nil, "", err
 		}
+		gcpcloud.EnrichGCSObjectContentInspections(objects, func(object gcpcloud.GCSObjectRecord) ([]byte, bool, error) {
+			path, query := gcpcloud.GCSObjectContentMediaRequest(object)
+			return getBytes(ctx, source, settings, storageBaseURL, http.MethodGet, path, query, nil, gcsObjectContentSampleBytes)
+		})
 		records = append(records, objects...)
+		if response.NextPageToken != "" {
+			return records, sourcecdk.EncodeChildPageCursor("gcp", familyGCSObject, parentToken, index, response.NextPageToken), nil
+		}
+		childToken = ""
+		if len(records) != 0 {
+			return records, sourcecdk.NextChildPageCursor("gcp", familyGCSObject, parentToken, next, index+1, len(buckets)), nil
+		}
 	}
 	return records, next, nil
 }
@@ -1817,7 +1856,15 @@ func listSecurityCenterFindingsWithCheckpoint(ctx context.Context, source *Sourc
 }
 
 func listAuditRecords(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]auditRecord, string, error) {
+	return listAuditRecordsWithCheckpoint(ctx, source, settings, pageToken, limit, nil)
+}
+
+func listAuditRecordsWithCheckpoint(ctx context.Context, source *Source, settings settings, pageToken string, limit int, checkpoint *cerebrov1.SourceCheckpoint) ([]auditRecord, string, error) {
 	body := map[string]any{"resourceNames": []string{"projects/" + settings.projectID}, "pageSize": limit}
+	if start, ok := gcpcloud.CheckpointStart(checkpoint, gcpcloud.FindingCheckpointLookback); ok {
+		settings.filter = gcpcloud.CombineFilters(settings.filter, fmt.Sprintf(`timestamp >= "%s"`, start.Format(time.RFC3339Nano)))
+		body["orderBy"] = "timestamp desc"
+	}
 	if settings.filter != "" {
 		body["filter"] = settings.filter
 	}

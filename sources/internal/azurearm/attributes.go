@@ -23,6 +23,17 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "condition_equals", strings.Join(valuesFromArray(properties, []string{"condition", "allOf"}, "equals"), ","))
 		set(attributes, "condition_contains_any", strings.Join(valuesFromArray(properties, []string{"condition", "allOf"}, "containsAny"), ","))
 		set(attributes, "action_group_ids", strings.Join(valuesFromArray(properties, []string{"actions", "actionGroups"}, "actionGroupId"), ","))
+	case "aks_node_pool":
+		set(attributes, "mode", stringAt(properties, "mode"))
+		set(attributes, "vm_size", stringAt(properties, "vmSize"))
+		set(attributes, "os_type", stringAt(properties, "osType"))
+		set(attributes, "os_sku", stringAt(properties, "osSKU"))
+		set(attributes, "node_count", stringAt(properties, "count"))
+		set(attributes, "node_image_version", stringAt(properties, "nodeImageVersion"))
+		set(attributes, "kubelet_disk_type", stringAt(properties, "kubeletDiskType"))
+		set(attributes, "max_pods", stringAt(properties, "maxPods"))
+		set(attributes, "enable_auto_scaling", stringAt(properties, "enableAutoScaling"))
+		set(attributes, "vnet_subnet_id", stringAt(properties, "vnetSubnetID"))
 	case "application_container":
 		set(attributes, "managed_environment_id", stringAt(properties, "managedEnvironmentId"))
 		set(attributes, "workload_profile_name", stringAt(properties, "workloadProfileName"))
@@ -68,6 +79,12 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "network_bypass", stringAt(properties, "networkAcls", "bypass"))
 		set(attributes, "virtual_network_subnet_ids", strings.Join(referenceIDsFromArray(properties, []string{"networkAcls", "virtualNetworkRules"}, "id"), ","))
 		set(attributes, "ip_rules", strings.Join(valuesFromArray(properties, []string{"networkAcls", "ipRules"}, "value"), ","))
+	case "cognitive_services_deployment":
+		set(attributes, "model_format", stringAt(properties, "model", "format"))
+		set(attributes, "model_name", stringAt(properties, "model", "name"))
+		set(attributes, "model_version", stringAt(properties, "model", "version"))
+		set(attributes, "scale_type", stringAt(properties, "scaleSettings", "scaleType"))
+		set(attributes, "capacity", stringAt(properties, "scaleSettings", "capacity"))
 	case "cosmos_postgresql":
 		set(attributes, "postgresql_version", stringAt(properties, "postgresqlVersion"))
 		set(attributes, "citus_version", stringAt(properties, "citusVersion"))
@@ -79,6 +96,9 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "node_count", stringAt(properties, "nodeCount"))
 		set(attributes, "ha_enabled", stringAt(properties, "enableHa"))
 		set(attributes, "preferred_primary_zone", stringAt(properties, "preferredPrimaryZone"))
+	case "cosmos_postgresql_firewall_rule", "postgresql_firewall_rule":
+		set(attributes, "start_ip_address", stringAt(properties, "startIpAddress"))
+		set(attributes, "end_ip_address", stringAt(properties, "endIpAddress"))
 	case "databricks_workspace":
 		set(attributes, "managed_resource_group_id", stringAt(properties, "managedResourceGroupId"))
 		set(attributes, "required_nsg_rules", stringAt(properties, "requiredNsgRules"))
@@ -132,6 +152,12 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "image_build_compute", stringAt(properties, "imageBuildCompute"))
 		set(attributes, "hbi_workspace", stringAt(properties, "hbiWorkspace"))
 		set(attributes, "private_endpoint_connection_count", strconv.Itoa(len(arrayAt(properties, "privateEndpointConnections"))))
+	case "machine_learning_compute":
+		set(attributes, "compute_type", stringAt(properties, "computeType"))
+		set(attributes, "provisioning_state", stringAt(properties, "provisioningState"))
+		set(attributes, "vm_size", stringAt(properties, "properties", "vmSize"))
+		set(attributes, "subnet_id", stringAt(properties, "properties", "subnet", "id"))
+		set(attributes, "ssh_public_access", stringAt(properties, "properties", "remoteLoginPortPublicAccess"))
 	case "metric_alert_rule":
 		set(attributes, "enabled", stringAt(properties, "enabled"))
 		set(attributes, "scopes", strings.Join(stringsAt(properties, "scopes"), ","))
@@ -146,6 +172,12 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "criteria_operators", strings.Join(valuesFromArray(properties, []string{"criteria", "allOf"}, "operator"), ","))
 		set(attributes, "criteria_thresholds", strings.Join(valuesFromArray(properties, []string{"criteria", "allOf"}, "threshold"), ","))
 		set(attributes, "action_group_ids", strings.Join(valuesFromArray(properties, []string{"actions"}, "actionGroupId"), ","))
+	case "policy_assignment":
+		set(attributes, "display_name", stringAt(properties, "displayName"))
+		set(attributes, "description", stringAt(properties, "description"))
+		set(attributes, "policy_definition_id", stringAt(properties, "policyDefinitionId"))
+		set(attributes, "scope", stringAt(properties, "scope"))
+		set(attributes, "enforcement_mode", stringAt(properties, "enforcementMode"))
 	case "postgresql_server":
 		set(attributes, "version", stringAt(properties, "version"))
 		set(attributes, "administrator_login", stringAt(properties, "administratorLogin"))
@@ -160,6 +192,13 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "private_dns_zone_id", stringAt(properties, "network", "privateDnsZoneArmResourceId"))
 		set(attributes, "auth_active_directory_enabled", stringAt(properties, "authConfig", "activeDirectoryAuth"))
 		set(attributes, "auth_password_enabled", stringAt(properties, "authConfig", "passwordAuth"))
+	case "mysql_server":
+		set(attributes, "version", stringAt(properties, "version"))
+		set(attributes, "administrator_login", stringAt(properties, "administratorLogin"))
+		set(attributes, "public_host", stringAt(properties, "fullyQualifiedDomainName"))
+		set(attributes, "storage_size_gb", stringAt(properties, "storage", "storageSizeGB"))
+		set(attributes, "backup_retention_days", stringAt(properties, "backup", "backupRetentionDays"))
+		set(attributes, "network_public_network_access", stringAt(properties, "network", "publicNetworkAccess"))
 	case "role":
 		set(attributes, "role_name", stringAt(properties, "roleName"))
 		set(attributes, "role_type", stringAt(properties, "type"))
@@ -181,6 +220,9 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "phone", stringAt(properties, "phone"))
 		set(attributes, "alert_notifications", stringAt(properties, "alertNotifications"))
 		set(attributes, "alerts_to_admins", stringAt(properties, "alertsToAdmins"))
+	case "security_setting":
+		set(attributes, "enabled", stringAt(properties, "enabled"))
+		set(attributes, "setting_kind", stringAt(properties, "kind"))
 	case "server_vulnerability":
 		set(attributes, "display_name", stringAt(properties, "displayName"))
 		set(attributes, "status_code", stringAt(properties, "status", "code"))
@@ -189,6 +231,14 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "resource_source", stringAt(properties, "resourceDetails", "source"))
 		set(attributes, "assessed_resource_id", stringAt(properties, "resourceDetails", "id"))
 		set(attributes, "additional_data_keys", strings.Join(mapKeys(mapFromAny(nestedAny(properties, "additionalData"))), ","))
+	case "server_vulnerability_subassessment":
+		set(attributes, "display_name", stringAt(properties, "displayName"))
+		set(attributes, "status_code", stringAt(properties, "status", "code"))
+		set(attributes, "severity", stringAt(properties, "status", "severity"))
+		set(attributes, "category", stringAt(properties, "category"))
+		set(attributes, "impact", stringAt(properties, "impact"))
+		set(attributes, "remediation", stringAt(properties, "remediation"))
+		set(attributes, "assessed_resource_id", stringAt(properties, "resourceDetails", "id"))
 	case "sql_managed_instance":
 		set(attributes, "administrator_login", stringAt(properties, "administratorLogin"))
 		set(attributes, "public_host", stringAt(properties, "fullyQualifiedDomainName"))
@@ -200,6 +250,10 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "storage_size_gb", stringAt(properties, "storageSizeInGB"))
 		set(attributes, "zone_redundant", stringAt(properties, "zoneRedundant"))
 		set(attributes, "proxy_override", stringAt(properties, "proxyOverride"))
+	case "sql_managed_instance_tde":
+		set(attributes, "server_key_name", stringAt(properties, "serverKeyName"))
+		set(attributes, "server_key_type", stringAt(properties, "serverKeyType"))
+		set(attributes, "auto_rotation_enabled", stringAt(properties, "autoRotationEnabled"))
 	case "sql_server_on_virtual_machine":
 		set(attributes, "virtual_machine_resource_id", stringAt(properties, "virtualMachineResourceId"))
 		set(attributes, "sql_image_offer", stringAt(properties, "sqlImageOffer"))
@@ -213,6 +267,17 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "key_vault_credential_enabled", stringAt(properties, "keyVaultCredentialSettings", "enable"))
 		set(attributes, "sql_connectivity_type", firstNonEmpty(stringAt(properties, "serverConfigurationsManagementSettings", "sqlConnectivityUpdateSettings", "connectivityType"), stringAt(properties, "sqlConnectivityType")))
 		set(attributes, "sql_storage_disk_configuration_type", stringAt(properties, "serverConfigurationsManagementSettings", "sqlStorageUpdateSettings", "diskConfigurationType"))
+	case "storage_container":
+		set(attributes, "public_access", stringAt(properties, "publicAccess"))
+		set(attributes, "has_immutability_policy", stringAt(properties, "hasImmutabilityPolicy"))
+		set(attributes, "has_legal_hold", stringAt(properties, "hasLegalHold"))
+		set(attributes, "lease_status", stringAt(properties, "leaseStatus"))
+	case "storage_queue":
+		set(attributes, "metadata_keys", strings.Join(mapKeys(mapFromAny(nestedAny(properties, "metadata"))), ","))
+	case "synapse_sql_pool":
+		set(attributes, "status", stringAt(properties, "status"))
+		set(attributes, "collation", stringAt(properties, "collation"))
+		set(attributes, "max_size_bytes", stringAt(properties, "maxSizeBytes"))
 	case "subnet":
 		set(attributes, "address_prefix", stringAt(properties, "addressPrefix"))
 		set(attributes, "address_prefixes", strings.Join(stringsAt(properties, "addressPrefixes"), ","))
@@ -238,6 +303,19 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "image_version", stringAt(properties, "virtualMachineProfile", "storageProfile", "imageReference", "version"))
 		set(attributes, "subnet_ids", strings.Join(vmssSubnetIDs(properties), ","))
 		set(attributes, "nsg_ids", strings.Join(vmssNetworkSecurityGroupIDs(properties), ","))
+	case "virtual_machine_extension":
+		set(attributes, "publisher", stringAt(properties, "publisher"))
+		set(attributes, "extension_type", stringAt(properties, "type"))
+		set(attributes, "type_handler_version", stringAt(properties, "typeHandlerVersion"))
+		set(attributes, "auto_upgrade_minor_version", stringAt(properties, "autoUpgradeMinorVersion"))
+		set(attributes, "protected_settings_present", strconv.FormatBool(mapFromAny(nestedAny(properties, "protectedSettings")) != nil))
+	case "virtual_machine_scale_set_instance":
+		set(attributes, "vm_id", stringAt(properties, "vmId"))
+		set(attributes, "computer_name", stringAt(properties, "osProfile", "computerName"))
+		set(attributes, "os_type", stringAt(properties, "storageProfile", "osDisk", "osType"))
+		set(attributes, "vm_size", stringAt(properties, "hardwareProfile", "vmSize"))
+		set(attributes, "subnet_ids", strings.Join(vmssInstanceSubnetIDs(properties), ","))
+		set(attributes, "nsg_ids", strings.Join(vmssInstanceNetworkSecurityGroupIDs(properties), ","))
 	}
 	trimEmpty(attributes)
 	return attributes
@@ -266,6 +344,29 @@ func vmssNetworkSecurityGroupIDs(properties Properties) []string {
 	for _, configValue := range configs {
 		config := mapFromAny(configValue)
 		values = append(values, stringAt(mapFromAny(config["properties"]), "networkSecurityGroup", "id"))
+	}
+	return unique(values)
+}
+
+func vmssInstanceSubnetIDs(properties Properties) []string {
+	interfaces := arrayAt(properties, "networkProfile", "networkInterfaces")
+	values := make([]string, 0)
+	for _, interfaceValue := range interfaces {
+		interfaceProperties := mapFromAny(mapFromAny(interfaceValue)["properties"])
+		for _, configValue := range arrayAt(interfaceProperties, "ipConfigurations") {
+			configProperties := mapFromAny(mapFromAny(configValue)["properties"])
+			values = append(values, stringAt(configProperties, "subnet", "id"))
+		}
+	}
+	return unique(values)
+}
+
+func vmssInstanceNetworkSecurityGroupIDs(properties Properties) []string {
+	interfaces := arrayAt(properties, "networkProfile", "networkInterfaces")
+	values := make([]string, 0, len(interfaces))
+	for _, interfaceValue := range interfaces {
+		interfaceProperties := mapFromAny(mapFromAny(interfaceValue)["properties"])
+		values = append(values, stringAt(interfaceProperties, "networkSecurityGroup", "id"))
 	}
 	return unique(values)
 }
