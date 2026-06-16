@@ -171,11 +171,12 @@ func addCloudFindingCorrelation(entities map[string]*ports.ProjectedEntity, link
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, findingURN, relationRepresents, cloudFindingLinkAttributes(event, provider, family, "cloud_provider_finding")))
 	}
 
-	affectedID := firstNonEmpty(attributes["affected_resource_id"], attributes["assessed_resource_id"])
-	if affectedID == "" {
+	affectedIDRaw := firstNonEmpty(attributes["affected_resource_id"], attributes["assessed_resource_id"])
+	if affectedIDRaw == "" {
 		return
 	}
-	affectedType := cloudFindingAffectedResourceType(provider, firstNonEmpty(attributes["affected_resource_type"], attributes["assessed_resource_type"]), affectedID)
+	affectedType := cloudFindingAffectedResourceType(provider, firstNonEmpty(attributes["affected_resource_type"], attributes["assessed_resource_type"]), affectedIDRaw)
+	affectedID := cloudFindingAffectedResourceID(provider, affectedType, affectedIDRaw)
 	affectedURN := projectionURN(tenantID, provider+"_"+affectedType, affectedID)
 	if affectedURN == "" || affectedURN == resourceURN {
 		return
@@ -278,8 +279,41 @@ func cloudFindingAffectedResourceType(provider string, rawType string, resourceI
 		return "lambda_function"
 	case "aws:awsrdsdbinstance", "aws:rdsdbinstance":
 		return "rds_instance"
+	case "gcp:googlecloudstoragebucket", "gcp:google_cloud_storage_bucket", "gcp:storage_googleapis_com_bucket", "gcp:storage_bucket", "gcp:gcs_bucket":
+		return "gcs_bucket"
+	}
+	if provider == "gcp" {
+		if inferred := panopticonGCPResourceTypeFromID(resourceID); inferred != "" {
+			return inferred
+		}
 	}
 	return firstNonEmpty(normalized, "resource")
+}
+
+func cloudFindingAffectedResourceID(provider string, resourceType string, resourceID string) string {
+	resourceID = strings.TrimSpace(resourceID)
+	if provider == "gcp" && resourceType == "gcs_bucket" {
+		return firstNonEmpty(gcpBucketNameFromResourceID(resourceID), resourceID)
+	}
+	return resourceID
+}
+
+func gcpBucketNameFromResourceID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(value), "gs://") {
+		bucket, _, _ := strings.Cut(value[len("gs://"):], "/")
+		return strings.TrimSpace(bucket)
+	}
+	parts := strings.Split(strings.Trim(value, "/"), "/")
+	for index := 0; index+1 < len(parts); index++ {
+		if strings.EqualFold(parts[index], "buckets") && strings.TrimSpace(parts[index+1]) != "" {
+			return strings.TrimSpace(parts[index+1])
+		}
+	}
+	return ""
 }
 
 func azureResourceTypeFromID(resourceID string) string {

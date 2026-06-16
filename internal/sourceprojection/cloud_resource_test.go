@@ -112,8 +112,8 @@ func TestProjectCloudFindingsCorrelatesSecurityFindingAndAffectedResource(t *tes
 			},
 			providerURN:        "urn:cerebro:writer:gcp_security_center_finding:projects/writer-prod/sources/123/findings/public-bucket",
 			securityFindingURN: "urn:cerebro:writer:security_finding:gcp:projects/writer-prod/sources/123/findings/public-bucket",
-			affectedURN:        "urn:cerebro:writer:gcp_google_cloud_storage_bucket://storage.googleapis.com/projects/_/buckets/data",
-			affectedType:       "gcp.google.cloud.storage.bucket",
+			affectedURN:        "urn:cerebro:writer:gcp_gcs_bucket:data",
+			affectedType:       "gcp.gcs.bucket",
 		},
 		{
 			name: "azure server vulnerability",
