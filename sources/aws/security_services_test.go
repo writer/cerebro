@@ -338,6 +338,38 @@ func TestReadAWSFindingFamiliesWithCheckpointUseUpdatedTimeRequests(t *testing.T
 			t.Fatalf("Macie updatedAt gte = %#v, want %d", criterion.Gte, watermark.Add(-awsFindingCheckpointLookback).UnixMilli())
 		}
 	})
+
+	t.Run("inspector2", func(t *testing.T) {
+		newObservedAt := watermark.Add(time.Hour)
+		oldObservedAt := watermark.Add(-time.Hour)
+		fake := &fakeAWSSecurityServices{
+			inspector2Findings: []inspector2types.Finding{
+				{FindingArn: awssdk.String("arn:aws:inspector2:us-east-1:123456789012:finding/new-finding"), LastObservedAt: &newObservedAt},
+				{FindingArn: awssdk.String("arn:aws:inspector2:us-east-1:123456789012:finding/old-finding"), LastObservedAt: &oldObservedAt},
+			},
+		}
+		source := newSecurityTestSource(t, fake)
+		pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyInspector2Finding}), nil, checkpoint)
+		if err != nil {
+			t.Fatalf("ReadWithCheckpoint(inspector2_finding) error = %v", err)
+		}
+		if len(pull.Events) != 1 || pull.Events[0].GetAttributes()["finding_arn"] != "arn:aws:inspector2:us-east-1:123456789012:finding/new-finding" {
+			t.Fatalf("events = %#v, want only new Inspector2 finding", pull.Events)
+		}
+		if len(fake.inspector2ListInputs) != 1 {
+			t.Fatalf("len(inspector2ListInputs) = %d, want 1", len(fake.inspector2ListInputs))
+		}
+		input := fake.inspector2ListInputs[0]
+		if input.SortCriteria == nil || input.SortCriteria.Field != inspector2types.SortFieldLastObservedAt || input.SortCriteria.SortOrder != inspector2types.SortOrderDesc {
+			t.Fatalf("Inspector2 sort = %#v, want LastObservedAt DESC", input.SortCriteria)
+		}
+		if input.FilterCriteria == nil || len(input.FilterCriteria.LastObservedAt) != 1 {
+			t.Fatalf("Inspector2 LastObservedAt filter = %#v, want one start filter", input.FilterCriteria)
+		}
+		if got := input.FilterCriteria.LastObservedAt[0].StartInclusive; got == nil || !got.Equal(watermark.Add(-awsFindingCheckpointLookback)) {
+			t.Fatalf("Inspector2 LastObservedAt start = %#v, want %s", got, watermark.Add(-awsFindingCheckpointLookback))
+		}
+	})
 }
 
 func TestReadAWSSecurityHubCheckpointCursorKeepsOriginalWatermark(t *testing.T) {
@@ -444,6 +476,7 @@ type fakeAWSSecurityServices struct {
 	securityHubInputs            []securityhub.GetFindingsInput
 	securityHubTokens            []string
 	inspector2Findings           []inspector2types.Finding
+	inspector2ListInputs         []inspector2.ListFindingsInput
 	macieFindingIDs              []string
 	macieFindings                []macie2types.Finding
 	macieListInputs              []macie2.ListFindingsInput
@@ -516,7 +549,8 @@ type fakeInspector2Security struct {
 	fake *fakeAWSSecurityServices
 }
 
-func (f fakeInspector2Security) ListFindings(context.Context, *inspector2.ListFindingsInput, ...func(*inspector2.Options)) (*inspector2.ListFindingsOutput, error) {
+func (f fakeInspector2Security) ListFindings(_ context.Context, input *inspector2.ListFindingsInput, _ ...func(*inspector2.Options)) (*inspector2.ListFindingsOutput, error) {
+	f.fake.inspector2ListInputs = append(f.fake.inspector2ListInputs, *input)
 	return &inspector2.ListFindingsOutput{Findings: f.fake.inspector2Findings}, nil
 }
 

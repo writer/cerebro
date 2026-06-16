@@ -5457,7 +5457,16 @@ func SecurityCenterFindingEvent(settings Settings, record SecurityCenterFindingR
 	if err != nil {
 		return nil, err
 	}
-	return sourceEvent(settings, "gcp-security-center-finding-"+resourceID, "gcp.security_center_finding", "gcp/security_center_finding/v1", payload, attributes)
+	return sourceEventAt(settings, "gcp-security-center-finding-"+resourceID, "gcp.security_center_finding", "gcp/security_center_finding/v1", payload, attributes, securityCenterFindingOccurredAt(record))
+}
+
+func securityCenterFindingOccurredAt(record SecurityCenterFindingRecord) time.Time {
+	for _, value := range []string{record.Finding.EventTime, record.Finding.CreateTime} {
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value)); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Now().UTC()
 }
 
 func WorkloadIdentityPoolEvent(settings Settings, record WorkloadIdentityPoolRecord) (*primitives.Event, error) {

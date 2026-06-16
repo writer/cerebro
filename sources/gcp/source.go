@@ -34,6 +34,7 @@ const (
 	defaultFamily                                                                                                                                                                                        = familyAudit
 	defaultPageSize                                                                                                                                                                                      = 10
 	gcsObjectContentSampleBytes                                                                                                                                                                          = 64 << 10
+	gcpFindingCheckpointLookback                                                                                                                                                                         = 2 * time.Minute
 	maxPageSize                                                                                                                                                                                          = 200
 	familyAssetMetadata                                                                                                                                                                                  = "asset_metadata"
 	familyAIDataset                                                                                                                                                                                      = "aiplatform_dataset"
@@ -196,12 +197,13 @@ type serviceAccountImpersonationRecord = gcpcloud.ServiceAccountImpersonationRec
 type auditRecord = gcpcloud.AuditRecord
 
 type gcpFamilyOptions[T any] struct {
-	Name     string
-	Label    string
-	List     func(context.Context, *Source, settings, string, int) ([]T, string, error)
-	Event    func(settings, T) (*primitives.Event, error)
-	URN      func(settings, T) (string, error)
-	Discover func(context.Context, *Source, settings) ([]sourcecdk.URN, error)
+	Name               string
+	Label              string
+	List               func(context.Context, *Source, settings, string, int) ([]T, string, error)
+	ListWithCheckpoint func(context.Context, *Source, settings, string, int, *cerebrov1.SourceCheckpoint) ([]T, string, error)
+	Event              func(settings, T) (*primitives.Event, error)
+	URN                func(settings, T) (string, error)
+	Discover           func(context.Context, *Source, settings) ([]sourcecdk.URN, error)
 }
 
 type gcpResourceIdentifier interface{ CerebroResourceID() string }
@@ -257,6 +259,12 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 // Read returns one page of normalized GCP events.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return s.families.Read(ctx, cfg, cursor)
+}
+
+// ReadWithCheckpoint lets GCP families with provider-supported event ordering
+// stop once they reach the durable runtime watermark.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
@@ -626,7 +634,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account_impersonation:%s:%s", tenantID(settings), gcpcloud.SanitizeURNPart(binding.Member), gcpcloud.SanitizeURNPart(binding.Role)), nil
 			},
 		}),
-		gcpFamily(s, gcpFamilyOptions[gcpcloud.SecurityCenterFindingRecord]{Name: familySecurityCenterFinding, Label: "gcp security command center findings", List: listSecurityCenterFindings, Event: gcpCloudEvent(gcpcloud.SecurityCenterFindingEvent), URN: func(settings settings, finding gcpcloud.SecurityCenterFindingRecord) (string, error) {
+		gcpFamily(s, gcpFamilyOptions[gcpcloud.SecurityCenterFindingRecord]{Name: familySecurityCenterFinding, Label: "gcp security command center findings", List: listSecurityCenterFindings, ListWithCheckpoint: listSecurityCenterFindingsWithCheckpoint, Event: gcpCloudEvent(gcpcloud.SecurityCenterFindingEvent), URN: func(settings settings, finding gcpcloud.SecurityCenterFindingRecord) (string, error) {
 			return fmt.Sprintf("urn:cerebro:%s:gcp_security_center_finding:%s", tenantID(settings), firstNonEmpty(finding.Finding.Name, finding.Finding.ResourceName, finding.Resource.Name)), nil
 		}}),
 		gcpFamily(s, gcpFamilyOptions[serviceAccountRecord]{
@@ -671,7 +679,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 }
 
 func gcpFamily[T any](source *Source, options gcpFamilyOptions[T]) sourcecdk.Family[settings] {
-	return sourcecdk.Family[settings]{
+	family := sourcecdk.Family[settings]{
 		Name: options.Name,
 		Check: func(ctx context.Context, settings settings) error {
 			return gcpcloud.CheckList(ctx, source, settings, tenantID(settings), options.List, options.Label)
@@ -695,6 +703,19 @@ func gcpFamily[T any](source *Source, options gcpFamilyOptions[T]) sourcecdk.Fam
 			return gcpcloud.PullFromRecords(records, next, build)
 		},
 	}
+	if options.ListWithCheckpoint != nil {
+		family.ReadWithCheckpoint = func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+			readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("gcp", options.Name, cursor, checkpoint)
+			token := sourcecdk.CursorToken(cursor)
+			records, next, err := options.ListWithCheckpoint(ctx, source, settings, token, settings.perPage, readCheckpoint)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("lookup %s for %s: %w", options.Label, tenantID(settings), err)
+			}
+			build := func(record T) (*primitives.Event, error) { return options.Event(settings, record) }
+			return sourcecdk.IncrementalPullFromRecords("gcp", options.Name, records, next, readCheckpoint, build)
+		}
+	}
+	return family
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -1812,10 +1833,46 @@ func listServiceAccountImpersonation(ctx context.Context, source *Source, settin
 }
 
 func listSecurityCenterFindings(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]gcpcloud.SecurityCenterFindingRecord, string, error) {
+	return listSecurityCenterFindingsWithCheckpoint(ctx, source, settings, pageToken, limit, nil)
+}
+
+func listSecurityCenterFindingsWithCheckpoint(ctx context.Context, source *Source, settings settings, pageToken string, limit int, checkpoint *cerebrov1.SourceCheckpoint) ([]gcpcloud.SecurityCenterFindingRecord, string, error) {
 	path := "/v2/projects/" + url.PathEscape(settings.projectID) + "/sources/-/findings"
-	return listPagedRecords[gcpcloud.SecurityCenterFindingRecord, securityCenterFindingsPageResponse](ctx, source, settings, pageToken, limit, securityCenterBaseURL, path, "pageSize", "gcp security command center finding", func(response securityCenterFindingsPageResponse) []json.RawMessage {
+	readSettings := settings
+	if start, ok := gcpCheckpointStart(checkpoint, gcpFindingCheckpointLookback); ok {
+		readSettings.filter = combineGCPFilters(readSettings.filter, fmt.Sprintf(`event_time >= "%s"`, start.Format(time.RFC3339Nano)))
+	}
+	query := url.Values{"orderBy": {"event_time desc"}}
+	return listPagedRecords[gcpcloud.SecurityCenterFindingRecord, securityCenterFindingsPageResponse](ctx, source, readSettings, pageToken, limit, securityCenterBaseURL, path, "pageSize", "gcp security command center finding", func(response securityCenterFindingsPageResponse) []json.RawMessage {
 		return response.ListFindingsResults
-	}, true, true, nil)
+	}, true, true, query)
+}
+
+func gcpCheckpointStart(checkpoint *cerebrov1.SourceCheckpoint, lookback time.Duration) (time.Time, bool) {
+	if checkpoint == nil || checkpoint.GetWatermark() == nil {
+		return time.Time{}, false
+	}
+	watermark := checkpoint.GetWatermark().AsTime().UTC()
+	if watermark.IsZero() {
+		return time.Time{}, false
+	}
+	if lookback > 0 {
+		watermark = watermark.Add(-lookback)
+	}
+	return watermark, true
+}
+
+func combineGCPFilters(existing string, incremental string) string {
+	existing = strings.TrimSpace(existing)
+	incremental = strings.TrimSpace(incremental)
+	switch {
+	case existing == "":
+		return incremental
+	case incremental == "":
+		return existing
+	default:
+		return "(" + existing + ") AND (" + incremental + ")"
+	}
 }
 
 func listAuditRecords(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]auditRecord, string, error) {

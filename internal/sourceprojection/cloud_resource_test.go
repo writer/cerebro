@@ -56,6 +56,107 @@ func TestProjectGCPCloudResourceMetadataLinksAccountExposureOwnerClassificationA
 	}
 }
 
+func TestProjectCloudFindingsCorrelatesSecurityFindingAndAffectedResource(t *testing.T) {
+	for _, tt := range []struct {
+		name               string
+		event              *cerebrov1.EventEnvelope
+		providerURN        string
+		securityFindingURN string
+		affectedURN        string
+		affectedType       string
+	}{
+		{
+			name: "aws security hub",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "aws-securityhub-finding-1",
+				TenantId: "writer",
+				SourceId: "aws",
+				Kind:     "aws.securityhub_finding",
+				Attributes: map[string]string{
+					"affected_resource_id":   "arn:aws:s3:::prod-data",
+					"affected_resource_name": "prod-data",
+					"affected_resource_type": "AWS::S3::Bucket",
+					"finding_id":             "arn:aws:securityhub:us-east-1:123456789012:finding/1",
+					"resource_id":            "arn:aws:securityhub:us-east-1:123456789012:finding/1",
+					"resource_name":          "Public bucket",
+					"resource_provider":      "aws",
+					"resource_type":          "securityhub_finding",
+					"severity":               "HIGH",
+					"status":                 "ACTIVE",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:aws_securityhub_finding:arn:aws:securityhub:us-east-1:123456789012:finding/1",
+			securityFindingURN: "urn:cerebro:writer:security_finding:aws:arn:aws:securityhub:us-east-1:123456789012:finding/1",
+			affectedURN:        "urn:cerebro:writer:aws_s3_bucket:arn:aws:s3:::prod-data",
+			affectedType:       "aws.s3.bucket",
+		},
+		{
+			name: "gcp security command center",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "gcp-security-center-finding-1",
+				TenantId: "writer",
+				SourceId: "gcp",
+				Kind:     "gcp.security_center_finding",
+				Attributes: map[string]string{
+					"affected_resource_id":   "//storage.googleapis.com/projects/_/buckets/data",
+					"affected_resource_name": "data",
+					"affected_resource_type": "google.cloud.storage.Bucket",
+					"finding_name":           "projects/writer-prod/sources/123/findings/public-bucket",
+					"resource_id":            "projects/writer-prod/sources/123/findings/public-bucket",
+					"resource_name":          "PUBLIC_BUCKET_ACL",
+					"resource_provider":      "gcp",
+					"resource_type":          "security_center_finding",
+					"severity":               "HIGH",
+					"status":                 "ACTIVE",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:gcp_security_center_finding:projects/writer-prod/sources/123/findings/public-bucket",
+			securityFindingURN: "urn:cerebro:writer:security_finding:gcp:projects/writer-prod/sources/123/findings/public-bucket",
+			affectedURN:        "urn:cerebro:writer:gcp_google_cloud_storage_bucket://storage.googleapis.com/projects/_/buckets/data",
+			affectedType:       "gcp.google.cloud.storage.bucket",
+		},
+		{
+			name: "azure server vulnerability",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "azure-server-vulnerability-1",
+				TenantId: "writer",
+				SourceId: "azure",
+				Kind:     "azure.server_vulnerability",
+				Attributes: map[string]string{
+					"assessed_resource_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1",
+					"display_name":         "Install system updates",
+					"resource_id":          "/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-1",
+					"resource_name":        "Install system updates",
+					"resource_provider":    "azure",
+					"resource_type":        "server_vulnerability",
+					"status_code":          "Unhealthy",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:azure_server_vulnerability:/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-1",
+			securityFindingURN: "urn:cerebro:writer:security_finding:azure:/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-1",
+			affectedURN:        "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1",
+			affectedType:       "azure.virtual.machine",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			if _, err := service.Project(context.Background(), tt.event); err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			if entity := state.entities[tt.securityFindingURN]; entity == nil || entity.EntityType != "security.finding" {
+				t.Fatalf("security finding entity = %#v, want security.finding", entity)
+			}
+			if entity := state.entities[tt.affectedURN]; entity == nil || entity.EntityType != tt.affectedType {
+				t.Fatalf("affected entity = %#v, want type %s", entity, tt.affectedType)
+			}
+			assertProjectedLink(t, state, tt.providerURN, relationRepresents, tt.securityFindingURN)
+			assertProjectedLink(t, state, tt.affectedURN, relationHasEvidence, tt.securityFindingURN)
+			assertProjectedLink(t, state, tt.securityFindingURN, relationObservedOn, tt.affectedURN)
+		})
+	}
+}
+
 func TestProjectAWSAppRunnerServiceLinksAccountExposureOwnerAndRuntimeRole(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
