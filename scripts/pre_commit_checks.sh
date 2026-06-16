@@ -17,9 +17,7 @@ if [ -n "$staged_go" ]; then
     printf '%s\n' "$unformatted" | xargs gofmt -w
     printf '%s\n' "$unformatted" | xargs git add
   fi
-
-  echo "golangci-lint: checking staged Go changes..."
-  make lint
 fi
 
+echo "verify: running full local validation, including golangci-lint..."
 make verify
