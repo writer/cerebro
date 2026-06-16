@@ -28,9 +28,9 @@ class DroidReviewWorkflowTest(unittest.TestCase):
     def test_review_workflow_is_same_repo_and_non_draft_guarded(self) -> None:
         self.assertIn("github.event.pull_request.draft == false", self.workflow)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", self.workflow)
-        self.assertIn("github.actor != 'dependabot[bot]'", self.workflow)
-        self.assertIn("github.actor != 'writer-cerebro-deploy[bot]'", self.workflow)
-        self.assertIn("DROID_REVIEW_ACTOR: ${{ github.actor }}", self.workflow)
+        self.assertIn("github.event.pull_request.user.login != 'dependabot[bot]'", self.workflow)
+        self.assertIn("github.event.pull_request.user.login != 'writer-cerebro-deploy[bot]'", self.workflow)
+        self.assertIn("DROID_REVIEW_ACTOR: ${{ github.event.pull_request.user.login }}", self.workflow)
 
     def test_context_runs_before_droid_action(self) -> None:
         self.assertLess(self.workflow.index("droid-review-preflight:"), self.workflow.index("droid-review:"))
