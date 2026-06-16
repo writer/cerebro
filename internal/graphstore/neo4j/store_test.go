@@ -157,6 +157,30 @@ func TestIntegrityChecksIncludeSentinelOneActivityAssetInvariant(t *testing.T) {
 	t.Fatalf("integrity checks missing sentinelone activity asset invariant: %#v", checks)
 }
 
+func TestIntegrityChecksIncludeGenericEphemeralEventInvariant(t *testing.T) {
+	checks, queries := integrityCheckDefinitions()
+	if len(checks) != len(queries) {
+		t.Fatalf("integrity check definitions have %d checks and %d queries", len(checks), len(queries))
+	}
+	for i, check := range checks {
+		if check.Name != "ephemeral_event_entities_projected_as_inventory" {
+			continue
+		}
+		query := queries[i]
+		for _, expected := range []string{
+			"projection_class",
+			"ephemeral_event",
+			"RETURN count(e)",
+		} {
+			if !strings.Contains(query, expected) {
+				t.Fatalf("ephemeral event integrity query missing %q:\n%s", expected, query)
+			}
+		}
+		return
+	}
+	t.Fatalf("integrity checks missing generic ephemeral event invariant: %#v", checks)
+}
+
 func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
 		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")

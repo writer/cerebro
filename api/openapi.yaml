@@ -2991,6 +2991,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeResponseCapabilitiesResponse'
+  /connectors/coverage:
+    get:
+      summary: Report connector coverage and high-value blind spots
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: source_id
+          in: query
+          schema:
+            type: string
+          description: Optional connector/source identifier to scope the report.
+      responses:
+        '200':
+          description: Tenant-scoped connector coverage report with per-dimension state, summaries, and blind spots.
+  /platform/graph/provenance:
+    get:
+      summary: Explain graph entity projection provenance
+      tags:
+        - Platform
+      parameters:
+        - name: urn
+          in: query
+          schema:
+            type: string
+          required: true
+          description: Tenant-bearing Cerebro URN to explain.
+      responses:
+        '200':
+          description: Projection provenance for one graph entity, including projection class, source/runtime identifiers, attributes, and freshness signals.
 
 components:
   securitySchemes:

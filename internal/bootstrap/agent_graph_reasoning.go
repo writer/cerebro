@@ -40,6 +40,7 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 		RequestedScopes:       resolved.RequestedScopes,
 		ScopeUnrestricted:     resolved.ScopeUnrestricted || !resolved.Authenticated,
 		ProvenanceRequirement: "graph-reasoning",
+		CoverageContext:       a.agentCoverageContext(r.Context(), request.TenantID),
 	})
 	if !preflight.Enabled {
 		writeGRCError(w, agentPreflightDeniedError(preflight))

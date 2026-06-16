@@ -8,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestHandleAgentPlatformContract(t *testing.T) {
@@ -183,8 +186,76 @@ func TestHandleAgentPlatformPreflight(t *testing.T) {
 	if preflight.GraphContext.ScopeTenantID != "writer" || !preflight.WriteBack.Required {
 		t.Fatalf("preflight graph/write-back = graph:%+v write:%+v", preflight.GraphContext, preflight.WriteBack)
 	}
+	if len(preflight.GraphContext.SemanticViews) == 0 {
+		t.Fatalf("preflight graph context missing semantic views: %+v", preflight.GraphContext)
+	}
 	if len(preflight.Policy.Checks) == 0 || len(preflight.CapabilityDecisions) != 1 {
 		t.Fatalf("preflight missing policy/capability context: %+v", preflight)
+	}
+}
+
+func TestHandleAgentPlatformPreflightIncludesCoverageContext(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-okta-user": {
+			Id:           "writer-okta-user",
+			SourceId:     "okta",
+			TenantId:     "writer",
+			LastSyncedAt: timestamppb.New(now),
+			Config:       map[string]string{"family": "user"},
+		},
+		"other-okta-application": {
+			Id:           "other-okta-application",
+			SourceId:     "okta",
+			TenantId:     "other",
+			LastSyncedAt: timestamppb.New(now),
+			Config:       map[string]string{"family": "application"},
+		},
+	}}
+	app := New(agentPlatformAuthConfig(), Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/preflight", bytes.NewReader([]byte(`{
+		"capability_ids": ["graph-reasoning"],
+		"question": "What should I inspect?"
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST preflight: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var preflight agentplatform.AgentRunPreflight
+	if err := json.NewDecoder(resp.Body).Decode(&preflight); err != nil {
+		t.Fatalf("decode preflight: %v", err)
+	}
+	if preflight.CoverageContext == nil || preflight.CoverageContext.TenantID != "writer" {
+		t.Fatalf("coverage context = %+v, want writer tenant context", preflight.CoverageContext)
+	}
+	if preflight.CoverageContext.BlindSpotCount != 2 || len(preflight.CoverageContext.TopBlindSpots) != 2 {
+		t.Fatalf("coverage context blind spots = %+v", preflight.CoverageContext)
+	}
+	var coverageCheck *agentplatform.AgentPolicyCheck
+	for i := range preflight.Policy.Checks {
+		if preflight.Policy.Checks[i].ID == "coverage_context" {
+			coverageCheck = &preflight.Policy.Checks[i]
+			break
+		}
+	}
+	if coverageCheck == nil || coverageCheck.Status != "warning" {
+		t.Fatalf("coverage policy check = %+v, checks=%+v", coverageCheck, preflight.Policy.Checks)
 	}
 }
 

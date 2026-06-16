@@ -2,7 +2,9 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -427,6 +429,57 @@ func TestListSourceRuntimeHealthFiltersCoverageByAllowedTenant(t *testing.T) {
 	}
 	if got := byDimension["applications"].RuntimeID; got != "" {
 		t.Fatalf("applications runtime_id = %q, want empty", got)
+	}
+}
+
+func TestConnectorCoverageReportUsesAuthenticatedTenantAndBlindSpotTotals(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-okta-user": {
+			Id:           "writer-okta-user",
+			SourceId:     "okta",
+			TenantId:     "writer",
+			LastSyncedAt: timestamppb.New(now),
+			Config:       map[string]string{"family": "user"},
+		},
+		"other-okta-application": {
+			Id:           "other-okta-application",
+			SourceId:     "okta",
+			TenantId:     "other",
+			LastSyncedAt: timestamppb.New(now),
+			Config:       map[string]string{"family": "application"},
+		},
+	}}
+	app := &App{deps: Dependencies{StateStore: store}, sources: registry}
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/connectors/coverage?source_id=okta", nil)
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: "writer"},
+	}))
+
+	app.handleGetConnectorCoverage(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var report sourcecoverage.Report
+	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
+		t.Fatalf("decode report: %v", err)
+	}
+	if report.TenantID != "writer" || report.SourceID != "okta" {
+		t.Fatalf("report scope = tenant:%q source:%q", report.TenantID, report.SourceID)
+	}
+	if report.Totals.Dimensions != 3 || report.Totals.BlindSpots != 2 {
+		t.Fatalf("report totals = %#v", report.Totals)
+	}
+	for _, record := range report.Records {
+		if record.TenantID == "other" || record.RuntimeID == "other-okta-application" {
+			t.Fatalf("report leaked other tenant record: %#v", record)
+		}
 	}
 }
 
