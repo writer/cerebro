@@ -518,7 +518,13 @@ coverage_contract:
     - id: dns_managed_zone
       type: entity_family
       title: Cloud DNS managed zones
-      families: [dns_managed_zone, dns_record_set]
+      families: [dns_managed_zone]
+      support: supported
+      high_value: true
+    - id: dns_record_set
+      type: entity_family
+      title: Cloud DNS record sets
+      families: [dns_record_set]
       support: supported
       high_value: true
     - id: gcs_bucket
@@ -561,6 +567,18 @@ coverage_contract:
       type: app_entitlement
       title: IAM policy bindings
       families: [iam_role_assignment]
+      support: supported
+      high_value: true
+    - id: effective_permission
+      type: app_entitlement
+      title: Effective IAM permissions
+      families: [effective_permission]
+      support: supported
+      high_value: true
+    - id: asset_metadata
+      type: entity_family
+      title: Cloud Asset metadata and data sensitivity
+      families: [asset_metadata]
       support: supported
       high_value: true
     - id: kms_key
