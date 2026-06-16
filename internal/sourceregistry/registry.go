@@ -6,6 +6,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
+	auth0source "github.com/writer/cerebro/sources/auth0"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
 	backstagesource "github.com/writer/cerebro/sources/backstage"
@@ -58,6 +59,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "anthropic",
 		load: func() (sourcecdk.Source, error) {
 			return anthropicsource.New()
+		},
+	},
+	{
+		name: "auth0",
+		load: func() (sourcecdk.Source, error) {
+			return auth0source.New()
 		},
 	},
 	{

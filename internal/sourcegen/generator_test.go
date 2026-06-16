@@ -125,7 +125,7 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 			TenantID:      "tenant-a",
 			SourceID:      "example_idp",
 			DisplayName:   "Example IDP",
-			Auth: connectordefinitions.AuthSpec{
+			Auth: connectordefinitions.AuthSpec{ // #nosec G101 -- credential field names only, not secret values.
 				Model: "bearer_token",
 				CredentialFields: []connectordefinitions.Field{{
 					Key:           "token",
@@ -183,6 +183,103 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	sourceTest := readGeneratedFile(t, outputDir, "sources/example_idp/source_test.go")
 	if strings.Contains(sourceTest, "evidence_cas_uri") {
 		t.Fatalf("definition generated source test should not assume EvidenceCAS fields:\n%s", sourceTest)
+	}
+}
+
+func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-auth0",
+			TenantID:      "tenant-a",
+			SourceID:      "auth0",
+			DisplayName:   "Auth0",
+			ConfigFields: []connectordefinitions.Field{{
+				Key:      "domain",
+				Required: true,
+			}},
+			Auth: connectordefinitions.AuthSpec{ // #nosec G101 -- Test-only OAuth credential field names, not live secrets.
+				Model:    AuthModelOAuthClientCredentials,
+				TokenURL: "https://${config.domain}/oauth/token",
+				Scopes:   []string{"read:users"},
+				TokenParams: map[string]string{
+					"audience": "https://${config.domain}/api/v2/",
+				},
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "client_id",
+					ReferenceOnly: true,
+				}, {
+					Key:           "client_secret",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://${config.domain}/api/v2",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/users",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/users",
+				RecordSelector: "$[*]",
+				IDField:        "user_id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "auth0.users",
+					SchemaRef: "auth0/users/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{
+					Type:      "entity_family",
+					Support:   "supported",
+					HighValue: true,
+				}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	if result.SourceID != "auth0" || result.AuthModel != AuthModelOAuthClientCredentials {
+		t.Fatalf("result = %#v", result)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/auth0/source.go")
+	for _, want := range []string{
+		"oauthTokenURLTemplate",
+		"sourcehttp.ClientCredentialsOptions",
+		"TokenURLTemplate: oauthTokenURLTemplate",
+		"sourcehttp.ClientCredentialsCache",
+		"oauthTokenExpirationBuffer",
+		"renderTemplate(defaultBaseURLTemplate",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
+	}
+	deploy := readGeneratedFile(t, outputDir, "sources/auth0/deploy.yaml")
+	for _, want := range []string{
+		"domain: env:AUTH0_DOMAIN",
+		"client_id: env:AUTH0_CLIENT_ID",
+		"client_secret: env:AUTH0_CLIENT_SECRET",
+	} {
+		if !strings.Contains(deploy, want) {
+			t.Fatalf("deploy.yaml missing %q:\n%s", want, deploy)
+		}
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/auth0/source_test.go")
+	for _, want := range []string{
+		`r.URL.Path == "/oauth/token"`,
+		`tokenRequests != 1`,
+		`"token_url": server.URL + "/oauth/token"`,
+	} {
+		if !strings.Contains(sourceTest, want) {
+			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
+		}
 	}
 }
 

@@ -788,8 +788,100 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if second.Checkpoint == nil {
 		t.Fatalf("second.Checkpoint = nil, want non-nil with empty CursorOpaque")
 	}
-	if second.Checkpoint.CursorOpaque != "" {
-		t.Fatalf("second.Checkpoint.CursorOpaque = %q, want empty cursor on terminal audit page", second.Checkpoint.CursorOpaque)
+	secondEnvelope, ok := sourcecdk.DecodeCursorEnvelope(second.Checkpoint.GetCursorOpaque())
+	if !ok {
+		t.Fatalf("second.Checkpoint.CursorOpaque = %q, want canary envelope", second.Checkpoint.GetCursorOpaque())
+	}
+	if secondEnvelope.Token != "" {
+		t.Fatalf("second checkpoint token = %q, want empty cursor on terminal audit page", secondEnvelope.Token)
+	}
+	if secondEnvelope.Extra[sourcecdk.FamilyFreshnessExtraKind] != "audit_log_latest_event" {
+		t.Fatalf("second checkpoint canary kind = %q, want audit_log_latest_event", secondEnvelope.Extra[sourcecdk.FamilyFreshnessExtraKind])
+	}
+}
+
+func TestGitHubAuditFreshnessProbeShortCircuitsUnchangedAuditLog(t *testing.T) {
+	auditQueries := []url.Values{}
+	auditEntry := map[string]any{
+		"@timestamp":   1776916397852,
+		"_document_id": "audit-doc-1",
+		"action":       "org.update_member",
+		"created_at":   1776916397852,
+		"org":          "writer",
+		"org_id":       1,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		query := r.URL.Query()
+		auditQueries = append(auditQueries, query)
+		switch query.Get("order") {
+		case "desc":
+			if got := query.Get("per_page"); got != "1" {
+				t.Fatalf("audit canary per_page = %q, want 1", got)
+			}
+			if got := query.Get("after"); got != "" {
+				t.Fatalf("audit canary after = %q, want empty", got)
+			}
+		case "asc":
+		default:
+			t.Fatalf("audit order = %q, want asc scan or desc canary", query.Get("order"))
+		}
+		if err := json.NewEncoder(w).Encode([]map[string]any{auditEntry}); err != nil {
+			t.Fatalf("encode audit response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	if len(auditQueries) != 2 {
+		t.Fatalf("audit requests = %d, want canary plus scan", len(auditQueries))
+	}
+	if auditQueries[0].Get("order") != "desc" || auditQueries[1].Get("order") != "asc" {
+		t.Fatalf("audit request order = %q/%q, want desc canary then asc scan", auditQueries[0].Get("order"), auditQueries[1].Get("order"))
+	}
+	probe, ok := sourcecdk.FamilyFreshnessProbeFromCheckpoint("github", familyAudit, first.Checkpoint)
+	if !ok {
+		t.Fatalf("first checkpoint %q missing freshness probe", first.Checkpoint.GetCursorOpaque())
+	}
+	if probe.Kind != "audit_log_latest_event" || probe.ResourceID != "github-audit-audit-doc-1" {
+		t.Fatalf("probe = %#v, want audit log latest event canary", probe)
+	}
+
+	auditQueries = nil
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("len(second.Events) = %d, want unchanged short circuit", len(second.Events))
+	}
+	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("ShortCircuitReason = %q, want not_modified", second.ShortCircuitReason)
+	}
+	if len(auditQueries) != 1 || auditQueries[0].Get("order") != "desc" {
+		t.Fatalf("audit requests after unchanged checkpoint = %#v, want one desc canary", auditQueries)
 	}
 }
 
@@ -1739,8 +1831,21 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("encode users response: %v", err)
 			}
 		case "/api/v3/orgs/writer/audit-log":
-			if got := r.URL.Query().Get("order"); got != "asc" {
-				t.Fatalf("audit order = %q, want asc", got)
+			switch got := r.URL.Query().Get("order"); got {
+			case "desc":
+				if got := r.URL.Query().Get("per_page"); got != "1" {
+					t.Fatalf("audit canary per_page = %q, want 1", got)
+				}
+				if got := r.URL.Query().Get("after"); got != "" {
+					t.Fatalf("audit canary after = %q, want empty", got)
+				}
+				if err := json.NewEncoder(w).Encode(auditEntries[:1]); err != nil {
+					t.Fatalf("encode audit canary: %v", err)
+				}
+				return
+			case "asc":
+			default:
+				t.Fatalf("audit order = %q, want asc or desc canary", got)
 			}
 			after := r.URL.Query().Get("after")
 			if after == "" {

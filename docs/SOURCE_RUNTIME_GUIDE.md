@@ -135,6 +135,23 @@ Operational guidance:
 - Watch provider rate limits and partial-page errors.
 - Treat cursor advancement as the sign that sync is healthy.
 
+## Family freshness probes
+
+Some source families can make a cheap metadata call before the expensive read path. Cerebro calls this a family freshness probe. If the provider canary is unchanged, the source returns a `not_modified` short circuit and persists the refreshed probe checkpoint; if it changed, the source continues into the normal read path.
+
+Use `sourcecdk.Family.Probe` or a checkpoint-aware source read for this pattern. Store probe metadata in `sourcecdk.CursorEnvelope.Extra` with:
+
+```text
+canary_kind
+canary_resource_id
+canary_observed_at
+canary_updated_at
+canary_hash
+canary_confidence=authoritative|heuristic
+```
+
+Treat authoritative canaries, such as documented delta tokens, differently from heuristic canaries, such as newest audit-log event probes. Heuristic probes are dirty signals: they are useful for skipping likely unchanged scans, but they still need periodic full reconciliation if the provider does not document complete coverage.
+
 ## Bootstrap runtimes from JSON
 
 The CLI can load a list of runtimes from an environment variable:

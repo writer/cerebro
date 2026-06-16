@@ -278,6 +278,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | --- | --- | --- |
 | `anthropic` | Anthropic organization source | users, workspaces, API keys |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
+| `auth0` | Auth0 Management API source | users, roles, audit events |
 | `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `backstage` | Backstage catalog source | components |

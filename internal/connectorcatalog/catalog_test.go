@@ -120,11 +120,11 @@ entries:
 	}
 }
 
-func TestAnalyzeDirMarksOAuthSupportedDefinitionAsAuthExtension(t *testing.T) {
+func TestAnalyzeDirMarksOAuthClientCredentialsDefinitionAsGenerateable(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogFile(t, root, strings.ReplaceAll(strings.ReplaceAll(minimalDefinitionYAML(),
 		"model: bearer_token", "model: oauth_client_credentials\n        token_url: https://api.example.test/oauth/token"),
-		"key: token", "key: client_secret"))
+		"key: token", "key: client_id\n            reference_only: true\n          - key: client_secret"))
 
 	analysis, err := AnalyzeDir(root, Options{DryRunSourcegen: true})
 	if err != nil {
@@ -133,11 +133,11 @@ func TestAnalyzeDirMarksOAuthSupportedDefinitionAsAuthExtension(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	if got := analysis.Entries[0].Status; got != StatusNeedsAuthExtension {
-		t.Fatalf("status = %q, want %q", got, StatusNeedsAuthExtension)
+	if got := analysis.Entries[0].Status; got != StatusGenerateable {
+		t.Fatalf("status = %q, want %q", got, StatusGenerateable)
 	}
-	if analysis.Summary.NeedsAuthExtension != 1 {
-		t.Fatalf("summary = %#v, want auth extension count", analysis.Summary)
+	if analysis.Summary.Generateable != 1 {
+		t.Fatalf("summary = %#v, want generateable count", analysis.Summary)
 	}
 }
 
@@ -236,7 +236,7 @@ func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {
 		"ethena":        StatusGenerateable,
 		"google_drive":  StatusNeedsAuthExtension,
 		"hitrust_mycsf": StatusGenerateable,
-		"ramp":          StatusNeedsAuthExtension,
+		"ramp":          StatusGenerateable,
 		"rippling":      StatusGenerateable,
 		"segment":       StatusGenerateable,
 		"swif_ai":       StatusGenerateable,

@@ -108,6 +108,15 @@ const (
 	PullReconciliationReasonCanaryStateMissing     PullReconciliationReason = "canary_state_missing"
 )
 
+// NotModifiedPull returns a not_modified short-circuit when a checkpoint was
+// refreshed without producing events.
+func NotModifiedPull(checkpoint *cerebrov1.SourceCheckpoint) Pull {
+	if checkpoint == nil {
+		return Pull{}
+	}
+	return Pull{Checkpoint: checkpoint, ShortCircuitReason: PullShortCircuitReasonNotModified}
+}
+
 // Source is the common integration contract for the rewrite.
 type Source interface {
 	Spec() *cerebrov1.SourceSpec

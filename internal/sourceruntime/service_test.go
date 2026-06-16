@@ -1595,6 +1595,12 @@ func TestSyncRuntimeMergesEqualWatermarkCheckpointBoundaries(t *testing.T) {
 		ResumableCheckpoint: true,
 		Token:               "2",
 		BoundaryIDs:         []string{"first"},
+		Extra: map[string]string{
+			sourcecdk.FamilyFreshnessExtraKind:       "repo_updated_at",
+			sourcecdk.FamilyFreshnessExtraResourceID: "writer/cerebro",
+			sourcecdk.FamilyFreshnessExtraHash:       "old-hash",
+			"preserved":                              "yes",
+		},
 	}
 	sourcecdk.SetCursorWatermark(&existingEnvelope, watermark)
 	existingCursor, err := sourcecdk.EncodeCursorEnvelope(existingEnvelope)
@@ -1608,6 +1614,9 @@ func TestSyncRuntimeMergesEqualWatermarkCheckpointBoundaries(t *testing.T) {
 		Mode:                "incremental_watermark",
 		ResumableCheckpoint: true,
 		BoundaryIDs:         []string{"second"},
+		Extra: map[string]string{
+			sourcecdk.FamilyFreshnessExtraHash: "new-hash",
+		},
 	}
 	sourcecdk.SetCursorWatermark(&nextEnvelope, watermark)
 	nextCursor, err := sourcecdk.EncodeCursorEnvelope(nextEnvelope)
@@ -1649,6 +1658,15 @@ func TestSyncRuntimeMergesEqualWatermarkCheckpointBoundaries(t *testing.T) {
 	}
 	if got := storedEnvelope.BoundaryIDs; len(got) != 2 || got[0] != "first" || got[1] != "second" {
 		t.Fatalf("stored boundary IDs = %#v, want first and second", got)
+	}
+	if got := storedEnvelope.Extra["preserved"]; got != "yes" {
+		t.Fatalf("stored preserved extra = %q, want yes", got)
+	}
+	if got := storedEnvelope.Extra[sourcecdk.FamilyFreshnessExtraHash]; got != "new-hash" {
+		t.Fatalf("stored canary hash = %q, want next checkpoint hash", got)
+	}
+	if got := storedEnvelope.Extra[sourcecdk.FamilyFreshnessExtraKind]; got != "repo_updated_at" {
+		t.Fatalf("stored canary kind = %q, want existing kind", got)
 	}
 }
 
