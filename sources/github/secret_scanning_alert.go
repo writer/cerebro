@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -39,10 +40,7 @@ type secretScanningAlertPayload struct {
 }
 
 func (s *Source) checkSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings) error {
-	_, _, err := client.SecretScanning.ListAlertsForOrg(ctx, settings.owner, &gogithub.SecretScanningAlertListOptions{
-		State:       settings.state,
-		ListOptions: gogithub.ListOptions{PerPage: 1},
-	})
+	_, _, err := listSecretScanningAlertsForOrg(ctx, client, settings, nil, 1)
 	if err != nil {
 		return wrapLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
 	}
@@ -57,14 +55,7 @@ func (s *Source) discoverSecretScanningAlerts(ctx context.Context, client *gogit
 }
 
 func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
-	page, err := sourcecdk.CursorPage(cursor)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	alerts, resp, err := client.SecretScanning.ListAlertsForOrg(ctx, settings.owner, &gogithub.SecretScanningAlertListOptions{
-		State:       settings.state,
-		ListOptions: gogithub.ListOptions{Page: page, PerPage: settings.perPage},
-	})
+	alerts, resp, err := listSecretScanningAlertsForOrg(ctx, client, settings, cursor, settings.perPage)
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
 	}
@@ -79,21 +70,37 @@ func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.
 		}
 		events = append(events, event)
 	}
-	state := sourcecdk.IncrementalWatermarkCheckpointState("github", familySecretScanning, checkpoint)
-	events, _ = sourcecdk.IncrementalWatermarkEvents(events, state)
-	// GitHub's secret scanning API does not expose updated_at ordering in the
-	// client version we use, so an older-created page can still contain a
-	// recently updated alert. Keep filtering by watermark, but keep paginating.
-	pull := sourcecdk.Pull{
-		Events:     events,
-		Checkpoint: sourcecdk.IncrementalWatermarkCheckpoint("github", familySecretScanning, events, state),
+	nextCursor := ""
+	if resp != nil {
+		nextCursor = sourcecdk.NextAfterOrPageCursor(resp.After, resp.NextPageToken, resp.NextPage)
 	}
-	if resp != nil && resp.NextPage > 0 {
-		nextPage := strconv.Itoa(resp.NextPage)
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextPage}
-		pull.Checkpoint = sourcecdk.IncrementalWatermarkCheckpointWithToken(pull.Checkpoint, nextPage)
+	return sourcecdk.IncrementalWatermarkPull("github", familySecretScanning, events, checkpoint, nextCursor), nil
+}
+
+func listSecretScanningAlertsForOrg(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, perPage int) ([]*gogithub.SecretScanningAlert, *gogithub.Response, error) {
+	after, page, err := sourcecdk.CursorAfterOrPage(cursor)
+	if err != nil {
+		return nil, nil, err
 	}
-	return pull, nil
+	query := url.Values{
+		"after":     {after},
+		"direction": {"desc"},
+		"per_page":  {strconv.Itoa(perPage)},
+		"sort":      {"updated"},
+		"state":     {settings.state},
+	}
+	if page != "" {
+		query.Del("after")
+		query.Set("page", page)
+	}
+	path := fmt.Sprintf("orgs/%s/secret-scanning/alerts?%s", url.PathEscape(settings.owner), query.Encode())
+	req, err := client.NewRequest("GET", path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	var alerts []*gogithub.SecretScanningAlert
+	resp, err := client.Do(ctx, req, &alerts)
+	return alerts, resp, err
 }
 
 func secretScanningAlertEvent(settings settings, alert *gogithub.SecretScanningAlert) (*primitives.Event, error) {

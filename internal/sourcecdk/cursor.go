@@ -117,6 +117,50 @@ func CursorPage(cursor *cerebrov1.SourceCursor) (int, error) {
 	return page, nil
 }
 
+// CursorAfterOrPage parses a cursor token for endpoints that prefer Link
+// header after cursors but may still fall back to page tokens. Untyped numeric
+// tokens are treated as legacy page cursors and ignored so migrations back to
+// the collection head remain correct under watermark filtering.
+func CursorAfterOrPage(cursor *cerebrov1.SourceCursor) (string, string, error) {
+	token := strings.TrimSpace(CursorToken(cursor))
+	if token == "" {
+		return "", "", nil
+	}
+	if after, ok := strings.CutPrefix(token, "after:"); ok {
+		return strings.TrimSpace(after), "", nil
+	}
+	if page, ok := strings.CutPrefix(token, "page:"); ok {
+		page = strings.TrimSpace(page)
+		parsed, err := strconv.Atoi(page)
+		if err != nil {
+			return "", "", fmt.Errorf("%w: parse page cursor: %w", ErrInvalidConfig, err)
+		}
+		if parsed < 1 {
+			return "", "", fmt.Errorf("%w: page cursor must be greater than zero", ErrInvalidConfig)
+		}
+		return "", page, nil
+	}
+	if _, err := strconv.Atoi(token); err == nil {
+		return "", "", nil
+	}
+	return token, "", nil
+}
+
+// NextAfterOrPageCursor prefers a Link-header after cursor and falls back to
+// page tokens for endpoints or GitHub Enterprise versions that still emit them.
+func NextAfterOrPageCursor(after string, nextPageToken string, nextPage int) string {
+	if after = strings.TrimSpace(after); after != "" {
+		return "after:" + after
+	}
+	if nextPageToken = strings.TrimSpace(nextPageToken); nextPageToken != "" {
+		return "page:" + nextPageToken
+	}
+	if nextPage > 0 {
+		return "page:" + strconv.Itoa(nextPage)
+	}
+	return ""
+}
+
 func normalizedCursorValues(values []string) []string {
 	if len(values) == 0 {
 		return nil
