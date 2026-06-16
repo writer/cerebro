@@ -23,10 +23,12 @@ import (
 )
 
 const (
-	connectTimeout      = 5 * time.Second
-	defaultReplayLimit  = 100
-	maxReplayLimit      = 1000
-	maxReplayCandidates = 5000
+	connectTimeout             = 5 * time.Second
+	defaultReplayLimit         = 100
+	maxReplayLimit             = 1000
+	maxReplayCandidates        = 5000
+	publishRetryAttempts       = 4
+	publishRetryInitialBackoff = 50 * time.Millisecond
 )
 
 type publisher interface {
@@ -155,6 +157,11 @@ func (l *Log) Ping(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("jetstream account info: %w", err)
 	}
+	if l.replay != nil {
+		if _, err := l.replayStream(ctx); err != nil {
+			return fmt.Errorf("jetstream stream readiness: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -188,10 +195,64 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if event.Id != "" {
 		msg.Header.Set(nats.MsgIdHdr, event.Id)
 	}
-	if _, err := l.js.PublishMsg(ctx, msg); err != nil {
+	if err := l.publishMsg(ctx, msg); err != nil {
 		return fmt.Errorf("publish event: %w", err)
 	}
 	return nil
+}
+
+func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg) error {
+	attempts := 1
+	if msg.Header.Get(nats.MsgIdHdr) != "" {
+		attempts = publishRetryAttempts
+	}
+	backoff := publishRetryInitialBackoff
+	var err error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if _, err = l.js.PublishMsg(ctx, msg); err == nil {
+			return nil
+		}
+		if attempt == attempts || !retryablePublishError(err) || ctx.Err() != nil {
+			return err
+		}
+		if waitErr := waitBeforePublishRetry(ctx, backoff); waitErr != nil {
+			return waitErr
+		}
+		backoff *= 2
+	}
+	return err
+}
+
+func retryablePublishError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	for _, fragment := range []string{
+		"no response",
+		"timeout",
+		"temporarily unavailable",
+		"connection",
+		"reconnect",
+		"broken pipe",
+		"reset by peer",
+	} {
+		if strings.Contains(text, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func waitBeforePublishRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // Replay returns the newest matching stored envelopes in append order.
