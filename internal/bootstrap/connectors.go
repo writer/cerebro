@@ -47,7 +47,13 @@ const (
 	connectorStoreAzureKeyVault      = "azure_key_vault"
 	connectorStoreHashiCorpVault     = "hashicorp_vault"
 	connectorCredentialStoreModeRefs = "reference"
+
+	connectorAccessAvailable   = "available"
+	connectorAccessCatalogOnly = "catalog_only"
+	connectorAccessRestricted  = "restricted"
 )
+
+var errConnectorAccessRestricted = errors.New("connector access restricted")
 
 type connectorCatalogEntry struct {
 	SourceID               string                          `json:"source_id"`
@@ -69,6 +75,10 @@ type connectorCatalogEntry struct {
 	NeedsAttentionRuntimes int                             `json:"needs_attention_runtimes"`
 	ConnectionMethods      []connectorConnectionMethodView `json:"connection_methods,omitempty"`
 	ScopeOptions           []connectorScopeOptionView      `json:"scope_options,omitempty"`
+	AccessStatus           string                          `json:"access_status,omitempty"`
+	AccessReason           string                          `json:"access_reason,omitempty"`
+	SetupAllowed           bool                            `json:"setup_allowed"`
+	Requestable            bool                            `json:"requestable,omitempty"`
 }
 
 type connectorLibraryResponse struct {
@@ -482,6 +492,9 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		if catalogEntry, ok := definitionsBySourceID[source.GetId()]; ok {
 			applyConnectorCatalogMetadata(&entry, catalogEntry)
 		}
+		if !a.applyConnectorAccess(&entry) {
+			continue
+		}
 		if count := counts[source.GetId()]; count.total > 0 {
 			entry.ConfiguredRuntimes = count.total
 			entry.HealthyRuntimes = count.healthy
@@ -514,6 +527,9 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 			ConnectionMethods: nil,
 		}
 		applyConnectorCatalogMetadata(&entry, catalogEntry)
+		if !a.applyConnectorAccess(&entry) {
+			continue
+		}
 		entries = append(entries, entry)
 	}
 	sort.Slice(entries, func(i, j int) bool {
@@ -626,6 +642,10 @@ func (a *App) handleCreateConnectorCredential(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if _, err := a.connectorSource(sourceID); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -703,6 +723,10 @@ func (a *App) handleListConnectorCredentials(w http.ResponseWriter, r *http.Requ
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if _, err := a.connectorSource(sourceID); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -760,6 +784,10 @@ func (a *App) handleGetConnectorCredential(w http.ResponseWriter, r *http.Reques
 		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if _, err := a.connectorSource(sourceID); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -804,6 +832,10 @@ func (a *App) handleRotateConnectorCredential(w http.ResponseWriter, r *http.Req
 	credentialID := strings.TrimSpace(r.PathValue("credentialID"))
 	if sourceID == "" || credentialID == "" {
 		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
 		return
 	}
 	if _, err := a.connectorSource(sourceID); err != nil {
@@ -913,6 +945,10 @@ func (a *App) handleRevokeConnectorCredential(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if _, err := a.connectorSource(sourceID); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -964,6 +1000,10 @@ func (a *App) handlePreflightConnectorConnection(w http.ResponseWriter, r *http.
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	response, err := a.connectorConnectionPreflight(r.Context(), sourceID, request)
 	if err != nil {
 		writeConnectorError(w, err)
@@ -981,6 +1021,10 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
 	if sourceID == "" {
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
 		return
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
@@ -1630,6 +1674,72 @@ func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry co
 	}
 	if len(entry.ScopeOptions) == 0 {
 		entry.ScopeOptions = connectorScopeOptionsFromDefinition(catalogEntry.Definition)
+	}
+}
+
+func (a *App) applyConnectorAccess(entry *connectorCatalogEntry) bool {
+	if entry == nil {
+		return false
+	}
+	sourceID := strings.TrimSpace(entry.SourceID)
+	if sourceID == "" || connectorSourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
+		return false
+	}
+	hasSetup := len(entry.ConnectionMethods) > 0
+	switch {
+	case connectorSourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID):
+		entry.AccessStatus = connectorAccessRestricted
+		entry.AccessReason = firstNonEmpty(a.cfg.ConnectorAccess.RestrictionReason, "Connector setup is restricted by this deployment.")
+		entry.SetupAllowed = false
+		entry.Requestable = true
+		entry.ConnectionMethods = nil
+	case hasSetup:
+		entry.AccessStatus = connectorAccessAvailable
+		entry.SetupAllowed = true
+	case entry.CatalogStatus != "":
+		entry.AccessStatus = connectorAccessCatalogOnly
+		entry.AccessReason = connectorCatalogOnlyReason(entry.CatalogStatus)
+		entry.SetupAllowed = false
+		entry.Requestable = true
+	default:
+		entry.AccessStatus = connectorAccessAvailable
+		entry.SetupAllowed = hasSetup
+	}
+	return true
+}
+
+func (a *App) requireConnectorSetupAccess(sourceID string) error {
+	if connectorSourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID) {
+		return fmt.Errorf("%w: %s", errConnectorAccessRestricted, strings.TrimSpace(sourceID))
+	}
+	if connectorSourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
+		return fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, strings.TrimSpace(sourceID))
+	}
+	return nil
+}
+
+func connectorSourceListed(values []string, sourceID string) bool {
+	normalized := strings.TrimSpace(sourceID)
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), normalized) {
+			return true
+		}
+	}
+	return false
+}
+
+func connectorCatalogOnlyReason(status string) string {
+	switch strings.TrimSpace(status) {
+	case connectorcatalog.StatusGenerateable:
+		return "Catalog definition is sourcegen-ready, but setup is not enabled by this API."
+	case connectorcatalog.StatusNeedsAuthExtension:
+		return "Catalog definition needs an auth extension before setup can be enabled."
+	case connectorcatalog.StatusNeedsBespokeRuntime:
+		return "Catalog definition needs a bespoke runtime before setup can be enabled."
+	case connectorcatalog.StatusCatalogReady:
+		return "Catalog definition is available, but setup is not enabled by this API."
+	default:
+		return "Catalog metadata is available, but setup is not enabled by this API."
 	}
 }
 
@@ -3953,7 +4063,8 @@ func writeConnectorError(w http.ResponseWriter, err error) {
 	case errors.Is(err, connectorcredentials.ErrUnavailable),
 		errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
-	case errors.Is(err, errTenantForbidden):
+	case errors.Is(err, errTenantForbidden),
+		errors.Is(err, errConnectorAccessRestricted):
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 	default:
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
