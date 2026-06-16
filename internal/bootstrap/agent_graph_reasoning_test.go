@@ -92,6 +92,39 @@ func TestHandleAgentPlatformGraphReasonRequiresLLM(t *testing.T) {
 	}
 }
 
+func TestClearLongRunningWriteDeadline(t *testing.T) {
+	recorder := &writeDeadlineRecorder{header: http.Header{}}
+	clearLongRunningWriteDeadline(recorder)
+	if !recorder.deadlineSet {
+		t.Fatal("write deadline was not cleared")
+	}
+	if !recorder.deadline.IsZero() {
+		t.Fatalf("deadline = %v, want zero time", recorder.deadline)
+	}
+}
+
+type writeDeadlineRecorder struct {
+	header      http.Header
+	deadline    time.Time
+	deadlineSet bool
+}
+
+func (r *writeDeadlineRecorder) Header() http.Header {
+	return r.header
+}
+
+func (r *writeDeadlineRecorder) Write(data []byte) (int, error) {
+	return len(data), nil
+}
+
+func (r *writeDeadlineRecorder) WriteHeader(int) {}
+
+func (r *writeDeadlineRecorder) SetWriteDeadline(deadline time.Time) error {
+	r.deadline = deadline
+	r.deadlineSet = true
+	return nil
+}
+
 func graphReasoningAuthConfig() config.Config {
 	return config.Config{
 		HTTPAddr:        "127.0.0.1:0",
