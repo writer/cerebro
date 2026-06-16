@@ -381,6 +381,87 @@ func TestClassifyReportsMissingFeatures(t *testing.T) {
 	}
 }
 
+func TestClassifyReportsDisjointSupportedAndMissingFeatures(t *testing.T) {
+	report, err := Classify(Definition{
+		SchemaVersion: SchemaVersionIntegrationV1,
+		ID:            "example",
+		TenantID:      "tenant-a",
+		SourceID:      "example",
+		DisplayName:   "Example",
+		Auth: AuthSpec{
+			Model: "bearer_token",
+			CredentialFields: []Field{{
+				Key:           "token",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		Transport: &TransportSpec{
+			BaseURL: "https://api.example.test",
+			Verification: &VerificationSpec{
+				Path: "/v1/me",
+			},
+		},
+		ResourceFamilies: []ResourceFamily{
+			{
+				ID:             "users",
+				Path:           "/v1/users",
+				RecordSelector: "$.data.users[*]",
+				IDField:        "id",
+				Event: EventMappingSpec{
+					Kind:      "example.user",
+					SchemaRef: "example/user/v1",
+				},
+				Projection: &ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []CoverageDimensionSpec{{
+					Type:    "entity_family",
+					Support: "supported",
+				}},
+			},
+			{
+				ID:      "groups",
+				Path:    "/v1/groups",
+				IDField: "id",
+				Event: EventMappingSpec{
+					Kind:      "example.group",
+					SchemaRef: "example/group/v1",
+				},
+				Projection: &ProjectionSpec{
+					Template: "identity_group",
+				},
+				Coverage: []CoverageDimensionSpec{{
+					Type:    "entity_family",
+					Support: "supported",
+				}},
+			},
+		},
+	}, DefaultGrammar())
+	if err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+
+	const feature = "record_selector.jsonpath_or_list_key"
+	if !containsString(report.MissingFeatures, feature) {
+		t.Fatalf("missing features = %#v, want %q", report.MissingFeatures, feature)
+	}
+	if containsString(report.SupportedFeatures, feature) {
+		t.Fatalf("supported features = %#v, must not include missing feature %q", report.SupportedFeatures, feature)
+	}
+	for _, supported := range report.SupportedFeatures {
+		if containsString(report.MissingFeatures, supported) {
+			t.Fatalf("supported and missing features overlap on %q; supported=%#v missing=%#v", supported, report.SupportedFeatures, report.MissingFeatures)
+		}
+	}
+	if !hasSupportCheckStatus(report.Checks, feature, SupportStatusReady) {
+		t.Fatalf("checks = %#v, want ready check for %q", report.Checks, feature)
+	}
+	if !hasSupportCheckStatus(report.Checks, feature, SupportStatusMissing) {
+		t.Fatalf("checks = %#v, want missing check for %q", report.Checks, feature)
+	}
+}
+
 func TestClassifyAllSummarizesTargetSet(t *testing.T) {
 	supported := Definition{
 		SchemaVersion: SchemaVersionIntegrationV1,
@@ -451,6 +532,15 @@ func hasBlockingCheck(checks []ValidationCheck, id string) bool {
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSupportCheckStatus(checks []SupportCheck, id string, status string) bool {
+	for _, check := range checks {
+		if check.ID == id && check.Status == status {
 			return true
 		}
 	}

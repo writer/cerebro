@@ -201,8 +201,8 @@ func Classify(definition Definition, grammar Grammar) (SupportReport, error) {
 		report.MissingFeatures = append(report.MissingFeatures, "definition.validation_blocked")
 		report.Checks = append(report.Checks, SupportCheck{ID: "definition.validation_blocked", Category: "definition", Status: SupportStatusMissing, Detail: normalized.Validation.Summary})
 	}
-	report.SupportedFeatures = uniqueSorted(report.SupportedFeatures)
 	report.MissingFeatures = uniqueSorted(report.MissingFeatures)
+	report.SupportedFeatures = uniqueSortedExcept(report.SupportedFeatures, report.MissingFeatures)
 	sort.SliceStable(report.Checks, func(i int, j int) bool {
 		if report.Checks[i].Status != report.Checks[j].Status {
 			return report.Checks[i].Status == SupportStatusMissing
@@ -307,6 +307,28 @@ func uniqueSorted(values []string) []string {
 	for _, value := range values {
 		value = strings.TrimSpace(value)
 		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func uniqueSortedExcept(values []string, excluded []string) []string {
+	excludedSet := setOf(excluded)
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := excludedSet[value]; ok {
 			continue
 		}
 		if _, ok := seen[value]; ok {
