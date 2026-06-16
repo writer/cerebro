@@ -88,8 +88,8 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 
 func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	packs := builtinRulePacks()
-	if got := len(packs); got != 10 {
-		t.Fatalf("len(builtinRulePacks()) = %d, want 10", got)
+	if got := len(packs); got != 11 {
+		t.Fatalf("len(builtinRulePacks()) = %d, want 11", got)
 	}
 	rules := flattenRulePacks(packs)
 	if got := len(rules); got < 10 {
@@ -116,6 +116,9 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	}
 	if _, ok := registry.Get(runtimeActiveThreatEvidenceRuleID); !ok {
 		t.Fatalf("registry missing %q", runtimeActiveThreatEvidenceRuleID)
+	}
+	if _, ok := registry.Get(panopticonCuratedCaseRuleID); !ok {
+		t.Fatalf("registry missing %q", panopticonCuratedCaseRuleID)
 	}
 	if _, ok := registry.Get(grcControlTestNeedsAttentionRuleID); !ok {
 		t.Fatalf("registry missing %q", grcControlTestNeedsAttentionRuleID)

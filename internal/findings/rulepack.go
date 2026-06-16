@@ -60,6 +60,12 @@ func builtinRulePacks() []RulePack {
 			Rules:       []Rule{newRuntimeActiveThreatEvidenceRule()},
 		},
 		{
+			ID:          "panopticon",
+			Name:        "Panopticon",
+			Description: "Panopticon curated security operations cases.",
+			Rules:       []Rule{newPanopticonCuratedCaseRule()},
+		},
+		{
 			ID:          "security_reviewer",
 			Name:        "Security Reviewer",
 			Description: "Security-reviewer reported code and workflow findings.",
