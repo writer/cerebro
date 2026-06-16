@@ -19,9 +19,11 @@ import (
 )
 
 type fakePublisher struct {
-	accountErr error
-	publishErr error
-	published  *nats.Msg
+	accountErr   error
+	publishErr   error
+	publishErrs  []error
+	published    *nats.Msg
+	publishCalls int
 }
 
 func (f *fakePublisher) AccountInfo(context.Context) (*natsjetstream.AccountInfo, error) {
@@ -29,7 +31,13 @@ func (f *fakePublisher) AccountInfo(context.Context) (*natsjetstream.AccountInfo
 }
 
 func (f *fakePublisher) PublishMsg(_ context.Context, msg *nats.Msg, _ ...natsjetstream.PublishOpt) (*natsjetstream.PubAck, error) {
+	f.publishCalls++
 	f.published = msg
+	if len(f.publishErrs) > 0 {
+		err := f.publishErrs[0]
+		f.publishErrs = f.publishErrs[1:]
+		return &natsjetstream.PubAck{}, err
+	}
 	return &natsjetstream.PubAck{}, f.publishErr
 }
 
@@ -97,6 +105,40 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 	}
 	if !proto.Equal(&decoded, event) {
 		t.Fatalf("decoded envelope = %#v, want %#v", &decoded, event)
+	}
+}
+
+func TestAppendRetriesTransientPublishErrorWhenMessageIDIsSet(t *testing.T) {
+	pub := &fakePublisher{
+		publishErrs: []error{
+			errors.New("nats: no response from stream"),
+			nil,
+		},
+	}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+		Id:   "evt-1",
+		Kind: "entity.upsert",
+	})
+	if err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if pub.publishCalls != 2 {
+		t.Fatalf("publish calls = %d, want 2", pub.publishCalls)
+	}
+}
+
+func TestAppendDoesNotRetryWithoutMessageID(t *testing.T) {
+	pub := &fakePublisher{publishErr: errors.New("nats: no response from stream")}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Kind: "entity.upsert"})
+	if err == nil {
+		t.Fatal("Append() error = nil, want non-nil")
+	}
+	if pub.publishCalls != 1 {
+		t.Fatalf("publish calls = %d, want 1", pub.publishCalls)
 	}
 }
 
@@ -262,6 +304,30 @@ func TestPingSurfacesPublisherError(t *testing.T) {
 	log := &Log{js: &fakePublisher{accountErr: errors.New("down")}, subjectPrefix: "events"}
 	if err := log.Ping(context.Background()); err == nil {
 		t.Fatal("Ping() error = nil, want non-nil")
+	}
+}
+
+func TestPingRequiresMatchingStreamWhenReplayManagerIsConfigured(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{Config: natsjetstream.StreamConfig{Name: "OTHER", Subjects: []string{"other.>"}}},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+	if err := log.Ping(context.Background()); err == nil {
+		t.Fatal("Ping() error = nil, want non-nil")
+	}
+}
+
+func TestPingAcceptsMatchingStream(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}}},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+	if err := log.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping() error = %v", err)
 	}
 }
 
