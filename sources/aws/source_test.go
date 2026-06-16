@@ -27,6 +27,8 @@ import (
 	backuptypes "github.com/aws/aws-sdk-go-v2/service/backup/types"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	batchtypes "github.com/aws/aws-sdk-go-v2/service/batch/types"
+	"github.com/aws/aws-sdk-go-v2/service/bedrock"
+	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -491,6 +493,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyBackupPlan, kind: "aws.backup_plan"},
 		{family: familyBackupProtected, kind: "aws.backup_protected_resource"},
 		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point"},
+		{family: familyBedrockCustomModel, kind: "aws.bedrock_custom_model"},
 		{family: familyCodeBuildProject, kind: "aws.codebuild_project"},
 		{family: familyCodeBuildSourceCredential, kind: "aws.codebuild_source_credential"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location"},
@@ -1781,6 +1784,87 @@ func TestReadAWSSageMakerEndpointConfigInventoryEvent(t *testing.T) {
 		if got := event.Attributes[key]; got != want {
 			t.Fatalf("%s = %q, want %q", key, got, want)
 		}
+	}
+}
+
+func TestReadAWSBedrockCustomModelInventoryEvent(t *testing.T) {
+	modelARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
+	baseModelARN := "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"
+	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{
+			fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+				bedrockCustomModels: []bedrocktypes.CustomModelSummary{{
+					BaseModelArn:      awssdk.String(baseModelARN),
+					BaseModelName:     awssdk.String("amazon.titan-text-express-v1"),
+					CreationTime:      timePtr("2026-04-23T00:00:00Z"),
+					CustomizationType: bedrocktypes.CustomizationTypeFineTuning,
+					ModelArn:          awssdk.String(modelARN),
+					ModelName:         awssdk.String("research-model"),
+					ModelStatus:       bedrocktypes.ModelStatusActive,
+					OwnerAccountId:    awssdk.String("123456789012"),
+				}},
+				bedrockCustomModelDetails: map[string]bedrock.GetCustomModelOutput{modelARN: {
+					BaseModelArn:      awssdk.String(baseModelARN),
+					CreationTime:      timePtr("2026-04-23T00:00:00Z"),
+					CustomizationType: bedrocktypes.CustomizationTypeFineTuning,
+					HyperParameters:   map[string]string{"SETTING": "do-not-store-this-value"},
+					JobArn:            awssdk.String("arn:aws:bedrock:us-east-1:123456789012:model-customization-job/research-job"),
+					JobName:           awssdk.String("research-job"),
+					ModelArn:          awssdk.String(modelARN),
+					ModelKmsKeyArn:    awssdk.String(kmsARN),
+					ModelName:         awssdk.String("research-model"),
+					ModelStatus:       bedrocktypes.ModelStatusActive,
+					OutputDataConfig:  &bedrocktypes.OutputDataConfig{S3Uri: awssdk.String("s3://private-model-output/research/")},
+					TrainingDataConfig: &bedrocktypes.TrainingDataConfig{
+						S3Uri: awssdk.String("s3://private-training-data/research/train.jsonl"),
+					},
+					ValidationDataConfig: &bedrocktypes.ValidationDataConfig{
+						Validators: []bedrocktypes.Validator{{S3Uri: awssdk.String("s3://private-training-data/research/validation.jsonl")}},
+					},
+				}},
+				bedrockResourcePolicies: map[string]string{modelARN: `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"bedrock:InvokeModel"}]}`},
+				bedrockTags:             map[string][]bedrocktypes.Tag{modelARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyBedrockCustomModel}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyBedrockCustomModel, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.bedrock_custom_model" {
+		t.Fatalf("kind = %q, want aws.bedrock_custom_model", got)
+	}
+	for key, want := range map[string]string{
+		"base_model_arn":          baseModelARN,
+		"base_model_name":         "amazon.titan-text-express-v1",
+		"custom_model_arn":        modelARN,
+		"custom_model_name":       "research-model",
+		"customization_type":      "FINE_TUNING",
+		"has_resource_policy":     "true",
+		"job_name":                "research-job",
+		"kms_key_id":              kmsARN,
+		"model_kms_key_arn":       kmsARN,
+		"model_status":            "Active",
+		"output_data_s3_uri":      "s3://private-model-output/research/",
+		"owner":                   "ml@writer.com",
+		"owner_account_id":        "123456789012",
+		"public":                  "true",
+		"resource_policy_public":  "true",
+		"resource_type":           "bedrock_custom_model",
+		"training_data_s3_uri":    "s3://private-training-data/research/train.jsonl",
+		"validation_data_s3_uris": "s3://private-training-data/research/validation.jsonl",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
+		t.Fatal("payload contains custom model hyperparameter value")
 	}
 }
 
@@ -4014,6 +4098,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		modelPackageGroupARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package-group/research-models"
 		notebookARN := "arn:aws:sagemaker:us-east-1:123456789012:notebook-instance/research-notebook"
 		trainingJobARN := "arn:aws:sagemaker:us-east-1:123456789012:training-job/research-training"
+		bedrockCustomModelARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
 		fake.s3Buckets = []s3types.Bucket{{Name: awssdk.String("prod-data")}}
 		fake.s3Tags = map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
 		fake.s3Encryption = map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {}}
@@ -4056,6 +4141,18 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			notebookARN:          {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
 			trainingJobARN:       {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
 		}
+		fake.bedrockCustomModels = []bedrocktypes.CustomModelSummary{{
+			BaseModelArn:      awssdk.String("arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"),
+			BaseModelName:     awssdk.String("amazon.titan-text-express-v1"),
+			CreationTime:      timePtr("2026-04-23T00:00:00Z"),
+			CustomizationType: bedrocktypes.CustomizationTypeFineTuning,
+			ModelArn:          awssdk.String(bedrockCustomModelARN),
+			ModelName:         awssdk.String("research-model"),
+			ModelStatus:       bedrocktypes.ModelStatusActive,
+			OwnerAccountId:    awssdk.String("123456789012"),
+		}}
+		fake.bedrockCustomModelDetails = map[string]bedrock.GetCustomModelOutput{bedrockCustomModelARN: {CreationTime: timePtr("2026-04-23T00:00:00Z"), ModelArn: awssdk.String(bedrockCustomModelARN), ModelName: awssdk.String("research-model")}}
+		fake.bedrockTags = map[string][]bedrocktypes.Tag{bedrockCustomModelARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}}}
 		fake.codeBuildProjects = []string{"orders-build"}
 		fake.codeBuildProjectDetail = map[string]codebuildtypes.Project{"orders-build": {
 			Arn:         awssdk.String("arn:aws:codebuild:us-east-1:123456789012:project/orders-build"),
@@ -4303,6 +4400,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyS3MultiRegionAccessPoint,
 			seed:    cloudAssetData,
 			wantAPI: []string{"s3control:GetMultiRegionAccessPoint", "s3control:GetMultiRegionAccessPointPolicyStatus", "s3control:ListMultiRegionAccessPoints", "s3control:ListTagsForResource"},
+		},
+		{
+			family:  familyBedrockCustomModel,
+			seed:    cloudAssetData,
+			wantAPI: []string{"bedrock:GetCustomModel", "bedrock:GetResourcePolicy", "bedrock:ListCustomModels", "bedrock:ListTagsForResource"},
 		},
 		{
 			family:  familySageMakerEndpointConfig,
@@ -5097,6 +5199,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				sns:            fakeSNS{fake: &fake},
 				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
 				appSync:        fakeAppSync{runtime: fake.fakeAWSRuntime},
+				bedrock:        fakeBedrock{runtime: fake.fakeAWSRuntime},
 				sageMaker:      fakeSageMaker{fake: &fake},
 				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
 				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
@@ -5158,6 +5261,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				sns:            recordingSNS{fake: fake},
 				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
 				appSync:        recordingAppSync{fake: fake},
+				bedrock:        recordingBedrock{fake: fake},
 				sageMaker:      recordingSageMaker{fake: fake},
 				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
 				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
@@ -5469,6 +5573,10 @@ type fakeAWSRuntimeApplication struct {
 	appRunnerServices          map[string]apprunnertypes.Service
 	appRunnerTags              map[string][]apprunnertypes.Tag
 	appSyncAPIs                []appsynctypes.GraphqlApi
+	bedrockCustomModels        []bedrocktypes.CustomModelSummary
+	bedrockCustomModelDetails  map[string]bedrock.GetCustomModelOutput
+	bedrockResourcePolicies    map[string]string
+	bedrockTags                map[string][]bedrocktypes.Tag
 	codeBuildProjects          []string
 	codeBuildProjectDetail     map[string]codebuildtypes.Project
 	codeBuildSourceCredentials []codebuildtypes.SourceCredentialsInfo
@@ -6755,6 +6863,51 @@ func (f recordingSageMaker) DescribeTrainingJob(ctx context.Context, input *sage
 func (f recordingSageMaker) ListTags(ctx context.Context, input *sagemaker.ListTagsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListTagsOutput, error) {
 	f.fake.record("sagemaker:ListTags")
 	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListTags(ctx, input, options...)
+}
+
+type recordingBedrock struct {
+	fake *recordingAWS
+}
+
+func (f recordingBedrock) ListCustomModels(ctx context.Context, input *bedrock.ListCustomModelsInput, options ...func(*bedrock.Options)) (*bedrock.ListCustomModelsOutput, error) {
+	f.fake.record("bedrock:ListCustomModels")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.ListCustomModels(ctx, input, options...)
+}
+
+func (f recordingBedrock) GetCustomModel(ctx context.Context, input *bedrock.GetCustomModelInput, options ...func(*bedrock.Options)) (*bedrock.GetCustomModelOutput, error) {
+	f.fake.record("bedrock:GetCustomModel")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.GetCustomModel(ctx, input, options...)
+}
+
+func (f recordingBedrock) GetResourcePolicy(ctx context.Context, input *bedrock.GetResourcePolicyInput, options ...func(*bedrock.Options)) (*bedrock.GetResourcePolicyOutput, error) {
+	f.fake.record("bedrock:GetResourcePolicy")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.GetResourcePolicy(ctx, input, options...)
+}
+
+func (f recordingBedrock) ListTagsForResource(ctx context.Context, input *bedrock.ListTagsForResourceInput, options ...func(*bedrock.Options)) (*bedrock.ListTagsForResourceOutput, error) {
+	f.fake.record("bedrock:ListTagsForResource")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.ListTagsForResource(ctx, input, options...)
+}
+
+type fakeBedrock struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeBedrock) ListCustomModels(context.Context, *bedrock.ListCustomModelsInput, ...func(*bedrock.Options)) (*bedrock.ListCustomModelsOutput, error) {
+	return &bedrock.ListCustomModelsOutput{ModelSummaries: f.runtime.bedrockCustomModels}, nil
+}
+
+func (f fakeBedrock) GetCustomModel(_ context.Context, input *bedrock.GetCustomModelInput, _ ...func(*bedrock.Options)) (*bedrock.GetCustomModelOutput, error) {
+	detail := f.runtime.bedrockCustomModelDetails[awssdk.ToString(input.ModelIdentifier)]
+	return &detail, nil
+}
+
+func (f fakeBedrock) GetResourcePolicy(_ context.Context, input *bedrock.GetResourcePolicyInput, _ ...func(*bedrock.Options)) (*bedrock.GetResourcePolicyOutput, error) {
+	return &bedrock.GetResourcePolicyOutput{ResourcePolicy: awssdk.String(f.runtime.bedrockResourcePolicies[awssdk.ToString(input.ResourceArn)])}, nil
+}
+
+func (f fakeBedrock) ListTagsForResource(_ context.Context, input *bedrock.ListTagsForResourceInput, _ ...func(*bedrock.Options)) (*bedrock.ListTagsForResourceOutput, error) {
+	return &bedrock.ListTagsForResourceOutput{Tags: f.runtime.bedrockTags[awssdk.ToString(input.ResourceARN)]}, nil
 }
 
 type fakeSageMaker struct {

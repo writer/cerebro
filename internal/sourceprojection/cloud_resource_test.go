@@ -453,6 +453,35 @@ func TestProjectAWSDataResourceLinksNetworkAndElastiCacheContext(t *testing.T) {
 	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_elasticache_subnet_group:cache-subnets")
 }
 
+func TestProjectAWSBedrockCustomModelLinksAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-bedrock-custom-model-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.bedrock_custom_model",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-model",
+			"resource_provider": "aws",
+			"resource_type":     "bedrock_custom_model",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_bedrock_custom_model:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.bedrock.custom.model" {
+		t.Fatalf("bedrock custom model entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
 func TestProjectAWSEFSMountTargetLinksNetworkContext(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
