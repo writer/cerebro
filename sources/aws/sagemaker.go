@@ -32,6 +32,13 @@ type awsSageMakerModel struct {
 	Tags    map[string]string              `json:"tags,omitempty"`
 }
 
+type awsSageMakerModelPackageGroup struct {
+	Summary       sagemakertypes.ModelPackageGroupSummary    `json:"summary"`
+	Detail        *sagemaker.DescribeModelPackageGroupOutput `json:"detail,omitempty"`
+	ModelPackages []sagemakertypes.ModelPackageSummary       `json:"model_packages,omitempty"`
+	Tags          map[string]string                          `json:"tags,omitempty"`
+}
+
 type awsSageMakerTrainingJob struct {
 	Summary sagemakertypes.TrainingJobSummary    `json:"summary"`
 	Detail  *sagemaker.DescribeTrainingJobOutput `json:"detail,omitempty"`
@@ -77,6 +84,69 @@ func listSageMakerEndpointConfigs(ctx context.Context, clients awsClients, _ set
 		records = append(records, record)
 	}
 	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listSageMakerModelPackageGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSageMakerModelPackageGroup, string, error) {
+	if clients.sageMaker == nil {
+		return nil, "", nil
+	}
+	out, err := clients.sageMaker.ListModelPackageGroups(ctx, &sagemaker.ListModelPackageGroupsInput{
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("list sagemaker model package groups: %w", err)
+	}
+	records := make([]awsSageMakerModelPackageGroup, 0, len(out.ModelPackageGroupSummaryList))
+	for _, summary := range out.ModelPackageGroupSummaryList {
+		name := awssdk.ToString(summary.ModelPackageGroupName)
+		record := awsSageMakerModelPackageGroup{Summary: summary}
+		if name != "" {
+			detail, err := clients.sageMaker.DescribeModelPackageGroup(ctx, &sagemaker.DescribeModelPackageGroupInput{ModelPackageGroupName: awssdk.String(name)})
+			if err != nil {
+				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
+					return nil, "", fmt.Errorf("describe sagemaker model package group %q: %w", name, err)
+				}
+			} else {
+				record.Detail = detail
+			}
+			packages, err := listSageMakerModelPackagesForGroup(ctx, clients.sageMaker, name, limit)
+			if err != nil {
+				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
+					return nil, "", fmt.Errorf("list sagemaker model packages for group %q: %w", name, err)
+				}
+			} else {
+				record.ModelPackages = packages
+			}
+		}
+		arn := sageMakerModelPackageGroupARN(record)
+		if arn != "" {
+			tags, err := listSageMakerTags(ctx, clients.sageMaker, arn)
+			if err != nil {
+				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
+					return nil, "", fmt.Errorf("list sagemaker model package group tags %q: %w", arn, err)
+				}
+			} else {
+				record.Tags = tags
+			}
+		}
+		records = append(records, record)
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listSageMakerModelPackagesForGroup(ctx context.Context, client awsSageMakerAPI, groupName string, limit int) ([]sagemakertypes.ModelPackageSummary, error) {
+	out, err := client.ListModelPackages(ctx, &sagemaker.ListModelPackagesInput{
+		MaxResults:            awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
+		ModelPackageGroupName: awssdk.String(groupName),
+		ModelPackageType:      sagemakertypes.ModelPackageTypeBoth,
+		SortBy:                sagemakertypes.ModelPackageSortByCreationTime,
+		SortOrder:             sagemakertypes.SortOrderDescending,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out.ModelPackageSummaryList, nil
 }
 
 func listSageMakerModels(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSageMakerModel, string, error) {
@@ -265,6 +335,34 @@ func sageMakerEndpointConfigEvent(settings settings, record awsSageMakerEndpoint
 	return sourceEvent(settings, "aws-sagemaker-endpoint-configuration-"+firstNonEmpty(arn, name), "aws.sagemaker_endpoint_configuration", "aws/sagemaker_endpoint_configuration/v1", payload, attributes, sageMakerEndpointConfigTime(record))
 }
 
+func sageMakerModelPackageGroupEvent(settings settings, record awsSageMakerModelPackageGroup) (*primitives.Event, error) {
+	arn := sageMakerModelPackageGroupARN(record)
+	name := sageMakerModelPackageGroupName(record)
+	status := sageMakerModelPackageGroupStatus(record)
+	latestPackage := sageMakerLatestModelPackage(record)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familySageMakerModelPackageGroup, firstNonEmpty(arn, name), name, "sagemaker_model_package_group", record.Tags)
+	attributes["arn"] = arn
+	attributes["model_approval_status"] = sageMakerModelPackageApprovalStatus(latestPackage)
+	attributes["model_approval_statuses"] = strings.Join(sageMakerModelPackageApprovalStatuses(record.ModelPackages), ",")
+	attributes["model_package_arns"] = strings.Join(sageMakerModelPackageARNs(record.ModelPackages), ",")
+	attributes["model_package_count"] = fmt.Sprintf("%d", len(record.ModelPackages))
+	attributes["model_package_group_arn"] = arn
+	attributes["model_package_group_name"] = name
+	attributes["model_package_group_status"] = status
+	attributes["model_package_status"] = sageMakerModelPackageStatus(latestPackage)
+	attributes["model_package_version"] = sageMakerModelPackageVersion(latestPackage)
+	attributes["model_package_versions"] = strings.Join(sageMakerModelPackageVersions(record.ModelPackages), ",")
+	attributes["pending_manual_approval_count"] = fmt.Sprintf("%d", sageMakerModelPackageApprovalCount(record.ModelPackages, sagemakertypes.ModelApprovalStatusPendingManualApproval))
+	if record.Detail != nil {
+		addTimeAttribute(attributes, "created_at", record.Detail.CreationTime)
+	}
+	payload, err := json.Marshal(record)
+	if err != nil {
+		return nil, fmt.Errorf("marshal sagemaker model package group: %w", err)
+	}
+	return sourceEvent(settings, "aws-sagemaker-model-package-group-"+firstNonEmpty(arn, name), "aws.sagemaker_model_package_group", "aws/sagemaker_model_package_group/v1", payload, attributes, sageMakerModelPackageGroupTime(record))
+}
+
 func sageMakerModelEvent(settings settings, record awsSageMakerModel) (*primitives.Event, error) {
 	arn := sageMakerModelARN(record)
 	name := sageMakerModelName(record)
@@ -401,6 +499,31 @@ func sageMakerEndpointConfigName(record awsSageMakerEndpointConfig) string {
 	return awssdk.ToString(record.Summary.EndpointConfigName)
 }
 
+func sageMakerModelPackageGroupARN(record awsSageMakerModelPackageGroup) string {
+	if record.Detail != nil {
+		if arn := awssdk.ToString(record.Detail.ModelPackageGroupArn); arn != "" {
+			return arn
+		}
+	}
+	return awssdk.ToString(record.Summary.ModelPackageGroupArn)
+}
+
+func sageMakerModelPackageGroupName(record awsSageMakerModelPackageGroup) string {
+	if record.Detail != nil {
+		if name := awssdk.ToString(record.Detail.ModelPackageGroupName); name != "" {
+			return name
+		}
+	}
+	return awssdk.ToString(record.Summary.ModelPackageGroupName)
+}
+
+func sageMakerModelPackageGroupStatus(record awsSageMakerModelPackageGroup) string {
+	if record.Detail != nil && record.Detail.ModelPackageGroupStatus != "" {
+		return string(record.Detail.ModelPackageGroupStatus)
+	}
+	return string(record.Summary.ModelPackageGroupStatus)
+}
+
 func sageMakerModelARN(record awsSageMakerModel) string {
 	if record.Detail != nil {
 		if arn := awssdk.ToString(record.Detail.ModelArn); arn != "" {
@@ -511,11 +634,84 @@ func sageMakerEndpointConfigTime(record awsSageMakerEndpointConfig) time.Time {
 	return firstTime(record.Summary.CreationTime)
 }
 
+func sageMakerModelPackageGroupTime(record awsSageMakerModelPackageGroup) time.Time {
+	if record.Detail != nil {
+		return firstTime(record.Detail.CreationTime)
+	}
+	return firstTime(record.Summary.CreationTime)
+}
+
 func sageMakerModelTime(record awsSageMakerModel) time.Time {
 	if record.Detail != nil {
 		return firstTime(record.Detail.CreationTime)
 	}
 	return firstTime(record.Summary.CreationTime)
+}
+
+func sageMakerLatestModelPackage(record awsSageMakerModelPackageGroup) *sagemakertypes.ModelPackageSummary {
+	if len(record.ModelPackages) == 0 {
+		return nil
+	}
+	return &record.ModelPackages[0]
+}
+
+func sageMakerModelPackageApprovalStatus(summary *sagemakertypes.ModelPackageSummary) string {
+	if summary == nil {
+		return ""
+	}
+	return string(summary.ModelApprovalStatus)
+}
+
+func sageMakerModelPackageStatus(summary *sagemakertypes.ModelPackageSummary) string {
+	if summary == nil {
+		return ""
+	}
+	return string(summary.ModelPackageStatus)
+}
+
+func sageMakerModelPackageVersion(summary *sagemakertypes.ModelPackageSummary) string {
+	if summary == nil || summary.ModelPackageVersion == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", awssdk.ToInt32(summary.ModelPackageVersion))
+}
+
+func sageMakerModelPackageARNs(packages []sagemakertypes.ModelPackageSummary) []string {
+	values := make([]string, 0, len(packages))
+	for _, pkg := range packages {
+		values = append(values, awssdk.ToString(pkg.ModelPackageArn))
+	}
+	return cleanStrings(values)
+}
+
+func sageMakerModelPackageVersions(packages []sagemakertypes.ModelPackageSummary) []string {
+	values := make([]string, 0, len(packages))
+	for _, pkg := range packages {
+		if pkg.ModelPackageVersion != nil {
+			values = append(values, fmt.Sprintf("%d", awssdk.ToInt32(pkg.ModelPackageVersion)))
+		}
+	}
+	return cleanStrings(values)
+}
+
+func sageMakerModelPackageApprovalStatuses(packages []sagemakertypes.ModelPackageSummary) []string {
+	values := make([]string, 0, len(packages))
+	for _, pkg := range packages {
+		if pkg.ModelApprovalStatus != "" {
+			values = append(values, string(pkg.ModelApprovalStatus))
+		}
+	}
+	return cleanStrings(values)
+}
+
+func sageMakerModelPackageApprovalCount(packages []sagemakertypes.ModelPackageSummary, status sagemakertypes.ModelApprovalStatus) int {
+	count := 0
+	for _, pkg := range packages {
+		if pkg.ModelApprovalStatus == status {
+			count++
+		}
+	}
+	return count
 }
 
 func sageMakerTrainingJobTime(record awsSageMakerTrainingJob) time.Time {

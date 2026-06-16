@@ -193,6 +193,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.s3_multi_region_access_point":              awsCloudResourceProjections,
 	"aws.sagemaker_endpoint_configuration":          awsCloudResourceProjections,
 	"aws.sagemaker_model":                           awsCloudResourceProjections,
+	"aws.sagemaker_model_package_group":             awsCloudResourceProjections,
 	"aws.sagemaker_notebook_instance":               awsCloudResourceProjections,
 	"aws.sagemaker_training_job":                    awsCloudResourceProjections,
 	"aws.scheduler_schedule":                        awsCloudResourceProjections,
