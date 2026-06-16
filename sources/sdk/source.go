@@ -77,7 +77,7 @@ func inventoryURNs(cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 		}
 		urn, err := sourcecdk.ParseURN(field)
 		if err != nil {
-			return nil, fmt.Errorf("%w: sdk %s contains invalid urn %q: %v", sourcecdk.ErrInvalidConfig, inventoryURNsKey, field, err)
+			return nil, fmt.Errorf("%w: sdk %s contains invalid urn %q: %w", sourcecdk.ErrInvalidConfig, inventoryURNsKey, field, err)
 		}
 		if _, ok := seen[urn]; ok {
 			continue
