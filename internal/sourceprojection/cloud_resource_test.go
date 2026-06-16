@@ -97,6 +97,45 @@ func TestProjectAWSAppRunnerServiceLinksAccountExposureOwnerAndRuntimeRole(t *te
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
 }
 
+func TestProjectAWSSageMakerNotebookLinksAccountExposureOwnerAndRuntimeRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:sagemaker:us-east-1:123456789012:notebook-instance/research-notebook"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerNotebookRole"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-sagemaker-notebook-instance-research-notebook",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.sagemaker_notebook_instance",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"internet_exposed":  "true",
+			"owner":             "ml@writer.com",
+			"region":            "us-east-1",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-notebook",
+			"resource_provider": "aws",
+			"resource_type":     "sagemaker_notebook_instance",
+			"role_arn":          roleARN,
+			"role_name":         "service-role/SageMakerNotebookRole",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_sagemaker_notebook_instance:" + resourceARN
+	roleURN := "urn:cerebro:writer:aws_role:" + roleARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.sagemaker.notebook.instance" {
+		t.Fatalf("sagemaker notebook entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationOwnedBy, "urn:cerebro:writer:owner:ml@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
+}
+
 func TestProjectAWSStreamingCloudResourceMetadata(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
