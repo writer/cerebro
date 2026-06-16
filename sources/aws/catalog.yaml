@@ -1225,9 +1225,8 @@ coverage_contract:
       type: entity_family
       title: AWS Support incident management role
       families: [iam_role]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [support access entitlement and break-glass workflow evidence]
     - id: vpc
       type: entity_family
       title: AWS VPCs

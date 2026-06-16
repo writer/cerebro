@@ -3121,7 +3121,7 @@ func TestIAMRoleTrustEventTargetsSameRoleIdentifierAsIAMRoleEvent(t *testing.T) 
 		RoleId:   awssdk.String("AROADMIN"),
 		RoleName: awssdk.String("AdminRole"),
 	}
-	roleEvent, err := iamRoleEvent(settings{accountID: "123456789012"}, role)
+	roleEvent, err := iamRoleEvent(settings{accountID: "123456789012"}, awsIAMRole{Role: role})
 	if err != nil {
 		t.Fatalf("iamRoleEvent() error = %v", err)
 	}
@@ -3145,6 +3145,37 @@ func TestIAMRoleTrustEventTargetsSameRoleIdentifierAsIAMRoleEvent(t *testing.T) 
 	}
 	if got := trustEvent.Attributes["target_arn"]; got != roleARN {
 		t.Fatalf("trust target_arn = %q, want role ARN preserved", got)
+	}
+}
+
+func TestReadAWSIAMRoleSupportAccessPolicyAttribute(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		roles: []iamtypes.Role{{
+			Arn:        awssdk.String("arn:aws:iam::123456789012:role/SupportRole"),
+			CreateDate: timePtr("2026-04-23T00:00:00Z"),
+			RoleId:     awssdk.String("AROSUPPORT"),
+			RoleName:   awssdk.String("SupportRole"),
+		}},
+		attachedPolicies: []iamtypes.AttachedPolicy{{
+			PolicyArn:  awssdk.String("arn:aws:iam::aws:policy/AWSSupportAccess"),
+			PolicyName: awssdk.String("AWSSupportAccess"),
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyIAMRole}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyIAMRole, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	for key, want := range map[string]string{
+		"attached_policy_arns":      "arn:aws:iam::aws:policy/AWSSupportAccess",
+		"attached_policy_names":     "AWSSupportAccess",
+		"has_support_access_policy": "true",
+	} {
+		if got := pull.Events[0].Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -4141,7 +4172,8 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		},
 		{
 			family:  familyIAMRole,
-			wantAPI: []string{"iam:ListRoles"},
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:ListAttachedRolePolicies", "iam:ListRoles"},
 		},
 		{
 			family:  familyIAMRoleAssign,

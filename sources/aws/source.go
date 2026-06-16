@@ -919,6 +919,11 @@ type iamRoleTrust struct {
 	PrincipalType string
 }
 
+type awsIAMRole struct {
+	Role             iamtypes.Role
+	AttachedPolicies []iamtypes.AttachedPolicy
+}
+
 type iamTrustPrincipal struct {
 	Type  string
 	Value string
@@ -2469,15 +2474,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:iam_role_trust:%s:%s", settings.accountID, roleID, sanitizeEventID(trust.Principal)), nil
 			},
 		}),
-		awsFamily(s.clients, awsFamilyOptions[iamtypes.Role]{
+		awsFamily(s.clients, awsFamilyOptions[awsIAMRole]{
 			Name:  familyIAMRole,
 			Label: "aws iam roles",
-			List:  listIAMRoles,
+			List:  listIAMRoleInventory,
 			Event: iamRoleEvent,
-			URN: func(settings settings, role iamtypes.Role) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:iam_role:%s", settings.accountID, firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.RoleName))), nil
+			URN: func(settings settings, role awsIAMRole) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:iam_role:%s", settings.accountID, firstNonEmpty(awssdk.ToString(role.Role.RoleId), awssdk.ToString(role.Role.RoleName))), nil
 			},
-			CursorFallback: func(role iamtypes.Role) string { return awssdk.ToString(role.RoleName) },
+			CursorFallback: func(role awsIAMRole) string { return awssdk.ToString(role.Role.RoleName) },
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsIAMSAMLProvider]{
 			Name:  familyIAMSAMLProvider,
@@ -2819,6 +2824,50 @@ func listIAMRoles(ctx context.Context, clients awsClients, _ settings, cursor st
 		return nil, "", err
 	}
 	return out.Roles, nextMarker(out.IsTruncated, out.Marker), nil
+}
+
+func listIAMRoleInventory(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsIAMRole, string, error) {
+	roles, next, err := listIAMRoles(ctx, clients, settings, cursor, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsIAMRole, 0, len(roles))
+	for _, role := range roles {
+		record := awsIAMRole{Role: role}
+		roleName := awssdk.ToString(role.RoleName)
+		if roleName != "" {
+			policies, err := listAttachedRolePolicies(ctx, clients, roleName)
+			if err != nil {
+				return nil, "", err
+			}
+			record.AttachedPolicies = policies
+		}
+		records = append(records, record)
+	}
+	return records, next, nil
+}
+
+func listAttachedRolePolicies(ctx context.Context, clients awsClients, roleName string) ([]iamtypes.AttachedPolicy, error) {
+	var policies []iamtypes.AttachedPolicy
+	var marker string
+	for {
+		out, err := clients.iam.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{
+			RoleName: awssdk.String(roleName),
+			Marker:   stringPtr(marker),
+			MaxItems: awssdk.Int32(1000),
+		})
+		if optionalAWSError(err, "NoSuchEntity") {
+			return policies, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list attached role policies %q: %w", roleName, err)
+		}
+		policies = append(policies, out.AttachedPolicies...)
+		marker = nextMarker(out.IsTruncated, out.Marker)
+		if marker == "" {
+			return policies, nil
+		}
+	}
 }
 
 func listIAMRoleTrusts(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamRoleTrust, string, error) {
@@ -4004,19 +4053,25 @@ func iamGroupMembershipEvent(settings settings, member iamGroupMember) (*primiti
 	return sourceEvent(settings, id, "aws.iam_group_membership", "aws/iam_group_membership/v1", payload, attributes, firstTime(user.CreateDate))
 }
 
-func iamRoleEvent(settings settings, role iamtypes.Role) (*primitives.Event, error) {
+func iamRoleEvent(settings settings, record awsIAMRole) (*primitives.Event, error) {
+	role := record.Role
+	policyARNs := attachedPolicyARNs(record.AttachedPolicies)
+	policyNames := attachedPolicyNames(record.AttachedPolicies)
 	attributes := map[string]string{
-		"arn":            awssdk.ToString(role.Arn),
-		"domain":         settings.accountID,
-		"family":         familyIAMRole,
-		"principal_type": "role",
-		"user_id":        firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.Arn), awssdk.ToString(role.RoleName)),
-		"login":          awssdk.ToString(role.RoleName),
-		"display_name":   awssdk.ToString(role.RoleName),
-		"is_admin":       boolString(containsAny(strings.ToLower(awssdk.ToString(role.RoleName)), "admin", "power", "owner")),
+		"arn":                       awssdk.ToString(role.Arn),
+		"attached_policy_arns":      strings.Join(policyARNs, ","),
+		"attached_policy_names":     strings.Join(policyNames, ","),
+		"domain":                    settings.accountID,
+		"family":                    familyIAMRole,
+		"has_support_access_policy": boolString(hasSupportAccessPolicy(record.AttachedPolicies)),
+		"principal_type":            "role",
+		"user_id":                   firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.Arn), awssdk.ToString(role.RoleName)),
+		"login":                     awssdk.ToString(role.RoleName),
+		"display_name":              awssdk.ToString(role.RoleName),
+		"is_admin":                  boolString(containsAny(strings.ToLower(awssdk.ToString(role.RoleName)), "admin", "power", "owner")),
 	}
 	addTimeAttribute(attributes, "created_at", role.CreateDate)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "role": role})
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "role": role, "attached_policies": record.AttachedPolicies})
 	if err != nil {
 		return nil, err
 	}
@@ -5112,6 +5167,31 @@ func addTimeAttribute(attributes map[string]string, key string, value *time.Time
 		return
 	}
 	attributes[key] = value.UTC().Format(time.RFC3339)
+}
+
+func attachedPolicyARNs(policies []iamtypes.AttachedPolicy) []string {
+	values := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		values = append(values, awssdk.ToString(policy.PolicyArn))
+	}
+	return cleanStrings(values)
+}
+
+func attachedPolicyNames(policies []iamtypes.AttachedPolicy) []string {
+	values := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		values = append(values, awssdk.ToString(policy.PolicyName))
+	}
+	return cleanStrings(values)
+}
+
+func hasSupportAccessPolicy(policies []iamtypes.AttachedPolicy) bool {
+	for _, policy := range policies {
+		if awssdk.ToString(policy.PolicyName) == "AWSSupportAccess" || strings.HasSuffix(awssdk.ToString(policy.PolicyArn), ":policy/AWSSupportAccess") {
+			return true
+		}
+	}
+	return false
 }
 
 func isAdminPolicy(values ...string) bool {
