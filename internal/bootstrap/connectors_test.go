@@ -143,6 +143,237 @@ func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
 	}
 }
 
+func TestConnectorCredentialBrokerStoresReferencesWithoutLeakingSecret(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	req.SetPathValue("sourceID", "bootstrap_token")
+	recorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("POST /connectors/{sourceID}/credentials status = %d, want 201: %s", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "secret-token") {
+		t.Fatalf("credential broker response leaked secret: %s", recorder.Body.String())
+	}
+	var payload connectorCredentialBrokerResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "stored" {
+		t.Fatalf("status = %q, want stored", payload.Status)
+	}
+	if payload.TenantID != "tenant-a" || payload.SourceID != "bootstrap_token" || payload.RuntimeID != "runtime-a" {
+		t.Fatalf("response identity = tenant %q source %q runtime %q", payload.TenantID, payload.SourceID, payload.RuntimeID)
+	}
+	reference := payload.CredentialReferences["token"]
+	if want := connectorcredentials.Reference(payload.Credential.ID, "token"); reference != want {
+		t.Fatalf("token reference = %q, want %q", reference, want)
+	}
+	record := store.credentials[payload.Credential.ID]
+	if record == nil {
+		t.Fatalf("stored credential %q missing", payload.Credential.ID)
+	}
+	if record.TenantID != "tenant-a" || record.SourceID != "bootstrap_token" || record.RuntimeID != "runtime-a" {
+		t.Fatalf("stored credential identity = tenant %q source %q runtime %q", record.TenantID, record.SourceID, record.RuntimeID)
+	}
+	if strings.Contains(string(record.Sealed), "secret-token") {
+		t.Fatalf("sealed credential leaked secret: %s", string(record.Sealed))
+	}
+	vault, err := connectorCredentialVault(app.cfg.ConnectorCredentials, app.deps.StateStore)
+	if err != nil {
+		t.Fatalf("connectorCredentialVault() error = %v", err)
+	}
+	resolved, err := vault.ResolveReferences(context.Background(), "bootstrap_token", "tenant-a", "runtime-a", map[string]string{"token": reference})
+	if err != nil {
+		t.Fatalf("ResolveReferences() error = %v", err)
+	}
+	if resolved["token"] != "secret-token" {
+		t.Fatalf("resolved token = %q, want secret-token", resolved["token"])
+	}
+	if _, err := vault.ResolveReferences(context.Background(), "bootstrap_token", "tenant-b", "runtime-a", map[string]string{"token": reference}); err == nil {
+		t.Fatal("ResolveReferences() succeeded for the wrong tenant")
+	}
+}
+
+func TestConnectorCredentialBrokerRejectsCrossTenantRequest(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-b", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-b",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	req.SetPathValue("sourceID", "bootstrap_token")
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: "tenant-a"},
+	}))
+	recorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("cross-tenant credential status = %d, want 403", recorder.Code)
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials after forbidden request = %#v, want none", store.credentials)
+	}
+}
+
+func TestConnectorCredentialBrokerRejectsExistingRuntimeTenantMismatch(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {
+			Id:       "runtime-a",
+			SourceId: "bootstrap_token",
+			TenantId: "tenant-b",
+		},
+	}}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	req.SetPathValue("sourceID", "bootstrap_token")
+	recorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("runtime tenant mismatch status = %d, want 403", recorder.Code)
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials after runtime mismatch = %#v, want none", store.credentials)
+	}
+}
+
+func TestConnectorCredentialBrokerRejectsCredentialPayloadAADMismatch(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-b", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	req.SetPathValue("sourceID", "bootstrap_token")
+	recorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("AAD mismatch status = %d, want 400", recorder.Code)
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials after AAD mismatch = %#v, want none", store.credentials)
+	}
+}
+
 func TestConnectorConnectionStoresValidatedScopePolicy(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)

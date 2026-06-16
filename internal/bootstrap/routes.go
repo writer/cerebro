@@ -123,6 +123,7 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /connector-definitions/{definitionID}/promote", routeSurfacePlatformHTTP, app.handlePromoteConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connectors/{sourceID}", routeSurfacePlatformHTTP, app.handleGetConnector)
 	registerHTTPRoute(mux, "GET /connectors/{sourceID}/activity", routeSurfacePlatformHTTP, app.handleListConnectorActivity)
+	registerHTTPRoute(mux, "POST /connectors/{sourceID}/credentials", routeSurfacePlatformHTTP, app.handleCreateConnectorCredential)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/preflight", routeSurfacePlatformHTTP, app.handlePreflightConnectorConnection)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/connections", routeSurfacePlatformHTTP, app.handleCreateConnectorConnection)
 }

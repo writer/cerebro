@@ -191,6 +191,135 @@ paths:
           description: Safe sync and graph activity derived from connector runtime health.
         '404':
           description: Connector source was not found.
+  /connectors/{sourceID}/credentials:
+    post:
+      summary: Broker connector credentials
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - runtime_id
+                - encrypted_credentials
+              properties:
+                runtime_id:
+                  type: string
+                  description: Runtime namespace the credential references will be bound to.
+                tenant_id:
+                  type: string
+                  description: Tenant namespace for the credential. May be omitted when the caller is already tenant-scoped by auth context.
+                credential_store_id:
+                  type: string
+                  description: Credential store selected for encrypted browser submission.
+                  default: cerebro_vault
+                  enum:
+                    - cerebro_vault
+                encrypted_credentials:
+                  type: object
+                  description: Browser-encrypted credential fields. The backend unwraps this payload, seals it in the connector vault, and returns only credential references.
+                  required:
+                    - key_id
+                    - algorithm
+                    - wrapped_key
+                    - nonce
+                    - ciphertext
+                  properties:
+                    key_id:
+                      type: string
+                    algorithm:
+                      type: string
+                      enum:
+                        - RSA-OAEP-256+A256GCM
+                    wrapped_key:
+                      type: string
+                    nonce:
+                      type: string
+                    ciphertext:
+                      type: string
+      responses:
+        '201':
+          description: Credential sealed in the connector vault with metadata and non-secret field references. The response never includes plaintext credential values or sealed secret blobs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - source_id
+                  - tenant_id
+                  - runtime_id
+                  - status
+                  - credential
+                  - credential_references
+                properties:
+                  source_id:
+                    type: string
+                  tenant_id:
+                    type: string
+                  runtime_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - stored
+                  credential:
+                    type: object
+                    required:
+                      - id
+                      - tenant_id
+                      - source_id
+                      - runtime_id
+                      - credential_store_id
+                      - auth_method
+                      - key_id
+                      - fields
+                    properties:
+                      id:
+                        type: string
+                      tenant_id:
+                        type: string
+                      source_id:
+                        type: string
+                      runtime_id:
+                        type: string
+                      credential_store_id:
+                        type: string
+                        enum:
+                          - cerebro_vault
+                      auth_method:
+                        type: string
+                        enum:
+                          - encrypted_submission
+                      key_id:
+                        type: string
+                      fields:
+                        type: array
+                        items:
+                          type: string
+                      created_at:
+                        type: string
+                        format: date-time
+                      updated_at:
+                        type: string
+                        format: date-time
+                  credential_references:
+                    type: object
+                    description: Field-to-reference map that can be passed as connector credential_references without exposing the underlying secret.
+                    additionalProperties:
+                      type: string
+        '400':
+          description: Request shape, credential payload context, or credential fields were invalid.
+        '403':
+          description: Caller is not allowed to write credentials for the requested tenant or runtime.
+        '404':
+          description: Connector source was not found.
+        '503':
+          description: Connector credential transport or vault is unavailable.
   /connectors/credential-key:
     get:
       summary: Get connector credential transit key

@@ -3,11 +3,12 @@ package bootstrap
 import "github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 
 const (
-	scopeCosmoSecurityRead       = "cerebro.cosmo.security.read"
-	scopeFindingCandidatePromote = "cerebro.finding_candidates.promote"
-	scopeFindingLifecycleWrite   = "cerebro.findings.write"
-	scopeGRCInventoryWrite       = "cerebro.grc.inventory.write"
-	scopeRuntimeResponseWrite    = "cerebro.runtime_response.write"
+	scopeCosmoSecurityRead         = "cerebro.cosmo.security.read"
+	scopeFindingCandidatePromote   = "cerebro.finding_candidates.promote"
+	scopeFindingLifecycleWrite     = "cerebro.findings.write"
+	scopeGRCInventoryWrite         = "cerebro.grc.inventory.write"
+	scopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
+	scopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
 )
 
 type connectProcedureAuthPolicy struct {
