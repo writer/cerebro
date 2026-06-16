@@ -48,6 +48,43 @@ func TestNormalizeBuildsValidatedDefinition(t *testing.T) {
 	}
 }
 
+func TestNormalizeBackfillsEventKindFromLegacyField(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth: AuthSpec{
+			Model: "none",
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:        "assets",
+			Path:      "/v1/assets",
+			IDField:   "id",
+			EventKind: "example.assets",
+			Event: EventMappingSpec{
+				SchemaRef: "example/asset/v1",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	family := definition.ResourceFamilies[0]
+	if family.Event.Kind != "example.assets" {
+		t.Fatalf("event kind = %q, want legacy event_kind fallback", family.Event.Kind)
+	}
+	if definition.Validation.Status == ValidationBlocked {
+		t.Fatalf("family unexpectedly blocked: %#v", definition.Validation.Checks)
+	}
+	renormalized, err := Normalize(definition)
+	if err != nil {
+		t.Fatalf("Normalize(renormalized) error = %v", err)
+	}
+	if renormalized.ResourceFamilies[0].Event.Kind != "example.assets" {
+		t.Fatalf("renormalized event kind = %q, want stable legacy fallback", renormalized.ResourceFamilies[0].Event.Kind)
+	}
+}
+
 func TestValidateBlocksUnsafeDynamicDefinition(t *testing.T) {
 	definition, err := Normalize(Definition{
 		ID:          "example",
