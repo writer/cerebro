@@ -518,6 +518,13 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			entityType:   "aws.iam.saml.provider",
 		},
 		{
+			name:         "iam policy",
+			kind:         "aws.iam_policy",
+			resourceID:   "arn:aws:iam::123456789012:policy/AdminStar",
+			resourceType: "iam_policy",
+			entityType:   "aws.iam.policy",
+		},
+		{
 			name:         "datasync task",
 			kind:         "aws.datasync_task",
 			resourceID:   "arn:aws:datasync:us-east-1:123456789012:task/task-123",
