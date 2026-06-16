@@ -64,6 +64,8 @@ emitted_kinds:
   - aws.elbv2_load_balancer
   - aws.elbv2_listener
   - aws.elbv2_target_group
+  - aws.apigateway_rest_api
+  - aws.apigateway_method
   - aws.apigateway_stage
   - aws.apigateway_route
   - aws.apigateway_integration
@@ -207,6 +209,8 @@ runtime_families:
   - elbv2_load_balancer
   - elbv2_listener
   - elbv2_target_group
+  - apigateway_rest_api
+  - apigateway_method
   - apigateway_stage
   - apigateway_route
   - apigateway_integration
@@ -355,17 +359,15 @@ coverage_contract:
     - id: apigateway_method
       type: entity_family
       title: AWS API Gateway methods
-      families: [asset_metadata]
-      support: partial
+      families: [apigateway_method]
+      support: supported
       high_value: true
-      known_unsupported_fields: [method authorization and integration detail]
     - id: apigateway_rest_api
       type: entity_family
       title: AWS API Gateway REST APIs
-      families: [asset_metadata]
-      support: partial
+      families: [apigateway_rest_api]
+      support: supported
       high_value: true
-      known_unsupported_fields: [REST API policy and stage expansion]
     - id: appsync_graphql_api
       type: entity_family
       title: AWS AppSync GraphQL APIs

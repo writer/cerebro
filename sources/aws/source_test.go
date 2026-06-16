@@ -521,6 +521,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyVPCLatticeTG, kind: "aws.vpclattice_target_group"},
 		{family: familyELBV2Listener, kind: "aws.elbv2_listener"},
 		{family: familyELBV2TargetGroup, kind: "aws.elbv2_target_group"},
+		{family: familyAPIGatewayRestAPI, kind: "aws.apigateway_rest_api"},
+		{family: familyAPIGatewayMethod, kind: "aws.apigateway_method"},
 		{family: familyAPIGatewayStage, kind: "aws.apigateway_stage"},
 		{family: familyAPIGatewayRoute, kind: "aws.apigateway_route"},
 		{family: familyAPIGatewayInteg, kind: "aws.apigateway_integration"},
@@ -3766,6 +3768,16 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"elasticloadbalancing:DescribeTargetGroups"},
 		},
 		{
+			family:  familyAPIGatewayRestAPI,
+			seed:    networkEdgeData,
+			wantAPI: []string{"apigateway:GetRestApis"},
+		},
+		{
+			family:  familyAPIGatewayMethod,
+			seed:    networkEdgeData,
+			wantAPI: []string{"apigateway:GetResources", "apigateway:GetRestApis"},
+		},
+		{
 			family:  familyAPIGatewayStage,
 			seed:    networkEdgeData,
 			wantAPI: []string{"apigateway:GetRestApis", "apigateway:GetStages", "apigatewayv2:GetApis", "apigatewayv2:GetStages"},
@@ -3986,6 +3998,64 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 	}
 	if got := cloudfrontEvent.Attributes["alternate_hosts"]; got != "app.writer.com" {
 		t.Fatalf("cloudfront alternate_hosts = %q, want app.writer.com", got)
+	}
+}
+
+func TestReadAWSAPIGatewayRestInventoryEvents(t *testing.T) {
+	const restAPIID = "rest123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSNetwork: fakeAWSNetwork{
+			fakeAWSNetworkAPI: fakeAWSNetworkAPI{
+				restAPIs: []apigatewaytypes.RestApi{{
+					Id:                        awssdk.String(restAPIID),
+					Name:                      awssdk.String("orders"),
+					ApiKeySource:              apigatewaytypes.ApiKeySourceTypeHeader,
+					DisableExecuteApiEndpoint: false,
+					EndpointConfiguration:     &apigatewaytypes.EndpointConfiguration{Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypeRegional}},
+					Policy:                    awssdk.String(`{"Version":"2012-10-17","Statement":[]}`),
+					RootResourceId:            awssdk.String("root-123"),
+					Tags:                      map[string]string{"Owner": "edge@writer.com"},
+				}},
+				restResources: map[string][]apigatewaytypes.Resource{restAPIID: {{
+					Id:   awssdk.String("res-123"),
+					Path: awssdk.String("/orders"),
+					ResourceMethods: map[string]apigatewaytypes.Method{"GET": {
+						HttpMethod:         awssdk.String("GET"),
+						AuthorizationType:  awssdk.String("AWS_IAM"),
+						ApiKeyRequired:     awssdk.Bool(true),
+						RequestParameters:  map[string]bool{"method.request.querystring.orderId": true},
+						MethodResponses:    map[string]apigatewaytypes.MethodResponse{"200": {}},
+						RequestValidatorId: awssdk.String("validator-123"),
+					}},
+				}}},
+			},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyAPIGatewayRestAPI, kind: "aws.apigateway_rest_api", attr: "endpoint_types", want: "REGIONAL"},
+		{family: familyAPIGatewayMethod, kind: "aws.apigateway_method", attr: "authorization_type", want: "AWS_IAM"},
+		{family: familyAPIGatewayMethod, kind: "aws.apigateway_method", attr: "request_parameters", want: "method.request.querystring.orderId"},
+	} {
+		t.Run(tt.family+"/"+tt.attr, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
 	}
 }
 

@@ -98,6 +98,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/sources/internal/awsaccount"
+	"github.com/writer/cerebro/sources/internal/awsnetwork"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
 
@@ -171,6 +172,8 @@ const (
 	familyELBV2LoadBalancer                  = "elbv2_load_balancer"
 	familyELBV2Listener                      = "elbv2_listener"
 	familyELBV2TargetGroup                   = "elbv2_target_group"
+	familyAPIGatewayRestAPI                  = "apigateway_rest_api"
+	familyAPIGatewayMethod                   = "apigateway_method"
 	familyAPIGatewayStage                    = "apigateway_stage"
 	familyAPIGatewayRoute                    = "apigateway_route"
 	familyAPIGatewayInteg                    = "apigateway_integration"
@@ -2235,6 +2238,25 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(target.TargetGroupArn), awssdk.ToString(target.TargetGroupName))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[apigatewaytypes.RestApi]{
+			Name:  familyAPIGatewayRestAPI,
+			Label: "aws api gateway rest apis",
+			List:  listAPIGatewayRestAPIs,
+			Event: apiGatewayRestAPIEvent,
+			URN: func(settings settings, api apigatewaytypes.RestApi) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_rest_api:%s", settings.accountID, awssdk.ToString(api.Id)), nil
+			},
+			CursorFallback: func(api apigatewaytypes.RestApi) string { return awssdk.ToString(api.Id) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsnetwork.APIGatewayMethod]{
+			Name:  familyAPIGatewayMethod,
+			Label: "aws api gateway methods",
+			List:  listAPIGatewayMethods,
+			Event: apiGatewayMethodEvent,
+			URN: func(settings settings, method awsnetwork.APIGatewayMethod) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_method:%s", settings.accountID, awsnetwork.APIGatewayMethodRecordID(method)), nil
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsAPIGatewayStage]{
 			Name:  familyAPIGatewayStage,
 			Label: "aws api gateway stages",
@@ -2643,7 +2665,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayMethod, familyAPIGatewayRestAPI, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -3342,7 +3364,7 @@ func apiGatewayPublicEndpoint(settings settings, domain apigatewaytypes.DomainNa
 		ResourceName: awssdk.ToString(domain.DomainName),
 		ResourceType: "apigateway_domain",
 		EndpointID:   firstNonEmpty(awssdk.ToString(domain.DomainNameArn), awssdk.ToString(domain.DomainName)),
-		EndpointType: firstNonEmpty(apiGatewayEndpointTypes(domain.EndpointConfiguration), "apigateway_domain"),
+		EndpointType: firstNonEmpty(awsnetwork.APIGatewayEndpointTypes(domain.EndpointConfiguration), "apigateway_domain"),
 		Host:         dnsHost(awssdk.ToString(domain.DomainName)),
 		TargetHost:   firstString(targetHosts),
 		TargetHosts:  targetHosts,
@@ -3360,7 +3382,7 @@ func apiGatewayRestAPIPublicEndpoint(settings settings, api apigatewaytypes.Rest
 		ResourceName: firstNonEmpty(awssdk.ToString(api.Name), apiID, host),
 		ResourceType: "apigateway_rest_api",
 		EndpointID:   firstNonEmpty(apiID, host),
-		EndpointType: firstNonEmpty(apiGatewayEndpointTypes(api.EndpointConfiguration), "execute_api"),
+		EndpointType: firstNonEmpty(awsnetwork.APIGatewayEndpointTypes(api.EndpointConfiguration), "execute_api"),
 		Host:         host,
 		Region:       settings.region,
 		Scope:        settings.accountID,
@@ -4436,17 +4458,6 @@ func apiGatewayDomainPrivate(config *apigatewaytypes.EndpointConfiguration) bool
 		}
 	}
 	return true
-}
-
-func apiGatewayEndpointTypes(config *apigatewaytypes.EndpointConfiguration) string {
-	if config == nil {
-		return ""
-	}
-	values := make([]string, 0, len(config.Types))
-	for _, endpointType := range config.Types {
-		values = append(values, string(endpointType))
-	}
-	return strings.Join(cleanStrings(values), ",")
 }
 
 func cleanHosts(values []string) []string {

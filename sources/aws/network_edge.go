@@ -26,6 +26,7 @@ import (
 	vpclatticetypes "github.com/aws/aws-sdk-go-v2/service/vpclattice/types"
 
 	"github.com/writer/cerebro/internal/primitives"
+	"github.com/writer/cerebro/sources/internal/awsnetwork"
 )
 
 type awsGlobalAcceleratorListener struct {
@@ -278,6 +279,37 @@ func listELBV2TargetGroups(ctx context.Context, clients awsClients, _ settings, 
 	return out.TargetGroups, awssdk.ToString(out.NextMarker), nil
 }
 
+func listAPIGatewayRestAPIs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]apigatewaytypes.RestApi, string, error) {
+	out, err := clients.apiGateway.GetRestApis(ctx, &apigateway.GetRestApisInput{
+		Position: stringPtr(cursor),
+		Limit:    awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 500)),
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("get apigateway rest apis: %w", err)
+	}
+	return out.Items, awssdk.ToString(out.Position), nil
+}
+
+func listAPIGatewayMethods(ctx context.Context, clients awsClients, settings settings, _ string, _ int) ([]awsnetwork.APIGatewayMethod, string, error) {
+	restAPIs, err := listAllRestAPIs(ctx, clients)
+	if err != nil {
+		return nil, "", err
+	}
+	var records []awsnetwork.APIGatewayMethod
+	for _, api := range restAPIs {
+		resources, err := listAllRestResources(ctx, clients, awssdk.ToString(api.Id), settings.perPage)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, resource := range resources {
+			for methodName, method := range resource.ResourceMethods {
+				records = append(records, awsnetwork.APIGatewayMethod{RestAPI: api, Resource: resource, MethodName: methodName, Method: method})
+			}
+		}
+	}
+	return records, "", nil
+}
+
 func listAPIGatewayStages(ctx context.Context, clients awsClients, settings settings, _ string, _ int) ([]awsAPIGatewayStage, string, error) {
 	restAPIs, err := listAllRestAPIs(ctx, clients)
 	if err != nil {
@@ -491,7 +523,7 @@ func globalAcceleratorListenerEvent(settings settings, record awsGlobalAccelerat
 	arn := awssdk.ToString(listener.ListenerArn)
 	name := path.Base(arn)
 	attributes := commonCloudAssetAttributes(settings, "global", familyGAListener, arn, name, "globalaccelerator_listener", nil)
-	putAttributes(attributes, map[string]string{"arn": arn, "accelerator_arn": awssdk.ToString(record.Accelerator.AcceleratorArn), "accelerator_name": awssdk.ToString(record.Accelerator.Name), "client_affinity": string(listener.ClientAffinity), "port_ranges": globalAcceleratorPortRanges(listener.PortRanges), "protocol": string(listener.Protocol)})
+	putAttributes(attributes, map[string]string{"arn": arn, "accelerator_arn": awssdk.ToString(record.Accelerator.AcceleratorArn), "accelerator_name": awssdk.ToString(record.Accelerator.Name), "client_affinity": string(listener.ClientAffinity), "port_ranges": awsnetwork.GlobalAcceleratorPortRanges(listener.PortRanges), "protocol": string(listener.Protocol)})
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "accelerator": record.Accelerator, "listener": listener})
 	if err != nil {
 		return nil, err
@@ -504,7 +536,7 @@ func globalAcceleratorEndpointGroupEvent(settings settings, record awsGlobalAcce
 	arn := awssdk.ToString(group.EndpointGroupArn)
 	region := firstNonEmpty(awssdk.ToString(group.EndpointGroupRegion), settings.region)
 	attributes := commonCloudAssetAttributes(settings, region, familyGAEndpointGroup, arn, path.Base(arn), "globalaccelerator_endpoint_group", nil)
-	putAttributes(attributes, map[string]string{"arn": arn, "accelerator_arn": awssdk.ToString(record.Accelerator.AcceleratorArn), "listener_arn": awssdk.ToString(record.Listener.ListenerArn), "endpoint_group_region": region, "endpoint_ids": strings.Join(globalAcceleratorEndpointIDs(group.EndpointDescriptions), ","), "health_check_path": awssdk.ToString(group.HealthCheckPath), "health_check_port": int32AttrString(group.HealthCheckPort), "health_check_protocol": string(group.HealthCheckProtocol), "traffic_dial_percentage": float32AttrString(group.TrafficDialPercentage)})
+	putAttributes(attributes, map[string]string{"arn": arn, "accelerator_arn": awssdk.ToString(record.Accelerator.AcceleratorArn), "listener_arn": awssdk.ToString(record.Listener.ListenerArn), "endpoint_group_region": region, "endpoint_ids": strings.Join(awsnetwork.GlobalAcceleratorEndpointIDs(group.EndpointDescriptions), ","), "health_check_path": awssdk.ToString(group.HealthCheckPath), "health_check_port": int32AttrString(group.HealthCheckPort), "health_check_protocol": string(group.HealthCheckProtocol), "traffic_dial_percentage": awsnetwork.Float32AttrString(group.TrafficDialPercentage)})
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "accelerator": record.Accelerator, "listener": record.Listener, "endpoint_group": group})
 	if err != nil {
 		return nil, err
@@ -516,7 +548,7 @@ func vpcLatticeServiceEvent(settings settings, service vpclatticetypes.ServiceSu
 	arn := awssdk.ToString(service.Arn)
 	name := awssdk.ToString(service.Name)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyVPCLatticeService, firstNonEmpty(arn, awssdk.ToString(service.Id), name), name, "vpclattice_service", nil)
-	putAttributes(attributes, map[string]string{"arn": arn, "service_id": awssdk.ToString(service.Id), "custom_domain_name": awssdk.ToString(service.CustomDomainName), "dns_name": vpcLatticeDNSName(service.DnsEntry), "hosted_zone_id": vpcLatticeHostedZoneID(service.DnsEntry), "state": string(service.Status)})
+	putAttributes(attributes, map[string]string{"arn": arn, "service_id": awssdk.ToString(service.Id), "custom_domain_name": awssdk.ToString(service.CustomDomainName), "dns_name": awsnetwork.VPCLatticeDNSName(service.DnsEntry), "hosted_zone_id": awsnetwork.VPCLatticeHostedZoneID(service.DnsEntry), "state": string(service.Status)})
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "service": service})
 	if err != nil {
 		return nil, err
@@ -552,7 +584,7 @@ func vpcLatticeTargetGroupEvent(settings settings, target vpclatticetypes.Target
 func elbv2LoadBalancerEvent(settings settings, loadBalancer elbv2types.LoadBalancer) (*primitives.Event, error) {
 	arn, name := awssdk.ToString(loadBalancer.LoadBalancerArn), awssdk.ToString(loadBalancer.LoadBalancerName)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyELBV2LoadBalancer, firstNonEmpty(arn, name), name, "elbv2_load_balancer", nil)
-	putAttributes(attributes, map[string]string{"arn": arn, "load_balancer_arn": arn, "load_balancer_name": name, "dns_name": awssdk.ToString(loadBalancer.DNSName), "canonical_hosted_zone_id": awssdk.ToString(loadBalancer.CanonicalHostedZoneId), "scheme": string(loadBalancer.Scheme), "load_balancer_type": string(loadBalancer.Type), "ip_address_type": string(loadBalancer.IpAddressType), "vpc_id": awssdk.ToString(loadBalancer.VpcId), "availability_zones": strings.Join(elbv2AvailabilityZoneNames(loadBalancer.AvailabilityZones), ","), "security_group_ids": strings.Join(cleanStrings(loadBalancer.SecurityGroups), ","), "public": boolString(loadBalancer.Scheme == elbv2types.LoadBalancerSchemeEnumInternetFacing), "internet_exposed": boolString(loadBalancer.Scheme == elbv2types.LoadBalancerSchemeEnumInternetFacing)})
+	putAttributes(attributes, map[string]string{"arn": arn, "load_balancer_arn": arn, "load_balancer_name": name, "dns_name": awssdk.ToString(loadBalancer.DNSName), "canonical_hosted_zone_id": awssdk.ToString(loadBalancer.CanonicalHostedZoneId), "scheme": string(loadBalancer.Scheme), "load_balancer_type": string(loadBalancer.Type), "ip_address_type": string(loadBalancer.IpAddressType), "vpc_id": awssdk.ToString(loadBalancer.VpcId), "availability_zones": strings.Join(awsnetwork.ELBV2AvailabilityZoneNames(loadBalancer.AvailabilityZones), ","), "security_group_ids": strings.Join(cleanStrings(loadBalancer.SecurityGroups), ","), "public": boolString(loadBalancer.Scheme == elbv2types.LoadBalancerSchemeEnumInternetFacing), "internet_exposed": boolString(loadBalancer.Scheme == elbv2types.LoadBalancerSchemeEnumInternetFacing)})
 	if loadBalancer.State != nil {
 		attributes["state"], attributes["state_reason"] = string(loadBalancer.State.Code), awssdk.ToString(loadBalancer.State.Reason)
 	}
@@ -566,7 +598,7 @@ func elbv2LoadBalancerEvent(settings settings, loadBalancer elbv2types.LoadBalan
 func elbv2ListenerEvent(settings settings, listener elbv2types.Listener) (*primitives.Event, error) {
 	arn := awssdk.ToString(listener.ListenerArn)
 	attributes := commonCloudAssetAttributes(settings, settings.region, familyELBV2Listener, arn, path.Base(arn), "elbv2_listener", nil)
-	putAttributes(attributes, map[string]string{"arn": arn, "listener_arn": arn, "load_balancer_arn": awssdk.ToString(listener.LoadBalancerArn), "port": int32AttrString(listener.Port), "protocol": string(listener.Protocol), "ssl_policy": awssdk.ToString(listener.SslPolicy), "target_group_arns": strings.Join(elbv2ActionTargetGroupARNs(listener.DefaultActions), ",")})
+	putAttributes(attributes, map[string]string{"arn": arn, "listener_arn": arn, "load_balancer_arn": awssdk.ToString(listener.LoadBalancerArn), "port": int32AttrString(listener.Port), "protocol": string(listener.Protocol), "ssl_policy": awssdk.ToString(listener.SslPolicy), "target_group_arns": strings.Join(awsnetwork.ELBV2ActionTargetGroupARNs(listener.DefaultActions), ",")})
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "listener": listener})
 	if err != nil {
 		return nil, err
@@ -584,6 +616,27 @@ func elbv2TargetGroupEvent(settings settings, target elbv2types.TargetGroup) (*p
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-elbv2-target-group-"+firstNonEmpty(arn, name), "aws.elbv2_target_group", "aws/elbv2_target_group/v1", payload, attributes, time.Now().UTC())
+}
+
+func apiGatewayRestAPIEvent(settings settings, api apigatewaytypes.RestApi) (*primitives.Event, error) {
+	apiID := awssdk.ToString(api.Id)
+	name := awssdk.ToString(api.Name)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyAPIGatewayRestAPI, firstNonEmpty(apiID, awsnetwork.APIGatewayRestAPIARN(settings.region, apiID)), firstNonEmpty(name, apiID), "apigateway_rest_api", api.Tags)
+	event, err := awsnetwork.APIGatewayRestAPIEvent(settings.accountID, settings.region, api, attributes)
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, event.ID, event.Kind, event.SchemaRef, event.Payload, event.Attributes, event.OccurredAt)
+}
+
+func apiGatewayMethodEvent(settings settings, record awsnetwork.APIGatewayMethod) (*primitives.Event, error) {
+	recordID := awsnetwork.APIGatewayMethodRecordID(record)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyAPIGatewayMethod, recordID, firstNonEmpty(awsnetwork.MethodRouteKey(record), recordID), "apigateway_method", nil)
+	event, err := awsnetwork.APIGatewayMethodEvent(settings.accountID, settings.region, record, attributes)
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, event.ID, event.Kind, event.SchemaRef, event.Payload, event.Attributes, event.OccurredAt)
 }
 
 func apiGatewayStageEvent(settings settings, record awsAPIGatewayStage) (*primitives.Event, error) {
@@ -625,7 +678,7 @@ func apiGatewayIntegrationEvent(settings settings, record awsAPIGatewayIntegrati
 func cloudFrontDistributionEvent(settings settings, distribution cloudfronttypes.DistributionSummary) (*primitives.Event, error) {
 	id, arn := awssdk.ToString(distribution.Id), firstNonEmpty(awssdk.ToString(distribution.ARN), cloudFrontResourceARN(settings, "distribution", awssdk.ToString(distribution.Id)))
 	attributes := commonCloudAssetAttributes(settings, "global", familyCloudFrontDistribution, firstNonEmpty(arn, id), id, "cloudfront_distribution", nil)
-	putAttributes(attributes, map[string]string{"arn": arn, "distribution_id": id, "domain_name": awssdk.ToString(distribution.DomainName), "status": awssdk.ToString(distribution.Status), "enabled": boolString(awssdk.ToBool(distribution.Enabled)), "price_class": string(distribution.PriceClass), "http_version": string(distribution.HttpVersion), "ipv6_enabled": boolString(awssdk.ToBool(distribution.IsIPV6Enabled)), "web_acl_id": awssdk.ToString(distribution.WebACLId), "aliases": strings.Join(cloudFrontAliases(distribution.Aliases), ","), "origin_domain_names": strings.Join(cloudFrontOriginDomains(distribution.Origins), ","), "public": boolString(awssdk.ToBool(distribution.Enabled)), "internet_exposed": boolString(awssdk.ToBool(distribution.Enabled))})
+	putAttributes(attributes, map[string]string{"arn": arn, "distribution_id": id, "domain_name": awssdk.ToString(distribution.DomainName), "status": awssdk.ToString(distribution.Status), "enabled": boolString(awssdk.ToBool(distribution.Enabled)), "price_class": string(distribution.PriceClass), "http_version": string(distribution.HttpVersion), "ipv6_enabled": boolString(awssdk.ToBool(distribution.IsIPV6Enabled)), "web_acl_id": awssdk.ToString(distribution.WebACLId), "aliases": strings.Join(awsnetwork.CloudFrontAliases(distribution.Aliases), ","), "origin_domain_names": strings.Join(awsnetwork.CloudFrontOriginDomains(distribution.Origins), ","), "public": boolString(awssdk.ToBool(distribution.Enabled)), "internet_exposed": boolString(awssdk.ToBool(distribution.Enabled))})
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "distribution": distribution})
 	if err != nil {
 		return nil, err
@@ -856,91 +909,6 @@ func putAttributes(attributes map[string]string, values map[string]string) {
 	for key, value := range values {
 		attributes[key] = value
 	}
-}
-
-func globalAcceleratorPortRanges(values []globalacceleratortypes.PortRange) string {
-	parts := make([]string, 0, len(values))
-	for _, value := range values {
-		from := awssdk.ToInt32(value.FromPort)
-		to := awssdk.ToInt32(value.ToPort)
-		if from == 0 && to == 0 {
-			continue
-		}
-		if from == to || to == 0 {
-			parts = append(parts, strconv.Itoa(int(from)))
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%d-%d", from, to))
-	}
-	return strings.Join(parts, ",")
-}
-
-func globalAcceleratorEndpointIDs(values []globalacceleratortypes.EndpointDescription) []string {
-	ids := make([]string, 0, len(values))
-	for _, value := range values {
-		ids = append(ids, awssdk.ToString(value.EndpointId))
-	}
-	return cleanStrings(ids)
-}
-
-func elbv2ActionTargetGroupARNs(actions []elbv2types.Action) []string {
-	var arns []string
-	for _, action := range actions {
-		arns = append(arns, awssdk.ToString(action.TargetGroupArn))
-		if action.ForwardConfig != nil {
-			for _, group := range action.ForwardConfig.TargetGroups {
-				arns = append(arns, awssdk.ToString(group.TargetGroupArn))
-			}
-		}
-	}
-	return cleanStrings(arns)
-}
-
-func elbv2AvailabilityZoneNames(values []elbv2types.AvailabilityZone) []string {
-	zones := make([]string, 0, len(values))
-	for _, value := range values {
-		zones = append(zones, awssdk.ToString(value.ZoneName))
-	}
-	return cleanStrings(zones)
-}
-
-func cloudFrontAliases(aliases *cloudfronttypes.Aliases) []string {
-	if aliases == nil {
-		return nil
-	}
-	return cleanStrings(aliases.Items)
-}
-
-func cloudFrontOriginDomains(origins *cloudfronttypes.Origins) []string {
-	if origins == nil {
-		return nil
-	}
-	domains := make([]string, 0, len(origins.Items))
-	for _, origin := range origins.Items {
-		domains = append(domains, awssdk.ToString(origin.DomainName))
-	}
-	return cleanStrings(domains)
-}
-
-func float32AttrString(value *float32) string {
-	if value == nil {
-		return ""
-	}
-	return strconv.FormatFloat(float64(*value), 'f', -1, 32)
-}
-
-func vpcLatticeDNSName(entry *vpclatticetypes.DnsEntry) string {
-	if entry == nil {
-		return ""
-	}
-	return awssdk.ToString(entry.DomainName)
-}
-
-func vpcLatticeHostedZoneID(entry *vpclatticetypes.DnsEntry) string {
-	if entry == nil {
-		return ""
-	}
-	return awssdk.ToString(entry.HostedZoneId)
 }
 
 func restIntegrationOutput(value apigatewaytypes.Integration) apigateway.GetIntegrationOutput {
