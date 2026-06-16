@@ -217,7 +217,7 @@ LIMIT $%d`, strings.Join(clauses, " AND "), len(args)), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list connector credentials: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	records := []*ports.ConnectorCredentialRecord{}
 	for rows.Next() {
 		record, err := scanConnectorCredentialRecord(rows)
@@ -347,7 +347,7 @@ LIMIT $2`, id, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list connector credential audit events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	events := []*ports.ConnectorCredentialAuditRecord{}
 	for rows.Next() {
 		event := &ports.ConnectorCredentialAuditRecord{}

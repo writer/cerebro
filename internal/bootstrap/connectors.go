@@ -3270,14 +3270,6 @@ func (a *App) authorizeConnectorCredentialRuntime(ctx context.Context, sourceID 
 	return nil
 }
 
-func connectorCredentialReferences(credentialID string, fields map[string]string) map[string]string {
-	references := make(map[string]string, len(fields))
-	for _, field := range connectorcredentials.SortedFieldNames(fields) {
-		references[field] = connectorcredentials.Reference(credentialID, field)
-	}
-	return references
-}
-
 func connectorRuntimeConfig(input map[string]string) (map[string]string, error) {
 	config := make(map[string]string, len(input))
 	for key, value := range input {
