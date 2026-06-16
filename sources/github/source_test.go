@@ -17,6 +17,7 @@ import (
 	"time"
 
 	gogithub "github.com/google/go-github/v66/github"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -150,6 +151,26 @@ func testGitHubAppPrivateKeyPEM(t *testing.T) string {
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(key),
 	}))
+}
+
+func assertGitHubCheckpointEnvelope(t *testing.T, checkpoint *cerebrov1.SourceCheckpoint, family string) {
+	t.Helper()
+	if checkpoint == nil {
+		t.Fatal("checkpoint = nil, want resumable envelope")
+	}
+	envelope, ok := sourcecdk.DecodeCursorEnvelope(checkpoint.GetCursorOpaque())
+	if !ok {
+		t.Fatalf("checkpoint cursor %q is not an envelope", checkpoint.GetCursorOpaque())
+	}
+	if envelope.Source != "github" {
+		t.Fatalf("checkpoint source = %q, want github", envelope.Source)
+	}
+	if envelope.Family != family {
+		t.Fatalf("checkpoint family = %q, want %q", envelope.Family, family)
+	}
+	if !envelope.ResumableCheckpoint {
+		t.Fatalf("checkpoint resumable = false, want true")
+	}
 }
 
 func TestNewFixtureReplaysFixturePages(t *testing.T) {
@@ -302,8 +323,17 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	if first.NextCursor == nil || first.NextCursor.Opaque != "2" {
 		t.Fatalf("first.NextCursor = %#v, want page 2", first.NextCursor)
 	}
-	if first.Checkpoint == nil || first.Checkpoint.CursorOpaque != "2" {
-		t.Fatalf("first.Checkpoint = %#v, want cursor 2", first.Checkpoint)
+	assertGitHubCheckpointEnvelope(t, first.Checkpoint, familyPullRequest)
+	firstCheckpoint, ok := sourcecdk.DecodeCursorEnvelope(first.Checkpoint.GetCursorOpaque())
+	if !ok || firstCheckpoint.Token != "2" {
+		t.Fatalf("first.Checkpoint = %#v, want resumable envelope with token 2", first.Checkpoint)
+	}
+	resumed, err := source.Read(context.Background(), readCfg, &cerebrov1.SourceCursor{Opaque: first.Checkpoint.GetCursorOpaque()})
+	if err != nil {
+		t.Fatalf("Read(resumed from checkpoint envelope) error = %v", err)
+	}
+	if len(resumed.Events) != 1 || resumed.Events[0].GetId() != "github-pr-writer-cerebro-442-1776902400" {
+		t.Fatalf("resumed events = %#v, want second fixture PR", resumed.Events)
 	}
 
 	second, err := source.Read(context.Background(), readCfg, first.NextCursor)
@@ -316,8 +346,9 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	if second.NextCursor != nil {
 		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
 	}
-	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "3" {
-		t.Fatalf("second.Checkpoint = %#v, want cursor 3", second.Checkpoint)
+	assertGitHubCheckpointEnvelope(t, second.Checkpoint, familyPullRequest)
+	if !sourcecdk.ResumableCursorOpaque(second.Checkpoint.GetCursorOpaque()) {
+		t.Fatalf("second.Checkpoint.CursorOpaque = %q, want resumable envelope", second.Checkpoint.GetCursorOpaque())
 	}
 
 	final, err := source.Read(context.Background(), readCfg, &cerebrov1.SourceCursor{Opaque: "3"})
@@ -326,6 +357,77 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	}
 	if len(final.Events) != 0 {
 		t.Fatalf("len(final.Events) = %d, want 0", len(final.Events))
+	}
+}
+
+func TestReadWithCheckpointShortCircuitsUnchangedPullRequests(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"owner":    "writer",
+		"per_page": "1",
+		"repo":     "cerebro",
+		"state":    "all",
+	})
+	watermark := time.Date(2026, 4, 23, 2, 0, 0, 0, time.UTC)
+	checkpoint := sourcecdk.IncrementalWatermarkCheckpoint("github", familyPullRequest, []*cerebrov1.EventEnvelope{{
+		Id:         "github-pr-writer-cerebro-443-1776909600",
+		OccurredAt: timestamppb.New(watermark),
+	}}, sourcecdk.IncrementalWatermarkState{})
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))
+	}
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want nil after watermark short-circuit", pull.NextCursor)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+}
+
+func TestReadWithCheckpointKeepsNewEqualTimestampPullRequest(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"owner":    "writer",
+		"per_page": "1",
+		"repo":     "cerebro",
+		"state":    "all",
+	})
+	watermark := time.Date(2026, 4, 23, 2, 0, 0, 0, time.UTC)
+	checkpoint := sourcecdk.IncrementalWatermarkCheckpoint("github", familyPullRequest, []*cerebrov1.EventEnvelope{{
+		Id:         "different-boundary-id",
+		OccurredAt: timestamppb.New(watermark),
+	}}, sourcecdk.IncrementalWatermarkState{})
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want equal-timestamp new event", len(pull.Events))
+	}
+	if got := pull.Events[0].GetId(); got != "github-pr-writer-cerebro-443-1776909600" {
+		t.Fatalf("event id = %q, want first fixture PR", got)
 	}
 }
 

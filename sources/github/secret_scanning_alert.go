@@ -56,8 +56,8 @@ func (s *Source) discoverSecretScanningAlerts(ctx context.Context, client *gogit
 	return []sourcecdk.URN{sourcecdk.URN(fmt.Sprintf("urn:cerebro:%s:secret_scanning", settings.owner))}, nil
 }
 
-func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	page, err := readPage(cursor)
+func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	page, err := sourcecdk.CursorPage(cursor)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
@@ -69,7 +69,7 @@ func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
 	}
 	if len(alerts) == 0 {
-		return sourcecdk.Pull{}, nil
+		return sourcecdk.EmptyIncrementalWatermarkPull("github", familySecretScanning, checkpoint), nil
 	}
 	events := make([]*primitives.Event, 0, len(alerts))
 	for _, alert := range alerts {
@@ -79,15 +79,20 @@ func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.
 		}
 		events = append(events, event)
 	}
+	state := sourcecdk.IncrementalWatermarkCheckpointState("github", familySecretScanning, checkpoint)
+	events, reachedWatermark := sourcecdk.IncrementalWatermarkEvents(events, state)
 	nextPage := page + 1
 	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark: events[len(events)-1].OccurredAt,
-		},
+		Events:     events,
+		Checkpoint: sourcecdk.IncrementalWatermarkCheckpoint("github", familySecretScanning, events, state),
+	}
+	if reachedWatermark {
+		pull.ShortCircuitReason = sourcecdk.PullShortCircuitReasonWatermarkReached
+		return pull, nil
 	}
 	if resp != nil && resp.NextPage > 0 {
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(nextPage)}
+		pull.Checkpoint = sourcecdk.IncrementalWatermarkCheckpointWithToken(pull.Checkpoint, strconv.Itoa(nextPage))
 	}
 	return pull, nil
 }
