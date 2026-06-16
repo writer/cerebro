@@ -705,10 +705,9 @@ coverage_contract:
     - id: fargate_service
       type: entity_family
       title: AWS Fargate services and tasks
-      families: [ecs_service, ecs_task]
-      support: partial
+      families: [ecs_service, ecs_task, ecs_task_definition]
+      support: supported
       high_value: true
-      known_unsupported_fields: [launch type enforcement across all task revisions]
     - id: guardduty_detector
       type: entity_family
       title: AWS GuardDuty detectors

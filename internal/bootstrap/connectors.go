@@ -47,7 +47,13 @@ const (
 	connectorStoreAzureKeyVault      = "azure_key_vault"
 	connectorStoreHashiCorpVault     = "hashicorp_vault"
 	connectorCredentialStoreModeRefs = "reference"
+
+	connectorAccessAvailable   = "available"
+	connectorAccessCatalogOnly = "catalog_only"
+	connectorAccessRestricted  = "restricted"
 )
+
+var errConnectorAccessRestricted = errors.New("connector access restricted")
 
 type connectorCatalogEntry struct {
 	SourceID               string                          `json:"source_id"`
@@ -69,6 +75,10 @@ type connectorCatalogEntry struct {
 	NeedsAttentionRuntimes int                             `json:"needs_attention_runtimes"`
 	ConnectionMethods      []connectorConnectionMethodView `json:"connection_methods,omitempty"`
 	ScopeOptions           []connectorScopeOptionView      `json:"scope_options,omitempty"`
+	AccessStatus           string                          `json:"access_status,omitempty"`
+	AccessReason           string                          `json:"access_reason,omitempty"`
+	SetupAllowed           bool                            `json:"setup_allowed"`
+	Requestable            bool                            `json:"requestable,omitempty"`
 }
 
 type connectorLibraryResponse struct {
@@ -482,6 +492,9 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		if catalogEntry, ok := definitionsBySourceID[source.GetId()]; ok {
 			applyConnectorCatalogMetadata(&entry, catalogEntry)
 		}
+		if !a.applyConnectorAccess(&entry) {
+			continue
+		}
 		if count := counts[source.GetId()]; count.total > 0 {
 			entry.ConfiguredRuntimes = count.total
 			entry.HealthyRuntimes = count.healthy
@@ -514,6 +527,9 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 			ConnectionMethods: nil,
 		}
 		applyConnectorCatalogMetadata(&entry, catalogEntry)
+		if !a.applyConnectorAccess(&entry) {
+			continue
+		}
 		entries = append(entries, entry)
 	}
 	sort.Slice(entries, func(i, j int) bool {
@@ -626,6 +642,10 @@ func (a *App) handleCreateConnectorCredential(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if _, err := a.connectorSource(sourceID); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -703,6 +723,10 @@ func (a *App) handleListConnectorCredentials(w http.ResponseWriter, r *http.Requ
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if _, err := a.connectorSource(sourceID); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -760,6 +784,10 @@ func (a *App) handleGetConnectorCredential(w http.ResponseWriter, r *http.Reques
 		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if _, err := a.connectorSource(sourceID); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -804,6 +832,10 @@ func (a *App) handleRotateConnectorCredential(w http.ResponseWriter, r *http.Req
 	credentialID := strings.TrimSpace(r.PathValue("credentialID"))
 	if sourceID == "" || credentialID == "" {
 		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
 		return
 	}
 	if _, err := a.connectorSource(sourceID); err != nil {
@@ -913,6 +945,10 @@ func (a *App) handleRevokeConnectorCredential(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if _, err := a.connectorSource(sourceID); err != nil {
 		writeConnectorError(w, err)
 		return
@@ -964,6 +1000,10 @@ func (a *App) handlePreflightConnectorConnection(w http.ResponseWriter, r *http.
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	response, err := a.connectorConnectionPreflight(r.Context(), sourceID, request)
 	if err != nil {
 		writeConnectorError(w, err)
@@ -981,6 +1021,10 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
 	if sourceID == "" {
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
 		return
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
@@ -1116,6 +1160,18 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 			writeConnectorError(w, err)
 			return
 		}
+		validated, err := broker.MarkValidated(r.Context(), connectorcredentials.ValidateRequest{
+			CredentialID: result.Record.ID,
+			TenantID:     tenantID,
+			SourceID:     sourceID,
+			RuntimeID:    runtimeID,
+			Actor:        connectorCredentialActor(r),
+		})
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		result.Record = validated
 		for field, reference := range result.References {
 			runtime.Config[field] = reference
 		}
@@ -1481,6 +1537,67 @@ var connectorSchemas = map[string]connectorSchema{
 	},
 }
 
+func connectorSchemaForSource(sourceID string) (connectorSchema, bool) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return connectorSchema{}, false
+	}
+	if schema, ok := connectorSchemas[sourceID]; ok {
+		return schema, true
+	}
+	entry, ok, err := connectorcatalog.BuiltinEntry(sourceID)
+	if err != nil || !ok || !entry.Generateable || entry.Status != connectorcatalog.StatusGenerateable {
+		return connectorSchema{}, false
+	}
+	return connectorSchemaFromDefinition(entry.Definition), true
+}
+
+func connectorSchemaFromDefinition(definition connectordefinitions.Definition) connectorSchema {
+	schema := connectorSchema{
+		ConfigKeys:     stringSet("family", "health_path", "base_url", "token_url", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"),
+		CredentialKeys: map[string]struct{}{},
+	}
+	for _, field := range definition.ConfigFields {
+		key := strings.TrimSpace(field.Key)
+		if key == "" {
+			continue
+		}
+		schema.ConfigKeys[key] = struct{}{}
+		if field.Required {
+			schema.RequiredConfig = append(schema.RequiredConfig, key)
+		}
+	}
+	for _, field := range definition.Auth.CredentialFields {
+		key := strings.TrimSpace(field.Key)
+		if key == "" {
+			continue
+		}
+		schema.CredentialKeys[key] = struct{}{}
+		schema.RequiredCredentials = append(schema.RequiredCredentials, key)
+	}
+	for _, family := range definition.ResourceFamilies {
+		if family.Pagination == nil {
+			continue
+		}
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.PageParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.PageSizeParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.OffsetParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.LimitParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.CursorParam)
+	}
+	schema.RequiredConfig = sortedUniqueStrings(schema.RequiredConfig)
+	schema.RequiredCredentials = sortedUniqueStrings(schema.RequiredCredentials)
+	return schema
+}
+
+func addConnectorSchemaConfigKey(keys map[string]struct{}, key string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+	keys[key] = struct{}{}
+}
+
 func connectorRuntimeCounts(runtimes []*cerebrov1.SourceRuntime) map[string]connectorRuntimeCount {
 	counts := make(map[string]connectorRuntimeCount)
 	for _, runtime := range runtimes {
@@ -1557,6 +1674,72 @@ func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry co
 	}
 	if len(entry.ScopeOptions) == 0 {
 		entry.ScopeOptions = connectorScopeOptionsFromDefinition(catalogEntry.Definition)
+	}
+}
+
+func (a *App) applyConnectorAccess(entry *connectorCatalogEntry) bool {
+	if entry == nil {
+		return false
+	}
+	sourceID := strings.TrimSpace(entry.SourceID)
+	if sourceID == "" || connectorSourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
+		return false
+	}
+	hasSetup := len(entry.ConnectionMethods) > 0
+	switch {
+	case connectorSourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID):
+		entry.AccessStatus = connectorAccessRestricted
+		entry.AccessReason = firstNonEmpty(a.cfg.ConnectorAccess.RestrictionReason, "Connector setup is restricted by this deployment.")
+		entry.SetupAllowed = false
+		entry.Requestable = true
+		entry.ConnectionMethods = nil
+	case hasSetup:
+		entry.AccessStatus = connectorAccessAvailable
+		entry.SetupAllowed = true
+	case entry.CatalogStatus != "":
+		entry.AccessStatus = connectorAccessCatalogOnly
+		entry.AccessReason = connectorCatalogOnlyReason(entry.CatalogStatus)
+		entry.SetupAllowed = false
+		entry.Requestable = true
+	default:
+		entry.AccessStatus = connectorAccessAvailable
+		entry.SetupAllowed = hasSetup
+	}
+	return true
+}
+
+func (a *App) requireConnectorSetupAccess(sourceID string) error {
+	if connectorSourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID) {
+		return fmt.Errorf("%w: %s", errConnectorAccessRestricted, strings.TrimSpace(sourceID))
+	}
+	if connectorSourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
+		return fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, strings.TrimSpace(sourceID))
+	}
+	return nil
+}
+
+func connectorSourceListed(values []string, sourceID string) bool {
+	normalized := strings.TrimSpace(sourceID)
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), normalized) {
+			return true
+		}
+	}
+	return false
+}
+
+func connectorCatalogOnlyReason(status string) string {
+	switch strings.TrimSpace(status) {
+	case connectorcatalog.StatusGenerateable:
+		return "Catalog definition is sourcegen-ready, but setup is not enabled by this API."
+	case connectorcatalog.StatusNeedsAuthExtension:
+		return "Catalog definition needs an auth extension before setup can be enabled."
+	case connectorcatalog.StatusNeedsBespokeRuntime:
+		return "Catalog definition needs a bespoke runtime before setup can be enabled."
+	case connectorcatalog.StatusCatalogReady:
+		return "Catalog definition is available, but setup is not enabled by this API."
+	default:
+		return "Catalog metadata is available, but setup is not enabled by this API."
 	}
 }
 
@@ -1904,7 +2087,7 @@ func (a *App) connectorReferenceTemplates(sourceID string, tenantID string, runt
 		return nil
 	}
 	required := map[string]struct{}{}
-	if schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]; ok {
+	if schema, ok := connectorSchemaForSource(sourceID); ok {
 		required = stringSet(schema.RequiredCredentials...)
 	}
 	templates := make([]connectorReferenceTemplateView, 0, len(fields))
@@ -2505,7 +2688,7 @@ func connectorDisplayName(sourceID string, fallback string) string {
 }
 
 func connectorConfigFields(sourceID string, authMethod string) []connectorFieldView {
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -2539,7 +2722,7 @@ func connectorCredentialFields(sourceID string, authMethod string) []connectorFi
 	if authMethod == connectorAuthMethodAWSSSOProfile {
 		return nil
 	}
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -3589,7 +3772,7 @@ func connectorReferenceTemplateFields(sourceID string, authMethod string, refere
 	if normalizeConnectorAuthMethod(authMethod) == connectorAuthMethodEncryptedSubmission {
 		return sortedStringKeys(references)
 	}
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok || len(schema.CredentialKeys) == 0 {
 		return sortedStringKeys(references)
 	}
@@ -3597,7 +3780,7 @@ func connectorReferenceTemplateFields(sourceID string, authMethod string, refere
 }
 
 func validateConnectorConfigFields(sourceID string, authMethod string, config map[string]string, references map[string]string) error {
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -3638,7 +3821,7 @@ func validateConnectorCredentialFields(sourceID string, authMethod string, field
 	if authMethod != connectorAuthMethodEncryptedSubmission {
 		return nil
 	}
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -3670,6 +3853,21 @@ func sortedStringKeys(values map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func sortedUniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		set[value] = struct{}{}
+	}
+	return sortedSetKeys(set)
 }
 
 func copyStringMap(values map[string]string) map[string]string {
@@ -3865,7 +4063,8 @@ func writeConnectorError(w http.ResponseWriter, err error) {
 	case errors.Is(err, connectorcredentials.ErrUnavailable),
 		errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
-	case errors.Is(err, errTenantForbidden):
+	case errors.Is(err, errTenantForbidden),
+		errors.Is(err, errConnectorAccessRestricted):
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 	default:
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

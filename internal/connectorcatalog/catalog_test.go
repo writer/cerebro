@@ -120,11 +120,11 @@ entries:
 	}
 }
 
-func TestAnalyzeDirMarksOAuthSupportedDefinitionAsGenerateable(t *testing.T) {
+func TestAnalyzeDirMarksOAuthClientCredentialsDefinitionAsGenerateable(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogFile(t, root, strings.ReplaceAll(strings.ReplaceAll(minimalDefinitionYAML(),
 		"model: bearer_token", "model: oauth_client_credentials\n        token_url: https://api.example.test/oauth/token"),
-		"key: token", "key: client_secret"))
+		"key: token", "key: client_id\n            reference_only: true\n          - key: client_secret"))
 
 	analysis, err := AnalyzeDir(root, Options{DryRunSourcegen: true})
 	if err != nil {

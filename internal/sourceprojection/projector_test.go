@@ -3503,16 +3503,21 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.ecs_service",
 			Attributes: map[string]string{
-				"cluster_arn":         "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
-				"cluster_name":        "prod",
-				"domain":              "123456789012",
-				"resource_id":         "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
-				"resource_name":       "orders",
-				"resource_provider":   "aws",
-				"resource_type":       "ecs_service",
-				"service_arn":         "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
-				"service_name":        "orders",
-				"task_definition_arn": "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"cluster_arn":                     "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
+				"cluster_name":                    "prod",
+				"domain":                          "123456789012",
+				"assign_public_ip":                "ENABLED",
+				"capacity_providers":              "FARGATE_SPOT",
+				"fargate_service":                 "true",
+				"launch_type_effective":           "FARGATE",
+				"load_balancer_target_group_arns": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/123",
+				"resource_id":                     "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"resource_name":                   "orders",
+				"resource_provider":               "aws",
+				"resource_type":                   "ecs_service",
+				"service_arn":                     "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"service_name":                    "orders",
+				"task_definition_arn":             "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
 			},
 		},
 		{
@@ -3521,21 +3526,25 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.ecs_task",
 			Attributes: map[string]string{
-				"cluster_arn":           "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
-				"cluster_name":          "prod",
-				"domain":                "123456789012",
-				"network_interface_ids": "eni-task",
-				"resource_id":           "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
-				"resource_name":         "abcd1234",
-				"resource_provider":     "aws",
-				"resource_type":         "ecs_task",
-				"security_group_ids":    "sg-task",
-				"service_arn":           "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
-				"service_name":          "orders",
-				"subnet_ids":            "subnet-task",
-				"task_arn":              "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
-				"task_definition_arn":   "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
-				"vpc_id":                "vpc-1",
+				"cluster_arn":                "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
+				"cluster_name":               "prod",
+				"domain":                     "123456789012",
+				"capacity_provider_name":     "FARGATE_SPOT",
+				"ephemeral_storage_size_gib": "40",
+				"fargate_task":               "true",
+				"launch_type":                "FARGATE",
+				"network_interface_ids":      "eni-task",
+				"resource_id":                "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
+				"resource_name":              "abcd1234",
+				"resource_provider":          "aws",
+				"resource_type":              "ecs_task",
+				"security_group_ids":         "sg-task",
+				"service_arn":                "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"service_name":               "orders",
+				"subnet_ids":                 "subnet-task",
+				"task_arn":                   "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
+				"task_definition_arn":        "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"vpc_id":                     "vpc-1",
 			},
 		},
 		{
@@ -3544,16 +3553,21 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.ecs_task_definition",
 			Attributes: map[string]string{
-				"domain":              "123456789012",
-				"execution_role_arn":  "arn:aws:iam::123456789012:role/ECSExecutionRole",
-				"execution_role_name": "ECSExecutionRole",
-				"resource_id":         "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
-				"resource_name":       "orders",
-				"resource_provider":   "aws",
-				"resource_type":       "ecs_task_definition",
-				"task_definition_arn": "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
-				"task_role_arn":       "arn:aws:iam::123456789012:role/ECSTaskRole",
-				"task_role_name":      "ECSTaskRole",
+				"domain":                     "123456789012",
+				"awsvpc_required":            "true",
+				"container_count":            "1",
+				"ephemeral_storage_size_gib": "40",
+				"execution_role_arn":         "arn:aws:iam::123456789012:role/ECSExecutionRole",
+				"execution_role_name":        "ECSExecutionRole",
+				"fargate_compatible":         "true",
+				"resource_id":                "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"resource_name":              "orders",
+				"resource_provider":          "aws",
+				"resource_type":              "ecs_task_definition",
+				"task_definition_arn":        "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"runtime_cpu_architecture":   "ARM64",
+				"task_role_arn":              "arn:aws:iam::123456789012:role/ECSTaskRole",
+				"task_role_name":             "ECSTaskRole",
 			},
 		},
 		{
@@ -3697,13 +3711,31 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_ec2_instance:i-456", relationBelongsTo, eksNodegroupNameURN)
 	assertProjectedLink(t, state, lambdaURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/LambdaOrdersRole")
 	assertProjectedLink(t, state, lambdaURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-lambda")
+	if got := state.entities[ecsServiceURN].Attributes["fargate_service"]; got != "true" {
+		t.Fatalf("ecs service fargate_service = %q, want true", got)
+	}
+	if got := state.entities[ecsServiceURN].Attributes["launch_type_effective"]; got != "FARGATE" {
+		t.Fatalf("ecs service launch_type_effective = %q, want FARGATE", got)
+	}
 	assertProjectedLink(t, state, ecsServiceURN, relationBelongsTo, "urn:cerebro:writer:aws_ecs_cluster:arn:aws:ecs:us-east-1:123456789012:cluster/prod")
 	assertProjectedLink(t, state, ecsServiceURN, relationDependsOn, ecsTaskDefinitionURN)
+	if got := state.entities[ecsTaskURN].Attributes["fargate_task"]; got != "true" {
+		t.Fatalf("ecs task fargate_task = %q, want true", got)
+	}
+	if got := state.entities[ecsTaskURN].Attributes["ephemeral_storage_size_gib"]; got != "40" {
+		t.Fatalf("ecs task ephemeral_storage_size_gib = %q, want 40", got)
+	}
 	assertProjectedLink(t, state, ecsTaskURN, relationBelongsTo, "urn:cerebro:writer:aws_ecs_cluster:arn:aws:ecs:us-east-1:123456789012:cluster/prod")
 	assertProjectedLink(t, state, ecsTaskURN, relationBelongsTo, ecsServiceURN)
 	assertProjectedLink(t, state, ecsTaskURN, relationDependsOn, ecsTaskDefinitionURN)
 	assertProjectedLink(t, state, ecsTaskURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-task")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-task", relationAttachedTo, ecsTaskURN)
+	if got := state.entities[ecsTaskDefinitionURN].Attributes["fargate_compatible"]; got != "true" {
+		t.Fatalf("ecs task definition fargate_compatible = %q, want true", got)
+	}
+	if got := state.entities[ecsTaskDefinitionURN].Attributes["awsvpc_required"]; got != "true" {
+		t.Fatalf("ecs task definition awsvpc_required = %q, want true", got)
+	}
 	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSTaskRole")
 	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSExecutionRole")
 	assertProjectedLink(t, state, eksClusterURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSClusterRole")

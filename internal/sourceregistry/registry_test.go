@@ -18,6 +18,13 @@ func TestBuiltin(t *testing.T) {
 	if aurelius.Spec().Name != "Aurelius" {
 		t.Fatalf("aurelius Spec().Name = %q, want %q", aurelius.Spec().Name, "Aurelius")
 	}
+	auth0, ok := registry.Get("auth0")
+	if !ok {
+		t.Fatal("Get(auth0) = false, want true")
+	}
+	if auth0.Spec().Name != "Auth0" {
+		t.Fatalf("auth0 Spec().Name = %q, want %q", auth0.Spec().Name, "Auth0")
+	}
 	aws, ok := registry.Get("aws")
 	if !ok {
 		t.Fatal("Get(aws) = false, want true")

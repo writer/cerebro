@@ -973,30 +973,76 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			}},
 			ecsClusters:    []string{clusterARN},
 			ecsServiceARNs: map[string][]string{clusterARN: []string{serviceARN}},
-			ecsServices:    map[string]ecstypes.Service{serviceARN: {ClusterArn: awssdk.String(clusterARN), ServiceArn: awssdk.String(serviceARN), ServiceName: awssdk.String("orders"), Status: awssdk.String("ACTIVE"), TaskDefinition: awssdk.String(taskDefinitionARN), DesiredCount: 2, RunningCount: 2}},
-			ecsTaskARNs:    map[string][]string{clusterARN: []string{taskARN}},
+			ecsServices: map[string]ecstypes.Service{serviceARN: {
+				CapacityProviderStrategy: []ecstypes.CapacityProviderStrategyItem{{CapacityProvider: awssdk.String("FARGATE_SPOT")}},
+				ClusterArn:               awssdk.String(clusterARN),
+				DeploymentConfiguration: &ecstypes.DeploymentConfiguration{
+					DeploymentCircuitBreaker: &ecstypes.DeploymentCircuitBreaker{Enable: true, Rollback: true},
+					MaximumPercent:           awssdk.Int32(200),
+					MinimumHealthyPercent:    awssdk.Int32(100),
+					Strategy:                 ecstypes.DeploymentStrategyRolling,
+				},
+				DeploymentController: &ecstypes.DeploymentController{Type: ecstypes.DeploymentControllerTypeEcs},
+				DesiredCount:         2,
+				EnableECSManagedTags: true,
+				EnableExecuteCommand: true,
+				LoadBalancers: []ecstypes.LoadBalancer{{
+					ContainerName:  awssdk.String("orders"),
+					ContainerPort:  awssdk.Int32(8080),
+					TargetGroupArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/123"),
+				}},
+				NetworkConfiguration: &ecstypes.NetworkConfiguration{AwsvpcConfiguration: &ecstypes.AwsVpcConfiguration{
+					AssignPublicIp: ecstypes.AssignPublicIpEnabled,
+					SecurityGroups: []string{"sg-task"},
+					Subnets:        []string{"subnet-task"},
+				}},
+				PlatformFamily:  awssdk.String("Linux"),
+				PlatformVersion: awssdk.String("1.4.0"),
+				PropagateTags:   ecstypes.PropagateTagsService,
+				RunningCount:    2,
+				ServiceArn:      awssdk.String(serviceARN),
+				ServiceName:     awssdk.String("orders"),
+				ServiceRegistries: []ecstypes.ServiceRegistry{{
+					RegistryArn: awssdk.String("arn:aws:servicediscovery:us-east-1:123456789012:service/srv-orders"),
+				}},
+				Status:         awssdk.String("ACTIVE"),
+				TaskDefinition: awssdk.String(taskDefinitionARN),
+			}},
+			ecsTaskARNs: map[string][]string{clusterARN: []string{taskARN}},
 			ecsTasks: map[string]ecstypes.Task{taskARN: {
 				Attachments: []ecstypes.Attachment{{Details: []ecstypes.KeyValuePair{
 					{Name: awssdk.String("networkInterfaceId"), Value: awssdk.String("eni-task")},
 					{Name: awssdk.String("subnetId"), Value: awssdk.String("subnet-task")},
 					{Name: awssdk.String("privateIPv4Address"), Value: awssdk.String("10.0.2.25")},
 				}}},
-				ClusterArn:        awssdk.String(clusterARN),
-				Group:             awssdk.String("service:orders"),
-				LastStatus:        awssdk.String("RUNNING"),
-				LaunchType:        ecstypes.LaunchTypeFargate,
-				TaskArn:           awssdk.String(taskARN),
-				TaskDefinitionArn: awssdk.String(taskDefinitionARN),
+				CapacityProviderName: awssdk.String("FARGATE_SPOT"),
+				ClusterArn:           awssdk.String(clusterARN),
+				Cpu:                  awssdk.String("512"),
+				EphemeralStorage:     &ecstypes.EphemeralStorage{SizeInGiB: 40},
+				Group:                awssdk.String("service:orders"),
+				LastStatus:           awssdk.String("RUNNING"),
+				LaunchType:           ecstypes.LaunchTypeFargate,
+				Memory:               awssdk.String("1024"),
+				PlatformFamily:       awssdk.String("Linux"),
+				PlatformVersion:      awssdk.String("1.4.0"),
+				TaskArn:              awssdk.String(taskARN),
+				TaskDefinitionArn:    awssdk.String(taskDefinitionARN),
 			}},
 			ecsTaskDefinitionARNs: []string{taskDefinitionARN},
 			ecsTaskDefinitions: map[string]ecstypes.TaskDefinition{taskDefinitionARN: {
 				ContainerDefinitions: []ecstypes.ContainerDefinition{{Name: awssdk.String("orders"), Image: awssdk.String("repo/orders:latest")}},
 				ExecutionRoleArn:     awssdk.String("arn:aws:iam::123456789012:role/ECSExecutionRole"),
+				EphemeralStorage:     &ecstypes.EphemeralStorage{SizeInGiB: 40},
 				Family:               awssdk.String("orders"),
+				NetworkMode:          ecstypes.NetworkModeAwsvpc,
 				RequiresCompatibilities: []ecstypes.Compatibility{
 					ecstypes.CompatibilityFargate,
 				},
-				Revision:          7,
+				Revision: 7,
+				RuntimePlatform: &ecstypes.RuntimePlatform{
+					CpuArchitecture:       ecstypes.CPUArchitectureArm64,
+					OperatingSystemFamily: ecstypes.OSFamilyLinux,
+				},
 				Status:            ecstypes.TaskDefinitionStatusActive,
 				TaskDefinitionArn: awssdk.String(taskDefinitionARN),
 				TaskRoleArn:       awssdk.String("arn:aws:iam::123456789012:role/ECSTaskRole"),
@@ -1136,6 +1182,21 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				if got := event.Attributes["task_definition_arn"]; got != taskDefinitionARN {
 					t.Fatalf("ecs service task_definition_arn = %q, want %q", got, taskDefinitionARN)
 				}
+				if got := event.Attributes["fargate_service"]; got != "true" {
+					t.Fatalf("ecs service fargate_service = %q, want true", got)
+				}
+				if got := event.Attributes["launch_type_effective"]; got != "FARGATE" {
+					t.Fatalf("ecs service launch_type_effective = %q, want FARGATE", got)
+				}
+				if got := event.Attributes["assign_public_ip"]; got != "ENABLED" {
+					t.Fatalf("ecs service assign_public_ip = %q, want ENABLED", got)
+				}
+				if got := event.Attributes["deployment_circuit_breaker_rollback"]; got != "true" {
+					t.Fatalf("ecs service deployment_circuit_breaker_rollback = %q, want true", got)
+				}
+				if got := event.Attributes["load_balancer_target_group_arns"]; got != "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/123" {
+					t.Fatalf("ecs service load_balancer_target_group_arns = %q", got)
+				}
 			},
 		},
 		{
@@ -1148,6 +1209,15 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				if got := event.Attributes["network_interface_ids"]; got != "eni-task" {
 					t.Fatalf("ecs task network_interface_ids = %q, want eni-task", got)
 				}
+				if got := event.Attributes["fargate_task"]; got != "true" {
+					t.Fatalf("ecs task fargate_task = %q, want true", got)
+				}
+				if got := event.Attributes["capacity_provider_name"]; got != "FARGATE_SPOT" {
+					t.Fatalf("ecs task capacity_provider_name = %q, want FARGATE_SPOT", got)
+				}
+				if got := event.Attributes["ephemeral_storage_size_gib"]; got != "40" {
+					t.Fatalf("ecs task ephemeral_storage_size_gib = %q, want 40", got)
+				}
 			},
 		},
 		{
@@ -1156,6 +1226,18 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
 				if got := event.Attributes["task_role_name"]; got != "ECSTaskRole" {
 					t.Fatalf("ecs task task_role_name = %q, want ECSTaskRole", got)
+				}
+				if got := event.Attributes["fargate_compatible"]; got != "true" {
+					t.Fatalf("ecs task definition fargate_compatible = %q, want true", got)
+				}
+				if got := event.Attributes["awsvpc_required"]; got != "true" {
+					t.Fatalf("ecs task definition awsvpc_required = %q, want true", got)
+				}
+				if got := event.Attributes["runtime_cpu_architecture"]; got != "ARM64" {
+					t.Fatalf("ecs task definition runtime_cpu_architecture = %q, want ARM64", got)
+				}
+				if got := event.Attributes["ephemeral_storage_size_gib"]; got != "40" {
+					t.Fatalf("ecs task definition ephemeral_storage_size_gib = %q, want 40", got)
 				}
 			},
 		},
