@@ -75,7 +75,7 @@ var azureARMChildDefinitions = []azureARMChildDefinition{
 	{Name: familyAKSNodePool, Label: "azure aks node pools", ParentProvider: "Microsoft.ContainerService/managedClusters", ParentAPIVersion: "2024-05-01", ChildPath: "agentPools", ChildAPIVersion: "2024-05-01", Kind: "azure.aks_node_pool", SchemaRef: "azure/aks_node_pool/v1"},
 	{Name: "cognitive_services_deployment", Label: "azure cognitive services deployments", ParentProvider: "Microsoft.CognitiveServices/accounts", ParentAPIVersion: "2023-05-01", ChildPath: "deployments", ChildAPIVersion: "2023-05-01", Kind: "azure.cognitive_services_deployment", SchemaRef: "azure/cognitive_services_deployment/v1"},
 	{Name: "cosmos_postgresql_firewall_rule", Label: "azure cosmos db for postgresql firewall rules", ParentProvider: "Microsoft.DBforPostgreSQL/serverGroupsv2", ParentAPIVersion: "2023-03-02-preview", ChildPath: "firewallRules", ChildAPIVersion: "2023-03-02-preview", Kind: "azure.cosmos_postgresql_firewall_rule", SchemaRef: "azure/cosmos_postgresql_firewall_rule/v1"},
-	{Name: "diagnostic_setting_resource", Label: "azure resource diagnostic settings", ParentProvider: "", ParentAPIVersion: "2021-04-01", ChildPath: "providers/Microsoft.Insights/diagnosticSettings", ChildAPIVersion: "2021-05-01-preview", Kind: "azure.diagnostic_setting_resource", SchemaRef: "azure/diagnostic_setting_resource/v1"},
+	{Name: "diagnostic_setting_resource", Label: "azure resource diagnostic settings", ParentProvider: "", ParentAPIVersion: "2021-04-01", ChildPath: "providers/Microsoft.Insights/diagnosticSettings", ChildAPIVersion: "2021-05-01-preview", Kind: "azure.diagnostic_setting_resource", SchemaRef: "azure/diagnostic_setting_resource/v1", Optional: true},
 	{Name: "machine_learning_compute", Label: "azure machine learning computes", ParentProvider: "Microsoft.MachineLearningServices/workspaces", ParentAPIVersion: "2024-04-01", ChildPath: "computes", ChildAPIVersion: "2024-04-01", Kind: "azure.machine_learning_compute", SchemaRef: "azure/machine_learning_compute/v1"},
 	{Name: "postgresql_firewall_rule", Label: "azure postgresql firewall rules", ParentProvider: "Microsoft.DBforPostgreSQL/flexibleServers", ParentAPIVersion: "2023-06-01-preview", ChildPath: "firewallRules", ChildAPIVersion: "2023-06-01-preview", Kind: "azure.postgresql_firewall_rule", SchemaRef: "azure/postgresql_firewall_rule/v1"},
 	{Name: "server_vulnerability_subassessment", Label: "azure security subassessments", ParentProvider: "Microsoft.Security/assessments", ParentAPIVersion: "2020-01-01", ChildPath: "subAssessments", ChildAPIVersion: "2019-01-01-preview", Kind: "azure.server_vulnerability_subassessment", SchemaRef: "azure/server_vulnerability_subassessment/v1"},
@@ -337,6 +337,7 @@ type azureARMChildDefinition struct {
 	ChildAPIVersion  string
 	Kind             string
 	SchemaRef        string
+	Optional         bool
 	Singleton        bool
 }
 
@@ -1491,6 +1492,9 @@ func listAzureARMChildrenForParent(ctx context.Context, source *Source, settings
 	}
 	var response armPage
 	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
+		if definition.Optional && optionalAzureARMChildErr(err) {
+			return nil, "", nil
+		}
 		return nil, "", err
 	}
 	children, err := decodeAzureRecords(response.Value, definition.Label, func(record *armTypedResourceRecord, raw json.RawMessage) {
@@ -1505,6 +1509,13 @@ func listAzureARMChildrenForParent(ctx context.Context, source *Source, settings
 		records = append(records, azureARMChildRecord{Resource: child, Parent: parent})
 	}
 	return records, response.Next, nil
+}
+
+func optionalAzureARMChildErr(err error) bool {
+	message := fmt.Sprint(err)
+	lower := strings.ToLower(message)
+	return strings.Contains(message, "azure API returned 404") ||
+		(strings.Contains(message, "azure API returned 400") && strings.Contains(lower, "diagnostic"))
 }
 
 func listCosmosAccounts(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {

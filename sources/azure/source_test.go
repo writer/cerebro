@@ -575,6 +575,41 @@ func TestAzureARMChildSingletonPreservesRawPayload(t *testing.T) {
 	}
 }
 
+func TestAzureARMOptionalChildSkipsUnsupportedParents(t *testing.T) {
+	definition := azureChildDefinitionForTest(t, "diagnostic_setting_resource")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/subscriptions/sub-1/resources":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{
+				{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/unsupported", "name": "unsupported", "type": "Microsoft.Storage/storageAccounts", "location": "eastus"},
+				{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1", "name": "vm1", "type": "Microsoft.Compute/virtualMachines", "location": "eastus"},
+			}})
+		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/unsupported/providers/Microsoft.Insights/diagnosticSettings":
+			http.Error(w, "diagnostic settings are not supported for this resource", http.StatusNotFound)
+		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1/providers/Microsoft.Insights/diagnosticSettings":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1/providers/Microsoft.Insights/diagnosticSettings/default", "name": "default", "type": "Microsoft.Insights/diagnosticSettings", "properties": map[string]any{"logs": []map[string]any{{"category": "Administrative", "enabled": true}}}}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, settings := newAzurePaginationTestSource(t, server, definition.Name)
+
+	records, next, err := listAzureARMChildResources(context.Background(), source, settings, "", 2, definition)
+	if err != nil {
+		t.Fatalf("listAzureARMChildResources: %v", err)
+	}
+	if next != "" {
+		t.Fatalf("next = %q, want empty", next)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if got := records[0].Resource.Name; got != "default" {
+		t.Fatalf("child name = %q, want default", got)
+	}
+}
+
 func TestListSubnetsReturnsDecodeErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
