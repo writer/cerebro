@@ -100,6 +100,7 @@ jobs:
         env:
           DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
           DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_REVIEW_ACTOR: ${{ github.event.pull_request.user.login }}
           DROID_PREFLIGHT_JSON_OUT: tmp/droid-preflight.json
         run: |
           set +e
@@ -231,7 +232,7 @@ jobs:
 
   droid-review:
     needs: droid-review-preflight
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' && needs.droid-review-preflight.outputs.run_droid_review == 'true'
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'writer-cerebro-deploy[bot]' && needs.droid-review-preflight.outputs.run_droid_review == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
