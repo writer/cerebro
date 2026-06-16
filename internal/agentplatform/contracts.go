@@ -442,6 +442,33 @@ var Capabilities = []Capability{
 			RequiredApprovers: []string{"platform", "security"},
 		},
 	},
+	{
+		ID:              "graph-reasoning",
+		Name:            "Agent graph reasoning",
+		DomainID:        "knowledge",
+		Kind:            "agent-graph-reasoning",
+		Version:         "1.0.0",
+		Owner:           "cerebro-platform",
+		Risk:            "medium",
+		DefaultOn:       true,
+		Summary:         "Lets agents ask bounded graph questions and receive a structured reasoning envelope with query plan, validation, rows, graph context, citations, and provenance.",
+		ConsoleSurfaces: []string{"Agent platform graph API", "Ask console", "trace drawer"},
+		RequiredScopes:  []string{"cosmo.security.read"},
+		Eval: EvalStatus{
+			Required:      true,
+			Status:        "required",
+			LocalCommands: []string{"go test ./internal/graphagent ./internal/bootstrap -run Test.*Reason"},
+			ScenarioSets:  []string{"graph-reasoning-envelope", "graph-reasoning-unsupported-query"},
+			Rubrics:       []string{"read-only validation", "query plan transparency", "citation grounding", "provenance completeness"},
+		},
+		RuntimeEvents: []string{"agent.run.started", "capability.selected", "knowledge.retrieval.completed", "agent.run.completed", "agent.run.failed"},
+		Provenance:    []string{"graph-reasoning", "knowledge-context", "graph-neighborhood"},
+		Review: ReviewStatus{
+			State:             "required",
+			Cadence:           "before graph reasoning API or query contract changes",
+			RequiredApprovers: []string{"platform", "security"},
+		},
+	},
 }
 
 var RuntimeEvents = []RuntimeEvent{
@@ -635,6 +662,14 @@ var ProvenanceRequirements = []ProvenanceRequirement{
 		Surface:          "graph-neighborhood",
 		DomainID:         "knowledge",
 		RequiredFields:   []string{"source_urn", "scope", "entity_urn", "budget", "citation_status", "fallback_reason"},
+		CitationRequired: true,
+		BudgetRequired:   true,
+		FallbackRequired: true,
+	},
+	{
+		Surface:          "graph-reasoning",
+		DomainID:         "knowledge",
+		RequiredFields:   []string{"trace_id", "source_urns", "scope", "citation_status", "fallback_reason"},
 		CitationRequired: true,
 		BudgetRequired:   true,
 		FallbackRequired: true,

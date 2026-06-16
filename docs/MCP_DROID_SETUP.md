@@ -20,6 +20,18 @@ The endpoint is a stateless Streamable HTTP MCP endpoint:
 
 Do not advertise or emulate a stateful SSE session on this route. Native Droid uses the MCP SDK Streamable HTTP client for `type: "http"` servers, and it treats stateful session/SSE signals as part of the transport contract.
 
+## Tool/domain parity
+
+MCP tools are adapters over existing Cerebro domain surfaces, not a parallel
+product API. Each tool must map to an HTTP route, Connect RPC, report contract,
+or explicitly named composite of those surfaces. Agent-oriented tools such as
+investigation context and risk action planning may bundle multiple reads, but
+their source domain surfaces must stay listed in the MCP parity test.
+
+Mutating workflows are exposed only as proposal tools with `dry_run=true`,
+`readOnlyHint=true`, and a response that describes the required write scope
+without applying the action.
+
 ## Native Droid client configuration
 
 Use an HTTP MCP server entry. Keep the URL on the MCP route itself, not just the origin.

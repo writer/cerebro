@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	findingdomain "github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/riskplan"
@@ -569,6 +570,8 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGraphImpact(r, args)
 	case "cerebro.graph.paths":
 		return app.mcpGraphPaths(r, args)
+	case "cerebro.graph.reason":
+		return app.mcpGraphReason(r, args)
 	case "cerebro.investigation.context":
 		return app.mcpInvestigationContext(r, args)
 	case "cerebro.findings.action.propose":
@@ -1432,6 +1435,44 @@ func (app *App) mcpGraphPaths(r *http.Request, args map[string]any) (any, error)
 	return mcpAddResponseMetadata(value, mcpResponseMetadata(limitApplied, mcpMapArrayCount(value, "paths"), nil)), nil
 }
 
+func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error) {
+	request := graphagent.AskRequest{
+		TenantID: mcpStringArg(args, "tenant_id"),
+		Question: mcpStringArg(args, "question"),
+		ScopeURN: mcpStringArg(args, "scope_urn"),
+		Model:    mcpStringArg(args, "model"),
+	}
+	if err := forceGraphReasoningTenant(r.Context(), &request); err != nil {
+		return nil, err
+	}
+	if request.ScopeURN != "" {
+		if err := authorizeCerebroURNTenant(r.Context(), request.ScopeURN); err != nil {
+			return nil, mcpNormalizeIDLookupError(err, ports.ErrGraphEntityNotFound)
+		}
+	}
+	if err := graphagent.ValidateRequest(request); err != nil {
+		return nil, err
+	}
+	service, err := app.newGraphReasoningService()
+	if err != nil {
+		return nil, err
+	}
+	response, err := service.Reason(r.Context(), request)
+	if err != nil {
+		return nil, err
+	}
+	value, err := jsonValue(response)
+	if err != nil {
+		return nil, err
+	}
+	rows := 0
+	if typed, ok := value.(map[string]any); ok {
+		rows = mcpMapArrayCount(typed, "rows")
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, rows, nil)), nil
+	}
+	return value, nil
+}
+
 func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (any, error) {
 	findingID := mcpStringArg(args, "finding_id")
 	if findingID == "" {
@@ -1894,6 +1935,28 @@ func mcpTools() []mcpTool {
 			}, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Graph Attack Paths"),
+		},
+		{
+			Name:        "cerebro.graph.reason",
+			Title:       "Graph Reasoning",
+			Description: "Answer a tenant-scoped graph question with query plan, guarded Cypher, rows, graph evidence, citations, and provenance.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"question":  map[string]any{"type": "string"},
+				"scope_urn": map[string]any{"type": "string"},
+				"model":     map[string]any{"type": "string"},
+			}, []string{"question"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"trace_id":            map[string]any{"type": "string"},
+				"query_plan":          map[string]any{"type": "object"},
+				"cypher":              map[string]any{"type": "object"},
+				"rows":                map[string]any{"type": "array"},
+				"graph":               map[string]any{"type": "object"},
+				"answer_markdown":     map[string]any{"type": "string"},
+				"citations":           map[string]any{"type": "array"},
+				"citation_validation": map[string]any{"type": "object"},
+				"provenance":          map[string]any{"type": "object"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Graph Reasoning"),
 		},
 		{
 			Name:        "cerebro.investigation.context",
@@ -2479,19 +2542,19 @@ func (app *App) mcpGetPrompt(_ *http.Request, rawParams json.RawMessage) (map[st
 		if findingID == "" {
 			return nil, fmt.Errorf("%w: finding_id is required", errInvalidHTTPRequest)
 		}
-		text = "Investigate Cerebro finding " + findingID + ". First read cerebro://investigation/finding/" + url.PathEscape(findingID) + ", then use cerebro.evidence.list, cerebro.assets.get, cerebro.graph.neighborhood, cerebro.graph.impact, and cerebro.findings.action.propose with dry_run=true for recommended next steps. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+		text = "Investigate Cerebro finding " + findingID + ". First read cerebro://investigation/finding/" + url.PathEscape(findingID) + ", then use cerebro.evidence.list, cerebro.assets.get, cerebro.graph.reason, cerebro.graph.neighborhood, cerebro.graph.impact, and cerebro.findings.action.propose with dry_run=true for recommended next steps. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 	case "investigate_asset":
 		assetURN := mcpStringArg(args, "asset_urn")
 		if assetURN == "" {
 			return nil, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest)
 		}
-		text = "Investigate Cerebro asset " + assetURN + ". Read cerebro://asset/" + url.PathEscape(assetURN) + ", then use cerebro.graph.neighborhood, cerebro.graph.impact, cerebro.findings.search, and cerebro.risk.summary to explain blast radius and related findings. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+		text = "Investigate Cerebro asset " + assetURN + ". Read cerebro://asset/" + url.PathEscape(assetURN) + ", then use cerebro.graph.reason, cerebro.graph.neighborhood, cerebro.graph.impact, cerebro.findings.search, and cerebro.risk.summary to explain blast radius and related findings. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 	case "summarize_tenant_risk":
 		tenantID := mcpStringArg(args, "tenant_id")
 		if tenantID == "" {
-			text = "Summarize tenant risk for the authenticated Cerebro principal using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+			text = "Summarize tenant risk for the authenticated Cerebro principal using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.reason, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 		} else {
-			text = "Summarize Cerebro tenant " + tenantID + " risk using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+			text = "Summarize Cerebro tenant " + tenantID + " risk using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.reason, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 		}
 	default:
 		return nil, fmt.Errorf("%w: unknown prompt %q", errInvalidHTTPRequest, name)

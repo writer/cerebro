@@ -41,6 +41,12 @@ The service can start without optional stores and serve lightweight routes such 
 
 Kuzu and embedded/in-memory database backends are intentionally rejected by config and arch tests.
 
+See [`DURABILITY_CONTRACT.md`](./DURABILITY_CONTRACT.md) for the current
+write-path contract. Source runtime sync and workflow writes are event-backed
+before projection. SDK/runtime claim writes are currently Postgres-backed and
+project from persisted claim state until a `claim.v1.*` event family exists.
+Neo4j remains a projection in both cases; it is not a source of truth.
+
 ## API boundaries
 
 - Connect RPCs live under the generated `BootstrapService` path from `proto/cerebro/v1/bootstrap.proto`.
@@ -48,6 +54,16 @@ Kuzu and embedded/in-memory database backends are intentionally rejected by conf
 - Legacy `/graph/*` aliases have been removed; use the `/platform/graph/*` routes or the matching Connect RPCs.
 - HTTP-only surfaces are route-grouped in `internal/bootstrap/routes.go` so platform, internal, and public routes are explicit while the remaining Connect coverage gap is closed.
 - Public unauthenticated routes are limited to `/health`, `/healthz`, `/livez`, `/openapi.yaml`, OAuth metadata routes, and `/.well-known/device-jwks.json` when API auth is enabled.
+
+## Bootstrap ownership
+
+`internal/bootstrap` is the outer composition root for the server. It owns
+routing, auth, request/response mapping, and dependency wiring. New domain behavior should land behind a domain package and service interface first, with bootstrap limited to translating the HTTP or Connect boundary into that domain contract.
+
+Production Go under `internal/bootstrap` is ratcheted by `tools/archtests` so
+new routes and handlers do not quietly grow the bootstrap surface. If a PR must
+increase that budget, the PR should explain why the behavior cannot move behind
+a domain package yet and update this architecture note alongside the test.
 
 ## Postgres migrations
 
@@ -68,4 +84,8 @@ Sources live under `sources/<id>` and must include:
 - fixtures under `testdata/`
 - no direct store writes
 
-Arch tests and custom linters are the enforcement mechanism for keeping future sources inside the Source CDK and preventing regressions toward the older god-object architecture.
+Arch tests and custom linters are the enforcement mechanism for keeping future
+sources inside the Source CDK and preventing regressions toward the older
+god-object architecture. [`SOURCE_CDK_EXTRACTION.md`](./SOURCE_CDK_EXTRACTION.md)
+tracks grandfathered source LOC budgets and the extraction pressure that should
+move shared behavior back into the CDK.

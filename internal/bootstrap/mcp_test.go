@@ -7,12 +7,15 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -141,6 +144,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.neighborhood",
 		"cerebro.graph.impact",
 		"cerebro.graph.paths",
+		"cerebro.graph.reason",
 		"cerebro.investigation.context",
 		"cerebro.findings.action.propose",
 		"cerebro.source_runtimes.refresh.propose",
@@ -149,6 +153,82 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 			t.Fatalf("tools/list missing %s in %#v", want, names)
 		}
 	}
+}
+
+func TestMCPToolsDeclareDomainSurfaceParity(t *testing.T) {
+	corpus := mcpDomainSurfaceCorpus(t)
+	tools := map[string]bool{}
+	for _, tool := range mcpTools() {
+		tools[tool.Name] = true
+		contract, ok := mcpToolDomainSurfaceContracts[tool.Name]
+		if !ok {
+			t.Fatalf("%s has no MCP domain surface contract", tool.Name)
+		}
+		if len(contract.Markers) == 0 {
+			t.Fatalf("%s domain surface contract has no markers", tool.Name)
+		}
+		for _, marker := range contract.Markers {
+			if !strings.Contains(corpus, marker) {
+				t.Fatalf("%s domain surface marker %q not found in API/domain corpus", tool.Name, marker)
+			}
+		}
+	}
+	for name := range mcpToolDomainSurfaceContracts {
+		if !tools[name] {
+			t.Fatalf("MCP domain surface contract covers missing tool %s", name)
+		}
+	}
+}
+
+type mcpToolDomainSurfaceContract struct {
+	Markers []string
+}
+
+var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
+	"cerebro.health":                          {Markers: []string{"GET /health"}},
+	"cerebro.version":                         {Markers: []string{"GetVersion"}},
+	"cerebro.source_runtimes.list":            {Markers: []string{"GET /source-runtimes"}},
+	"cerebro.connector_definitions.list":      {Markers: []string{"GET /connector-definitions"}},
+	"cerebro.connector_definitions.validate":  {Markers: []string{"POST /connector-definitions/validate"}},
+	"cerebro.findings.list":                   {Markers: []string{"GET /source-runtimes/{runtimeID}/findings"}},
+	"cerebro.findings.get":                    {Markers: []string{"GET /findings/{findingID}"}},
+	"cerebro.findings.search":                 {Markers: []string{"GET /source-runtimes/{runtimeID}/findings", "GET /grc/findings"}},
+	"cerebro.runtimes.status":                 {Markers: []string{"GET /source-runtimes/{runtimeID}", "GET /source-runtimes/{runtimeID}/findings"}},
+	"cerebro.evidence.list":                   {Markers: []string{"GET /source-runtimes/{runtimeID}/finding-evidence"}},
+	"cerebro.evidence.get":                    {Markers: []string{"GET /finding-evidence/{evidenceID}"}},
+	"cerebro.assets.search":                   {Markers: []string{"GET /grc/inventory/assets"}},
+	"cerebro.assets.get":                      {Markers: []string{"GET /grc/inventory/assets/detail"}},
+	"cerebro.risk.summary":                    {Markers: []string{"GET /grc/dashboard", "GET /source-runtimes/{runtimeID}/findings"}},
+	"cerebro.risk.actions.list":               {Markers: []string{"risk-action-plan", "internal/riskplan"}},
+	"cerebro.risk.actions.explain":            {Markers: []string{"risk-action-plan", "internal/riskplan"}},
+	"cerebro.graph.neighborhood":              {Markers: []string{"GET /platform/graph/neighborhood"}},
+	"cerebro.graph.impact":                    {Markers: []string{"GET /platform/graph/impact"}},
+	"cerebro.graph.paths":                     {Markers: []string{"GET /platform/graph/attack-paths"}},
+	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
+	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
+	"cerebro.findings.action.propose":         {Markers: []string{"POST /findings/{findingID}/resolve", "POST /findings/{findingID}/suppress", "POST /findings/{findingID}/notes", "POST /findings/{findingID}/tickets"}},
+	"cerebro.source_runtimes.refresh.propose": {Markers: []string{"POST /source-runtimes/{runtimeID}/sync"}},
+}
+
+func mcpDomainSurfaceCorpus(t *testing.T) string {
+	t.Helper()
+	root := bootstrapRepoRoot(t)
+	var builder strings.Builder
+	for _, rel := range []string{
+		"internal/bootstrap/routes.go",
+		"proto/cerebro/v1/bootstrap.proto",
+		"api/openapi.yaml",
+		"docs/MCP_DROID_SETUP.md",
+		"docs/FINDINGS_PLATFORM_ARCHITECTURE.md",
+	} {
+		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		builder.Write(body)
+		builder.WriteByte('\n')
+	}
+	return builder.String()
 }
 
 func TestMCPConnectorDefinitionValidateReturnsSupportReport(t *testing.T) {
@@ -1754,6 +1834,84 @@ func TestMCPGraphNeighborhood(t *testing.T) {
 	}
 }
 
+func TestMCPGraphReason(t *testing.T) {
+	graph := &stubGraphStore{
+		cypherRows: [][]ports.CypherRow{{
+			{Values: map[string]any{
+				"entity_urn":  "urn:cerebro:writer:asset:prod-db",
+				"entity_type": "asset",
+				"label":       "prod-db",
+			}},
+		}},
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:asset:prod-db", EntityType: "asset", Label: "prod-db"},
+		},
+	}
+	llm := &graphagent.StubLLMClient{
+		DraftResponse: &graphagent.DraftResponse{
+			Rationale: "Answering with scoped graph evidence.",
+			Cypher: `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS entity_urn, e.entity_type AS entity_type, e.label AS label
+LIMIT 25`,
+		},
+		Summary: "Review `urn:cerebro:writer:asset:prod-db` first.",
+	}
+	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, graph, llm)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.reason",
+			"arguments": map[string]any{
+				"question":  "Which asset should I review first?",
+				"scope_urn": "urn:cerebro:writer:asset:prod-db",
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("graph.reason error = %#v", response["error"])
+	}
+	content := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if content["trace_id"] == "" || content["query_plan"] == nil || content["cypher"] == nil {
+		t.Fatalf("graph.reason missing trace/query/cypher: %#v", content)
+	}
+	rows := content["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["entity_urn"] != "urn:cerebro:writer:asset:prod-db" {
+		t.Fatalf("graph.reason rows = %#v", rows)
+	}
+	provenance := content["provenance"].(map[string]any)
+	if provenance["surface"] != "graph-reasoning" || provenance["citation_status"] != "valid" {
+		t.Fatalf("graph.reason provenance = %#v", provenance)
+	}
+	if content["tenant_id"] != "writer" {
+		t.Fatalf("graph.reason tenant_id = %#v, want authenticated tenant writer", content["tenant_id"])
+	}
+	metadata := content["metadata"].(map[string]any)
+	if metadata["returned"] != float64(1) || metadata["stateless"] != true {
+		t.Fatalf("graph.reason metadata = %#v", metadata)
+	}
+
+	overrideResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.reason",
+			"arguments": map[string]any{
+				"tenant_id": "other",
+				"question":  "Which asset should I review first?",
+			},
+		},
+	})
+	overrideResult := overrideResponse["result"].(map[string]any)
+	if overrideResult["isError"] != true || !strings.Contains(overrideResult["content"].([]any)[0].(map[string]any)["text"].(string), "tenant forbidden") {
+		t.Fatalf("graph.reason tenant override response = %#v", overrideResponse)
+	}
+}
+
 func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 	graph := &stubGraphStore{
 		neighborhood: &ports.EntityNeighborhood{
@@ -1996,6 +2154,11 @@ func newMCPTestServer(t *testing.T, store *stubRuntimeStore) *httptest.Server {
 
 func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore) *httptest.Server {
 	t.Helper()
+	return newMCPTestServerWithGraphReasoning(t, store, graph, nil)
+}
+
+func newMCPTestServerWithGraphReasoning(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore, llm graphagent.LLMClient) *httptest.Server {
+	t.Helper()
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
@@ -2007,7 +2170,7 @@ func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stu
 				TenantID:  "writer",
 			}},
 		},
-	}, Dependencies{StateStore: store, GraphStore: graph}, nil)
+	}, Dependencies{StateStore: store, GraphStore: graph, GraphAgentLLM: llm}, nil)
 	return httptest.NewServer(app.Handler())
 }
 
