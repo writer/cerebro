@@ -19,4 +19,5 @@ if [ -n "$staged_go" ]; then
   fi
 fi
 
+echo "verify: running full local validation, including golangci-lint..."
 make verify

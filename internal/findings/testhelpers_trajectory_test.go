@@ -27,6 +27,10 @@ func assertGitHubRuleTrajectory(t *testing.T, rule Rule, events []Event, expecte
 	if len(events) == 0 {
 		t.Fatal("events are required")
 	}
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	ruleID := strings.TrimSpace(spec.GetId())
 	expectedStatus := githubTrajectoryFindingStatusString(t, expectedFinalStatus)
 	runtimeID := githubTrajectoryRuntimeID(events)

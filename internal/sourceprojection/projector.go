@@ -1211,6 +1211,9 @@ func githubProgrammaticCredentialStatus(attributes map[string]string) string {
 }
 
 func githubSelfHostedRunnerProjection(tenantID string, attributes map[string]string) (string, map[string]string) {
+	if !githubAuditProjectsSelfHostedRunner(attributes) {
+		return "", nil
+	}
 	runnerID := strings.TrimSpace(attributes["runner_id"])
 	if runnerID == "" {
 		return "", nil
@@ -1238,6 +1241,20 @@ func githubSelfHostedRunnerProjection(tenantID string, attributes map[string]str
 	addProjectedAttribute(attrs, "runner_state", attributes["runner_state"])
 	addProjectedAttribute(attrs, "runner_untrusted", firstNonEmpty(attributes["runner_untrusted"], attributes["host_untrusted"], attributes["untrusted_host"]))
 	return projectionURN(tenantID, "github_runner", scopeID, runnerID), attrs
+}
+
+func githubAuditProjectsSelfHostedRunner(attributes map[string]string) bool {
+	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	if action == "" {
+		return false
+	}
+	// GitHub audit rows such as workflows.prepared_workflow_job include per-job
+	// GitHub-hosted runner IDs. Those are ephemeral execution details, not
+	// customer-managed self-hosted runner assets.
+	if !strings.Contains(action, "self_hosted_runner") {
+		return false
+	}
+	return true
 }
 
 func githubRunnerScope(scope string) (string, string) {
