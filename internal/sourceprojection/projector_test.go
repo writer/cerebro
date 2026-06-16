@@ -2337,6 +2337,38 @@ func TestProjectGitHubAuditProjectsSelfHostedRunnerState(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubAuditSkipsWorkflowJobHostedRunnerInventory(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-workflow-job",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"action":                  "workflows.prepared_workflow_job",
+			"org":                     "writer",
+			"repo":                    "writer/cerebro",
+			"resource_id":             "writer/cerebro",
+			"resource_type":           "repo",
+			"runner_group_name":       "GitHub Actions",
+			"runner_id":               "1002207767",
+			"runner_name":             "GitHub Actions 1002207767",
+			"runner_scope":            "repo:writer/cerebro",
+			"source_runtime_id":       "writer-github-audit",
+			"transport_protocol_name": "ssh",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	for urn, entity := range graph.entities {
+		if entity.EntityType == "github.runner" {
+			t.Fatalf("unexpected github.runner entity %q from workflow job audit row: %#v", urn, entity)
+		}
+	}
+}
+
 // Missing actor_id alone is not enough to call an audit actor a credential:
 // GitHub git audit rows for real users can also omit actor_id. The source
 // resolves those actors through /users/{login} and stamps actor_type=User, and
