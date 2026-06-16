@@ -15,7 +15,7 @@ In practical terms, Cerebro ingests source and runtime signals, turns them into 
 
 - **Bootstrap API service** — `net/http` plus Connect RPC handlers for health, source, runtime, claim, finding, candidate, report, workflow, MCP, device, and graph routes.
 - **Source previews and runtime sync** — built-in sources can be checked, discovered, read, bootstrapped from config, persisted as source runtimes, synced through an append log, and projected into state/graph stores when configured.
-- **Panopticon S3 ingest** — first-class `panopticon` source runtimes read canonical alert, case, and IOC event archives from S3 NDJSON or NDJSON-gzip prefixes and emit validated `panopticon.*` events for projections and findings.
+- **Panopticon security operations ingest** — first-class `panopticon` source runtimes read curated cases by default from the Panopticon API, with explicit alert and IOC families available for evidence and enrichment.
 - **Finding workflows** — built-in finding rules can evaluate source runtime events, produce candidates, persist evidence/evaluation runs, promote or reject candidates, and drive finding lifecycle actions.
 - **Report runs** — report definitions can be listed and executed with durable run retrieval when a state store is configured.
 - **Workflow event replay** — knowledge decisions, actions, and outcomes can be written and replayed through append-log-backed projections.
@@ -124,7 +124,7 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a loc
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
 | Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |
 | Use SDK helpers | `sdk/python/README.md`, `sdk/typescript/README.md`, and `sources/sdk` | Maintained helpers target current bootstrap routes; the historical Agent SDK gateway is retired. |
-| Ingest Panopticon exports | `sources/panopticon`, source runtime config, and `sdk/python/examples/panopticon_push_claims.py` | S3 runtimes read canonical `alerts/`, `cases/`, and `iocs/` event archives; SDK helper writes supported claim payloads only. |
+| Ingest Panopticon cases | `sources/panopticon`, source runtime config, and `sdk/python/examples/panopticon_push_claims.py` | API runtimes read curated `case` events by default; explicit `alert` and `ioc` families are available when raw signal evidence or IOC enrichment is needed. |
 | Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
 | Persist and sync a runtime | `docs/SOURCE_RUNTIME_GUIDE.md` and `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
 | Work on graph behavior | `docs/GRAPH_OPERATIONS.md` and `graph counts/health/ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
@@ -299,7 +299,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
 | `openai` | OpenAI organization source | users, projects, service accounts, API keys, admin API keys |
 | `pagerduty` | PagerDuty incident management source | users, teams, services, schedules, escalation policies, integrations, vendors |
-| `panopticon` | Panopticon security operations source backed by canonical S3 event archives | alerts, cases, IOCs |
+| `panopticon` | Panopticon security operations API source | cases by default; alerts and IOCs explicitly |
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
 | `security_tooling_map` | Security tooling inventory source | configured tooling-map families |

@@ -136,6 +136,29 @@ paths:
           description: Invalid capability decision request.
         '404':
           description: Capability was not found.
+  /api/v1/agent-platform/preflight:
+    post:
+      operationId: preflightAgentPlatformRun
+      summary: Resolve agent run preconditions
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPlatformPreflightRequest'
+      responses:
+        '200':
+          description: Tenant-scoped capability, graph, connector, policy, and write-back preflight envelope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformPreflight'
+        '400':
+          description: Invalid preflight request.
+        '403':
+          description: Tenant or graph scope is not allowed.
   /api/v1/agent-platform/graph/reason:
     post:
       operationId: reasonOverAgentPlatformGraph
@@ -1419,6 +1442,16 @@ paths:
   /findings/{findingID}/tickets:
     post:
       summary: Link finding ticket
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/findingID'
+      responses:
+        '200':
+          description: Updated finding.
+  /findings/{findingID}/external-refs:
+    post:
+      summary: Link finding external lifecycle reference
       tags:
         - Findings
       parameters:
@@ -3144,14 +3177,6 @@ components:
       properties:
         capability_id:
           type: string
-        tenant_id:
-          type: string
-        actor_id:
-          type: string
-        requested_scopes:
-          type: array
-          items:
-            type: string
         connector_readiness:
           type: object
           additionalProperties:
@@ -3166,6 +3191,97 @@ components:
           type: string
         provenance_requirement:
           type: string
+    AgentPlatformPreflightRequest:
+      type: object
+      properties:
+        capability_ids:
+          type: array
+          items:
+            type: string
+          description: Defaults to graph-reasoning when omitted.
+        question:
+          type: string
+        scope_urn:
+          type: string
+          description: Optional Cerebro URN inside the authenticated tenant to focus graph planning.
+        model:
+          type: string
+        connector_readiness:
+          type: object
+          additionalProperties:
+            type: string
+        eval_status_overrides:
+          type: object
+          additionalProperties:
+            type: string
+        allow_preview:
+          type: boolean
+        selection_reason:
+          type: string
+        provenance_requirement:
+          type: string
+    AgentPlatformPreflight:
+      type: object
+      required:
+        - version
+        - enabled
+        - reason
+        - blockers
+        - selected_capabilities
+        - capability_decisions
+        - graph_context
+        - connector_context
+        - policy
+        - write_back
+        - runtime_events
+        - provenance
+      properties:
+        version:
+          type: string
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        question:
+          type: string
+        scope_urn:
+          type: string
+        model:
+          type: string
+        enabled:
+          type: boolean
+        reason:
+          type: string
+        blockers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapabilityDecisionBlocker'
+        selected_capabilities:
+          type: array
+          items:
+            type: string
+        capability_decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapabilityDecision'
+        graph_context:
+          $ref: '#/components/schemas/AgentPlatformGraphPlanningContext'
+        connector_context:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformConnectorGraphNode'
+        policy:
+          $ref: '#/components/schemas/AgentPlatformPolicyDecision'
+        write_back:
+          $ref: '#/components/schemas/AgentPlatformWriteBackContract'
+        runtime_events:
+          type: array
+          items:
+            type: string
+        provenance:
+          type: array
+          items:
+            type: string
     AgentPlatformCapabilityDecision:
       type: object
       required:
@@ -3265,6 +3381,162 @@ components:
           type: array
           items:
             type: string
+    AgentPlatformGraphPlanningContext:
+      type: object
+      required:
+        - reasoning_surface
+        - read_only
+        - citation_required
+        - provenance_required
+        - budget
+        - query_modes
+        - provenance_surfaces
+      properties:
+        tenant_id:
+          type: string
+        scope_urn:
+          type: string
+        scope_tenant_id:
+          type: string
+        reasoning_surface:
+          type: string
+        read_only:
+          type: boolean
+        citation_required:
+          type: boolean
+        provenance_required:
+          type: boolean
+        budget:
+          $ref: '#/components/schemas/AgentPlatformContextBudget'
+        query_modes:
+          type: array
+          items:
+            type: string
+        provenance_surfaces:
+          type: array
+          items:
+            type: string
+    AgentPlatformContextBudget:
+      type: object
+      required:
+        - max_rows
+        - max_depth
+        - max_children
+      properties:
+        max_rows:
+          type: integer
+        max_depth:
+          type: integer
+        max_children:
+          type: integer
+    AgentPlatformConnectorGraphNode:
+      type: object
+      required:
+        - source_id
+        - node_urn
+        - purpose
+        - auth_models
+        - required_scopes
+        - token_owner
+        - credential_boundary
+        - oauth_surface
+        - mcp_surface
+        - readiness
+        - required
+        - satisfied
+      properties:
+        source_id:
+          type: string
+        node_urn:
+          type: string
+        oauth_node_urn:
+          type: string
+        tenant_id:
+          type: string
+        purpose:
+          type: string
+        auth_models:
+          type: array
+          items:
+            type: string
+        required_scopes:
+          type: array
+          items:
+            type: string
+        token_owner:
+          type: string
+        credential_boundary:
+          type: string
+        oauth_surface:
+          type: string
+        mcp_surface:
+          type: string
+        readiness:
+          type: string
+        required:
+          type: boolean
+        satisfied:
+          type: boolean
+    AgentPlatformPolicyDecision:
+      type: object
+      required:
+        - passing
+        - tenant_forced
+        - checks
+      properties:
+        passing:
+          type: boolean
+        tenant_forced:
+          type: boolean
+        tenant_id:
+          type: string
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformPolicyCheck'
+    AgentPlatformPolicyCheck:
+      type: object
+      required:
+        - id
+        - status
+        - message
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pass, blocked, not_applicable]
+        message:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+    AgentPlatformWriteBackContract:
+      type: object
+      required:
+        - required
+        - trace_id_required
+        - required_events
+        - graph_updates
+        - provenance_surfaces
+      properties:
+        required:
+          type: boolean
+        trace_id_required:
+          type: boolean
+        required_events:
+          type: array
+          items:
+            type: string
+        graph_updates:
+          type: array
+          items:
+            type: string
+        provenance_surfaces:
+          type: array
+          items:
+            type: string
     AgentPlatformGraphReasonResponse:
       type: object
       required:
@@ -3323,6 +3595,8 @@ components:
             $ref: '#/components/schemas/AgentPlatformGraphProgressEvent'
         timings:
           $ref: '#/components/schemas/AgentPlatformGraphStageTimings'
+        preflight:
+          $ref: '#/components/schemas/AgentPlatformPreflight'
         provenance:
           $ref: '#/components/schemas/AgentPlatformGraphReasonProvenance'
     AgentPlatformGraphReasonRequest:
@@ -3497,6 +3771,22 @@ components:
           type: string
         fallback_reason:
           type: string
+        capability_ids:
+          type: array
+          items:
+            type: string
+        policy_checks:
+          type: array
+          items:
+            type: string
+        connector_node_urns:
+          type: array
+          items:
+            type: string
+        write_back_events:
+          type: array
+          items:
+            type: string
     AgentPlatformDomain:
       type: object
       required:
@@ -5426,6 +5716,28 @@ components:
               external_id:
                 type: string
               linked_at:
+                type: string
+                format: date-time
+        external_refs:
+          type: array
+          items:
+            type: object
+            properties:
+              system:
+                type: string
+              kind:
+                type: string
+              external_id:
+                type: string
+              url:
+                type: string
+              external_status:
+                type: string
+              external_status_reason:
+                type: string
+              lifecycle_owner:
+                type: string
+              observed_at:
                 type: string
                 format: date-time
         risk_score:

@@ -332,6 +332,31 @@ func (s *stubFindingStore) LinkFindingTicket(_ context.Context, request ports.Fi
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubFindingStore) LinkFindingExternalRef(_ context.Context, request ports.FindingExternalRefLink) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	replaced := false
+	for index, ref := range cloned.ExternalRefs {
+		if externalRefKey(ref) == externalRefKey(request.ExternalRef) {
+			cloned.ExternalRefs[index] = request.ExternalRef
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		cloned.ExternalRefs = append(cloned.ExternalRefs, request.ExternalRef)
+	}
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
+func externalRefKey(ref ports.FindingExternalRef) string {
+	return strings.TrimSpace(ref.System) + "|" + strings.TrimSpace(ref.Kind) + "|" + strings.TrimSpace(ref.ExternalID)
+}
+
 type stubGraphStore struct {
 	entities   map[string]*ports.ProjectedEntity
 	links      map[string]*ports.ProjectedLink
@@ -4194,6 +4219,59 @@ func TestResolveFindingUpdatesPersistedWorkflow(t *testing.T) {
 	}
 }
 
+func TestResolveFindingWithOptionsAppliesStatusPreconditions(t *testing.T) {
+	observedAt := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				Status:         "open",
+				LastObservedAt: observedAt,
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	finding, err := service.ResolveFindingWithOptions(context.Background(), "finding-1", "panopticon verified false positive", FindingStatusUpdateOptions{
+		ExpectedStatus:     "open",
+		LastObservedBefore: observedAt.Add(time.Minute),
+		Source:             "panopticon",
+	})
+	if err != nil {
+		t.Fatalf("ResolveFindingWithOptions() error = %v", err)
+	}
+	if got := finding.Status; got != "resolved" {
+		t.Fatalf("ResolveFindingWithOptions().Status = %q, want resolved", got)
+	}
+	if got := len(store.updateStatusCalls); got != 1 {
+		t.Fatalf("update status calls = %d, want 1", got)
+	}
+	call := store.updateStatusCalls[0]
+	if got := call.ExpectedStatus; got != "open" {
+		t.Fatalf("ExpectedStatus = %q, want open", got)
+	}
+	if !call.LastObservedBefore.Equal(observedAt.Add(time.Minute)) {
+		t.Fatalf("LastObservedBefore = %v, want %v", call.LastObservedBefore, observedAt.Add(time.Minute))
+	}
+}
+
+func TestResolveFindingWithOptionsReturnsPreconditionFailure(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:     "finding-1",
+				Status: "resolved",
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	_, err := service.ResolveFindingWithOptions(context.Background(), "finding-1", "stale agent decision", FindingStatusUpdateOptions{
+		ExpectedStatus: "open",
+	})
+	if !errors.Is(err, ports.ErrFindingStatusPreconditionFailed) {
+		t.Fatalf("ResolveFindingWithOptions() error = %v, want precondition failure", err)
+	}
+}
+
 func TestResolveFindingRecomputesPersistedRisk(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
@@ -5042,6 +5120,58 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 	}
 }
 
+func TestLinkFindingExternalRefRefreshesLifecycleReference(t *testing.T) {
+	observedAt := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:       "finding-1",
+				TenantID: "writer",
+				Status:   "open",
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	first, err := service.LinkFindingExternalRef(context.Background(), "finding-1", ports.FindingExternalRef{
+		System:         "panopticon",
+		Kind:           "alert",
+		ExternalID:     "alert-123",
+		URL:            "https://panopticon.example/alerts/123",
+		ExternalStatus: "open",
+		LifecycleOwner: "external_owned",
+		ObservedAt:     observedAt,
+	})
+	if err != nil {
+		t.Fatalf("LinkFindingExternalRef(first) error = %v", err)
+	}
+	if got := len(first.ExternalRefs); got != 1 {
+		t.Fatalf("external refs after first link = %d, want 1", got)
+	}
+	second, err := service.LinkFindingExternalRef(context.Background(), "finding-1", ports.FindingExternalRef{
+		System:               "panopticon",
+		Kind:                 "alert",
+		ExternalID:           "alert-123",
+		URL:                  "https://panopticon.example/alerts/123",
+		ExternalStatus:       "closed",
+		ExternalStatusReason: "triaged false positive",
+		LifecycleOwner:       "external_owned",
+		ObservedAt:           observedAt.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("LinkFindingExternalRef(second) error = %v", err)
+	}
+	if got := len(second.ExternalRefs); got != 1 {
+		t.Fatalf("external refs after refresh = %d, want 1", got)
+	}
+	ref := second.ExternalRefs[0]
+	if got := ref.ExternalStatus; got != "closed" {
+		t.Fatalf("ExternalStatus = %q, want closed", got)
+	}
+	if got := ref.ExternalStatusReason; got != "triaged false positive" {
+		t.Fatalf("ExternalStatusReason = %q, want triaged false positive", got)
+	}
+}
+
 func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
@@ -5476,6 +5606,8 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(notes, finding.Notes)
 	tickets := make([]ports.FindingTicket, len(finding.Tickets))
 	copy(tickets, finding.Tickets)
+	externalRefs := make([]ports.FindingExternalRef, len(finding.ExternalRefs))
+	copy(externalRefs, finding.ExternalRefs)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -5513,6 +5645,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
 			Tickets:         tickets,
+			ExternalRefs:    externalRefs,
 			Assignee:        finding.Assignee,
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,
@@ -5548,6 +5681,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 	}
 	if len(existing.Tickets) != 0 && len(incoming.Tickets) == 0 {
 		incoming.Tickets = append([]ports.FindingTicket(nil), existing.Tickets...)
+	}
+	if len(existing.ExternalRefs) != 0 && len(incoming.ExternalRefs) == 0 {
+		incoming.ExternalRefs = append([]ports.FindingExternalRef(nil), existing.ExternalRefs...)
 	}
 	if strings.TrimSpace(incoming.Status) == "open" {
 		switch strings.TrimSpace(existing.Status) {

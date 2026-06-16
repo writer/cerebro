@@ -150,6 +150,12 @@ func TestLinkFindingTicketRejectsEmptyURL(t *testing.T) {
 	}
 }
 
+func TestLinkFindingExternalRefStatementRefreshesMatchingObject(t *testing.T) {
+	if !strings.Contains(linkFindingExternalRefStatement, "WHEN ref @> ($3::jsonb -> 0) THEN ($2::jsonb -> 0)") {
+		t.Fatalf("linkFindingExternalRefStatement must refresh matching JSON object instead of appending duplicates:\n%s", linkFindingExternalRefStatement)
+	}
+}
+
 // runtime_id must be pinned on conflict so the same fingerprint stays addressable on the
 // originally-observed runtime instead of flipping. Event-rule fingerprints already include
 // runtime_id (so the clause is a no-op for them); graph-rule fingerprints are tenant-scoped
@@ -744,6 +750,83 @@ func newUpsertFinding(id, fingerprint, status string, observed time.Time) *ports
 		Summary:         "summary",
 		FirstObservedAt: observed,
 		LastObservedAt:  observed,
+	}
+}
+
+func TestLinkFindingExternalRef_RefreshesMatchingReference(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	baseID := fmt.Sprintf("finding-external-ref-%d", now.UnixNano())
+	fp := fmt.Sprintf("fp-external-ref-%d", now.UnixNano())
+	if _, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now)); err != nil {
+		t.Fatalf("seed finding: %v", err)
+	}
+
+	first, err := store.LinkFindingExternalRef(ctx, ports.FindingExternalRefLink{
+		FindingID: baseID,
+		ExternalRef: ports.FindingExternalRef{
+			System:         "panopticon",
+			Kind:           "alert",
+			ExternalID:     "alert-123",
+			URL:            "https://panopticon.example/alerts/123",
+			ExternalStatus: "open",
+			LifecycleOwner: "external_owned",
+			ObservedAt:     now,
+		},
+	})
+	if err != nil {
+		t.Fatalf("first LinkFindingExternalRef: %v", err)
+	}
+	if got := len(first.ExternalRefs); got != 1 {
+		t.Fatalf("external refs after first link = %d, want 1", got)
+	}
+
+	second, err := store.LinkFindingExternalRef(ctx, ports.FindingExternalRefLink{
+		FindingID: baseID,
+		ExternalRef: ports.FindingExternalRef{
+			System:               "panopticon",
+			Kind:                 "alert",
+			ExternalID:           "alert-123",
+			URL:                  "https://panopticon.example/alerts/123",
+			ExternalStatus:       "closed",
+			ExternalStatusReason: "triaged false positive",
+			LifecycleOwner:       "external_owned",
+			ObservedAt:           now.Add(time.Minute),
+		},
+	})
+	if err != nil {
+		t.Fatalf("second LinkFindingExternalRef: %v", err)
+	}
+	if got := len(second.ExternalRefs); got != 1 {
+		t.Fatalf("external refs after refresh = %d, want 1", got)
+	}
+	ref := second.ExternalRefs[0]
+	if got := ref.ExternalStatus; got != "closed" {
+		t.Fatalf("ExternalStatus = %q, want closed", got)
+	}
+	if got := ref.ExternalStatusReason; got != "triaged false positive" {
+		t.Fatalf("ExternalStatusReason = %q, want triaged false positive", got)
+	}
+
+	third, err := store.LinkFindingExternalRef(ctx, ports.FindingExternalRefLink{
+		FindingID: baseID,
+		ExternalRef: ports.FindingExternalRef{
+			System:         "panopticon",
+			Kind:           "alert",
+			ExternalID:     "alert-456",
+			ExternalStatus: "open",
+			LifecycleOwner: "external_owned",
+			ObservedAt:     now.Add(2 * time.Minute),
+		},
+	})
+	if err != nil {
+		t.Fatalf("third LinkFindingExternalRef: %v", err)
+	}
+	if got := len(third.ExternalRefs); got != 2 {
+		t.Fatalf("external refs after distinct link = %d, want 2", got)
 	}
 }
 

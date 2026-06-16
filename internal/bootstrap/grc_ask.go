@@ -71,7 +71,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	evt.llmPreCached = true
 	evt.llmOK = true
 
-	clearStreamingWriteDeadline(w)
+	clearLongRunningWriteDeadline(w)
 	flusher, _ := w.(http.Flusher)
 	service := graphagent.NewServiceWithOptions(graphStore, llm, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
 		TrajectoryStore:             askTrajectoryStore(a.deps.StateStore),
@@ -344,7 +344,7 @@ func (e *askWideEvent) finish(r *http.Request, started time.Time, status int, er
 	}
 }
 
-func clearStreamingWriteDeadline(w http.ResponseWriter) {
+func clearLongRunningWriteDeadline(w http.ResponseWriter) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 }
 

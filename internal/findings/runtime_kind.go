@@ -53,6 +53,8 @@ func defaultRuntimeFamily(sourceID string) string {
 		return "user"
 	case "okta":
 		return "audit"
+	case "panopticon":
+		return "case"
 	case "sentinelone":
 		return "threat"
 	case "security_reviewer":

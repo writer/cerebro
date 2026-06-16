@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -33,10 +34,19 @@ LIMIT 25`,
 		EnableGraphProbes: true,
 	})
 
+	preflight := agentplatform.PreflightAgentRun(agentplatform.AgentRunPreflightRequest{
+		TenantID:        "writer",
+		ActorID:         "tester",
+		CapabilityIDs:   []string{"graph-reasoning"},
+		RequestedScopes: []string{"cosmo.security.read"},
+		Question:        "Which scoped asset should I review?",
+		ScopeURN:        "urn:cerebro:writer:asset:alpha",
+	})
 	response, err := service.Reason(context.Background(), AskRequest{
-		TenantID: "writer",
-		Question: "Which scoped asset should I review?",
-		ScopeURN: "urn:cerebro:writer:asset:alpha",
+		TenantID:        "writer",
+		Question:        "Which scoped asset should I review?",
+		ScopeURN:        "urn:cerebro:writer:asset:alpha",
+		PlatformContext: &preflight,
 	})
 	if err != nil {
 		t.Fatalf("Reason() error = %v", err)
@@ -74,6 +84,15 @@ LIMIT 25`,
 	if len(response.Provenance.SourceURNs) != 1 || response.Provenance.SourceURNs[0] != "urn:cerebro:writer:asset:alpha" {
 		t.Fatalf("source urns = %#v", response.Provenance.SourceURNs)
 	}
+	if response.Preflight == nil || !response.Preflight.Enabled {
+		t.Fatalf("preflight = %#v, want enabled preflight context", response.Preflight)
+	}
+	if len(response.Provenance.CapabilityIDs) != 1 || response.Provenance.CapabilityIDs[0] != "graph-reasoning" {
+		t.Fatalf("provenance capability ids = %#v", response.Provenance.CapabilityIDs)
+	}
+	if len(response.Provenance.PolicyChecks) == 0 || len(response.Provenance.WriteBackEvents) == 0 {
+		t.Fatalf("provenance missing policy/write-back trail: %#v", response.Provenance)
+	}
 }
 
 func TestServiceReasonPreservesUnsupportedQuery(t *testing.T) {
@@ -94,5 +113,30 @@ func TestServiceReasonPreservesUnsupportedQuery(t *testing.T) {
 	}
 	if response.Provenance.FallbackReason != "query_plan_conversion_failed" {
 		t.Fatalf("fallback reason = %q", response.Provenance.FallbackReason)
+	}
+}
+
+func TestRowURNsIncludesStringSlices(t *testing.T) {
+	urns := rowURNs([]map[string]any{{
+		"resource_urns": []string{
+			"urn:cerebro:writer:asset:beta",
+			"urn:cerebro:writer:asset:alpha",
+		},
+		"nested": []any{
+			map[string]any{"finding_urn": "urn:cerebro:writer:finding:finding-1"},
+		},
+	}})
+	want := []string{
+		"urn:cerebro:writer:asset:alpha",
+		"urn:cerebro:writer:asset:beta",
+		"urn:cerebro:writer:finding:finding-1",
+	}
+	if len(urns) != len(want) {
+		t.Fatalf("urns = %#v, want %#v", urns, want)
+	}
+	for i := range want {
+		if urns[i] != want[i] {
+			t.Fatalf("urns = %#v, want %#v", urns, want)
+		}
 	}
 }

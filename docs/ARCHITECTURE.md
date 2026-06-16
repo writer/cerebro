@@ -65,6 +65,17 @@ new routes and handlers do not quietly grow the bootstrap surface. If a PR must
 increase that budget, the PR should explain why the behavior cannot move behind
 a domain package yet and update this architecture note alongside the test.
 
+The current budget includes a narrow transport-boundary exception for graph
+reasoning: HTTP and MCP handlers clear the server write deadline before entering
+the long-running reasoning pipeline. That deadline is owned by `net/http` and
+the response writer, so the hook belongs in bootstrap instead of the graphagent
+domain package.
+
+The agent platform graph preflight contract lives in `internal/agentplatform`.
+The bootstrap budget includes the HTTP and MCP request/response mapping needed
+to force authenticated tenant context, expose preflight to agents, and attach
+that preflight envelope to graph reasoning responses.
+
 ## Postgres migrations
 
 State-store schema preparation runs at service startup and before store operations. Most migrations use additive `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, or `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` patterns.

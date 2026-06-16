@@ -1199,6 +1199,10 @@ func (s *orchestratorFindingStore) LinkFindingTicket(context.Context, ports.Find
 	return nil, ports.ErrFindingNotFound
 }
 
+func (s *orchestratorFindingStore) LinkFindingExternalRef(context.Context, ports.FindingExternalRefLink) (*ports.FindingRecord, error) {
+	return nil, ports.ErrFindingNotFound
+}
+
 func (s *orchestratorFindingStore) PutFindingEvaluationRun(context.Context, *cerebrov1.FindingEvaluationRun) error {
 	return nil
 }
