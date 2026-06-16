@@ -46,6 +46,7 @@ func awsECSServiceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	serviceURN := projectionURN(tenantID, "aws_ecs_service", firstNonEmpty(attributes["service_arn"], attributes["resource_id"], attributes["service_name"]))
 	clusterURN := projectionURN(tenantID, "aws_ecs_cluster", firstNonEmpty(attributes["cluster_arn"], attributes["cluster_name"]))
 	taskDefinitionURN := projectionURN(tenantID, "aws_ecs_task_definition", attributes["task_definition_arn"])
+	addAWSECSService(entityMap, tenantID, event.GetSourceId(), serviceURN, attributes)
 	if clusterURN != "" {
 		addEntity(entityMap, &ports.ProjectedEntity{
 			URN:        clusterURN,
@@ -63,17 +64,6 @@ func awsECSServiceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 		addCloudAccountLink(entityMap, linkMap, tenantID, event.GetSourceId(), event, clusterURN, attributes["domain"], "aws")
 	}
 	if taskDefinitionURN != "" {
-		addEntity(entityMap, &ports.ProjectedEntity{
-			URN:        taskDefinitionURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "aws.ecs.task_definition",
-			Label:      firstNonEmpty(attributes["task_definition_arn"], attributes["resource_name"]),
-			Attributes: map[string]string{
-				"domain":              strings.TrimSpace(attributes["domain"]),
-				"task_definition_arn": strings.TrimSpace(attributes["task_definition_arn"]),
-			},
-		})
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), serviceURN, taskDefinitionURN, relationDependsOn, map[string]string{"event_id": event.GetId(), "match_type": "ecs_service_task_definition"}))
 	}
 	return identityProjectionResult(entityMap, linkMap)
@@ -95,37 +85,15 @@ func awsECSTaskProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 	clusterURN := projectionURN(tenantID, "aws_ecs_cluster", firstNonEmpty(attributes["cluster_arn"], attributes["cluster_name"]))
 	serviceURN := projectionURN(tenantID, "aws_ecs_service", attributes["service_arn"])
 	taskDefinitionURN := projectionURN(tenantID, "aws_ecs_task_definition", attributes["task_definition_arn"])
+	addAWSECSTask(entityMap, tenantID, event.GetSourceId(), taskURN, attributes)
 	if clusterURN != "" {
 		addAWSECSCluster(entityMap, linkMap, tenantID, event.GetSourceId(), event, clusterURN, attributes)
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), taskURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "ecs_task_cluster"}))
 	}
 	if serviceURN != "" {
-		addEntity(entityMap, &ports.ProjectedEntity{
-			URN:        serviceURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "aws.ecs.service",
-			Label:      firstNonEmpty(attributes["service_name"], attributes["service_arn"]),
-			Attributes: map[string]string{
-				"domain":       strings.TrimSpace(attributes["domain"]),
-				"service_arn":  strings.TrimSpace(attributes["service_arn"]),
-				"service_name": strings.TrimSpace(attributes["service_name"]),
-			},
-		})
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), taskURN, serviceURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "ecs_task_service"}))
 	}
 	if taskDefinitionURN != "" {
-		addEntity(entityMap, &ports.ProjectedEntity{
-			URN:        taskDefinitionURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "aws.ecs.task_definition",
-			Label:      firstNonEmpty(attributes["task_definition_arn"], attributes["resource_name"]),
-			Attributes: map[string]string{
-				"domain":              strings.TrimSpace(attributes["domain"]),
-				"task_definition_arn": strings.TrimSpace(attributes["task_definition_arn"]),
-			},
-		})
 		addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), taskURN, taskDefinitionURN, relationDependsOn, map[string]string{"event_id": event.GetId(), "match_type": "ecs_task_task_definition"}))
 	}
 	return identityProjectionResult(entityMap, linkMap)
@@ -144,6 +112,7 @@ func awsECSTaskDefinitionProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	}
 	attributes := event.GetAttributes()
 	taskDefinitionURN := projectionURN(tenantID, "aws_ecs_task_definition", firstNonEmpty(attributes["task_definition_arn"], attributes["resource_id"], attributes["task_family"]))
+	addAWSECSTaskDefinition(entityMap, tenantID, event.GetSourceId(), taskDefinitionURN, attributes)
 	for _, role := range []struct {
 		arn   string
 		name  string
@@ -373,6 +342,130 @@ func addAWSECSCluster(entities map[string]*ports.ProjectedEntity, links map[stri
 		},
 	})
 	addCloudAccountLink(entities, links, tenantID, sourceID, event, clusterURN, attributes["domain"], "aws")
+}
+
+func addAWSECSService(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, serviceURN string, attributes map[string]string) {
+	if serviceURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        serviceURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "aws.ecs.service",
+		Label:      firstNonEmpty(attributes["service_name"], attributes["resource_name"], attributes["service_arn"]),
+		Attributes: map[string]string{
+			"assign_public_ip":                   strings.TrimSpace(attributes["assign_public_ip"]),
+			"capacity_providers":                 strings.TrimSpace(attributes["capacity_providers"]),
+			"cluster_arn":                        strings.TrimSpace(attributes["cluster_arn"]),
+			"cluster_name":                       strings.TrimSpace(attributes["cluster_name"]),
+			"desired_count":                      strings.TrimSpace(attributes["desired_count"]),
+			"domain":                             strings.TrimSpace(attributes["domain"]),
+			"enable_execute_command":             strings.TrimSpace(attributes["enable_execute_command"]),
+			"fargate_capacity_provider":          strings.TrimSpace(attributes["fargate_capacity_provider"]),
+			"fargate_service":                    strings.TrimSpace(attributes["fargate_service"]),
+			"launch_type":                        strings.TrimSpace(attributes["launch_type"]),
+			"launch_type_effective":              strings.TrimSpace(attributes["launch_type_effective"]),
+			"network_security_group_ids":         strings.TrimSpace(attributes["network_security_group_ids"]),
+			"network_subnet_ids":                 strings.TrimSpace(attributes["network_subnet_ids"]),
+			"pending_count":                      strings.TrimSpace(attributes["pending_count"]),
+			"platform_family":                    strings.TrimSpace(attributes["platform_family"]),
+			"platform_version":                   strings.TrimSpace(attributes["platform_version"]),
+			"region":                             strings.TrimSpace(attributes["region"]),
+			"resource_id":                        strings.TrimSpace(firstNonEmpty(attributes["service_arn"], attributes["resource_id"])),
+			"resource_name":                      strings.TrimSpace(firstNonEmpty(attributes["service_name"], attributes["resource_name"])),
+			"resource_provider":                  strings.TrimSpace(attributes["resource_provider"]),
+			"resource_type":                      strings.TrimSpace(firstNonEmpty(attributes["resource_type"], "ecs_service")),
+			"running_count":                      strings.TrimSpace(attributes["running_count"]),
+			"scheduling_strategy":                strings.TrimSpace(attributes["scheduling_strategy"]),
+			"service_arn":                        strings.TrimSpace(attributes["service_arn"]),
+			"service_name":                       strings.TrimSpace(attributes["service_name"]),
+			"status":                             strings.TrimSpace(attributes["status"]),
+			"task_definition_arn":                strings.TrimSpace(attributes["task_definition_arn"]),
+			"task_definition_family":             strings.TrimSpace(attributes["task_definition_family"]),
+			"task_definition_revision":           strings.TrimSpace(attributes["task_definition_revision"]),
+			"deployment_controller_type":         strings.TrimSpace(attributes["deployment_controller_type"]),
+			"deployment_maximum_percent":         strings.TrimSpace(attributes["deployment_maximum_percent"]),
+			"deployment_minimum_healthy_percent": strings.TrimSpace(attributes["deployment_minimum_healthy_percent"]),
+			"deployment_strategy":                strings.TrimSpace(attributes["deployment_strategy"]),
+			"load_balancer_target_group_arns":    strings.TrimSpace(attributes["load_balancer_target_group_arns"]),
+			"service_registry_arns":              strings.TrimSpace(attributes["service_registry_arns"]),
+		},
+	})
+}
+
+func addAWSECSTask(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, taskURN string, attributes map[string]string) {
+	if taskURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        taskURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "aws.ecs.task",
+		Label:      firstNonEmpty(attributes["resource_name"], attributes["task_arn"]),
+		Attributes: map[string]string{
+			"capacity_provider_name":     strings.TrimSpace(attributes["capacity_provider_name"]),
+			"cpu":                        strings.TrimSpace(attributes["cpu"]),
+			"domain":                     strings.TrimSpace(attributes["domain"]),
+			"enable_execute_command":     strings.TrimSpace(attributes["enable_execute_command"]),
+			"ephemeral_storage_size_gib": strings.TrimSpace(attributes["ephemeral_storage_size_gib"]),
+			"fargate_task":               strings.TrimSpace(attributes["fargate_task"]),
+			"launch_type":                strings.TrimSpace(attributes["launch_type"]),
+			"memory":                     strings.TrimSpace(attributes["memory"]),
+			"platform_family":            strings.TrimSpace(attributes["platform_family"]),
+			"platform_version":           strings.TrimSpace(attributes["platform_version"]),
+			"private_ips":                strings.TrimSpace(attributes["private_ips"]),
+			"resource_id":                strings.TrimSpace(firstNonEmpty(attributes["task_arn"], attributes["resource_id"])),
+			"resource_name":              strings.TrimSpace(attributes["resource_name"]),
+			"resource_provider":          strings.TrimSpace(attributes["resource_provider"]),
+			"resource_type":              strings.TrimSpace(firstNonEmpty(attributes["resource_type"], "ecs_task")),
+			"security_group_ids":         strings.TrimSpace(attributes["security_group_ids"]),
+			"service_arn":                strings.TrimSpace(attributes["service_arn"]),
+			"service_name":               strings.TrimSpace(attributes["service_name"]),
+			"subnet_ids":                 strings.TrimSpace(attributes["subnet_ids"]),
+			"task_arn":                   strings.TrimSpace(attributes["task_arn"]),
+			"task_definition_arn":        strings.TrimSpace(attributes["task_definition_arn"]),
+			"vpc_id":                     strings.TrimSpace(attributes["vpc_id"]),
+		},
+	})
+}
+
+func addAWSECSTaskDefinition(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, taskDefinitionURN string, attributes map[string]string) {
+	if taskDefinitionURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        taskDefinitionURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "aws.ecs.task_definition",
+		Label:      firstNonEmpty(attributes["task_family"], attributes["resource_name"], attributes["task_definition_arn"]),
+		Attributes: map[string]string{
+			"awsvpc_required":                 strings.TrimSpace(attributes["awsvpc_required"]),
+			"container_count":                 strings.TrimSpace(attributes["container_count"]),
+			"container_images":                strings.TrimSpace(attributes["container_images"]),
+			"container_names":                 strings.TrimSpace(attributes["container_names"]),
+			"cpu":                             strings.TrimSpace(attributes["cpu"]),
+			"domain":                          strings.TrimSpace(attributes["domain"]),
+			"ephemeral_storage_size_gib":      strings.TrimSpace(attributes["ephemeral_storage_size_gib"]),
+			"fargate_compatible":              strings.TrimSpace(attributes["fargate_compatible"]),
+			"memory":                          strings.TrimSpace(attributes["memory"]),
+			"network_mode":                    strings.TrimSpace(attributes["network_mode"]),
+			"region":                          strings.TrimSpace(attributes["region"]),
+			"requires_compatibilities":        strings.TrimSpace(attributes["requires_compatibilities"]),
+			"resource_id":                     strings.TrimSpace(firstNonEmpty(attributes["task_definition_arn"], attributes["resource_id"])),
+			"resource_name":                   strings.TrimSpace(attributes["resource_name"]),
+			"resource_provider":               strings.TrimSpace(attributes["resource_provider"]),
+			"resource_type":                   strings.TrimSpace(firstNonEmpty(attributes["resource_type"], "ecs_task_definition")),
+			"revision":                        strings.TrimSpace(attributes["revision"]),
+			"runtime_cpu_architecture":        strings.TrimSpace(attributes["runtime_cpu_architecture"]),
+			"runtime_operating_system_family": strings.TrimSpace(attributes["runtime_operating_system_family"]),
+			"status":                          strings.TrimSpace(attributes["status"]),
+			"task_definition_arn":             strings.TrimSpace(attributes["task_definition_arn"]),
+			"task_family":                     strings.TrimSpace(attributes["task_family"]),
+		},
+	})
 }
 
 func addAWSEKSCluster(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, clusterURN string, attributes map[string]string) {
