@@ -219,9 +219,9 @@ func TestParseSettingsRejectsUnsafeAssumeRoleConfig(t *testing.T) {
 }
 
 func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
-	pull, err := awsPullFromRecords[string](nil, "next-page", nil, nil)
+	pull, err := sourcecdk.PullFromRecords[string](nil, "next-page", nil, nil)
 	if err != nil {
-		t.Fatalf("awsPullFromRecords() error = %v", err)
+		t.Fatalf("PullFromRecords() error = %v", err)
 	}
 	if len(pull.Events) != 0 {
 		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))

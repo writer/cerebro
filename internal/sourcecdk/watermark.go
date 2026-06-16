@@ -166,6 +166,118 @@ func EmptyIncrementalWatermarkPull(source string, family string, checkpoint *cer
 	}
 }
 
+// PullFromRecords projects provider records into events and advances a simple
+// page-token checkpoint.
+func PullFromRecords[T any](records []T, next string, build func(T) (*primitives.Event, error), cursorFallback func(T) string) (Pull, error) {
+	if len(records) == 0 {
+		if next = strings.TrimSpace(next); next != "" {
+			return Pull{NextCursor: &cerebrov1.SourceCursor{Opaque: next}}, nil
+		}
+		return Pull{}, nil
+	}
+	events := make([]*primitives.Event, 0, len(records))
+	for _, record := range records {
+		event, err := build(record)
+		if err != nil {
+			return Pull{}, err
+		}
+		events = append(events, event)
+	}
+	fallback := events[len(events)-1].GetId()
+	if cursorFallback != nil {
+		fallback = cursorFallback(records[len(records)-1])
+	}
+	cursorOpaque := strings.TrimSpace(next)
+	if cursorOpaque == "" {
+		cursorOpaque = fallback
+	}
+	pull := Pull{
+		Events: events,
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    events[len(events)-1].OccurredAt,
+			CursorOpaque: cursorOpaque,
+		},
+	}
+	if next = strings.TrimSpace(next); next != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
+	}
+	return pull, nil
+}
+
+// IncrementalPullFromRecords projects records into events and applies durable
+// watermark filtering. Continuation cursors carry the original comparison
+// checkpoint so later sync calls do not drop older pages that are still newer
+// than the run's starting watermark.
+func IncrementalPullFromRecords[T any](source string, family string, records []T, next string, checkpoint *cerebrov1.SourceCheckpoint, build func(T) (*primitives.Event, error)) (Pull, error) {
+	if len(records) == 0 {
+		pull := EmptyIncrementalWatermarkPull(source, family, checkpoint)
+		if next = strings.TrimSpace(next); next != "" {
+			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: IncrementalCursor(source, family, next, checkpoint)}
+		}
+		return pull, nil
+	}
+	events := make([]*primitives.Event, 0, len(records))
+	for _, record := range records {
+		event, err := build(record)
+		if err != nil {
+			return Pull{}, err
+		}
+		events = append(events, event)
+	}
+	pull := IncrementalWatermarkPull(source, family, events, checkpoint, next)
+	if pull.NextCursor != nil {
+		pull.NextCursor.Opaque = IncrementalCursor(source, family, next, checkpoint)
+	}
+	return pull, nil
+}
+
+// IncrementalCheckpointForCursor restores the starting comparison checkpoint
+// from a continuation cursor produced by IncrementalCursor.
+func IncrementalCheckpointForCursor(source string, family string, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {
+	envelope, ok := DecodeCursorEnvelope(cursor.GetOpaque())
+	if !ok || strings.TrimSpace(envelope.Source) != strings.TrimSpace(source) || strings.TrimSpace(envelope.Family) != strings.TrimSpace(family) {
+		return checkpoint
+	}
+	envelope.Token = ""
+	opaque, err := EncodeCursorEnvelope(envelope)
+	if err != nil {
+		opaque = cursor.GetOpaque()
+	}
+	readCheckpoint := &cerebrov1.SourceCheckpoint{CursorOpaque: opaque}
+	if watermark := CursorWatermark(envelope); !watermark.IsZero() {
+		readCheckpoint.Watermark = timestamppb.New(watermark.UTC())
+	}
+	return readCheckpoint
+}
+
+// IncrementalCursor wraps a provider token with the comparison watermark and
+// boundary IDs used for this incremental scan.
+func IncrementalCursor(source string, family string, token string, checkpoint *cerebrov1.SourceCheckpoint) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	state := IncrementalWatermarkCheckpointState(source, family, checkpoint)
+	envelope := CursorEnvelope{
+		Source:              source,
+		Family:              family,
+		Mode:                incrementalWatermarkMode,
+		ResumableCheckpoint: true,
+		Token:               token,
+	}
+	if !state.Watermark.IsZero() {
+		SetCursorWatermark(&envelope, state.Watermark)
+	}
+	for id := range state.BoundaryIDs {
+		envelope.BoundaryIDs = append(envelope.BoundaryIDs, id)
+	}
+	opaque, err := EncodeCursorEnvelope(envelope)
+	if err != nil {
+		return token
+	}
+	return opaque
+}
+
 func incrementalCursorMatches(envelope CursorEnvelope, source string, family string) bool {
 	if strings.TrimSpace(envelope.Source) != "" && strings.TrimSpace(envelope.Source) != strings.TrimSpace(source) {
 		return false
