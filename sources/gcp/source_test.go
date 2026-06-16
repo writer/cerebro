@@ -856,6 +856,35 @@ func TestReadLiveGCPSecurityCoveragePreview(t *testing.T) {
 	}
 }
 
+func TestReadLiveGCPWorkloadIdentityProviderPropagatesProviderErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools":
+			writeJSON(t, w, map[string]any{"workloadIdentityPools": []map[string]any{{"name": "projects/writer-prod/locations/global/workloadIdentityPools/github"}}})
+		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools/github/providers":
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(t, w, map[string]any{"error": map[string]any{"message": "provider backend unavailable"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyWorkloadIdentityProvider,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read(workload_identity_provider) error = nil, want provider fetch error")
+	}
+}
+
 func TestReadLiveGCPGroupMembershipResolvesGroupKeys(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()

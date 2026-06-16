@@ -809,7 +809,7 @@ func listWorkloadIdentityProviders(ctx context.Context, source *Source, settings
 			return response.WorkloadIdentityPoolProviders
 		}, true, false, nil)
 	})
-	return records, next, nil
+	return records, next, err
 }
 
 func listGroups(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]groupRecord, string, error) {
