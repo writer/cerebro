@@ -508,10 +508,12 @@ func TestConnectorCatalogAdvertisesConfiguredAWSSecretStore(t *testing.T) {
 	}
 	var payload struct {
 		CredentialStores []struct {
-			ID                        string `json:"id"`
-			Available                 bool   `json:"available"`
-			Detail                    string `json:"detail"`
-			NativeResolutionAvailable bool   `json:"native_resolution_available"`
+			ID                         string `json:"id"`
+			Available                  bool   `json:"available"`
+			Detail                     string `json:"detail"`
+			ReferenceNamespaceTemplate string `json:"reference_namespace_template"`
+			ReferenceFieldTemplate     string `json:"reference_field_template"`
+			NativeResolutionAvailable  bool   `json:"native_resolution_available"`
 		} `json:"credential_stores"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -523,6 +525,12 @@ func TestConnectorCatalogAdvertisesConfiguredAWSSecretStore(t *testing.T) {
 		}
 		if !store.Available || !store.NativeResolutionAvailable || store.Detail != "native resolver ready" {
 			t.Fatalf("aws secret store = %#v, want available native resolver", store)
+		}
+		if store.ReferenceNamespaceTemplate != "cerebro/<tenant>/<source>/<runtime>/credentials" {
+			t.Fatalf("aws reference namespace template = %q", store.ReferenceNamespaceTemplate)
+		}
+		if store.ReferenceFieldTemplate != "aws-sm:<region>:cerebro/<tenant>/<source>/<runtime>/credentials#<field>" {
+			t.Fatalf("aws reference field template = %q", store.ReferenceFieldTemplate)
 		}
 		return
 	}
@@ -1387,6 +1395,97 @@ func TestConnectorPreflightValidatesWithoutPersisting(t *testing.T) {
 	}
 	if checks["source_check"] != "passed" {
 		t.Fatalf("source_check status = %q, want passed; checks=%#v", checks["source_check"], checks)
+	}
+}
+
+func TestConnectorPreflightReturnsExternalReferencePlan(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-west-2",
+			},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+	t.Setenv("CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", "resolved-token")
+
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-external",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodExternalReference,
+		"credential_store_id": connectorStoreAWSSecretsManager,
+		"config":              map[string]string{"family": "audit"},
+		"credential_references": map[string]string{
+			"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", // #nosec G101 -- env reference string, not a secret value.
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status             string `json:"status"`
+		CredentialBoundary struct {
+			StoreID                   string   `json:"credential_store_id"`
+			StoreStatus               string   `json:"store_status"`
+			ReferenceNamespace        string   `json:"reference_namespace"`
+			ReferencePrefixes         []string `json:"reference_prefixes"`
+			NativeResolutionAvailable bool     `json:"native_resolution_available"`
+			FieldsAccepted            []string `json:"fields_accepted"`
+			ReferenceTemplates        []struct {
+				Field       string `json:"field"`
+				Label       string `json:"label"`
+				Required    bool   `json:"required"`
+				Reference   string `json:"reference"`
+				Description string `json:"description"`
+			} `json:"reference_templates"`
+		} `json:"credential_boundary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "ready" {
+		t.Fatalf("preflight status = %q, want ready", payload.Status)
+	}
+	boundary := payload.CredentialBoundary
+	if boundary.StoreID != connectorStoreAWSSecretsManager || boundary.StoreStatus != "ready" || !boundary.NativeResolutionAvailable {
+		t.Fatalf("credential boundary store metadata = %#v", boundary)
+	}
+	if boundary.ReferenceNamespace != "cerebro/tenant-a/bootstrap_token/runtime-external/credentials" {
+		t.Fatalf("reference namespace = %q", boundary.ReferenceNamespace)
+	}
+	if len(boundary.ReferencePrefixes) != 2 || boundary.ReferencePrefixes[0] != "env:" || boundary.ReferencePrefixes[1] != "aws-sm:" {
+		t.Fatalf("reference prefixes = %#v, want env and aws-sm", boundary.ReferencePrefixes)
+	}
+	if len(boundary.ReferenceTemplates) != 1 {
+		t.Fatalf("reference templates = %#v, want one token template", boundary.ReferenceTemplates)
+	}
+	template := boundary.ReferenceTemplates[0]
+	if template.Field != "token" || !template.Required || template.Reference != "aws-sm:us-west-2:cerebro/tenant-a/bootstrap_token/runtime-external/credentials#token" {
+		t.Fatalf("reference template = %#v", template)
+	}
+	if source.checkToken != "resolved-token" {
+		t.Fatalf("source check token = %q, want env-resolved token", source.checkToken)
 	}
 }
 
