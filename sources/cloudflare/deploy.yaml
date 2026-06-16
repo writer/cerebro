@@ -15,12 +15,24 @@ runtimes:
       family: access_application
       per_page: "100"
       token: env:CLOUDFLARE_API_TOKEN
+  - localId: zone-access-application
+    config:
+      family: zone_access_application
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+      zone_id: env:CLOUDFLARE_ZONE_ID
   - localId: access-group
     config:
       account_id: env:CLOUDFLARE_ACCOUNT_ID
       family: access_group
       per_page: "100"
       token: env:CLOUDFLARE_API_TOKEN
+  - localId: zone-access-group
+    config:
+      family: zone_access_group
+      per_page: "100"
+      token: env:CLOUDFLARE_API_TOKEN
+      zone_id: env:CLOUDFLARE_ZONE_ID
   - localId: account-ruleset
     config:
       account_id: env:CLOUDFLARE_ACCOUNT_ID

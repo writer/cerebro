@@ -14,6 +14,8 @@ emitted_kinds:
   - cloudflare.role
   - cloudflare.worker_script
   - cloudflare.zone
+  - cloudflare.zone_access_application
+  - cloudflare.zone_access_group
   - cloudflare.zone_ruleset
   - cloudflare.dns_record
 coverage_contract:
@@ -23,17 +25,15 @@ coverage_contract:
     - id: access_applications
       type: entity_family
       title: Zero Trust Access applications
-      families: [access_application]
-      support: partial
+      families: [access_application, zone_access_application]
+      support: supported
       high_value: true
-      known_unsupported_fields: [zone-scoped Access applications]
     - id: access_groups
       type: app_entitlement
       title: Zero Trust Access groups
-      families: [access_group]
-      support: partial
+      families: [access_group, zone_access_group]
+      support: supported
       high_value: true
-      known_unsupported_fields: [zone-scoped Access groups]
     - id: accounts
       type: entity_family
       title: Accounts
@@ -188,6 +188,20 @@ event_contracts:
   - kind: cloudflare.zone
     schema_ref: cloudflare/zone/v1
     required_attributes:
+      - zone_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.zone_access_application
+    schema_ref: cloudflare/zone_access_application/v1
+    required_attributes:
+      - application_id
+      - zone_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare.zone_access_group
+    schema_ref: cloudflare/zone_access_group/v1
+    required_attributes:
+      - group_id
       - zone_id
     required_payload_fields:
       - id

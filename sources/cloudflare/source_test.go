@@ -134,12 +134,28 @@ func TestReadCloudflareCoverageAttributes(t *testing.T) {
 			attr:    "policies", contains: "policy-1",
 		},
 		{
+			name:    "zone access application policies",
+			family:  "zone_access_application",
+			path:    "/zones/zone-1/access/apps",
+			config:  map[string]string{"zone_id": "zone-1"},
+			payload: map[string]any{"id": "zone-app-1", "name": "Zone Admin", "domain": "admin.example.com", "policies": []map[string]any{{"id": "zone-policy-1", "decision": "allow"}}, "allowed_idps": []string{"okta"}},
+			attr:    "policies", contains: "zone-policy-1",
+		},
+		{
 			name:    "access group rules",
 			family:  "access_group",
 			path:    "/accounts/account-1/access/groups",
 			config:  map[string]string{"account_id": "account-1"},
 			payload: map[string]any{"id": "group-1", "name": "Employees", "include": []map[string]any{{"email_domain": map[string]any{"domain": "writer.com"}}}, "require": []map[string]any{{"group": map[string]any{"id": "okta-group-1"}}}},
 			attr:    "include", contains: "writer.com",
+		},
+		{
+			name:    "zone access group rules",
+			family:  "zone_access_group",
+			path:    "/zones/zone-1/access/groups",
+			config:  map[string]string{"zone_id": "zone-1"},
+			payload: map[string]any{"id": "zone-group-1", "name": "Zone Employees", "include": []map[string]any{{"email_domain": map[string]any{"domain": "example.com"}}}, "require": []map[string]any{{"group": map[string]any{"id": "idp-group-1"}}}},
+			attr:    "include", contains: "example.com",
 		},
 		{
 			name:    "gateway rule settings",
