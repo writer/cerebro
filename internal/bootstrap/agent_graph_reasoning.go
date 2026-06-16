@@ -1,12 +1,11 @@
 package bootstrap
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/graphagent"
 )
 
@@ -18,16 +17,34 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
 		return
 	}
-	if err := forceGraphReasoningTenant(r.Context(), &request); err != nil {
+	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, "", nil)
+	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
+	request.TenantID = resolved.TenantID
 	if request.ScopeURN != "" {
 		if err := authorizeCerebroURNTenant(r.Context(), request.ScopeURN); err != nil {
 			writeGRCError(w, err)
 			return
 		}
 	}
+	preflight := agentplatform.PreflightAgentRun(agentplatform.AgentRunPreflightRequest{
+		TenantID:              request.TenantID,
+		ActorID:               resolved.ActorID,
+		CapabilityIDs:         []string{agentplatform.DefaultAgentRunCapabilityID},
+		Question:              request.Question,
+		ScopeURN:              request.ScopeURN,
+		Model:                 request.Model,
+		RequestedScopes:       resolved.RequestedScopes,
+		ScopeUnrestricted:     resolved.ScopeUnrestricted || !resolved.Authenticated,
+		ProvenanceRequirement: "graph-reasoning",
+	})
+	if !preflight.Enabled {
+		writeGRCError(w, errScopeForbidden)
+		return
+	}
+	request.PlatformContext = &preflight
 	if err := graphagent.ValidateRequest(request); err != nil {
 		writeGRCError(w, err)
 		return
@@ -44,28 +61,6 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
-}
-
-func forceGraphReasoningTenant(ctx context.Context, request *graphagent.AskRequest) error {
-	if request == nil {
-		return nil
-	}
-	requestedTenantID := strings.TrimSpace(request.TenantID)
-	auth, ok := ctx.Value(authContextKey{}).(authContext)
-	if !ok {
-		request.TenantID = requestedTenantID
-		return nil
-	}
-	tenantID := strings.TrimSpace(auth.principal.TenantID)
-	if tenantID == "" {
-		return errTenantForbidden
-	}
-	if requestedTenantID != "" && requestedTenantID != tenantID {
-		recordAccessAuditRequestedTenant(ctx, requestedTenantID)
-		return errTenantForbidden
-	}
-	request.TenantID = tenantID
-	return authorizeTenantID(ctx, tenantID)
 }
 
 func (a *App) newGraphReasoningService() (*graphagent.Service, error) {

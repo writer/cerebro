@@ -1464,6 +1464,8 @@ func grcHTTPStatusCode(err error) int {
 	switch {
 	case errors.Is(err, errTenantForbidden):
 		statusCode = http.StatusForbidden
+	case errors.Is(err, errScopeForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
 		errors.Is(err, ports.ErrFindingNotFound),
 		errors.Is(err, ports.ErrFindingEvidenceNotFound),

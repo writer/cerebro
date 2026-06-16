@@ -71,6 +71,11 @@ the long-running reasoning pipeline. That deadline is owned by `net/http` and
 the response writer, so the hook belongs in bootstrap instead of the graphagent
 domain package.
 
+The agent platform graph preflight contract lives in `internal/agentplatform`.
+The bootstrap budget includes the HTTP and MCP request/response mapping needed
+to force authenticated tenant context, expose preflight to agents, and attach
+that preflight envelope to graph reasoning responses.
+
 ## Postgres migrations
 
 State-store schema preparation runs at service startup and before store operations. Most migrations use additive `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, or `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` patterns.

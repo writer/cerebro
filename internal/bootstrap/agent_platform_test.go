@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/agentplatform"
+	"github.com/writer/cerebro/internal/config"
 )
 
 func TestHandleAgentPlatformContract(t *testing.T) {
@@ -93,6 +95,99 @@ func TestHandleAgentPlatformCapabilityDecision(t *testing.T) {
 	}
 }
 
+func TestAgentPlatformCapabilityDecisionForcesAuthenticatedTenantAndScopes(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/capability-decisions", bytes.NewReader([]byte(`{
+		"capability_id": "graph-reasoning",
+		"tenant_id": "writer",
+		"actor_id": "body-actor",
+		"requested_scopes": ["not.real"]
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST capability decision: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var decision agentplatform.CapabilityDecision
+	if err := json.NewDecoder(resp.Body).Decode(&decision); err != nil {
+		t.Fatalf("decode decision: %v", err)
+	}
+	if !decision.Enabled {
+		t.Fatalf("decision enabled = false, blockers = %+v", decision.Blockers)
+	}
+	if decision.TenantID != "writer" || decision.ActorID != "tester" {
+		t.Fatalf("decision context = %+v, want authenticated tenant/actor", decision)
+	}
+
+	overrideReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/capability-decisions", bytes.NewReader([]byte(`{
+		"capability_id": "graph-reasoning",
+		"tenant_id": "other",
+		"requested_scopes": ["cosmo.security.read"]
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest override: %v", err)
+	}
+	overrideReq.Header.Set("Authorization", "Bearer test-key")
+	overrideReq.Header.Set("Content-Type", "application/json")
+	overrideResp, err := server.Client().Do(overrideReq)
+	if err != nil {
+		t.Fatalf("POST override capability decision: %v", err)
+	}
+	defer func() { _ = overrideResp.Body.Close() }()
+	if overrideResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("override status = %d, want 403", overrideResp.StatusCode)
+	}
+}
+
+func TestHandleAgentPlatformPreflight(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/preflight", bytes.NewReader([]byte(`{
+		"capability_ids": ["graph-reasoning"],
+		"question": "What should I inspect?",
+		"scope_urn": "urn:cerebro:writer:asset:prod-db"
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST preflight: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var preflight agentplatform.AgentRunPreflight
+	if err := json.NewDecoder(resp.Body).Decode(&preflight); err != nil {
+		t.Fatalf("decode preflight: %v", err)
+	}
+	if !preflight.Enabled || preflight.TenantID != "writer" || preflight.ActorID != "tester" {
+		t.Fatalf("preflight = %+v, want enabled authenticated context", preflight)
+	}
+	if preflight.GraphContext.ScopeTenantID != "writer" || !preflight.WriteBack.Required {
+		t.Fatalf("preflight graph/write-back = graph:%+v write:%+v", preflight.GraphContext, preflight.WriteBack)
+	}
+	if len(preflight.Policy.Checks) == 0 || len(preflight.CapabilityDecisions) != 1 {
+		t.Fatalf("preflight missing policy/capability context: %+v", preflight)
+	}
+}
+
 func TestHandleAgentPlatformCapabilityDecisionReportsUnknownCapability(t *testing.T) {
 	body := []byte(`{"capability_id":"missing-capability","requested_scopes":["cosmo.security.read"]}`)
 	recorder := httptest.NewRecorder()
@@ -102,5 +197,23 @@ func TestHandleAgentPlatformCapabilityDecisionReportsUnknownCapability(t *testin
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+}
+
+func agentPlatformAuthConfig() config.Config {
+	return config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				ID:        "test-credential",
+				ClientID:  "test-client",
+				Key:       "test-key",
+				Principal: "tester",
+				TenantID:  "writer",
+				Scopes:    []string{scopeCosmoSecurityRead},
+			}},
+		},
 	}
 }

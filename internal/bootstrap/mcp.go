@@ -16,6 +16,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	findingdomain "github.com/writer/cerebro/internal/findings"
@@ -573,6 +574,8 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGraphImpact(r, args)
 	case "cerebro.graph.paths":
 		return app.mcpGraphPaths(r, args)
+	case "cerebro.agent.preflight":
+		return app.mcpAgentPreflight(r, args)
 	case "cerebro.graph.reason":
 		return app.mcpGraphReason(r, args)
 	case "cerebro.investigation.context":
@@ -1445,14 +1448,31 @@ func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error
 		ScopeURN: mcpStringArg(args, "scope_urn"),
 		Model:    mcpStringArg(args, "model"),
 	}
-	if err := forceGraphReasoningTenant(r.Context(), &request); err != nil {
+	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, "", nil)
+	if err != nil {
 		return nil, err
 	}
+	request.TenantID = resolved.TenantID
 	if request.ScopeURN != "" {
 		if err := authorizeCerebroURNTenant(r.Context(), request.ScopeURN); err != nil {
 			return nil, mcpNormalizeIDLookupError(err, ports.ErrGraphEntityNotFound)
 		}
 	}
+	preflight := agentplatform.PreflightAgentRun(agentplatform.AgentRunPreflightRequest{
+		TenantID:              request.TenantID,
+		ActorID:               resolved.ActorID,
+		CapabilityIDs:         []string{agentplatform.DefaultAgentRunCapabilityID},
+		Question:              request.Question,
+		ScopeURN:              request.ScopeURN,
+		Model:                 request.Model,
+		RequestedScopes:       resolved.RequestedScopes,
+		ScopeUnrestricted:     resolved.ScopeUnrestricted || !resolved.Authenticated,
+		ProvenanceRequirement: "graph-reasoning",
+	})
+	if !preflight.Enabled {
+		return nil, errScopeForbidden
+	}
+	request.PlatformContext = &preflight
 	if err := graphagent.ValidateRequest(request); err != nil {
 		return nil, err
 	}
@@ -1472,6 +1492,43 @@ func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error
 	if typed, ok := value.(map[string]any); ok {
 		rows = mcpMapArrayCount(typed, "rows")
 		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, rows, nil)), nil
+	}
+	return value, nil
+}
+
+func (app *App) mcpAgentPreflight(r *http.Request, args map[string]any) (any, error) {
+	request := agentplatform.AgentRunPreflightRequest{
+		TenantID:              mcpStringArg(args, "tenant_id"),
+		ActorID:               mcpStringArg(args, "actor_id"),
+		CapabilityIDs:         mcpStringListArg(args, "capability_ids"),
+		Question:              mcpStringArg(args, "question"),
+		ScopeURN:              mcpStringArg(args, "scope_urn"),
+		Model:                 mcpStringArg(args, "model"),
+		RequestedScopes:       mcpStringListArg(args, "requested_scopes"),
+		ConnectorReadiness:    mcpStringMapArg(args, "connector_readiness"),
+		AllowPreview:          mcpBoolArg(args, "allow_preview"),
+		SelectionReason:       mcpStringArg(args, "selection_reason"),
+		ProvenanceRequirement: mcpStringArg(args, "provenance_requirement"),
+	}
+	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, request.ActorID, request.RequestedScopes)
+	if err != nil {
+		return nil, err
+	}
+	request.TenantID = resolved.TenantID
+	request.ActorID = resolved.ActorID
+	request.RequestedScopes = resolved.RequestedScopes
+	request.ScopeUnrestricted = resolved.ScopeUnrestricted
+	if request.ScopeURN != "" {
+		if err := authorizeCerebroURNTenant(r.Context(), request.ScopeURN); err != nil {
+			return nil, mcpNormalizeIDLookupError(err, ports.ErrGraphEntityNotFound)
+		}
+	}
+	value, err := jsonValue(agentplatform.PreflightAgentRun(request))
+	if err != nil {
+		return nil, err
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, mcpMapArrayCount(typed, "capability_decisions"), nil)), nil
 	}
 	return value, nil
 }
@@ -1929,6 +1986,37 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Graph Attack Paths"),
 		},
 		{
+			Name:        "cerebro.agent.preflight",
+			Title:       "Agent Run Preflight",
+			Description: "Resolve tenant-scoped capability, graph, connector, policy, and write-back preconditions before an agent plans work.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"capability_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"question":       map[string]any{"type": "string"},
+				"scope_urn":      map[string]any{"type": "string"},
+				"model":          map[string]any{"type": "string"},
+				"connector_readiness": map[string]any{
+					"type":                 "object",
+					"additionalProperties": map[string]any{"type": "string"},
+				},
+				"allow_preview":          map[string]any{"type": "boolean"},
+				"selection_reason":       map[string]any{"type": "string"},
+				"provenance_requirement": map[string]any{"type": "string"},
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"tenant_id":            map[string]any{"type": "string"},
+				"enabled":              map[string]any{"type": "boolean"},
+				"blockers":             map[string]any{"type": "array"},
+				"capability_decisions": map[string]any{"type": "array"},
+				"graph_context":        map[string]any{"type": "object"},
+				"connector_context":    map[string]any{"type": "array"},
+				"policy":               map[string]any{"type": "object"},
+				"write_back":           map[string]any{"type": "object"},
+				"runtime_events":       map[string]any{"type": "array"},
+				"provenance":           map[string]any{"type": "array"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Agent Run Preflight"),
+		},
+		{
 			Name:        "cerebro.graph.reason",
 			Title:       "Graph Reasoning",
 			Description: "Answer a tenant-scoped graph question with query plan, guarded Cypher, rows, graph evidence, citations, and provenance.",
@@ -1946,6 +2034,7 @@ func mcpTools() []mcpTool {
 				"answer_markdown":     map[string]any{"type": "string"},
 				"citations":           map[string]any{"type": "array"},
 				"citation_validation": map[string]any{"type": "object"},
+				"preflight":           map[string]any{"type": "object"},
 				"provenance":          map[string]any{"type": "object"},
 			}),
 			Annotations: mcpReadOnlyAnnotations("Graph Reasoning"),
@@ -3279,6 +3368,57 @@ func mcpRuntimeIDsArg(args map[string]any) []string {
 		values = append(values, splitMCPStringList(mcpAnyString(typed))...)
 	}
 	return normalizeMCPStringList(values)
+}
+
+func mcpStringListArg(args map[string]any, key string) []string {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch typed := raw.(type) {
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, mcpAnyString(item))
+		}
+		return normalizeMCPStringList(values)
+	case []string:
+		return normalizeMCPStringList(typed)
+	case string:
+		return normalizeMCPStringList(splitMCPStringList(typed))
+	default:
+		return normalizeMCPStringList(splitMCPStringList(mcpAnyString(typed)))
+	}
+}
+
+func mcpStringMapArg(args map[string]any, key string) map[string]string {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	out := map[string]string{}
+	switch typed := raw.(type) {
+	case map[string]any:
+		for itemKey, itemValue := range typed {
+			itemKey = strings.TrimSpace(itemKey)
+			itemString := strings.TrimSpace(mcpAnyString(itemValue))
+			if itemKey != "" && itemString != "" {
+				out[itemKey] = itemString
+			}
+		}
+	case map[string]string:
+		for itemKey, itemValue := range typed {
+			itemKey = strings.TrimSpace(itemKey)
+			itemValue = strings.TrimSpace(itemValue)
+			if itemKey != "" && itemValue != "" {
+				out[itemKey] = itemValue
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func splitMCPStringList(value string) []string {
