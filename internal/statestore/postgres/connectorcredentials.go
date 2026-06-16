@@ -286,6 +286,43 @@ func (s *Store) UpdateConnectorCredentialMetadata(ctx context.Context, credentia
 	return s.GetConnectorCredential(ctx, id)
 }
 
+func (s *Store) MarkConnectorCredentialUsed(ctx context.Context, credentialID string, usedAt time.Time, staleBefore time.Time) (*ports.ConnectorCredentialRecord, bool, error) {
+	id := strings.TrimSpace(credentialID)
+	if id == "" {
+		return nil, false, errors.New("connector credential id is required")
+	}
+	if s == nil || s.db == nil {
+		return nil, false, errors.New("postgres is not configured")
+	}
+	if err := s.ensureConnectorCredentialTable(ctx); err != nil {
+		return nil, false, err
+	}
+	if usedAt.IsZero() {
+		usedAt = time.Now().UTC()
+	}
+	if staleBefore.IsZero() {
+		staleBefore = usedAt.Add(-time.Hour)
+	}
+	record, err := scanConnectorCredentialRecord(s.db.QueryRowContext(ctx, `
+UPDATE connector_credentials
+SET last_used_at = $2, updated_at = $2
+WHERE id = $1 AND (last_used_at IS NULL OR last_used_at <= $3)
+RETURNING id, tenant_id, source_id, runtime_id, credential_store_id, auth_method, status, key_id,
+       fields_json, sealed, created_by, updated_by, revoked_by, previous_credential_id, idempotency_key,
+       created_at, updated_at, revoked_at, last_used_at, last_validated_at`, id, usedAt.UTC(), staleBefore.UTC()))
+	if err == nil {
+		return record, true, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		record, getErr := s.GetConnectorCredential(ctx, id)
+		if getErr != nil {
+			return nil, false, getErr
+		}
+		return record, false, nil
+	}
+	return nil, false, fmt.Errorf("mark connector credential used %q: %w", id, err)
+}
+
 func (s *Store) AppendConnectorCredentialAuditEvent(ctx context.Context, event *ports.ConnectorCredentialAuditRecord) error {
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")

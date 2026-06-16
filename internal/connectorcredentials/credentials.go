@@ -34,6 +34,8 @@ const (
 	StatusInvalid  = "invalid"
 	StatusRevoked  = "revoked"
 	StatusRotating = "rotating"
+
+	credentialUseTrackingInterval = time.Hour
 )
 
 var (
@@ -344,7 +346,6 @@ func (v *Vault) ResolveReferences(ctx context.Context, sourceID string, tenantID
 			if err := authorizeRecordStatus(record); err != nil {
 				return nil, err
 			}
-			_, _ = v.store.UpdateConnectorCredentialMetadata(ctx, credentialID, ports.ConnectorCredentialMetadataUpdate{LastUsedAt: timePtr(time.Now().UTC())})
 			fields, err = v.open(record)
 			if err != nil {
 				return nil, err
@@ -623,6 +624,18 @@ func authorizeRecordStatus(record *ports.ConnectorCredentialRecord) error {
 	}
 }
 
+func shouldTrackCredentialUse(lastUsedAt time.Time, now time.Time) bool {
+	if lastUsedAt.IsZero() {
+		return true
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	cutoff := now.UTC().Add(-credentialUseTrackingInterval)
+	lastUsedAt = lastUsedAt.UTC()
+	return lastUsedAt.Before(cutoff) || lastUsedAt.Equal(cutoff)
+}
+
 func credentialAAD(id string, tenantID string, sourceID string, runtimeID string, keyID string) []byte {
 	return []byte(strings.Join([]string{
 		strings.TrimSpace(id),
@@ -652,8 +665,4 @@ func TimestampOrZero(value time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339Nano)
-}
-
-func timePtr(value time.Time) *time.Time {
-	return &value
 }

@@ -277,9 +277,11 @@ func (b *Broker) ResolveReferences(ctx context.Context, sourceID string, tenantI
 	if err != nil {
 		return nil, err
 	}
+	now := b.now()
+	staleBefore := now.Add(-credentialUseTrackingInterval)
 	for _, credentialID := range credentialIDs {
-		record, err := b.vault.store.GetConnectorCredential(ctx, credentialID)
-		if err != nil {
+		record, tracked, err := b.vault.store.MarkConnectorCredentialUsed(ctx, credentialID, now, staleBefore)
+		if err != nil || !tracked {
 			continue
 		}
 		if err := b.appendAudit(ctx, record, AuditEventUsed, "", ""); err != nil {

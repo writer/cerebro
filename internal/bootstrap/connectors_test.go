@@ -113,6 +113,27 @@ func (s *connectorTestStore) UpdateConnectorCredentialMetadata(_ context.Context
 	return &cloned, nil
 }
 
+func (s *connectorTestStore) MarkConnectorCredentialUsed(_ context.Context, id string, usedAt time.Time, staleBefore time.Time) (*ports.ConnectorCredentialRecord, bool, error) {
+	record, ok := s.credentials[id]
+	if !ok {
+		return nil, false, ports.ErrConnectorCredentialNotFound
+	}
+	if usedAt.IsZero() {
+		usedAt = time.Now().UTC()
+	}
+	if staleBefore.IsZero() {
+		staleBefore = usedAt.Add(-time.Hour)
+	}
+	if !record.LastUsedAt.IsZero() && record.LastUsedAt.After(staleBefore) {
+		cloned := cloneConnectorTestCredential(record)
+		return &cloned, false, nil
+	}
+	record.LastUsedAt = usedAt.UTC()
+	record.UpdatedAt = usedAt.UTC()
+	cloned := cloneConnectorTestCredential(record)
+	return &cloned, true, nil
+}
+
 func (s *connectorTestStore) AppendConnectorCredentialAuditEvent(_ context.Context, event *ports.ConnectorCredentialAuditRecord) error {
 	if event == nil {
 		return nil

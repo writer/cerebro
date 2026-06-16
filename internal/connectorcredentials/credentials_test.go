@@ -16,8 +16,9 @@ import (
 )
 
 type memoryStore struct {
-	records map[string]*ports.ConnectorCredentialRecord
-	audit   []*ports.ConnectorCredentialAuditRecord
+	records         map[string]*ports.ConnectorCredentialRecord
+	audit           []*ports.ConnectorCredentialAuditRecord
+	metadataUpdates int
 }
 
 func (s *memoryStore) Ping(context.Context) error { return nil }
@@ -63,6 +64,7 @@ func (s *memoryStore) UpdateConnectorCredentialMetadata(_ context.Context, id st
 	if !ok {
 		return nil, ports.ErrConnectorCredentialNotFound
 	}
+	s.metadataUpdates++
 	if update.Status != "" {
 		record.Status = update.Status
 	}
@@ -90,6 +92,28 @@ func (s *memoryStore) UpdateConnectorCredentialMetadata(_ context.Context, id st
 	record.UpdatedAt = time.Now().UTC()
 	cloned := cloneMemoryCredential(record)
 	return &cloned, nil
+}
+
+func (s *memoryStore) MarkConnectorCredentialUsed(_ context.Context, id string, usedAt time.Time, staleBefore time.Time) (*ports.ConnectorCredentialRecord, bool, error) {
+	record, ok := s.records[id]
+	if !ok {
+		return nil, false, ports.ErrConnectorCredentialNotFound
+	}
+	if usedAt.IsZero() {
+		usedAt = time.Now().UTC()
+	}
+	if staleBefore.IsZero() {
+		staleBefore = usedAt.Add(-credentialUseTrackingInterval)
+	}
+	if !record.LastUsedAt.IsZero() && record.LastUsedAt.After(staleBefore) {
+		cloned := cloneMemoryCredential(record)
+		return &cloned, false, nil
+	}
+	s.metadataUpdates++
+	record.LastUsedAt = usedAt.UTC()
+	record.UpdatedAt = usedAt.UTC()
+	cloned := cloneMemoryCredential(record)
+	return &cloned, true, nil
 }
 
 func (s *memoryStore) AppendConnectorCredentialAuditEvent(_ context.Context, event *ports.ConnectorCredentialAuditRecord) error {
@@ -183,6 +207,94 @@ func TestVaultStoresEncryptedCredentialReferences(t *testing.T) {
 	}
 	if _, err := vault.ResolveReferences(context.Background(), "github", "tenant-a", "runtime-b", map[string]string{"token": Reference(record.ID, "token")}); err == nil {
 		t.Fatal("ResolveReferences() runtime mismatch error = nil, want error")
+	}
+}
+
+func TestBrokerResolveReferencesThrottlesUsedAudit(t *testing.T) {
+	store := &memoryStore{}
+	vault, err := NewVault(store, "test-vault-key")
+	if err != nil {
+		t.Fatalf("NewVault() error = %v", err)
+	}
+	broker := NewBroker(vault, nil)
+	record, err := vault.Put(context.Background(), PlainCredential{
+		TenantID:  "tenant-a",
+		SourceID:  "github",
+		RuntimeID: "runtime-a",
+		Fields:    map[string]string{"token": "secret-token"},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	values := map[string]string{
+		"token":      Reference(record.ID, "token"),
+		"token_copy": Reference(record.ID, "token"),
+	}
+	if _, err := broker.ResolveReferences(context.Background(), "github", "tenant-a", "runtime-a", values); err != nil {
+		t.Fatalf("ResolveReferences() error = %v", err)
+	}
+	if got := len(store.audit); got != 1 {
+		t.Fatalf("used audit count after first resolve = %d, want 1", got)
+	}
+	if store.metadataUpdates != 1 {
+		t.Fatalf("metadata updates after first resolve = %d, want 1", store.metadataUpdates)
+	}
+	lastUsedAt := store.records[record.ID].LastUsedAt
+	if lastUsedAt.IsZero() {
+		t.Fatal("last_used_at was not recorded on first broker resolve")
+	}
+	if _, err := broker.ResolveReferences(context.Background(), "github", "tenant-a", "runtime-a", values); err != nil {
+		t.Fatalf("second ResolveReferences() error = %v", err)
+	}
+	if got := len(store.audit); got != 1 {
+		t.Fatalf("used audit count after throttled resolve = %d, want 1", got)
+	}
+	if store.metadataUpdates != 1 {
+		t.Fatalf("metadata updates after throttled resolve = %d, want 1", store.metadataUpdates)
+	}
+	if got := store.records[record.ID].LastUsedAt; !got.Equal(lastUsedAt) {
+		t.Fatalf("throttled resolve changed last_used_at = %s, want %s", got, lastUsedAt)
+	}
+	store.records[record.ID].LastUsedAt = time.Now().UTC().Add(-credentialUseTrackingInterval - time.Minute)
+	if _, err := broker.ResolveReferences(context.Background(), "github", "tenant-a", "runtime-a", map[string]string{"missing": Reference(record.ID, "missing")}); err == nil {
+		t.Fatal("missing field ResolveReferences() error = nil, want error")
+	}
+	if got := len(store.audit); got != 1 {
+		t.Fatalf("used audit count after failed resolve = %d, want 1", got)
+	}
+	if store.metadataUpdates != 1 {
+		t.Fatalf("metadata updates after failed resolve = %d, want 1", store.metadataUpdates)
+	}
+	if _, err := broker.ResolveReferences(context.Background(), "github", "tenant-a", "runtime-a", values); err != nil {
+		t.Fatalf("stale ResolveReferences() error = %v", err)
+	}
+	if got := len(store.audit); got != 2 {
+		t.Fatalf("used audit count after stale resolve = %d, want 2", got)
+	}
+	if store.metadataUpdates != 2 {
+		t.Fatalf("metadata updates after stale resolve = %d, want 2", store.metadataUpdates)
+	}
+}
+
+func TestShouldTrackCredentialUse(t *testing.T) {
+	now := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		lastUsedAt time.Time
+		want       bool
+	}{
+		{name: "never used", want: true},
+		{name: "inside interval", lastUsedAt: now.Add(-credentialUseTrackingInterval + time.Second), want: false},
+		{name: "at interval", lastUsedAt: now.Add(-credentialUseTrackingInterval), want: true},
+		{name: "older than interval", lastUsedAt: now.Add(-credentialUseTrackingInterval - time.Second), want: true},
+		{name: "future timestamp", lastUsedAt: now.Add(time.Minute), want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldTrackCredentialUse(tt.lastUsedAt, now); got != tt.want {
+				t.Fatalf("shouldTrackCredentialUse() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

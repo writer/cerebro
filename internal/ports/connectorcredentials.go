@@ -77,6 +77,7 @@ type ConnectorCredentialStore interface {
 	GetConnectorCredential(context.Context, string) (*ConnectorCredentialRecord, error)
 	ListConnectorCredentials(context.Context, ConnectorCredentialFilter) ([]*ConnectorCredentialRecord, error)
 	UpdateConnectorCredentialMetadata(context.Context, string, ConnectorCredentialMetadataUpdate) (*ConnectorCredentialRecord, error)
+	MarkConnectorCredentialUsed(context.Context, string, time.Time, time.Time) (*ConnectorCredentialRecord, bool, error)
 	AppendConnectorCredentialAuditEvent(context.Context, *ConnectorCredentialAuditRecord) error
 	ListConnectorCredentialAuditEvents(context.Context, string, int) ([]*ConnectorCredentialAuditRecord, error)
 }
