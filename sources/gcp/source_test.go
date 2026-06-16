@@ -146,11 +146,14 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation"},
 		{family: familySecret, kind: "gcp.secret_manager_secret"},
 		{family: familySecretVersion, kind: "gcp.secret_manager_version"},
+		{family: familySecurityCenterFinding, kind: "gcp.security_center_finding"},
 		{family: familyAudit, kind: "gcp.audit"},
 		{family: familyServiceUsageService, kind: "gcp.service_usage_service"},
 		{family: familySpannerDatabase, kind: "gcp.spanner_database"},
 		{family: familySpannerInstance, kind: "gcp.spanner_instance"},
 		{family: familyVPCAccessConnector, kind: "gcp.vpc_access_connector"},
+		{family: familyWorkloadIdentityPool, kind: "gcp.workload_identity_pool"},
+		{family: familyWorkloadIdentityProvider, kind: "gcp.workload_identity_provider"},
 		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -709,8 +712,11 @@ func TestReadLiveGCPDisabledOptionalServicesReturnEmpty(t *testing.T) {
 		{family: familyMonitoringAlertPolicy, path: "/v3/projects/writer-prod/alertPolicies"},
 		{family: familyMonitoringNotificationChannel, path: "/v3/projects/writer-prod/notificationChannels"},
 		{family: familySecret, path: "/v1/projects/writer-prod/secrets"},
+		{family: familySecurityCenterFinding, path: "/v2/projects/writer-prod/sources/-/findings"},
 		{family: familySpannerInstance, path: "/v1/projects/writer-prod/instances"},
 		{family: familyVPCAccessConnector, path: "/v1/projects/writer-prod/locations/-/connectors"},
+		{family: familyWorkloadIdentityPool, path: "/v1/projects/writer-prod/locations/global/workloadIdentityPools"},
+		{family: familyWorkloadIdentityProvider, path: "/v1/projects/writer-prod/locations/global/workloadIdentityPools"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -810,6 +816,46 @@ func TestReadLiveGCPExposureAndImpersonationPreview(t *testing.T) {
 	}
 }
 
+func TestReadLiveGCPSecurityCoveragePreview(t *testing.T) {
+	server := httptest.NewServer(newGCPAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familySecurityCenterFinding, kind: "gcp.security_center_finding", attr: "severity", want: "HIGH"},
+		{family: familyWorkloadIdentityPool, kind: "gcp.workload_identity_pool", attr: "pool_id", want: "github"},
+		{family: familyWorkloadIdentityProvider, kind: "gcp.workload_identity_provider", attr: "provider_type", want: "oidc"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"base_url":   server.URL,
+				"family":     tt.family,
+				"project_id": "writer-prod",
+				"token":      "test-token",
+			}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestReadLiveGCPGroupMembershipResolvesGroupKeys(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
@@ -864,6 +910,16 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"keys": []map[string]any{{"name": "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1", "keyType": "USER_MANAGED", "validAfterTime": "2026-04-23T00:00:00Z"}}})
 		case "/v1/projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com:getIamPolicy":
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/iam.serviceAccountTokenCreator", "members": []string{"user:admin@writer.com"}}}})
+		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("workload identity pools pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"workloadIdentityPools": []map[string]any{{"name": "projects/writer-prod/locations/global/workloadIdentityPools/github", "displayName": "GitHub Actions", "description": "GitHub workload identities", "state": "ACTIVE", "disabled": false}}})
+		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools/github/providers":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("workload identity providers pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"workloadIdentityPoolProviders": []map[string]any{{"name": "projects/writer-prod/locations/global/workloadIdentityPools/github/providers/actions", "displayName": "GitHub Actions OIDC", "state": "ACTIVE", "disabled": false, "attributeMapping": map[string]string{"google.subject": "assertion.sub", "attribute.repository": "assertion.repository"}, "attributeCondition": `assertion.repository_owner=="writer"`, "oidc": map[string]any{"issuerUri": "https://token.actions.githubusercontent.com", "allowedAudiences": []string{"https://github.com/writer"}}}}})
 		case "/compute/v1/projects/writer-prod/global/networks":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "net-1", "name": "default", "selfLink": "projects/writer-prod/global/networks/default", "description": "default network", "autoCreateSubnetworks": false, "routingConfig": map[string]string{"routingMode": "REGIONAL"}, "labels": map[string]string{"env": "prod"}}}})
 		case "/compute/v1/projects/writer-prod/global/routes":
@@ -1345,6 +1401,36 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("container analysis filter = %q, want vulnerability filter", got)
 			}
 			writeJSON(t, w, map[string]any{"occurrences": []map[string]any{{"name": "projects/writer-prod/occurrences/vuln-1", "resourceUri": "us-docker.pkg.dev/writer-prod/app/api@sha256:abc", "noteName": "projects/goog-vulnz/notes/CVE-2026-4242", "kind": "VULNERABILITY", "remediation": "Upgrade openssl", "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "vulnerability": map[string]any{"effectiveSeverity": "HIGH", "severity": "HIGH", "shortDescription": "openssl issue", "cvssScore": 8.8, "packageIssue": []map[string]any{{"affectedPackage": "openssl", "affectedVersion": map[string]string{"name": "3.0.0"}, "fixedPackage": "openssl", "fixedVersion": map[string]string{"name": "3.0.1"}, "fixAvailable": true, "packageType": "OS"}}}}}})
+		case "/v2/projects/writer-prod/sources/-/findings":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("security center findings pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"listFindingsResults": []map[string]any{{
+				"finding": map[string]any{
+					"name":         "projects/writer-prod/sources/123/findings/public-bucket",
+					"parent":       "projects/writer-prod/sources/123",
+					"resourceName": "//storage.googleapis.com/projects/_/buckets/data",
+					"state":        "ACTIVE",
+					"category":     "PUBLIC_BUCKET_ACL",
+					"severity":     "HIGH",
+					"mute":         "UNMUTED",
+					"findingClass": "MISCONFIGURATION",
+					"description":  "Bucket grants allUsers read access",
+					"nextSteps":    "Remove public ACL grants",
+					"eventTime":    "2026-04-23T00:00:00Z",
+					"createTime":   "2026-04-23T00:00:00Z",
+				},
+				"resource": map[string]any{
+					"name":               "//storage.googleapis.com/projects/_/buckets/data",
+					"displayName":        "data",
+					"type":               "google.cloud.storage.Bucket",
+					"service":            "storage.googleapis.com",
+					"location":           "US",
+					"cloudProvider":      "GOOGLE_CLOUD_PLATFORM",
+					"projectName":        "//cloudresourcemanager.googleapis.com/projects/writer-prod",
+					"projectDisplayName": "writer-prod",
+				},
+			}}})
 		case "/v2/entries:list":
 			writeJSON(t, w, map[string]any{"entries": []map[string]any{{"insertId": "audit-1", "timestamp": "2026-04-23T00:00:00Z", "protoPayload": map[string]any{"methodName": "SetIamPolicy", "serviceName": "cloudresourcemanager.googleapis.com", "resourceName": "projects/writer-prod", "authenticationInfo": map[string]any{"principalEmail": "admin@writer.com"}}, "resource": map[string]any{"type": "project", "labels": map[string]string{"project_id": "writer-prod"}}}}})
 		default:

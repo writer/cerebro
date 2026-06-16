@@ -1801,6 +1801,14 @@ func (record SpannerDatabaseRecord) CerebroResourceID() string {
 	return record.Name
 }
 
+func (record WorkloadIdentityPoolRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record WorkloadIdentityProviderRecord) CerebroResourceID() string {
+	return record.Name
+}
+
 type GKEClusterRecord struct {
 	Name                           string                            `json:"name"`
 	SelfLink                       string                            `json:"selfLink"`
@@ -2566,6 +2574,93 @@ type OrgPolicyRule struct {
 type OrgPolicyValues struct {
 	AllowedValues []string `json:"allowedValues"`
 	DeniedValues  []string `json:"deniedValues"`
+}
+
+type SecurityCenterFindingRecord struct {
+	Finding  SecurityCenterFinding  `json:"finding"`
+	Resource SecurityCenterResource `json:"resource"`
+	Raw      json.RawMessage        `json:"-"`
+}
+
+type SecurityCenterFinding struct {
+	Name             string                     `json:"name"`
+	Parent           string                     `json:"parent"`
+	ResourceName     string                     `json:"resourceName"`
+	State            string                     `json:"state"`
+	Category         string                     `json:"category"`
+	ExternalURI      string                     `json:"externalUri"`
+	Severity         string                     `json:"severity"`
+	Mute             string                     `json:"mute"`
+	FindingClass     string                     `json:"findingClass"`
+	Description      string                     `json:"description"`
+	NextSteps        string                     `json:"nextSteps"`
+	EventTime        string                     `json:"eventTime"`
+	CreateTime       string                     `json:"createTime"`
+	CanonicalName    string                     `json:"canonicalName"`
+	CloudDlpData     json.RawMessage            `json:"cloudDlpData"`
+	SourceProperties map[string]json.RawMessage `json:"sourceProperties"`
+	SecurityMarks    json.RawMessage            `json:"securityMarks"`
+	Vulnerability    json.RawMessage            `json:"vulnerability"`
+	MITREAttack      json.RawMessage            `json:"mitreAttack"`
+}
+
+type SecurityCenterResource struct {
+	Name               string `json:"name"`
+	DisplayName        string `json:"displayName"`
+	Type               string `json:"type"`
+	Service            string `json:"service"`
+	Location           string `json:"location"`
+	CloudProvider      string `json:"cloudProvider"`
+	ProjectName        string `json:"projectName"`
+	ProjectDisplayName string `json:"projectDisplayName"`
+	Parent             string `json:"parent"`
+	ParentDisplayName  string `json:"parentDisplayName"`
+	Folders            []struct {
+		ResourceFolder     string `json:"resourceFolder"`
+		ResourceFolderName string `json:"resourceFolderDisplayName"`
+	} `json:"folders"`
+}
+
+type WorkloadIdentityPoolRecord struct {
+	Name                            string          `json:"name"`
+	DisplayName                     string          `json:"displayName"`
+	Description                     string          `json:"description"`
+	State                           string          `json:"state"`
+	Disabled                        bool            `json:"disabled"`
+	ExpireTime                      string          `json:"expireTime"`
+	InlineCertificateIssuanceConfig json.RawMessage `json:"inlineCertificateIssuanceConfig"`
+	Raw                             json.RawMessage `json:"-"`
+}
+
+type WorkloadIdentityProviderRecord struct {
+	Name               string                       `json:"name"`
+	DisplayName        string                       `json:"displayName"`
+	Description        string                       `json:"description"`
+	State              string                       `json:"state"`
+	Disabled           bool                         `json:"disabled"`
+	ExpireTime         string                       `json:"expireTime"`
+	AttributeMapping   map[string]string            `json:"attributeMapping"`
+	AttributeCondition string                       `json:"attributeCondition"`
+	AWS                WorkloadIdentityProviderAWS  `json:"aws"`
+	OIDC               WorkloadIdentityProviderOIDC `json:"oidc"`
+	SAML               WorkloadIdentityProviderSAML `json:"saml"`
+	X509               json.RawMessage              `json:"x509"`
+	PoolName           string                       `json:"-"`
+	Raw                json.RawMessage              `json:"-"`
+}
+
+type WorkloadIdentityProviderAWS struct {
+	AccountID string `json:"accountId"`
+}
+
+type WorkloadIdentityProviderOIDC struct {
+	IssuerURI        string   `json:"issuerUri"`
+	AllowedAudiences []string `json:"allowedAudiences"`
+	JwksJSON         string   `json:"jwksJson"`
+}
+
+type WorkloadIdentityProviderSAML struct {
+	IDPMetadataXML string `json:"idpMetadataXml"`
 }
 
 func ServiceAccountEvent(settings Settings, record ServiceAccountRecord) (*primitives.Event, error) {
@@ -5216,6 +5311,91 @@ func OrgPolicyEvent(settings Settings, record OrgPolicyRecord) (*primitives.Even
 	return sourceEvent(settings, "gcp-org-policy-"+resourceID, "gcp.org_policy", "gcp/org_policy/v1", payload, attributes)
 }
 
+func SecurityCenterFindingEvent(settings Settings, record SecurityCenterFindingRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.Finding.Name, record.Finding.CanonicalName, record.Finding.ResourceName, record.Resource.Name)
+	affectedResourceID := firstNonEmpty(record.Finding.ResourceName, record.Resource.Name)
+	location := firstNonEmpty(record.Resource.Location, locationFromResourceName(affectedResourceID), "global")
+	attributes := cloudResourceAttributes(settings, "security_center_finding", resourceID, firstNonEmpty(record.Finding.Category, lastPathSegment(resourceID)), "security_center_finding", location, nil)
+	attributes["affected_resource_id"] = affectedResourceID
+	attributes["affected_resource_name"] = firstNonEmpty(record.Resource.DisplayName, lastPathSegment(affectedResourceID))
+	attributes["affected_resource_type"] = record.Resource.Type
+	attributes["category"] = record.Finding.Category
+	attributes["cloud_provider"] = record.Resource.CloudProvider
+	attributes["created_at"] = record.Finding.CreateTime
+	attributes["description"] = record.Finding.Description
+	attributes["event_time"] = record.Finding.EventTime
+	attributes["external_uri"] = record.Finding.ExternalURI
+	attributes["finding_class"] = record.Finding.FindingClass
+	attributes["finding_name"] = record.Finding.Name
+	attributes["mute"] = record.Finding.Mute
+	attributes["muted"] = boolString(strings.EqualFold(record.Finding.Mute, "MUTED"))
+	attributes["next_steps"] = record.Finding.NextSteps
+	attributes["parent"] = record.Finding.Parent
+	attributes["project_name"] = record.Resource.ProjectName
+	attributes["resource_service"] = record.Resource.Service
+	attributes["severity"] = record.Finding.Severity
+	attributes["source_provider"] = "gcp_security_command_center"
+	attributes["state"] = record.Finding.State
+	attributes["status"] = record.Finding.State
+	attributes["source_properties_count"] = strconv.Itoa(len(record.Finding.SourceProperties))
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-security-center-finding-"+resourceID, "gcp.security_center_finding", "gcp/security_center_finding/v1", payload, attributes)
+}
+
+func WorkloadIdentityPoolEvent(settings Settings, record WorkloadIdentityPoolRecord) (*primitives.Event, error) {
+	location := firstNonEmpty(locationFromResourceName(record.Name), settings.Location, "global")
+	attributes := cloudResourceAttributes(settings, "workload_identity_pool", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "workload_identity_pool", location, nil)
+	attributes["description"] = record.Description
+	attributes["disabled"] = boolString(record.Disabled)
+	attributes["display_name"] = record.DisplayName
+	attributes["expire_time"] = record.ExpireTime
+	attributes["pool_id"] = lastPathSegment(record.Name)
+	attributes["state"] = record.State
+	attributes["status"] = disabledStatus(record.Disabled)
+	attributes["inline_certificate_issuance_configured"] = boolString(len(record.InlineCertificateIssuanceConfig) != 0)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-workload-identity-pool-"+record.Name, "gcp.workload_identity_pool", "gcp/workload_identity_pool/v1", payload, attributes)
+}
+
+func WorkloadIdentityProviderEvent(settings Settings, record WorkloadIdentityProviderRecord) (*primitives.Event, error) {
+	providerType := workloadIdentityProviderType(record)
+	mappingKeys := workloadIdentityProviderMappingKeys(record.AttributeMapping)
+	location := firstNonEmpty(locationFromResourceName(record.Name), locationFromResourceName(record.PoolName), settings.Location, "global")
+	poolName := firstNonEmpty(record.PoolName, parentResourceName(record.Name, "providers"))
+	attributes := cloudResourceAttributes(settings, "workload_identity_provider", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "workload_identity_provider", location, nil)
+	attributes["attribute_condition"] = record.AttributeCondition
+	attributes["attribute_condition_configured"] = boolString(record.AttributeCondition != "")
+	attributes["attribute_mapping_keys"] = strings.Join(mappingKeys, ",")
+	attributes["attribute_mappings_count"] = strconv.Itoa(len(record.AttributeMapping))
+	attributes["aws_account_id"] = record.AWS.AccountID
+	attributes["description"] = record.Description
+	attributes["disabled"] = boolString(record.Disabled)
+	attributes["display_name"] = record.DisplayName
+	attributes["expire_time"] = record.ExpireTime
+	attributes["oidc_allowed_audiences"] = strings.Join(record.OIDC.AllowedAudiences, ",")
+	attributes["oidc_allowed_audiences_count"] = strconv.Itoa(len(record.OIDC.AllowedAudiences))
+	attributes["oidc_issuer_uri"] = record.OIDC.IssuerURI
+	attributes["pool_id"] = lastPathSegment(poolName)
+	attributes["pool_name"] = poolName
+	attributes["provider_id"] = lastPathSegment(record.Name)
+	attributes["provider_type"] = providerType
+	attributes["saml_metadata_configured"] = boolString(record.SAML.IDPMetadataXML != "")
+	attributes["state"] = record.State
+	attributes["status"] = disabledStatus(record.Disabled)
+	attributes["x509_configured"] = boolString(len(record.X509) != 0)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"pool_name": poolName, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-workload-identity-provider-"+record.Name, "gcp.workload_identity_provider", "gcp/workload_identity_provider/v1", payload, attributes)
+}
+
 type cloudSchedulerTargetSummary struct {
 	Type                string
 	Target              string
@@ -6105,6 +6285,32 @@ func appendUnique(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
+}
+
+func workloadIdentityProviderType(record WorkloadIdentityProviderRecord) string {
+	switch {
+	case record.AWS.AccountID != "":
+		return "aws"
+	case record.OIDC.IssuerURI != "" || len(record.OIDC.AllowedAudiences) != 0 || record.OIDC.JwksJSON != "":
+		return "oidc"
+	case record.SAML.IDPMetadataXML != "":
+		return "saml"
+	case len(record.X509) != 0:
+		return "x509"
+	default:
+		return ""
+	}
+}
+
+func workloadIdentityProviderMappingKeys(mapping map[string]string) []string {
+	keys := make([]string, 0, len(mapping))
+	for key := range mapping {
+		if strings.TrimSpace(key) != "" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func dnsManagedZoneNetworks(record DNSManagedZoneRecord) []string {
