@@ -3219,6 +3219,8 @@ func TestReadAWSAssetMetadataPreview(t *testing.T) {
 }
 
 func TestReadAWSAppSyncGraphQLAPIInventoryEvent(t *testing.T) {
+	apiARN := "arn:aws:appsync:us-east-1:123456789012:apis/api-123"
+	dataSourceRoleARN := "arn:aws:iam::123456789012:role/service-role/appsync-data-source"
 	source := newTestSource(t, fakeAWS{
 		fakeAWSRuntime: fakeAWSRuntime{fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
 			appSyncAPIs: []appsynctypes.GraphqlApi{{
@@ -3233,7 +3235,7 @@ func TestReadAWSAppSyncGraphQLAPIInventoryEvent(t *testing.T) {
 				},
 				ApiId:               awssdk.String("api-123"),
 				ApiType:             appsynctypes.GraphQLApiTypeGraphql,
-				Arn:                 awssdk.String("arn:aws:appsync:us-east-1:123456789012:apis/api-123"),
+				Arn:                 awssdk.String(apiARN),
 				AuthenticationType:  appsynctypes.AuthenticationTypeAmazonCognitoUserPools,
 				IntrospectionConfig: appsynctypes.GraphQLApiIntrospectionConfigDisabled,
 				LogConfig: &appsynctypes.LogConfig{
@@ -3264,6 +3266,50 @@ func TestReadAWSAppSyncGraphQLAPIInventoryEvent(t *testing.T) {
 				WafWebAclArn: awssdk.String("arn:aws:wafv2:us-east-1:123456789012:regional/webacl/api/abcd"),
 				XrayEnabled:  true,
 			}},
+			appSyncDataSources: map[string][]appsynctypes.DataSource{"api-123": {
+				{
+					DataSourceArn: awssdk.String(apiARN + "/datasources/ordersTable"),
+					DynamodbConfig: &appsynctypes.DynamodbDataSourceConfig{
+						AwsRegion: awssdk.String("us-east-1"),
+						TableName: awssdk.String("orders"),
+					},
+					Name:           awssdk.String("ordersTable"),
+					ServiceRoleArn: awssdk.String(dataSourceRoleARN),
+					Type:           appsynctypes.DataSourceTypeAmazonDynamodb,
+				},
+				{
+					DataSourceArn: awssdk.String(apiARN + "/datasources/ordersFunction"),
+					LambdaConfig:  &appsynctypes.LambdaDataSourceConfig{LambdaFunctionArn: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders")},
+					Name:          awssdk.String("ordersFunction"),
+					Type:          appsynctypes.DataSourceTypeAwsLambda,
+				},
+			}},
+			appSyncResolvers: map[string]map[string][]appsynctypes.Resolver{"api-123": {
+				"Mutation": {{
+					DataSourceName: awssdk.String("ordersFunction"),
+					FieldName:      awssdk.String("createOrder"),
+					Kind:           appsynctypes.ResolverKindUnit,
+					RequestMappingTemplate: awssdk.String(`{
+  "version": "2017-02-28",
+  "operation": "Invoke",
+  "payload": "do-not-store-this-value"
+}`),
+					ResolverArn: awssdk.String(apiARN + "/types/Mutation/resolvers/createOrder"),
+					TypeName:    awssdk.String("Mutation"),
+				}},
+				"Query": {{
+					DataSourceName: awssdk.String("ordersTable"),
+					FieldName:      awssdk.String("getOrder"),
+					Kind:           appsynctypes.ResolverKindUnit,
+					ResolverArn:    awssdk.String(apiARN + "/types/Query/resolvers/getOrder"),
+					TypeName:       awssdk.String("Query"),
+				}},
+			}},
+			appSyncTags: map[string]map[string]string{apiARN: {"Owner": "platform@writer.com", "Team": "api"}},
+			appSyncTypes: map[string][]appsynctypes.Type{"api-123": {
+				{Name: awssdk.String("Mutation")},
+				{Name: awssdk.String("Query")},
+			}},
 		}},
 	})
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyAppSyncGraphQLAPI}), nil)
@@ -3285,6 +3331,10 @@ func TestReadAWSAppSyncGraphQLAPIInventoryEvent(t *testing.T) {
 		"additional_authentication_types": "AWS_IAM,AWS_LAMBDA",
 		"authorization_modes":             "AMAZON_COGNITO_USER_POOLS,AWS_IAM,AWS_LAMBDA",
 		"cloudwatch_logs_role_arn":        "arn:aws:iam::123456789012:role/service-role/appsync-logs",
+		"data_source_count":               "2",
+		"data_source_names":               "ordersFunction,ordersTable",
+		"data_source_role_arns":           dataSourceRoleARN,
+		"data_source_types":               "AMAZON_DYNAMODB,AWS_LAMBDA",
 		"exclude_verbose_content":         "true",
 		"field_log_level":                 "ERROR",
 		"graphql_url":                     "https://api-123.appsync-api.us-east-1.amazonaws.com/graphql",
@@ -3296,11 +3346,17 @@ func TestReadAWSAppSyncGraphQLAPIInventoryEvent(t *testing.T) {
 		"owner":                           "platform@writer.com",
 		"query_depth_limit":               "8",
 		"realtime_url":                    "wss://api-123.appsync-realtime-api.us-east-1.amazonaws.com/graphql",
+		"resolver_count":                  "2",
 		"resolver_count_limit":            "20",
+		"resolver_data_source_names":      "ordersFunction,ordersTable",
+		"resolver_fields":                 "Mutation.createOrder,Query.getOrder",
+		"resolver_kinds":                  "UNIT",
 		"resource_id":                     "arn:aws:appsync:us-east-1:123456789012:apis/api-123",
 		"resource_name":                   "orders-api",
 		"resource_type":                   "appsync_graphql_api",
 		"team":                            "api",
+		"type_count":                      "2",
+		"type_names":                      "Mutation,Query",
 		"user_pool_default_action":        "ALLOW",
 		"user_pool_id":                    "us-east-1_pool",
 		"user_pool_region":                "us-east-1",
@@ -3311,6 +3367,9 @@ func TestReadAWSAppSyncGraphQLAPIInventoryEvent(t *testing.T) {
 		if got := event.Attributes[key]; got != want {
 			t.Fatalf("attributes[%s] = %q, want %q", key, got, want)
 		}
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
+		t.Fatal("payload contains resolver mapping template value")
 	}
 }
 
@@ -4207,12 +4266,17 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.datasyncTags = map[string][]datasynctypes.TagListEntry{taskARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}, locationARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}}
 	}
 	appSyncData := func(fake *recordingAWS) {
+		apiARN := "arn:aws:appsync:us-east-1:123456789012:apis/api-123"
 		fake.appSyncAPIs = []appsynctypes.GraphqlApi{{
 			ApiId:              awssdk.String("api-123"),
-			Arn:                awssdk.String("arn:aws:appsync:us-east-1:123456789012:apis/api-123"),
+			Arn:                awssdk.String(apiARN),
 			AuthenticationType: appsynctypes.AuthenticationTypeAwsIam,
 			Name:               awssdk.String("orders-api"),
 		}}
+		fake.appSyncDataSources = map[string][]appsynctypes.DataSource{"api-123": {{DataSourceArn: awssdk.String(apiARN + "/datasources/ordersTable"), Name: awssdk.String("ordersTable"), Type: appsynctypes.DataSourceTypeAmazonDynamodb}}}
+		fake.appSyncResolvers = map[string]map[string][]appsynctypes.Resolver{"api-123": {"Query": {{DataSourceName: awssdk.String("ordersTable"), FieldName: awssdk.String("getOrder"), Kind: appsynctypes.ResolverKindUnit, ResolverArn: awssdk.String(apiARN + "/types/Query/resolvers/getOrder"), TypeName: awssdk.String("Query")}}}}
+		fake.appSyncTags = map[string]map[string]string{apiARN: {"Team": "api"}}
+		fake.appSyncTypes = map[string][]appsynctypes.Type{"api-123": {{Name: awssdk.String("Query")}}}
 	}
 	backupData := func(fake *recordingAWS) {
 		vaultARN := "arn:aws:backup:us-east-1:123456789012:backup-vault:prod-vault"
@@ -4309,7 +4373,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyAppSyncGraphQLAPI,
 			seed:    appSyncData,
-			wantAPI: []string{"appsync:ListGraphqlApis"},
+			wantAPI: []string{"appsync:ListDataSources", "appsync:ListGraphqlApis", "appsync:ListResolvers", "appsync:ListTagsForResource", "appsync:ListTypes"},
 		},
 		{
 			family:  familyBackupVault,
@@ -5573,6 +5637,10 @@ type fakeAWSRuntimeApplication struct {
 	appRunnerServices          map[string]apprunnertypes.Service
 	appRunnerTags              map[string][]apprunnertypes.Tag
 	appSyncAPIs                []appsynctypes.GraphqlApi
+	appSyncDataSources         map[string][]appsynctypes.DataSource
+	appSyncResolvers           map[string]map[string][]appsynctypes.Resolver
+	appSyncTags                map[string]map[string]string
+	appSyncTypes               map[string][]appsynctypes.Type
 	bedrockCustomModels        []bedrocktypes.CustomModelSummary
 	bedrockCustomModelDetails  map[string]bedrock.GetCustomModelOutput
 	bedrockResourcePolicies    map[string]string
@@ -6792,6 +6860,23 @@ func (f fakeAppSync) ListGraphqlApis(context.Context, *appsync.ListGraphqlApisIn
 	return &appsync.ListGraphqlApisOutput{GraphqlApis: f.runtime.appSyncAPIs}, nil
 }
 
+func (f fakeAppSync) ListDataSources(_ context.Context, input *appsync.ListDataSourcesInput, _ ...func(*appsync.Options)) (*appsync.ListDataSourcesOutput, error) {
+	return &appsync.ListDataSourcesOutput{DataSources: f.runtime.appSyncDataSources[awssdk.ToString(input.ApiId)]}, nil
+}
+
+func (f fakeAppSync) ListResolvers(_ context.Context, input *appsync.ListResolversInput, _ ...func(*appsync.Options)) (*appsync.ListResolversOutput, error) {
+	byType := f.runtime.appSyncResolvers[awssdk.ToString(input.ApiId)]
+	return &appsync.ListResolversOutput{Resolvers: byType[awssdk.ToString(input.TypeName)]}, nil
+}
+
+func (f fakeAppSync) ListTagsForResource(_ context.Context, input *appsync.ListTagsForResourceInput, _ ...func(*appsync.Options)) (*appsync.ListTagsForResourceOutput, error) {
+	return &appsync.ListTagsForResourceOutput{Tags: f.runtime.appSyncTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+func (f fakeAppSync) ListTypes(_ context.Context, input *appsync.ListTypesInput, _ ...func(*appsync.Options)) (*appsync.ListTypesOutput, error) {
+	return &appsync.ListTypesOutput{Types: f.runtime.appSyncTypes[awssdk.ToString(input.ApiId)]}, nil
+}
+
 type recordingAppSync struct {
 	fake *recordingAWS
 }
@@ -6799,6 +6884,26 @@ type recordingAppSync struct {
 func (f recordingAppSync) ListGraphqlApis(ctx context.Context, input *appsync.ListGraphqlApisInput, options ...func(*appsync.Options)) (*appsync.ListGraphqlApisOutput, error) {
 	f.fake.record("appsync:ListGraphqlApis")
 	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListGraphqlApis(ctx, input, options...)
+}
+
+func (f recordingAppSync) ListDataSources(ctx context.Context, input *appsync.ListDataSourcesInput, options ...func(*appsync.Options)) (*appsync.ListDataSourcesOutput, error) {
+	f.fake.record("appsync:ListDataSources")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListDataSources(ctx, input, options...)
+}
+
+func (f recordingAppSync) ListResolvers(ctx context.Context, input *appsync.ListResolversInput, options ...func(*appsync.Options)) (*appsync.ListResolversOutput, error) {
+	f.fake.record("appsync:ListResolvers")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListResolvers(ctx, input, options...)
+}
+
+func (f recordingAppSync) ListTagsForResource(ctx context.Context, input *appsync.ListTagsForResourceInput, options ...func(*appsync.Options)) (*appsync.ListTagsForResourceOutput, error) {
+	f.fake.record("appsync:ListTagsForResource")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f recordingAppSync) ListTypes(ctx context.Context, input *appsync.ListTypesInput, options ...func(*appsync.Options)) (*appsync.ListTypesOutput, error) {
+	f.fake.record("appsync:ListTypes")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListTypes(ctx, input, options...)
 }
 
 type recordingSageMaker struct {
