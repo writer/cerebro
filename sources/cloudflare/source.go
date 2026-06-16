@@ -83,11 +83,12 @@ func cloudflareFamilies() []jsonapi.Family {
 		{
 			Name:             "role",
 			Path:             "/accounts/{account_id}/roles",
+			DetailPath:       "/accounts/{account_id}/roles/{id}",
 			PathParams:       []string{"account_id"},
 			URNKind:          "cloudflare_role",
 			IDKeys:           []string{"id"},
 			ListKeys:         cloudflareResultListKeys(),
-			Attributes:       map[string]string{"role_id": "id", "name": "name", "description": "description", "permissions": "permissions"},
+			Attributes:       map[string]string{"role_id": "id", "name": "name", "description": "description", "permissions": "permissions", "permission_groups": "permission_groups"},
 			StaticAttributes: cloudflareStaticAttributes(),
 		},
 		{
@@ -125,23 +126,25 @@ func cloudflareFamilies() []jsonapi.Family {
 		{
 			Name:             "account_ruleset",
 			Path:             "/accounts/{account_id}/rulesets",
+			DetailPath:       "/accounts/{account_id}/rulesets/{id}",
 			PathParams:       []string{"account_id"},
 			URNKind:          "cloudflare_account_ruleset",
 			IDKeys:           []string{"id"},
 			TimestampKeys:    []string{"last_updated"},
 			ListKeys:         cloudflareResultListKeys(),
-			Attributes:       map[string]string{"ruleset_id": "id", "account_id": "account_id", "name": "name", "kind": "kind", "phase": "phase", "version": "version", "last_updated": "last_updated"},
+			Attributes:       map[string]string{"ruleset_id": "id", "account_id": "account_id", "name": "name", "kind": "kind", "phase": "phase", "version": "version", "last_updated": "last_updated", "rules": "rules"},
 			StaticAttributes: cloudflareStaticAttributes(),
 		},
 		{
 			Name:             "zone_ruleset",
 			Path:             "/zones/{zone_id}/rulesets",
+			DetailPath:       "/zones/{zone_id}/rulesets/{id}",
 			PathParams:       []string{"zone_id"},
 			URNKind:          "cloudflare_zone_ruleset",
 			IDKeys:           []string{"id"},
 			TimestampKeys:    []string{"last_updated"},
 			ListKeys:         cloudflareResultListKeys(),
-			Attributes:       map[string]string{"ruleset_id": "id", "zone_id": "zone_id", "name": "name", "kind": "kind", "phase": "phase", "version": "version", "last_updated": "last_updated"},
+			Attributes:       map[string]string{"ruleset_id": "id", "zone_id": "zone_id", "name": "name", "kind": "kind", "phase": "phase", "version": "version", "last_updated": "last_updated", "rules": "rules"},
 			StaticAttributes: cloudflareStaticAttributes(),
 		},
 		{
@@ -152,7 +155,7 @@ func cloudflareFamilies() []jsonapi.Family {
 			IDKeys:           []string{"id"},
 			TimestampKeys:    []string{"created_at", "updated_at"},
 			ListKeys:         cloudflareResultListKeys(),
-			Attributes:       map[string]string{"application_id": "id", "account_id": "account_id", "name": "name", "domain": "domain", "type": "type", "aud": "aud", "session_duration": "session_duration"},
+			Attributes:       map[string]string{"application_id": "id", "account_id": "account_id", "name": "name", "domain": "domain", "type": "type", "aud": "aud", "session_duration": "session_duration", "policies": "policies", "allowed_idps": "allowed_idps", "auto_redirect_to_identity": "auto_redirect_to_identity"},
 			StaticAttributes: cloudflareStaticAttributes(),
 		},
 		{
@@ -163,7 +166,7 @@ func cloudflareFamilies() []jsonapi.Family {
 			IDKeys:           []string{"id"},
 			TimestampKeys:    []string{"created_at", "updated_at"},
 			ListKeys:         cloudflareResultListKeys(),
-			Attributes:       map[string]string{"group_id": "id", "account_id": "account_id", "name": "name"},
+			Attributes:       map[string]string{"group_id": "id", "account_id": "account_id", "name": "name", "include": "include", "exclude": "exclude", "require": "require"},
 			StaticAttributes: cloudflareStaticAttributes(),
 		},
 		{
@@ -174,7 +177,7 @@ func cloudflareFamilies() []jsonapi.Family {
 			IDKeys:           []string{"id"},
 			TimestampKeys:    []string{"created_at", "updated_at"},
 			ListKeys:         cloudflareResultListKeys(),
-			Attributes:       map[string]string{"rule_id": "id", "account_id": "account_id", "name": "name", "action": "action", "traffic": "traffic", "enabled": "enabled", "precedence": "precedence"},
+			Attributes:       map[string]string{"rule_id": "id", "account_id": "account_id", "name": "name", "action": "action", "traffic": "traffic", "enabled": "enabled", "precedence": "precedence", "filters": "filters", "rule_settings": "rule_settings"},
 			StaticAttributes: cloudflareStaticAttributes(),
 		},
 		{
@@ -185,7 +188,7 @@ func cloudflareFamilies() []jsonapi.Family {
 			IDKeys:           []string{"id"},
 			TimestampKeys:    []string{"created_on", "modified_on"},
 			ListKeys:         cloudflareResultListKeys(),
-			Attributes:       map[string]string{"script_id": "id", "account_id": "account_id", "created_on": "created_on", "modified_on": "modified_on", "compatibility_date": "compatibility_date", "tags": "tags"},
+			Attributes:       map[string]string{"script_id": "id", "account_id": "account_id", "created_on": "created_on", "modified_on": "modified_on", "compatibility_date": "compatibility_date", "tags": "tags", "bindings": "bindings", "placement": "placement"},
 			StaticAttributes: cloudflareStaticAttributes(),
 		},
 		{
