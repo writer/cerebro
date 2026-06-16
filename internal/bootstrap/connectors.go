@@ -570,7 +570,7 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		}
 		runtimeConfig[resourcescope.ConfigKey] = scopeConfigValue
 	}
-	if err := validateConnectorConnectionShape(sourceID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); err != nil {
+	if err := validateConnectorConnectionShape(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); err != nil {
 		writeConnectorError(w, err)
 		return
 	}
@@ -836,7 +836,23 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 		}
 		runtimeConfig[resourcescope.ConfigKey] = scopeConfigValue
 	}
-	if shapeIssue := validateConnectorConnectionShape(sourceID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); shapeIssue != nil {
+	if connectorAuthMethodUsesCredentialReferences(authMethod) && len(request.CredentialReferences) > 0 {
+		if referenceScopeIssue := validateConnectorCredentialReferencesForRuntime(credentialStoreID, sourceID, tenantID, runtimeID, request.CredentialReferences); referenceScopeIssue != nil {
+			response.addPreflightCheck(connectorPreflightCheckView{
+				ID:         "credential_boundary",
+				Label:      "Credential boundary",
+				Status:     "blocked",
+				Severity:   "error",
+				Detail:     connectorPreflightValidationDetail(referenceScopeIssue, "Credential references must stay inside the selected runtime secret namespace."),
+				NextAction: "fix_credential_references",
+				Blocking:   true,
+			})
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, connectorReferenceTemplateFields(sourceID, authMethod, request.CredentialReferences))
+			response.finalizePreflight()
+			return response, nil
+		}
+	}
+	if shapeIssue := validateConnectorConnectionShape(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); shapeIssue != nil {
 		response.addPreflightCheck(connectorPreflightCheckView{
 			ID:         "config_shape",
 			Label:      "Config and secret boundary",
@@ -846,7 +862,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 			NextAction: "fix_required_fields",
 			Blocking:   true,
 		})
-		response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, sortedStringKeys(request.CredentialReferences))
+		response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, connectorReferenceTemplateFields(sourceID, authMethod, request.CredentialReferences))
 		response.finalizePreflight()
 		return response, nil
 	}
@@ -867,7 +883,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 		return response, err
 	}
 	plaintextFields := map[string]string(nil)
-	fieldNames := sortedStringKeys(request.CredentialReferences)
+	fieldNames := connectorReferenceTemplateFields(sourceID, authMethod, request.CredentialReferences)
 	if authMethod == connectorAuthMethodEncryptedSubmission {
 		if a == nil || a.connectorTransitKey == nil {
 			response.addPreflightCheck(connectorPreflightCheckView{
@@ -1278,7 +1294,7 @@ func (a *App) connectorPreflightCredentialBoundary(sourceID string, tenantID str
 		if len(boundary.ReferencePrefixes) == 0 {
 			boundary.ReferencePrefixes = connectorsecretstores.ReferencePrefixes(storeID)
 		}
-		boundary.ReferenceNamespace = connectorReferenceNamespace(storeID, tenantID, sourceID, runtimeID)
+		boundary.ReferenceNamespace = a.connectorReferenceNamespace(storeID, tenantID, sourceID, runtimeID)
 		boundary.ReferenceTemplates = a.connectorReferenceTemplates(sourceID, tenantID, runtimeID, storeID, fields)
 	}
 	return boundary
@@ -1303,7 +1319,7 @@ func (a *App) connectorReferenceTemplates(sourceID string, tenantID string, runt
 			Label:       connectorFieldLabel(field),
 			Required:    setContains(required, field),
 			Reference:   a.connectorReferenceForField(storeID, tenantID, sourceID, runtimeID, field),
-			Description: connectorReferenceTemplateDescription(storeID),
+			Description: a.connectorReferenceTemplateDescription(storeID),
 		})
 	}
 	return templates
@@ -1312,28 +1328,27 @@ func (a *App) connectorReferenceTemplates(sourceID string, tenantID string, runt
 func (a *App) connectorReferenceForField(storeID string, tenantID string, sourceID string, runtimeID string, field string) string {
 	switch strings.TrimSpace(storeID) {
 	case connectorStoreAWSSecretsManager:
-		namespace := connectorReferenceNamespace(storeID, tenantID, sourceID, runtimeID)
+		if !connectorsecretstores.NativeResolutionAvailable(a.cfg.ConnectorSecretStores, storeID) {
+			return "env:" + connectorSuggestedEnvName(sourceID, field)
+		}
+		namespace := a.connectorReferenceNamespace(storeID, tenantID, sourceID, runtimeID)
 		if namespace == "" {
-			namespace = connectorStoreReferenceNamespaceTemplate(storeID)
+			namespace = connectorStoreReferenceNamespaceTemplate(storeID, true)
 		}
 		region := strings.TrimSpace(a.cfg.ConnectorSecretStores.AWSSecretsManager.Region)
-		if region == "" {
-			region = "us-east-1"
-		}
 		return "aws-sm:" + region + ":" + namespace + "#" + strings.TrimSpace(field)
 	default:
 		return "env:" + connectorSuggestedEnvName(sourceID, field)
 	}
 }
 
-func connectorReferenceNamespace(storeID string, tenantID string, sourceID string, runtimeID string) string {
+func (a *App) connectorReferenceNamespace(storeID string, tenantID string, sourceID string, runtimeID string) string {
 	switch strings.TrimSpace(storeID) {
 	case connectorStoreAWSSecretsManager:
-		prefix := connectorsecretstores.RuntimeSecretPrefix(tenantID, sourceID, runtimeID)
-		if prefix == "" {
-			return ""
+		if connectorsecretstores.NativeResolutionAvailable(a.cfg.ConnectorSecretStores, storeID) {
+			return connectorsecretstores.RuntimeCredentialSecretName(tenantID, sourceID, runtimeID)
 		}
-		return strings.TrimSuffix(prefix, "/") + "/credentials"
+		return "CEREBRO_SOURCE_" + connectorEnvComponent(sourceID) + "_*"
 	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
 		return "CEREBRO_SOURCE_" + connectorEnvComponent(sourceID) + "_*"
 	default:
@@ -1341,9 +1356,12 @@ func connectorReferenceNamespace(storeID string, tenantID string, sourceID strin
 	}
 }
 
-func connectorReferenceTemplateDescription(storeID string) string {
+func (a *App) connectorReferenceTemplateDescription(storeID string) string {
 	switch strings.TrimSpace(storeID) {
 	case connectorStoreAWSSecretsManager:
+		if !connectorsecretstores.NativeResolutionAvailable(a.cfg.ConnectorSecretStores, storeID) {
+			return "Environment projection reference resolved inside the Cerebro backend runtime."
+		}
 		return "Scoped to this tenant, source, and runtime; unscoped aws-sm references are rejected before resolution."
 	default:
 		return "Environment projection reference resolved inside the Cerebro backend runtime."
@@ -2091,6 +2109,10 @@ func connectorExternalStoreView(secretStoreConfig config.ConnectorSecretStoreCon
 	if native {
 		detail = "native resolver ready"
 	}
+	referencePrefixes := connectorsecretstores.ReferencePrefixes(id)
+	if id == connectorStoreAWSSecretsManager && !native {
+		referencePrefixes = []string{"env:"}
+	}
 	return connectorStoreView{
 		ID:                         id,
 		Label:                      label,
@@ -2100,10 +2122,10 @@ func connectorExternalStoreView(secretStoreConfig config.ConnectorSecretStoreCon
 		Status:                     status,
 		Detail:                     detail,
 		Description:                connectorExternalStoreDescription(id, label),
-		ReferencePrefixes:          connectorsecretstores.ReferencePrefixes(id),
-		ReferenceNamespaceTemplate: connectorStoreReferenceNamespaceTemplate(id),
-		ReferenceFieldTemplate:     connectorStoreReferenceFieldTemplate(id),
-		ReferencePlaceholder:       connectorStoreReferencePlaceholder(id),
+		ReferencePrefixes:          referencePrefixes,
+		ReferenceNamespaceTemplate: connectorStoreReferenceNamespaceTemplate(id, native),
+		ReferenceFieldTemplate:     connectorStoreReferenceFieldTemplate(id, native),
+		ReferencePlaceholder:       connectorStoreReferencePlaceholder(id, native),
 		NativeResolutionAvailable:  native,
 		SetupSteps:                 connectorExternalStoreSetupSteps(id, native),
 		RequiredConfig:             connectorExternalStoreRequiredConfig(id),
@@ -2134,18 +2156,24 @@ func connectorExternalStoreDescription(id string, label string) string {
 	}
 }
 
-func connectorStoreReferencePlaceholder(id string) string {
+func connectorStoreReferencePlaceholder(id string, native bool) string {
 	switch id {
 	case connectorStoreAWSSecretsManager:
+		if !native {
+			return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+		}
 		return "aws-sm:us-east-1:cerebro/<tenant>/<source>/<runtime>/credentials#<field>"
 	default:
 		return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
 	}
 }
 
-func connectorStoreReferenceNamespaceTemplate(id string) string {
+func connectorStoreReferenceNamespaceTemplate(id string, native bool) string {
 	switch strings.TrimSpace(id) {
 	case connectorStoreAWSSecretsManager:
+		if !native {
+			return "CEREBRO_SOURCE_<SOURCE>_*"
+		}
 		return "cerebro/<tenant>/<source>/<runtime>/credentials"
 	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
 		return "CEREBRO_SOURCE_<SOURCE>_*"
@@ -2154,9 +2182,12 @@ func connectorStoreReferenceNamespaceTemplate(id string) string {
 	}
 }
 
-func connectorStoreReferenceFieldTemplate(id string) string {
+func connectorStoreReferenceFieldTemplate(id string, native bool) string {
 	switch strings.TrimSpace(id) {
 	case connectorStoreAWSSecretsManager:
+		if !native {
+			return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+		}
 		return "aws-sm:<region>:cerebro/<tenant>/<source>/<runtime>/credentials#<field>"
 	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
 		return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
@@ -2852,7 +2883,7 @@ func applyConnectorCredentialReferences(config map[string]string, references map
 	return nil
 }
 
-func validateConnectorConnectionShape(sourceID string, authMethod string, credentialStoreID string, config map[string]string, references map[string]string, encrypted connectorcredentials.EncryptedPayload) error {
+func validateConnectorConnectionShape(sourceID string, tenantID string, runtimeID string, authMethod string, credentialStoreID string, config map[string]string, references map[string]string, encrypted connectorcredentials.EncryptedPayload) error {
 	switch authMethod {
 	case connectorAuthMethodEncryptedSubmission:
 		if credentialStoreID != defaultConnectorCredentialStoreID {
@@ -2890,7 +2921,7 @@ func validateConnectorConnectionShape(sourceID string, authMethod string, creden
 		if authMethod == connectorAuthMethodInfisicalCLI && len(references) == 0 {
 			return fmt.Errorf("%w: infisical_cli requires credential references", connectorcredentials.ErrInvalidRequest)
 		}
-		if err := validateConnectorCredentialReferencesForStore(connectorStoreEnvironmentManaged, references); err != nil {
+		if err := validateConnectorCredentialReferencesForRuntime(connectorStoreEnvironmentManaged, sourceID, tenantID, runtimeID, references); err != nil {
 			return err
 		}
 	case connectorAuthMethodExternalReference:
@@ -2903,7 +2934,7 @@ func validateConnectorConnectionShape(sourceID string, authMethod string, creden
 		if len(references) == 0 {
 			return fmt.Errorf("%w: external_reference requires credential references", connectorcredentials.ErrInvalidRequest)
 		}
-		if err := validateConnectorCredentialReferencesForStore(credentialStoreID, references); err != nil {
+		if err := validateConnectorCredentialReferencesForRuntime(credentialStoreID, sourceID, tenantID, runtimeID, references); err != nil {
 			return err
 		}
 	default:
@@ -2915,13 +2946,36 @@ func validateConnectorConnectionShape(sourceID string, authMethod string, creden
 	return nil
 }
 
-func validateConnectorCredentialReferencesForStore(storeID string, references map[string]string) error {
+func validateConnectorCredentialReferencesForRuntime(storeID string, sourceID string, tenantID string, runtimeID string, references map[string]string) error {
 	for key, value := range references {
 		if err := connectorsecretstores.ValidateReferenceForStore(storeID, value); err != nil {
 			return fmt.Errorf("%w: credential reference %q is not valid for %s", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(key), strings.TrimSpace(storeID))
 		}
+		if err := connectorsecretstores.AuthorizeRuntimeReferences(sourceID, tenantID, runtimeID, map[string]string{key: value}); err != nil {
+			return fmt.Errorf("%w: credential reference %q is not scoped to this runtime: %w", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(key), err)
+		}
 	}
 	return nil
+}
+
+func connectorAuthMethodUsesCredentialReferences(authMethod string) bool {
+	switch normalizeConnectorAuthMethod(authMethod) {
+	case connectorAuthMethodEnvironmentManaged, connectorAuthMethodInfisicalCLI, connectorAuthMethodExternalReference:
+		return true
+	default:
+		return false
+	}
+}
+
+func connectorReferenceTemplateFields(sourceID string, authMethod string, references map[string]string) []string {
+	if normalizeConnectorAuthMethod(authMethod) == connectorAuthMethodEncryptedSubmission {
+		return sortedStringKeys(references)
+	}
+	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	if !ok || len(schema.CredentialKeys) == 0 {
+		return sortedStringKeys(references)
+	}
+	return sortedSetKeys(schema.CredentialKeys)
 }
 
 func validateConnectorConfigFields(sourceID string, authMethod string, config map[string]string, references map[string]string) error {
