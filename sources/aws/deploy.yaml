@@ -438,6 +438,20 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  - localId: apigateway-rest-api
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: apigateway_rest_api
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: apigateway-method
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: apigateway_method
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
   - localId: apigateway-stage
     config:
       account_id: env:AWS_ACCOUNT_ID

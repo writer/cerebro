@@ -121,6 +121,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.elbv2_load_balancer":                       awsCloudResourceProjections,
 	"aws.elbv2_listener":                            awsCloudResourceProjections,
 	"aws.elbv2_target_group":                        awsCloudResourceProjections,
+	"aws.apigateway_rest_api":                       awsCloudResourceProjections,
+	"aws.apigateway_method":                         awsCloudResourceProjections,
 	"aws.apigateway_stage":                          awsCloudResourceProjections,
 	"aws.apigateway_route":                          awsCloudResourceProjections,
 	"aws.apigateway_integration":                    awsCloudResourceProjections,
