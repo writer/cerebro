@@ -115,6 +115,12 @@ func (app *App) registerSourceRoutes(mux *http.ServeMux) {
 func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /connectors", routeSurfacePlatformHTTP, app.handleListConnectors)
 	registerHTTPRoute(mux, "GET /connectors/credential-key", routeSurfacePlatformHTTP, app.handleConnectorCredentialKey)
+	registerHTTPRoute(mux, "GET /connector-definitions", routeSurfacePlatformHTTP, app.handleListConnectorDefinitions)
+	registerHTTPRoute(mux, "POST /connector-definitions", routeSurfacePlatformHTTP, app.handleCreateConnectorDefinition)
+	registerHTTPRoute(mux, "POST /connector-definitions/validate", routeSurfacePlatformHTTP, app.handleValidateConnectorDefinition)
+	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handleGetConnectorDefinition)
+	registerHTTPRoute(mux, "PUT /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handlePutConnectorDefinition)
+	registerHTTPRoute(mux, "POST /connector-definitions/{definitionID}/promote", routeSurfacePlatformHTTP, app.handlePromoteConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connectors/{sourceID}", routeSurfacePlatformHTTP, app.handleGetConnector)
 	registerHTTPRoute(mux, "GET /connectors/{sourceID}/activity", routeSurfacePlatformHTTP, app.handleListConnectorActivity)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/preflight", routeSurfacePlatformHTTP, app.handlePreflightConnectorConnection)

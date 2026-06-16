@@ -38,6 +38,7 @@ type Store struct {
 	grcInventoryScopeReady       bool
 	grcInventoryAssetReportReady bool
 	connectorCredentialReady     bool
+	connectorDefinitionReady     bool
 }
 
 // Open opens a Postgres-backed current-state store.

@@ -17,6 +17,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/buildinfo"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	findingdomain "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
@@ -536,6 +537,10 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		})
 	case "cerebro.source_runtimes.list":
 		return app.mcpListSourceRuntimes(r, args)
+	case "cerebro.connector_definitions.list":
+		return app.mcpListConnectorDefinitions(r, args)
+	case "cerebro.connector_definitions.validate":
+		return app.mcpValidateConnectorDefinition(r, args)
 	case "cerebro.findings.list":
 		return app.mcpListFindings(r, args)
 	case "cerebro.findings.get":
@@ -629,6 +634,80 @@ func (app *App) mcpListSourceRuntimes(r *http.Request, args map[string]any) (any
 	return map[string]any{
 		"runtimes": values,
 		"metadata": mcpResponseMetadata(limit, len(values), nil),
+	}, nil
+}
+
+func (app *App) mcpListConnectorDefinitions(r *http.Request, args map[string]any) (any, error) {
+	limit, err := mcpBoundedLimit(args, "limit", defaultMCPListLimit, maxMCPListLimit)
+	if err != nil {
+		return nil, err
+	}
+	tenantID := mcpTenantArg(r, args)
+	if tenantID == "" && requiresTenantFilter(r.Context()) {
+		return nil, errTenantForbidden
+	}
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		return nil, err
+	}
+	store := connectorDefinitionStore(app.deps.StateStore)
+	if store == nil {
+		return nil, sourceruntime.ErrRuntimeUnavailable
+	}
+	records, err := store.ListConnectorDefinitions(r.Context(), ports.ConnectorDefinitionFilter{
+		TenantID: tenantID,
+		Stage:    mcpStringArg(args, "stage"),
+		Limit:    boundedUint32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	definitions := make([]any, 0, len(records))
+	for _, record := range records {
+		definition, err := connectorDefinitionFromRecord(record)
+		if err != nil {
+			return nil, err
+		}
+		if err := authorizeTenantID(r.Context(), definition.TenantID); err != nil {
+			return nil, err
+		}
+		definitions = append(definitions, definition)
+	}
+	return map[string]any{
+		"definitions": definitions,
+		"metadata":    mcpResponseMetadata(limit, len(definitions), nil),
+	}, nil
+}
+
+func (app *App) mcpValidateConnectorDefinition(r *http.Request, args map[string]any) (any, error) {
+	rawDefinition, ok := args["definition"]
+	if !ok {
+		return nil, fmt.Errorf("%w: definition is required", errInvalidHTTPRequest)
+	}
+	payload, err := json.Marshal(rawDefinition)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid definition", errInvalidHTTPRequest)
+	}
+	definition := connectordefinitions.Definition{}
+	if err := json.Unmarshal(payload, &definition); err != nil {
+		return nil, fmt.Errorf("%w: invalid definition", errInvalidHTTPRequest)
+	}
+	tenantID := mcpTenantArg(r, map[string]any{"tenant_id": definition.TenantID})
+	if tenantID == "" && requiresTenantFilter(r.Context()) {
+		return nil, errTenantForbidden
+	}
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		return nil, err
+	}
+	definition.TenantID = tenantID
+	normalized, err := connectordefinitions.Normalize(definition)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+	}
+	return map[string]any{
+		"definition": normalized,
+		"validation": normalized.Validation,
+		"promotion":  normalized.Promotion,
+		"metadata":   mcpResponseMetadata(0, 1, nil),
 	}, nil
 }
 
@@ -1553,6 +1632,35 @@ func mcpTools() []mcpTool {
 			}, nil),
 			OutputSchema: mcpOutputSchema(map[string]any{"runtimes": map[string]any{"type": "array"}}),
 			Annotations:  mcpReadOnlyAnnotations("List Source Runtimes"),
+		},
+		{
+			Name:        "cerebro.connector_definitions.list",
+			Title:       "List Connector Definitions",
+			Description: "List dynamic connector definitions visible to the authenticated caller.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id": map[string]any{"type": "string"},
+				"stage":     map[string]any{"type": "string", "enum": []string{"draft", "sandbox", "pilot", "approved", "certified"}},
+				"limit":     mcpLimitSchema(maxMCPListLimit, "definitions"),
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"definitions": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("List Connector Definitions"),
+		},
+		{
+			Name:        "cerebro.connector_definitions.validate",
+			Title:       "Validate Connector Definition",
+			Description: "Validate a proposed dynamic connector definition without persisting it or contacting a third party.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"definition": map[string]any{
+					"type":                 "object",
+					"additionalProperties": true,
+				},
+			}, []string{"definition"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"definition": map[string]any{"type": "object"},
+				"validation": map[string]any{"type": "object"},
+				"promotion":  map[string]any{"type": "object"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Validate Connector Definition"),
 		},
 		{
 			Name:        "cerebro.findings.list",
