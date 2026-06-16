@@ -1197,21 +1197,23 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Self-Hosted Runner Needs Review",
-      "description": "Detect active non-ephemeral or untrusted GitHub self-hosted runners from projected runner state.",
+      "description": "Retired GitHub runner review rule retained so noisy open findings can be cleaned up without recreating them.",
       "source_id": "github",
-      "evaluation_mode": "graph",
+      "evaluation_mode": "event",
       "event_kinds": [
         "github.audit"
       ],
       "output_kind": "finding.github_self_hosted_runner_review_needed",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "actions",
         "attack.t1195",
+        "cleanup",
         "github",
         "graph-rule",
+        "retired",
         "self-hosted-runner",
         "supply-chain"
       ],

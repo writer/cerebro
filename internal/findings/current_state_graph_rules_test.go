@@ -9,6 +9,37 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+func TestGitHubSelfHostedRunnerReviewRuleRetired(t *testing.T) {
+	rule := newGitHubSelfHostedRunnerReviewRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleRetired || definition.Lifecycle.Anchor != AnchorNone {
+		t.Fatalf("Lifecycle = %+v, want retired/none", definition.Lifecycle)
+	}
+	if definition.Maturity != RuleMaturityRetired {
+		t.Fatalf("Maturity = %q, want %q", definition.Maturity, RuleMaturityRetired)
+	}
+	if _, ok := rule.(GraphRule); ok {
+		t.Fatal("retired self-hosted runner review rule still implements GraphRule")
+	}
+	retirementRule, ok := rule.(openFindingRetirementRule)
+	if !ok || !retirementRule.RetiresOpenFindings() {
+		t.Fatal("retired self-hosted runner review rule does not retire open findings")
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
+	records, err := rule.Evaluate(context.Background(), runtime, nil)
+	if err != nil {
+		t.Fatalf("Evaluate(retired runner review rule) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(retired runner review rule) returned %d findings, want 0", len(records))
+	}
+}
+
 func TestCurrentStateGraphRulesEmitStableFindings(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
 	for _, tc := range []struct {
@@ -69,21 +100,6 @@ func TestCurrentStateGraphRulesEmitStableFindings(t *testing.T) {
 				"summary":         "GitHub programmatic access resource deploy_key needs owner/scope review",
 				"action":          "review",
 				"resource_urns":   []any{"urn:cerebro:writer:github_credential:deploy_key@repo"},
-			}},
-		},
-		{
-			name:    "github self hosted runner",
-			rule:    newGitHubSelfHostedRunnerReviewRule(),
-			runtime: runtime,
-			row: ports.CypherRow{Values: map[string]any{
-				"primary_urn":     "urn:cerebro:writer:github_runner:repo:writer/cerebro:777",
-				"primary_label":   "prod-runner-1",
-				"primary_type":    "github.runner",
-				"fingerprint_key": "urn:cerebro:writer:github_runner:repo:writer/cerebro:777",
-				"severity":        "MEDIUM",
-				"summary":         "GitHub self-hosted runner prod-runner-1 needs security review",
-				"action":          "review",
-				"resource_urns":   []any{"urn:cerebro:writer:github_runner:repo:writer/cerebro:777"},
 			}},
 		},
 		{
@@ -192,11 +208,6 @@ func TestCurrentStateGraphRuleQueriesUseEnrichedCurrentState(t *testing.T) {
 			name: "github credentials exclude inactive resources",
 			rule: newGitHubProgrammaticCredentialReviewRule(),
 			want: []string{`entity_type: 'github.credential'`, `"status":"inactive"`},
-		},
-		{
-			name: "github self-hosted runner uses projected runner state",
-			rule: newGitHubSelfHostedRunnerReviewRule(),
-			want: []string{`entity_type: 'github.runner'`, `"runner_status":"inactive"`, `"runner_ephemeral":"true"`},
 		},
 		{
 			name: "okta threat insight checks for blocking mode",
