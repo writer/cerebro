@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/writer/cerebro/internal/connectorcatalog"
 	findinganalysis "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceprojection"
@@ -24,11 +25,18 @@ type issue struct {
 
 func main() {
 	root := flag.String("root", ".", "repository root")
+	summary := flag.Bool("summary", true, "print connector definition catalog summary")
 	flag.Parse()
 	issues, err := checkRepository(*root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "catalog-check: %v\n", err)
 		os.Exit(1)
+	}
+	if *summary {
+		if err := printConnectorDefinitionCatalogSummary(*root); err != nil {
+			fmt.Fprintf(os.Stderr, "catalog-check: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	if len(issues) != 0 {
 		for _, issue := range issues {
@@ -51,6 +59,11 @@ func checkRepository(root string) ([]issue, error) {
 		return nil, err
 	}
 	issues = append(issues, sourceIssues...)
+	connectorIssues, err := checkConnectorDefinitionCatalog(root)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, connectorIssues...)
 	coverageIssues, err := checkCloudPolicyCoverage(root)
 	if err != nil {
 		return nil, err
@@ -65,6 +78,42 @@ func checkRepository(root string) ([]issue, error) {
 		return issues[i].message < issues[j].message
 	})
 	return issues, nil
+}
+
+func checkConnectorDefinitionCatalog(root string) ([]issue, error) {
+	catalogRoot, analysis, err := analyzeConnectorDefinitionCatalog(root)
+	if err != nil {
+		return nil, err
+	}
+	issues := make([]issue, 0, len(analysis.Issues))
+	for _, catalogIssue := range analysis.Issues {
+		issues = append(issues, issue{
+			path:    slashRel(root, filepath.Join(catalogRoot, filepath.FromSlash(catalogIssue.Path))),
+			message: catalogIssue.Message,
+		})
+	}
+	return issues, nil
+}
+
+func printConnectorDefinitionCatalogSummary(root string) error {
+	_, analysis, err := analyzeConnectorDefinitionCatalog(root)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "connector-definition-catalog: total=%d generateable=%d needs_auth_extension=%d needs_bespoke_runtime=%d catalog_ready=%d\n",
+		analysis.Summary.Total,
+		analysis.Summary.Generateable,
+		analysis.Summary.NeedsAuthExtension,
+		analysis.Summary.NeedsBespokeRuntime,
+		analysis.Summary.CatalogReady,
+	)
+	return nil
+}
+
+func analyzeConnectorDefinitionCatalog(root string) (string, connectorcatalog.Analysis, error) {
+	catalogRoot := filepath.Join(root, "internal", "connectorcatalog", "catalog")
+	analysis, err := connectorcatalog.AnalyzeDir(catalogRoot, connectorcatalog.Options{DryRunSourcegen: true})
+	return catalogRoot, analysis, err
 }
 
 func checkFindingRuleMetadata() []issue {

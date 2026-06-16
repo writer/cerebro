@@ -21,6 +21,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
@@ -704,6 +705,91 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 	}
 	if got := storePrefixes[connectorStoreAWSSecretsManager]; len(got) != 1 || got[0] != "env:" {
 		t.Fatalf("aws secrets manager prefixes = %#v, want env only until native resolver is configured", got)
+	}
+}
+
+func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	type catalogResourceFamily struct {
+		ID                 string `json:"id"`
+		ProjectionTemplate string `json:"projection_template"`
+		HighValue          bool   `json:"high_value"`
+	}
+	type catalogConnector struct {
+		SourceID             string                  `json:"source_id"`
+		CatalogStatus        string                  `json:"catalog_status"`
+		ClassifierOutput     string                  `json:"classifier_output"`
+		AuthModel            string                  `json:"auth_model"`
+		RuntimeExecutable    bool                    `json:"runtime_executable"`
+		VerificationEndpoint string                  `json:"verification_endpoint"`
+		ResourceFamilies     []catalogResourceFamily `json:"resource_families"`
+	}
+	var payload struct {
+		Connectors []catalogConnector `json:"connectors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Connectors) < 101 {
+		t.Fatalf("connectors len = %d, want fixture source plus 100 catalog definitions", len(payload.Connectors))
+	}
+	bySourceID := map[string]catalogConnector{}
+	for _, connector := range payload.Connectors {
+		bySourceID[connector.SourceID] = connector
+	}
+	jumpcloud := bySourceID["jumpcloud"]
+	if jumpcloud.CatalogStatus != connectorcatalog.StatusGenerateable || !jumpcloud.RuntimeExecutable {
+		t.Fatalf("jumpcloud status = %q executable=%v, want generateable executable", jumpcloud.CatalogStatus, jumpcloud.RuntimeExecutable)
+	}
+	if jumpcloud.AuthModel != "api_key" || jumpcloud.VerificationEndpoint == "" {
+		t.Fatalf("jumpcloud auth/verification = %q/%q, want catalog metadata", jumpcloud.AuthModel, jumpcloud.VerificationEndpoint)
+	}
+	entraID := bySourceID["microsoft_entra_id"]
+	if entraID.CatalogStatus != connectorcatalog.StatusNeedsAuthExtension || entraID.RuntimeExecutable {
+		t.Fatalf("microsoft_entra_id status = %q executable=%v, want needs_auth_extension not executable", entraID.CatalogStatus, entraID.RuntimeExecutable)
+	}
+	if entraID.ClassifierOutput != "supported" {
+		t.Fatalf("microsoft_entra_id classifier_output = %q, want supported", entraID.ClassifierOutput)
+	}
+	jenkins := bySourceID["jenkins"]
+	if jenkins.CatalogStatus != connectorcatalog.StatusNeedsBespokeRuntime {
+		t.Fatalf("jenkins status = %q, want needs_bespoke_runtime", jenkins.CatalogStatus)
+	}
+	if len(jenkins.ResourceFamilies) < 2 {
+		t.Fatalf("jenkins resource families = %#v, want high-value catalog families", jenkins.ResourceFamilies)
+	}
+	for _, family := range jenkins.ResourceFamilies {
+		if family.ProjectionTemplate == "" || !family.HighValue {
+			t.Fatalf("jenkins family = %#v, want projection and high-value coverage", family)
+		}
 	}
 }
 

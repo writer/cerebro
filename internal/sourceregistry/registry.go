@@ -234,5 +234,9 @@ func Builtin() (*sourcecdk.Registry, error) {
 		}
 		sources = append(sources, source)
 	}
-	return sourcecdk.NewRegistry(sources...)
+	registry, err := sourcecdk.NewRegistry(sources...)
+	if err != nil {
+		return nil, err
+	}
+	return registry.WithBuiltinDefinitionCatalog(), nil
 }
