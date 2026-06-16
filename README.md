@@ -429,6 +429,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [Auth and tenancy](docs/AUTH_TENANCY.md) | API keys, structured credentials, tenant scoping, public origin, proxy trust, and rotation |
 | [Graph operations](docs/GRAPH_OPERATIONS.md) | graph health, ingest, rebuild, cleanup, query safety, and troubleshooting |
 | [Release contract](docs/RELEASE_CONTRACT.md) | release artifacts, runtime deploy contract schema, source manifests, and verification |
+| [PR landing](docs/PR_LANDING.md) | merge ordering, Droid review gates, and branch deletion safety |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | symptom-driven cookbook for health, auth, source runtime, graph, MCP, and device-auth issues |
 | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) | native Droid MCP setup, OAuth flow, transport compatibility, and troubleshooting |
 | [DevEx codegen catalog](docs/DEVEX_CODEGEN_AUTOGEN.md) | generated surface map for OpenAPI, proto, and detection catalog checks |

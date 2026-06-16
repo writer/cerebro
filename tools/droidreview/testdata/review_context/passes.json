@@ -1,0 +1,18 @@
+{
+  "passes": [
+    {
+      "name": "ask-trajectory",
+      "path_globs": ["internal/graphagent/**"],
+      "invariants": ["ask"],
+      "commands": ["go test ./internal/graphagent"],
+      "required_evidence": ["route"]
+    },
+    {
+      "name": "workflow-permissions",
+      "path_globs": [".github/workflows/**"],
+      "invariants": ["workflow"],
+      "commands": ["make droid-review-sast"],
+      "required_evidence": ["permissions"]
+    }
+  ]
+}

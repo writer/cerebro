@@ -78,8 +78,8 @@ class DroidReviewContextTests(unittest.TestCase):
         args.sast_json = str(fixture_root / "sast.json")
         args.ci_json = str(fixture_root / "ci.json")
         args.feedback_json = str(fixture_root / "feedback.json")
-        args.review_passes = str(REPO_ROOT / ".factory" / "review-passes.json")
-        args.review_memory = str(REPO_ROOT / ".factory" / "review-memory.json")
+        args.review_passes = str(fixture_root / "passes.json")
+        args.review_memory = str(fixture_root / "memory.json")
         context = ctx.assemble(args)
         pass_names = {item["name"] for item in context["pass_plan"]}
         self.assertIn("ask-trajectory", pass_names)

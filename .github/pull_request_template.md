@@ -18,3 +18,4 @@
 - Fast local preflight: `make droid-review-preflight`.
 - Focus review on changed behavior and the invariants above.
 - Escalate to a deep manual Droid tag review for broad auth, graph, source HTTP, or state-machine changes.
+- Land with `make land-pr PR=<number>` so Droid finishes before branch deletion.
