@@ -405,6 +405,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"cloudflare.role":                               genericInventoryProjections,
 	"cloudflare.worker_script":                      genericInventoryProjections,
 	"cloudflare.zone":                               genericInventoryProjections,
+	"cloudflare.zone_access_application":            genericInventoryProjections,
+	"cloudflare.zone_access_group":                  genericInventoryProjections,
 	"cloudflare.zone_ruleset":                       genericInventoryProjections,
 	"duo.endpoint":                                  genericInventoryProjections,
 	"duo.group":                                     genericInventoryProjections,
