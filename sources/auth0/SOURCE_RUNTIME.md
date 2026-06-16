@@ -22,6 +22,8 @@ Generated Source Runtime SDK scaffold for `auth0`.
 - `roles`, emits `auth0.roles`, reads `/roles`
 - `audit_events`, emits `auth0.audit_events`, reads `/logs`
 
+All Auth0 families support durable watermark checkpoints for incremental source-runtime sync.
+
 ## Tests
 
 - `go test ./sources/auth0 ./internal/sourceprojection -count=1`

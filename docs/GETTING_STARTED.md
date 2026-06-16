@@ -32,11 +32,14 @@ curl -sS -X PUT http://127.0.0.1:8080/source-runtimes/local-sdk-demo \
       "source_id": "sdk",
       "tenant_id": "local",
       "config": {
-        "integration": "demo"
+        "integration": "demo",
+        "inventory_urns": "urn:cerebro:local:runtime:local-sdk-demo:service:example-api"
       }
     }
   }'
 ```
+
+`inventory_urns` is optional. It lets `source discover sdk ...` preview declared SDK-owned inventory, while durable posture evidence still flows through runtime claims.
 
 ## Write A Synthetic Claim
 
