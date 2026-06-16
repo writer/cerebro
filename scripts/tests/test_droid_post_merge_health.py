@@ -29,6 +29,18 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertTrue(context["healthy"])
         self.assertEqual(len(context["pending_runs"]), 0)
 
+    def test_summarize_does_not_fail_for_pending_sibling_runs(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[
+                {"id": 1, "workflow_name": "CI", "head_sha": "abc", "status": "in_progress", "url": "https://ci"},
+                {"id": 2, "workflow_name": "Leak Check", "head_sha": "abc", "status": "completed", "conclusion": "success"},
+            ],
+        )
+        self.assertTrue(context["healthy"])
+        self.assertEqual(len(context["pending_runs"]), 1)
+
     def test_render_markdown_mentions_failures(self):
         markdown = pm.render_markdown(
             {

@@ -179,7 +179,7 @@ def summarize(
         "pull_requests": pull_requests or [],
         "droid_reviews": reviews,
         "failed_droid_reviews": failed_reviews,
-        "healthy": not failures and not pending and not failed_reviews and bool(relevant),
+        "healthy": not failures and not failed_reviews and bool(relevant),
     }
 
 
