@@ -287,6 +287,8 @@ func cloudFindingAffectedResourceType(provider string, rawType string, resourceI
 		return "rds_instance"
 	case "gcp:googlecloudstoragebucket", "gcp:google_cloud_storage_bucket", "gcp:storage_googleapis_com_bucket", "gcp:storage_bucket", "gcp:gcs_bucket":
 		return "gcs_bucket"
+	case "gcp:googlecloudrunservice", "gcp:google_cloud_run_service":
+		return "cloud_run_service"
 	}
 	if provider == "gcp" {
 		if inferred := panopticonGCPResourceTypeFromID(resourceID); inferred != "" {
@@ -304,7 +306,9 @@ func cloudFindingAffectedResourceID(provider string, resourceType string, resour
 		case "gcs_bucket":
 			return firstNonEmpty(gcpBucketNameFromResourceID(resourceID), resourceID)
 		case "compute_instance":
-			return firstNonEmpty(resourceName, gcpNamedResourceSegment(resourceID, "instances"), cloudLastPathSegment(resourceID), resourceID)
+			return firstNonEmpty(gcpNamedResourceSegment(resourceID, "instances"), resourceName, cloudLastPathSegment(resourceID), resourceID)
+		case "cloud_run_service":
+			return firstNonEmpty(gcpServiceRelativeName(resourceID, "run.googleapis.com"), resourceID)
 		case "cloud_sql_instance":
 			return firstNonEmpty(gcpServiceSelfLink(resourceID, "sqladmin.googleapis.com", "sql/v1beta4"), resourceID)
 		case "gke_cluster":
@@ -314,23 +318,51 @@ func cloudFindingAffectedResourceID(provider string, resourceType string, resour
 	return resourceID
 }
 
+func gcpServiceRelativeName(value string, host string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	path := gcpServicePath(value, host)
+	if path != "" {
+		return path
+	}
+	if strings.HasPrefix(value, "projects/") {
+		return value
+	}
+	return ""
+}
+
 func gcpServiceSelfLink(value string, host string, apiPrefix string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
+	}
+	if path := gcpServicePath(value, host); path != "" {
+		return "https://" + strings.ToLower(strings.Trim(host, "/")) + "/" + strings.Trim(apiPrefix, "/") + "/" + path
 	}
 	lower := strings.ToLower(value)
 	normalizedHost := strings.ToLower(strings.Trim(host, "/"))
 	if strings.HasPrefix(lower, "https://"+normalizedHost+"/") || strings.HasPrefix(lower, "http://"+normalizedHost+"/") {
 		return value
 	}
+	return ""
+}
+
+func gcpServicePath(value string, host string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	lower := strings.ToLower(value)
+	normalizedHost := strings.ToLower(strings.Trim(host, "/"))
 	for _, prefix := range []string{"//" + normalizedHost + "/", normalizedHost + "/"} {
 		if strings.HasPrefix(lower, prefix) {
 			path := strings.TrimLeft(value[len(prefix):], "/")
 			if path == "" {
 				return ""
 			}
-			return "https://" + normalizedHost + "/" + strings.Trim(apiPrefix, "/") + "/" + path
+			return path
 		}
 	}
 	return ""

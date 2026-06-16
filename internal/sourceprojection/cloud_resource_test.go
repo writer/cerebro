@@ -220,6 +220,7 @@ func TestCloudFindingAffectedResourceTypeUsesCanonicalGraphNamespaces(t *testing
 		{name: "aws iam group", provider: "aws", rawType: "AWS::IAM::Group", id: "arn:aws:iam::123456789012:group/Admins", want: "group"},
 		{name: "aws iam access key", provider: "aws", rawType: "AwsIamAccessKey", id: "AKIA123", want: "credential"},
 		{name: "aws guardduty instance", provider: "aws", rawType: "Instance", id: "i-123", want: "ec2_instance"},
+		{name: "gcp cloud run service", provider: "gcp", rawType: "google.cloud.run.Service", id: "//run.googleapis.com/projects/writer-prod/locations/us-central1/services/api", want: "cloud_run_service"},
 		{name: "gcp storage bucket", provider: "gcp", rawType: "google.cloud.storage.Bucket", id: "//storage.googleapis.com/projects/_/buckets/data", want: "gcs_bucket"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -247,9 +248,15 @@ func TestCloudFindingAffectedResourceIDUsesCanonicalGCPKeys(t *testing.T) {
 		{
 			name:         "compute instance",
 			resourceType: "compute_instance",
-			id:           "//compute.googleapis.com/projects/writer-prod/zones/us-central1-a/instances/web-1",
+			id:           "//compute.googleapis.com/projects/writer-prod/zones/us-central1-a/instances/123456789",
 			resourceName: "web-1",
-			want:         "web-1",
+			want:         "123456789",
+		},
+		{
+			name:         "cloud run service",
+			resourceType: "cloud_run_service",
+			id:           "//run.googleapis.com/projects/writer-prod/locations/us-central1/services/api",
+			want:         "projects/writer-prod/locations/us-central1/services/api",
 		},
 		{
 			name:         "cloud sql instance",
