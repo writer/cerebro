@@ -314,8 +314,8 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "computer_name", stringAt(properties, "osProfile", "computerName"))
 		set(attributes, "os_type", stringAt(properties, "storageProfile", "osDisk", "osType"))
 		set(attributes, "vm_size", stringAt(properties, "hardwareProfile", "vmSize"))
-		set(attributes, "subnet_ids", strings.Join(vmssSubnetIDs(properties), ","))
-		set(attributes, "nsg_ids", strings.Join(vmssNetworkSecurityGroupIDs(properties), ","))
+		set(attributes, "subnet_ids", strings.Join(vmssInstanceSubnetIDs(properties), ","))
+		set(attributes, "nsg_ids", strings.Join(vmssInstanceNetworkSecurityGroupIDs(properties), ","))
 	}
 	trimEmpty(attributes)
 	return attributes
@@ -344,6 +344,29 @@ func vmssNetworkSecurityGroupIDs(properties Properties) []string {
 	for _, configValue := range configs {
 		config := mapFromAny(configValue)
 		values = append(values, stringAt(mapFromAny(config["properties"]), "networkSecurityGroup", "id"))
+	}
+	return unique(values)
+}
+
+func vmssInstanceSubnetIDs(properties Properties) []string {
+	interfaces := arrayAt(properties, "networkProfile", "networkInterfaces")
+	values := make([]string, 0)
+	for _, interfaceValue := range interfaces {
+		interfaceProperties := mapFromAny(mapFromAny(interfaceValue)["properties"])
+		for _, configValue := range arrayAt(interfaceProperties, "ipConfigurations") {
+			configProperties := mapFromAny(mapFromAny(configValue)["properties"])
+			values = append(values, stringAt(configProperties, "subnet", "id"))
+		}
+	}
+	return unique(values)
+}
+
+func vmssInstanceNetworkSecurityGroupIDs(properties Properties) []string {
+	interfaces := arrayAt(properties, "networkProfile", "networkInterfaces")
+	values := make([]string, 0, len(interfaces))
+	for _, interfaceValue := range interfaces {
+		interfaceProperties := mapFromAny(mapFromAny(interfaceValue)["properties"])
+		values = append(values, stringAt(interfaceProperties, "networkSecurityGroup", "id"))
 	}
 	return unique(values)
 }

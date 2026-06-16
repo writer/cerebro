@@ -1012,7 +1012,7 @@ func listApplications(ctx context.Context, source *Source, settings settings, pa
 
 func listAuthorizationPolicy(ctx context.Context, source *Source, settings settings, _ string, _ int) ([]authorizationPolicyRecord, string, error) {
 	var record authorizationPolicyRecord
-	if err := getGraphJSON(ctx, source, settings, "/v1.0/policies/authorizationPolicy/authorizationPolicy", nil, &record); err != nil {
+	if err := getGraphJSON(ctx, source, settings, "/v1.0/policies/authorizationPolicy", nil, &record); err != nil {
 		return nil, "", err
 	}
 	if strings.TrimSpace(record.ID) == "" {

@@ -309,6 +309,61 @@ func TestReadLiveAzureGenericARMPreview(t *testing.T) {
 	}
 }
 
+func TestListAuthorizationPolicyUsesGraphSingletonPath(t *testing.T) {
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		if requestedPath != "/v1.0/policies/authorizationPolicy" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(t, w, map[string]any{"id": "authorizationPolicy", "allowInvitesFrom": "adminsAndGuestInviters"})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("newLiveTestSource: %v", err)
+	}
+	source.client = server.Client()
+
+	records, next, err := listAuthorizationPolicy(context.Background(), source, settings{graphBaseURL: server.URL, graphToken: "test-token", tenantID: "tenant-1"}, "", 1)
+	if err != nil {
+		t.Fatalf("listAuthorizationPolicy: %v", err)
+	}
+	if next != "" {
+		t.Fatalf("next = %q, want empty", next)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if requestedPath != "/v1.0/policies/authorizationPolicy" {
+		t.Fatalf("requested path = %q", requestedPath)
+	}
+}
+
+func TestAzureARMAttributesVirtualMachineScaleSetInstanceNetworkReferences(t *testing.T) {
+	attributes := azurearm.ResourceAttributes("virtual_machine_scale_set_instance", "", "azure.virtual_machine_scale_set_instance", azurearm.Properties{
+		"networkProfile": map[string]any{
+			"networkInterfaces": []any{map[string]any{
+				"properties": map[string]any{
+					"networkSecurityGroup": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/networkSecurityGroups/vmss-instance-nsg"},
+					"ipConfigurations": []any{map[string]any{
+						"properties": map[string]any{
+							"subnet": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/vmss"},
+						},
+					}},
+				},
+			}},
+		},
+	})
+	if got := attributes["subnet_ids"]; got != "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/vmss" {
+		t.Fatalf("subnet_ids = %q", got)
+	}
+	if got := attributes["nsg_ids"]; got != "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/networkSecurityGroups/vmss-instance-nsg" {
+		t.Fatalf("nsg_ids = %q", got)
+	}
+}
+
 func TestListSQLDatabasesReturnsResumableNestedPages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -736,7 +791,7 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "app-role-assignment-1", "principalId": "sp-1", "principalDisplayName": "Prod App", "principalType": "ServicePrincipal", "resourceId": "sp-resource-1", "resourceDisplayName": "Graph API", "appRoleId": "role-1", "createdDateTime": "2026-04-23T00:00:00Z"}}})
 		case "/v1.0/applications":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "app-object-1", "appId": "app-client-1", "displayName": "Prod App", "createdDateTime": "2026-04-23T00:00:00Z", "passwordCredentials": []map[string]any{{"keyId": "app-password-1", "displayName": "deploy secret", "startDateTime": "2026-04-23T00:00:00Z", "endDateTime": "2027-04-23T00:00:00Z"}}}}})
-		case "/v1.0/policies/authorizationPolicy/authorizationPolicy":
+		case "/v1.0/policies/authorizationPolicy":
 			writeJSON(t, w, map[string]any{"id": "authorizationPolicy", "allowInvitesFrom": "adminsAndGuestInviters", "allowedToSignUpEmailBasedSubscriptions": false, "allowedToUseSSPR": true, "blockMsolPowerShell": true, "defaultUserRolePermissions": map[string]any{"allowedToCreateApps": false, "allowedToCreateSecurityGroups": false, "allowedToReadBitlockerKeysForOwnedDevice": true, "permissionGrantPoliciesAssigned": []any{"ManagePermissionGrantsForSelf.microsoft-user-default-low"}}})
 		case "/v1.0/servicePrincipals":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "sp-1", "appId": "app-client-1", "displayName": "Prod App", "servicePrincipalType": "Application", "accountEnabled": true, "keyCredentials": []map[string]any{{"keyId": "sp-key-1", "displayName": "certificate", "startDateTime": "2026-04-23T00:00:00Z", "endDateTime": "2027-04-23T00:00:00Z", "type": "AsymmetricX509Cert", "usage": "Verify"}}}}})
