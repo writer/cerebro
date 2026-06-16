@@ -511,6 +511,13 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			public:       true,
 		},
 		{
+			name:         "iam saml provider",
+			kind:         "aws.iam_saml_provider",
+			resourceID:   "arn:aws:iam::123456789012:saml-provider/Okta",
+			resourceType: "iam_saml_provider",
+			entityType:   "aws.iam.saml.provider",
+		},
+		{
 			name:         "datasync task",
 			kind:         "aws.datasync_task",
 			resourceID:   "arn:aws:datasync:us-east-1:123456789012:task/task-123",
