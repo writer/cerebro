@@ -144,6 +144,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.neighborhood",
 		"cerebro.graph.impact",
 		"cerebro.graph.paths",
+		"cerebro.agent.preflight",
 		"cerebro.graph.reason",
 		"cerebro.investigation.context",
 		"cerebro.findings.action.propose",
@@ -204,6 +205,7 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.graph.neighborhood":              {Markers: []string{"GET /platform/graph/neighborhood"}},
 	"cerebro.graph.impact":                    {Markers: []string{"GET /platform/graph/impact"}},
 	"cerebro.graph.paths":                     {Markers: []string{"GET /platform/graph/attack-paths"}},
+	"cerebro.agent.preflight":                 {Markers: []string{"POST /api/v1/agent-platform/preflight"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
 	"cerebro.findings.action.propose":         {Markers: []string{"POST /findings/{findingID}/resolve", "POST /findings/{findingID}/suppress", "POST /findings/{findingID}/notes", "POST /findings/{findingID}/tickets"}},
@@ -1887,6 +1889,14 @@ LIMIT 25`,
 	if provenance["surface"] != "graph-reasoning" || provenance["citation_status"] != "valid" {
 		t.Fatalf("graph.reason provenance = %#v", provenance)
 	}
+	preflight := content["preflight"].(map[string]any)
+	if preflight["tenant_id"] != "writer" || preflight["enabled"] != true {
+		t.Fatalf("graph.reason preflight = %#v", preflight)
+	}
+	preflightPolicy := preflight["policy"].(map[string]any)
+	if preflightPolicy["passing"] != true {
+		t.Fatalf("graph.reason preflight policy = %#v", preflightPolicy)
+	}
 	if content["tenant_id"] != "writer" {
 		t.Fatalf("graph.reason tenant_id = %#v, want authenticated tenant writer", content["tenant_id"])
 	}
@@ -1910,6 +1920,57 @@ LIMIT 25`,
 	overrideResult := overrideResponse["result"].(map[string]any)
 	if overrideResult["isError"] != true || !strings.Contains(overrideResult["content"].([]any)[0].(map[string]any)["text"].(string), "tenant forbidden") {
 		t.Fatalf("graph.reason tenant override response = %#v", overrideResponse)
+	}
+}
+
+func TestMCPAgentPreflight(t *testing.T) {
+	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, &stubGraphStore{}, graphagent.NewStubLLMClient())
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.preflight",
+			"arguments": map[string]any{
+				"capability_ids": []any{"graph-reasoning"},
+				"question":       "What should I inspect?",
+				"scope_urn":      "urn:cerebro:writer:asset:prod-db",
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("agent.preflight error = %#v", response["error"])
+	}
+	content := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if content["tenant_id"] != "writer" || content["enabled"] != true {
+		t.Fatalf("agent.preflight content = %#v", content)
+	}
+	graphContext := content["graph_context"].(map[string]any)
+	if graphContext["scope_tenant_id"] != "writer" || graphContext["read_only"] != true {
+		t.Fatalf("agent.preflight graph_context = %#v", graphContext)
+	}
+	writeBack := content["write_back"].(map[string]any)
+	if writeBack["required"] != true || writeBack["trace_id_required"] != true {
+		t.Fatalf("agent.preflight write_back = %#v", writeBack)
+	}
+
+	overrideResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.preflight",
+			"arguments": map[string]any{
+				"tenant_id":      "other",
+				"capability_ids": []any{"graph-reasoning"},
+			},
+		},
+	})
+	overrideResult := overrideResponse["result"].(map[string]any)
+	if overrideResult["isError"] != true || !strings.Contains(overrideResult["content"].([]any)[0].(map[string]any)["text"].(string), "tenant forbidden") {
+		t.Fatalf("agent.preflight tenant override response = %#v", overrideResponse)
 	}
 }
 

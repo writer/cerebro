@@ -28,6 +28,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/contract", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/capabilities", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/capability-decisions", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/preflight", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/graph/reason", Scope: scopeCosmoSecurityRead, Static: true},
 	{Exact: "/api/v1/mcp", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/metrics", Scope: scopeCosmoSecurityRead, Static: true},

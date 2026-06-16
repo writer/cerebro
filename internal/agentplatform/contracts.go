@@ -206,6 +206,7 @@ var Invariants = []Invariant{
 	{ID: "EVAL-01", DomainID: "evals", Statement: "A default-on agent capability must have at least one local regression path."},
 	{ID: "EXEC-01", DomainID: "execution", Statement: "Adapters report cancellation and truncation explicitly instead of hiding partial results."},
 	{ID: "KNOW-01", DomainID: "knowledge", Statement: "Retrieved context must carry source scope and citation status when shown to a user or model."},
+	{ID: "PLAN-01", DomainID: "runtime", Statement: "Agent runs resolve tenant, scope, capability, connector, and write-back preconditions before planning."},
 	{ID: "RUN-01", DomainID: "runtime", Statement: "Consumer-visible events use stable names and a single terminal outcome per logical run."},
 	{ID: "STREAM-01", DomainID: "streaming-replay", Statement: "Replay records preserve event order even when payloads are redacted or truncated."},
 }
@@ -461,8 +462,8 @@ var Capabilities = []Capability{
 			ScenarioSets:  []string{"graph-reasoning-envelope", "graph-reasoning-unsupported-query"},
 			Rubrics:       []string{"read-only validation", "query plan transparency", "citation grounding", "provenance completeness"},
 		},
-		RuntimeEvents: []string{"agent.run.started", "capability.selected", "knowledge.retrieval.completed", "agent.run.completed", "agent.run.failed"},
-		Provenance:    []string{"graph-reasoning", "knowledge-context", "graph-neighborhood"},
+		RuntimeEvents: []string{"agent.preflight.completed", "agent.run.started", "capability.selected", "knowledge.retrieval.completed", "agent.run.completed", "agent.run.failed"},
+		Provenance:    []string{"agent-run-preflight", "graph-reasoning", "knowledge-context", "graph-neighborhood"},
 		Review: ReviewStatus{
 			State:             "required",
 			Cadence:           "before graph reasoning API or query contract changes",
@@ -472,6 +473,15 @@ var Capabilities = []Capability{
 }
 
 var RuntimeEvents = []RuntimeEvent{
+	{
+		Name:             "agent.preflight.completed",
+		DomainID:         "runtime",
+		Stage:            "preflight",
+		SequenceRequired: true,
+		Replayable:       true,
+		PayloadFields:    []string{"tenant_id", "actor_id", "capability_ids", "scope_urn", "policy_checks", "connector_gates", "write_back_contract"},
+		ProvenanceFields: []string{"tenant_id", "scope", "capability_id", "policy_check", "connector_node_urn"},
+	},
 	{
 		Name:             "agent.run.started",
 		DomainID:         "runtime",
@@ -578,6 +588,14 @@ var RuntimeEvents = []RuntimeEvent{
 }
 
 var ProvenanceRequirements = []ProvenanceRequirement{
+	{
+		Surface:          "agent-run-preflight",
+		DomainID:         "runtime",
+		RequiredFields:   []string{"tenant_id", "scope", "capability_id", "policy_check", "connector_node_urn", "write_back_event"},
+		CitationRequired: false,
+		BudgetRequired:   true,
+		FallbackRequired: true,
+	},
 	{
 		Surface:          "ask-answer",
 		DomainID:         "knowledge",

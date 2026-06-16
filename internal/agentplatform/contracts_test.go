@@ -185,6 +185,92 @@ func TestDecideCapabilityReportsControlPlaneBlockers(t *testing.T) {
 	}
 }
 
+func TestDecideCapabilityAllowsScopeUnrestrictedPrincipal(t *testing.T) {
+	decision, ok := DecideCapability(CapabilityDecisionRequest{
+		CapabilityID:      "graph-reasoning",
+		TenantID:          "tenant-1",
+		ScopeUnrestricted: true,
+	})
+	if !ok {
+		t.Fatal("graph-reasoning capability missing")
+	}
+	if !decision.Enabled {
+		t.Fatalf("decision enabled = false, blockers = %+v", decision.Blockers)
+	}
+	if len(decision.MissingScopes) != 0 {
+		t.Fatalf("missing scopes = %+v, want none for unrestricted principal", decision.MissingScopes)
+	}
+}
+
+func TestPreflightAgentRunBuildsGraphPlanningContext(t *testing.T) {
+	preflight := PreflightAgentRun(AgentRunPreflightRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "actor-1",
+		CapabilityIDs:   []string{"graph-reasoning"},
+		RequestedScopes: []string{"cosmo.security.read"},
+		Question:        "What should I inspect?",
+		ScopeURN:        "urn:cerebro:tenant-1:asset:app",
+	})
+
+	if !preflight.Enabled {
+		t.Fatalf("preflight enabled = false, blockers = %+v", preflight.Blockers)
+	}
+	if preflight.Reason != "preflight_passed" {
+		t.Fatalf("reason = %q, want preflight_passed", preflight.Reason)
+	}
+	if preflight.GraphContext.TenantID != "tenant-1" || preflight.GraphContext.ScopeTenantID != "tenant-1" {
+		t.Fatalf("graph context = %+v", preflight.GraphContext)
+	}
+	if !preflight.GraphContext.ReadOnly || !preflight.GraphContext.CitationRequired || !preflight.GraphContext.ProvenanceRequired {
+		t.Fatalf("graph context must be read-only, cited, and provenance-required: %+v", preflight.GraphContext)
+	}
+	if !containsString(preflight.RuntimeEvents, "agent.preflight.completed") || !containsString(preflight.Provenance, "agent-run-preflight") {
+		t.Fatalf("preflight missing runtime/provenance contract: events=%v provenance=%v", preflight.RuntimeEvents, preflight.Provenance)
+	}
+	if !preflight.WriteBack.Required || !preflight.WriteBack.TraceIDRequired {
+		t.Fatalf("write-back contract = %+v, want required trace-linked write-back", preflight.WriteBack)
+	}
+}
+
+func TestPreflightAgentRunBlocksScopeTenantMismatch(t *testing.T) {
+	preflight := PreflightAgentRun(AgentRunPreflightRequest{
+		TenantID:        "tenant-1",
+		CapabilityIDs:   []string{"graph-reasoning"},
+		RequestedScopes: []string{"cosmo.security.read"},
+		ScopeURN:        "urn:cerebro:other:asset:app",
+	})
+
+	if preflight.Enabled {
+		t.Fatalf("preflight enabled = true, want blocked")
+	}
+	if !decisionHasBlockerFromList(preflight.Blockers, "scope_tenant") {
+		t.Fatalf("preflight blockers = %+v, want scope_tenant", preflight.Blockers)
+	}
+}
+
+func TestPreflightAgentRunIncludesConnectorOAuthNodes(t *testing.T) {
+	preflight := PreflightAgentRun(AgentRunPreflightRequest{
+		TenantID:           "tenant-1",
+		CapabilityIDs:      []string{"connector-oauth-mcp"},
+		ScopeUnrestricted:  true,
+		ConnectorReadiness: map[string]string{"catalog-managed": "connected"},
+	})
+
+	if !preflight.Enabled {
+		t.Fatalf("preflight enabled = false, blockers = %+v", preflight.Blockers)
+	}
+	if len(preflight.ConnectorContext) != 1 {
+		t.Fatalf("connector context = %+v, want one connector node", preflight.ConnectorContext)
+	}
+	connector := preflight.ConnectorContext[0]
+	if connector.NodeURN != "urn:cerebro:tenant-1:connector:catalog-managed" || connector.OAuthNodeURN == "" {
+		t.Fatalf("connector graph node = %+v", connector)
+	}
+	if !connector.Required || !connector.Satisfied || connector.TokenOwner == "" || connector.CredentialBoundary == "" {
+		t.Fatalf("connector gate = %+v, want satisfied required OAuth/credential boundary", connector)
+	}
+}
+
 func TestDecideCapabilityPreviewGate(t *testing.T) {
 	blocked, ok := DecideCapability(CapabilityDecisionRequest{
 		CapabilityID:    "runtime-response-actions",
@@ -309,7 +395,11 @@ func containsString(values []string, needle string) bool {
 }
 
 func decisionHasBlocker(decision CapabilityDecision, code string) bool {
-	for _, blocker := range decision.Blockers {
+	return decisionHasBlockerFromList(decision.Blockers, code)
+}
+
+func decisionHasBlockerFromList(blockers []CapabilityDecisionBlocker, code string) bool {
+	for _, blocker := range blockers {
 		if blocker.Code == code {
 			return true
 		}

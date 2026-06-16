@@ -33,6 +33,7 @@ type CapabilityDecisionRequest struct {
 	TenantID              string            `json:"tenant_id,omitempty"`
 	ActorID               string            `json:"actor_id,omitempty"`
 	RequestedScopes       []string          `json:"requested_scopes,omitempty"`
+	ScopeUnrestricted     bool              `json:"scope_unrestricted,omitempty"`
 	ConnectorReadiness    map[string]string `json:"connector_readiness,omitempty"`
 	EvalStatusOverrides   map[string]string `json:"eval_status_overrides,omitempty"`
 	AllowPreview          bool              `json:"allow_preview,omitempty"`
@@ -99,7 +100,10 @@ func DecideCapability(request CapabilityDecisionRequest) (CapabilityDecision, bo
 	}
 
 	requiredScopes := uniqueSortedStrings(append(cloneStrings(capability.RequiredScopes), connectorRequiredScopes(capability.ConnectorDependencies)...))
-	missingScopes := missingStrings(requiredScopes, request.RequestedScopes)
+	missingScopes := []string{}
+	if !request.ScopeUnrestricted {
+		missingScopes = missingStrings(requiredScopes, request.RequestedScopes)
+	}
 	requiredConnectors := requiredConnectorDependencies(capability.ConnectorDependencies)
 	eval := capabilityEvalGate(capability, request.EvalStatusOverrides)
 	blockers := make([]CapabilityDecisionBlocker, 0, 4)
@@ -342,11 +346,34 @@ func missingStrings(required []string, available []string) []string {
 	availableSet := stringSet(available)
 	missing := []string{}
 	for _, value := range required {
-		if !availableSet[value] {
+		if !scopeSetContains(availableSet, value) {
 			missing = append(missing, value)
 		}
 	}
 	return missing
+}
+
+func scopeSetContains(availableSet map[string]bool, required string) bool {
+	for _, candidate := range scopeAliases(required) {
+		if availableSet[candidate] {
+			return true
+		}
+	}
+	return false
+}
+
+func scopeAliases(scope string) []string {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return nil
+	}
+	aliases := []string{scope}
+	if strings.HasPrefix(scope, "cerebro.") {
+		aliases = append(aliases, strings.TrimPrefix(scope, "cerebro."))
+	} else {
+		aliases = append(aliases, "cerebro."+scope)
+	}
+	return aliases
 }
 
 func uniqueSortedStrings(values []string) []string {

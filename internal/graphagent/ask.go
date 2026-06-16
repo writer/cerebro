@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -31,11 +32,12 @@ const (
 var summaryURNPattern = regexp.MustCompile(`urn:cerebro:[A-Za-z0-9_:@./#%+-]+`)
 
 type AskRequest struct {
-	TenantID string           `json:"tenant_id"`
-	Question string           `json:"question"`
-	ScopeURN string           `json:"scope_urn,omitempty"`
-	Model    string           `json:"model,omitempty"`
-	History  []HistoryMessage `json:"history,omitempty"`
+	TenantID        string                           `json:"tenant_id"`
+	Question        string                           `json:"question"`
+	ScopeURN        string                           `json:"scope_urn,omitempty"`
+	Model           string                           `json:"model,omitempty"`
+	History         []HistoryMessage                 `json:"history,omitempty"`
+	PlatformContext *agentplatform.AgentRunPreflight `json:"-"`
 }
 
 type Emitter func(Event) error

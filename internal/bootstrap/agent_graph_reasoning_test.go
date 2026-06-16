@@ -63,6 +63,12 @@ LIMIT 25`,
 	if response.Provenance.Surface != "graph-reasoning" || response.Provenance.CitationStatus != "valid" {
 		t.Fatalf("provenance = %#v, want valid graph reasoning provenance", response.Provenance)
 	}
+	if response.Preflight == nil || !response.Preflight.Enabled {
+		t.Fatalf("preflight = %#v, want enabled graph reasoning preflight", response.Preflight)
+	}
+	if response.Preflight.TenantID != "writer" || len(response.Provenance.PolicyChecks) == 0 {
+		t.Fatalf("preflight/provenance = preflight:%#v provenance:%#v", response.Preflight, response.Provenance)
+	}
 }
 
 func TestHandleAgentPlatformGraphReasonRejectsTenantOverride(t *testing.T) {
