@@ -55,6 +55,16 @@ Neo4j remains a projection in both cases; it is not a source of truth.
 - HTTP-only surfaces are route-grouped in `internal/bootstrap/routes.go` so platform, internal, and public routes are explicit while the remaining Connect coverage gap is closed.
 - Public unauthenticated routes are limited to `/health`, `/healthz`, `/livez`, `/openapi.yaml`, OAuth metadata routes, and `/.well-known/device-jwks.json` when API auth is enabled.
 
+## Bootstrap ownership
+
+`internal/bootstrap` is the outer composition root for the server. It owns
+routing, auth, request/response mapping, and dependency wiring. New domain behavior should land behind a domain package and service interface first, with bootstrap limited to translating the HTTP or Connect boundary into that domain contract.
+
+Production Go under `internal/bootstrap` is ratcheted by `tools/archtests` so
+new routes and handlers do not quietly grow the bootstrap surface. If a PR must
+increase that budget, the PR should explain why the behavior cannot move behind
+a domain package yet and update this architecture note alongside the test.
+
 ## Postgres migrations
 
 State-store schema preparation runs at service startup and before store operations. Most migrations use additive `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, or `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` patterns.
