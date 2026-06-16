@@ -78,9 +78,31 @@ func TestConnectorCredentialBrokerHTTPRouteRequiresWriteScope(t *testing.T) {
 	if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {
 		t.Fatalf("POST /connectors/{sourceID}/credentials policy = %#v, want connector credential write scope", policy)
 	}
+	for _, path := range []string{
+		"/connectors/aws/credentials",
+		"/connectors/aws/credentials/cred_123",
+	} {
+		policy := httpRoutePolicyFor(http.MethodGet, path)
+		if policy.Scope != scopeConnectorCredentialsRead || policy.AdminOnly {
+			t.Fatalf("GET %s policy = %#v, want connector credential read scope", path, policy)
+		}
+	}
+	for _, path := range []string{
+		"/connectors/aws/credentials/cred_123/rotate",
+		"/connectors/aws/credentials/cred_123/revoke",
+	} {
+		policy := httpRoutePolicyFor(http.MethodPost, path)
+		if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {
+			t.Fatalf("POST %s policy = %#v, want connector credential write scope", path, policy)
+		}
+	}
 	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
 	if err := authorizePrincipalScope(readOnly, scopeConnectorCredentialsWrite); err == nil {
 		t.Fatal("read-only scoped principal authorized for connector credential write scope")
+	}
+	credentialReader := authPrincipal{Scopes: []string{scopeConnectorCredentialsRead}}
+	if err := authorizePrincipalScope(credentialReader, scopeConnectorCredentialsRead); err != nil {
+		t.Fatalf("connector credential reader rejected: %v", err)
 	}
 	writer := authPrincipal{Scopes: []string{scopeConnectorCredentialsWrite}}
 	if err := authorizePrincipalScope(writer, scopeConnectorCredentialsWrite); err != nil {

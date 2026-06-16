@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,7 @@ import (
 type connectorTestStore struct {
 	*stubRuntimeStore
 	credentials map[string]*ports.ConnectorCredentialRecord
+	audit       []*ports.ConnectorCredentialAuditRecord
 	definitions map[string]*ports.ConnectorDefinitionRecord
 }
 
@@ -40,10 +42,13 @@ func (s *connectorTestStore) PutConnectorCredential(_ context.Context, record *p
 	if s.credentials == nil {
 		s.credentials = map[string]*ports.ConnectorCredentialRecord{}
 	}
-	cloned := *record
-	cloned.Sealed = append([]byte{}, record.Sealed...)
-	cloned.CreatedAt = time.Now().UTC()
-	cloned.UpdatedAt = cloned.CreatedAt
+	cloned := cloneConnectorTestCredential(record)
+	if cloned.CreatedAt.IsZero() {
+		cloned.CreatedAt = time.Now().UTC()
+	}
+	if cloned.UpdatedAt.IsZero() {
+		cloned.UpdatedAt = cloned.CreatedAt
+	}
 	s.credentials[record.ID] = &cloned
 	return nil
 }
@@ -53,9 +58,140 @@ func (s *connectorTestStore) GetConnectorCredential(_ context.Context, id string
 	if !ok {
 		return nil, ports.ErrConnectorCredentialNotFound
 	}
+	cloned := cloneConnectorTestCredential(record)
+	return &cloned, nil
+}
+
+func (s *connectorTestStore) ListConnectorCredentials(_ context.Context, filter ports.ConnectorCredentialFilter) ([]*ports.ConnectorCredentialRecord, error) {
+	records := []*ports.ConnectorCredentialRecord{}
+	for _, record := range s.credentials {
+		if !connectorCredentialRecordMatches(record, filter) {
+			continue
+		}
+		cloned := cloneConnectorTestCredential(record)
+		records = append(records, &cloned)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].UpdatedAt.After(records[j].UpdatedAt)
+	})
+	if filter.Limit > 0 && len(records) > filter.Limit {
+		records = records[:filter.Limit]
+	}
+	return records, nil
+}
+
+func (s *connectorTestStore) UpdateConnectorCredentialMetadata(_ context.Context, id string, update ports.ConnectorCredentialMetadataUpdate) (*ports.ConnectorCredentialRecord, error) {
+	record, ok := s.credentials[id]
+	if !ok {
+		return nil, ports.ErrConnectorCredentialNotFound
+	}
+	if update.Status != "" {
+		record.Status = update.Status
+	}
+	if update.Fields != nil {
+		record.Fields = append([]string{}, update.Fields...)
+	}
+	if update.UpdatedBy != "" {
+		record.UpdatedBy = update.UpdatedBy
+	}
+	if update.RevokedBy != "" {
+		record.RevokedBy = update.RevokedBy
+	}
+	if update.PreviousCredentialID != "" {
+		record.PreviousCredentialID = update.PreviousCredentialID
+	}
+	if update.RevokedAt != nil {
+		record.RevokedAt = *update.RevokedAt
+	}
+	if update.LastUsedAt != nil {
+		record.LastUsedAt = *update.LastUsedAt
+	}
+	if update.LastValidatedAt != nil {
+		record.LastValidatedAt = *update.LastValidatedAt
+	}
+	record.UpdatedAt = time.Now().UTC()
+	cloned := cloneConnectorTestCredential(record)
+	return &cloned, nil
+}
+
+func (s *connectorTestStore) MarkConnectorCredentialUsed(_ context.Context, id string, usedAt time.Time, staleBefore time.Time) (*ports.ConnectorCredentialRecord, bool, error) {
+	record, ok := s.credentials[id]
+	if !ok {
+		return nil, false, ports.ErrConnectorCredentialNotFound
+	}
+	if usedAt.IsZero() {
+		usedAt = time.Now().UTC()
+	}
+	if staleBefore.IsZero() {
+		staleBefore = usedAt.Add(-time.Hour)
+	}
+	if !record.LastUsedAt.IsZero() && record.LastUsedAt.After(staleBefore) {
+		cloned := cloneConnectorTestCredential(record)
+		return &cloned, false, nil
+	}
+	record.LastUsedAt = usedAt.UTC()
+	record.UpdatedAt = usedAt.UTC()
+	cloned := cloneConnectorTestCredential(record)
+	return &cloned, true, nil
+}
+
+func (s *connectorTestStore) AppendConnectorCredentialAuditEvent(_ context.Context, event *ports.ConnectorCredentialAuditRecord) error {
+	if event == nil {
+		return nil
+	}
+	cloned := *event
+	s.audit = append(s.audit, &cloned)
+	return nil
+}
+
+func (s *connectorTestStore) ListConnectorCredentialAuditEvents(_ context.Context, credentialID string, limit int) ([]*ports.ConnectorCredentialAuditRecord, error) {
+	events := []*ports.ConnectorCredentialAuditRecord{}
+	for _, event := range s.audit {
+		if event.CredentialID != credentialID {
+			continue
+		}
+		cloned := *event
+		events = append(events, &cloned)
+	}
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].CreatedAt.After(events[j].CreatedAt)
+	})
+	if limit > 0 && len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
+}
+
+func cloneConnectorTestCredential(record *ports.ConnectorCredentialRecord) ports.ConnectorCredentialRecord {
 	cloned := *record
 	cloned.Sealed = append([]byte{}, record.Sealed...)
-	return &cloned, nil
+	cloned.Fields = append([]string{}, record.Fields...)
+	return cloned
+}
+
+func connectorCredentialRecordMatches(record *ports.ConnectorCredentialRecord, filter ports.ConnectorCredentialFilter) bool {
+	if record == nil {
+		return false
+	}
+	if filter.ID != "" && record.ID != filter.ID {
+		return false
+	}
+	if filter.TenantID != "" && record.TenantID != filter.TenantID {
+		return false
+	}
+	if filter.SourceID != "" && record.SourceID != filter.SourceID {
+		return false
+	}
+	if filter.RuntimeID != "" && record.RuntimeID != filter.RuntimeID {
+		return false
+	}
+	if filter.Status != "" && record.Status != filter.Status {
+		return false
+	}
+	if filter.IdempotencyKey != "" && record.IdempotencyKey != filter.IdempotencyKey {
+		return false
+	}
+	return true
 }
 
 func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
@@ -225,6 +361,266 @@ func TestConnectorCredentialBrokerStoresReferencesWithoutLeakingSecret(t *testin
 	}
 	if _, err := vault.ResolveReferences(context.Background(), "bootstrap_token", "tenant-b", "runtime-a", map[string]string{"token": reference}); err == nil {
 		t.Fatal("ResolveReferences() succeeded for the wrong tenant")
+	}
+}
+
+func TestConnectorCredentialBrokerListsAndDeduplicatesByIdempotencyKey(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"idempotency_key":       "request-1",
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	for i, wantStatus := range []int{http.StatusCreated, http.StatusOK} {
+		req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+		req.SetPathValue("sourceID", "bootstrap_token")
+		recorder := httptest.NewRecorder()
+		app.handleCreateConnectorCredential(recorder, req)
+		if recorder.Code != wantStatus {
+			t.Fatalf("request %d status = %d, want %d: %s", i+1, recorder.Code, wantStatus, recorder.Body.String())
+		}
+	}
+	if got := len(store.credentials); got != 1 {
+		t.Fatalf("stored credentials = %d, want 1", got)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/connectors/bootstrap_token/credentials?tenant_id=tenant-a", nil)
+	req.SetPathValue("sourceID", "bootstrap_token")
+	recorder := httptest.NewRecorder()
+	app.handleListConnectorCredentials(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /connectors/{sourceID}/credentials status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var payload connectorCredentialListResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(payload.Credentials) != 1 {
+		t.Fatalf("listed credentials = %d, want 1", len(payload.Credentials))
+	}
+	if got := payload.Credentials[0].Status; got != connectorcredentials.StatusValid {
+		t.Fatalf("listed credential status = %q, want valid", got)
+	}
+	if got := payload.Credentials[0].Fields; len(got) != 1 || got[0] != "token" {
+		t.Fatalf("listed credential fields = %#v, want token", got)
+	}
+	if strings.Contains(recorder.Body.String(), "secret-token") {
+		t.Fatalf("list response leaked secret: %s", recorder.Body.String())
+	}
+}
+
+func TestConnectorCredentialBrokerRevocationBlocksUse(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	createReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	createReq.SetPathValue("sourceID", "bootstrap_token")
+	createRecorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(createRecorder, createReq)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201: %s", createRecorder.Code, createRecorder.Body.String())
+	}
+	var created connectorCredentialBrokerResponse
+	if err := json.NewDecoder(createRecorder.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	revokeReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials/"+created.Credential.ID+"/revoke", strings.NewReader(`{"reason":"operator requested"}`))
+	revokeReq.SetPathValue("sourceID", "bootstrap_token")
+	revokeReq.SetPathValue("credentialID", created.Credential.ID)
+	revokeRecorder := httptest.NewRecorder()
+	app.handleRevokeConnectorCredential(revokeRecorder, revokeReq)
+	if revokeRecorder.Code != http.StatusOK {
+		t.Fatalf("revoke status = %d, want 200: %s", revokeRecorder.Code, revokeRecorder.Body.String())
+	}
+	if got := store.credentials[created.Credential.ID].Status; got != connectorcredentials.StatusRevoked {
+		t.Fatalf("stored status = %q, want revoked", got)
+	}
+	broker, err := connectorCredentialBroker(app.cfg.ConnectorCredentials, app.deps.StateStore, nil)
+	if err != nil {
+		t.Fatalf("connectorCredentialBroker() error = %v", err)
+	}
+	if _, err := broker.ResolveReferences(context.Background(), "bootstrap_token", "tenant-a", "runtime-a", map[string]string{"token": created.CredentialReferences["token"]}); err == nil {
+		t.Fatal("ResolveReferences() after revoke error = nil, want error")
+	}
+}
+
+func TestConnectorCredentialBrokerRotatesCredential(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	initialEncrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "old-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt initial credentials: %v", err)
+	}
+	initialBody, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": initialEncrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal initial request: %v", err)
+	}
+	createReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(initialBody))
+	createReq.SetPathValue("sourceID", "bootstrap_token")
+	createRecorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(createRecorder, createReq)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201: %s", createRecorder.Code, createRecorder.Body.String())
+	}
+	var created connectorCredentialBrokerResponse
+	if err := json.NewDecoder(createRecorder.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	rotatedEncrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "new-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt rotated credentials: %v", err)
+	}
+	rotateBody, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"idempotency_key":       "rotate-request-1",
+		"revoke_previous":       true,
+		"encrypted_credentials": rotatedEncrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal rotate request: %v", err)
+	}
+	rotateReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials/"+created.Credential.ID+"/rotate", bytes.NewReader(rotateBody))
+	rotateReq.SetPathValue("sourceID", "bootstrap_token")
+	rotateReq.SetPathValue("credentialID", created.Credential.ID)
+	rotateRecorder := httptest.NewRecorder()
+	app.handleRotateConnectorCredential(rotateRecorder, rotateReq)
+	if rotateRecorder.Code != http.StatusCreated {
+		t.Fatalf("rotate status = %d, want 201: %s", rotateRecorder.Code, rotateRecorder.Body.String())
+	}
+	var rotated connectorCredentialBrokerResponse
+	if err := json.NewDecoder(rotateRecorder.Body).Decode(&rotated); err != nil {
+		t.Fatalf("decode rotate response: %v", err)
+	}
+	if rotated.Credential.ID == created.Credential.ID {
+		t.Fatalf("rotated credential reused previous id %q", rotated.Credential.ID)
+	}
+	if got := rotated.Credential.PreviousCredentialID; got != created.Credential.ID {
+		t.Fatalf("previous credential id = %q, want %q", got, created.Credential.ID)
+	}
+	if got := store.credentials[created.Credential.ID].Status; got != connectorcredentials.StatusRevoked {
+		t.Fatalf("previous credential status = %q, want revoked", got)
+	}
+	revokedAt := store.credentials[created.Credential.ID].RevokedAt
+	auditCount := len(store.audit)
+	replayReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials/"+created.Credential.ID+"/rotate", bytes.NewReader(rotateBody))
+	replayReq.SetPathValue("sourceID", "bootstrap_token")
+	replayReq.SetPathValue("credentialID", created.Credential.ID)
+	replayRecorder := httptest.NewRecorder()
+	app.handleRotateConnectorCredential(replayRecorder, replayReq)
+	if replayRecorder.Code != http.StatusOK {
+		t.Fatalf("rotate replay status = %d, want 200: %s", replayRecorder.Code, replayRecorder.Body.String())
+	}
+	var replayed connectorCredentialBrokerResponse
+	if err := json.NewDecoder(replayRecorder.Body).Decode(&replayed); err != nil {
+		t.Fatalf("decode replay response: %v", err)
+	}
+	if replayed.Credential.ID != rotated.Credential.ID {
+		t.Fatalf("replayed credential id = %q, want %q", replayed.Credential.ID, rotated.Credential.ID)
+	}
+	if got := store.credentials[created.Credential.ID].RevokedAt; !got.Equal(revokedAt) {
+		t.Fatalf("replay mutated previous revoked_at = %s, want %s", got, revokedAt)
+	}
+	if got := len(store.audit); got != auditCount {
+		t.Fatalf("replay audit count = %d, want %d", got, auditCount)
+	}
+	broker, err := connectorCredentialBroker(app.cfg.ConnectorCredentials, app.deps.StateStore, nil)
+	if err != nil {
+		t.Fatalf("connectorCredentialBroker() error = %v", err)
+	}
+	resolved, err := broker.ResolveReferences(context.Background(), "bootstrap_token", "tenant-a", "runtime-a", map[string]string{"token": rotated.CredentialReferences["token"]})
+	if err != nil {
+		t.Fatalf("ResolveReferences() rotated error = %v", err)
+	}
+	if got := resolved["token"]; got != "new-token" {
+		t.Fatalf("resolved rotated token = %q, want new-token", got)
 	}
 }
 

@@ -304,7 +304,21 @@ type connectorCredentialBrokerRequest struct {
 	RuntimeID            string                                `json:"runtime_id"`
 	TenantID             string                                `json:"tenant_id,omitempty"`
 	CredentialStoreID    string                                `json:"credential_store_id,omitempty"`
+	IdempotencyKey       string                                `json:"idempotency_key,omitempty"`
 	EncryptedCredentials connectorcredentials.EncryptedPayload `json:"encrypted_credentials"`
+}
+
+type connectorCredentialRotateRequest struct {
+	RuntimeID            string                                `json:"runtime_id,omitempty"`
+	TenantID             string                                `json:"tenant_id,omitempty"`
+	CredentialStoreID    string                                `json:"credential_store_id,omitempty"`
+	IdempotencyKey       string                                `json:"idempotency_key,omitempty"`
+	RevokePrevious       bool                                  `json:"revoke_previous,omitempty"`
+	EncryptedCredentials connectorcredentials.EncryptedPayload `json:"encrypted_credentials"`
+}
+
+type connectorCredentialRevokeRequest struct {
+	Reason string `json:"reason,omitempty"`
 }
 
 type connectorPreflightResponse struct {
@@ -381,16 +395,50 @@ type connectorCredentialBrokerResponse struct {
 }
 
 type connectorCredentialView struct {
-	ID         string   `json:"id"`
-	TenantID   string   `json:"tenant_id"`
-	SourceID   string   `json:"source_id"`
-	RuntimeID  string   `json:"runtime_id"`
-	StoreID    string   `json:"credential_store_id"`
-	AuthMethod string   `json:"auth_method"`
-	KeyID      string   `json:"key_id"`
-	Fields     []string `json:"fields"`
-	CreatedAt  string   `json:"created_at,omitempty"`
-	UpdatedAt  string   `json:"updated_at,omitempty"`
+	ID                   string   `json:"id"`
+	TenantID             string   `json:"tenant_id"`
+	SourceID             string   `json:"source_id"`
+	RuntimeID            string   `json:"runtime_id"`
+	StoreID              string   `json:"credential_store_id"`
+	AuthMethod           string   `json:"auth_method"`
+	Status               string   `json:"status"`
+	KeyID                string   `json:"key_id"`
+	Fields               []string `json:"fields"`
+	CreatedBy            string   `json:"created_by,omitempty"`
+	UpdatedBy            string   `json:"updated_by,omitempty"`
+	RevokedBy            string   `json:"revoked_by,omitempty"`
+	PreviousCredentialID string   `json:"previous_credential_id,omitempty"`
+	CreatedAt            string   `json:"created_at,omitempty"`
+	UpdatedAt            string   `json:"updated_at,omitempty"`
+	RevokedAt            string   `json:"revoked_at,omitempty"`
+	LastUsedAt           string   `json:"last_used_at,omitempty"`
+	LastValidatedAt      string   `json:"last_validated_at,omitempty"`
+}
+
+type connectorCredentialListResponse struct {
+	SourceID    string                    `json:"source_id"`
+	TenantID    string                    `json:"tenant_id"`
+	RuntimeID   string                    `json:"runtime_id,omitempty"`
+	Credentials []connectorCredentialView `json:"credentials"`
+}
+
+type connectorCredentialDetailResponse struct {
+	SourceID   string                         `json:"source_id"`
+	Credential connectorCredentialView        `json:"credential"`
+	Audit      []connectorCredentialAuditView `json:"audit,omitempty"`
+}
+
+type connectorCredentialAuditView struct {
+	ID           string `json:"id"`
+	CredentialID string `json:"credential_id"`
+	TenantID     string `json:"tenant_id"`
+	SourceID     string `json:"source_id"`
+	RuntimeID    string `json:"runtime_id"`
+	EventType    string `json:"event_type"`
+	Actor        string `json:"actor,omitempty"`
+	Status       string `json:"status,omitempty"`
+	Detail       string `json:"detail,omitempty"`
+	CreatedAt    string `json:"created_at,omitempty"`
 }
 
 func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
@@ -609,65 +657,299 @@ func (a *App) handleCreateConnectorCredential(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, err)
 		return
 	}
-	if !connectorEncryptedPayloadPresent(request.EncryptedCredentials) {
-		writeConnectorError(w, fmt.Errorf("%w: encrypted_credentials is required", connectorcredentials.ErrInvalidRequest))
-		return
-	}
-	if a == nil || a.connectorTransitKey == nil {
-		writeConnectorError(w, connectorcredentials.ErrUnavailable)
-		return
-	}
-	decrypted, err := a.connectorTransitKey.DecryptWithExactAdditionalData(
-		request.EncryptedCredentials,
-		connectorCredentialAdditionalData(request.EncryptedCredentials.KeyID, sourceID, tenantID, runtimeID, credentialStoreID),
-	)
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
 	if err != nil {
 		writeConnectorError(w, err)
 		return
 	}
-	fields, err := connectorcredentials.ParseCredentialFields(decrypted)
-	if err != nil {
-		writeConnectorError(w, err)
-		return
-	}
-	if err := validateConnectorCredentialFields(sourceID, connectorAuthMethodEncryptedSubmission, fields); err != nil {
-		writeConnectorError(w, err)
-		return
-	}
-	vault, err := connectorCredentialVault(a.cfg.ConnectorCredentials, a.deps.StateStore)
-	if err != nil {
-		writeConnectorError(w, err)
-		return
-	}
-	record, err := vault.Put(r.Context(), connectorcredentials.PlainCredential{
-		TenantID:  tenantID,
-		SourceID:  sourceID,
-		RuntimeID: runtimeID,
-		Fields:    fields,
+	result, err := broker.StoreEncrypted(r.Context(), connectorcredentials.StoreEncryptedRequest{
+		TenantID:             tenantID,
+		SourceID:             sourceID,
+		RuntimeID:            runtimeID,
+		CredentialStoreID:    credentialStoreID,
+		AuthMethod:           connectorAuthMethodEncryptedSubmission,
+		Actor:                connectorCredentialActor(r),
+		IdempotencyKey:       connectorCredentialIdempotencyKey(r, request.IdempotencyKey),
+		EncryptedCredentials: request.EncryptedCredentials,
+		ValidateFields: func(fields map[string]string) error {
+			return validateConnectorCredentialFields(sourceID, connectorAuthMethodEncryptedSubmission, fields)
+		},
 	})
 	if err != nil {
 		writeConnectorError(w, err)
 		return
 	}
-	references := connectorCredentialReferences(record.ID, fields)
-	writeJSON(w, http.StatusCreated, connectorCredentialBrokerResponse{
+	status := "stored"
+	httpStatus := http.StatusCreated
+	if !result.Created {
+		status = "existing"
+		httpStatus = http.StatusOK
+	}
+	writeJSON(w, httpStatus, connectorCredentialBrokerResponse{
 		SourceID:  sourceID,
 		TenantID:  tenantID,
 		RuntimeID: runtimeID,
-		Status:    "stored",
-		Credential: connectorCredentialView{
-			ID:         record.ID,
-			TenantID:   tenantID,
-			SourceID:   sourceID,
-			RuntimeID:  runtimeID,
-			StoreID:    credentialStoreID,
-			AuthMethod: connectorAuthMethodEncryptedSubmission,
-			KeyID:      record.KeyID,
-			Fields:     connectorcredentials.SortedFieldNames(fields),
-			CreatedAt:  connectorcredentials.TimestampOrZero(record.CreatedAt),
-			UpdatedAt:  connectorcredentials.TimestampOrZero(record.UpdatedAt),
+		Status:    status,
+		Credential: func() connectorCredentialView {
+			return connectorCredentialViewFromRecord(result.Record)
+		}(),
+		CredentialReferences: result.References,
+	})
+}
+
+func (a *App) handleListConnectorCredentials(w http.ResponseWriter, r *http.Request) {
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	if sourceID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if tenantID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: tenant_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	limit, err := connectorQueryInt(r, "limit", 100, 1000)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	records, err := broker.List(r.Context(), ports.ConnectorCredentialFilter{
+		TenantID:  tenantID,
+		SourceID:  sourceID,
+		RuntimeID: r.URL.Query().Get("runtime_id"),
+		Status:    r.URL.Query().Get("status"),
+		Limit:     limit,
+	})
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	views := make([]connectorCredentialView, 0, len(records))
+	for _, record := range records {
+		if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		views = append(views, connectorCredentialViewFromRecord(record))
+	}
+	writeJSON(w, http.StatusOK, connectorCredentialListResponse{
+		SourceID:    sourceID,
+		TenantID:    tenantID,
+		RuntimeID:   strings.TrimSpace(r.URL.Query().Get("runtime_id")),
+		Credentials: views,
+	})
+}
+
+func (a *App) handleGetConnectorCredential(w http.ResponseWriter, r *http.Request) {
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	credentialID := strings.TrimSpace(r.PathValue("credentialID"))
+	if sourceID == "" || credentialID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	record, err := broker.Get(r.Context(), credentialID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if strings.TrimSpace(record.SourceID) != sourceID {
+		writeConnectorError(w, ports.ErrConnectorCredentialNotFound)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	events, err := broker.AuditEvents(r.Context(), credentialID, 50)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, connectorCredentialDetailResponse{
+		SourceID:   sourceID,
+		Credential: connectorCredentialViewFromRecord(record),
+		Audit:      connectorCredentialAuditViews(events),
+	})
+}
+
+func (a *App) handleRotateConnectorCredential(w http.ResponseWriter, r *http.Request) {
+	request := connectorCredentialRotateRequest{}
+	if err := readConnectorJSON(r, &request); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	credentialID := strings.TrimSpace(r.PathValue("credentialID"))
+	if sourceID == "" || credentialID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	previous, err := broker.Get(r.Context(), credentialID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if strings.TrimSpace(previous.SourceID) != sourceID {
+		writeConnectorError(w, ports.ErrConnectorCredentialNotFound)
+		return
+	}
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(previous.TenantID)
+	}
+	tenantID, err = effectiveTenantFilter(r.Context(), tenantID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		runtimeID = strings.TrimSpace(previous.RuntimeID)
+	}
+	if tenantID != strings.TrimSpace(previous.TenantID) || runtimeID != strings.TrimSpace(previous.RuntimeID) {
+		writeConnectorError(w, fmt.Errorf("%w: credential rotation must keep the existing tenant and runtime", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.authorizeConnectorCredentialRuntime(r.Context(), sourceID, tenantID, runtimeID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	credentialStoreID, err := normalizeConnectorCredentialStoreID(firstNonEmpty(request.CredentialStoreID, previous.CredentialStoreID), connectorAuthMethodEncryptedSubmission)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if err := a.validateConnectorCredentialStoreAvailable(credentialStoreID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	result, err := broker.StoreEncrypted(r.Context(), connectorcredentials.StoreEncryptedRequest{
+		TenantID:             tenantID,
+		SourceID:             sourceID,
+		RuntimeID:            runtimeID,
+		CredentialStoreID:    credentialStoreID,
+		AuthMethod:           connectorAuthMethodEncryptedSubmission,
+		Actor:                connectorCredentialActor(r),
+		IdempotencyKey:       connectorCredentialIdempotencyKey(r, request.IdempotencyKey),
+		PreviousCredentialID: credentialID,
+		EncryptedCredentials: request.EncryptedCredentials,
+		ValidateFields: func(fields map[string]string) error {
+			return validateConnectorCredentialFields(sourceID, connectorAuthMethodEncryptedSubmission, fields)
 		},
-		CredentialReferences: references,
+	})
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if request.RevokePrevious {
+		if _, err := broker.Revoke(r.Context(), connectorcredentials.RevokeRequest{
+			CredentialID: credentialID,
+			TenantID:     tenantID,
+			SourceID:     sourceID,
+			RuntimeID:    runtimeID,
+			Actor:        connectorCredentialActor(r),
+			Detail:       "rotated",
+		}); err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+	}
+	status := "rotated"
+	httpStatus := http.StatusCreated
+	if !result.Created {
+		status = "existing"
+		httpStatus = http.StatusOK
+	}
+	writeJSON(w, httpStatus, connectorCredentialBrokerResponse{
+		SourceID:             sourceID,
+		TenantID:             tenantID,
+		RuntimeID:            runtimeID,
+		Status:               status,
+		Credential:           connectorCredentialViewFromRecord(result.Record),
+		CredentialReferences: result.References,
+	})
+}
+
+func (a *App) handleRevokeConnectorCredential(w http.ResponseWriter, r *http.Request) {
+	request := connectorCredentialRevokeRequest{}
+	if err := readConnectorJSON(r, &request); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	credentialID := strings.TrimSpace(r.PathValue("credentialID"))
+	if sourceID == "" || credentialID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	record, err := broker.Get(r.Context(), credentialID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if strings.TrimSpace(record.SourceID) != sourceID {
+		writeConnectorError(w, ports.ErrConnectorCredentialNotFound)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	updated, err := broker.Revoke(r.Context(), connectorcredentials.RevokeRequest{
+		CredentialID: credentialID,
+		TenantID:     record.TenantID,
+		SourceID:     sourceID,
+		RuntimeID:    record.RuntimeID,
+		Actor:        connectorCredentialActor(r),
+		Detail:       request.Reason,
+	})
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, connectorCredentialDetailResponse{
+		SourceID:   sourceID,
+		Credential: connectorCredentialViewFromRecord(updated),
 	})
 }
 
@@ -813,29 +1095,31 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if authMethod == connectorAuthMethodEncryptedSubmission {
-		vault, err := connectorCredentialVault(a.cfg.ConnectorCredentials, a.deps.StateStore)
+		broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
 		if err != nil {
 			writeConnectorError(w, err)
 			return
 		}
-		record, err := vault.Put(r.Context(), connectorcredentials.PlainCredential{
-			TenantID:  tenantID,
-			SourceID:  sourceID,
-			RuntimeID: runtimeID,
-			Fields:    plaintextFields,
+		result, err := broker.StoreEncrypted(r.Context(), connectorcredentials.StoreEncryptedRequest{
+			TenantID:             tenantID,
+			SourceID:             sourceID,
+			RuntimeID:            runtimeID,
+			CredentialStoreID:    credentialStoreID,
+			AuthMethod:           authMethod,
+			Actor:                connectorCredentialActor(r),
+			EncryptedCredentials: request.EncryptedCredentials,
+			ValidateFields: func(fields map[string]string) error {
+				return validateConnectorCredentialFields(sourceID, authMethod, fields)
+			},
 		})
 		if err != nil {
 			writeConnectorError(w, err)
 			return
 		}
-		for _, field := range connectorcredentials.SortedFieldNames(plaintextFields) {
-			runtime.Config[field] = connectorcredentials.Reference(record.ID, field)
+		for field, reference := range result.References {
+			runtime.Config[field] = reference
 		}
-		credential.ID = record.ID
-		credential.KeyID = record.KeyID
-		credential.Fields = connectorcredentials.SortedFieldNames(plaintextFields)
-		credential.CreatedAt = connectorcredentials.TimestampOrZero(record.CreatedAt)
-		credential.UpdatedAt = connectorcredentials.TimestampOrZero(record.UpdatedAt)
+		credential = connectorCredentialViewFromRecord(result.Record)
 	}
 	if scopeConfigValue != "" {
 		runtime.Config[resourcescope.ConfigKey] = scopeConfigValue
@@ -3150,16 +3434,7 @@ func connectorExternalReferenceStore(id string) bool {
 }
 
 func connectorCredentialAdditionalData(keyID string, sourceID string, tenantID string, runtimeID string, credentialStoreID string) []byte {
-	parts := []string{
-		"connector-credential",
-		"v1",
-		strings.TrimSpace(keyID),
-		strings.TrimSpace(sourceID),
-		strings.TrimSpace(tenantID),
-		strings.TrimSpace(runtimeID),
-		strings.TrimSpace(credentialStoreID),
-	}
-	return []byte(strings.Join(parts, "\x00"))
+	return connectorcredentials.TransitAdditionalData(keyID, sourceID, tenantID, runtimeID, credentialStoreID)
 }
 
 func (a *App) authorizeConnectorCredentialRuntime(ctx context.Context, sourceID string, tenantID string, runtimeID string) error {
@@ -3188,14 +3463,6 @@ func (a *App) authorizeConnectorCredentialRuntime(ctx context.Context, sourceID 
 		return fmt.Errorf("%w: runtime belongs to a different connector source", connectorcredentials.ErrInvalidRequest)
 	}
 	return nil
-}
-
-func connectorCredentialReferences(credentialID string, fields map[string]string) map[string]string {
-	references := make(map[string]string, len(fields))
-	for _, field := range connectorcredentials.SortedFieldNames(fields) {
-		references[field] = connectorcredentials.Reference(credentialID, field)
-	}
-	return references
 }
 
 func connectorRuntimeConfig(input map[string]string) (map[string]string, error) {
@@ -3433,6 +3700,108 @@ func sortedSetKeys(values map[string]struct{}) []string {
 func setContains(values map[string]struct{}, key string) bool {
 	_, ok := values[key]
 	return ok
+}
+
+func connectorCredentialViewFromRecord(record *ports.ConnectorCredentialRecord) connectorCredentialView {
+	if record == nil {
+		return connectorCredentialView{}
+	}
+	return connectorCredentialView{
+		ID:                   record.ID,
+		TenantID:             record.TenantID,
+		SourceID:             record.SourceID,
+		RuntimeID:            record.RuntimeID,
+		StoreID:              firstNonEmpty(record.CredentialStoreID, defaultConnectorCredentialStoreID),
+		AuthMethod:           firstNonEmpty(record.AuthMethod, connectorAuthMethodEncryptedSubmission),
+		Status:               firstNonEmpty(record.Status, connectorcredentials.StatusValid),
+		KeyID:                record.KeyID,
+		Fields:               append([]string{}, record.Fields...),
+		CreatedBy:            record.CreatedBy,
+		UpdatedBy:            record.UpdatedBy,
+		RevokedBy:            record.RevokedBy,
+		PreviousCredentialID: record.PreviousCredentialID,
+		CreatedAt:            connectorcredentials.TimestampOrZero(record.CreatedAt),
+		UpdatedAt:            connectorcredentials.TimestampOrZero(record.UpdatedAt),
+		RevokedAt:            connectorcredentials.TimestampOrZero(record.RevokedAt),
+		LastUsedAt:           connectorcredentials.TimestampOrZero(record.LastUsedAt),
+		LastValidatedAt:      connectorcredentials.TimestampOrZero(record.LastValidatedAt),
+	}
+}
+
+func connectorCredentialAuditViews(events []*ports.ConnectorCredentialAuditRecord) []connectorCredentialAuditView {
+	views := make([]connectorCredentialAuditView, 0, len(events))
+	for _, event := range events {
+		if event == nil {
+			continue
+		}
+		views = append(views, connectorCredentialAuditView{
+			ID:           event.ID,
+			CredentialID: event.CredentialID,
+			TenantID:     event.TenantID,
+			SourceID:     event.SourceID,
+			RuntimeID:    event.RuntimeID,
+			EventType:    event.EventType,
+			Actor:        event.Actor,
+			Status:       event.Status,
+			Detail:       event.Detail,
+			CreatedAt:    connectorcredentials.TimestampOrZero(event.CreatedAt),
+		})
+	}
+	return views
+}
+
+func connectorCredentialActor(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok {
+		if name := strings.TrimSpace(auth.principal.Name); name != "" {
+			return name
+		}
+		if clientID := strings.TrimSpace(auth.principal.ClientID); clientID != "" {
+			return clientID
+		}
+		if credentialID := strings.TrimSpace(auth.principal.CredentialID); credentialID != "" {
+			return credentialID
+		}
+	}
+	return ""
+}
+
+func connectorCredentialIdempotencyKey(r *http.Request, bodyValue string) string {
+	if value := strings.TrimSpace(bodyValue); value != "" {
+		return value
+	}
+	if r == nil {
+		return ""
+	}
+	return strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+}
+
+func connectorQueryInt(r *http.Request, key string, defaultValue int, maxValue int) (int, error) {
+	if r == nil || r.URL == nil {
+		return defaultValue, nil
+	}
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return defaultValue, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("%w: query parameter %q must be a non-negative integer", connectorcredentials.ErrInvalidRequest, key)
+	}
+	if maxValue > 0 && parsed > maxValue {
+		return maxValue, nil
+	}
+	return parsed, nil
+}
+
+func connectorCredentialBroker(credentialConfig config.ConnectorCredentialConfig, store ports.StateStore, transit *connectorcredentials.TransitKey) (*connectorcredentials.Broker, error) {
+	vault, err := connectorCredentialVault(credentialConfig, store)
+	if err != nil {
+		return nil, err
+	}
+	return connectorcredentials.NewBroker(vault, transit), nil
 }
 
 func connectorCredentialVault(credentialConfig config.ConnectorCredentialConfig, store ports.StateStore) (*connectorcredentials.Vault, error) {

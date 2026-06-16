@@ -192,6 +192,67 @@ paths:
         '404':
           description: Connector source was not found.
   /connectors/{sourceID}/credentials:
+    get:
+      summary: List connector credential metadata
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: runtime_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending
+              - valid
+              - invalid
+              - revoked
+              - rotating
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000
+      responses:
+        '200':
+          description: Credential metadata for a tenant/source/runtime. Plaintext credentials and sealed blobs are never returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - source_id
+                  - tenant_id
+                  - credentials
+                properties:
+                  source_id:
+                    type: string
+                  tenant_id:
+                    type: string
+                  runtime_id:
+                    type: string
+                  credentials:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConnectorCredential'
+        '400':
+          description: Tenant or query filter was invalid.
+        '403':
+          description: Caller is not allowed to inspect credentials for the requested tenant.
+        '404':
+          description: Connector source was not found.
+        '503':
+          description: Connector credential vault is unavailable.
     post:
       summary: Broker connector credentials
       tags:
@@ -220,6 +281,9 @@ paths:
                   default: cerebro_vault
                   enum:
                     - cerebro_vault
+                idempotency_key:
+                  type: string
+                  description: Optional caller-supplied key used to safely retry one credential submission for the same tenant, source, and runtime.
                 encrypted_credentials:
                   type: object
                   description: Browser-encrypted credential fields. The backend unwraps this payload, seals it in the connector vault, and returns only credential references.
@@ -267,51 +331,20 @@ paths:
                     type: string
                     enum:
                       - stored
+                      - existing
                   credential:
-                    type: object
-                    required:
-                      - id
-                      - tenant_id
-                      - source_id
-                      - runtime_id
-                      - credential_store_id
-                      - auth_method
-                      - key_id
-                      - fields
-                    properties:
-                      id:
-                        type: string
-                      tenant_id:
-                        type: string
-                      source_id:
-                        type: string
-                      runtime_id:
-                        type: string
-                      credential_store_id:
-                        type: string
-                        enum:
-                          - cerebro_vault
-                      auth_method:
-                        type: string
-                        enum:
-                          - encrypted_submission
-                      key_id:
-                        type: string
-                      fields:
-                        type: array
-                        items:
-                          type: string
-                      created_at:
-                        type: string
-                        format: date-time
-                      updated_at:
-                        type: string
-                        format: date-time
+                    $ref: '#/components/schemas/ConnectorCredential'
                   credential_references:
                     type: object
                     description: Field-to-reference map that can be passed as connector credential_references without exposing the underlying secret.
                     additionalProperties:
                       type: string
+        '200':
+          description: Existing credential metadata and references returned for a replayed idempotent request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
         '400':
           description: Request shape, credential payload context, or credential fields were invalid.
         '403':
@@ -320,6 +353,145 @@ paths:
           description: Connector source was not found.
         '503':
           description: Connector credential transport or vault is unavailable.
+  /connectors/{sourceID}/credentials/{credentialID}:
+    get:
+      summary: Get connector credential metadata
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: credentialID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Credential metadata and recent broker audit events. Plaintext credentials and sealed blobs are never returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - source_id
+                  - credential
+                properties:
+                  source_id:
+                    type: string
+                  credential:
+                    $ref: '#/components/schemas/ConnectorCredential'
+                  audit:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConnectorCredentialAuditEvent'
+        '403':
+          description: Caller is not allowed to inspect credentials for the credential tenant.
+        '404':
+          description: Connector source or credential was not found.
+        '503':
+          description: Connector credential vault is unavailable.
+  /connectors/{sourceID}/credentials/{credentialID}/rotate:
+    post:
+      summary: Rotate connector credential
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: credentialID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - encrypted_credentials
+              properties:
+                tenant_id:
+                  type: string
+                runtime_id:
+                  type: string
+                credential_store_id:
+                  type: string
+                  default: cerebro_vault
+                  enum:
+                    - cerebro_vault
+                idempotency_key:
+                  type: string
+                revoke_previous:
+                  type: boolean
+                  description: When true, revokes the previous credential after the replacement is sealed.
+                encrypted_credentials:
+                  $ref: '#/components/schemas/EncryptedConnectorCredentialPayload'
+      responses:
+        '201':
+          description: Replacement credential sealed and linked to the previous credential.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
+        '200':
+          description: Existing replacement credential returned for a replayed idempotent request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
+        '400':
+          description: Request shape, credential payload context, or credential fields were invalid.
+        '403':
+          description: Caller is not allowed to rotate credentials for the credential tenant.
+        '404':
+          description: Connector source or credential was not found.
+        '503':
+          description: Connector credential transport or vault is unavailable.
+  /connectors/{sourceID}/credentials/{credentialID}/revoke:
+    post:
+      summary: Revoke connector credential
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: credentialID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Credential marked revoked. Runtime resolution rejects future use of this credential reference.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - source_id
+                  - credential
+                properties:
+                  source_id:
+                    type: string
+                  credential:
+                    $ref: '#/components/schemas/ConnectorCredential'
+        '400':
+          description: Request shape was invalid.
+        '403':
+          description: Caller is not allowed to revoke credentials for the credential tenant.
+        '404':
+          description: Connector source or credential was not found.
+        '503':
+          description: Connector credential vault is unavailable.
   /connectors/credential-key:
     get:
       summary: Get connector credential transit key
@@ -2776,6 +2948,154 @@ components:
         type: integer
         minimum: 1
   schemas:
+    EncryptedConnectorCredentialPayload:
+      type: object
+      required:
+        - key_id
+        - algorithm
+        - wrapped_key
+        - nonce
+        - ciphertext
+      properties:
+        key_id:
+          type: string
+        algorithm:
+          type: string
+          enum:
+            - RSA-OAEP-256+A256GCM
+        wrapped_key:
+          type: string
+        nonce:
+          type: string
+        ciphertext:
+          type: string
+    ConnectorCredential:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - source_id
+        - runtime_id
+        - credential_store_id
+        - auth_method
+        - status
+        - key_id
+        - fields
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        credential_store_id:
+          type: string
+        auth_method:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - valid
+            - invalid
+            - revoked
+            - rotating
+        key_id:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+        created_by:
+          type: string
+        updated_by:
+          type: string
+        revoked_by:
+          type: string
+        previous_credential_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        last_validated_at:
+          type: string
+          format: date-time
+    ConnectorCredentialAuditEvent:
+      type: object
+      required:
+        - id
+        - credential_id
+        - tenant_id
+        - source_id
+        - runtime_id
+        - event_type
+      properties:
+        id:
+          type: string
+        credential_id:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        event_type:
+          type: string
+          enum:
+            - stored
+            - rotated
+            - revoked
+            - used
+            - validated
+        actor:
+          type: string
+        status:
+          type: string
+        detail:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ConnectorCredentialBrokerResponse:
+      type: object
+      required:
+        - source_id
+        - tenant_id
+        - runtime_id
+        - status
+        - credential
+        - credential_references
+      properties:
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - stored
+            - rotated
+            - existing
+        credential:
+          $ref: '#/components/schemas/ConnectorCredential'
+        credential_references:
+          type: object
+          additionalProperties:
+            type: string
     ConnectorDefinitionListResponse:
       type: object
       required:

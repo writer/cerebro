@@ -7,6 +7,7 @@ const (
 	scopeFindingCandidatePromote   = "cerebro.finding_candidates.promote"
 	scopeFindingLifecycleWrite     = "cerebro.findings.write"
 	scopeGRCInventoryWrite         = "cerebro.grc.inventory.write"
+	scopeConnectorCredentialsRead  = "cerebro.connector_credentials.read"
 	scopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
 	scopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
 )
