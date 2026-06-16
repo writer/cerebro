@@ -70,6 +70,42 @@ emitted_kinds: []
 	}
 }
 
+func TestCheckConnectorDefinitionCatalogRejectsProofGateIssues(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/connectorcatalog/catalog/batch.yaml", `
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-incomplete
+      tenant_id: builtin_catalog
+      source_id: incomplete
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+      resource_families:
+        - id: users
+          path: /v1/users
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: incomplete.user, schema_ref: incomplete/user/v1}
+          projection: {template: identity_user}
+`)
+
+	issues, err := checkConnectorDefinitionCatalog(root)
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalog() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "verification endpoint is required") {
+		t.Fatalf("issues = %#v, want proof gate issue", issues)
+	}
+}
+
 func TestCheckRepositoryRejectsUnprojectedEmittedKind(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "policies/github/test.json", `{

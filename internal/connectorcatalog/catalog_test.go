@@ -1,0 +1,245 @@
+package connectorcatalog
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogFile(t, root, `
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-example_idp
+      tenant_id: builtin_catalog
+      source_id: example_idp
+      display_name: Example IDP
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+        verification:
+          path: /v1/me
+      resource_families:
+        - id: users
+          path: /v1/users
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: example_idp.user, schema_ref: example_idp/user/v1}
+          projection: {template: identity_user}
+          coverage:
+            - {type: entity_family, support: partial, high_value: true}
+        - id: groups
+          path: /v1/groups
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: example_idp.group, schema_ref: example_idp/group/v1}
+          projection: {template: identity_group}
+          coverage:
+            - {type: entity_family, support: partial, high_value: true}
+`)
+
+	analysis, err := AnalyzeDir(root, Options{DryRunSourcegen: true})
+	if err != nil {
+		t.Fatalf("AnalyzeDir() error = %v", err)
+	}
+	if len(analysis.Issues) != 0 {
+		t.Fatalf("issues = %#v, want none", analysis.Issues)
+	}
+	if analysis.Summary.Total != 1 || analysis.Summary.Generateable != 1 {
+		t.Fatalf("summary = %#v, want one generateable entry", analysis.Summary)
+	}
+	if got := analysis.Entries[0].Status; got != StatusGenerateable {
+		t.Fatalf("status = %q, want %q", got, StatusGenerateable)
+	}
+}
+
+func TestAnalyzeDirRejectsClassifierMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogFile(t, root, strings.ReplaceAll(minimalDefinitionYAML(), "classifier_output: supported", "classifier_output: bespoke_required"))
+
+	analysis, err := AnalyzeDir(root, Options{})
+	if err != nil {
+		t.Fatalf("AnalyzeDir() error = %v", err)
+	}
+	if !issuesContain(analysis.Issues, `classifier_output "bespoke_required" does not match classifier verdict "supported"`) {
+		t.Fatalf("issues = %#v, want classifier mismatch", analysis.Issues)
+	}
+}
+
+func TestAnalyzeDirRequiresProofGateFields(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogFile(t, root, `
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-incomplete
+      tenant_id: builtin_catalog
+      source_id: incomplete
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+      resource_families:
+        - id: users
+          path: /v1/users
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: incomplete.user, schema_ref: incomplete/user/v1}
+          projection: {template: identity_user}
+`)
+
+	analysis, err := AnalyzeDir(root, Options{})
+	if err != nil {
+		t.Fatalf("AnalyzeDir() error = %v", err)
+	}
+	for _, want := range []string{
+		"verification endpoint is required",
+		"definition must include 2-4 high-value resource families",
+		`resource family "users" must declare coverage dimensions`,
+		"at least one high-value coverage dimension is required",
+	} {
+		if !issuesContain(analysis.Issues, want) {
+			t.Fatalf("issues = %#v, want %q", analysis.Issues, want)
+		}
+	}
+}
+
+func TestAnalyzeDirMarksOAuthSupportedDefinitionAsAuthExtension(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogFile(t, root, strings.ReplaceAll(strings.ReplaceAll(minimalDefinitionYAML(),
+		"model: bearer_token", "model: oauth_client_credentials\n        token_url: https://api.example.test/oauth/token"),
+		"key: token", "key: client_secret"))
+
+	analysis, err := AnalyzeDir(root, Options{DryRunSourcegen: true})
+	if err != nil {
+		t.Fatalf("AnalyzeDir() error = %v", err)
+	}
+	if len(analysis.Issues) != 0 {
+		t.Fatalf("issues = %#v, want none", analysis.Issues)
+	}
+	if got := analysis.Entries[0].Status; got != StatusNeedsAuthExtension {
+		t.Fatalf("status = %q, want %q", got, StatusNeedsAuthExtension)
+	}
+	if analysis.Summary.NeedsAuthExtension != 1 {
+		t.Fatalf("summary = %#v, want auth extension count", analysis.Summary)
+	}
+}
+
+func TestBuiltinCatalogSeedSummary(t *testing.T) {
+	analysis, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v; issues = %#v", err, analysis.Issues)
+	}
+	if len(analysis.Issues) != 0 {
+		t.Fatalf("issues = %#v, want none", analysis.Issues)
+	}
+	if analysis.Summary.Total != 100 {
+		t.Fatalf("summary total = %d, want 100", analysis.Summary.Total)
+	}
+	if len(analysis.Entries) != 100 {
+		t.Fatalf("entries len = %d, want 100", len(analysis.Entries))
+	}
+	if analysis.Summary.Generateable == 0 {
+		t.Fatalf("summary = %#v, want at least one generateable entry", analysis.Summary)
+	}
+	if analysis.Summary.NeedsAuthExtension == 0 {
+		t.Fatalf("summary = %#v, want at least one auth-extension entry", analysis.Summary)
+	}
+	if analysis.Summary.NeedsBespokeRuntime == 0 {
+		t.Fatalf("summary = %#v, want at least one bespoke-runtime entry", analysis.Summary)
+	}
+	counted := analysis.Summary.CatalogReady + analysis.Summary.Generateable + analysis.Summary.NeedsAuthExtension + analysis.Summary.NeedsBespokeRuntime
+	if counted != analysis.Summary.Total {
+		t.Fatalf("status counts = %d, want total %d: %#v", counted, analysis.Summary.Total, analysis.Summary)
+	}
+	t.Logf("builtin connector catalog summary: total=%d generateable=%d needs_auth_extension=%d needs_bespoke_runtime=%d catalog_ready=%d",
+		analysis.Summary.Total,
+		analysis.Summary.Generateable,
+		analysis.Summary.NeedsAuthExtension,
+		analysis.Summary.NeedsBespokeRuntime,
+		analysis.Summary.CatalogReady,
+	)
+}
+
+func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
+	entry, ok, err := BuiltinEntry("JumpCloud")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry() ok = false, want true")
+	}
+	if entry.Definition.SourceID != "jumpcloud" || entry.Status != StatusGenerateable {
+		t.Fatalf("entry = %#v, want generateable jumpcloud", entry)
+	}
+}
+
+func minimalDefinitionYAML() string {
+	return `
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-example
+      tenant_id: builtin_catalog
+      source_id: example
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+        verification:
+          path: /v1/me
+      resource_families:
+        - id: users
+          path: /v1/users
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: example.user, schema_ref: example/user/v1}
+          projection: {template: identity_user}
+          coverage:
+            - {type: entity_family, support: partial, high_value: true}
+        - id: groups
+          path: /v1/groups
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: example.group, schema_ref: example/group/v1}
+          projection: {template: identity_group}
+          coverage:
+            - {type: entity_family, support: partial, high_value: true}
+`
+}
+
+func writeCatalogFile(t *testing.T, root string, content string) {
+	t.Helper()
+	path := filepath.Join(root, "identity-access-secrets.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func issuesContain(issues []Issue, want string) bool {
+	for _, issue := range issues {
+		if strings.Contains(issue.Message, want) {
+			return true
+		}
+	}
+	return false
+}

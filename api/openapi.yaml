@@ -152,7 +152,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog with runtime counts, credential capability state, backend-advertised connection methods, credential-store choices, store availability, accepted reference prefixes, non-secret reference namespace/field templates, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
+          description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Entries include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
@@ -166,7 +166,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog entry, runtime health summary, setup guidance, safe connection summaries with typed scope policies, resource scope support notes, and recent activity.
+          description: Connector catalog entry with catalog status and classifier metadata, plus runtime health summary, setup guidance, safe connection summaries with typed scope policies, resource scope support notes, and recent activity for executable sources. Catalog-only definitions return empty runtime health/activity until generated or promoted into a Source Runtime SDK source.
         '404':
           description: Connector source was not found.
   /connectors/{sourceID}/activity:

@@ -39,6 +39,20 @@ func TestParseSourceRuntimeSDKNewArgs(t *testing.T) {
 	}
 }
 
+func TestParseSourceRuntimeSDKNewArgsCatalogDefinition(t *testing.T) {
+	request, err := parseSourceRuntimeSDKNewArgs([]string{
+		"jumpcloud",
+		"catalog=true",
+		"dry_run=true",
+	})
+	if err != nil {
+		t.Fatalf("parseSourceRuntimeSDKNewArgs() error = %v", err)
+	}
+	if request.SourceID != "jumpcloud" || !request.CatalogDefinition || !request.DryRun {
+		t.Fatalf("request = %#v, want catalog dry-run for jumpcloud", request)
+	}
+}
+
 func TestParseSourceRuntimeSDKNewArgsRequiresKeyValue(t *testing.T) {
 	_, err := parseSourceRuntimeSDKNewArgs([]string{"demo_source", "not-key-value"})
 	if err == nil {
@@ -141,6 +155,89 @@ func TestRunSourceRuntimeSDKNewFromDefinitionDryRun(t *testing.T) {
 	}
 	if result.SourceID != "example_idp" || result.AuthModel != "bearer_token" || !result.DryRun || len(result.Files) == 0 {
 		t.Fatalf("definition dry-run result = %#v", result)
+	}
+}
+
+func TestRunSourceRuntimeSDKNewFromDefinitionComparesNormalizedSourceID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "definition.json")
+	payload := []byte(`{
+		"schema_version": "cerebro.integration/v1",
+		"id": "tenant-a-example_idp",
+		"tenant_id": "tenant-a",
+		"source_id": "Example IDP",
+		"display_name": "Example IDP",
+		"auth": {
+			"model": "bearer_token",
+			"credential_fields": [{"key": "token", "secret": true, "reference_only": true}]
+		},
+		"transport": {
+			"base_url": "https://api.example.test",
+			"verification": {"path": "/v1/me"}
+		},
+		"resource_families": [{
+			"id": "users",
+			"path": "/v1/users",
+			"record_selector": "$.data[*]",
+			"id_field": "id",
+			"event": {"kind": "example_idp.user", "schema_ref": "example_idp/user/v1"},
+			"projection": {"template": "identity_user"},
+			"coverage": [{"type": "entity_family", "support": "supported"}]
+		}]
+	}`)
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatalf("write definition: %v", err)
+	}
+	stdout := captureCommandStdout(t, func() {
+		err := runSourceRuntime([]string{"sdk", "new", "example_idp", "definition=" + path, "dry_run=true"})
+		if err != nil {
+			t.Fatalf("runSourceRuntime sdk new definition dry-run error = %v", err)
+		}
+	})
+	var result struct {
+		SourceID string `json:"source_id"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("unmarshal definition dry-run output: %v\n%s", err, stdout)
+	}
+	if result.SourceID != "example_idp" {
+		t.Fatalf("SourceID = %q, want example_idp", result.SourceID)
+	}
+}
+
+func TestRunSourceRuntimeSDKNewFromBuiltinCatalogDryRun(t *testing.T) {
+	stdout := captureCommandStdout(t, func() {
+		err := runSourceRuntime([]string{"sdk", "new", "jumpcloud", "catalog=true", "dry_run=true"})
+		if err != nil {
+			t.Fatalf("runSourceRuntime sdk new catalog dry-run error = %v", err)
+		}
+	})
+	var result struct {
+		SourceID  string   `json:"source_id"`
+		AuthModel string   `json:"auth_model"`
+		DryRun    bool     `json:"dry_run"`
+		Files     []string `json:"files"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("unmarshal catalog dry-run output: %v\n%s", err, stdout)
+	}
+	if result.SourceID != "jumpcloud" || result.AuthModel != "api_key" || !result.DryRun || len(result.Files) == 0 {
+		t.Fatalf("catalog dry-run result = %#v", result)
+	}
+}
+
+func TestRunSourceRuntimeSDKNewRejectsCatalogAndDefinition(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "definition.json")
+	if err := os.WriteFile(path, []byte(`{"source_id":"jumpcloud"}`), 0o600); err != nil {
+		t.Fatalf("write definition: %v", err)
+	}
+	err := runSourceRuntime([]string{"sdk", "new", "jumpcloud", "catalog=true", "definition=" + path, "dry_run=true"})
+	if err == nil {
+		t.Fatal("runSourceRuntime sdk new catalog+definition error = nil, want error")
+	}
+	if got := err.Error(); got != "catalog=true cannot be combined with definition" {
+		t.Fatalf("error = %q, want catalog/definition conflict", got)
 	}
 }
 

@@ -122,7 +122,8 @@ type CoverageContractProvider interface {
 
 // Registry indexes sources by their stable identifier.
 type Registry struct {
-	sources map[string]Source
+	sources                         map[string]Source
+	includeBuiltinDefinitionCatalog bool
 }
 
 // NewRegistry constructs a source registry and rejects duplicate or invalid specs.
@@ -152,6 +153,21 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 		indexed[id] = source
 	}
 	return &Registry{sources: indexed}, nil
+}
+
+// WithBuiltinDefinitionCatalog marks registries composed from compiled built-in
+// sources as eligible for the embedded connector-definition catalog surface.
+func (r *Registry) WithBuiltinDefinitionCatalog() *Registry {
+	if r != nil {
+		r.includeBuiltinDefinitionCatalog = true
+	}
+	return r
+}
+
+// IncludesBuiltinDefinitionCatalog reports whether API surfaces should include
+// catalog-only connector definitions alongside executable built-in sources.
+func (r *Registry) IncludesBuiltinDefinitionCatalog() bool {
+	return r != nil && r.includeBuiltinDefinitionCatalog
 }
 
 type catalogContractSource struct {

@@ -17,7 +17,9 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
@@ -54,6 +56,14 @@ type connectorCatalogEntry struct {
 	Description            string                          `json:"description"`
 	EmittedKinds           []string                        `json:"emitted_kinds"`
 	Status                 string                          `json:"status"`
+	CatalogStatus          string                          `json:"catalog_status,omitempty"`
+	ClassifierOutput       string                          `json:"classifier_output,omitempty"`
+	AuthModel              string                          `json:"auth_model,omitempty"`
+	RuntimeExecutable      bool                            `json:"runtime_executable,omitempty"`
+	MissingFeatures        []string                        `json:"missing_features,omitempty"`
+	CatalogCategories      []string                        `json:"catalog_categories,omitempty"`
+	VerificationEndpoint   string                          `json:"verification_endpoint,omitempty"`
+	ResourceFamilies       []connectorResourceFamilyView   `json:"resource_families,omitempty"`
 	ConfiguredRuntimes     int                             `json:"configured_runtimes"`
 	HealthyRuntimes        int                             `json:"healthy_runtimes"`
 	NeedsAttentionRuntimes int                             `json:"needs_attention_runtimes"`
@@ -267,6 +277,17 @@ type connectorScopeOptionView struct {
 	Notes                  []string `json:"notes,omitempty"`
 }
 
+type connectorResourceFamilyView struct {
+	ID                 string   `json:"id"`
+	Label              string   `json:"label,omitempty"`
+	Path               string   `json:"path,omitempty"`
+	EventKind          string   `json:"event_kind,omitempty"`
+	SchemaRef          string   `json:"schema_ref,omitempty"`
+	ProjectionTemplate string   `json:"projection_template,omitempty"`
+	Coverage           []string `json:"coverage,omitempty"`
+	HighValue          bool     `json:"high_value,omitempty"`
+}
+
 type connectorConnectionRequest struct {
 	RuntimeID            string                                `json:"runtime_id"`
 	TenantID             string                                `json:"tenant_id"`
@@ -395,6 +416,9 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 	}
 	vaultStatus := connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore)
 	stores := connectorStoreViews(vaultStatus, transport, a.cfg.ConnectorSecretStores)
+	definitionCatalog := a.connectorDefinitionCatalog()
+	definitionsBySourceID := connectorDefinitionCatalogBySourceID(definitionCatalog)
+	seen := map[string]struct{}{}
 	entries := make([]connectorCatalogEntry, 0, len(sources))
 	for _, source := range sources {
 		entry := connectorCatalogEntry{
@@ -406,6 +430,9 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 			Status:            "available",
 			ConnectionMethods: connectorConnectionMethods(source.GetId(), stores),
 			ScopeOptions:      a.connectorScopeOptions(source.GetId(), source.GetEmittedKinds()),
+		}
+		if catalogEntry, ok := definitionsBySourceID[source.GetId()]; ok {
+			applyConnectorCatalogMetadata(&entry, catalogEntry)
 		}
 		if count := counts[source.GetId()]; count.total > 0 {
 			entry.ConfiguredRuntimes = count.total
@@ -420,6 +447,25 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 				entry.Status = "needs_attention"
 			}
 		}
+		entries = append(entries, entry)
+		seen[source.GetId()] = struct{}{}
+	}
+	for _, catalogEntry := range definitionCatalog {
+		sourceID := catalogEntry.Definition.SourceID
+		if _, ok := seen[sourceID]; ok {
+			continue
+		}
+		entry := connectorCatalogEntry{
+			SourceID:          sourceID,
+			Name:              catalogEntry.Definition.DisplayName,
+			DisplayName:       connectorDisplayName(sourceID, catalogEntry.Definition.DisplayName),
+			Description:       catalogEntry.Definition.Description,
+			EmittedKinds:      connectorDefinitionEmittedKinds(catalogEntry.Definition),
+			Status:            catalogEntry.Status,
+			ScopeOptions:      connectorScopeOptionsFromDefinition(catalogEntry.Definition),
+			ConnectionMethods: nil,
+		}
+		applyConnectorCatalogMetadata(&entry, catalogEntry)
 		entries = append(entries, entry)
 	}
 	sort.Slice(entries, func(i, j int) bool {
@@ -452,10 +498,14 @@ func (a *App) handleGetConnector(w http.ResponseWriter, r *http.Request) {
 		writeConnectorError(w, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, sourceID))
 		return
 	}
-	health, err := a.connectorHealthForSource(r, entry.SourceID, tenantID)
-	if err != nil {
-		writeConnectorError(w, err)
-		return
+	health := emptySourceRuntimeHealthResponse()
+	if a.connectorSourceExists(entry.SourceID) {
+		var err error
+		health, err = a.connectorHealthForSource(r, entry.SourceID, tenantID)
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
 	}
 	connections := connectorConnectionsFromHealth(health.Runtimes)
 	activity := connectorActivityFromHealth(health.Runtimes)
@@ -491,10 +541,14 @@ func (a *App) handleListConnectorActivity(w http.ResponseWriter, r *http.Request
 		writeConnectorError(w, err)
 		return
 	}
-	health, err := a.connectorHealthForSource(r, entry.SourceID, tenantID)
-	if err != nil {
-		writeConnectorError(w, err)
-		return
+	health := emptySourceRuntimeHealthResponse()
+	if a.connectorSourceExists(entry.SourceID) {
+		var err error
+		health, err = a.connectorHealthForSource(r, entry.SourceID, tenantID)
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
 	}
 	activity := connectorActivityFromHealth(health.Runtimes)
 	writeJSON(w, http.StatusOK, connectorActivityResponse{
@@ -1168,6 +1222,147 @@ func connectorEntryBySourceID(entries []connectorCatalogEntry, sourceID string) 
 		}
 	}
 	return connectorCatalogEntry{}, false
+}
+
+func (a *App) connectorDefinitionCatalog() []connectorcatalog.Entry {
+	if a == nil || a.sources == nil || !a.sources.IncludesBuiltinDefinitionCatalog() {
+		return nil
+	}
+	analysis, err := connectorcatalog.Builtin()
+	if err != nil {
+		return nil
+	}
+	return analysis.Entries
+}
+
+func connectorDefinitionCatalogBySourceID(entries []connectorcatalog.Entry) map[string]connectorcatalog.Entry {
+	out := make(map[string]connectorcatalog.Entry, len(entries))
+	for _, entry := range entries {
+		sourceID := strings.TrimSpace(entry.Definition.SourceID)
+		if sourceID == "" {
+			continue
+		}
+		out[sourceID] = entry
+	}
+	return out
+}
+
+func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry connectorcatalog.Entry) {
+	if entry == nil {
+		return
+	}
+	entry.CatalogStatus = catalogEntry.Status
+	entry.ClassifierOutput = catalogEntry.ClassifierOutput
+	entry.AuthModel = catalogEntry.Definition.Auth.Model
+	entry.RuntimeExecutable = catalogEntry.Generateable
+	entry.MissingFeatures = append([]string{}, catalogEntry.Report.MissingFeatures...)
+	entry.CatalogCategories = append([]string{}, catalogEntry.Definition.Categories...)
+	entry.VerificationEndpoint = catalogEntry.VerificationPath
+	entry.ResourceFamilies = connectorDefinitionResourceFamilies(catalogEntry.Definition)
+	if entry.Description == "" {
+		entry.Description = catalogEntry.Definition.Description
+	}
+	if entry.Name == "" {
+		entry.Name = catalogEntry.Definition.DisplayName
+	}
+	if entry.DisplayName == "" {
+		entry.DisplayName = connectorDisplayName(catalogEntry.Definition.SourceID, catalogEntry.Definition.DisplayName)
+	}
+	if len(entry.EmittedKinds) == 0 {
+		entry.EmittedKinds = connectorDefinitionEmittedKinds(catalogEntry.Definition)
+	}
+	if len(entry.ScopeOptions) == 0 {
+		entry.ScopeOptions = connectorScopeOptionsFromDefinition(catalogEntry.Definition)
+	}
+}
+
+func connectorDefinitionEmittedKinds(definition connectordefinitions.Definition) []string {
+	kinds := make([]string, 0, len(definition.ResourceFamilies))
+	for _, family := range definition.ResourceFamilies {
+		kind := strings.TrimSpace(family.Event.Kind)
+		if kind == "" {
+			continue
+		}
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	return kinds
+}
+
+func connectorDefinitionResourceFamilies(definition connectordefinitions.Definition) []connectorResourceFamilyView {
+	families := make([]connectorResourceFamilyView, 0, len(definition.ResourceFamilies))
+	for _, family := range definition.ResourceFamilies {
+		view := connectorResourceFamilyView{
+			ID:                 family.ID,
+			Label:              firstNonEmpty(family.Label, connectorFieldLabel(family.ID)),
+			Path:               family.Path,
+			EventKind:          family.Event.Kind,
+			SchemaRef:          family.Event.SchemaRef,
+			ProjectionTemplate: connectorProjectionTemplate(family),
+		}
+		for _, dimension := range family.Coverage {
+			if dimension.Type != "" {
+				view.Coverage = append(view.Coverage, dimension.Type)
+			}
+			if dimension.HighValue {
+				view.HighValue = true
+			}
+		}
+		sort.Strings(view.Coverage)
+		families = append(families, view)
+	}
+	sort.Slice(families, func(i, j int) bool { return families[i].ID < families[j].ID })
+	return families
+}
+
+func connectorProjectionTemplate(family connectordefinitions.ResourceFamily) string {
+	if family.Projection == nil {
+		return ""
+	}
+	return strings.TrimSpace(family.Projection.Template)
+}
+
+func connectorScopeOptionsFromDefinition(definition connectordefinitions.Definition) []connectorScopeOptionView {
+	options := make([]connectorScopeOptionView, 0, len(definition.ResourceFamilies))
+	for _, family := range definition.ResourceFamilies {
+		for _, dimension := range family.Coverage {
+			if len(dimension.Families) == 0 {
+				continue
+			}
+			if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
+				continue
+			}
+			label := strings.TrimSpace(dimension.Title)
+			if label == "" {
+				label = firstNonEmpty(family.Label, connectorFieldLabel(family.ID))
+			}
+			options = append(options, connectorScopeOptionView{
+				ID:                     dimension.ID,
+				Label:                  label,
+				Type:                   dimension.Type,
+				Families:               append([]string{}, dimension.Families...),
+				Support:                dimension.Support,
+				HighValue:              dimension.HighValue,
+				KnownUnsupportedFields: append([]string{}, dimension.KnownUnsupportedFields...),
+				Notes:                  append([]string{}, dimension.Notes...),
+			})
+		}
+	}
+	sort.Slice(options, func(i, j int) bool {
+		if options[i].HighValue != options[j].HighValue {
+			return options[i].HighValue
+		}
+		return strings.ToLower(options[i].Label) < strings.ToLower(options[j].Label)
+	})
+	return options
+}
+
+func (a *App) connectorSourceExists(sourceID string) bool {
+	if a == nil || a.sources == nil {
+		return false
+	}
+	_, ok := a.sources.Get(strings.TrimSpace(sourceID))
+	return ok
 }
 
 func (a *App) connectorScopeOptions(sourceID string, emittedKinds []string) []connectorScopeOptionView {
