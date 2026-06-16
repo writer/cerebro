@@ -132,6 +132,7 @@ emitted_kinds:
   - aws.s3_access_point
   - aws.s3_bucket
   - aws.s3_multi_region_access_point
+  - aws.sagemaker_notebook_instance
   - aws.scheduler_schedule
   - aws.scheduler_schedule_group
   - aws.secret
@@ -281,6 +282,7 @@ runtime_families:
   - s3_access_point
   - s3_bucket
   - s3_multi_region_access_point
+  - sagemaker_notebook_instance
   - scheduler_schedule
   - scheduler_schedule_group
   - secret
@@ -1120,10 +1122,9 @@ coverage_contract:
     - id: sagemaker_notebook_instance
       type: entity_family
       title: AWS SageMaker notebook instances
-      families: [asset_metadata]
-      support: partial
+      families: [sagemaker_notebook_instance]
+      support: supported
       high_value: true
-      known_unsupported_fields: [root access and direct internet settings]
     - id: sagemaker_training_job
       type: entity_family
       title: AWS SageMaker training jobs

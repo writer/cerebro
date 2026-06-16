@@ -191,6 +191,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.s3_access_point":                           awsCloudResourceProjections,
 	"aws.s3_bucket":                                 awsCloudResourceProjections,
 	"aws.s3_multi_region_access_point":              awsCloudResourceProjections,
+	"aws.sagemaker_notebook_instance":               awsCloudResourceProjections,
 	"aws.scheduler_schedule":                        awsCloudResourceProjections,
 	"aws.scheduler_schedule_group":                  awsCloudResourceProjections,
 	"aws.secret":                                    awsCloudResourceProjections,

@@ -68,6 +68,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/route53resolver v1.45.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2
 	github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4
+	github.com/aws/aws-sdk-go-v2/service/sagemaker v1.250.2
 	github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/securityhub v1.71.5
