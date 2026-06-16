@@ -9,14 +9,18 @@ coverage_contract:
     - id: pull_inventory
       type: entity_family
       title: Pull inventory discovery
-      support: unsupported
+      families: [inventory]
+      support: partial
       high_value: true
       known_unsupported_fields:
-        - SDK push sources do not declare built-in emitted kinds.
+        - SDK source does not pull third-party provider APIs.
+        - SDK source does not declare built-in emitted kinds.
+      notes:
+        - SDK runtimes can declare inventory_urns for source discovery; durable inventory and posture evidence should still be written through SDK claims.
     - id: push_ingress
       type: lifecycle_state
       title: SDK push ingestion surface
       support: supported
       high_value: true
       notes:
-        - SDK source validates push runtime configuration and does not perform pull inventory discovery.
+        - SDK source validates push runtime configuration and accepts application-owned claim writes through source runtime routes.

@@ -35,23 +35,24 @@ const (
 
 // Family describes one JSON API collection exposed by a first-class source.
 type Family struct {
-	Name             string
-	Path             string
-	DetailPath       string
-	PathParams       []string
-	CursorParam      string
-	URNKind          string
-	IDKeys           []string
-	TimestampKeys    []string
-	Attributes       map[string]string
-	StaticAttributes map[string]string
-	StaticQuery      map[string]string
-	ConfigQuery      map[string]string
-	PageSizeParams   []string
-	ListKeys         []string
-	MapRecords       map[string]string
-	Singleton        bool
-	RequireID        bool
+	Name                 string
+	Path                 string
+	DetailPath           string
+	PathParams           []string
+	CursorParam          string
+	URNKind              string
+	IDKeys               []string
+	TimestampKeys        []string
+	Attributes           map[string]string
+	StaticAttributes     map[string]string
+	StaticQuery          map[string]string
+	ConfigQuery          map[string]string
+	PageSizeParams       []string
+	ListKeys             []string
+	MapRecords           map[string]string
+	Singleton            bool
+	RequireID            bool
+	IncrementalWatermark bool
 }
 
 // Options configures a JSON API-backed source adapter.
@@ -180,6 +181,12 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
+// ReadWithCheckpoint pages records for the configured family and applies any
+// family-level checkpoint policy.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	families := make([]sourcecdk.Family[settings], 0, len(s.options.Families))
 	for _, family := range s.options.Families {
@@ -188,7 +195,8 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			return nil, fmt.Errorf("family name is required")
 		}
 		families = append(families, sourcecdk.Family[settings]{
-			Name: family.Name,
+			Name:                 family.Name,
+			IncrementalWatermark: family.IncrementalWatermark,
 			Check: func(ctx context.Context, settings settings) error {
 				_, _, err := s.list(ctx, family, settings, "", 1)
 				return err
@@ -201,7 +209,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return urnsFor(settings, family, records)
 			},
 			Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-				records, next, err := s.list(ctx, family, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
+				records, next, err := s.list(ctx, family, settings, sourcecdk.CursorToken(cursor), settings.perPage)
 				if err != nil {
 					return sourcecdk.Pull{}, err
 				}
@@ -209,7 +217,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		})
 	}
-	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string { return settings.family }, families...)
+	return sourcecdk.NewFamilyEngineWithSourceID(s.options.SourceID, s.parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
