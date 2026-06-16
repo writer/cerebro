@@ -1,3 +1,4 @@
+github-self-hosted-runner-review-needed
 identity-api-token-or-oauth-app-created
 identity-privileged-account-without-mfa
 identity-privileged-no-mfa-plus-sensitive-access
