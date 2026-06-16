@@ -127,6 +127,58 @@ type ServiceAccountImpersonationRecord struct {
 	Raw    json.RawMessage
 }
 
+type BinaryAuthorizationPolicyRecord struct {
+	Name                                   string                                      `json:"name"`
+	Description                            string                                      `json:"description"`
+	GlobalPolicyEvaluationMode             string                                      `json:"globalPolicyEvaluationMode"`
+	AdmissionWhitelistPatterns             []BinaryAuthorizationWhitelistPattern       `json:"admissionWhitelistPatterns"`
+	ClusterAdmissionRules                  map[string]BinaryAuthorizationAdmissionRule `json:"clusterAdmissionRules"`
+	KubernetesNamespaceAdmissionRules      map[string]BinaryAuthorizationAdmissionRule `json:"kubernetesNamespaceAdmissionRules"`
+	KubernetesServiceAccountAdmissionRules map[string]BinaryAuthorizationAdmissionRule `json:"kubernetesServiceAccountAdmissionRules"`
+	IstioServiceIdentityAdmissionRules     map[string]BinaryAuthorizationAdmissionRule `json:"istioServiceIdentityAdmissionRules"`
+	DefaultAdmissionRule                   BinaryAuthorizationAdmissionRule            `json:"defaultAdmissionRule"`
+	UpdateTime                             string                                      `json:"updateTime"`
+	Etag                                   string                                      `json:"etag"`
+	Raw                                    json.RawMessage                             `json:"-"`
+}
+
+type BinaryAuthorizationAdmissionRule struct {
+	EvaluationMode        string   `json:"evaluationMode"`
+	EnforcementMode       string   `json:"enforcementMode"`
+	RequireAttestationsBy []string `json:"requireAttestationsBy"`
+}
+
+type BinaryAuthorizationWhitelistPattern struct {
+	NamePattern string `json:"namePattern"`
+}
+
+type BinaryAuthorizationAttestorRecord struct {
+	Name                 string                                  `json:"name"`
+	Description          string                                  `json:"description"`
+	UpdateTime           string                                  `json:"updateTime"`
+	Etag                 string                                  `json:"etag"`
+	UserOwnedGrafeasNote BinaryAuthorizationUserOwnedGrafeasNote `json:"userOwnedGrafeasNote"`
+	Raw                  json.RawMessage                         `json:"-"`
+}
+
+type BinaryAuthorizationUserOwnedGrafeasNote struct {
+	NoteReference                 string                                 `json:"noteReference"`
+	PublicKeys                    []BinaryAuthorizationAttestorPublicKey `json:"publicKeys"`
+	DelegationServiceAccountEmail string                                 `json:"delegationServiceAccountEmail"`
+}
+
+type BinaryAuthorizationAttestorPublicKey struct {
+	Comment                  string                           `json:"comment"`
+	ID                       string                           `json:"id"`
+	AsciiArmoredPGPPublicKey string                           `json:"asciiArmoredPgpPublicKey"`
+	PKIXPublicKey            BinaryAuthorizationPKIXPublicKey `json:"pkixPublicKey"`
+}
+
+type BinaryAuthorizationPKIXPublicKey struct {
+	PublicKeyPEM       string `json:"publicKeyPem"`
+	SignatureAlgorithm string `json:"signatureAlgorithm"`
+}
+
 type AuditRecord struct {
 	InsertID     string        `json:"insertId"`
 	Timestamp    string        `json:"timestamp"`
@@ -5311,6 +5363,69 @@ func OrgPolicyEvent(settings Settings, record OrgPolicyRecord) (*primitives.Even
 	return sourceEvent(settings, "gcp-org-policy-"+resourceID, "gcp.org_policy", "gcp/org_policy/v1", payload, attributes)
 }
 
+func BinaryAuthorizationPolicyEvent(settings Settings, record BinaryAuthorizationPolicyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.Name, "projects/"+settings.ProjectID+"/policy")
+	defaultRule := record.DefaultAdmissionRule
+	clusterKeys, clusterRequired := binaryAuthorizationRuleSummary(record.ClusterAdmissionRules)
+	namespaceKeys, namespaceRequired := binaryAuthorizationRuleSummary(record.KubernetesNamespaceAdmissionRules)
+	serviceAccountKeys, serviceAccountRequired := binaryAuthorizationRuleSummary(record.KubernetesServiceAccountAdmissionRules)
+	istioKeys, istioRequired := binaryAuthorizationRuleSummary(record.IstioServiceIdentityAdmissionRules)
+	requiredAttestors := uniqueSortedStrings(append(append(append(append([]string{}, defaultRule.RequireAttestationsBy...), clusterRequired...), namespaceRequired...), append(serviceAccountRequired, istioRequired...)...))
+	attributes := cloudResourceAttributes(settings, "binary_authorization_policy", resourceID, lastPathSegment(resourceID), "binary_authorization_policy", "global", nil)
+	attributes["admission_whitelist_patterns"] = strings.Join(binaryAuthorizationWhitelistPatterns(record.AdmissionWhitelistPatterns), ",")
+	attributes["admission_whitelist_patterns_count"] = strconv.Itoa(len(record.AdmissionWhitelistPatterns))
+	attributes["cluster_admission_rule_keys"] = strings.Join(clusterKeys, ",")
+	attributes["cluster_admission_rules_count"] = strconv.Itoa(len(record.ClusterAdmissionRules))
+	attributes["default_enforcement_mode"] = defaultRule.EnforcementMode
+	attributes["default_evaluation_mode"] = defaultRule.EvaluationMode
+	attributes["description"] = record.Description
+	attributes["etag"] = record.Etag
+	attributes["global_policy_evaluation_mode"] = record.GlobalPolicyEvaluationMode
+	attributes["istio_service_identity_admission_rule_keys"] = strings.Join(istioKeys, ",")
+	attributes["istio_service_identity_admission_rules_count"] = strconv.Itoa(len(record.IstioServiceIdentityAdmissionRules))
+	attributes["kubernetes_namespace_admission_rule_keys"] = strings.Join(namespaceKeys, ",")
+	attributes["kubernetes_namespace_admission_rules_count"] = strconv.Itoa(len(record.KubernetesNamespaceAdmissionRules))
+	attributes["kubernetes_service_account_admission_rule_keys"] = strings.Join(serviceAccountKeys, ",")
+	attributes["kubernetes_service_account_admission_rules_count"] = strconv.Itoa(len(record.KubernetesServiceAccountAdmissionRules))
+	attributes["require_attestations_by"] = strings.Join(requiredAttestors, ",")
+	attributes["require_attestations_by_count"] = strconv.Itoa(len(requiredAttestors))
+	attributes["requires_attestation"] = boolString(strings.EqualFold(defaultRule.EvaluationMode, "REQUIRE_ATTESTATION") || len(requiredAttestors) != 0)
+	attributes["status"] = firstNonEmpty(defaultRule.EnforcementMode, record.GlobalPolicyEvaluationMode)
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-binary-authorization-policy-"+resourceID, "gcp.binary_authorization_policy", "gcp/binary_authorization_policy/v1", payload, attributes)
+}
+
+func BinaryAuthorizationAttestorEvent(settings Settings, record BinaryAuthorizationAttestorRecord) (*primitives.Event, error) {
+	note := record.UserOwnedGrafeasNote
+	pgpCount, pkixCount := binaryAuthorizationPublicKeyCounts(note.PublicKeys)
+	keyIDs := binaryAuthorizationPublicKeyIDs(note.PublicKeys)
+	resourceID := firstNonEmpty(record.Name, "projects/"+settings.ProjectID+"/attestors/"+record.Description)
+	attributes := cloudResourceAttributes(settings, "binary_authorization_attestor", resourceID, firstNonEmpty(record.Description, lastPathSegment(resourceID)), "binary_authorization_attestor", "global", nil)
+	attributes["attestor_id"] = lastPathSegment(resourceID)
+	attributes["delegation_service_account_email"] = note.DelegationServiceAccountEmail
+	attributes["description"] = record.Description
+	attributes["etag"] = record.Etag
+	attributes["note_reference"] = note.NoteReference
+	attributes["public_key_ids"] = strings.Join(keyIDs, ",")
+	attributes["public_keys_count"] = strconv.Itoa(len(note.PublicKeys))
+	attributes["pgp_public_keys_count"] = strconv.Itoa(pgpCount)
+	attributes["pkix_public_keys_count"] = strconv.Itoa(pkixCount)
+	attributes["status"] = "NO_KEYS"
+	if len(note.PublicKeys) != 0 {
+		attributes["status"] = "ACTIVE"
+	}
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-binary-authorization-attestor-"+resourceID, "gcp.binary_authorization_attestor", "gcp/binary_authorization_attestor/v1", payload, attributes)
+}
+
 func SecurityCenterFindingEvent(settings Settings, record SecurityCenterFindingRecord) (*primitives.Event, error) {
 	resourceID := firstNonEmpty(record.Finding.Name, record.Finding.CanonicalName, record.Finding.ResourceName, record.Resource.Name)
 	affectedResourceID := firstNonEmpty(record.Finding.ResourceName, record.Resource.Name)
@@ -6240,6 +6355,61 @@ func orgPolicyRuleValues(rules []OrgPolicyRule) ([]string, []string) {
 		}
 	}
 	return allowed, denied
+}
+
+func binaryAuthorizationRuleSummary(rules map[string]BinaryAuthorizationAdmissionRule) ([]string, []string) {
+	keys := make([]string, 0, len(rules))
+	required := []string{}
+	for key, rule := range rules {
+		keys = append(keys, key)
+		for _, attestor := range rule.RequireAttestationsBy {
+			required = appendUnique(required, attestor)
+		}
+	}
+	sort.Strings(keys)
+	sort.Strings(required)
+	return keys, required
+}
+
+func binaryAuthorizationWhitelistPatterns(patterns []BinaryAuthorizationWhitelistPattern) []string {
+	names := make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		names = appendUnique(names, pattern.NamePattern)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func binaryAuthorizationPublicKeyCounts(keys []BinaryAuthorizationAttestorPublicKey) (int, int) {
+	pgpCount := 0
+	pkixCount := 0
+	for _, key := range keys {
+		if key.AsciiArmoredPGPPublicKey != "" {
+			pgpCount++
+		}
+		if key.PKIXPublicKey.PublicKeyPEM != "" || key.PKIXPublicKey.SignatureAlgorithm != "" {
+			pkixCount++
+		}
+	}
+	return pgpCount, pkixCount
+}
+
+func binaryAuthorizationPublicKeyIDs(keys []BinaryAuthorizationAttestorPublicKey) []string {
+	ids := make([]string, 0, len(keys))
+	for _, key := range keys {
+		ids = appendUnique(ids, key.ID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func uniqueSortedStrings(values []string) []string {
+	unique := []string{}
+	for _, value := range values {
+		unique = appendUnique(unique, value)
+	}
+	sort.Strings(unique)
+	return unique
 }
 
 func enforcedOrgPolicyConstraints(policies []OrgPolicyRecord) []string {

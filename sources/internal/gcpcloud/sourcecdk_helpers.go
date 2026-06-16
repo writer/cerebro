@@ -146,6 +146,11 @@ type GenericPageResponse struct {
 	NextPageToken string            `json:"nextPageToken"`
 }
 
+type BinaryAuthorizationAttestorsPageResponse struct {
+	NextPage
+	Attestors []json.RawMessage `json:"attestors"`
+}
+
 type CertificateManagerPageResponse struct {
 	Certificates          []json.RawMessage `json:"certificates"`
 	CertificateMaps       []json.RawMessage `json:"certificateMaps"`
