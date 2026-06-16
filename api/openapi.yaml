@@ -2718,9 +2718,6 @@ components:
         - tenant_id
         - source_id
         - display_name
-        - runtime
-        - stage
-        - auth
       properties:
         id:
           type: string
