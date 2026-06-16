@@ -3,6 +3,7 @@
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
+PYTHON ?= python3
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
@@ -20,6 +21,8 @@ DOCKER_BUILD_RETRY_SLEEP ?= 10
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 COVER_PACKAGES ?= ./internal/runtimeresponse ./internal/graphagent ./internal/deviceauth ./internal/sourceprojection ./internal/findings
 COVERAGE_OUT ?= tmp/coverage.out
+SDK_PYTHON_VENV ?= tmp/sdk-python-test-venv
+SDK_AUDIT_VENV ?= tmp/sdk-audit-venv
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
 WORKFLOW_E2E_PACKAGES := ./internal/workflowevents ./internal/workflowprojection ./internal/knowledge ./internal/findings ./internal/bootstrap
@@ -92,7 +95,10 @@ test-coverage: cover ## Alias for coverage validation.
 sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
 
 sdk-python-test: ## Run Python SDK unit tests.
-	cd sdk/python && python3 -m pip install 'protobuf>=5.29.5,<6' && python3 -m unittest discover -s tests
+	$(PYTHON) -m venv "$(SDK_PYTHON_VENV)"
+	"$(SDK_PYTHON_VENV)/bin/python" -m pip install --upgrade pip
+	"$(SDK_PYTHON_VENV)/bin/python" -m pip install 'protobuf>=5.29.5,<6'
+	PYTHONPATH=sdk/python "$(SDK_PYTHON_VENV)/bin/python" -m unittest discover -s sdk/python/tests
 
 sdk-typescript-test: ## Run TypeScript SDK tests.
 	cd sdk/typescript && npm test
@@ -101,9 +107,10 @@ sdk-typescript-check: ## Install TypeScript SDK dependencies and run type checks
 	cd sdk/typescript && npm ci && npm run typecheck
 
 sdk-dependency-audit: ## Audit SDK dependencies for known vulnerabilities.
-	python3 -m unittest scripts.test_sdk_dependency_audit
-	python3 -m pip install --user pip-audit
-	python3 scripts/sdk_dependency_audit.py
+	$(PYTHON) -m unittest scripts.test_sdk_dependency_audit
+	$(PYTHON) -m venv "$(SDK_AUDIT_VENV)"
+	"$(SDK_AUDIT_VENV)/bin/python" -m pip install --upgrade pip pip-audit
+	"$(SDK_AUDIT_VENV)/bin/python" scripts/sdk_dependency_audit.py
 
 # ==== Focused Tests ====
 ##@ Focused Tests
