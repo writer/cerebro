@@ -1612,7 +1612,7 @@ func assetMetadataEvent(settings settings, record armResourceRecord) (*primitive
 func genericARMResourceEvent(settings settings, record armTypedResourceRecord, family string, kind string, schemaRef string) (*primitives.Event, error) {
 	attributes := azureResourceAttributes(settings, record, family)
 	addAzureIdentityAttributes(attributes, record.Identity)
-	setAttributes(attributes, map[string]string{"kind": firstNonEmpty(record.Kind, kind), "public_network_access": propertyString(record, "publicNetworkAccess"), "state": firstNonEmpty(propertyString(record, "provisioningState"), propertyString(record, "status"))})
+	setAttributes(attributes, azurearm.ResourceAttributes(family, record.Kind, kind, azurearm.Properties(record.Properties)))
 	payload, err := payloadWithRaw(record.raw, azureResourcePayload(settings))
 	if err != nil {
 		return nil, err

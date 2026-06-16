@@ -293,6 +293,11 @@ func TestReadLiveAzureGenericARMPreview(t *testing.T) {
 			if got := event.Attributes["public_network_access"]; got != "Enabled" {
 				t.Fatalf("public_network_access = %q, want Enabled", got)
 			}
+			for attr, want := range genericAzureARMExpectedAttributes(definition.Name) {
+				if got := event.Attributes[attr]; got != want {
+					t.Fatalf("%s = %q, want %q", attr, got, want)
+				}
+			}
 		})
 	}
 }
@@ -532,7 +537,7 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 		case "/subscriptions/sub-1/resources":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/data", "name": "data", "type": "Microsoft.Storage/storageAccounts", "location": "eastus", "tags": map[string]string{"data_classification": "restricted", "owner": "security@writer.com", "tier": "critical", "pii": "true", "env": "prod"}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.CognitiveServices/accounts":
-			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.CognitiveServices/accounts/openai-prod", "name": "openai-prod", "type": "Microsoft.CognitiveServices/accounts", "kind": "OpenAI", "location": "eastus", "sku": map[string]any{"name": "S0", "tier": "Standard"}, "identity": map[string]any{"type": "SystemAssigned", "principalId": "openai-principal-1", "tenantId": "tenant-1"}, "tags": map[string]string{"owner": "ai@writer.com", "team": "ai", "env": "prod"}, "properties": map[string]any{"publicNetworkAccess": "Enabled", "provisioningState": "Succeeded", "customSubDomainName": "openai-prod"}}}})
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.CognitiveServices/accounts/openai-prod", "name": "openai-prod", "type": "Microsoft.CognitiveServices/accounts", "kind": "OpenAI", "location": "eastus", "sku": map[string]any{"name": "S0", "tier": "Standard"}, "identity": map[string]any{"type": "SystemAssigned", "principalId": "openai-principal-1", "tenantId": "tenant-1"}, "tags": map[string]string{"owner": "ai@writer.com", "team": "ai", "env": "prod"}, "properties": map[string]any{"publicNetworkAccess": "Enabled", "provisioningState": "Succeeded", "customSubDomainName": "openai-prod", "networkAcls": map[string]any{"defaultAction": "Deny", "virtualNetworkRules": []any{map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/ai"}}}}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.MachineLearningServices/workspaces":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.MachineLearningServices/workspaces/ml-prod", "name": "ml-prod", "type": "Microsoft.MachineLearningServices/workspaces", "location": "eastus", "identity": map[string]any{"type": "SystemAssigned", "principalId": "ml-principal-1", "tenantId": "tenant-1"}, "tags": map[string]string{"owner": "ml@writer.com", "team": "ml", "env": "prod"}, "properties": map[string]any{"publicNetworkAccess": "Enabled", "provisioningState": "Succeeded", "friendlyName": "ml-prod"}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Compute/virtualMachines":
@@ -597,19 +602,151 @@ func writeGenericAzureARMTestResponse(t *testing.T, w http.ResponseWriter, path 
 func genericAzureARMTestPayload(definition azurearm.Definition) map[string]any {
 	name := strings.ReplaceAll(definition.Name, "_", "-") + "-prod"
 	return map[string]any{
-		"id":       "/subscriptions/sub-1/resourceGroups/rg-prod/providers/" + definition.ProviderPath + "/" + name,
-		"name":     name,
-		"type":     definition.ProviderPath,
-		"kind":     definition.Kind,
-		"location": "eastus",
-		"sku":      map[string]any{"name": "Standard", "tier": "Standard"},
-		"identity": map[string]any{"type": "SystemAssigned", "principalId": name + "-principal", "tenantId": "tenant-1"},
-		"tags":     map[string]string{"env": "prod", "owner": "platform@writer.com", "team": "platform"},
-		"properties": map[string]any{
-			"provisioningState":   "Succeeded",
-			"publicNetworkAccess": "Enabled",
-		},
+		"id":         "/subscriptions/sub-1/resourceGroups/rg-prod/providers/" + definition.ProviderPath + "/" + name,
+		"name":       name,
+		"type":       definition.ProviderPath,
+		"kind":       definition.Kind,
+		"location":   "eastus",
+		"sku":        map[string]any{"name": "Standard", "tier": "Standard"},
+		"identity":   map[string]any{"type": "SystemAssigned", "principalId": name + "-principal", "tenantId": "tenant-1"},
+		"tags":       map[string]string{"env": "prod", "owner": "platform@writer.com", "team": "platform"},
+		"properties": genericAzureARMTestProperties(definition.Name),
 	}
+}
+
+func genericAzureARMTestProperties(family string) map[string]any {
+	properties := map[string]any{"provisioningState": "Succeeded", "publicNetworkAccess": "Enabled"}
+	switch family {
+	case "activity_log_alert":
+		properties["enabled"] = true
+		properties["scopes"] = []any{"/subscriptions/sub-1"}
+		properties["condition"] = map[string]any{"allOf": []any{map[string]any{"field": "category", "equals": "Administrative"}, map[string]any{"field": "operationName", "containsAny": []any{"Microsoft.Compute/virtualMachines/write"}}}}
+		properties["actions"] = map[string]any{"actionGroups": []any{map[string]any{"actionGroupId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}}}
+	case "application_gateway":
+		properties["operationalState"] = "Running"
+		properties["frontendIPConfigurations"] = []any{map[string]any{"id": "frontend-1", "name": "appgw-frontend", "properties": map[string]any{"publicIPAddress": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/appgw-pip"}}}}
+		properties["gatewayIPConfigurations"] = []any{map[string]any{"name": "appgw-ipconfig", "properties": map[string]any{"subnet": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/appgw"}}}}
+		properties["backendAddressPools"] = []any{map[string]any{"name": "backend-api"}}
+		properties["httpListeners"] = []any{map[string]any{"name": "https-listener"}}
+		properties["sslCertificates"] = []any{map[string]any{"name": "wildcard-cert"}}
+		properties["sslPolicy"] = map[string]any{"minProtocolVersion": "TLSv1_2"}
+		properties["firewallPolicy"] = map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/appgw-waf"}
+		properties["webApplicationFirewallConfiguration"] = map[string]any{"enabled": true, "firewallMode": "Prevention"}
+	case "application_insight":
+		properties["AppId"] = "appinsights-app-id"
+		properties["Application_Type"] = "web"
+		properties["RetentionInDays"] = 90
+		properties["DisableLocalAuth"] = true
+		properties["WorkspaceResourceId"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.OperationalInsights/workspaces/law-prod"
+	case "cognitive_services_account":
+		properties["endpoint"] = "https://openai-prod.cognitiveservices.azure.com/"
+		properties["customSubDomainName"] = "openai-prod"
+		properties["disableLocalAuth"] = true
+		properties["networkAcls"] = map[string]any{"defaultAction": "Deny", "bypass": "AzureServices", "virtualNetworkRules": []any{map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/ai"}}, "ipRules": []any{map[string]any{"value": "203.0.113.10"}}}
+	case "databricks_workspace":
+		properties["managedResourceGroupId"] = "/subscriptions/sub-1/resourceGroups/databricks-managed"
+		properties["requiredNsgRules"] = "NoAzureDatabricksRules"
+		properties["parameters"] = map[string]any{"customPublicSubnetName": map[string]any{"value": "dbx-public"}, "customPrivateSubnetName": map[string]any{"value": "dbx-private"}, "natGatewayName": map[string]any{"value": "dbx-nat"}}
+		properties["accessConnector"] = map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Databricks/accessConnectors/dbx-connector"}
+	case "load_balancer":
+		properties["frontendIPConfigurations"] = []any{map[string]any{"id": "frontend-lb", "name": "lb-frontend", "properties": map[string]any{"publicIPAddress": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/lb-pip"}, "subnet": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/web"}}}}
+		properties["backendAddressPools"] = []any{map[string]any{"name": "backend-web"}}
+		properties["probes"] = []any{map[string]any{"name": "https-probe"}}
+		properties["loadBalancingRules"] = []any{map[string]any{"name": "https-rule"}}
+		properties["inboundNatRules"] = []any{map[string]any{"name": "ssh-nat"}}
+	case "log_alert":
+		properties["enabled"] = true
+		properties["scopes"] = []any{"/subscriptions/sub-1/resourceGroups/rg-prod"}
+		properties["severity"] = 2
+		properties["evaluationFrequency"] = "PT5M"
+		properties["windowSize"] = "PT15M"
+		properties["criteria"] = map[string]any{"allOf": []any{map[string]any{"query": "SecurityEvent | count"}}}
+		properties["actions"] = map[string]any{"actionGroups": []any{"/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}}
+	case "machine_learning_workspace":
+		properties["discoveryUrl"] = "https://ml-prod.discovery.azureml.net/"
+		properties["friendlyName"] = "ML Prod"
+		properties["keyVault"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/ml-kv"
+		properties["storageAccount"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/mlstorage"
+		properties["containerRegistry"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.ContainerRegistry/registries/mlacr"
+		properties["applicationInsights"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/components/ml-ai"
+		properties["imageBuildCompute"] = "build-cluster"
+		properties["hbiWorkspace"] = true
+		properties["privateEndpointConnections"] = []any{map[string]any{"name": "ml-pe"}}
+	case "metric_alert_rule":
+		properties["enabled"] = true
+		properties["scopes"] = []any{"/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1"}
+		properties["severity"] = 1
+		properties["evaluationFrequency"] = "PT1M"
+		properties["windowSize"] = "PT5M"
+		properties["autoMitigate"] = true
+		properties["targetResourceType"] = "Microsoft.Compute/virtualMachines"
+		properties["targetResourceRegion"] = "eastus"
+		properties["criteria"] = map[string]any{"odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria", "allOf": []any{map[string]any{"metricName": "Percentage CPU", "operator": "GreaterThan", "threshold": 90}}}
+		properties["actions"] = []any{map[string]any{"actionGroupId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}}
+	case "role":
+		properties["roleName"] = "Security Reader"
+		properties["type"] = "BuiltInRole"
+		properties["assignableScopes"] = []any{"/subscriptions/sub-1"}
+		properties["permissions"] = []any{map[string]any{"actions": []any{"Microsoft.Security/*/read"}, "notActions": []any{"Microsoft.Authorization/*/delete"}, "dataActions": []any{"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read"}}}
+	case "route_table":
+		properties["disableBgpRoutePropagation"] = true
+		properties["routes"] = []any{map[string]any{"name": "default-to-firewall", "properties": map[string]any{"addressPrefix": "0.0.0.0/0", "nextHopType": "VirtualAppliance", "nextHopIpAddress": "10.0.0.4"}}}
+		properties["subnets"] = []any{map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/web"}}
+	case "security_contact":
+		properties["emails"] = "secops@writer.com"
+		properties["phone"] = "+14155550100"
+		properties["alertNotifications"] = "On"
+		properties["alertsToAdmins"] = "On"
+	case "sql_managed_instance":
+		properties["administratorLogin"] = "sqladmin"
+		properties["fullyQualifiedDomainName"] = "mi-prod.database.windows.net"
+		properties["publicDataEndpointEnabled"] = false
+		properties["minimalTlsVersion"] = "1.2"
+		properties["subnetId"] = "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/sqlmi"
+		properties["licenseType"] = "LicenseIncluded"
+		properties["vCores"] = 8
+		properties["storageSizeInGB"] = 512
+		properties["zoneRedundant"] = true
+	case "virtual_machine_scale_set":
+		properties["upgradePolicy"] = map[string]any{"mode": "Automatic"}
+		properties["overprovision"] = true
+		properties["singlePlacementGroup"] = false
+		properties["orchestrationMode"] = "Uniform"
+		properties["virtualMachineProfile"] = map[string]any{"osProfile": map[string]any{"computerNamePrefix": "vmss", "adminUsername": "azureuser"}, "storageProfile": map[string]any{"imageReference": map[string]any{"publisher": "Canonical", "offer": "0001-com-ubuntu-server-jammy", "sku": "22_04-lts", "version": "latest"}}, "networkProfile": map[string]any{"networkInterfaceConfigurations": []any{map[string]any{"properties": map[string]any{"networkSecurityGroup": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/networkSecurityGroups/vmss-nsg"}, "ipConfigurations": []any{map[string]any{"properties": map[string]any{"subnet": map[string]any{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/vmss"}}}}}}}}}
+	}
+	return properties
+}
+
+func genericAzureARMExpectedAttributes(family string) map[string]string {
+	switch family {
+	case "activity_log_alert":
+		return map[string]string{"condition_fields": "category,operationName", "action_group_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}
+	case "application_gateway":
+		return map[string]string{"http_listener_names": "https-listener", "ssl_policy_min_protocol_version": "TLSv1_2", "waf_firewall_mode": "Prevention"}
+	case "application_insight":
+		return map[string]string{"retention_in_days": "90", "disable_local_auth": "true"}
+	case "cognitive_services_account":
+		return map[string]string{"network_default_action": "Deny", "virtual_network_subnet_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/ai"}
+	case "databricks_workspace":
+		return map[string]string{"managed_resource_group_id": "/subscriptions/sub-1/resourceGroups/databricks-managed", "private_subnet_name": "dbx-private"}
+	case "load_balancer":
+		return map[string]string{"backend_pool_names": "backend-web", "load_balancing_rule_names": "https-rule", "public_ip_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/publicIPAddresses/lb-pip"}
+	case "log_alert":
+		return map[string]string{"query": "SecurityEvent | count", "action_group_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}
+	case "metric_alert_rule":
+		return map[string]string{"criteria_metric_names": "Percentage CPU", "criteria_thresholds": "90", "action_group_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}
+	case "role":
+		return map[string]string{"role_name": "Security Reader", "actions": "Microsoft.Security/*/read"}
+	case "route_table":
+		return map[string]string{"next_hop_types": "VirtualAppliance", "next_hop_ip_addresses": "10.0.0.4"}
+	case "security_contact":
+		return map[string]string{"emails": "secops@writer.com", "alert_notifications": "On", "alerts_to_admins": "On"}
+	case "sql_managed_instance":
+		return map[string]string{"subnet_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/sqlmi", "public_data_endpoint_enabled": "false"}
+	case "virtual_machine_scale_set":
+		return map[string]string{"upgrade_mode": "Automatic", "subnet_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/vmss"}
+	}
+	return nil
 }
 
 func newAzurePaginationTestSource(t *testing.T, server *httptest.Server, family string) (*Source, settings) {

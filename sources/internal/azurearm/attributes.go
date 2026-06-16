@@ -1,0 +1,332 @@
+package azurearm
+
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+)
+
+type Properties map[string]any
+
+func ResourceAttributes(family string, recordKind string, fallbackKind string, properties Properties) map[string]string {
+	attributes := map[string]string{
+		"kind":                  firstNonEmpty(recordKind, fallbackKind),
+		"public_network_access": stringAt(properties, "publicNetworkAccess"),
+		"state":                 firstNonEmpty(stringAt(properties, "provisioningState"), stringAt(properties, "status"), stringAt(properties, "state")),
+	}
+	switch family {
+	case "activity_log_alert":
+		set(attributes, "enabled", stringAt(properties, "enabled"))
+		set(attributes, "scopes", strings.Join(stringsAt(properties, "scopes"), ","))
+		set(attributes, "condition_fields", strings.Join(valuesFromArray(properties, []string{"condition", "allOf"}, "field"), ","))
+		set(attributes, "condition_equals", strings.Join(valuesFromArray(properties, []string{"condition", "allOf"}, "equals"), ","))
+		set(attributes, "condition_contains_any", strings.Join(valuesFromArray(properties, []string{"condition", "allOf"}, "containsAny"), ","))
+		set(attributes, "action_group_ids", strings.Join(valuesFromArray(properties, []string{"actions", "actionGroups"}, "actionGroupId"), ","))
+	case "application_gateway":
+		set(attributes, "operational_state", stringAt(properties, "operationalState"))
+		set(attributes, "frontend_ip_configuration_names", strings.Join(valuesFromArray(properties, []string{"frontendIPConfigurations"}, "name"), ","))
+		set(attributes, "frontend_ip_configuration_ids", strings.Join(valuesFromArray(properties, []string{"frontendIPConfigurations"}, "id"), ","))
+		set(attributes, "public_ip_ids", strings.Join(referenceIDsFromArray(properties, []string{"frontendIPConfigurations"}, "publicIPAddress"), ","))
+		set(attributes, "subnet_ids", strings.Join(referenceIDsFromArray(properties, []string{"gatewayIPConfigurations"}, "subnet"), ","))
+		set(attributes, "backend_pool_names", strings.Join(valuesFromArray(properties, []string{"backendAddressPools"}, "name"), ","))
+		set(attributes, "http_listener_names", strings.Join(valuesFromArray(properties, []string{"httpListeners"}, "name"), ","))
+		set(attributes, "ssl_certificate_names", strings.Join(valuesFromArray(properties, []string{"sslCertificates"}, "name"), ","))
+		set(attributes, "ssl_policy_min_protocol_version", stringAt(properties, "sslPolicy", "minProtocolVersion"))
+		set(attributes, "firewall_policy_id", stringAt(properties, "firewallPolicy", "id"))
+		set(attributes, "waf_enabled", stringAt(properties, "webApplicationFirewallConfiguration", "enabled"))
+		set(attributes, "waf_firewall_mode", stringAt(properties, "webApplicationFirewallConfiguration", "firewallMode"))
+	case "application_insight":
+		set(attributes, "app_id", stringAt(properties, "AppId"))
+		set(attributes, "application_type", stringAt(properties, "Application_Type"))
+		set(attributes, "flow_type", stringAt(properties, "Flow_Type"))
+		set(attributes, "request_source", stringAt(properties, "Request_Source"))
+		set(attributes, "ingestion_mode", stringAt(properties, "IngestionMode"))
+		set(attributes, "retention_in_days", stringAt(properties, "RetentionInDays"))
+		set(attributes, "sampling_percentage", stringAt(properties, "SamplingPercentage"))
+		set(attributes, "disable_local_auth", stringAt(properties, "DisableLocalAuth"))
+		set(attributes, "workspace_resource_id", stringAt(properties, "WorkspaceResourceId"))
+		set(attributes, "public_network_access_for_ingestion", stringAt(properties, "publicNetworkAccessForIngestion"))
+		set(attributes, "public_network_access_for_query", stringAt(properties, "publicNetworkAccessForQuery"))
+	case "cognitive_services_account":
+		set(attributes, "endpoint", stringAt(properties, "endpoint"))
+		set(attributes, "custom_subdomain_name", stringAt(properties, "customSubDomainName"))
+		set(attributes, "disable_local_auth", stringAt(properties, "disableLocalAuth"))
+		set(attributes, "network_default_action", stringAt(properties, "networkAcls", "defaultAction"))
+		set(attributes, "network_bypass", stringAt(properties, "networkAcls", "bypass"))
+		set(attributes, "virtual_network_subnet_ids", strings.Join(referenceIDsFromArray(properties, []string{"networkAcls", "virtualNetworkRules"}, "id"), ","))
+		set(attributes, "ip_rules", strings.Join(valuesFromArray(properties, []string{"networkAcls", "ipRules"}, "value"), ","))
+	case "databricks_workspace":
+		set(attributes, "managed_resource_group_id", stringAt(properties, "managedResourceGroupId"))
+		set(attributes, "required_nsg_rules", stringAt(properties, "requiredNsgRules"))
+		set(attributes, "public_subnet_name", databricksParameter(properties, "customPublicSubnetName"))
+		set(attributes, "private_subnet_name", databricksParameter(properties, "customPrivateSubnetName"))
+		set(attributes, "nat_gateway_name", databricksParameter(properties, "natGatewayName"))
+		set(attributes, "access_connector_id", stringAt(properties, "accessConnector", "id"))
+	case "load_balancer":
+		set(attributes, "frontend_ip_configuration_names", strings.Join(valuesFromArray(properties, []string{"frontendIPConfigurations"}, "name"), ","))
+		set(attributes, "frontend_ip_configuration_ids", strings.Join(valuesFromArray(properties, []string{"frontendIPConfigurations"}, "id"), ","))
+		set(attributes, "public_ip_ids", strings.Join(referenceIDsFromArray(properties, []string{"frontendIPConfigurations"}, "publicIPAddress"), ","))
+		set(attributes, "subnet_ids", strings.Join(referenceIDsFromArray(properties, []string{"frontendIPConfigurations"}, "subnet"), ","))
+		set(attributes, "backend_pool_names", strings.Join(valuesFromArray(properties, []string{"backendAddressPools"}, "name"), ","))
+		set(attributes, "probe_names", strings.Join(valuesFromArray(properties, []string{"probes"}, "name"), ","))
+		set(attributes, "load_balancing_rule_names", strings.Join(valuesFromArray(properties, []string{"loadBalancingRules"}, "name"), ","))
+		set(attributes, "inbound_nat_rule_names", strings.Join(valuesFromArray(properties, []string{"inboundNatRules"}, "name"), ","))
+	case "log_alert":
+		set(attributes, "enabled", stringAt(properties, "enabled"))
+		set(attributes, "scopes", strings.Join(stringsAt(properties, "scopes"), ","))
+		set(attributes, "severity", stringAt(properties, "severity"))
+		set(attributes, "query", stringAt(properties, "criteria", "allOf", "0", "query"))
+		set(attributes, "evaluation_frequency", stringAt(properties, "evaluationFrequency"))
+		set(attributes, "window_size", stringAt(properties, "windowSize"))
+		set(attributes, "action_group_ids", strings.Join(stringsAt(properties, "actions", "actionGroups"), ","))
+	case "machine_learning_workspace":
+		set(attributes, "public_network_access", firstNonEmpty(attributes["public_network_access"], stringAt(properties, "publicNetworkAccess")))
+		set(attributes, "discovery_url", stringAt(properties, "discoveryUrl"))
+		set(attributes, "friendly_name", stringAt(properties, "friendlyName"))
+		set(attributes, "key_vault_id", stringAt(properties, "keyVault"))
+		set(attributes, "storage_account_id", stringAt(properties, "storageAccount"))
+		set(attributes, "container_registry_id", stringAt(properties, "containerRegistry"))
+		set(attributes, "application_insights_id", stringAt(properties, "applicationInsights"))
+		set(attributes, "image_build_compute", stringAt(properties, "imageBuildCompute"))
+		set(attributes, "hbi_workspace", stringAt(properties, "hbiWorkspace"))
+		set(attributes, "private_endpoint_connection_count", strconv.Itoa(len(arrayAt(properties, "privateEndpointConnections"))))
+	case "metric_alert_rule":
+		set(attributes, "enabled", stringAt(properties, "enabled"))
+		set(attributes, "scopes", strings.Join(stringsAt(properties, "scopes"), ","))
+		set(attributes, "severity", stringAt(properties, "severity"))
+		set(attributes, "evaluation_frequency", stringAt(properties, "evaluationFrequency"))
+		set(attributes, "window_size", stringAt(properties, "windowSize"))
+		set(attributes, "auto_mitigate", stringAt(properties, "autoMitigate"))
+		set(attributes, "target_resource_type", stringAt(properties, "targetResourceType"))
+		set(attributes, "target_resource_region", stringAt(properties, "targetResourceRegion"))
+		set(attributes, "criteria_type", stringAt(properties, "criteria", "odata.type"))
+		set(attributes, "criteria_metric_names", strings.Join(valuesFromArray(properties, []string{"criteria", "allOf"}, "metricName"), ","))
+		set(attributes, "criteria_operators", strings.Join(valuesFromArray(properties, []string{"criteria", "allOf"}, "operator"), ","))
+		set(attributes, "criteria_thresholds", strings.Join(valuesFromArray(properties, []string{"criteria", "allOf"}, "threshold"), ","))
+		set(attributes, "action_group_ids", strings.Join(valuesFromArray(properties, []string{"actions"}, "actionGroupId"), ","))
+	case "role":
+		set(attributes, "role_name", stringAt(properties, "roleName"))
+		set(attributes, "role_type", stringAt(properties, "type"))
+		set(attributes, "assignable_scopes", strings.Join(stringsAt(properties, "assignableScopes"), ","))
+		set(attributes, "actions", strings.Join(valuesFromArray(properties, []string{"permissions"}, "actions"), ","))
+		set(attributes, "not_actions", strings.Join(valuesFromArray(properties, []string{"permissions"}, "notActions"), ","))
+		set(attributes, "data_actions", strings.Join(valuesFromArray(properties, []string{"permissions"}, "dataActions"), ","))
+		set(attributes, "not_data_actions", strings.Join(valuesFromArray(properties, []string{"permissions"}, "notDataActions"), ","))
+	case "route_table":
+		set(attributes, "disable_bgp_route_propagation", stringAt(properties, "disableBgpRoutePropagation"))
+		set(attributes, "route_names", strings.Join(valuesFromArray(properties, []string{"routes"}, "name"), ","))
+		set(attributes, "route_count", strconv.Itoa(len(arrayAt(properties, "routes"))))
+		set(attributes, "address_prefixes", strings.Join(valuesFromArray(properties, []string{"routes"}, "addressPrefix"), ","))
+		set(attributes, "next_hop_types", strings.Join(valuesFromArray(properties, []string{"routes"}, "nextHopType"), ","))
+		set(attributes, "next_hop_ip_addresses", strings.Join(valuesFromArray(properties, []string{"routes"}, "nextHopIpAddress"), ","))
+		set(attributes, "subnet_ids", strings.Join(valuesFromArray(properties, []string{"subnets"}, "id"), ","))
+	case "security_contact":
+		set(attributes, "emails", stringAt(properties, "emails"))
+		set(attributes, "phone", stringAt(properties, "phone"))
+		set(attributes, "alert_notifications", stringAt(properties, "alertNotifications"))
+		set(attributes, "alerts_to_admins", stringAt(properties, "alertsToAdmins"))
+	case "sql_managed_instance":
+		set(attributes, "administrator_login", stringAt(properties, "administratorLogin"))
+		set(attributes, "public_host", stringAt(properties, "fullyQualifiedDomainName"))
+		set(attributes, "public_data_endpoint_enabled", stringAt(properties, "publicDataEndpointEnabled"))
+		set(attributes, "min_tls_version", stringAt(properties, "minimalTlsVersion"))
+		set(attributes, "subnet_id", stringAt(properties, "subnetId"))
+		set(attributes, "license_type", stringAt(properties, "licenseType"))
+		set(attributes, "vcores", stringAt(properties, "vCores"))
+		set(attributes, "storage_size_gb", stringAt(properties, "storageSizeInGB"))
+		set(attributes, "zone_redundant", stringAt(properties, "zoneRedundant"))
+		set(attributes, "proxy_override", stringAt(properties, "proxyOverride"))
+	case "virtual_machine_scale_set":
+		set(attributes, "upgrade_mode", stringAt(properties, "upgradePolicy", "mode"))
+		set(attributes, "overprovision", stringAt(properties, "overprovision"))
+		set(attributes, "single_placement_group", stringAt(properties, "singlePlacementGroup"))
+		set(attributes, "orchestration_mode", stringAt(properties, "orchestrationMode"))
+		set(attributes, "computer_name_prefix", stringAt(properties, "virtualMachineProfile", "osProfile", "computerNamePrefix"))
+		set(attributes, "admin_username", stringAt(properties, "virtualMachineProfile", "osProfile", "adminUsername"))
+		set(attributes, "image_publisher", stringAt(properties, "virtualMachineProfile", "storageProfile", "imageReference", "publisher"))
+		set(attributes, "image_offer", stringAt(properties, "virtualMachineProfile", "storageProfile", "imageReference", "offer"))
+		set(attributes, "image_sku", stringAt(properties, "virtualMachineProfile", "storageProfile", "imageReference", "sku"))
+		set(attributes, "image_version", stringAt(properties, "virtualMachineProfile", "storageProfile", "imageReference", "version"))
+		set(attributes, "subnet_ids", strings.Join(vmssSubnetIDs(properties), ","))
+		set(attributes, "nsg_ids", strings.Join(vmssNetworkSecurityGroupIDs(properties), ","))
+	}
+	trimEmpty(attributes)
+	return attributes
+}
+
+func databricksParameter(properties Properties, key string) string {
+	return stringAt(properties, "parameters", key, "value")
+}
+
+func vmssSubnetIDs(properties Properties) []string {
+	configs := arrayAt(properties, "virtualMachineProfile", "networkProfile", "networkInterfaceConfigurations")
+	values := make([]string, 0)
+	for _, configValue := range configs {
+		config := mapFromAny(configValue)
+		for _, ipValue := range arrayAt(mapFromAny(config["properties"]), "ipConfigurations") {
+			ipConfig := mapFromAny(ipValue)
+			values = append(values, stringAt(mapFromAny(ipConfig["properties"]), "subnet", "id"))
+		}
+	}
+	return unique(values)
+}
+
+func vmssNetworkSecurityGroupIDs(properties Properties) []string {
+	configs := arrayAt(properties, "virtualMachineProfile", "networkProfile", "networkInterfaceConfigurations")
+	values := make([]string, 0, len(configs))
+	for _, configValue := range configs {
+		config := mapFromAny(configValue)
+		values = append(values, stringAt(mapFromAny(config["properties"]), "networkSecurityGroup", "id"))
+	}
+	return unique(values)
+}
+
+func referenceIDsFromArray(values Properties, arrayPath []string, referenceKey string) []string {
+	out := make([]string, 0)
+	for _, item := range arrayAt(values, arrayPath...) {
+		itemMap := mapFromAny(item)
+		properties := mapFromAny(itemMap["properties"])
+		out = append(out, firstNonEmpty(stringAt(itemMap, referenceKey, "id"), stringAt(properties, referenceKey, "id"), stringAt(itemMap, referenceKey)))
+	}
+	return unique(out)
+}
+
+func valuesFromArray(values Properties, arrayPath []string, field string) []string {
+	out := make([]string, 0)
+	for _, item := range arrayAt(values, arrayPath...) {
+		itemMap := mapFromAny(item)
+		if itemMap == nil {
+			continue
+		}
+		properties := mapFromAny(itemMap["properties"])
+		candidates := []any{nestedAny(itemMap, strings.Split(field, ".")...), nestedAny(properties, strings.Split(field, ".")...)}
+		for _, candidate := range candidates {
+			out = append(out, stringsAtAny(candidate)...)
+		}
+	}
+	return unique(out)
+}
+
+func stringsAt(values Properties, keys ...string) []string {
+	return stringsAtAny(nestedAny(values, keys...))
+}
+
+func stringsAtAny(value any) []string {
+	switch typed := value.(type) {
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, stringify(item))
+		}
+		return unique(values)
+	case []string:
+		return unique(typed)
+	default:
+		return unique([]string{stringify(typed)})
+	}
+}
+
+func stringAt(values Properties, keys ...string) string {
+	return stringify(nestedAny(values, keys...))
+}
+
+func arrayAt(values Properties, keys ...string) []any {
+	value := nestedAny(values, keys...)
+	if typed, ok := value.([]any); ok {
+		return typed
+	}
+	return nil
+}
+
+func nestedAny(value any, keys ...string) any {
+	current := value
+	for _, key := range keys {
+		if index, err := strconv.Atoi(key); err == nil {
+			items, ok := current.([]any)
+			if !ok || index < 0 || index >= len(items) {
+				return nil
+			}
+			current = items[index]
+			continue
+		}
+		currentMap := mapFromAny(current)
+		if currentMap == nil {
+			return nil
+		}
+		current = currentMap[key]
+	}
+	return current
+}
+
+func mapFromAny(value any) Properties {
+	if typed, ok := value.(map[string]any); ok {
+		return Properties(typed)
+	}
+	if typed, ok := value.(Properties); ok {
+		return typed
+	}
+	return nil
+}
+
+func stringify(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case bool:
+		if typed {
+			return "true"
+		}
+		return "false"
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(typed)
+	case json.Number:
+		return typed.String()
+	default:
+		return ""
+	}
+}
+
+func set(attributes map[string]string, key string, value string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		delete(attributes, key)
+		return
+	}
+	attributes[key] = value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func trimEmpty(attributes map[string]string) {
+	for key, value := range attributes {
+		if strings.TrimSpace(value) == "" {
+			delete(attributes, key)
+		}
+	}
+}
+
+func unique(values []string) []string {
+	seen := map[string]struct{}{}
+	out := values[:0]
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
