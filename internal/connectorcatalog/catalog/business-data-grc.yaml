@@ -665,9 +665,9 @@ entries:
             template: audit_event
           coverage:
             - id: course_assignments
-              type: entity_family
+              type: audit_event
               title: Course assignments
-              families: [groups]
+              families: [audit_events]
               support: partial
               high_value: true
           pagination:
