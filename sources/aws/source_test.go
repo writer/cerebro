@@ -47,6 +47,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecrpublic"
+	ecrpublictypes "github.com/aws/aws-sdk-go-v2/service/ecrpublic/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/aws-sdk-go-v2/service/efs"
@@ -500,6 +502,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
 		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
+		{family: familyECRPublicRepository, kind: "aws.ecr_public_repository"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
 		{family: familyECSTask, kind: "aws.ecs_task"},
@@ -1221,6 +1224,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 	snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+	ecrPublicARN := "arn:aws:ecr-public::123456789012:repository/orders-public"
 	s3APARN := "arn:aws:s3:us-east-1:123456789012:accesspoint/prod-data-ap"
 	mrapARN := "arn:aws:s3::123456789012:accesspoint/prod-global"
 	datasyncTaskARN := "arn:aws:datasync:us-east-1:123456789012:task/task-123"
@@ -1286,19 +1290,36 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 					"KmsMasterKeyId": kmsARN,
 				}},
 				snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
-				ecrRepositories: []ecrtypes.Repository{{
-					RepositoryArn:  awssdk.String(ecrARN),
-					RepositoryName: awssdk.String("orders"),
-					RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
-					CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
-					EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
-						EncryptionType: ecrtypes.EncryptionTypeKms,
-						KmsKey:         awssdk.String(kmsARN),
-					},
-					ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
-					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
-				}},
-				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				fakeAWSECRData: fakeAWSECRData{
+					ecrRepositories: []ecrtypes.Repository{{
+						RepositoryArn:  awssdk.String(ecrARN),
+						RepositoryName: awssdk.String("orders"),
+						RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
+						CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+						EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
+							EncryptionType: ecrtypes.EncryptionTypeKms,
+							KmsKey:         awssdk.String(kmsARN),
+						},
+						ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
+						ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
+					}},
+					ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+					ecrPublicRepositories: []ecrpublictypes.Repository{{
+						CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+						RegistryId:     awssdk.String("123456789012"),
+						RepositoryArn:  awssdk.String(ecrPublicARN),
+						RepositoryName: awssdk.String("orders-public"),
+						RepositoryUri:  awssdk.String("public.ecr.aws/example/orders-public"),
+					}},
+					ecrPublicTags: map[string][]ecrpublictypes.Tag{ecrPublicARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+					ecrPublicCatalogData: map[string]ecrpublictypes.RepositoryCatalogData{"orders-public": {
+						Architectures:        []string{"x86-64", "ARM 64"},
+						Description:          awssdk.String("Public orders image"),
+						MarketplaceCertified: awssdk.Bool(true),
+						OperatingSystems:     []string{"Linux"},
+					}},
+					ecrPublicPolicies: map[string]string{"orders-public": `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"ecr-public:BatchCheckLayerAvailability"}]}`},
+				},
 			},
 			fakeAWSRDSData: fakeAWSRDSData{
 				rdsInstances: []rdstypes.DBInstance{{
@@ -1542,6 +1563,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySecret, kind: "aws.secret", attr: "rotation", want: "true"},
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
+		{family: familyECRPublicRepository, kind: "aws.ecr_public_repository", attr: "repository_visibility", want: "PUBLIC"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -1609,6 +1631,64 @@ func TestReadAWSEC2AMIInventoryEvent(t *testing.T) {
 		"source_instance_id":  "i-source",
 		"state":               "available",
 		"virtualization_type": "hvm",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadAWSECRPublicRepositoryInventoryEvent(t *testing.T) {
+	repositoryARN := "arn:aws:ecr-public::123456789012:repository/orders-public"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSData: fakeAWSData{fakeAWSCoreData: fakeAWSCoreData{
+			fakeAWSECRData: fakeAWSECRData{
+				ecrPublicRepositories: []ecrpublictypes.Repository{{
+					CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+					RegistryId:     awssdk.String("123456789012"),
+					RepositoryArn:  awssdk.String(repositoryARN),
+					RepositoryName: awssdk.String("orders-public"),
+					RepositoryUri:  awssdk.String("public.ecr.aws/example/orders-public"),
+				}},
+				ecrPublicTags: map[string][]ecrpublictypes.Tag{repositoryARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("containers@writer.com")}}},
+				ecrPublicCatalogData: map[string]ecrpublictypes.RepositoryCatalogData{"orders-public": {
+					AboutText:            awssdk.String("Usage overview"),
+					Architectures:        []string{"x86-64"},
+					Description:          awssdk.String("Public orders image"),
+					MarketplaceCertified: awssdk.Bool(true),
+					OperatingSystems:     []string{"Linux"},
+					UsageText:            awssdk.String("docker pull public.ecr.aws/example/orders-public"),
+				}},
+				ecrPublicPolicies: map[string]string{"orders-public": `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"ecr-public:GetRepositoryCatalogData"}]}`},
+			},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyECRPublicRepository}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyECRPublicRepository, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.ecr_public_repository" {
+		t.Fatalf("kind = %q, want aws.ecr_public_repository", got)
+	}
+	for key, want := range map[string]string{
+		"about_text_present":        "true",
+		"architectures":             "x86-64",
+		"internet_exposed":          "true",
+		"marketplace_certified":     "true",
+		"operating_systems":         "Linux",
+		"public":                    "true",
+		"repository_arn":            repositoryARN,
+		"repository_name":           "orders-public",
+		"repository_policy_present": "true",
+		"repository_policy_public":  "true",
+		"repository_uri":            "public.ecr.aws/example/orders-public",
+		"repository_visibility":     "PUBLIC",
+		"resource_type":             "ecr_public_repository",
+		"usage_text_present":        "true",
 	} {
 		if got := event.Attributes[key]; got != want {
 			t.Fatalf("%s = %q, want %q", key, got, want)
@@ -3398,6 +3478,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 		snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 		ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+		ecrPublicARN := "arn:aws:ecr-public::123456789012:repository/orders-public"
 		fake.s3Buckets = []s3types.Bucket{{Name: awssdk.String("prod-data")}}
 		fake.s3Tags = map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
 		fake.s3Encryption = map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {}}
@@ -3418,6 +3499,10 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.snsTags = map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.ecrPublicRepositories = []ecrpublictypes.Repository{{RepositoryArn: awssdk.String(ecrPublicARN), RepositoryName: awssdk.String("orders-public")}}
+		fake.ecrPublicTags = map[string][]ecrpublictypes.Tag{ecrPublicARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.ecrPublicCatalogData = map[string]ecrpublictypes.RepositoryCatalogData{"orders-public": {Description: awssdk.String("Public orders image")}}
+		fake.ecrPublicPolicies = map[string]string{"orders-public": `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"ecr-public:GetRepositoryCatalogData"}]}`}
 		fake.codeBuildProjects = []string{"orders-build"}
 		fake.codeBuildProjectDetail = map[string]codebuildtypes.Project{"orders-build": {
 			Arn:         awssdk.String("arn:aws:codebuild:us-east-1:123456789012:project/orders-build"),
@@ -3702,6 +3787,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECRRepository,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
+		},
+		{
+			family:  familyECRPublicRepository,
+			seed:    cloudAssetData,
+			wantAPI: []string{"ecr-public:DescribeRepositories", "ecr-public:GetRepositoryCatalogData", "ecr-public:GetRepositoryPolicy", "ecr-public:ListTagsForResource"},
 		},
 		{
 			family:  familyOpenSearchDomain,
@@ -4398,6 +4488,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				ecs:          fake,
 				eks:          fakeEKS{compute: fake.compute},
 				ecr:          fakeECR{fake: &fake},
+				ecrPublic:    fakeECRPublic{fake: &fake},
 				apiGateway:   fakeAPIGateway{network: fake.fakeAWSNetwork},
 				apiGatewayV2: fakeAPIGatewayV2{network: fake.fakeAWSNetwork},
 				lambda:       fake,
@@ -4456,6 +4547,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				ecs:          fake,
 				eks:          recordingEKS{fake: fake},
 				ecr:          recordingECR{fake: fake},
+				ecrPublic:    recordingECRPublic{fake: fake},
 				apiGateway:   recordingAPIGateway{fake: fake},
 				apiGatewayV2: recordingAPIGatewayV2{fake: fake},
 				lambda:       fake,
@@ -4669,8 +4761,16 @@ type fakeAWSCoreData struct {
 	snsTopics            []snstypes.Topic
 	snsAttributes        map[string]map[string]string
 	snsTags              map[string][]snstypes.Tag
-	ecrRepositories      []ecrtypes.Repository
-	ecrTags              map[string][]ecrtypes.Tag
+	fakeAWSECRData
+}
+
+type fakeAWSECRData struct {
+	ecrRepositories       []ecrtypes.Repository
+	ecrTags               map[string][]ecrtypes.Tag
+	ecrPublicRepositories []ecrpublictypes.Repository
+	ecrPublicTags         map[string][]ecrpublictypes.Tag
+	ecrPublicCatalogData  map[string]ecrpublictypes.RepositoryCatalogData
+	ecrPublicPolicies     map[string]string
 }
 
 type fakeAWSRDSData struct {
@@ -5896,6 +5996,54 @@ func (f fakeECR) DescribeRepositories(context.Context, *ecr.DescribeRepositories
 
 func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForResourceInput, _ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
 	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeECRPublic struct {
+	fake *fakeAWS
+}
+
+type recordingECRPublic struct {
+	fake *recordingAWS
+}
+
+func (f recordingECRPublic) DescribeRepositories(ctx context.Context, input *ecrpublic.DescribeRepositoriesInput, options ...func(*ecrpublic.Options)) (*ecrpublic.DescribeRepositoriesOutput, error) {
+	f.fake.record("ecr-public:DescribeRepositories")
+	return fakeECRPublic{fake: &f.fake.fakeAWS}.DescribeRepositories(ctx, input, options...)
+}
+
+func (f recordingECRPublic) GetRepositoryCatalogData(ctx context.Context, input *ecrpublic.GetRepositoryCatalogDataInput, options ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryCatalogDataOutput, error) {
+	f.fake.record("ecr-public:GetRepositoryCatalogData")
+	return fakeECRPublic{fake: &f.fake.fakeAWS}.GetRepositoryCatalogData(ctx, input, options...)
+}
+
+func (f recordingECRPublic) GetRepositoryPolicy(ctx context.Context, input *ecrpublic.GetRepositoryPolicyInput, options ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryPolicyOutput, error) {
+	f.fake.record("ecr-public:GetRepositoryPolicy")
+	return fakeECRPublic{fake: &f.fake.fakeAWS}.GetRepositoryPolicy(ctx, input, options...)
+}
+
+func (f recordingECRPublic) ListTagsForResource(ctx context.Context, input *ecrpublic.ListTagsForResourceInput, options ...func(*ecrpublic.Options)) (*ecrpublic.ListTagsForResourceOutput, error) {
+	f.fake.record("ecr-public:ListTagsForResource")
+	return fakeECRPublic{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeECRPublic) DescribeRepositories(context.Context, *ecrpublic.DescribeRepositoriesInput, ...func(*ecrpublic.Options)) (*ecrpublic.DescribeRepositoriesOutput, error) {
+	return &ecrpublic.DescribeRepositoriesOutput{Repositories: f.fake.ecrPublicRepositories}, nil
+}
+
+func (f fakeECRPublic) GetRepositoryCatalogData(_ context.Context, input *ecrpublic.GetRepositoryCatalogDataInput, _ ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryCatalogDataOutput, error) {
+	if f.fake.ecrPublicCatalogData == nil {
+		return &ecrpublic.GetRepositoryCatalogDataOutput{}, nil
+	}
+	catalog := f.fake.ecrPublicCatalogData[awssdk.ToString(input.RepositoryName)]
+	return &ecrpublic.GetRepositoryCatalogDataOutput{CatalogData: &catalog}, nil
+}
+
+func (f fakeECRPublic) GetRepositoryPolicy(_ context.Context, input *ecrpublic.GetRepositoryPolicyInput, _ ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryPolicyOutput, error) {
+	return &ecrpublic.GetRepositoryPolicyOutput{PolicyText: awssdk.String(f.fake.ecrPublicPolicies[awssdk.ToString(input.RepositoryName)])}, nil
+}
+
+func (f fakeECRPublic) ListTagsForResource(_ context.Context, input *ecrpublic.ListTagsForResourceInput, _ ...func(*ecrpublic.Options)) (*ecrpublic.ListTagsForResourceOutput, error) {
+	return &ecrpublic.ListTagsForResourceOutput{Tags: f.fake.ecrPublicTags[awssdk.ToString(input.ResourceArn)]}, nil
 }
 
 type fakeAppRunner struct {

@@ -511,6 +511,14 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			public:       true,
 		},
 		{
+			name:         "ecr public repository",
+			kind:         "aws.ecr_public_repository",
+			resourceID:   "arn:aws:ecr-public::123456789012:repository/orders",
+			resourceType: "ecr_public_repository",
+			entityType:   "aws.ecr.public.repository",
+			public:       true,
+		},
+		{
 			name:         "iam saml provider",
 			kind:         "aws.iam_saml_provider",
 			resourceID:   "arn:aws:iam::123456789012:saml-provider/Okta",
