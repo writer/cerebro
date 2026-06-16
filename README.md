@@ -132,6 +132,7 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a loc
 | Consume release artifacts | `docs/RELEASE_CONTRACT.md` | Covers image tags, runtime deploy contracts, source manifests, and artifact verification. |
 | Troubleshoot operations | `docs/TROUBLESHOOTING.md` | Symptom-to-cause recipes for health, auth, source sync, graph, and MCP OAuth. |
 | Integrate MCP clients | `docs/MCP_DROID_SETUP.md` and `/api/v1/mcp` | Covers stateless Streamable HTTP, OAuth discovery, and compatibility checks. |
+| Shape agent-facing platform contracts | `docs/AGENT_PLATFORM_CONTRACT.md` and `internal/agentplatform` | Cerebro-native runtime, eval, capability, execution, replay, connector, and knowledge principles. |
 | Integrate endpoint telemetry | `docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md` | Covers device-authenticated telemetry, trusted endpoint claims, and trust-gate evidence. |
 | Author policies or finding rules | `policies/`, `internal/findings`, and catalog checks | Run the relevant catalog and finding-rule tests before opening a PR. |
 | Contribute code or docs | `docs/DEVELOPMENT.md`, `docs/NON_GOALS.md`, and the Makefile | Prefer focused `make` targets while iterating; use `make verify` for broad PR preflight. |
