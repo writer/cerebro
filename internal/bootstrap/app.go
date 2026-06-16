@@ -2850,11 +2850,11 @@ func resolveRuntimeSourceConfigWithStore(ctx context.Context, credentialConfig c
 	resolved := values
 	var err error
 	if hasConnectorCredentialReferences(values) {
-		vault, err := connectorCredentialVault(credentialConfig, store)
+		broker, err := connectorCredentialBroker(credentialConfig, store, nil)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", sourceruntime.ErrRuntimeUnavailable, err)
 		}
-		resolved, err = vault.ResolveReferences(ctx, sourceID, values[sourceconfig.RuntimeTenantIDKey], values[sourceconfig.RuntimeIDKey], values)
+		resolved, err = broker.ResolveReferences(ctx, sourceID, values[sourceconfig.RuntimeTenantIDKey], values[sourceconfig.RuntimeIDKey], values)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
 		}

@@ -17,6 +17,7 @@ type httpAuthRoutePolicy struct {
 	Method    string
 	Exact     string
 	Prefix    string
+	Contains  string
 	Suffix    string
 	Scope     string
 	Static    bool
@@ -43,8 +44,12 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPut, Prefix: "/connector-definitions/", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Prefix: "/connector-definitions/", Suffix: "/promote", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Prefix: "/connectors/", Suffix: "/activity", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Prefix: "/connectors/", Suffix: "/credentials", Scope: scopeConnectorCredentialsRead, Static: true},
+	{Method: http.MethodGet, Prefix: "/connectors/", Contains: "/credentials/", Scope: scopeConnectorCredentialsRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/connectors/", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/credentials", Scope: scopeConnectorCredentialsWrite, Static: true},
+	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/rotate", Scope: scopeConnectorCredentialsWrite, Static: true},
+	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/revoke", Scope: scopeConnectorCredentialsWrite, Static: true},
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/preflight", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/connections", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/reports", Scope: scopeCosmoSecurityRead},
@@ -137,10 +142,13 @@ func routePolicyPathMatches(policy httpAuthRoutePolicy, path string) bool {
 	if policy.Prefix != "" && !strings.HasPrefix(path, policy.Prefix) {
 		return false
 	}
+	if policy.Contains != "" && !strings.Contains(path, policy.Contains) {
+		return false
+	}
 	if policy.Suffix != "" && !strings.HasSuffix(path, policy.Suffix) {
 		return false
 	}
-	return policy.Exact != "" || policy.Prefix != "" || policy.Suffix != ""
+	return policy.Exact != "" || policy.Prefix != "" || policy.Contains != "" || policy.Suffix != ""
 }
 
 func httpRouteStaticAccessPathKnown(path string) bool {

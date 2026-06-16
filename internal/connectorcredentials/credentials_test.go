@@ -8,13 +8,16 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
 
 type memoryStore struct {
 	records map[string]*ports.ConnectorCredentialRecord
+	audit   []*ports.ConnectorCredentialAuditRecord
 }
 
 func (s *memoryStore) Ping(context.Context) error { return nil }
@@ -23,8 +26,7 @@ func (s *memoryStore) PutConnectorCredential(_ context.Context, record *ports.Co
 	if s.records == nil {
 		s.records = map[string]*ports.ConnectorCredentialRecord{}
 	}
-	cloned := *record
-	cloned.Sealed = append([]byte{}, record.Sealed...)
+	cloned := cloneMemoryCredential(record)
 	s.records[record.ID] = &cloned
 	return nil
 }
@@ -34,9 +36,119 @@ func (s *memoryStore) GetConnectorCredential(_ context.Context, id string) (*por
 	if !ok {
 		return nil, ports.ErrConnectorCredentialNotFound
 	}
+	cloned := cloneMemoryCredential(record)
+	return &cloned, nil
+}
+
+func (s *memoryStore) ListConnectorCredentials(_ context.Context, filter ports.ConnectorCredentialFilter) ([]*ports.ConnectorCredentialRecord, error) {
+	records := []*ports.ConnectorCredentialRecord{}
+	for _, record := range s.records {
+		if !memoryCredentialMatches(record, filter) {
+			continue
+		}
+		cloned := cloneMemoryCredential(record)
+		records = append(records, &cloned)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].UpdatedAt.After(records[j].UpdatedAt)
+	})
+	if filter.Limit > 0 && len(records) > filter.Limit {
+		records = records[:filter.Limit]
+	}
+	return records, nil
+}
+
+func (s *memoryStore) UpdateConnectorCredentialMetadata(_ context.Context, id string, update ports.ConnectorCredentialMetadataUpdate) (*ports.ConnectorCredentialRecord, error) {
+	record, ok := s.records[id]
+	if !ok {
+		return nil, ports.ErrConnectorCredentialNotFound
+	}
+	if update.Status != "" {
+		record.Status = update.Status
+	}
+	if update.Fields != nil {
+		record.Fields = append([]string{}, update.Fields...)
+	}
+	if update.UpdatedBy != "" {
+		record.UpdatedBy = update.UpdatedBy
+	}
+	if update.RevokedBy != "" {
+		record.RevokedBy = update.RevokedBy
+	}
+	if update.PreviousCredentialID != "" {
+		record.PreviousCredentialID = update.PreviousCredentialID
+	}
+	if update.RevokedAt != nil {
+		record.RevokedAt = *update.RevokedAt
+	}
+	if update.LastUsedAt != nil {
+		record.LastUsedAt = *update.LastUsedAt
+	}
+	if update.LastValidatedAt != nil {
+		record.LastValidatedAt = *update.LastValidatedAt
+	}
+	record.UpdatedAt = time.Now().UTC()
+	cloned := cloneMemoryCredential(record)
+	return &cloned, nil
+}
+
+func (s *memoryStore) AppendConnectorCredentialAuditEvent(_ context.Context, event *ports.ConnectorCredentialAuditRecord) error {
+	if event == nil {
+		return nil
+	}
+	cloned := *event
+	s.audit = append(s.audit, &cloned)
+	return nil
+}
+
+func (s *memoryStore) ListConnectorCredentialAuditEvents(_ context.Context, credentialID string, limit int) ([]*ports.ConnectorCredentialAuditRecord, error) {
+	events := []*ports.ConnectorCredentialAuditRecord{}
+	for _, event := range s.audit {
+		if event.CredentialID != credentialID {
+			continue
+		}
+		cloned := *event
+		events = append(events, &cloned)
+	}
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].CreatedAt.After(events[j].CreatedAt)
+	})
+	if limit > 0 && len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
+}
+
+func cloneMemoryCredential(record *ports.ConnectorCredentialRecord) ports.ConnectorCredentialRecord {
 	cloned := *record
 	cloned.Sealed = append([]byte{}, record.Sealed...)
-	return &cloned, nil
+	cloned.Fields = append([]string{}, record.Fields...)
+	return cloned
+}
+
+func memoryCredentialMatches(record *ports.ConnectorCredentialRecord, filter ports.ConnectorCredentialFilter) bool {
+	if record == nil {
+		return false
+	}
+	if filter.ID != "" && record.ID != filter.ID {
+		return false
+	}
+	if filter.TenantID != "" && record.TenantID != filter.TenantID {
+		return false
+	}
+	if filter.SourceID != "" && record.SourceID != filter.SourceID {
+		return false
+	}
+	if filter.RuntimeID != "" && record.RuntimeID != filter.RuntimeID {
+		return false
+	}
+	if filter.Status != "" && record.Status != filter.Status {
+		return false
+	}
+	if filter.IdempotencyKey != "" && record.IdempotencyKey != filter.IdempotencyKey {
+		return false
+	}
+	return true
 }
 
 func TestVaultStoresEncryptedCredentialReferences(t *testing.T) {

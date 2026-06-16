@@ -28,6 +28,12 @@ const (
 	transitAlgorithm = "RSA-OAEP-256+A256GCM"
 	rsaOAEPAlgorithm = "RSA-OAEP-256"
 	sealedAlgorithm  = "AES-256-GCM"
+
+	StatusPending  = "pending"
+	StatusValid    = "valid"
+	StatusInvalid  = "invalid"
+	StatusRevoked  = "revoked"
+	StatusRotating = "rotating"
 )
 
 var (
@@ -61,11 +67,18 @@ type Vault struct {
 }
 
 type PlainCredential struct {
-	ID        string
-	TenantID  string
-	SourceID  string
-	RuntimeID string
-	Fields    map[string]string
+	ID                   string
+	TenantID             string
+	SourceID             string
+	RuntimeID            string
+	CredentialStoreID    string
+	AuthMethod           string
+	Status               string
+	CreatedBy            string
+	UpdatedBy            string
+	IdempotencyKey       string
+	PreviousCredentialID string
+	Fields               map[string]string
 }
 
 type sealedCredential struct {
@@ -280,13 +293,24 @@ func (v *Vault) Put(ctx context.Context, credential PlainCredential) (*ports.Con
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now().UTC()
 	record := &ports.ConnectorCredentialRecord{
-		ID:        normalized.ID,
-		TenantID:  normalized.TenantID,
-		SourceID:  normalized.SourceID,
-		RuntimeID: normalized.RuntimeID,
-		KeyID:     v.keyID,
-		Sealed:    sealed,
+		ID:                   normalized.ID,
+		TenantID:             normalized.TenantID,
+		SourceID:             normalized.SourceID,
+		RuntimeID:            normalized.RuntimeID,
+		CredentialStoreID:    normalized.CredentialStoreID,
+		AuthMethod:           normalized.AuthMethod,
+		Status:               normalized.Status,
+		KeyID:                v.keyID,
+		Fields:               SortedFieldNames(normalized.Fields),
+		Sealed:               sealed,
+		CreatedBy:            normalized.CreatedBy,
+		UpdatedBy:            normalized.UpdatedBy,
+		IdempotencyKey:       normalized.IdempotencyKey,
+		PreviousCredentialID: normalized.PreviousCredentialID,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 	if err := v.store.PutConnectorCredential(ctx, record); err != nil {
 		return nil, err
@@ -317,6 +341,10 @@ func (v *Vault) ResolveReferences(ctx context.Context, sourceID string, tenantID
 			if err := authorizeRecord(record, sourceID, tenantID, runtimeID); err != nil {
 				return nil, err
 			}
+			if err := authorizeRecordStatus(record); err != nil {
+				return nil, err
+			}
+			_, _ = v.store.UpdateConnectorCredentialMetadata(ctx, credentialID, ports.ConnectorCredentialMetadataUpdate{LastUsedAt: timePtr(time.Now().UTC())})
 			fields, err = v.open(record)
 			if err != nil {
 				return nil, err
@@ -334,6 +362,19 @@ func (v *Vault) ResolveReferences(ctx context.Context, sourceID string, tenantID
 
 func Reference(id string, field string) string {
 	return sourceconfig.CredentialReferenceValue(id, field)
+}
+
+func TransitAdditionalData(keyID string, sourceID string, tenantID string, runtimeID string, credentialStoreID string) []byte {
+	parts := []string{
+		"connector-credential",
+		"v1",
+		strings.TrimSpace(keyID),
+		strings.TrimSpace(sourceID),
+		strings.TrimSpace(tenantID),
+		strings.TrimSpace(runtimeID),
+		strings.TrimSpace(credentialStoreID),
+	}
+	return []byte(strings.Join(parts, "\x00"))
 }
 
 func ParseCredentialFields(data []byte) (map[string]string, error) {
@@ -361,10 +402,17 @@ func SortedFieldNames(fields map[string]string) []string {
 
 func normalizeCredential(input PlainCredential) (PlainCredential, error) {
 	credential := PlainCredential{
-		ID:        strings.TrimSpace(input.ID),
-		TenantID:  strings.TrimSpace(input.TenantID),
-		SourceID:  strings.TrimSpace(input.SourceID),
-		RuntimeID: strings.TrimSpace(input.RuntimeID),
+		ID:                   strings.TrimSpace(input.ID),
+		TenantID:             strings.TrimSpace(input.TenantID),
+		SourceID:             strings.TrimSpace(input.SourceID),
+		RuntimeID:            strings.TrimSpace(input.RuntimeID),
+		CredentialStoreID:    strings.TrimSpace(input.CredentialStoreID),
+		AuthMethod:           strings.TrimSpace(input.AuthMethod),
+		Status:               strings.TrimSpace(input.Status),
+		CreatedBy:            strings.TrimSpace(input.CreatedBy),
+		UpdatedBy:            strings.TrimSpace(input.UpdatedBy),
+		IdempotencyKey:       strings.TrimSpace(input.IdempotencyKey),
+		PreviousCredentialID: strings.TrimSpace(input.PreviousCredentialID),
 	}
 	if credential.ID == "" {
 		id, err := randomCredentialID()
@@ -385,12 +433,36 @@ func normalizeCredential(input PlainCredential) (PlainCredential, error) {
 	if credential.RuntimeID == "" {
 		return PlainCredential{}, fmt.Errorf("%w: runtime_id is required", ErrInvalidRequest)
 	}
+	if credential.CredentialStoreID == "" {
+		credential.CredentialStoreID = "cerebro_vault"
+	}
+	if credential.AuthMethod == "" {
+		credential.AuthMethod = "encrypted_submission"
+	}
+	if credential.Status == "" {
+		credential.Status = StatusValid
+	}
+	if !validCredentialStatus(credential.Status) {
+		return PlainCredential{}, fmt.Errorf("%w: connector credential status is invalid", ErrInvalidRequest)
+	}
+	if credential.UpdatedBy == "" {
+		credential.UpdatedBy = credential.CreatedBy
+	}
 	fields, err := normalizeFields(input.Fields)
 	if err != nil {
 		return PlainCredential{}, err
 	}
 	credential.Fields = fields
 	return credential, nil
+}
+
+func validCredentialStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case StatusPending, StatusValid, StatusInvalid, StatusRevoked, StatusRotating:
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeFields(input map[string]string) (map[string]string, error) {
@@ -537,6 +609,20 @@ func authorizeRecord(record *ports.ConnectorCredentialRecord, sourceID string, t
 	return nil
 }
 
+func authorizeRecordStatus(record *ports.ConnectorCredentialRecord) error {
+	if record == nil {
+		return ports.ErrConnectorCredentialNotFound
+	}
+	switch strings.TrimSpace(record.Status) {
+	case "", StatusValid, StatusRotating:
+		return nil
+	case StatusRevoked:
+		return fmt.Errorf("%w: connector credential is revoked", ErrInvalidRequest)
+	default:
+		return fmt.Errorf("%w: connector credential is not usable", ErrInvalidRequest)
+	}
+}
+
 func credentialAAD(id string, tenantID string, sourceID string, runtimeID string, keyID string) []byte {
 	return []byte(strings.Join([]string{
 		strings.TrimSpace(id),
@@ -566,4 +652,8 @@ func TimestampOrZero(value time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func timePtr(value time.Time) *time.Time {
+	return &value
 }
