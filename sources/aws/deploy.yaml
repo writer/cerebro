@@ -95,6 +95,13 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  - localId: bedrock-provisioned-model-throughput
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: bedrock_provisioned_model_throughput
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
   - localId: codebuild-project
     config:
       account_id: env:AWS_ACCOUNT_ID

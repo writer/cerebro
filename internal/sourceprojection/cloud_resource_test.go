@@ -727,6 +727,36 @@ func TestProjectAWSBedrockCustomModelLinksAccount(t *testing.T) {
 	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 }
 
+func TestProjectAWSBedrockProvisionedModelThroughputLinksAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:bedrock:us-east-1:123456789012:provisioned-model/research-throughput"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-bedrock-provisioned-model-throughput-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.bedrock_provisioned_model_throughput",
+		Attributes: map[string]string{
+			"domain":               "123456789012",
+			"guardrail_identifier": "arn:aws:bedrock:us-east-1:123456789012:guardrail/gr-123",
+			"resource_id":          resourceARN,
+			"resource_name":        "research-throughput",
+			"resource_provider":    "aws",
+			"resource_type":        "bedrock_provisioned_model_throughput",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_bedrock_provisioned_model_throughput:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.bedrock.provisioned.model.throughput" {
+		t.Fatalf("bedrock provisioned model throughput entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
 func TestProjectAWSEFSMountTargetLinksNetworkContext(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

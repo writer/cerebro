@@ -15,6 +15,7 @@ emitted_kinds:
   - aws.backup_protected_resource
   - aws.backup_recovery_point
   - aws.bedrock_custom_model
+  - aws.bedrock_provisioned_model_throughput
   - aws.codebuild_project
   - aws.codebuild_source_credential
   - aws.cloudtrail
@@ -170,6 +171,7 @@ runtime_families:
   - backup_protected_resource
   - backup_recovery_point
   - bedrock_custom_model
+  - bedrock_provisioned_model_throughput
   - codebuild_project
   - codebuild_source_credential
   - cloudtrail
@@ -439,10 +441,9 @@ coverage_contract:
     - id: bedrock_provisioned_model_throughput
       type: entity_family
       title: Amazon Bedrock provisioned model throughput
-      families: [asset_metadata]
-      support: partial
+      families: [bedrock_provisioned_model_throughput]
+      support: supported
       high_value: true
-      known_unsupported_fields: [guardrail association and invocation posture]
     - id: cloudfront_distribution
       type: entity_family
       title: AWS CloudFront distributions
