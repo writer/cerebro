@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/findingapi"
 	findingdomain "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
@@ -1655,6 +1656,9 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 		if _, err := parseFindingStatus(mcpStringArg(args, "status")); err != nil {
 			return nil, err
 		}
+		if err := findingapi.ValidateOptionalStatus(mcpStringArg(args, "expected_status")); err != nil {
+			return nil, err
+		}
 	case "create_exception":
 		if mcpStringArg(args, "reason") == "" {
 			return nil, fmt.Errorf("%w: reason is required for create_exception", errInvalidHTTPRequest)
@@ -1666,18 +1670,7 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 	default:
 		return nil, fmt.Errorf("%w: unsupported action %q", errInvalidHTTPRequest, action)
 	}
-	return map[string]any{
-		"dry_run":           true,
-		"would_mutate":      false,
-		"finding_id":        findingID,
-		"action":            action,
-		"status":            mcpStringArg(args, "status"),
-		"reason":            mcpStringArg(args, "reason"),
-		"ticket_url":        mcpStringArg(args, "ticket_url"),
-		"ticket_id":         mcpStringArg(args, "ticket_id"),
-		"required_scope":    "write",
-		"approval_required": true,
-	}, nil
+	return findingapi.NewMCPActionProposal(findingapi.MCPArguments(args), findingID, action), nil
 }
 
 func (app *App) mcpProposeRuntimeRefresh(r *http.Request, args map[string]any) (any, error) {
@@ -2054,32 +2047,12 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Investigation Context"),
 		},
 		{
-			Name:        "cerebro.findings.action.propose",
-			Title:       "Propose Finding Action",
-			Description: "Validate and describe a finding workflow action without applying it. Requires dry_run=true and never mutates state.",
-			InputSchema: mcpObjectSchema(map[string]any{
-				"dry_run":    map[string]any{"type": "boolean", "const": true},
-				"finding_id": map[string]any{"type": "string"},
-				"action":     map[string]any{"type": "string", "enum": []string{"add_note", "update_status", "create_exception", "link_ticket"}},
-				"note":       map[string]any{"type": "string"},
-				"status":     map[string]any{"type": "string", "enum": []string{"open", "resolved", "suppressed"}},
-				"reason":     map[string]any{"type": "string"},
-				"ticket_url": map[string]any{"type": "string"},
-				"ticket_id":  map[string]any{"type": "string"},
-			}, []string{"dry_run", "finding_id", "action"}),
-			OutputSchema: mcpOutputSchema(map[string]any{
-				"dry_run":           map[string]any{"type": "boolean", "const": true},
-				"would_mutate":      map[string]any{"type": "boolean", "const": false},
-				"finding_id":        map[string]any{"type": "string"},
-				"action":            map[string]any{"type": "string"},
-				"status":            map[string]any{"type": "string"},
-				"reason":            map[string]any{"type": "string"},
-				"ticket_url":        map[string]any{"type": "string"},
-				"ticket_id":         map[string]any{"type": "string"},
-				"required_scope":    map[string]any{"type": "string"},
-				"approval_required": map[string]any{"type": "boolean"},
-			}),
-			Annotations: mcpReadOnlyAnnotations("Propose Finding Action"),
+			Name:         "cerebro.findings.action.propose",
+			Title:        "Propose Finding Action",
+			Description:  "Validate and describe a finding workflow action without applying it. Requires dry_run=true and never mutates state.",
+			InputSchema:  mcpObjectSchema(findingapi.MCPActionInputProperties(), []string{"dry_run", "finding_id", "action"}),
+			OutputSchema: mcpOutputSchema(findingapi.MCPActionOutputProperties()),
+			Annotations:  mcpReadOnlyAnnotations("Propose Finding Action"),
 		},
 		{
 			Name:        "cerebro.source_runtimes.refresh.propose",

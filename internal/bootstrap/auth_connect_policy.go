@@ -57,7 +57,8 @@ func connectProcedurePolicyFor(procedure string) connectProcedureAuthPolicy {
 		cerebrov1connect.BootstrapServiceAssignFindingProcedure,
 		cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure,
 		cerebrov1connect.BootstrapServiceAddFindingNoteProcedure,
-		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure:
+		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
+		cerebrov1connect.BootstrapServiceLinkFindingExternalRefProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeFindingLifecycleWrite}
 	case cerebrov1connect.BootstrapServiceRunReportProcedure,
 		cerebrov1connect.BootstrapServiceCheckSourceProcedure,

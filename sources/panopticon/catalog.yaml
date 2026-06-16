@@ -1,6 +1,6 @@
 id: panopticon
 name: Panopticon
-description: Panopticon security operations source. Reads canonical alert, case, and IOC events from the Panopticon API.
+description: Panopticon security operations source. Reads curated cases by default, with explicit alert and IOC families available for evidence and enrichment.
 emitted_kinds:
   - panopticon.alert
   - panopticon.case

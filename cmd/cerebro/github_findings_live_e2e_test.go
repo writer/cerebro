@@ -795,6 +795,31 @@ func (s *githubFindingsE2EStore) LinkFindingTicket(_ context.Context, request po
 	return cloneE2EFinding(cloned), nil
 }
 
+func (s *githubFindingsE2EStore) LinkFindingExternalRef(_ context.Context, request ports.FindingExternalRefLink) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneE2EFinding(finding)
+	replaced := false
+	for index, ref := range cloned.ExternalRefs {
+		if e2eExternalRefKey(ref) == e2eExternalRefKey(request.ExternalRef) {
+			cloned.ExternalRefs[index] = request.ExternalRef
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		cloned.ExternalRefs = append(cloned.ExternalRefs, request.ExternalRef)
+	}
+	s.findings[cloned.ID] = cloned
+	return cloneE2EFinding(cloned), nil
+}
+
+func e2eExternalRefKey(ref ports.FindingExternalRef) string {
+	return strings.TrimSpace(ref.System) + "|" + strings.TrimSpace(ref.Kind) + "|" + strings.TrimSpace(ref.ExternalID)
+}
+
 func (s *githubFindingsE2EStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
 	s.runs[run.GetId()] = proto.Clone(run).(*cerebrov1.FindingEvaluationRun)
 	return nil
@@ -922,6 +947,7 @@ func cloneE2EFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	controlRefs := append([]ports.FindingControlRef(nil), finding.ControlRefs...)
 	notes := append([]ports.FindingNote(nil), finding.Notes...)
 	tickets := append([]ports.FindingTicket(nil), finding.Tickets...)
+	externalRefs := append([]ports.FindingExternalRef(nil), finding.ExternalRefs...)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -947,6 +973,7 @@ func cloneE2EFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
 			Tickets:         tickets,
+			ExternalRefs:    externalRefs,
 			Assignee:        finding.Assignee,
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,

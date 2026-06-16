@@ -69,6 +69,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPut, Prefix: "/findings/", Suffix: "/due", Scope: scopeFindingLifecycleWrite},
 	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/notes", Scope: scopeFindingLifecycleWrite},
 	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/tickets", Scope: scopeFindingLifecycleWrite},
+	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/external-refs", Scope: scopeFindingLifecycleWrite},
 	{Method: http.MethodGet, Prefix: "/finding-candidates/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodPost, Prefix: "/finding-candidates/", Suffix: "/promote", Scope: scopeFindingCandidatePromote},
 	{Method: http.MethodPost, Prefix: "/finding-candidates/", Suffix: "/reject", Scope: scopeFindingCandidatePromote},

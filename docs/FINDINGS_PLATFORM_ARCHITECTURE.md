@@ -170,7 +170,7 @@ This reads normalized persisted findings, not transient rule output.
 
 ## Current Built-In Catalog
 
-The built-in public detection catalog currently contains 67 rules across cloud, identity, GitHub, GRC, runtime, endpoint, and vulnerability domains. The generated public catalog lives at `internal/findings/public_detection_catalog.json`; `make detection-catalog-check` verifies that it stays in sync with the registered rule metadata.
+The built-in public detection catalog currently contains 68 rules across cloud, identity, GitHub, GRC, runtime, endpoint, Panopticon/security-operations, and vulnerability domains. The generated public catalog lives at `internal/findings/public_detection_catalog.json`; `make detection-catalog-check` verifies that it stays in sync with the registered rule metadata.
 
 Rules live as small files under `internal/findings/` and register through the built-in registry. The original Okta lifecycle-tampering detector is now one example in a broader catalog, not the only supported rule. This shape keeps the service generic:
 

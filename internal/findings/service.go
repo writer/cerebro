@@ -1170,6 +1170,26 @@ func (s *Service) SuppressFinding(ctx context.Context, id string, reason string)
 	return s.updateFindingStatus(ctx, id, findingStatusSuppressed, reason)
 }
 
+// FindingStatusUpdateOptions carries optimistic lifecycle preconditions and
+// attribution for an external coordinator.
+type FindingStatusUpdateOptions struct {
+	ExpectedStatus     string
+	LastObservedBefore time.Time
+	Source             string
+}
+
+// ResolveFindingWithOptions marks one persisted finding as resolved when any
+// supplied lifecycle preconditions still match the live row.
+func (s *Service) ResolveFindingWithOptions(ctx context.Context, id string, reason string, options FindingStatusUpdateOptions) (*ports.FindingRecord, error) {
+	return s.updateFindingStatusWithOptions(ctx, id, findingStatusResolved, reason, options)
+}
+
+// SuppressFindingWithOptions marks one persisted finding as suppressed when any
+// supplied lifecycle preconditions still match the live row.
+func (s *Service) SuppressFindingWithOptions(ctx context.Context, id string, reason string, options FindingStatusUpdateOptions) (*ports.FindingRecord, error) {
+	return s.updateFindingStatusWithOptions(ctx, id, findingStatusSuppressed, reason, options)
+}
+
 // AssignFinding updates or clears one persisted finding assignee.
 func (s *Service) AssignFinding(ctx context.Context, id string, assignee string) (*ports.FindingRecord, error) {
 	if s == nil || s.store == nil {
@@ -1286,6 +1306,50 @@ func (s *Service) LinkFindingTicket(ctx context.Context, id string, ticketURL st
 	}
 	if err := s.projectFindingTicket(ctx, finding, ticket); err != nil {
 		return nil, fmt.Errorf("project finding %q ticket into graph: %w", findingID, err)
+	}
+	return finding, nil
+}
+
+// LinkFindingExternalRef appends or refreshes one external lifecycle reference on
+// one persisted finding.
+func (s *Service) LinkFindingExternalRef(ctx context.Context, id string, ref ports.FindingExternalRef) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	findingID := strings.TrimSpace(id)
+	if findingID == "" {
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
+	}
+	ref.System = strings.TrimSpace(ref.System)
+	ref.Kind = strings.TrimSpace(ref.Kind)
+	ref.ExternalID = strings.TrimSpace(ref.ExternalID)
+	if ref.System == "" {
+		return nil, fmt.Errorf("%w: external ref system is required", ErrInvalidRequest)
+	}
+	if ref.Kind == "" {
+		return nil, fmt.Errorf("%w: external ref kind is required", ErrInvalidRequest)
+	}
+	if ref.ExternalID == "" {
+		return nil, fmt.Errorf("%w: external ref external id is required", ErrInvalidRequest)
+	}
+	if ref.URL = strings.TrimSpace(ref.URL); ref.URL != "" {
+		if _, err := url.ParseRequestURI(ref.URL); err != nil {
+			return nil, fmt.Errorf("%w: external ref url is invalid: %w", ErrInvalidRequest, err)
+		}
+	}
+	ref.ExternalStatus = strings.TrimSpace(ref.ExternalStatus)
+	ref.ExternalStatusReason = strings.TrimSpace(ref.ExternalStatusReason)
+	ref.LifecycleOwner = strings.TrimSpace(ref.LifecycleOwner)
+	ref.ObservedAt = ref.ObservedAt.UTC()
+	if ref.ObservedAt.IsZero() {
+		ref.ObservedAt = time.Now().UTC()
+	}
+	finding, err := s.store.LinkFindingExternalRef(ctx, ports.FindingExternalRefLink{
+		FindingID:   findingID,
+		ExternalRef: ref,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("link external ref to finding %q: %w", findingID, err)
 	}
 	return finding, nil
 }
@@ -1617,6 +1681,10 @@ func normalizeListLimit(limit uint32) uint32 {
 }
 
 func (s *Service) updateFindingStatus(ctx context.Context, id string, status string, reason string) (*ports.FindingRecord, error) {
+	return s.updateFindingStatusWithOptions(ctx, id, status, reason, FindingStatusUpdateOptions{})
+}
+
+func (s *Service) updateFindingStatusWithOptions(ctx context.Context, id string, status string, reason string, options FindingStatusUpdateOptions) (*ports.FindingRecord, error) {
 	if s == nil || s.store == nil {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -1625,15 +1693,21 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	finding, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
-		FindingID: findingID,
-		Status:    strings.TrimSpace(status),
-		Reason:    strings.TrimSpace(reason),
-		UpdatedAt: time.Now().UTC(),
+		FindingID:          findingID,
+		Status:             strings.TrimSpace(status),
+		Reason:             strings.TrimSpace(reason),
+		UpdatedAt:          time.Now().UTC(),
+		ExpectedStatus:     strings.TrimSpace(options.ExpectedStatus),
+		LastObservedBefore: options.LastObservedBefore.UTC(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("update finding %q status to %q: %w", findingID, status, err)
 	}
-	if err := s.recordFindingStatusWorkflow(ctx, finding, workflowevents.FindingStatusSourceManual); err != nil {
+	statusSource := strings.TrimSpace(options.Source)
+	if statusSource == "" {
+		statusSource = workflowevents.FindingStatusSourceManual
+	}
+	if err := s.recordFindingStatusWorkflow(ctx, finding, statusSource); err != nil {
 		return nil, fmt.Errorf("record finding %q status workflow: %w", findingID, err)
 	}
 	return finding, nil

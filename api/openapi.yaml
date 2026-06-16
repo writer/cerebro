@@ -1449,6 +1449,16 @@ paths:
       responses:
         '200':
           description: Updated finding.
+  /findings/{findingID}/external-refs:
+    post:
+      summary: Link finding external lifecycle reference
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/findingID'
+      responses:
+        '200':
+          description: Updated finding.
   /findings/{findingID}/assign:
     put:
       summary: Assign finding
@@ -5706,6 +5716,28 @@ components:
               external_id:
                 type: string
               linked_at:
+                type: string
+                format: date-time
+        external_refs:
+          type: array
+          items:
+            type: object
+            properties:
+              system:
+                type: string
+              kind:
+                type: string
+              external_id:
+                type: string
+              url:
+                type: string
+              external_status:
+                type: string
+              external_status_reason:
+                type: string
+              lifecycle_owner:
+                type: string
+              observed_at:
                 type: string
                 format: date-time
         risk_score:

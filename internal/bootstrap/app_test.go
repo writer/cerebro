@@ -1116,6 +1116,34 @@ func (s *stubRuntimeStore) LinkFindingTicket(_ context.Context, request ports.Fi
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubRuntimeStore) LinkFindingExternalRef(_ context.Context, request ports.FindingExternalRefLink) (*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	replaced := false
+	for index, ref := range cloned.ExternalRefs {
+		if externalRefKey(ref) == externalRefKey(request.ExternalRef) {
+			cloned.ExternalRefs[index] = request.ExternalRef
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		cloned.ExternalRefs = append(cloned.ExternalRefs, request.ExternalRef)
+	}
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
+func externalRefKey(ref ports.FindingExternalRef) string {
+	return strings.TrimSpace(ref.System) + "|" + strings.TrimSpace(ref.Kind) + "|" + strings.TrimSpace(ref.ExternalID)
+}
+
 func (s *stubRuntimeStore) PutFindingEvidence(_ context.Context, evidence *cerebrov1.FindingEvidence) error {
 	if s.err != nil {
 		return s.err
@@ -7146,6 +7174,8 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(notes, finding.Notes)
 	tickets := make([]ports.FindingTicket, len(finding.Tickets))
 	copy(tickets, finding.Tickets)
+	externalRefs := make([]ports.FindingExternalRef, len(finding.ExternalRefs))
+	copy(externalRefs, finding.ExternalRefs)
 	riskReasons := append([]string(nil), finding.RiskReasons...)
 	riskFactors := append([]ports.FindingRiskFactor(nil), finding.RiskFactors...)
 	attributes := make(map[string]string, len(finding.Attributes))
@@ -7173,6 +7203,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
 			Tickets:         tickets,
+			ExternalRefs:    externalRefs,
 			Assignee:        finding.Assignee,
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,
@@ -7210,6 +7241,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 	}
 	if len(existing.Tickets) != 0 && len(incoming.Tickets) == 0 {
 		incoming.Tickets = append([]ports.FindingTicket(nil), existing.Tickets...)
+	}
+	if len(existing.ExternalRefs) != 0 && len(incoming.ExternalRefs) == 0 {
+		incoming.ExternalRefs = append([]ports.FindingExternalRef(nil), existing.ExternalRefs...)
 	}
 	if strings.TrimSpace(incoming.Status) == "open" {
 		switch strings.TrimSpace(existing.Status) {

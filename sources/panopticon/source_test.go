@@ -56,7 +56,7 @@ func TestParseSettings(t *testing.T) {
 			name:     "defaults",
 			values:   map[string]string{"base_url": "http://127.0.0.1", "token": "token", "tenant_id": "writer"},
 			loopback: true,
-			want:     settings{family: familyAlert, baseURL: "http://127.0.0.1", apiPath: "/api/v2/alerts", token: "token", tenantID: "writer", perPage: defaultPageSize},
+			want:     settings{family: familyCase, baseURL: "http://127.0.0.1", apiPath: "/api/v2/cases", token: "token", tenantID: "writer", perPage: defaultPageSize},
 		},
 		{
 			name:     "case-family-runtime-page-and-api-key",
@@ -74,15 +74,15 @@ func TestParseSettings(t *testing.T) {
 			name:     "runtime-tenant",
 			values:   map[string]string{"base_url": "http://127.0.0.1", "token": "token", sourceconfig.RuntimeTenantIDKey: "writer"},
 			loopback: true,
-			want:     settings{family: familyAlert, baseURL: "http://127.0.0.1", apiPath: "/api/v2/alerts", token: "token", tenantID: "writer", perPage: defaultPageSize},
+			want:     settings{family: familyCase, baseURL: "http://127.0.0.1", apiPath: "/api/v2/cases", token: "token", tenantID: "writer", perPage: defaultPageSize},
 		},
 		{
 			name:   "private-endpoint-allowlist",
 			values: map[string]string{"base_url": "https://panopticon.internal.example", "token": "token", "tenant_id": "writer", "private_endpoint_allowlist": "panopticon.internal.example"},
 			want: settings{
-				family:                   familyAlert,
+				family:                   familyCase,
 				baseURL:                  "https://panopticon.internal.example",
-				apiPath:                  "/api/v2/alerts",
+				apiPath:                  "/api/v2/cases",
 				token:                    "token",
 				tenantID:                 "writer",
 				privateEndpointAllowlist: []string{"panopticon.internal.example"},
@@ -149,16 +149,16 @@ func TestPrivateEndpointAllowlistFailsClosedWhenCustomTransportCannotPin(t *test
 	}
 }
 
-func TestCheckAndDiscoverUseExistingAlertsEndpoint(t *testing.T) {
+func TestCheckAndDiscoverUseDefaultCasesEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v2/alerts" {
+		if r.URL.Path != "/api/v2/cases" {
 			http.NotFound(w, r)
 			return
 		}
 		if got := r.URL.Query().Get("per_page"); got != "1" {
 			t.Fatalf("check per_page = %q, want 1", got)
 		}
-		writePage(w, []map[string]interface{}{validNativeAlert("1", fixedTime())}, 1, 0)
+		writePage(w, []map[string]interface{}{validNativeCase("1", fixedTime())}, 1, 0)
 	}))
 	defer server.Close()
 
@@ -171,8 +171,8 @@ func TestCheckAndDiscoverUseExistingAlertsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if len(urns) != 1 || !strings.Contains(urns[0].String(), "%2Fapi%2Fv2%2Falerts") {
-		t.Fatalf("Discover() urns = %v, want alerts URN", urns)
+	if len(urns) != 1 || !strings.Contains(urns[0].String(), "%2Fapi%2Fv2%2Fcases") {
+		t.Fatalf("Discover() urns = %v, want cases URN", urns)
 	}
 }
 
@@ -206,7 +206,7 @@ func TestReadExistingAlertsAPIPaginatesAndMapsNativeFields(t *testing.T) {
 	defer server.Close()
 
 	src := newTestSource(t)
-	cfg := apiConfig(server.URL, map[string]string{"per_page": "1"})
+	cfg := apiConfig(server.URL, map[string]string{"family": familyAlert, "per_page": "1"})
 	first, err := src.Read(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("Read(first) error = %v", err)
@@ -275,7 +275,7 @@ func TestReadAPIRejectsInvalidNativeRecordsAndHTTPError(t *testing.T) {
 	defer server.Close()
 
 	src := newTestSource(t)
-	_, err := src.Read(context.Background(), apiConfig(server.URL, nil), nil)
+	_, err := src.Read(context.Background(), apiConfig(server.URL, map[string]string{"family": familyAlert}), nil)
 	if err == nil || !errorContains(err, "occurred_at") {
 		t.Fatalf("Read() error = %v, want occurred_at validation", err)
 	}
@@ -284,7 +284,7 @@ func TestReadAPIRejectsInvalidNativeRecordsAndHTTPError(t *testing.T) {
 		http.Error(w, "nope", http.StatusUnauthorized)
 	}))
 	defer server.Close()
-	_, err = src.Read(context.Background(), apiConfig(server.URL, nil), nil)
+	_, err = src.Read(context.Background(), apiConfig(server.URL, map[string]string{"family": familyAlert}), nil)
 	if err == nil || !errorContains(err, "status 401") {
 		t.Fatalf("Read() error = %v, want HTTP status error", err)
 	}
