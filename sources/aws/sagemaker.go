@@ -26,6 +26,12 @@ type awsSageMakerEndpointConfig struct {
 	Tags    map[string]string                       `json:"tags,omitempty"`
 }
 
+type awsSageMakerModel struct {
+	Summary sagemakertypes.ModelSummary    `json:"summary"`
+	Detail  *sagemaker.DescribeModelOutput `json:"detail,omitempty"`
+	Tags    map[string]string              `json:"tags,omitempty"`
+}
+
 func listSageMakerEndpointConfigs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSageMakerEndpointConfig, string, error) {
 	if clients.sageMaker == nil {
 		return nil, "", nil
@@ -57,6 +63,47 @@ func listSageMakerEndpointConfigs(ctx context.Context, clients awsClients, _ set
 			if err != nil {
 				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
 					return nil, "", fmt.Errorf("list sagemaker endpoint configuration tags %q: %w", arn, err)
+				}
+			} else {
+				record.Tags = tags
+			}
+		}
+		records = append(records, record)
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listSageMakerModels(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSageMakerModel, string, error) {
+	if clients.sageMaker == nil {
+		return nil, "", nil
+	}
+	out, err := clients.sageMaker.ListModels(ctx, &sagemaker.ListModelsInput{
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("list sagemaker models: %w", err)
+	}
+	records := make([]awsSageMakerModel, 0, len(out.Models))
+	for _, summary := range out.Models {
+		name := awssdk.ToString(summary.ModelName)
+		record := awsSageMakerModel{Summary: summary}
+		if name != "" {
+			detail, err := clients.sageMaker.DescribeModel(ctx, &sagemaker.DescribeModelInput{ModelName: awssdk.String(name)})
+			if err != nil {
+				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
+					return nil, "", fmt.Errorf("describe sagemaker model %q: %w", name, err)
+				}
+			} else {
+				record.Detail = detail
+			}
+		}
+		arn := sageMakerModelARN(record)
+		if arn != "" {
+			tags, err := listSageMakerTags(ctx, clients.sageMaker, arn)
+			if err != nil {
+				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
+					return nil, "", fmt.Errorf("list sagemaker model tags %q: %w", arn, err)
 				}
 			} else {
 				record.Tags = tags
@@ -171,6 +218,39 @@ func sageMakerEndpointConfigEvent(settings settings, record awsSageMakerEndpoint
 	return sourceEvent(settings, "aws-sagemaker-endpoint-configuration-"+firstNonEmpty(arn, name), "aws.sagemaker_endpoint_configuration", "aws/sagemaker_endpoint_configuration/v1", payload, attributes, sageMakerEndpointConfigTime(record))
 }
 
+func sageMakerModelEvent(settings settings, record awsSageMakerModel) (*primitives.Event, error) {
+	arn := sageMakerModelARN(record)
+	name := sageMakerModelName(record)
+	detail := record.Detail
+	attributes := commonCloudAssetAttributes(settings, settings.region, familySageMakerModel, firstNonEmpty(arn, name), name, "sagemaker_model", record.Tags)
+	attributes["arn"] = arn
+	attributes["model_arn"] = arn
+	attributes["model_name"] = name
+	if detail != nil {
+		attributes["container_count"] = fmt.Sprintf("%d", sageMakerModelContainerCount(detail))
+		attributes["enable_network_isolation"] = boolString(awssdk.ToBool(detail.EnableNetworkIsolation))
+		attributes["execution_role_arn"] = awssdk.ToString(detail.ExecutionRoleArn)
+		attributes["execution_role_name"] = roleNameFromARN(awssdk.ToString(detail.ExecutionRoleArn))
+		attributes["role_arn"] = awssdk.ToString(detail.ExecutionRoleArn)
+		attributes["role_name"] = roleNameFromARN(awssdk.ToString(detail.ExecutionRoleArn))
+		attributes["container_images"] = strings.Join(sageMakerModelContainerImages(detail), ",")
+		attributes["model_data_urls"] = strings.Join(sageMakerModelDataURLs(detail), ",")
+		attributes["model_package_names"] = strings.Join(sageMakerModelPackageNames(detail), ",")
+		attributes["primary_container_image"] = sageMakerContainerImage(detail.PrimaryContainer)
+		attributes["primary_container_model_data_url"] = sageMakerContainerModelDataURL(detail.PrimaryContainer)
+		attributes["primary_container_model_package_name"] = sageMakerContainerModelPackageName(detail.PrimaryContainer)
+		attributes["security_group_ids"] = strings.Join(sageMakerModelSecurityGroups(detail), ",")
+		attributes["subnet_ids"] = strings.Join(sageMakerModelSubnets(detail), ",")
+		attributes["vpc_configured"] = boolString(detail.VpcConfig != nil)
+		addTimeAttribute(attributes, "created_at", detail.CreationTime)
+	}
+	payload, err := json.Marshal(sageMakerSanitizedModel(record))
+	if err != nil {
+		return nil, fmt.Errorf("marshal sagemaker model: %w", err)
+	}
+	return sourceEvent(settings, "aws-sagemaker-model-"+firstNonEmpty(arn, name), "aws.sagemaker_model", "aws/sagemaker_model/v1", payload, attributes, sageMakerModelTime(record))
+}
+
 func sageMakerNotebookInstanceEvent(settings settings, record awsSageMakerNotebookInstance) (*primitives.Event, error) {
 	arn := sageMakerNotebookInstanceARN(record)
 	name := sageMakerNotebookInstanceName(record)
@@ -226,6 +306,24 @@ func sageMakerEndpointConfigName(record awsSageMakerEndpointConfig) string {
 		}
 	}
 	return awssdk.ToString(record.Summary.EndpointConfigName)
+}
+
+func sageMakerModelARN(record awsSageMakerModel) string {
+	if record.Detail != nil {
+		if arn := awssdk.ToString(record.Detail.ModelArn); arn != "" {
+			return arn
+		}
+	}
+	return awssdk.ToString(record.Summary.ModelArn)
+}
+
+func sageMakerModelName(record awsSageMakerModel) string {
+	if record.Detail != nil {
+		if name := awssdk.ToString(record.Detail.ModelName); name != "" {
+			return name
+		}
+	}
+	return awssdk.ToString(record.Summary.ModelName)
 }
 
 func sageMakerNotebookInstanceARN(record awsSageMakerNotebookInstance) string {
@@ -286,6 +384,116 @@ func sageMakerEndpointConfigTime(record awsSageMakerEndpointConfig) time.Time {
 		return firstTime(record.Detail.CreationTime)
 	}
 	return firstTime(record.Summary.CreationTime)
+}
+
+func sageMakerModelTime(record awsSageMakerModel) time.Time {
+	if record.Detail != nil {
+		return firstTime(record.Detail.CreationTime)
+	}
+	return firstTime(record.Summary.CreationTime)
+}
+
+func sageMakerModelContainerCount(detail *sagemaker.DescribeModelOutput) int {
+	if len(detail.Containers) > 0 {
+		return len(detail.Containers)
+	}
+	if detail.PrimaryContainer != nil {
+		return 1
+	}
+	return 0
+}
+
+func sageMakerModelContainers(detail *sagemaker.DescribeModelOutput) []sagemakertypes.ContainerDefinition {
+	if len(detail.Containers) > 0 {
+		return detail.Containers
+	}
+	if detail.PrimaryContainer != nil {
+		return []sagemakertypes.ContainerDefinition{*detail.PrimaryContainer}
+	}
+	return nil
+}
+
+func sageMakerModelContainerImages(detail *sagemaker.DescribeModelOutput) []string {
+	containers := sageMakerModelContainers(detail)
+	values := make([]string, 0, len(containers))
+	for _, container := range containers {
+		values = append(values, awssdk.ToString(container.Image))
+	}
+	return cleanStrings(values)
+}
+
+func sageMakerModelDataURLs(detail *sagemaker.DescribeModelOutput) []string {
+	containers := sageMakerModelContainers(detail)
+	values := make([]string, 0, len(containers))
+	for _, container := range containers {
+		values = append(values, awssdk.ToString(container.ModelDataUrl))
+	}
+	return cleanStrings(values)
+}
+
+func sageMakerModelPackageNames(detail *sagemaker.DescribeModelOutput) []string {
+	containers := sageMakerModelContainers(detail)
+	values := make([]string, 0, len(containers))
+	for _, container := range containers {
+		values = append(values, awssdk.ToString(container.ModelPackageName))
+	}
+	return cleanStrings(values)
+}
+
+func sageMakerContainerImage(container *sagemakertypes.ContainerDefinition) string {
+	if container == nil {
+		return ""
+	}
+	return awssdk.ToString(container.Image)
+}
+
+func sageMakerContainerModelDataURL(container *sagemakertypes.ContainerDefinition) string {
+	if container == nil {
+		return ""
+	}
+	return awssdk.ToString(container.ModelDataUrl)
+}
+
+func sageMakerContainerModelPackageName(container *sagemakertypes.ContainerDefinition) string {
+	if container == nil {
+		return ""
+	}
+	return awssdk.ToString(container.ModelPackageName)
+}
+
+func sageMakerModelSecurityGroups(detail *sagemaker.DescribeModelOutput) []string {
+	if detail.VpcConfig == nil {
+		return nil
+	}
+	return cleanStrings(detail.VpcConfig.SecurityGroupIds)
+}
+
+func sageMakerModelSubnets(detail *sagemaker.DescribeModelOutput) []string {
+	if detail.VpcConfig == nil {
+		return nil
+	}
+	return cleanStrings(detail.VpcConfig.Subnets)
+}
+
+func sageMakerSanitizedModel(record awsSageMakerModel) awsSageMakerModel {
+	if record.Detail == nil {
+		return record
+	}
+	detail := *record.Detail
+	if detail.PrimaryContainer != nil {
+		primary := *detail.PrimaryContainer
+		primary.Environment = nil
+		detail.PrimaryContainer = &primary
+	}
+	if len(detail.Containers) > 0 {
+		containers := append([]sagemakertypes.ContainerDefinition(nil), detail.Containers...)
+		for index := range containers {
+			containers[index].Environment = nil
+		}
+		detail.Containers = containers
+	}
+	record.Detail = &detail
+	return record
 }
 
 func sageMakerEndpointConfigModelNames(detail *sagemaker.DescribeEndpointConfigOutput) []string {
