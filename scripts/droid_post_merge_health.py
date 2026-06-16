@@ -11,7 +11,8 @@ import urllib.request
 from pathlib import Path
 
 COMMENT_MARKER = "<!-- droid-post-merge-health -->"
-DROID_LOGINS = {"factory-droid", "factory-droid[bot]"}
+DROID_BOT_LOGIN = "factory-droid[bot]"
+DROID_FINISHED_MARKERS = ("Droid finished", "Review complete for PR")
 TERMINAL_DROID_STATUSES = {"ok", "skipped"}
 DROID_REVIEW_REQUIRED_EXACT = {"go.mod", "go.sum", "Makefile"}
 DROID_REVIEW_REQUIRED_PREFIXES = (
@@ -125,6 +126,18 @@ def collect_issue_comments(pr_number: object, token: str, repository: str) -> li
     return comments
 
 
+def is_droid_comment(comment: dict[str, object]) -> bool:
+    user = comment.get("user") if isinstance(comment.get("user"), dict) else {}
+    login = str(user.get("login") or "").lower()
+    user_type = str(user.get("type") or "")
+    return login == DROID_BOT_LOGIN and (not user_type or user_type == "Bot")
+
+
+def is_finished_droid_review(body: object) -> bool:
+    text = str(body or "")
+    return any(marker in text for marker in DROID_FINISHED_MARKERS)
+
+
 def requires_droid_review(file: str) -> bool:
     normalized = file.replace("\\", "/")
     return (
@@ -158,8 +171,7 @@ def is_cross_repository_pr(pr: dict[str, object]) -> bool:
 def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object]]) -> dict[str, object]:
     droid_comments = []
     for comment in comments:
-        user = comment.get("user") if isinstance(comment.get("user"), dict) else {}
-        if (user.get("login") or "").lower() in DROID_LOGINS:
+        if is_droid_comment(comment):
             droid_comments.append(comment)
 
     active_errors = []
@@ -172,17 +184,18 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
             active_errors.append(comment)
         if "Droid is reviewing code and running a security check" in body and not superseded:
             active_progress.append(comment)
-        if "Droid finished" in body:
+        if is_finished_droid_review(body):
             finished.append(comment)
 
     author = str(pr.get("author") or "")
+    latest = droid_comments[-1] if droid_comments else {}
     if active_errors:
         status = "error"
         reason = "Droid has an unsuperseded error comment."
     elif active_progress:
         status = "in_progress"
         reason = "Droid has an unsuperseded in-progress comment."
-    elif finished:
+    elif latest and is_finished_droid_review(latest.get("body")):
         status = "ok"
         reason = "Droid has a finished review comment."
     elif author == "dependabot[bot]":
@@ -196,9 +209,12 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
         reason = "Changed files do not require the secret-backed Droid execution job."
     else:
         status = "missing"
-        reason = "No finished Droid review comment was found."
+        reason = (
+            "Latest Droid comment is not a finished review."
+            if latest
+            else "No finished Droid review comment was found."
+        )
 
-    latest = droid_comments[-1] if droid_comments else {}
     return {
         "number": pr.get("number"),
         "title": pr.get("title") or "",

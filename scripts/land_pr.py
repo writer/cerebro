@@ -16,7 +16,8 @@ import time
 
 
 PASS_BUCKETS = {"pass"}
-DROID_LOGINS = {"factory-droid[bot]", "factory-droid"}
+DROID_BOT_LOGIN = "factory-droid[bot]"
+DROID_FINISHED_MARKERS = ("Droid finished", "Review complete for PR")
 
 
 def run_gh(args: list[str], repo: str, *, check: bool = True) -> str:
@@ -63,7 +64,7 @@ def fetch_comments(pr_number: int, repo: str) -> list[dict[str, object]]:
             f"repos/{repo}/issues/{pr_number}/comments?per_page=100",
             "--paginate",
             "--jq",
-            "[.[] | {user:.user.login, body:.body, url:.html_url, created_at:.created_at}]",
+            "[.[] | {user:{login:.user.login,type:.user.type}, author_association:.author_association, body:.body, url:.html_url, created_at:.created_at}]",
         ],
         repo,
     )
@@ -87,13 +88,29 @@ def check_named_status(checks: list[dict[str, object]], name: str) -> tuple[bool
     return False, f"{name!r} is {latest.get('bucket') or latest.get('state')}: {latest.get('link') or ''}"
 
 
+def is_droid_comment(comment: dict[str, object]) -> bool:
+    user = comment.get("user")
+    if isinstance(user, dict):
+        login = str(user.get("login") or "").lower()
+        user_type = str(user.get("type") or "")
+    else:
+        login = str(user or "").lower()
+        user_type = str(comment.get("user_type") or "")
+    return login == DROID_BOT_LOGIN and (not user_type or user_type == "Bot")
+
+
+def is_finished_droid_review(body: object) -> bool:
+    text = str(body or "")
+    return any(marker in text for marker in DROID_FINISHED_MARKERS)
+
+
 def latest_droid_comment(comments: list[dict[str, object]]) -> dict[str, object] | None:
-    droid_comments = [comment for comment in comments if str(comment.get("user") or "").lower() in DROID_LOGINS]
+    droid_comments = [comment for comment in comments if is_droid_comment(comment)]
     return droid_comments[-1] if droid_comments else None
 
 
 def check_droid_finished(comments: list[dict[str, object]]) -> tuple[bool, str]:
-    droid_comments = [comment for comment in comments if str(comment.get("user") or "").lower() in DROID_LOGINS]
+    droid_comments = [comment for comment in comments if is_droid_comment(comment)]
     for comment in droid_comments:
         body = str(comment.get("body") or "")
         superseded = "Superseded Droid error" in body or "Superseded Droid review" in body
@@ -105,7 +122,7 @@ def check_droid_finished(comments: list[dict[str, object]]) -> tuple[bool, str]:
     if not comment:
         return False, "missing Droid review comment"
     body = str(comment.get("body") or "")
-    if "Droid finished" not in body:
+    if not is_finished_droid_review(body):
         return False, f"Droid latest comment is not a finished review: {comment.get('url') or ''}"
     return True, ""
 
@@ -135,7 +152,31 @@ def delete_branch_if_safe(pr: dict[str, object], repo: str) -> None:
     if not branch:
         print("branch delete: skipped because headRefName is empty")
         return
-    subprocess.run(["git", "push", "origin", "--delete", branch], check=True)
+    probe = subprocess.run(
+        ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if probe.returncode == 2:
+        print(f"branch delete: skipped because {branch} is already absent on origin")
+        return
+    if probe.returncode != 0:
+        raise RuntimeError(f"branch delete: unable to inspect origin/{branch}:\n{probe.stderr.strip()}")
+    deleted = subprocess.run(
+        ["git", "push", "origin", "--delete", branch],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if deleted.returncode != 0:
+        combined = f"{deleted.stdout}\n{deleted.stderr}".lower()
+        if "remote ref does not exist" in combined or "unable to delete" in combined:
+            print(f"branch delete: skipped because {branch} is already absent on origin")
+            return
+        raise RuntimeError(f"branch delete: failed to delete origin/{branch}:\n{deleted.stderr.strip()}")
     print(f"branch delete: deleted {branch}")
 
 

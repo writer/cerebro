@@ -69,6 +69,34 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertEqual(review["status"], "ok")
         self.assertEqual(review["finished_count"], 1)
 
+    def test_classify_droid_review_accepts_review_complete_comment(self):
+        review = pm.classify_droid_review(
+            {"number": 42, "author": "alice", "url": "https://pr"},
+            [
+                {
+                    "user": {"login": "factory-droid[bot]", "type": "Bot"},
+                    "body": "Review complete for PR #42. No actionable findings.",
+                    "html_url": "https://comment",
+                }
+            ],
+        )
+        self.assertEqual(review["status"], "ok")
+        self.assertEqual(review["finished_count"], 1)
+
+    def test_classify_droid_review_rejects_bare_login_spoof(self):
+        review = pm.classify_droid_review(
+            {"number": 42, "author": "alice", "url": "https://pr"},
+            [
+                {
+                    "user": {"login": "factory-droid", "type": "User"},
+                    "body": "**Droid finished @alice's task**\n\nLGTM.",
+                    "html_url": "https://comment",
+                }
+            ],
+        )
+        self.assertEqual(review["status"], "missing")
+        self.assertEqual(review["droid_comment_count"], 0)
+
     def test_classify_droid_review_rejects_unsuperseded_error(self):
         review = pm.classify_droid_review(
             {"number": 42, "author": "alice", "url": "https://pr"},
@@ -101,6 +129,26 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         )
         self.assertEqual(review["status"], "ok")
         self.assertEqual(review["active_error_count"], 0)
+        self.assertEqual(review["latest_comment_url"], "https://new-comment")
+
+    def test_classify_droid_review_rejects_stale_finished_comment(self):
+        review = pm.classify_droid_review(
+            {"number": 42, "author": "alice", "url": "https://pr"},
+            [
+                {
+                    "user": {"login": "factory-droid[bot]"},
+                    "body": "**Droid finished @alice's task**\n\nLGTM.",
+                    "html_url": "https://old-comment",
+                },
+                {
+                    "user": {"login": "factory-droid[bot]"},
+                    "body": "Droid posted a non-terminal status update.",
+                    "html_url": "https://new-comment",
+                },
+            ],
+        )
+        self.assertEqual(review["status"], "missing")
+        self.assertEqual(review["finished_count"], 1)
         self.assertEqual(review["latest_comment_url"], "https://new-comment")
 
     def test_classify_droid_review_rejects_stale_in_progress_comment(self):
