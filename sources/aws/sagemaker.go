@@ -32,6 +32,12 @@ type awsSageMakerModel struct {
 	Tags    map[string]string              `json:"tags,omitempty"`
 }
 
+type awsSageMakerTrainingJob struct {
+	Summary sagemakertypes.TrainingJobSummary    `json:"summary"`
+	Detail  *sagemaker.DescribeTrainingJobOutput `json:"detail,omitempty"`
+	Tags    map[string]string                    `json:"tags,omitempty"`
+}
+
 func listSageMakerEndpointConfigs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSageMakerEndpointConfig, string, error) {
 	if clients.sageMaker == nil {
 		return nil, "", nil
@@ -104,6 +110,47 @@ func listSageMakerModels(ctx context.Context, clients awsClients, _ settings, cu
 			if err != nil {
 				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
 					return nil, "", fmt.Errorf("list sagemaker model tags %q: %w", arn, err)
+				}
+			} else {
+				record.Tags = tags
+			}
+		}
+		records = append(records, record)
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listSageMakerTrainingJobs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsSageMakerTrainingJob, string, error) {
+	if clients.sageMaker == nil {
+		return nil, "", nil
+	}
+	out, err := clients.sageMaker.ListTrainingJobs(ctx, &sagemaker.ListTrainingJobsInput{
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("list sagemaker training jobs: %w", err)
+	}
+	records := make([]awsSageMakerTrainingJob, 0, len(out.TrainingJobSummaries))
+	for _, summary := range out.TrainingJobSummaries {
+		name := awssdk.ToString(summary.TrainingJobName)
+		record := awsSageMakerTrainingJob{Summary: summary}
+		if name != "" {
+			detail, err := clients.sageMaker.DescribeTrainingJob(ctx, &sagemaker.DescribeTrainingJobInput{TrainingJobName: awssdk.String(name)})
+			if err != nil {
+				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
+					return nil, "", fmt.Errorf("describe sagemaker training job %q: %w", name, err)
+				}
+			} else {
+				record.Detail = detail
+			}
+		}
+		arn := sageMakerTrainingJobARN(record)
+		if arn != "" {
+			tags, err := listSageMakerTags(ctx, clients.sageMaker, arn)
+			if err != nil {
+				if !optionalAWSError(err, "ResourceNotFound", "ResourceNotFoundException", "ValidationException") {
+					return nil, "", fmt.Errorf("list sagemaker training job tags %q: %w", arn, err)
 				}
 			} else {
 				record.Tags = tags
@@ -251,6 +298,52 @@ func sageMakerModelEvent(settings settings, record awsSageMakerModel) (*primitiv
 	return sourceEvent(settings, "aws-sagemaker-model-"+firstNonEmpty(arn, name), "aws.sagemaker_model", "aws/sagemaker_model/v1", payload, attributes, sageMakerModelTime(record))
 }
 
+func sageMakerTrainingJobEvent(settings settings, record awsSageMakerTrainingJob) (*primitives.Event, error) {
+	arn := sageMakerTrainingJobARN(record)
+	name := sageMakerTrainingJobName(record)
+	status := sageMakerTrainingJobStatus(record)
+	detail := record.Detail
+	attributes := commonCloudAssetAttributes(settings, settings.region, familySageMakerTrainingJob, firstNonEmpty(arn, name), name, "sagemaker_training_job", record.Tags)
+	attributes["arn"] = arn
+	attributes["training_job_arn"] = arn
+	attributes["training_job_name"] = name
+	attributes["training_job_status"] = status
+	attributes["secondary_status"] = sageMakerTrainingJobSecondaryStatus(record)
+	if detail != nil {
+		attributes["algorithm_name"] = sageMakerTrainingAlgorithmName(detail)
+		attributes["billable_time_seconds"] = sageMakerInt32String(detail.BillableTimeInSeconds)
+		attributes["enable_inter_container_traffic_encryption"] = boolString(awssdk.ToBool(detail.EnableInterContainerTrafficEncryption))
+		attributes["enable_managed_spot_training"] = boolString(awssdk.ToBool(detail.EnableManagedSpotTraining))
+		attributes["enable_network_isolation"] = boolString(awssdk.ToBool(detail.EnableNetworkIsolation))
+		attributes["instance_count"] = sageMakerTrainingInstanceCount(detail)
+		attributes["instance_type"] = sageMakerTrainingInstanceType(detail)
+		attributes["model_artifacts_s3_uri"] = sageMakerTrainingModelArtifactsS3URI(detail)
+		attributes["output_data_config_kms_key_id"] = sageMakerTrainingOutputKMSKeyID(detail)
+		attributes["output_kms_key_id"] = sageMakerTrainingOutputKMSKeyID(detail)
+		attributes["output_s3_uri"] = sageMakerTrainingOutputS3URI(detail)
+		attributes["resource_kms_key_id"] = sageMakerTrainingVolumeKMSKeyID(detail)
+		attributes["role_arn"] = awssdk.ToString(detail.RoleArn)
+		attributes["role_name"] = roleNameFromARN(awssdk.ToString(detail.RoleArn))
+		attributes["security_group_ids"] = strings.Join(sageMakerTrainingSecurityGroups(detail), ",")
+		attributes["subnet_ids"] = strings.Join(sageMakerTrainingSubnets(detail), ",")
+		attributes["training_image"] = sageMakerTrainingImage(detail)
+		attributes["training_input_mode"] = sageMakerTrainingInputMode(detail)
+		attributes["training_time_seconds"] = sageMakerInt32String(detail.TrainingTimeInSeconds)
+		attributes["volume_kms_key_id"] = sageMakerTrainingVolumeKMSKeyID(detail)
+		attributes["volume_size_gb"] = sageMakerTrainingVolumeSizeGB(detail)
+		attributes["vpc_configured"] = boolString(detail.VpcConfig != nil)
+		addTimeAttribute(attributes, "created_at", detail.CreationTime)
+		addTimeAttribute(attributes, "last_modified_at", detail.LastModifiedTime)
+		addTimeAttribute(attributes, "training_end_at", detail.TrainingEndTime)
+		addTimeAttribute(attributes, "training_start_at", detail.TrainingStartTime)
+	}
+	payload, err := json.Marshal(sageMakerSanitizedTrainingJob(record))
+	if err != nil {
+		return nil, fmt.Errorf("marshal sagemaker training job: %w", err)
+	}
+	return sourceEvent(settings, "aws-sagemaker-training-job-"+firstNonEmpty(arn, name), "aws.sagemaker_training_job", "aws/sagemaker_training_job/v1", payload, attributes, sageMakerTrainingJobTime(record))
+}
+
 func sageMakerNotebookInstanceEvent(settings settings, record awsSageMakerNotebookInstance) (*primitives.Event, error) {
 	arn := sageMakerNotebookInstanceARN(record)
 	name := sageMakerNotebookInstanceName(record)
@@ -326,6 +419,38 @@ func sageMakerModelName(record awsSageMakerModel) string {
 	return awssdk.ToString(record.Summary.ModelName)
 }
 
+func sageMakerTrainingJobARN(record awsSageMakerTrainingJob) string {
+	if record.Detail != nil {
+		if arn := awssdk.ToString(record.Detail.TrainingJobArn); arn != "" {
+			return arn
+		}
+	}
+	return awssdk.ToString(record.Summary.TrainingJobArn)
+}
+
+func sageMakerTrainingJobName(record awsSageMakerTrainingJob) string {
+	if record.Detail != nil {
+		if name := awssdk.ToString(record.Detail.TrainingJobName); name != "" {
+			return name
+		}
+	}
+	return awssdk.ToString(record.Summary.TrainingJobName)
+}
+
+func sageMakerTrainingJobStatus(record awsSageMakerTrainingJob) string {
+	if record.Detail != nil && record.Detail.TrainingJobStatus != "" {
+		return string(record.Detail.TrainingJobStatus)
+	}
+	return string(record.Summary.TrainingJobStatus)
+}
+
+func sageMakerTrainingJobSecondaryStatus(record awsSageMakerTrainingJob) string {
+	if record.Detail != nil && record.Detail.SecondaryStatus != "" {
+		return string(record.Detail.SecondaryStatus)
+	}
+	return string(record.Summary.SecondaryStatus)
+}
+
 func sageMakerNotebookInstanceARN(record awsSageMakerNotebookInstance) string {
 	if record.Detail != nil {
 		if arn := awssdk.ToString(record.Detail.NotebookInstanceArn); arn != "" {
@@ -391,6 +516,97 @@ func sageMakerModelTime(record awsSageMakerModel) time.Time {
 		return firstTime(record.Detail.CreationTime)
 	}
 	return firstTime(record.Summary.CreationTime)
+}
+
+func sageMakerTrainingJobTime(record awsSageMakerTrainingJob) time.Time {
+	if record.Detail != nil {
+		return firstTime(record.Detail.LastModifiedTime, record.Detail.TrainingEndTime, record.Detail.CreationTime)
+	}
+	return firstTime(record.Summary.LastModifiedTime, record.Summary.TrainingEndTime, record.Summary.CreationTime)
+}
+
+func sageMakerTrainingAlgorithmName(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.AlgorithmSpecification == nil {
+		return ""
+	}
+	return awssdk.ToString(detail.AlgorithmSpecification.AlgorithmName)
+}
+
+func sageMakerTrainingImage(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.AlgorithmSpecification == nil {
+		return ""
+	}
+	return awssdk.ToString(detail.AlgorithmSpecification.TrainingImage)
+}
+
+func sageMakerTrainingInputMode(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.AlgorithmSpecification == nil {
+		return ""
+	}
+	return string(detail.AlgorithmSpecification.TrainingInputMode)
+}
+
+func sageMakerTrainingOutputKMSKeyID(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.OutputDataConfig == nil {
+		return ""
+	}
+	return awssdk.ToString(detail.OutputDataConfig.KmsKeyId)
+}
+
+func sageMakerTrainingOutputS3URI(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.OutputDataConfig == nil {
+		return ""
+	}
+	return awssdk.ToString(detail.OutputDataConfig.S3OutputPath)
+}
+
+func sageMakerTrainingModelArtifactsS3URI(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.ModelArtifacts == nil {
+		return ""
+	}
+	return awssdk.ToString(detail.ModelArtifacts.S3ModelArtifacts)
+}
+
+func sageMakerTrainingInstanceCount(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.ResourceConfig == nil {
+		return ""
+	}
+	return sageMakerInt32String(detail.ResourceConfig.InstanceCount)
+}
+
+func sageMakerTrainingInstanceType(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.ResourceConfig == nil {
+		return ""
+	}
+	return string(detail.ResourceConfig.InstanceType)
+}
+
+func sageMakerTrainingVolumeKMSKeyID(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.ResourceConfig == nil {
+		return ""
+	}
+	return awssdk.ToString(detail.ResourceConfig.VolumeKmsKeyId)
+}
+
+func sageMakerTrainingVolumeSizeGB(detail *sagemaker.DescribeTrainingJobOutput) string {
+	if detail.ResourceConfig == nil {
+		return ""
+	}
+	return sageMakerInt32String(detail.ResourceConfig.VolumeSizeInGB)
+}
+
+func sageMakerTrainingSecurityGroups(detail *sagemaker.DescribeTrainingJobOutput) []string {
+	if detail.VpcConfig == nil {
+		return nil
+	}
+	return cleanStrings(detail.VpcConfig.SecurityGroupIds)
+}
+
+func sageMakerTrainingSubnets(detail *sagemaker.DescribeTrainingJobOutput) []string {
+	if detail.VpcConfig == nil {
+		return nil
+	}
+	return cleanStrings(detail.VpcConfig.Subnets)
 }
 
 func sageMakerModelContainerCount(detail *sagemaker.DescribeModelOutput) int {
@@ -492,6 +708,17 @@ func sageMakerSanitizedModel(record awsSageMakerModel) awsSageMakerModel {
 		}
 		detail.Containers = containers
 	}
+	record.Detail = &detail
+	return record
+}
+
+func sageMakerSanitizedTrainingJob(record awsSageMakerTrainingJob) awsSageMakerTrainingJob {
+	if record.Detail == nil {
+		return record
+	}
+	detail := *record.Detail
+	detail.Environment = nil
+	detail.HyperParameters = nil
 	record.Detail = &detail
 	return record
 }

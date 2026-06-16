@@ -577,6 +577,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familySageMakerEndpointConfig, kind: "aws.sagemaker_endpoint_configuration"},
 		{family: familySageMakerModel, kind: "aws.sagemaker_model"},
 		{family: familySageMakerNotebookInstance, kind: "aws.sagemaker_notebook_instance"},
+		{family: familySageMakerTrainingJob, kind: "aws.sagemaker_training_job"},
 		{family: familySecret, kind: "aws.secret"},
 		{family: familySecurityHubFinding, kind: "aws.securityhub_finding"},
 		{family: familySNSTopic, kind: "aws.sns_topic"},
@@ -1849,6 +1850,104 @@ func TestReadAWSSageMakerModelInventoryEvent(t *testing.T) {
 	}
 	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
 		t.Fatal("payload contains container environment value")
+	}
+}
+
+func TestReadAWSSageMakerTrainingJobInventoryEvent(t *testing.T) {
+	jobARN := "arn:aws:sagemaker:us-east-1:123456789012:training-job/research-training"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerTrainingRole"
+	outputKMSKeyID := "arn:aws:kms:us-east-1:123456789012:key/output-key"
+	volumeKMSKeyID := "arn:aws:kms:us-east-1:123456789012:key/volume-key"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSSageMaker: fakeAWSSageMaker{
+			sageMakerTrainingJobs: []sagemakertypes.TrainingJobSummary{{
+				CreationTime:      timePtr("2026-04-23T00:00:00Z"),
+				LastModifiedTime:  timePtr("2026-04-24T00:00:00Z"),
+				SecondaryStatus:   sagemakertypes.SecondaryStatusCompleted,
+				TrainingJobArn:    awssdk.String(jobARN),
+				TrainingJobName:   awssdk.String("research-training"),
+				TrainingJobStatus: sagemakertypes.TrainingJobStatusCompleted,
+			}},
+			sageMakerTrainingJobDetails: map[string]sagemaker.DescribeTrainingJobOutput{"research-training": {
+				AlgorithmSpecification: &sagemakertypes.AlgorithmSpecification{
+					AlgorithmName:     awssdk.String("xgboost"),
+					TrainingImage:     awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/training:latest"),
+					TrainingInputMode: sagemakertypes.TrainingInputModeFile,
+				},
+				BillableTimeInSeconds:                 awssdk.Int32(900),
+				CreationTime:                          timePtr("2026-04-23T00:00:00Z"),
+				EnableInterContainerTrafficEncryption: awssdk.Bool(true),
+				EnableManagedSpotTraining:             awssdk.Bool(true),
+				EnableNetworkIsolation:                awssdk.Bool(true),
+				Environment:                           map[string]string{"SETTING": "do-not-store-training-value"},
+				HyperParameters:                       map[string]string{"learning_rate": "do-not-store-hyperparameter-value"},
+				LastModifiedTime:                      timePtr("2026-04-24T00:00:00Z"),
+				ModelArtifacts:                        &sagemakertypes.ModelArtifacts{S3ModelArtifacts: awssdk.String("s3://prod-models/research-training/output/model.tar.gz")},
+				OutputDataConfig:                      &sagemakertypes.OutputDataConfig{KmsKeyId: awssdk.String(outputKMSKeyID), S3OutputPath: awssdk.String("s3://prod-models/research-training/output/")},
+				ResourceConfig:                        &sagemakertypes.ResourceConfig{InstanceCount: awssdk.Int32(2), InstanceType: sagemakertypes.TrainingInstanceTypeMlM5Large, VolumeKmsKeyId: awssdk.String(volumeKMSKeyID), VolumeSizeInGB: awssdk.Int32(50)},
+				RoleArn:                               awssdk.String(roleARN),
+				SecondaryStatus:                       sagemakertypes.SecondaryStatusCompleted,
+				TrainingEndTime:                       timePtr("2026-04-23T01:00:00Z"),
+				TrainingJobArn:                        awssdk.String(jobARN),
+				TrainingJobName:                       awssdk.String("research-training"),
+				TrainingJobStatus:                     sagemakertypes.TrainingJobStatusCompleted,
+				TrainingStartTime:                     timePtr("2026-04-23T00:15:00Z"),
+				TrainingTimeInSeconds:                 awssdk.Int32(2700),
+				VpcConfig:                             &sagemakertypes.VpcConfig{SecurityGroupIds: []string{"sg-123", "sg-456"}, Subnets: []string{"subnet-123", "subnet-456"}},
+			}},
+			sageMakerTags: map[string][]sagemakertypes.Tag{jobARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySageMakerTrainingJob}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familySageMakerTrainingJob, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.sagemaker_training_job" {
+		t.Fatalf("kind = %q, want aws.sagemaker_training_job", got)
+	}
+	for key, want := range map[string]string{
+		"algorithm_name":                            "xgboost",
+		"billable_time_seconds":                     "900",
+		"enable_inter_container_traffic_encryption": "true",
+		"enable_managed_spot_training":              "true",
+		"enable_network_isolation":                  "true",
+		"instance_count":                            "2",
+		"instance_type":                             "ml.m5.large",
+		"model_artifacts_s3_uri":                    "s3://prod-models/research-training/output/model.tar.gz",
+		"output_data_config_kms_key_id":             outputKMSKeyID,
+		"output_kms_key_id":                         outputKMSKeyID,
+		"output_s3_uri":                             "s3://prod-models/research-training/output/",
+		"owner":                                     "ml@writer.com",
+		"resource_kms_key_id":                       volumeKMSKeyID,
+		"resource_type":                             "sagemaker_training_job",
+		"role_arn":                                  roleARN,
+		"role_name":                                 "service-role/SageMakerTrainingRole",
+		"secondary_status":                          "Completed",
+		"security_group_ids":                        "sg-123,sg-456",
+		"subnet_ids":                                "subnet-123,subnet-456",
+		"training_image":                            "123456789012.dkr.ecr.us-east-1.amazonaws.com/training:latest",
+		"training_input_mode":                       "File",
+		"training_job_arn":                          jobARN,
+		"training_job_name":                         "research-training",
+		"training_job_status":                       "Completed",
+		"training_time_seconds":                     "2700",
+		"volume_kms_key_id":                         volumeKMSKeyID,
+		"volume_size_gb":                            "50",
+		"vpc_configured":                            "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-training-value") {
+		t.Fatal("payload contains training environment value")
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-hyperparameter-value") {
+		t.Fatal("payload contains training hyperparameter value")
 	}
 }
 
@@ -3839,6 +3938,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		endpointConfigARN := "arn:aws:sagemaker:us-east-1:123456789012:endpoint-config/research-endpoint-config"
 		modelARN := "arn:aws:sagemaker:us-east-1:123456789012:model/research-model"
 		notebookARN := "arn:aws:sagemaker:us-east-1:123456789012:notebook-instance/research-notebook"
+		trainingJobARN := "arn:aws:sagemaker:us-east-1:123456789012:training-job/research-training"
 		fake.s3Buckets = []s3types.Bucket{{Name: awssdk.String("prod-data")}}
 		fake.s3Tags = map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
 		fake.s3Encryption = map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {}}
@@ -3869,10 +3969,13 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.sageMakerModelDetails = map[string]sagemaker.DescribeModelOutput{"research-model": {ModelArn: awssdk.String(modelARN), ModelName: awssdk.String("research-model")}}
 		fake.sageMakerNotebookInstances = []sagemakertypes.NotebookInstanceSummary{{NotebookInstanceArn: awssdk.String(notebookARN), NotebookInstanceName: awssdk.String("research-notebook")}}
 		fake.sageMakerNotebookDetails = map[string]sagemaker.DescribeNotebookInstanceOutput{"research-notebook": {NotebookInstanceArn: awssdk.String(notebookARN), NotebookInstanceName: awssdk.String("research-notebook")}}
+		fake.sageMakerTrainingJobs = []sagemakertypes.TrainingJobSummary{{TrainingJobArn: awssdk.String(trainingJobARN), TrainingJobName: awssdk.String("research-training")}}
+		fake.sageMakerTrainingJobDetails = map[string]sagemaker.DescribeTrainingJobOutput{"research-training": {TrainingJobArn: awssdk.String(trainingJobARN), TrainingJobName: awssdk.String("research-training")}}
 		fake.sageMakerTags = map[string][]sagemakertypes.Tag{
 			endpointConfigARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
 			modelARN:          {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
 			notebookARN:       {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			trainingJobARN:    {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
 		}
 		fake.codeBuildProjects = []string{"orders-build"}
 		fake.codeBuildProjectDetail = map[string]codebuildtypes.Project{"orders-build": {
@@ -4136,6 +4239,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familySageMakerNotebookInstance,
 			seed:    cloudAssetData,
 			wantAPI: []string{"sagemaker:DescribeNotebookInstance", "sagemaker:ListNotebookInstances", "sagemaker:ListTags"},
+		},
+		{
+			family:  familySageMakerTrainingJob,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sagemaker:DescribeTrainingJob", "sagemaker:ListTags", "sagemaker:ListTrainingJobs"},
 		},
 		{
 			family:  familyEBSVolume,
@@ -5060,13 +5168,15 @@ type fakeAWS struct {
 }
 
 type fakeAWSSageMaker struct {
-	sageMakerEndpointConfigs   []sagemakertypes.EndpointConfigSummary
-	sageMakerEndpointDetails   map[string]sagemaker.DescribeEndpointConfigOutput
-	sageMakerModels            []sagemakertypes.ModelSummary
-	sageMakerModelDetails      map[string]sagemaker.DescribeModelOutput
-	sageMakerNotebookInstances []sagemakertypes.NotebookInstanceSummary
-	sageMakerNotebookDetails   map[string]sagemaker.DescribeNotebookInstanceOutput
-	sageMakerTags              map[string][]sagemakertypes.Tag
+	sageMakerEndpointConfigs    []sagemakertypes.EndpointConfigSummary
+	sageMakerEndpointDetails    map[string]sagemaker.DescribeEndpointConfigOutput
+	sageMakerModels             []sagemakertypes.ModelSummary
+	sageMakerModelDetails       map[string]sagemaker.DescribeModelOutput
+	sageMakerNotebookInstances  []sagemakertypes.NotebookInstanceSummary
+	sageMakerNotebookDetails    map[string]sagemaker.DescribeNotebookInstanceOutput
+	sageMakerTrainingJobs       []sagemakertypes.TrainingJobSummary
+	sageMakerTrainingJobDetails map[string]sagemaker.DescribeTrainingJobOutput
+	sageMakerTags               map[string][]sagemakertypes.Tag
 }
 
 type fakeAWSIAMPolicy struct {
@@ -6530,6 +6640,16 @@ func (f recordingSageMaker) DescribeNotebookInstance(ctx context.Context, input 
 	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeNotebookInstance(ctx, input, options...)
 }
 
+func (f recordingSageMaker) ListTrainingJobs(ctx context.Context, input *sagemaker.ListTrainingJobsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListTrainingJobsOutput, error) {
+	f.fake.record("sagemaker:ListTrainingJobs")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListTrainingJobs(ctx, input, options...)
+}
+
+func (f recordingSageMaker) DescribeTrainingJob(ctx context.Context, input *sagemaker.DescribeTrainingJobInput, options ...func(*sagemaker.Options)) (*sagemaker.DescribeTrainingJobOutput, error) {
+	f.fake.record("sagemaker:DescribeTrainingJob")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeTrainingJob(ctx, input, options...)
+}
+
 func (f recordingSageMaker) ListTags(ctx context.Context, input *sagemaker.ListTagsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListTagsOutput, error) {
 	f.fake.record("sagemaker:ListTags")
 	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListTags(ctx, input, options...)
@@ -6563,6 +6683,15 @@ func (f fakeSageMaker) ListNotebookInstances(context.Context, *sagemaker.ListNot
 
 func (f fakeSageMaker) DescribeNotebookInstance(_ context.Context, input *sagemaker.DescribeNotebookInstanceInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeNotebookInstanceOutput, error) {
 	detail := f.fake.sageMakerNotebookDetails[awssdk.ToString(input.NotebookInstanceName)]
+	return &detail, nil
+}
+
+func (f fakeSageMaker) ListTrainingJobs(context.Context, *sagemaker.ListTrainingJobsInput, ...func(*sagemaker.Options)) (*sagemaker.ListTrainingJobsOutput, error) {
+	return &sagemaker.ListTrainingJobsOutput{TrainingJobSummaries: f.fake.sageMakerTrainingJobs}, nil
+}
+
+func (f fakeSageMaker) DescribeTrainingJob(_ context.Context, input *sagemaker.DescribeTrainingJobInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeTrainingJobOutput, error) {
+	detail := f.fake.sageMakerTrainingJobDetails[awssdk.ToString(input.TrainingJobName)]
 	return &detail, nil
 }
 

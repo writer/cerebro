@@ -135,6 +135,7 @@ emitted_kinds:
   - aws.sagemaker_endpoint_configuration
   - aws.sagemaker_model
   - aws.sagemaker_notebook_instance
+  - aws.sagemaker_training_job
   - aws.scheduler_schedule
   - aws.scheduler_schedule_group
   - aws.secret
@@ -287,6 +288,7 @@ runtime_families:
   - sagemaker_endpoint_configuration
   - sagemaker_model
   - sagemaker_notebook_instance
+  - sagemaker_training_job
   - scheduler_schedule
   - scheduler_schedule_group
   - secret
@@ -1130,10 +1132,9 @@ coverage_contract:
     - id: sagemaker_training_job
       type: entity_family
       title: AWS SageMaker training jobs
-      families: [asset_metadata]
-      support: partial
+      families: [sagemaker_training_job]
+      support: supported
       high_value: true
-      known_unsupported_fields: [VPC and encryption detail]
     - id: secret
       type: entity_family
       title: AWS Secrets Manager secrets
