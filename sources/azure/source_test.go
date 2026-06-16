@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/azurearm"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -93,6 +95,38 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
+			}
+		})
+	}
+}
+
+func TestNewFixtureReplaysAzureGenericARMFamilies(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	for _, definition := range azurearm.DefaultDefinitions {
+		t.Run(definition.Name, func(t *testing.T) {
+			config := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant-1", "family": definition.Name, "subscription_id": "sub-1", "token": "test-token"})
+			urns, err := source.Discover(context.Background(), config)
+			if err != nil {
+				t.Fatalf("Discover(%s) error = %v", definition.Name, err)
+			}
+			if len(urns) != 1 {
+				t.Fatalf("len(Discover(%s)) = %d, want 1", definition.Name, len(urns))
+			}
+			pull, err := source.Read(context.Background(), config, nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", definition.Name, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", definition.Name, len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != definition.Kind {
+				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", definition.Name, got, definition.Kind)
+			}
+			if got := pull.Events[0].Attributes["family"]; got != definition.Name {
+				t.Fatalf("family = %q, want %q", got, definition.Name)
 			}
 		})
 	}
@@ -222,6 +256,42 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 			}
 			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadLiveAzureGenericARMPreview(t *testing.T) {
+	server := httptest.NewServer(newAzureAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, definition := range azurearm.DefaultDefinitions {
+		t.Run(definition.Name, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"base_url":        server.URL,
+				"family":          definition.Name,
+				"subscription_id": "sub-1",
+				"tenant_id":       "tenant-1",
+				"token":           "test-token",
+			}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", definition.Name, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if got := event.Kind; got != definition.Kind {
+				t.Fatalf("kind = %q, want %q", got, definition.Kind)
+			}
+			if got := event.Attributes["resource_type"]; got != definition.ProviderPath {
+				t.Fatalf("resource_type = %q, want %q", got, definition.ProviderPath)
+			}
+			if got := event.Attributes["public_network_access"]; got != "Enabled" {
+				t.Fatalf("public_network_access = %q, want Enabled", got)
 			}
 		})
 	}
@@ -505,9 +575,41 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 		case "/subscriptions/sub-1/providers/microsoft.insights/eventtypes/management/values":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "activity-1", "eventTimestamp": "2026-04-23T00:00:00Z", "caller": "admin@writer.com", "resourceId": "/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Compute/virtualMachines/vm1", "resourceGroupName": "prod", "operationName": map[string]any{"value": "Microsoft.Compute/virtualMachines/write", "localizedValue": "Create or Update Virtual Machine"}, "resourceProviderName": map[string]any{"value": "Microsoft.Compute"}, "category": map[string]any{"value": "Administrative"}, "authorization": map[string]any{"action": "Microsoft.Compute/virtualMachines/write", "scope": "/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Compute/virtualMachines/vm1"}, "subscriptionId": "sub-1"}}})
 		default:
+			if writeGenericAzureARMTestResponse(t, w, r.URL.Path) {
+				return
+			}
 			http.NotFound(w, r)
 		}
 	})
+}
+
+func writeGenericAzureARMTestResponse(t *testing.T, w http.ResponseWriter, path string) bool {
+	t.Helper()
+	for _, definition := range azurearm.DefaultDefinitions {
+		if path == "/subscriptions/sub-1/providers/"+definition.ProviderPath {
+			writeJSON(t, w, map[string]any{"value": []map[string]any{genericAzureARMTestPayload(definition)}})
+			return true
+		}
+	}
+	return false
+}
+
+func genericAzureARMTestPayload(definition azurearm.Definition) map[string]any {
+	name := strings.ReplaceAll(definition.Name, "_", "-") + "-prod"
+	return map[string]any{
+		"id":       "/subscriptions/sub-1/resourceGroups/rg-prod/providers/" + definition.ProviderPath + "/" + name,
+		"name":     name,
+		"type":     definition.ProviderPath,
+		"kind":     definition.Kind,
+		"location": "eastus",
+		"sku":      map[string]any{"name": "Standard", "tier": "Standard"},
+		"identity": map[string]any{"type": "SystemAssigned", "principalId": name + "-principal", "tenantId": "tenant-1"},
+		"tags":     map[string]string{"env": "prod", "owner": "platform@writer.com", "team": "platform"},
+		"properties": map[string]any{
+			"provisioningState":   "Succeeded",
+			"publicNetworkAccess": "Enabled",
+		},
+	}
 }
 
 func newAzurePaginationTestSource(t *testing.T, server *httptest.Server, family string) (*Source, settings) {
