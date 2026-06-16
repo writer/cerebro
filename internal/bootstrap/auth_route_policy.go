@@ -25,6 +25,7 @@ type httpAuthRoutePolicy struct {
 }
 
 var httpAuthRoutePolicies = []httpAuthRoutePolicy{
+	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/contract", Scope: scopeCosmoSecurityRead, Static: true},
 	{Exact: "/api/v1/mcp", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/metrics", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Prefix: "/reports/", Suffix: "/runs", Static: true, AdminOnly: true},

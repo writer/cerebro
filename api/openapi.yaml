@@ -63,6 +63,19 @@ paths:
       responses:
         '200':
           description: Embedded OpenAPI YAML.
+  /api/v1/agent-platform/contract:
+    get:
+      operationId: getAgentPlatformContract
+      summary: Get agent platform contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Cerebro agent platform domains, capabilities, runtime events, connector infrastructure, and provenance requirements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformContract'
   /api/v1/mcp:
     get:
       summary: Reject MCP stateful event-stream transport
@@ -2948,6 +2961,310 @@ components:
         type: integer
         minimum: 1
   schemas:
+    AgentPlatformContract:
+      type: object
+      required:
+        - version
+        - domains
+        - invariants
+        - capabilities
+        - runtime_events
+        - provenance_requirements
+        - connector_infrastructure
+      properties:
+        version:
+          type: string
+        domains:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformDomain'
+        invariants:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformInvariant'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapability'
+        runtime_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformRuntimeEvent'
+        provenance_requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformProvenanceRequirement'
+        connector_infrastructure:
+          $ref: '#/components/schemas/AgentPlatformConnectorInfrastructure'
+    AgentPlatformDomain:
+      type: object
+      required:
+        - id
+        - name
+        - principle
+        - console_surface
+        - owns
+        - must_expose
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        principle:
+          type: string
+        console_surface:
+          type: string
+        owns:
+          type: array
+          items:
+            type: string
+        must_expose:
+          type: array
+          items:
+            type: string
+    AgentPlatformInvariant:
+      type: object
+      required:
+        - id
+        - domain_id
+        - statement
+      properties:
+        id:
+          type: string
+        domain_id:
+          type: string
+        statement:
+          type: string
+    AgentPlatformCapability:
+      type: object
+      required:
+        - id
+        - name
+        - domain_id
+        - kind
+        - version
+        - owner
+        - risk
+        - default_on
+        - summary
+        - console_surfaces
+        - required_scopes
+        - eval
+        - runtime_events
+        - provenance
+        - review
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        domain_id:
+          type: string
+        kind:
+          type: string
+        version:
+          type: string
+        owner:
+          type: string
+        risk:
+          type: string
+          enum: [low, medium, high]
+        default_on:
+          type: boolean
+        summary:
+          type: string
+        console_surfaces:
+          type: array
+          items:
+            type: string
+        required_scopes:
+          type: array
+          items:
+            type: string
+        connector_dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformConnectorDependency'
+        eval:
+          $ref: '#/components/schemas/AgentPlatformEvalStatus'
+        runtime_events:
+          type: array
+          items:
+            type: string
+        provenance:
+          type: array
+          items:
+            type: string
+        review:
+          $ref: '#/components/schemas/AgentPlatformReviewStatus'
+    AgentPlatformConnectorDependency:
+      type: object
+      required:
+        - source_id
+        - purpose
+        - auth_models
+        - required_scopes
+        - token_owner
+        - credential_store
+        - oauth_surface
+        - mcp_surface
+        - tenant_scoped
+        - readiness
+      properties:
+        source_id:
+          type: string
+        purpose:
+          type: string
+        auth_models:
+          type: array
+          items:
+            type: string
+        required_scopes:
+          type: array
+          items:
+            type: string
+        token_owner:
+          type: string
+        credential_store:
+          type: string
+        oauth_surface:
+          type: string
+        mcp_surface:
+          type: string
+        tenant_scoped:
+          type: boolean
+        readiness:
+          type: string
+    AgentPlatformEvalStatus:
+      type: object
+      required:
+        - required
+        - status
+        - local_commands
+        - scenario_sets
+        - rubrics
+      properties:
+        required:
+          type: boolean
+        status:
+          type: string
+        local_commands:
+          type: array
+          items:
+            type: string
+        scenario_sets:
+          type: array
+          items:
+            type: string
+        rubrics:
+          type: array
+          items:
+            type: string
+    AgentPlatformReviewStatus:
+      type: object
+      required:
+        - state
+        - cadence
+        - required_approvers
+      properties:
+        state:
+          type: string
+        cadence:
+          type: string
+        required_approvers:
+          type: array
+          items:
+            type: string
+    AgentPlatformRuntimeEvent:
+      type: object
+      required:
+        - name
+        - domain_id
+        - stage
+        - sequence_required
+        - terminal
+        - replayable
+        - payload_fields
+        - provenance_fields
+      properties:
+        name:
+          type: string
+        domain_id:
+          type: string
+        stage:
+          type: string
+        sequence_required:
+          type: boolean
+        terminal:
+          type: boolean
+        replayable:
+          type: boolean
+        payload_fields:
+          type: array
+          items:
+            type: string
+        provenance_fields:
+          type: array
+          items:
+            type: string
+    AgentPlatformProvenanceRequirement:
+      type: object
+      required:
+        - surface
+        - domain_id
+        - required_fields
+        - citation_required
+        - budget_required
+        - fallback_required
+      properties:
+        surface:
+          type: string
+        domain_id:
+          type: string
+        required_fields:
+          type: array
+          items:
+            type: string
+        citation_required:
+          type: boolean
+        budget_required:
+          type: boolean
+        fallback_required:
+          type: boolean
+    AgentPlatformConnectorInfrastructure:
+      type: object
+      required:
+        - auth_models
+        - oauth_surfaces
+        - credential_stores
+        - token_boundaries
+        - mcp_surfaces
+        - required_controls
+      properties:
+        auth_models:
+          type: array
+          items:
+            type: string
+        oauth_surfaces:
+          type: array
+          items:
+            type: string
+        credential_stores:
+          type: array
+          items:
+            type: string
+        token_boundaries:
+          type: array
+          items:
+            type: string
+        mcp_surfaces:
+          type: array
+          items:
+            type: string
+        required_controls:
+          type: array
+          items:
+            type: string
     EncryptedConnectorCredentialPayload:
       type: object
       required:
