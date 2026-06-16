@@ -347,6 +347,37 @@ func TestConnectorConnectionRejectsUnsupportedCredentialStore(t *testing.T) {
 	}
 }
 
+func TestConnectorConnectionMissingTransitKeyIsUnavailable(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key: "test-connector-vault-key",
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"runtime_id":"runtime-a","tenant_id":"tenant-a","credential_store_id":"cerebro_vault","encrypted_credentials":{"key_id":"ignored","algorithm":"RSA-OAEP-256+A256GCM"}}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors missing transit key error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("POST /connectors missing transit key status = %d, want 503", resp.StatusCode)
+	}
+}
+
 func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
 	registry, err := sourcecdk.NewRegistry(source)
@@ -390,8 +421,11 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 			} `json:"scope_options"`
 		} `json:"connectors"`
 		CredentialStores []struct {
-			ID        string `json:"id"`
-			Available bool   `json:"available"`
+			ID                        string   `json:"id"`
+			Available                 bool     `json:"available"`
+			Status                    string   `json:"status"`
+			ReferencePrefixes         []string `json:"reference_prefixes"`
+			NativeResolutionAvailable bool     `json:"native_resolution_available"`
 		} `json:"credential_stores"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -420,12 +454,79 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 		t.Fatalf("environment-managed method not saveable: %#v", methods)
 	}
 	stores := map[string]bool{}
+	storePrefixes := map[string][]string{}
+	storeStatuses := map[string]string{}
 	for _, store := range payload.CredentialStores {
 		stores[store.ID] = store.Available
+		storePrefixes[store.ID] = store.ReferencePrefixes
+		storeStatuses[store.ID] = store.Status
 	}
 	if !stores[connectorStoreEnvironmentManaged] {
 		t.Fatalf("environment-managed store not advertised available: %#v", stores)
 	}
+	if stores[connectorStoreAWSSecretsManager] {
+		t.Fatalf("aws secrets manager unexpectedly advertised available without opt-in: %#v", stores)
+	}
+	if got := storeStatuses[connectorStoreAWSSecretsManager]; got != "needs_configuration" {
+		t.Fatalf("aws secrets manager status = %q, want needs_configuration", got)
+	}
+	if got := storePrefixes[connectorStoreAWSSecretsManager]; len(got) != 2 || got[0] != "env:" || got[1] != "aws-sm:" {
+		t.Fatalf("aws secrets manager prefixes = %#v, want env and aws-sm", got)
+	}
+}
+
+func TestConnectorCatalogAdvertisesConfiguredAWSSecretStore(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-east-1",
+			},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		CredentialStores []struct {
+			ID                        string `json:"id"`
+			Available                 bool   `json:"available"`
+			Detail                    string `json:"detail"`
+			NativeResolutionAvailable bool   `json:"native_resolution_available"`
+		} `json:"credential_stores"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	for _, store := range payload.CredentialStores {
+		if store.ID != connectorStoreAWSSecretsManager {
+			continue
+		}
+		if !store.Available || !store.NativeResolutionAvailable || store.Detail != "native resolver ready" {
+			t.Fatalf("aws secret store = %#v, want available native resolver", store)
+		}
+		return
+	}
+	t.Fatalf("aws secret store missing: %#v", payload.CredentialStores)
 }
 
 func TestConnectorCatalogAdvertisesAWSOnboardingGuidance(t *testing.T) {
@@ -920,6 +1021,9 @@ func TestConnectorConnectionStoresEnvironmentManagedReference(t *testing.T) {
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreInfisical},
+		},
 	}, Dependencies{StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -1062,6 +1166,9 @@ func TestConnectorConnectionStoresExternalStoreReference(t *testing.T) {
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreInfisical},
+		},
 	}, Dependencies{StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -1115,6 +1222,40 @@ func TestConnectorConnectionStoresExternalStoreReference(t *testing.T) {
 	}
 	if got := credentialPayload["credential_store_id"]; got != connectorStoreInfisical {
 		t.Fatalf("credential_store_id = %#v, want %q", got, connectorStoreInfisical)
+	}
+}
+
+func TestConnectorConnectionRejectsMismatchedExternalStoreReference(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreInfisical},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"runtime_id":"runtime-external","tenant_id":"tenant-a","auth_method":"external_reference","credential_store_id":"infisical","config":{"family":"audit"},"credential_references":{"token":"aws-sm:us-east-1:cerebro/bootstrap-token#token"}}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors mismatched external reference error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST /connectors mismatched external reference status = %d, want 400", resp.StatusCode)
+	}
+	if source.checkToken != "" {
+		t.Fatalf("source check token = %q, want no source check", source.checkToken)
 	}
 }
 

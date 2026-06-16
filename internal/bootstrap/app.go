@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findings"
@@ -2834,19 +2835,20 @@ func newRuntimeService(cfg config.Config, deps Dependencies, sources *sourcecdk.
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
 	).WithConfigResolver(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, deps.StateStore, sourceID, values)
+		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, cfg.ConnectorSecretStores, deps.StateStore, sourceID, values)
 	})
 }
 
 func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-	return resolveRuntimeSourceConfigWithStore(ctx, config.ConnectorCredentialConfig{}, nil, sourceID, values)
+	return resolveRuntimeSourceConfigWithStore(ctx, config.ConnectorCredentialConfig{}, config.ConnectorSecretStoreConfig{}, nil, sourceID, values)
 }
 
-func resolveRuntimeSourceConfigWithStore(ctx context.Context, credentialConfig config.ConnectorCredentialConfig, store ports.StateStore, sourceID string, values map[string]string) (map[string]string, error) {
+func resolveRuntimeSourceConfigWithStore(ctx context.Context, credentialConfig config.ConnectorCredentialConfig, secretStoreConfig config.ConnectorSecretStoreConfig, store ports.StateStore, sourceID string, values map[string]string) (map[string]string, error) {
 	if err := authorizeRuntimeConfigEnvReferences(ctx, sourceID, values); err != nil {
 		return nil, err
 	}
 	resolved := values
+	var err error
 	if hasConnectorCredentialReferences(values) {
 		vault, err := connectorCredentialVault(credentialConfig, store)
 		if err != nil {
@@ -2857,7 +2859,14 @@ func resolveRuntimeSourceConfigWithStore(ctx context.Context, credentialConfig c
 			return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
 		}
 	}
-	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, resolved)
+	if err := connectorsecretstores.AuthorizeRuntimeReferences(sourceID, resolved[sourceconfig.RuntimeTenantIDKey], resolved[sourceconfig.RuntimeIDKey], resolved); err != nil {
+		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
+	}
+	resolved, err = connectorsecretstores.NewResolver(secretStoreConfig).ResolveReferences(ctx, resolved)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
+	}
+	resolved, err = config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, resolved)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
 	}
@@ -3008,7 +3017,7 @@ func newGraphIngestService(cfg config.Config, deps Dependencies, sources *source
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
 	).WithConfigPreparer(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, deps.StateStore, sourceID, values)
+		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, cfg.ConnectorSecretStores, deps.StateStore, sourceID, values)
 	})
 }
 

@@ -181,6 +181,13 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY", "connector-transit-key")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES", "aws_secrets_manager,infisical")
+	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "us-east-1")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE", "cerebro-security")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN", "arn:aws:iam::123456789012:role/cerebro-secrets")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID", "external-writer")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ENDPOINT", "http://127.0.0.1:4566")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -274,6 +281,16 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.ConnectorCredentials.Key != "connector-vault-key" || cfg.ConnectorCredentials.TransitPrivateKey != "connector-transit-key" {
 		t.Fatalf("ConnectorCredentials = %#v", cfg.ConnectorCredentials)
+	}
+	if got := cfg.ConnectorSecretStores.Enabled; len(got) != 2 || got[0] != "aws_secrets_manager" || got[1] != "infisical" {
+		t.Fatalf("ConnectorSecretStores.Enabled = %#v, want configured stores", got)
+	}
+	if cfg.ConnectorSecretStores.AWSSecretsManager.Region != "us-east-1" ||
+		cfg.ConnectorSecretStores.AWSSecretsManager.Profile != "cerebro-security" ||
+		cfg.ConnectorSecretStores.AWSSecretsManager.RoleARN == "" ||
+		cfg.ConnectorSecretStores.AWSSecretsManager.ExternalID != "external-writer" ||
+		cfg.ConnectorSecretStores.AWSSecretsManager.Endpoint != "http://127.0.0.1:4566" {
+		t.Fatalf("ConnectorSecretStores.AWSSecretsManager = %#v", cfg.ConnectorSecretStores.AWSSecretsManager)
 	}
 }
 
@@ -432,6 +449,13 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY", "")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES", "")
+	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ENDPOINT", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 }
