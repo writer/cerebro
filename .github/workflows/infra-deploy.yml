@@ -421,6 +421,12 @@ jobs:
         working-directory: infra
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
 
+      - name: Import existing query cache (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/import_existing_query_cache.py --stack-file aws/Pulumi.sec-dev.yaml
+
       - name: Pulumi Up (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -620,6 +626,12 @@ jobs:
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_aws_secret_imports.py --stack-file aws/Pulumi.go-prod.yaml
+
+      - name: Import existing query cache (go-prod)
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/import_existing_query_cache.py --stack-file aws/Pulumi.go-prod.yaml
 
       - name: Pulumi Up (go-prod)
         if: needs.changes.outputs.aws_go_prod_deploy == 'true'
@@ -988,6 +1000,14 @@ jobs:
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: uv run python scripts/verify_aws_secret_imports.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml"
+
+      - name: Import existing query cache (AWS)
+        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
+        shell: bash
+        working-directory: infra
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: uv run python scripts/import_existing_query_cache.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml"
 
       - name: Pulumi Up (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
