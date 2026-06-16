@@ -480,6 +480,13 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			entityType:   "aws.codebuild.project",
 		},
 		{
+			name:         "codebuild source credential",
+			kind:         "aws.codebuild_source_credential",
+			resourceID:   "arn:aws:codebuild:us-east-1:123456789012:source/github",
+			resourceType: "codebuild_source_credential",
+			entityType:   "aws.codebuild.source.credential",
+		},
+		{
 			name:         "public ebs snapshot",
 			kind:         "aws.ebs_snapshot",
 			resourceID:   "snap-123",
