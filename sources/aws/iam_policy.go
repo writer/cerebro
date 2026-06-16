@@ -38,6 +38,9 @@ func listIAMPolicies(ctx context.Context, clients awsClients, _ settings, cursor
 		arn := awssdk.ToString(summary.Arn)
 		if arn != "" {
 			detail, err := clients.iam.GetPolicy(ctx, &iam.GetPolicyInput{PolicyArn: awssdk.String(arn)})
+			if optionalAWSError(err, "NoSuchEntity") {
+				continue
+			}
 			if err != nil {
 				return nil, "", err
 			}
@@ -48,6 +51,9 @@ func listIAMPolicies(ctx context.Context, clients awsClients, _ settings, cursor
 		versionID := awssdk.ToString(record.Policy.DefaultVersionId)
 		if arn != "" && versionID != "" {
 			version, err := clients.iam.GetPolicyVersion(ctx, &iam.GetPolicyVersionInput{PolicyArn: awssdk.String(arn), VersionId: awssdk.String(versionID)})
+			if optionalAWSError(err, "NoSuchEntity") {
+				continue
+			}
 			if err != nil {
 				return nil, "", err
 			}

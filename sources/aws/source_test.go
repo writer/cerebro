@@ -858,6 +858,36 @@ func TestReadAWSIAMPolicyInventoryEvent(t *testing.T) {
 	}
 }
 
+func TestReadAWSIAMPolicySkipsDeletedPolicy(t *testing.T) {
+	staleARN := "arn:aws:iam::123456789012:policy/Stale"
+	activeARN := "arn:aws:iam::123456789012:policy/Active"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSIAMPolicy: fakeAWSIAMPolicy{
+			policies: []iamtypes.Policy{
+				{Arn: awssdk.String(staleARN), PolicyId: awssdk.String("ANPASTALE"), PolicyName: awssdk.String("Stale"), DefaultVersionId: awssdk.String("v1")},
+				{Arn: awssdk.String(activeARN), PolicyId: awssdk.String("ANPAACTIVE"), PolicyName: awssdk.String("Active"), DefaultVersionId: awssdk.String("v1")},
+			},
+			policyErrors: map[string]error{staleARN: fmt.Errorf("NoSuchEntity: policy deleted")},
+			policyDetails: map[string]iamtypes.Policy{
+				activeARN: {Arn: awssdk.String(activeARN), PolicyId: awssdk.String("ANPAACTIVE"), PolicyName: awssdk.String("Active"), DefaultVersionId: awssdk.String("v1")},
+			},
+			policyVersions: map[string]iamtypes.PolicyVersion{
+				activeARN + "@v1": {Document: awssdk.String(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}`), VersionId: awssdk.String("v1")},
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyIAMPolicy}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyIAMPolicy, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["policy_name"]; got != "Active" {
+		t.Fatalf("policy_name = %q, want Active", got)
+	}
+}
+
 func TestReadAWSComputeInventoryEvents(t *testing.T) {
 	profileARN := "arn:aws:iam::123456789012:instance-profile/WebProfile"
 	instanceRoleARN := "arn:aws:iam::123456789012:role/WebInstanceRole"
@@ -4533,9 +4563,11 @@ type fakeAWS struct {
 }
 
 type fakeAWSIAMPolicy struct {
-	policies       []iamtypes.Policy
-	policyDetails  map[string]iamtypes.Policy
-	policyVersions map[string]iamtypes.PolicyVersion
+	policies            []iamtypes.Policy
+	policyDetails       map[string]iamtypes.Policy
+	policyErrors        map[string]error
+	policyVersions      map[string]iamtypes.PolicyVersion
+	policyVersionErrors map[string]error
 }
 
 type fakeAWSIAMDocuments struct {
@@ -6840,6 +6872,11 @@ func (f fakeIAM) ListPolicies(_ context.Context, input *iam.ListPoliciesInput, _
 }
 
 func (f fakeAWS) GetPolicy(_ context.Context, input *iam.GetPolicyInput, _ ...func(*iam.Options)) (*iam.GetPolicyOutput, error) {
+	if f.policyErrors != nil {
+		if err, ok := f.policyErrors[awssdk.ToString(input.PolicyArn)]; ok {
+			return nil, err
+		}
+	}
 	if f.policyDetails != nil {
 		if policy, ok := f.policyDetails[awssdk.ToString(input.PolicyArn)]; ok {
 			return &iam.GetPolicyOutput{Policy: &policy}, nil
@@ -6849,8 +6886,14 @@ func (f fakeAWS) GetPolicy(_ context.Context, input *iam.GetPolicyInput, _ ...fu
 }
 
 func (f fakeAWS) GetPolicyVersion(_ context.Context, input *iam.GetPolicyVersionInput, _ ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error) {
+	key := awssdk.ToString(input.PolicyArn) + "@" + awssdk.ToString(input.VersionId)
+	if f.policyVersionErrors != nil {
+		if err, ok := f.policyVersionErrors[key]; ok {
+			return nil, err
+		}
+	}
 	if f.policyVersions != nil {
-		if version, ok := f.policyVersions[awssdk.ToString(input.PolicyArn)+"@"+awssdk.ToString(input.VersionId)]; ok {
+		if version, ok := f.policyVersions[key]; ok {
 			return &iam.GetPolicyVersionOutput{PolicyVersion: &version}, nil
 		}
 	}
