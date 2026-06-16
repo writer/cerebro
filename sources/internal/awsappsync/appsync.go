@@ -3,6 +3,7 @@ package awsappsync
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,10 +17,20 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 )
 
-type GraphQLAPI = appsynctypes.GraphqlApi
+type GraphQLAPI struct {
+	appsynctypes.GraphqlApi `json:"api"`
+	DataSources             []appsynctypes.DataSource `json:"data_sources,omitempty"`
+	Types                   []appsynctypes.Type       `json:"types,omitempty"`
+	Resolvers               []appsynctypes.Resolver   `json:"resolvers,omitempty"`
+	Tags                    map[string]string         `json:"tags,omitempty"`
+}
 
 type Client interface {
 	ListGraphqlApis(context.Context, *appsync.ListGraphqlApisInput, ...func(*appsync.Options)) (*appsync.ListGraphqlApisOutput, error)
+	ListDataSources(context.Context, *appsync.ListDataSourcesInput, ...func(*appsync.Options)) (*appsync.ListDataSourcesOutput, error)
+	ListResolvers(context.Context, *appsync.ListResolversInput, ...func(*appsync.Options)) (*appsync.ListResolversOutput, error)
+	ListTagsForResource(context.Context, *appsync.ListTagsForResourceInput, ...func(*appsync.Options)) (*appsync.ListTagsForResourceOutput, error)
+	ListTypes(context.Context, *appsync.ListTypesInput, ...func(*appsync.Options)) (*appsync.ListTypesOutput, error)
 }
 
 type Settings struct {
@@ -34,7 +45,111 @@ func List(ctx context.Context, client Client, cursor string, pageSize int32) ([]
 	if err != nil {
 		return nil, "", err
 	}
-	return out.GraphqlApis, awssdk.ToString(out.NextToken), nil
+	records := make([]GraphQLAPI, 0, len(out.GraphqlApis))
+	for _, api := range out.GraphqlApis {
+		record := GraphQLAPI{GraphqlApi: api}
+		apiID := awssdk.ToString(api.ApiId)
+		arn := awssdk.ToString(api.Arn)
+		if arn != "" {
+			tags, err := client.ListTagsForResource(ctx, &appsync.ListTagsForResourceInput{ResourceArn: awssdk.String(arn)})
+			if err != nil {
+				return nil, "", err
+			}
+			record.Tags = tags.Tags
+		}
+		if apiID != "" {
+			dataSources, err := listDataSources(ctx, client, apiID, pageSize)
+			if err != nil {
+				return nil, "", err
+			}
+			record.DataSources = dataSources
+			types, err := listTypes(ctx, client, apiID, pageSize)
+			if err != nil {
+				return nil, "", err
+			}
+			record.Types = types
+			resolvers, err := listResolvers(ctx, client, apiID, types, pageSize)
+			if err != nil {
+				return nil, "", err
+			}
+			record.Resolvers = resolvers
+		}
+		records = append(records, record)
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func listDataSources(ctx context.Context, client Client, apiID string, pageSize int32) ([]appsynctypes.DataSource, error) {
+	var records []appsynctypes.DataSource
+	var nextToken *string
+	seen := map[string]bool{}
+	for {
+		out, err := client.ListDataSources(ctx, &appsync.ListDataSourcesInput{ApiId: awssdk.String(apiID), MaxResults: pageSize, NextToken: nextToken})
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, out.DataSources...)
+		token := awssdk.ToString(out.NextToken)
+		if token == "" {
+			return records, nil
+		}
+		if seen[token] {
+			return nil, fmt.Errorf("appsync data source pagination repeated token for api %q", apiID)
+		}
+		seen[token] = true
+		nextToken = out.NextToken
+	}
+}
+
+func listTypes(ctx context.Context, client Client, apiID string, pageSize int32) ([]appsynctypes.Type, error) {
+	var records []appsynctypes.Type
+	var nextToken *string
+	seen := map[string]bool{}
+	for {
+		out, err := client.ListTypes(ctx, &appsync.ListTypesInput{ApiId: awssdk.String(apiID), Format: appsynctypes.TypeDefinitionFormatJson, MaxResults: pageSize, NextToken: nextToken})
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, out.Types...)
+		token := awssdk.ToString(out.NextToken)
+		if token == "" {
+			return records, nil
+		}
+		if seen[token] {
+			return nil, fmt.Errorf("appsync type pagination repeated token for api %q", apiID)
+		}
+		seen[token] = true
+		nextToken = out.NextToken
+	}
+}
+
+func listResolvers(ctx context.Context, client Client, apiID string, types []appsynctypes.Type, pageSize int32) ([]appsynctypes.Resolver, error) {
+	var records []appsynctypes.Resolver
+	for _, graphType := range types {
+		typeName := awssdk.ToString(graphType.Name)
+		if typeName == "" {
+			continue
+		}
+		var nextToken *string
+		seen := map[string]bool{}
+		for {
+			out, err := client.ListResolvers(ctx, &appsync.ListResolversInput{ApiId: awssdk.String(apiID), TypeName: awssdk.String(typeName), MaxResults: pageSize, NextToken: nextToken})
+			if err != nil {
+				return nil, err
+			}
+			records = append(records, out.Resolvers...)
+			token := awssdk.ToString(out.NextToken)
+			if token == "" {
+				break
+			}
+			if seen[token] {
+				return nil, fmt.Errorf("appsync resolver pagination repeated token for api %q type %q", apiID, typeName)
+			}
+			seen[token] = true
+			nextToken = out.NextToken
+		}
+	}
+	return records, nil
 }
 
 func Event(settings Settings, api GraphQLAPI, occurredAt time.Time) (*primitives.Event, error) {
@@ -46,11 +161,13 @@ func Event(settings Settings, api GraphQLAPI, occurredAt time.Time) (*primitives
 	return &primitives.Event{Id: sanitizeEventID(id), TenantId: settings.AccountID, SourceId: "aws", Kind: "aws.appsync_graphql_api", OccurredAt: timestamppb.New(occurredAt.UTC()), SchemaRef: "aws/appsync_graphql_api/v1", Payload: payload, Attributes: attributes}, nil
 }
 
-func EventData(settings Settings, api appsynctypes.GraphqlApi) ([]byte, map[string]string, string, error) {
+func EventData(settings Settings, record GraphQLAPI) ([]byte, map[string]string, string, error) {
+	api := record.GraphqlApi
 	arn := awssdk.ToString(api.Arn)
 	apiID := awssdk.ToString(api.ApiId)
 	name := firstNonEmpty(awssdk.ToString(api.Name), resourceName(arn), apiID)
-	attributes := commonCloudAssetAttributes(settings, firstNonEmpty(arn, apiID, name), name, api.Tags)
+	tags := firstTags(record.Tags, api.Tags)
+	attributes := commonCloudAssetAttributes(settings, firstNonEmpty(arn, apiID, name), name, tags)
 	putAttributes(attributes, map[string]string{
 		"arn":                             arn,
 		"api_arn":                         arn,
@@ -69,6 +186,16 @@ func EventData(settings Settings, api appsynctypes.GraphqlApi) ([]byte, map[stri
 		"realtime_url":                    endpoint(api, "REALTIME"),
 		"api_owner":                       awssdk.ToString(api.Owner),
 		"api_owner_contact":               awssdk.ToString(api.OwnerContact),
+		"data_source_count":               strconv.Itoa(len(record.DataSources)),
+		"data_source_names":               strings.Join(dataSourceNames(record.DataSources), ","),
+		"data_source_role_arns":           strings.Join(dataSourceRoleARNs(record.DataSources), ","),
+		"data_source_types":               strings.Join(dataSourceTypes(record.DataSources), ","),
+		"resolver_count":                  strconv.Itoa(len(record.Resolvers)),
+		"resolver_data_source_names":      strings.Join(resolverDataSourceNames(record.Resolvers), ","),
+		"resolver_fields":                 strings.Join(resolverFields(record.Resolvers), ","),
+		"resolver_kinds":                  strings.Join(resolverKinds(record.Resolvers), ","),
+		"type_count":                      strconv.Itoa(len(record.Types)),
+		"type_names":                      strings.Join(typeNames(record.Types), ","),
 	})
 	if api.LogConfig != nil {
 		attributes["field_log_level"] = string(api.LogConfig.FieldLogLevel)
@@ -101,8 +228,54 @@ func EventData(settings Settings, api appsynctypes.GraphqlApi) ([]byte, map[stri
 	if api.ResolverCountLimit != 0 {
 		attributes["resolver_count_limit"] = strconv.FormatInt(int64(api.ResolverCountLimit), 10)
 	}
-	payload, err := json.Marshal(map[string]any{"account_id": settings.AccountID, "region": settings.Region, "api": api})
+	payload, err := json.Marshal(appSyncPayload(settings, record))
 	return payload, attributes, "aws-appsync-graphql-api-" + firstNonEmpty(arn, apiID, name), err
+}
+
+func appSyncPayload(settings Settings, record GraphQLAPI) map[string]any {
+	return map[string]any{
+		"account_id":   settings.AccountID,
+		"region":       settings.Region,
+		"api":          record.GraphqlApi,
+		"data_sources": record.DataSources,
+		"types":        record.Types,
+		"resolvers":    sanitizedResolvers(record.Resolvers),
+		"tags":         firstTags(record.Tags, record.GraphqlApi.Tags),
+	}
+}
+
+type sanitizedResolver struct {
+	CachingConfig  *appsynctypes.CachingConfig             `json:"caching_config,omitempty"`
+	DataSourceName *string                                 `json:"data_source_name,omitempty"`
+	FieldName      *string                                 `json:"field_name,omitempty"`
+	Kind           appsynctypes.ResolverKind               `json:"kind,omitempty"`
+	MaxBatchSize   int32                                   `json:"max_batch_size,omitempty"`
+	MetricsConfig  appsynctypes.ResolverLevelMetricsConfig `json:"metrics_config,omitempty"`
+	PipelineConfig *appsynctypes.PipelineConfig            `json:"pipeline_config,omitempty"`
+	ResolverArn    *string                                 `json:"resolver_arn,omitempty"`
+	Runtime        *appsynctypes.AppSyncRuntime            `json:"runtime,omitempty"`
+	SyncConfig     *appsynctypes.SyncConfig                `json:"sync_config,omitempty"`
+	TypeName       *string                                 `json:"type_name,omitempty"`
+}
+
+func sanitizedResolvers(resolvers []appsynctypes.Resolver) []sanitizedResolver {
+	result := make([]sanitizedResolver, 0, len(resolvers))
+	for _, resolver := range resolvers {
+		result = append(result, sanitizedResolver{
+			CachingConfig:  resolver.CachingConfig,
+			DataSourceName: resolver.DataSourceName,
+			FieldName:      resolver.FieldName,
+			Kind:           resolver.Kind,
+			MaxBatchSize:   resolver.MaxBatchSize,
+			MetricsConfig:  resolver.MetricsConfig,
+			PipelineConfig: resolver.PipelineConfig,
+			ResolverArn:    resolver.ResolverArn,
+			Runtime:        resolver.Runtime,
+			SyncConfig:     resolver.SyncConfig,
+			TypeName:       resolver.TypeName,
+		})
+	}
+	return result
 }
 
 func additionalAuthTypes(api appsynctypes.GraphqlApi) []string {
@@ -117,6 +290,68 @@ func authorizationModes(api appsynctypes.GraphqlApi) []string {
 	values := []string{string(api.AuthenticationType)}
 	for _, provider := range api.AdditionalAuthenticationProviders {
 		values = append(values, string(provider.AuthenticationType))
+	}
+	return sortedUniqueStrings(values)
+}
+
+func dataSourceNames(dataSources []appsynctypes.DataSource) []string {
+	values := make([]string, 0, len(dataSources))
+	for _, dataSource := range dataSources {
+		values = append(values, awssdk.ToString(dataSource.Name))
+	}
+	return sortedUniqueStrings(values)
+}
+
+func dataSourceTypes(dataSources []appsynctypes.DataSource) []string {
+	values := make([]string, 0, len(dataSources))
+	for _, dataSource := range dataSources {
+		values = append(values, string(dataSource.Type))
+	}
+	return sortedUniqueStrings(values)
+}
+
+func dataSourceRoleARNs(dataSources []appsynctypes.DataSource) []string {
+	values := make([]string, 0, len(dataSources))
+	for _, dataSource := range dataSources {
+		values = append(values, awssdk.ToString(dataSource.ServiceRoleArn))
+	}
+	return sortedUniqueStrings(values)
+}
+
+func typeNames(types []appsynctypes.Type) []string {
+	values := make([]string, 0, len(types))
+	for _, graphType := range types {
+		values = append(values, awssdk.ToString(graphType.Name))
+	}
+	return sortedUniqueStrings(values)
+}
+
+func resolverKinds(resolvers []appsynctypes.Resolver) []string {
+	values := make([]string, 0, len(resolvers))
+	for _, resolver := range resolvers {
+		values = append(values, string(resolver.Kind))
+	}
+	return sortedUniqueStrings(values)
+}
+
+func resolverDataSourceNames(resolvers []appsynctypes.Resolver) []string {
+	values := make([]string, 0, len(resolvers))
+	for _, resolver := range resolvers {
+		values = append(values, awssdk.ToString(resolver.DataSourceName))
+	}
+	return sortedUniqueStrings(values)
+}
+
+func resolverFields(resolvers []appsynctypes.Resolver) []string {
+	values := make([]string, 0, len(resolvers))
+	for _, resolver := range resolvers {
+		typeName := awssdk.ToString(resolver.TypeName)
+		fieldName := awssdk.ToString(resolver.FieldName)
+		if typeName != "" && fieldName != "" {
+			values = append(values, typeName+"."+fieldName)
+			continue
+		}
+		values = append(values, fieldName)
 	}
 	return sortedUniqueStrings(values)
 }
@@ -209,6 +444,15 @@ func tagLookup(tags map[string]string, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func firstTags(values ...map[string]string) map[string]string {
+	for _, tags := range values {
+		if len(tags) > 0 {
+			return tags
+		}
+	}
+	return nil
 }
 
 func encodeTags(tags map[string]string) string {
