@@ -260,11 +260,11 @@ func TestProjectPanopticonCaseBuildsLinkedGraphAndEvidencePointers(t *testing.T)
 	}
 }
 
-func TestProjectPanopticonAlertAndIOCLinkToCasesAssetsAndEvidence(t *testing.T) {
+func TestProjectPanopticonRawAlertDoesNotProjectDurableGraphContext(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
 
-	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "panopticon-alert-event-1",
 		TenantId: "writer",
 		SourceId: "panopticon",
@@ -297,7 +297,19 @@ func TestProjectPanopticonAlertAndIOCLinkToCasesAssetsAndEvidence(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Project(alert) error = %v", err)
 	}
-	_, err = service.Project(context.Background(), &cerebrov1.EventEnvelope{
+	if result.EntitiesProjected != 0 || result.LinksProjected != 0 {
+		t.Fatalf("raw Panopticon alert projected durable context: entities=%d links=%d", result.EntitiesProjected, result.LinksProjected)
+	}
+	if len(state.entities) != 0 || len(state.links) != 0 {
+		t.Fatalf("raw Panopticon alert mutated graph state: entities=%d links=%d", len(state.entities), len(state.links))
+	}
+}
+
+func TestProjectPanopticonIOCLinksToCaseAndAlertEvidence(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "panopticon-ioc-event-1",
 		TenantId: "writer",
 		SourceId: "panopticon",
@@ -324,20 +336,16 @@ func TestProjectPanopticonAlertAndIOCLinkToCasesAssetsAndEvidence(t *testing.T) 
 	alertURN := "urn:cerebro:writer:panopticon_alert:alert-1"
 	caseURN := "urn:cerebro:writer:panopticon_case:case-1"
 	iocURN := "urn:cerebro:writer:panopticon_ioc:ioc-1"
-	assetURN := "urn:cerebro:writer:panopticon_asset:asset-1"
 
-	assertProjectedLink(t, state, alertURN, relationBelongsTo, caseURN)
-	assertProjectedLink(t, state, alertURN, relationHasEvidence, iocURN)
-	assertProjectedLink(t, state, alertURN, relationObservedOn, assetURN)
 	assertProjectedLink(t, state, iocURN, relationBelongsTo, caseURN)
 	assertProjectedLink(t, state, alertURN, relationHasEvidence, iocURN)
 }
 
-func TestProjectPanopticonAlertEnrichesSSHBruteForceAnchors(t *testing.T) {
+func TestProjectPanopticonRawAlertDoesNotEnrichSSHBruteForceAnchors(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
 
-	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "panopticon-alert-event-ssh",
 		TenantId: "writer",
 		SourceId: "panopticon",
@@ -356,15 +364,12 @@ func TestProjectPanopticonAlertEnrichesSSHBruteForceAnchors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project(alert) error = %v", err)
 	}
-
-	alertURN := "urn:cerebro:writer:panopticon_alert:alert-ssh"
-	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.20"
-	instanceURN := "urn:cerebro:writer:aws_ec2_instance:i-0123456789abcdef0"
-
-	assertProjectedEntityType(t, state, ipURN, "internet.ip")
-	assertProjectedEntityType(t, state, instanceURN, "aws.ec2.instance")
-	assertProjectedLink(t, state, alertURN, relationAssociatedWith, ipURN)
-	assertProjectedLink(t, state, alertURN, relationAssociatedWith, instanceURN)
+	if result.EntitiesProjected != 0 || result.LinksProjected != 0 {
+		t.Fatalf("raw Panopticon alert projected SSH anchors: entities=%d links=%d", result.EntitiesProjected, result.LinksProjected)
+	}
+	if len(state.entities) != 0 || len(state.links) != 0 {
+		t.Fatalf("raw Panopticon alert mutated graph state: entities=%d links=%d", len(state.entities), len(state.links))
+	}
 }
 
 func TestProjectPanopticonCaseEnrichesGitHubGCPAndIdentityAnchors(t *testing.T) {
