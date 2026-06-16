@@ -86,6 +86,31 @@ func TestHandleAgentPlatformGraphReasonRejectsTenantOverride(t *testing.T) {
 	}
 }
 
+func TestHandleAgentPlatformGraphReasonMissingTenantWithoutAuthIsBadRequest(t *testing.T) {
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{
+		GraphStore:    &stubGraphStore{},
+		GraphAgentLLM: graphagent.NewStubLLMClient(),
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(
+		server.URL+"/api/v1/agent-platform/graph/reason",
+		"application/json",
+		strings.NewReader(`{"question":"hello"}`),
+	)
+	if err != nil {
+		t.Fatalf("POST graph reason error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
 func TestHandleAgentPlatformGraphReasonRequiresLLM(t *testing.T) {
 	app := New(graphReasoningAuthConfig(), Dependencies{GraphStore: &stubGraphStore{}}, nil)
 	server := httptest.NewServer(app.Handler())

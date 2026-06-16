@@ -74,7 +74,9 @@ domain package.
 The agent platform graph preflight contract lives in `internal/agentplatform`.
 The bootstrap budget includes the HTTP and MCP request/response mapping needed
 to force authenticated tenant context, expose preflight to agents, and attach
-that preflight envelope to graph reasoning responses.
+that preflight envelope to graph reasoning responses. Bootstrap also maps
+preflight tenant-required blockers into the graph reasoning boundary's
+invalid-request error shape.
 
 ## Postgres migrations
 
