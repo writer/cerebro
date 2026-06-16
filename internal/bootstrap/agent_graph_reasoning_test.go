@@ -1,0 +1,83 @@
+package bootstrap
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphagent"
+	"github.com/writer/cerebro/internal/ports"
+)
+
+func TestHandleAgentPlatformGraphReason(t *testing.T) {
+	graphStore := &stubGraphStore{
+		cypherRows: [][]ports.CypherRow{{
+			{Values: map[string]any{
+				"entity_urn":  "urn:cerebro:writer:asset:alpha",
+				"entity_type": "asset",
+				"label":       "alpha",
+			}},
+		}},
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:asset:alpha", EntityType: "asset", Label: "alpha"},
+		},
+	}
+	llm := &graphagent.StubLLMClient{
+		DraftResponse: &graphagent.DraftResponse{
+			Rationale: "Reasoning over scoped graph rows.",
+			Cypher: `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS entity_urn, e.entity_type AS entity_type, e.label AS label
+LIMIT 25`,
+		},
+		Summary: "Review `urn:cerebro:writer:asset:alpha` first.",
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphAgentLLM: llm}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"tenant_id":"writer","question":"Which scoped asset should I review?","scope_urn":"urn:cerebro:writer:asset:alpha"}`)
+	resp, err := server.Client().Post(server.URL+"/api/v1/agent-platform/graph/reason", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST graph reason error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.Contains(got, "application/json") {
+		t.Fatalf("content-type = %q, want application/json", got)
+	}
+	var response graphagent.ReasonResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		t.Fatalf("decode graph reason response: %v", err)
+	}
+	if response.TraceID == "" || response.QueryPlan == nil || response.Cypher == nil {
+		t.Fatalf("response missing trace/query/cypher: %#v", response)
+	}
+	if len(response.Rows) != 1 || response.Rows[0]["entity_urn"] != "urn:cerebro:writer:asset:alpha" {
+		t.Fatalf("rows = %#v", response.Rows)
+	}
+	if response.Provenance.Surface != "graph-reasoning" || response.Provenance.CitationStatus != "valid" {
+		t.Fatalf("provenance = %#v, want valid graph reasoning provenance", response.Provenance)
+	}
+}
+
+func TestHandleAgentPlatformGraphReasonRequiresLLM(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: &stubGraphStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/api/v1/agent-platform/graph/reason", "application/json", strings.NewReader(`{"tenant_id":"writer","question":"hello"}`))
+	if err != nil {
+		t.Fatalf("POST graph reason error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	}
+}

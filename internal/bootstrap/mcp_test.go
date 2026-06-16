@@ -13,6 +13,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -141,6 +142,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.neighborhood",
 		"cerebro.graph.impact",
 		"cerebro.graph.paths",
+		"cerebro.graph.reason",
 		"cerebro.investigation.context",
 		"cerebro.findings.action.propose",
 		"cerebro.source_runtimes.refresh.propose",
@@ -1754,6 +1756,64 @@ func TestMCPGraphNeighborhood(t *testing.T) {
 	}
 }
 
+func TestMCPGraphReason(t *testing.T) {
+	graph := &stubGraphStore{
+		cypherRows: [][]ports.CypherRow{{
+			{Values: map[string]any{
+				"entity_urn":  "urn:cerebro:writer:asset:prod-db",
+				"entity_type": "asset",
+				"label":       "prod-db",
+			}},
+		}},
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:asset:prod-db", EntityType: "asset", Label: "prod-db"},
+		},
+	}
+	llm := &graphagent.StubLLMClient{
+		DraftResponse: &graphagent.DraftResponse{
+			Rationale: "Answering with scoped graph evidence.",
+			Cypher: `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS entity_urn, e.entity_type AS entity_type, e.label AS label
+LIMIT 25`,
+		},
+		Summary: "Review `urn:cerebro:writer:asset:prod-db` first.",
+	}
+	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, graph, llm)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.reason",
+			"arguments": map[string]any{
+				"question":  "Which asset should I review first?",
+				"scope_urn": "urn:cerebro:writer:asset:prod-db",
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("graph.reason error = %#v", response["error"])
+	}
+	content := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if content["trace_id"] == "" || content["query_plan"] == nil || content["cypher"] == nil {
+		t.Fatalf("graph.reason missing trace/query/cypher: %#v", content)
+	}
+	rows := content["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["entity_urn"] != "urn:cerebro:writer:asset:prod-db" {
+		t.Fatalf("graph.reason rows = %#v", rows)
+	}
+	provenance := content["provenance"].(map[string]any)
+	if provenance["surface"] != "graph-reasoning" || provenance["citation_status"] != "valid" {
+		t.Fatalf("graph.reason provenance = %#v", provenance)
+	}
+	metadata := content["metadata"].(map[string]any)
+	if metadata["returned"] != float64(1) || metadata["stateless"] != true {
+		t.Fatalf("graph.reason metadata = %#v", metadata)
+	}
+}
+
 func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 	graph := &stubGraphStore{
 		neighborhood: &ports.EntityNeighborhood{
@@ -1996,6 +2056,11 @@ func newMCPTestServer(t *testing.T, store *stubRuntimeStore) *httptest.Server {
 
 func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore) *httptest.Server {
 	t.Helper()
+	return newMCPTestServerWithGraphReasoning(t, store, graph, nil)
+}
+
+func newMCPTestServerWithGraphReasoning(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore, llm graphagent.LLMClient) *httptest.Server {
+	t.Helper()
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
@@ -2007,7 +2072,7 @@ func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stu
 				TenantID:  "writer",
 			}},
 		},
-	}, Dependencies{StateStore: store, GraphStore: graph}, nil)
+	}, Dependencies{StateStore: store, GraphStore: graph, GraphAgentLLM: llm}, nil)
 	return httptest.NewServer(app.Handler())
 }
 
