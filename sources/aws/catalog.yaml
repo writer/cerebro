@@ -42,6 +42,7 @@ emitted_kinds:
   - aws.nat_gateway
   - aws.vpc_flow_log
   - aws.vpc_endpoint
+  - aws.ecr_public_repository
   - aws.ecr_repository
   - aws.ecs_service
   - aws.ecs_task
@@ -188,6 +189,7 @@ runtime_families:
   - nat_gateway
   - vpc_flow_log
   - vpc_endpoint
+  - ecr_public_repository
   - ecr_repository
   - ecs_service
   - ecs_task
@@ -575,10 +577,9 @@ coverage_contract:
     - id: ecr_public_repository
       type: entity_family
       title: AWS ECR public repositories
-      families: [asset_metadata]
-      support: partial
+      families: [ecr_public_repository]
+      support: supported
       high_value: true
-      known_unsupported_fields: [public repository mutability and image scan detail]
     - id: ecr_repository
       type: entity_family
       title: AWS ECR repositories

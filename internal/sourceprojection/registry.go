@@ -99,6 +99,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.nat_gateway":                               awsNATGatewayProjections,
 	"aws.vpc_flow_log":                              awsVPCFlowLogProjections,
 	"aws.vpc_endpoint":                              awsVPCEndpointProjections,
+	"aws.ecr_public_repository":                     awsCloudResourceProjections,
 	"aws.ecr_repository":                            awsCloudResourceProjections,
 	"aws.ecs_service":                               awsECSServiceProjections,
 	"aws.ecs_task":                                  awsECSTaskProjections,
