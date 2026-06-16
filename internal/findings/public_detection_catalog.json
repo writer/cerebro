@@ -2857,6 +2857,55 @@
       ]
     },
     {
+      "id": "security-reviewer-reported-finding",
+      "pack_id": "security_reviewer",
+      "pack_name": "Security Reviewer",
+      "name": "Security Reviewer Reported Finding",
+      "description": "Represent validated security-reviewer output as deterministic finding records for candidate review and promotion.",
+      "source_id": "security_reviewer",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "droid.review_finding",
+        "security_reviewer.finding",
+        "security_reviewer.review_finding"
+      ],
+      "output_kind": "finding.security_reviewer_reported",
+      "severity": "dynamic",
+      "status": "open",
+      "maturity": "candidate",
+      "tags": [
+        "code-review",
+        "finding-candidate",
+        "security-reviewer",
+        "software-supply-chain"
+      ],
+      "references": [
+        "https://owasp.org/www-project-code-review-guide/"
+      ],
+      "false_positives": [
+        "Reviewer output that is advisory-only, already mitigated by changed code, or not exploitable after manual validation."
+      ],
+      "runbook": "Validate the reviewer evidence against the changed code, confirm exploitability and remediation owner, then promote or reject the candidate finding.",
+      "fingerprint_fields": [
+        "tenant_id",
+        "review_subject",
+        "reviewer_rule",
+        "file",
+        "line",
+        "message"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
+        }
+      ]
+    },
+    {
       "id": "sentinelone-agent-detect-only-mode",
       "pack_id": "sentinelone",
       "pack_name": "SentinelOne",

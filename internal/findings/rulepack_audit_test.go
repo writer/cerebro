@@ -920,7 +920,7 @@ func assertRulepackGraphEvidence(t *testing.T, store *stubFindingStore, findingI
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 39; got != want {
+	if got, want := len(keepRules), 40; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1135,6 +1135,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "graph-orphan-nonfinding-node", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "graph-resource-multiple-open-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "runtime-active-threat-evidence", Classification: "TTL_EVIDENCE_ONLY", BulkCloseoutThreshold: ">24h", Source: "runtime"},
+		{RuleID: "security-reviewer-reported-finding", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "security_reviewer"},
 		{RuleID: "sentinelone-agent-detect-only-mode", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-agent-not-up-to-date", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-agent-stale", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
