@@ -22,6 +22,7 @@ const (
 	findingEntityType     = "finding"
 	annotationEntityType  = "annotation"
 	ticketEntityType      = "ticket"
+	externalRefEntityType = "external_ref"
 	relationTargets       = "targets"
 	relationBasedOn       = "based_on"
 	relationExecutedBy    = "executed_by"
@@ -316,6 +317,61 @@ func (s *Service) projectFindingTicket(ctx context.Context, event *cerebrov1.Eve
 	return result, nil
 }
 
+func (s *Service) projectFindingExternalRef(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
+	payload, err := workflowevents.DecodeFindingExternalRefLinked(event)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	result := ports.ProjectionResult{}
+	targetURNs, err := s.ensureFindingForWorkflow(ctx, payload.Finding, &result)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	refURN := findingExternalRefURN(payload.Finding.TenantID, payload.System, payload.Kind, payload.ExternalID)
+	if err := s.upsertEntity(ctx, &ports.ProjectedEntity{
+		URN:        refURN,
+		TenantID:   payload.Finding.TenantID,
+		SourceID:   payload.Finding.SourceSystem,
+		EntityType: externalRefEntityType,
+		Label:      findingExternalRefLabel(payload.System, payload.Kind, payload.ExternalID),
+		Attributes: map[string]string{
+			"finding_id":             strings.TrimSpace(payload.Finding.FindingID),
+			"system":                 strings.TrimSpace(payload.System),
+			"kind":                   strings.TrimSpace(payload.Kind),
+			"external_id":            strings.TrimSpace(payload.ExternalID),
+			"url":                    strings.TrimSpace(payload.URL),
+			"external_status":        strings.TrimSpace(payload.ExternalStatus),
+			"external_status_reason": strings.TrimSpace(payload.ExternalStatusReason),
+			"lifecycle_owner":        strings.TrimSpace(payload.LifecycleOwner),
+			"linked_at":              strings.TrimSpace(payload.LinkedAt),
+			"workflow":               "finding_external_ref",
+			"runtime_id":             strings.TrimSpace(payload.Finding.RuntimeID),
+			"primary_resource_urn":   strings.TrimSpace(payload.Finding.PrimaryResourceURN),
+		},
+	}, &result); err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	for _, targetURN := range targetURNs {
+		if err := s.upsertLink(ctx, &ports.ProjectedLink{
+			TenantID: payload.Finding.TenantID,
+			SourceID: payload.Finding.SourceSystem,
+			FromURN:  targetURN,
+			ToURN:    refURN,
+			Relation: relationTrackedBy,
+			Attributes: map[string]string{
+				"finding_id":      strings.TrimSpace(payload.Finding.FindingID),
+				"external_system": strings.TrimSpace(payload.System),
+				"external_kind":   strings.TrimSpace(payload.Kind),
+				"external_id":     strings.TrimSpace(payload.ExternalID),
+				"lifecycle_owner": strings.TrimSpace(payload.LifecycleOwner),
+			},
+		}, &result); err != nil {
+			return ports.ProjectionResult{}, err
+		}
+	}
+	return result, nil
+}
+
 func (s *Service) projectFindingStatus(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
 	payload, err := workflowevents.DecodeFindingStatusChanged(event)
 	if err != nil {
@@ -357,7 +413,7 @@ func (s *Service) deleteFindingAnchor(ctx context.Context, finding workflowevent
 			TenantID:     strings.TrimSpace(finding.TenantID),
 			SourceID:     strings.TrimSpace(finding.SourceSystem),
 			FindingID:    strings.TrimSpace(finding.FindingID),
-			EntityTypes:  []string{annotationEntityType, ticketEntityType, evidenceEntityType, decisionEntityType, actionEntityType, outcomeEntityType},
+			EntityTypes:  []string{annotationEntityType, ticketEntityType, externalRefEntityType, evidenceEntityType, decisionEntityType, actionEntityType, outcomeEntityType},
 			OnlyIsolated: true,
 			Limit:        1000,
 		})
@@ -891,6 +947,10 @@ func findingTicketURN(tenantID string, ticketURL string) string {
 	return fmt.Sprintf("urn:cerebro:%s:ticket:linked:%s", strings.TrimSpace(tenantID), graphHash(strings.TrimSpace(ticketURL)))
 }
 
+func findingExternalRefURN(tenantID string, system string, kind string, externalID string) string {
+	return fmt.Sprintf("urn:cerebro:%s:external_ref:%s", strings.TrimSpace(tenantID), graphHash(strings.TrimSpace(system), strings.TrimSpace(kind), strings.TrimSpace(externalID)))
+}
+
 func findingTicketLabel(name string, externalID string, url string) string {
 	if label := graphEntityLabel(strings.TrimSpace(name)); label != "" {
 		return label
@@ -899,6 +959,10 @@ func findingTicketLabel(name string, externalID string, url string) string {
 		return label
 	}
 	return graphEntityLabel(strings.TrimSpace(url))
+}
+
+func findingExternalRefLabel(system string, kind string, externalID string) string {
+	return graphEntityLabel(strings.Join([]string{strings.TrimSpace(system), strings.TrimSpace(kind), strings.TrimSpace(externalID)}, " "))
 }
 
 func graphHash(values ...string) string {

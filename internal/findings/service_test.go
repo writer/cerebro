@@ -5125,18 +5125,24 @@ func TestLinkFindingExternalRefRefreshesLifecycleReference(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
-				ID:       "finding-1",
-				TenantID: "writer",
-				Status:   "open",
+				ID:           "finding-1",
+				TenantID:     "writer",
+				RuntimeID:    "writer-panopticon-case",
+				RuleID:       "panopticon-curated-case",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:panopticon_case:case-123"},
+				Attributes:   map[string]string{"primary_resource_urn": "urn:cerebro:writer:panopticon_case:case-123"},
 			},
 		},
 	}
-	service := New(nil, nil, store, store, store, store)
+	graphStore := &stubGraphStore{}
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(appendLog)
 	first, err := service.LinkFindingExternalRef(context.Background(), "finding-1", ports.FindingExternalRef{
 		System:         "panopticon",
-		Kind:           "alert",
-		ExternalID:     "alert-123",
-		URL:            "https://panopticon.example/alerts/123",
+		Kind:           "case",
+		ExternalID:     "case-123",
+		URL:            "https://panopticon.example/cases/123",
 		ExternalStatus: "open",
 		LifecycleOwner: "external_owned",
 		ObservedAt:     observedAt,
@@ -5147,11 +5153,24 @@ func TestLinkFindingExternalRefRefreshesLifecycleReference(t *testing.T) {
 	if got := len(first.ExternalRefs); got != 1 {
 		t.Fatalf("external refs after first link = %d, want 1", got)
 	}
+	externalRefURN := ""
+	for urn, entity := range graphStore.entities {
+		if entity != nil && entity.EntityType == "external_ref" && entity.Attributes["external_id"] == "case-123" {
+			externalRefURN = urn
+			break
+		}
+	}
+	if externalRefURN == "" {
+		t.Fatalf("external ref graph entity missing: %#v", graphStore.entities)
+	}
+	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+externalRefURN]; !ok {
+		t.Fatal("finding external ref link missing")
+	}
 	second, err := service.LinkFindingExternalRef(context.Background(), "finding-1", ports.FindingExternalRef{
 		System:               "panopticon",
-		Kind:                 "alert",
-		ExternalID:           "alert-123",
-		URL:                  "https://panopticon.example/alerts/123",
+		Kind:                 "case",
+		ExternalID:           "case-123",
+		URL:                  "https://panopticon.example/cases/123",
 		ExternalStatus:       "closed",
 		ExternalStatusReason: "triaged false positive",
 		LifecycleOwner:       "external_owned",
@@ -5169,6 +5188,15 @@ func TestLinkFindingExternalRefRefreshesLifecycleReference(t *testing.T) {
 	}
 	if got := ref.ExternalStatusReason; got != "triaged false positive" {
 		t.Fatalf("ExternalStatusReason = %q, want triaged false positive", got)
+	}
+	if got := graphStore.entities[externalRefURN].Attributes["external_status"]; got != "closed" {
+		t.Fatalf("projected external_status = %q, want closed", got)
+	}
+	if len(appendLog.events) != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
+	}
+	if got := appendLog.events[0].GetKind(); got != securityevents.FindingExternalRefLinked {
+		t.Fatalf("canonical append event kind = %q, want %q", got, securityevents.FindingExternalRefLinked)
 	}
 }
 

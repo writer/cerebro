@@ -7,6 +7,7 @@ const (
 	WorkflowV1FindingRecorded           = "workflow.v1.finding.recorded"
 	WorkflowV1FindingNoteAdded          = "workflow.v1.finding.note_added"
 	WorkflowV1FindingTicketLinked       = "workflow.v1.finding.ticket_linked"
+	WorkflowV1FindingExternalRefLinked  = "workflow.v1.finding.external_ref_linked"
 	WorkflowV1FindingStatusChanged      = "workflow.v1.finding.status_changed"
 	WorkflowV1FindingTombstoned         = "workflow.v1.finding.tombstoned"
 )
@@ -18,6 +19,7 @@ const (
 	workflowV1FindingRecordedFP      = "3dbf30c6af81b0c0"
 	workflowV1FindingNoteAddedFP     = "cfb67fac77b66669"
 	workflowV1FindingTicketLinkedFP  = "aba532fc1a85e76a"
+	workflowV1FindingExternalRefFP   = "27b8e9fa76d210c4"
 	workflowV1FindingStatusChangedFP = "8af95aec880d1c3a"
 	workflowV1FindingTombstonedFP    = "bc92d8a4e5c7d5c3"
 )
@@ -280,6 +282,42 @@ func (e FindingTicketLinkedV1) EncodeAvro() ([]byte, error) {
 	w.string(e.URL)
 	w.nullableString(e.Name)
 	w.nullableString(e.ExternalID)
+	w.string(e.LinkedAt)
+	return w.bytes()
+}
+
+type FindingExternalRefLinkedV1 struct {
+	Finding              FindingSnapshot `json:"finding"`
+	System               string          `json:"system"`
+	Kind                 string          `json:"kind"`
+	ExternalID           string          `json:"external_id"`
+	URL                  *string         `json:"url,omitempty"`
+	ExternalStatus       *string         `json:"external_status,omitempty"`
+	ExternalStatusReason *string         `json:"external_status_reason,omitempty"`
+	LifecycleOwner       *string         `json:"lifecycle_owner,omitempty"`
+	LinkedAt             string          `json:"linked_at"`
+}
+
+func (FindingExternalRefLinkedV1) Subject() string {
+	return WorkflowV1FindingExternalRefLinked
+}
+
+func (FindingExternalRefLinkedV1) Version() int { return 1 }
+
+func (FindingExternalRefLinkedV1) SchemaFingerprint() string {
+	return workflowV1FindingExternalRefFP
+}
+
+func (e FindingExternalRefLinkedV1) EncodeAvro() ([]byte, error) {
+	w := newAvroWriter()
+	e.Finding.encodeAvro(w)
+	w.string(e.System)
+	w.string(e.Kind)
+	w.string(e.ExternalID)
+	w.nullableString(e.URL)
+	w.nullableString(e.ExternalStatus)
+	w.nullableString(e.ExternalStatusReason)
+	w.nullableString(e.LifecycleOwner)
 	w.string(e.LinkedAt)
 	return w.bytes()
 }

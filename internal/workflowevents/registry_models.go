@@ -91,6 +91,20 @@ func registryFindingTicketLinked(payload FindingTicketLinked) eventregistry.Find
 	}
 }
 
+func registryFindingExternalRefLinked(payload FindingExternalRefLinked) eventregistry.FindingExternalRefLinkedV1 {
+	return eventregistry.FindingExternalRefLinkedV1{
+		Finding:              registryFindingSnapshot(payload.Finding),
+		System:               payload.System,
+		Kind:                 payload.Kind,
+		ExternalID:           payload.ExternalID,
+		URL:                  optionalString(payload.URL),
+		ExternalStatus:       optionalString(payload.ExternalStatus),
+		ExternalStatusReason: optionalString(payload.ExternalStatusReason),
+		LifecycleOwner:       optionalString(payload.LifecycleOwner),
+		LinkedAt:             payload.LinkedAt,
+	}
+}
+
 func registryFindingStatusChanged(payload FindingStatusChanged) eventregistry.FindingStatusChangedV1 {
 	return eventregistry.FindingStatusChangedV1{
 		Finding:     registryFindingSnapshot(payload.Finding),

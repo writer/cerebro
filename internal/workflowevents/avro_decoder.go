@@ -98,6 +98,8 @@ func decodeAvroPayload(kind string, data []byte, payload any) error {
 		err = decodeFindingNoteAdded(reader, target)
 	case *FindingTicketLinked:
 		err = decodeFindingTicketLinked(reader, target)
+	case *FindingExternalRefLinked:
+		err = decodeFindingExternalRefLinked(reader, target)
 	case *FindingStatusChanged:
 		err = decodeFindingStatusChanged(reader, target)
 	case *FindingTombstoned:
@@ -303,6 +305,36 @@ func decodeFindingTicketLinked(reader *avroReader, payload *FindingTicketLinked)
 		return err
 	}
 	if payload.ExternalID, err = reader.nullableString(); err != nil {
+		return err
+	}
+	payload.LinkedAt, err = reader.string()
+	return err
+}
+
+func decodeFindingExternalRefLinked(reader *avroReader, payload *FindingExternalRefLinked) error {
+	var err error
+	if payload.Finding, err = reader.findingSnapshot(); err != nil {
+		return err
+	}
+	if payload.System, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.Kind, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.ExternalID, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.URL, err = reader.nullableString(); err != nil {
+		return err
+	}
+	if payload.ExternalStatus, err = reader.nullableString(); err != nil {
+		return err
+	}
+	if payload.ExternalStatusReason, err = reader.nullableString(); err != nil {
+		return err
+	}
+	if payload.LifecycleOwner, err = reader.nullableString(); err != nil {
 		return err
 	}
 	payload.LinkedAt, err = reader.string()
@@ -789,6 +821,8 @@ func schemaForKind(kind string) string {
 		return SchemaFindingNoteAdded
 	case EventKindFindingTicketLinked:
 		return SchemaFindingTicketLinked
+	case EventKindFindingExternalRefLinked:
+		return SchemaFindingExternalRefLinked
 	case EventKindFindingStatusChanged:
 		return SchemaFindingStatusChanged
 	case EventKindFindingTombstoned:

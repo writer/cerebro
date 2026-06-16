@@ -93,6 +93,19 @@ func TestPanopticonCuratedCaseFindingRule(t *testing.T) {
 			t.Fatalf("GraphEvidenceRows[0].Attributes[%q] = %q, want %q", key, got, want)
 		}
 	}
+	if got := len(finding.GraphEvidenceRows[0].GetPaths()); got != 1 {
+		t.Fatalf("GraphEvidenceRows[0].Paths = %d, want 1 upstream alert path", got)
+	}
+	path := finding.GraphEvidenceRows[0].GetPaths()[0]
+	if got := path.GetRelation(); got != "contains" {
+		t.Fatalf("upstream alert path relation = %q, want contains", got)
+	}
+	if got := path.GetToUrn(); got != "urn:cerebro:writer:panopticon_alert:alert-case-123" {
+		t.Fatalf("upstream alert path ToUrn = %q, want panopticon alert URN", got)
+	}
+	if got := path.GetAttributes()["preprocessing_decision"]; got != "escalated" {
+		t.Fatalf("upstream alert path preprocessing_decision = %q, want escalated", got)
+	}
 	if !containsTrimmed(finding.ResourceURNs, "urn:cerebro:writer:panopticon_case:case-123") {
 		t.Fatalf("ResourceURNs = %#v, want Panopticon case URN", finding.ResourceURNs)
 	}
@@ -114,6 +127,24 @@ func TestPanopticonCuratedCaseFindingRule(t *testing.T) {
 		t.Fatalf("CloseOnEvent(closed) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
 	}
 	assertIdentityRuleRemediationTrajectory(t, rule, open, closed, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestPanopticonCaseStatusMap(t *testing.T) {
+	closedStatuses := []string{"closed", "Resolved", "false positive", "risk-accepted", "duplicate", "cancelled", "ignored"}
+	for _, status := range closedStatuses {
+		if panopticonCaseSourceOpen(status) {
+			t.Fatalf("panopticonCaseSourceOpen(%q) = true, want false", status)
+		}
+	}
+	openStatuses := []string{"new", "open", "triage", "investigating", "containment", "waiting_on_owner"}
+	for _, status := range openStatuses {
+		if !panopticonCaseSourceOpen(status) {
+			t.Fatalf("panopticonCaseSourceOpen(%q) = false, want true", status)
+		}
+	}
+	if panopticonCaseSourceOpen("") {
+		t.Fatal("empty status should not open a Panopticon case finding")
+	}
 }
 
 func TestPanopticonCuratedCaseRuleIgnoresAlerts(t *testing.T) {
