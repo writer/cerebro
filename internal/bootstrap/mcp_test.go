@@ -118,6 +118,8 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.health",
 		"cerebro.version",
 		"cerebro.source_runtimes.list",
+		"cerebro.connector_definitions.list",
+		"cerebro.connector_definitions.validate",
 		"cerebro.findings.list",
 		"cerebro.findings.get",
 		"cerebro.findings.search",

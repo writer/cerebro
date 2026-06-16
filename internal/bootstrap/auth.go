@@ -1408,6 +1408,14 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/connectors"
 	case path == "/connectors/credential-key":
 		return prefix + "/connectors/credential-key"
+	case path == "/connector-definitions":
+		return prefix + "/connector-definitions"
+	case path == "/connector-definitions/validate":
+		return prefix + "/connector-definitions/validate"
+	case strings.HasPrefix(path, "/connector-definitions/") && strings.HasSuffix(path, "/promote"):
+		return prefix + "/connector-definitions/{definitionID}/promote"
+	case strings.HasPrefix(path, "/connector-definitions/"):
+		return prefix + "/connector-definitions/{definitionID}"
 	case strings.HasPrefix(path, "/connectors/") && strings.HasSuffix(path, "/activity"):
 		return prefix + "/connectors/{sourceID}/activity"
 	case strings.HasPrefix(path, "/connectors/") && strings.HasSuffix(path, "/preflight"):

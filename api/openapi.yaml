@@ -199,6 +199,122 @@ paths:
       responses:
         '200':
           description: Public RSA-OAEP key metadata used to encrypt connector credentials before submission.
+  /connector-definitions:
+    get:
+      summary: List dynamic connector definitions
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: stage
+          in: query
+          schema:
+            type: string
+            enum: [draft, sandbox, pilot, approved, certified]
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Tenant-local dynamic connector definitions stored as versioned declarative manifests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionListResponse'
+    post:
+      summary: Create or update a dynamic connector definition
+      tags:
+        - Connectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinition'
+      responses:
+        '200':
+          description: Stored connector definition with validation and promotion gates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionResponse'
+  /connector-definitions/validate:
+    post:
+      summary: Validate a dynamic connector definition without persisting it
+      tags:
+        - Connectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinition'
+      responses:
+        '200':
+          description: Definition readiness checks and next promotion gates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionValidationResponse'
+  /connector-definitions/{definitionID}:
+    get:
+      summary: Get a dynamic connector definition
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      responses:
+        '200':
+          description: Stored connector definition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionResponse'
+        '404':
+          description: Connector definition was not found.
+    put:
+      summary: Replace a dynamic connector definition
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinition'
+      responses:
+        '200':
+          description: Updated connector definition current version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionResponse'
+  /connector-definitions/{definitionID}/promote:
+    post:
+      summary: Promote a dynamic connector definition lifecycle stage
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_stage:
+                  type: string
+                  enum: [sandbox, pilot, approved, certified]
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Promotion result with the updated definition when gates pass.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionPromotionResponse'
   /connectors/{sourceID}/preflight:
     post:
       summary: Preflight a connector runtime without persisting it
@@ -2455,6 +2571,12 @@ components:
       required: true
       schema:
         type: string
+    definitionID:
+      name: definitionID
+      in: path
+      required: true
+      schema:
+        type: string
     runtimeID:
       name: runtimeID
       in: path
@@ -2525,6 +2647,251 @@ components:
         type: integer
         minimum: 1
   schemas:
+    ConnectorDefinitionListResponse:
+      type: object
+      required:
+        - definitions
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        tenant_id:
+          type: string
+        runtime_store:
+          type: string
+        definitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDefinition'
+    ConnectorDefinitionResponse:
+      type: object
+      required:
+        - definition
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+    ConnectorDefinitionValidationResponse:
+      type: object
+      required:
+        - definition
+        - validation
+        - promotion
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+        validation:
+          $ref: '#/components/schemas/ConnectorDefinitionValidation'
+        promotion:
+          $ref: '#/components/schemas/ConnectorDefinitionPromotion'
+    ConnectorDefinitionPromotionResponse:
+      type: object
+      required:
+        - result
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        result:
+          type: object
+          required:
+            - definition
+            - promoted
+            - target_stage
+          properties:
+            definition:
+              $ref: '#/components/schemas/ConnectorDefinition'
+            promoted:
+              type: boolean
+            target_stage:
+              type: string
+            next_action:
+              type: string
+    ConnectorDefinition:
+      type: object
+      required:
+        - tenant_id
+        - source_id
+        - display_name
+        - runtime
+        - stage
+        - auth
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        runtime:
+          type: string
+          enum: [json_api]
+        stage:
+          type: string
+          enum: [draft, sandbox, pilot, approved, certified]
+        current_version:
+          type: integer
+          minimum: 0
+        config_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDefinitionField'
+        auth:
+          type: object
+          properties:
+            model:
+              type: string
+              enum: [none, api_key, bearer_token, basic, oauth_client_credentials]
+            credential_fields:
+              type: array
+              items:
+                $ref: '#/components/schemas/ConnectorDefinitionField'
+            supported_store_ids:
+              type: array
+              items:
+                type: string
+            requires_references:
+              type: boolean
+        resource_families:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDefinitionResourceFamily'
+        scope_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDefinitionScopeOption'
+        validation:
+          $ref: '#/components/schemas/ConnectorDefinitionValidation'
+        promotion:
+          $ref: '#/components/schemas/ConnectorDefinitionPromotion'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ConnectorDefinitionField:
+      type: object
+      required:
+        - key
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        required:
+          type: boolean
+        secret:
+          type: boolean
+        reference_only:
+          type: boolean
+        help:
+          type: string
+        placeholder:
+          type: string
+    ConnectorDefinitionResourceFamily:
+      type: object
+      required:
+        - id
+        - path
+        - id_field
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        path:
+          type: string
+        method:
+          type: string
+          enum: [GET]
+        list_key:
+          type: string
+        id_field:
+          type: string
+        name_field:
+          type: string
+        updated_at_field:
+          type: string
+        event_kind:
+          type: string
+        default_enabled:
+          type: boolean
+    ConnectorDefinitionScopeOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        families:
+          type: array
+          items:
+            type: string
+        default_enabled:
+          type: boolean
+        permission_note:
+          type: string
+        needs_user_review:
+          type: boolean
+        unsupported_notes:
+          type: array
+          items:
+            type: string
+    ConnectorDefinitionValidation:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ready, warning, blocked]
+        summary:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              status:
+                type: string
+              severity:
+                type: string
+              detail:
+                type: string
+              next_action:
+                type: string
+              blocking:
+                type: boolean
+    ConnectorDefinitionPromotion:
+      type: object
+      properties:
+        eligible_stages:
+          type: array
+          items:
+            type: string
+        required_gates:
+          type: array
+          items:
+            type: string
+        last_target:
+          type: string
+        next_action:
+          type: string
     CreatePlatformJobRequest:
       type: object
       required:

@@ -3133,6 +3133,7 @@ func readConnectorJSON(r *http.Request, value any) error {
 func writeConnectorError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ports.ErrConnectorCredentialNotFound),
+		errors.Is(err, ports.ErrConnectorDefinitionNotFound),
 		errors.Is(err, ports.ErrSourceRuntimeNotFound),
 		errors.Is(err, sourceops.ErrSourceNotFound):
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
