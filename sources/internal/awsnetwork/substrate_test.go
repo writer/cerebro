@@ -6,6 +6,7 @@ import (
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 )
 
 func TestCleanStringsTrimsAndDeduplicates(t *testing.T) {
@@ -13,6 +14,20 @@ func TestCleanStringsTrimsAndDeduplicates(t *testing.T) {
 	want := []string{"subnet-1", "subnet-2"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("cleanStrings() = %#v, want %#v", got, want)
+	}
+}
+
+func TestELBV2ActionTargetGroupARNsDeduplicates(t *testing.T) {
+	got := ELBV2ActionTargetGroupARNs([]elbv2types.Action{{
+		TargetGroupArn: awssdk.String("arn:target/orders"),
+		ForwardConfig: &elbv2types.ForwardActionConfig{TargetGroups: []elbv2types.TargetGroupTuple{
+			{TargetGroupArn: awssdk.String("arn:target/orders")},
+			{TargetGroupArn: awssdk.String(" arn:target/payments ")},
+		}},
+	}})
+	want := []string{"arn:target/orders", "arn:target/payments"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ELBV2ActionTargetGroupARNs() = %#v, want %#v", got, want)
 	}
 }
 

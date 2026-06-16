@@ -100,8 +100,14 @@ func VPCLatticeHostedZoneID(entry *vpclatticetypes.DnsEntry) string {
 }
 
 func appendClean(values []string, value string) []string {
-	if trimmed := strings.TrimSpace(value); trimmed != "" {
-		return append(values, trimmed)
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return values
 	}
-	return values
+	for _, existing := range values {
+		if existing == trimmed {
+			return values
+		}
+	}
+	return append(values, trimmed)
 }
