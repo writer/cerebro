@@ -212,6 +212,9 @@ jobs:
     timeout-minutes: 20
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.aws_sec_dev_deploy == 'true'
+    concurrency:
+      group: infra-stack-sec-dev
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
@@ -271,6 +274,9 @@ jobs:
     timeout-minutes: 20
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.aws_go_prod_deploy == 'true'
+    concurrency:
+      group: infra-stack-go-prod
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
@@ -330,8 +336,8 @@ jobs:
     needs: [changes, static-validation]
     if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_sec_dev == 'true' }}"
     concurrency:
-      group: infra-${{ needs.changes.outputs.aws_sec_dev_deploy == 'true' && 'deploy' || 'verify' }}-sec-dev
-      cancel-in-progress: true
+      group: infra-stack-sec-dev
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
@@ -524,8 +530,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_go_prod == 'true'
     environment: production
     concurrency:
-      group: infra-${{ needs.changes.outputs.aws_go_prod_deploy == 'true' && 'deploy' || 'verify' }}-go-prod
-      cancel-in-progress: ${{ needs.changes.outputs.aws_go_prod_deploy != 'true' }}
+      group: infra-stack-go-prod
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
@@ -727,6 +733,9 @@ jobs:
     timeout-minutes: 20
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
+    concurrency:
+      group: infra-stack-gcp-dev
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
@@ -779,6 +788,9 @@ jobs:
     timeout-minutes: 20
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
+    concurrency:
+      group: infra-stack-gcp-prod
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
@@ -832,7 +844,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.gcp == 'true'
     environment: production
     concurrency:
-      group: infra-deploy-gcp-prod
+      group: infra-stack-gcp-prod
       cancel-in-progress: false
     permissions:
       id-token: write
@@ -888,7 +900,7 @@ jobs:
     needs: static-validation
     environment: production
     concurrency:
-      group: infra-deploy-${{ github.event.inputs.environment }}
+      group: infra-stack-${{ github.event.inputs.environment }}
       cancel-in-progress: false
     permissions:
       id-token: write
