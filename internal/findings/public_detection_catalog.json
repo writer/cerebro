@@ -565,7 +565,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub App Integration Installed",
-      "description": "Detect new GitHub App integration installations.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -574,14 +574,16 @@
       "output_kind": "finding.github_app_integration_installed",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1072",
         "attack.t1098",
+        "cleanup",
         "execution",
         "github",
         "github-app",
-        "persistence"
+        "persistence",
+        "retired"
       ],
       "references": [
         "https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party",
@@ -714,7 +716,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Organization Authentication Control Modified",
-      "description": "Detect GitHub organization authentication control changes including SAML, 2FA, and OAuth app restrictions.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -723,15 +725,17 @@
       "output_kind": "finding.github_org_auth_control_modified",
       "severity": "CRITICAL",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1098",
         "authentication",
+        "cleanup",
         "defense-evasion",
         "github",
         "organization",
         "persistence",
-        "privilege-escalation"
+        "privilege-escalation",
+        "retired"
       ],
       "references": [
         "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github",
@@ -763,7 +767,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Organization IP Allow List Modified",
-      "description": "Detect GitHub organization IP allow list changes.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -772,13 +776,15 @@
       "output_kind": "finding.github_org_ip_allow_list_modified",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "account-manipulation",
         "attack.t1098",
+        "cleanup",
         "github",
         "ip-allow-list",
-        "persistence"
+        "persistence",
+        "retired"
       ],
       "references": [
         "https://docs.github.com/en/organizations/keeping-your-organization-secure/managing-allowed-ip-addresses-for-your-organization",
@@ -854,7 +860,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Organization Owner Added",
-      "description": "Detect new GitHub organization members added with owner/admin privileges.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -863,13 +869,15 @@
       "output_kind": "finding.github_organization_owner_added",
       "severity": "HIGH",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1098.003",
+        "cleanup",
         "github",
         "organization-owner",
         "persistence",
-        "privilege-escalation"
+        "privilege-escalation",
+        "retired"
       ],
       "references": [
         "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/persistence_github_org_owner_added.toml"
@@ -904,7 +912,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Personal Access Token Created",
-      "description": "Detect creation or authorization of GitHub personal access tokens.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -913,14 +921,16 @@
       "output_kind": "finding.github_personal_access_token_created",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1098.001",
         "attack.t1528",
+        "cleanup",
         "credential-access",
         "github",
         "persistence",
-        "personal-access-token"
+        "personal-access-token",
+        "retired"
       ],
       "references": [
         "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens",
@@ -956,7 +966,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Private Repository Forking Enabled",
-      "description": "Detect GitHub private repository forking being enabled or reset.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -965,12 +975,14 @@
       "output_kind": "finding.github_private_repository_forking_enabled",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1020",
+        "cleanup",
         "exfiltration",
         "github",
-        "private-forking"
+        "private-forking",
+        "retired"
       ],
       "references": [
         "https://docs.github.com/en/organizations/managing-organization-settings/managing-the-forking-policy-for-your-organization",
@@ -1047,7 +1059,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Repository Collaborator Added",
-      "description": "Detect users added as collaborators to GitHub repositories.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1056,12 +1068,14 @@
       "output_kind": "finding.github_repository_collaborator_added",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1195",
+        "cleanup",
         "collaborator",
         "github",
         "initial-access",
+        "retired",
         "supply-chain"
       ],
       "references": [
@@ -1097,7 +1111,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Repository Ruleset Modified",
-      "description": "Detect destructive or weakening changes to GitHub repository rulesets.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1106,12 +1120,14 @@
       "output_kind": "finding.github_repository_ruleset_modified",
       "severity": "HIGH",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1562",
         "branch-protection",
+        "cleanup",
         "defense-evasion",
         "github",
+        "retired",
         "ruleset"
       ],
       "references": [
@@ -1243,7 +1259,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Webhook Modified",
-      "description": "Detect GitHub webhook creation, deletion, or configuration changes.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1252,11 +1268,13 @@
       "output_kind": "finding.github_webhook_modified",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1020",
+        "cleanup",
         "exfiltration",
         "github",
+        "retired",
         "webhook"
       ],
       "references": [

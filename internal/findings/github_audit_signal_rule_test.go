@@ -12,120 +12,59 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestGitHubAnchorRequiredFields(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
-	auditCases := []struct {
-		name     string
-		rule     Rule
-		config   githubAuditSignalConfig
-		attrs    map[string]string
-		required []string
-		missing  []string
-	}{
-		{
-			name:   "organization owner",
-			rule:   newGitHubOrganizationOwnerAddedRule(),
-			config: githubOrganizationOwnerAddedConfig,
-			attrs: map[string]string{
-				"action":     "org.add_member",
-				"org":        "writer",
-				"permission": "admin",
-				"user":       "new-owner",
-			},
-			required: []string{"org"},
-			missing:  []string{"org"},
-		},
-		{
-			name:   "repository ruleset",
-			rule:   newGitHubRepositoryRulesetModifiedRule(),
-			config: githubRepositoryRulesetModifiedConfig,
-			attrs: map[string]string{
-				"action":                        "repository_ruleset.update",
-				"repo":                          "writer/cerebro",
-				"required_status_check_removed": "true",
-				"ruleset_id":                    "42",
-			},
-			required: []string{"ruleset_id"},
-			missing:  []string{"ruleset_id"},
-		},
-		{
-			name:   "webhook",
-			rule:   newGitHubWebhookModifiedRule(),
-			config: githubWebhookModifiedConfig,
-			attrs: map[string]string{
-				"action":  "hook.create",
-				"hook_id": "99",
-				"repo":    "writer/cerebro",
-			},
-			required: []string{"hook_id"},
-			missing:  []string{"hook_id"},
-		},
-		{
-			name:   "app integration",
-			rule:   newGitHubAppIntegrationInstalledRule(),
-			config: githubAppIntegrationInstalledConfig,
-			attrs: map[string]string{
-				"action":        "integration_installation.create",
-				"github_app_id": "123456",
-				"name":          "ci-deployer",
-				"org":           "writer",
-			},
-			required: []string{"github_app_id"},
-			missing:  []string{"github_app_id"},
-		},
-		{
-			name:   "personal access token",
-			rule:   newGitHubPersonalAccessTokenCreatedRule(),
-			config: githubPersonalAccessTokenCreatedConfig,
-			attrs: map[string]string{
-				"action":         "personal_access_token.access_granted",
-				"operation_type": "create",
-				"token_id":       "555",
-				"user":           "octocat",
-				"user_id":        "12345",
-			},
-			required: []string{"user_id", "token_id"},
-			missing:  []string{"user_id", "token_id"},
-		},
+func isRetiredGitHubAuditRule(rule Rule) bool {
+	metadataRule, ok := rule.(MetadataRule)
+	return ok && metadataRule.RuleMetadata().Lifecycle.Kind == LifecycleRetired
+}
+
+func assertGitHubAuditRuleRetired(t *testing.T, rule Rule) {
+	t.Helper()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
 	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleRetired {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleRetired)
+	}
+	if definition.Lifecycle.Anchor != AnchorNone {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorNone)
+	}
+	if definition.Maturity != RuleMaturityRetired {
+		t.Fatalf("Maturity = %q, want %q", definition.Maturity, RuleMaturityRetired)
+	}
+	retirementRule, ok := rule.(openFindingRetirementRule)
+	if !ok || !retirementRule.RetiresOpenFindings() {
+		t.Fatalf("RetiresOpenFindings(%q) = false, want true", rule.Spec().GetId())
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
+	event := githubAuditEvent("retired-"+rule.Spec().GetId(), map[string]string{"action": "retired.rule.fixture"})
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(%q) error = %v", rule.Spec().GetId(), err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(%q) returned %d findings, want none", rule.Spec().GetId(), len(records))
+	}
+}
 
-	for _, tc := range auditCases {
+func TestGitHubRetiredAuditChangeRules(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rule Rule
+	}{
+		{name: "repository collaborator", rule: newGitHubRepositoryCollaboratorAddedRule()},
+		{name: "organization owner", rule: newGitHubOrganizationOwnerAddedRule()},
+		{name: "org auth control", rule: newGitHubOrgAuthControlModifiedRule()},
+		{name: "org IP allow list", rule: newGitHubOrgIPAllowListModifiedRule()},
+		{name: "repository ruleset", rule: newGitHubRepositoryRulesetModifiedRule()},
+		{name: "webhook", rule: newGitHubWebhookModifiedRule()},
+		{name: "app integration", rule: newGitHubAppIntegrationInstalledRule()},
+		{name: "personal access token", rule: newGitHubPersonalAccessTokenCreatedRule()},
+		{name: "private repository forking", rule: newGitHubPrivateRepositoryForkingEnabledRule()},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			metadataRule, ok := tc.rule.(MetadataRule)
-			if !ok {
-				t.Fatal("rule does not expose RuleMetadata")
-			}
-			definition := metadataRule.RuleMetadata()
-			for _, field := range tc.required {
-				if !slices.Contains(definition.RequiredAttributes, field) {
-					t.Fatalf("RequiredAttributes = %v, want durable anchor field %q", definition.RequiredAttributes, field)
-				}
-			}
-
-			valid := githubAuditEvent("github-anchor-"+strings.ReplaceAll(tc.name, " ", "-"), cloneGitHubTestAttrs(tc.attrs))
-			records, err := tc.rule.Evaluate(context.Background(), runtime, valid)
-			if err != nil || len(records) != 1 {
-				t.Fatalf("Evaluate(valid anchor attrs) = (%v, %v), want one finding", records, err)
-			}
-			if fingerprint := githubAuditSignalFingerprint(valid, tc.config); fingerprint == nil || strings.TrimSpace(*fingerprint) == "" {
-				t.Fatalf("githubAuditSignalFingerprint(valid anchor attrs) = %v, want non-empty fingerprint", fingerprint)
-			}
-
-			for _, missing := range tc.missing {
-				attrs := cloneGitHubTestAttrs(tc.attrs)
-				removeGitHubAnchorTestAttr(attrs, missing)
-				event := githubAuditEvent("github-anchor-missing-"+strings.ReplaceAll(tc.name, " ", "-")+"-"+missing, attrs)
-				records, err := tc.rule.Evaluate(context.Background(), runtime, event)
-				if err != nil {
-					t.Fatalf("Evaluate(missing %s) error = %v", missing, err)
-				}
-				if len(records) != 0 {
-					t.Fatalf("Evaluate(missing %s) returned %d findings, want 0", missing, len(records))
-				}
-				if fingerprint := githubAuditSignalFingerprint(event, tc.config); fingerprint != nil {
-					t.Fatalf("githubAuditSignalFingerprint(missing %s) = %q, want nil", missing, *fingerprint)
-				}
-			}
+			assertGitHubAuditRuleRetired(t, tc.rule)
 		})
 	}
 
@@ -401,6 +340,10 @@ func TestGitHubSelfHostedRunnerChange(t *testing.T) {
 
 func TestGitHubOrgAuthControlModified(t *testing.T) {
 	rule := newGitHubOrgAuthControlModifiedRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -477,8 +420,9 @@ func TestGitHubOrgAuthControlModified(t *testing.T) {
 
 func TestGitHubOrgAuthControlModifiedTrajectory_Restore(t *testing.T) {
 	rule := newGitHubOrgAuthControlModifiedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-org-auth-control-modified does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	assertGitHubRuleTrajectory(t, rule, []Event{
 		newGitHubAuditSignalEvent("github-auth-trajectory-weakened", map[string]string{
@@ -502,8 +446,9 @@ func TestGitHubOrgAuthControlModifiedTrajectory_Restore(t *testing.T) {
 
 func TestGitHubOrgAuthControlModifiedTrajectory_PartialRestoreKeepsFindingOpen(t *testing.T) {
 	rule := newGitHubOrgAuthControlModifiedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-org-auth-control-modified does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	assertGitHubRuleTrajectory(t, rule, []Event{
 		newGitHubAuditSignalEvent("github-auth-partial-oauth-weakened", map[string]string{
@@ -532,6 +477,10 @@ func TestGitHubOrgAuthControlModifiedTrajectory_PartialRestoreKeepsFindingOpen(t
 
 func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 	rule := newGitHubRepositoryRulesetModifiedRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
 	event := githubAuditEvent("github-ruleset-active", map[string]string{
 		"action":      "repository_ruleset.update",
@@ -579,6 +528,10 @@ func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 
 func TestGitHubOrgIpAllowListModified(t *testing.T) {
 	rule := newGitHubOrgIPAllowListModifiedRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -654,8 +607,9 @@ func TestGitHubOrgIpAllowListModified(t *testing.T) {
 
 func TestGitHubOrgIpAllowListModifiedTrajectory_Restore(t *testing.T) {
 	rule := newGitHubOrgIPAllowListModifiedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-org-ip-allow-list-modified does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	assertGitHubRuleTrajectory(t, rule, []Event{
 		newGitHubAuditSignalEvent("github-ip-trajectory-disabled", map[string]string{
@@ -680,8 +634,9 @@ func TestGitHubOrgIpAllowListModifiedTrajectory_Restore(t *testing.T) {
 
 func TestGitHubOrgIpAllowListModifiedTrajectory_PartialRestoreKeepsFindingOpen(t *testing.T) {
 	rule := newGitHubOrgIPAllowListModifiedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-org-ip-allow-list-modified does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	assertGitHubRuleTrajectory(t, rule, []Event{
 		newGitHubAuditSignalEvent("github-ip-partial-disabled", map[string]string{
@@ -1087,6 +1042,10 @@ func TestGitHubCriticalResourceDeletedRetired(t *testing.T) {
 
 func TestGitHubRepositoryCollaboratorAdded(t *testing.T) {
 	rule := newGitHubRepositoryCollaboratorAddedRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -1154,8 +1113,9 @@ func TestGitHubRepositoryCollaboratorAdded(t *testing.T) {
 
 func TestGitHubRepositoryCollaboratorAddedTrajectory(t *testing.T) {
 	rule := newGitHubRepositoryCollaboratorAddedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-repository-collaborator-added does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	assertGitHubRuleTrajectory(t, rule, []Event{
 		newGitHubAuditSignalEvent("github-collab-trajectory-first", map[string]string{
@@ -1265,6 +1225,10 @@ func TestGitHubAuditLifecycle_CloseOnRemoveCounterEvent(t *testing.T) {
 
 func TestGitHubOrganizationOwnerAdded(t *testing.T) {
 	rule := newGitHubOrganizationOwnerAddedRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -1335,8 +1299,9 @@ func TestGitHubOrganizationOwnerAdded(t *testing.T) {
 
 func TestGitHubOrganizationOwnerAddedTrajectory(t *testing.T) {
 	rule := newGitHubOrganizationOwnerAddedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-organization-owner-added does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	t.Run("owner role demoted", func(t *testing.T) {
 		assertGitHubRuleTrajectory(t, rule, []Event{
@@ -1373,6 +1338,10 @@ func TestGitHubOrganizationOwnerAddedTrajectory(t *testing.T) {
 
 func TestGitHubRepositoryRulesetModified(t *testing.T) {
 	rule := newGitHubRepositoryRulesetModifiedRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -1444,8 +1413,9 @@ func TestGitHubRepositoryRulesetModified(t *testing.T) {
 
 func TestGitHubRepositoryRulesetModifiedTrajectory(t *testing.T) {
 	rule := newGitHubRepositoryRulesetModifiedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-repository-ruleset-modified does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	t.Run("restore enforcement", func(t *testing.T) {
 		assertGitHubRuleTrajectory(t, rule, []Event{
@@ -1483,6 +1453,10 @@ func TestGitHubRepositoryRulesetModifiedTrajectory(t *testing.T) {
 
 func TestGitHubWebhookModified(t *testing.T) {
 	rule := newGitHubWebhookModifiedRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -1550,8 +1524,9 @@ func TestGitHubWebhookModified(t *testing.T) {
 
 func TestGitHubWebhookModifiedTrajectory(t *testing.T) {
 	rule := newGitHubWebhookModifiedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-webhook-modified does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	t.Run("destroyed", func(t *testing.T) {
 		assertGitHubRuleTrajectory(t, rule, []Event{
@@ -1588,6 +1563,10 @@ func TestGitHubWebhookModifiedTrajectory(t *testing.T) {
 
 func TestGitHubAppIntegrationInstalled(t *testing.T) {
 	rule := newGitHubAppIntegrationInstalledRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -1660,8 +1639,9 @@ func TestGitHubAppIntegrationInstalled(t *testing.T) {
 
 func TestGitHubAppIntegrationInstalled_InstallUninstall(t *testing.T) {
 	rule := newGitHubAppIntegrationInstalledRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-app-integration-installed does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	for _, closeAction := range []string{"integration_installation.delete", "integration_installation.suspend", "integration_installation.destroy"} {
 		t.Run(closeAction, func(t *testing.T) {
@@ -1686,6 +1666,10 @@ func TestGitHubAppIntegrationInstalled_InstallUninstall(t *testing.T) {
 
 func TestGitHubAppIntegrationCloseAnchor_HandlesDestroy(t *testing.T) {
 	rule := newGitHubAppIntegrationInstalledRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	counterRule, ok := rule.(CounterEventRule)
 	if !ok {
 		t.Fatal("github-app-integration-installed does not implement CounterEventRule")
@@ -1720,6 +1704,10 @@ func TestGitHubAppIntegrationCloseAnchor_HandlesDestroy(t *testing.T) {
 
 func TestGitHubAppIntegrationInstalled_DistinctAppIdsByName(t *testing.T) {
 	rule := newGitHubAppIntegrationInstalledRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
 	first := githubAuditEvent("github-app-install-same-name-first", map[string]string{
 		"action":        "integration_installation.create",
@@ -1755,6 +1743,10 @@ func TestGitHubAppIntegrationInstalled_DistinctAppIdsByName(t *testing.T) {
 
 func TestGitHubPersonalAccessTokenCreated(t *testing.T) {
 	rule := newGitHubPersonalAccessTokenCreatedRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -1828,8 +1820,9 @@ func TestGitHubPersonalAccessTokenCreated(t *testing.T) {
 
 func TestGitHubPersonalAccessTokenCreatedTrajectory_CreateRevoke(t *testing.T) {
 	rule := newGitHubPersonalAccessTokenCreatedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-personal-access-token-created does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	assertGitHubRuleTrajectory(t, rule, []Event{
 		newGitHubAuditSignalEvent("github-pat-trajectory-create", map[string]string{
@@ -1854,8 +1847,9 @@ func TestGitHubPersonalAccessTokenCreatedTrajectory_CreateRevoke(t *testing.T) {
 
 func TestGitHubPersonalAccessTokenCreatedTrajectory_CreateExpired(t *testing.T) {
 	rule := newGitHubPersonalAccessTokenCreatedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-personal-access-token-created does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	assertGitHubRuleTrajectory(t, rule, []Event{
 		newGitHubAuditSignalEvent("github-pat-trajectory-create-before-expiry", map[string]string{
@@ -1881,8 +1875,9 @@ func TestGitHubPersonalAccessTokenCreatedTrajectory_CreateExpired(t *testing.T) 
 
 func TestGitHubPersonalAccessTokenCreatedTrajectory_NewestEventWins(t *testing.T) {
 	rule := newGitHubPersonalAccessTokenCreatedRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-personal-access-token-created does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	observedAt := time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)
 	openEvent := func(id string, at time.Time) Event {
@@ -2049,6 +2044,10 @@ func TestGitHubAuditMirrors_ReplayClosesAddedThenRemoved(t *testing.T) {
 
 func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
 	rule := newGitHubPrivateRepositoryForkingEnabledRule()
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
+	}
 	metadataRule, ok := rule.(MetadataRule)
 	if !ok {
 		t.Fatal("rule does not expose RuleMetadata")
@@ -2172,8 +2171,9 @@ func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
 
 func TestGitHubPrivateRepositoryForkingEnabledTrajectory_Disable(t *testing.T) {
 	rule := newGitHubPrivateRepositoryForkingEnabledRule()
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("github-private-repository-forking-enabled does not implement CounterEventRule")
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	t.Run("org scope", func(t *testing.T) {
 		assertGitHubRuleTrajectory(t, rule, []Event{
@@ -2254,16 +2254,6 @@ func cloneGitHubTestAttrs(attrs map[string]string) map[string]string {
 	return cloned
 }
 
-func removeGitHubAnchorTestAttr(attrs map[string]string, field string) {
-	delete(attrs, field)
-	if field != "scope" {
-		return
-	}
-	for _, key := range []string{"enterprise", "enterprise_id", "enterprise_slug", "org", "repo", "repository", "resource_id", "runner_scope"} {
-		delete(attrs, key)
-	}
-}
-
 func assertGitHubAuditMirrorReplayClosed(t *testing.T, rule Rule, events []Event) {
 	t.Helper()
 	if rule == nil {
@@ -2275,6 +2265,10 @@ func assertGitHubAuditMirrorReplayClosed(t *testing.T, rule Rule, events []Event
 	}
 	if len(events) == 0 {
 		t.Fatal("events are required")
+	}
+	if isRetiredGitHubAuditRule(rule) {
+		assertGitHubAuditRuleRetired(t, rule)
+		return
 	}
 	ruleID := strings.TrimSpace(spec.GetId())
 	runtimeID := githubTrajectoryRuntimeID(events)
