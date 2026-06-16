@@ -99,6 +99,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/sources/internal/awsaccount"
+	"github.com/writer/cerebro/sources/internal/awsappsync"
 	"github.com/writer/cerebro/sources/internal/awsnetwork"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
@@ -121,6 +122,7 @@ const (
 	familyAccessKey                          = "access_key"
 	familyACMCertificate                     = "acm_certificate"
 	familyAppRunnerService                   = "apprunner_service"
+	familyAppSyncGraphQLAPI                  = "appsync_graphql_api"
 	familyAssetMetadata                      = "asset_metadata"
 	familyAthenaDataCatalog                  = "athena_data_catalog"
 	familyAthenaWorkgroup                    = "athena_workgroup"
@@ -368,6 +370,7 @@ type awsRuntimeClients struct {
 	sqs            awsSQSAPI
 	sns            awsSNSAPI
 	appRunner      awsAppRunnerAPI
+	appSync        awsappsync.Client
 	stepFunctions  awsStepFunctionsAPI
 	eventBridge    awsEventBridgeAPI
 	pipes          awsPipesAPI
@@ -1678,6 +1681,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(service awsAppRunnerService) string { return firstNonEmpty(service.ARN, service.Name) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsappsync.GraphQLAPI]{Name: familyAppSyncGraphQLAPI, Label: "aws appsync graphql apis", List: func(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsappsync.GraphQLAPI, string, error) {
+			return awsappsync.List(ctx, clients.appSync, cursor, boundedAWSPageSizeInt32(limit, 1, 25))
+		}, Event: func(settings settings, api awsappsync.GraphQLAPI) (*primitives.Event, error) {
+			return awsappsync.Event(awsappsync.Settings{AccountID: settings.accountID, Region: settings.region}, api, time.Now().UTC())
+		}, URN: func(settings settings, api awsappsync.GraphQLAPI) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:aws_appsync_graphql_api:%s", settings.accountID, firstNonEmpty(awssdk.ToString(api.Arn), awssdk.ToString(api.ApiId))), nil
+		}, CursorFallback: func(api awsappsync.GraphQLAPI) string {
+			return firstNonEmpty(awssdk.ToString(api.Arn), awssdk.ToString(api.ApiId))
+		}}),
 		awsFamily(s.clients, awsFamilyOptions[awsStepFunctionStateMachine]{
 			Name:  familyStepFunctionStateMachine,
 			Label: "aws step functions state machines",
@@ -2598,6 +2610,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			sqs:            sqs.NewFromConfig(cfg),
 			sns:            sns.NewFromConfig(cfg),
 			appRunner:      apprunner.NewFromConfig(cfg),
+			appSync:        awsappsync.NewClient(cfg),
 			stepFunctions:  sfn.NewFromConfig(cfg),
 			eventBridge:    eventbridge.NewFromConfig(cfg),
 			pipes:          pipes.NewFromConfig(cfg),
@@ -2702,7 +2715,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayMethod, familyAPIGatewayRestAPI, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRPublicRepository, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMPolicy, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayMethod, familyAPIGatewayRestAPI, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAppSyncGraphQLAPI, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRPublicRepository, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMPolicy, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -4374,22 +4387,15 @@ func int32Ptr(value int) *int32 {
 	if value == 0 {
 		return nil
 	}
-	if value > math.MaxInt32 {
-		value = math.MaxInt32
-	}
-	if value < math.MinInt32 {
-		value = math.MinInt32
-	}
-	parsed := int32(value)
+	parsed := int32(min(max(value, math.MinInt32), math.MaxInt32)) //nolint:gosec // value is clamped to int32 bounds before conversion.
 	return &parsed
 }
 
 func stringPtr(value string) *string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return &trimmed
 	}
-	return &trimmed
+	return nil
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {
@@ -5114,15 +5120,12 @@ func isAdminPolicy(values ...string) bool {
 }
 
 func emailLike(value string) string {
-	trimmed := strings.TrimSpace(value)
-	return strings.ToLower(strings.TrimSpace(emailPattern.FindString(trimmed)))
+	return strings.ToLower(strings.TrimSpace(emailPattern.FindString(strings.TrimSpace(value))))
 }
 
 func boolString(value bool) string { return strconv.FormatBool(value) }
 
-func firstNonEmpty(values ...string) string {
-	return textutil.FirstNonEmpty(values...)
-}
+func firstNonEmpty(values ...string) string { return textutil.FirstNonEmpty(values...) }
 
 func containsAny(value string, needles ...string) bool {
 	for _, needle := range needles {
@@ -5144,8 +5147,5 @@ func trimEmptyAttributes(attributes map[string]string) {
 }
 
 func sanitizeEventID(value string) string {
-	value = strings.ReplaceAll(value, " ", "-")
-	value = strings.ReplaceAll(value, "/", "-")
-	value = strings.ReplaceAll(value, ":", "-")
-	return strings.Trim(value, "-")
+	return strings.Trim(strings.NewReplacer(" ", "-", "/", "-", ":", "-").Replace(value), "-")
 }

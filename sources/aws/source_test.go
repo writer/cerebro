@@ -19,6 +19,8 @@ import (
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/apprunner"
 	apprunnertypes "github.com/aws/aws-sdk-go-v2/service/apprunner/types"
+	"github.com/aws/aws-sdk-go-v2/service/appsync"
+	appsynctypes "github.com/aws/aws-sdk-go-v2/service/appsync/types"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	athenatypes "github.com/aws/aws-sdk-go-v2/service/athena/types"
 	"github.com/aws/aws-sdk-go-v2/service/backup"
@@ -476,6 +478,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAccessAnalyzer, kind: "aws.access_analyzer"},
+		{family: familyAppSyncGraphQLAPI, kind: "aws.appsync_graphql_api"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyConfigRecorder, kind: "aws.config_recorder"},
 		{family: familyACMCertificate, kind: "aws.acm_certificate"},
@@ -2731,6 +2734,102 @@ func TestReadAWSAssetMetadataPreview(t *testing.T) {
 	}
 }
 
+func TestReadAWSAppSyncGraphQLAPIInventoryEvent(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+			appSyncAPIs: []appsynctypes.GraphqlApi{{
+				AdditionalAuthenticationProviders: []appsynctypes.AdditionalAuthenticationProvider{
+					{
+						AuthenticationType: appsynctypes.AuthenticationTypeAwsIam,
+					},
+					{
+						AuthenticationType:     appsynctypes.AuthenticationTypeAwsLambda,
+						LambdaAuthorizerConfig: &appsynctypes.LambdaAuthorizerConfig{AuthorizerUri: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:appsync-authorizer"), AuthorizerResultTtlInSeconds: 300},
+					},
+				},
+				ApiId:               awssdk.String("api-123"),
+				ApiType:             appsynctypes.GraphQLApiTypeGraphql,
+				Arn:                 awssdk.String("arn:aws:appsync:us-east-1:123456789012:apis/api-123"),
+				AuthenticationType:  appsynctypes.AuthenticationTypeAmazonCognitoUserPools,
+				IntrospectionConfig: appsynctypes.GraphQLApiIntrospectionConfigDisabled,
+				LogConfig: &appsynctypes.LogConfig{
+					CloudWatchLogsRoleArn: awssdk.String("arn:aws:iam::123456789012:role/service-role/appsync-logs"),
+					FieldLogLevel:         appsynctypes.FieldLogLevelError,
+					ExcludeVerboseContent: true,
+				},
+				Name: awssdk.String("orders-api"),
+				OpenIDConnectConfig: &appsynctypes.OpenIDConnectConfig{
+					Issuer: awssdk.String("https://issuer.example.com"),
+				},
+				QueryDepthLimit:    8,
+				ResolverCountLimit: 20,
+				Tags: map[string]string{
+					"Owner": "platform@writer.com",
+					"Team":  "api",
+				},
+				Uris: map[string]string{
+					"GRAPHQL":  "https://api-123.appsync-api.us-east-1.amazonaws.com/graphql",
+					"REALTIME": "wss://api-123.appsync-realtime-api.us-east-1.amazonaws.com/graphql",
+				},
+				UserPoolConfig: &appsynctypes.UserPoolConfig{
+					AwsRegion:     awssdk.String("us-east-1"),
+					DefaultAction: appsynctypes.DefaultActionAllow,
+					UserPoolId:    awssdk.String("us-east-1_pool"),
+				},
+				Visibility:   appsynctypes.GraphQLApiVisibilityPrivate,
+				WafWebAclArn: awssdk.String("arn:aws:wafv2:us-east-1:123456789012:regional/webacl/api/abcd"),
+				XrayEnabled:  true,
+			}},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyAppSyncGraphQLAPI}), nil)
+	if err != nil {
+		t.Fatalf("Read(appsync_graphql_api) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "aws.appsync_graphql_api" {
+		t.Fatalf("kind = %q, want aws.appsync_graphql_api", event.Kind)
+	}
+	for key, want := range map[string]string{
+		"api_id":                          "api-123",
+		"api_name":                        "orders-api",
+		"api_type":                        "GRAPHQL",
+		"authentication_type":             "AMAZON_COGNITO_USER_POOLS",
+		"additional_authentication_types": "AWS_IAM,AWS_LAMBDA",
+		"authorization_modes":             "AMAZON_COGNITO_USER_POOLS,AWS_IAM,AWS_LAMBDA",
+		"cloudwatch_logs_role_arn":        "arn:aws:iam::123456789012:role/service-role/appsync-logs",
+		"exclude_verbose_content":         "true",
+		"field_log_level":                 "ERROR",
+		"graphql_url":                     "https://api-123.appsync-api.us-east-1.amazonaws.com/graphql",
+		"introspection_config":            "DISABLED",
+		"lambda_authorizer_ttl_seconds":   "300",
+		"lambda_authorizer_uri":           "arn:aws:lambda:us-east-1:123456789012:function:appsync-authorizer",
+		"logging_enabled":                 "true",
+		"openid_connect_issuer":           "https://issuer.example.com",
+		"owner":                           "platform@writer.com",
+		"query_depth_limit":               "8",
+		"realtime_url":                    "wss://api-123.appsync-realtime-api.us-east-1.amazonaws.com/graphql",
+		"resolver_count_limit":            "20",
+		"resource_id":                     "arn:aws:appsync:us-east-1:123456789012:apis/api-123",
+		"resource_name":                   "orders-api",
+		"resource_type":                   "appsync_graphql_api",
+		"team":                            "api",
+		"user_pool_default_action":        "ALLOW",
+		"user_pool_id":                    "us-east-1_pool",
+		"user_pool_region":                "us-east-1",
+		"visibility":                      "PRIVATE",
+		"waf_enabled":                     "true",
+		"xray_enabled":                    "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("attributes[%s] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 	topics := make([]snstypes.Topic, 0, 12)
 	attributes := make(map[string]map[string]string, 12)
@@ -3556,6 +3655,14 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.datasyncLocationS3 = map[string]*datasync.DescribeLocationS3Output{locationARN: {LocationArn: awssdk.String(locationARN), LocationUri: awssdk.String("s3://prod-data/export")}}
 		fake.datasyncTags = map[string][]datasynctypes.TagListEntry{taskARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}, locationARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}}
 	}
+	appSyncData := func(fake *recordingAWS) {
+		fake.appSyncAPIs = []appsynctypes.GraphqlApi{{
+			ApiId:              awssdk.String("api-123"),
+			Arn:                awssdk.String("arn:aws:appsync:us-east-1:123456789012:apis/api-123"),
+			AuthenticationType: appsynctypes.AuthenticationTypeAwsIam,
+			Name:               awssdk.String("orders-api"),
+		}}
+	}
 	backupData := func(fake *recordingAWS) {
 		vaultARN := "arn:aws:backup:us-east-1:123456789012:backup-vault:prod-vault"
 		planARN := "arn:aws:backup:us-east-1:123456789012:backup-plan:plan-123"
@@ -3647,6 +3754,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyCodeBuildSourceCredential,
 			seed:    cloudAssetData,
 			wantAPI: []string{"codebuild:ListSourceCredentials"},
+		},
+		{
+			family:  familyAppSyncGraphQLAPI,
+			seed:    appSyncData,
+			wantAPI: []string{"appsync:ListGraphqlApis"},
 		},
 		{
 			family:  familyBackupVault,
@@ -4504,6 +4616,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				sqs:            fake,
 				sns:            fakeSNS{fake: &fake},
 				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
+				appSync:        fakeAppSync{runtime: fake.fakeAWSRuntime},
 				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
 				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
 				pipes:          fakePipes{runtime: fake.fakeAWSRuntime},
@@ -4563,6 +4676,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				sqs:            fake,
 				sns:            recordingSNS{fake: fake},
 				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
+				appSync:        recordingAppSync{fake: fake},
 				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
 				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
 				pipes:          fakePipes{runtime: fake.fakeAWSRuntime},
@@ -4856,6 +4970,7 @@ type fakeAWSRuntimeApplication struct {
 	appRunnerSummaries         []apprunnertypes.ServiceSummary
 	appRunnerServices          map[string]apprunnertypes.Service
 	appRunnerTags              map[string][]apprunnertypes.Tag
+	appSyncAPIs                []appsynctypes.GraphqlApi
 	codeBuildProjects          []string
 	codeBuildProjectDetail     map[string]codebuildtypes.Project
 	codeBuildSourceCredentials []codebuildtypes.SourceCredentialsInfo
@@ -6061,6 +6176,23 @@ func (f fakeAppRunner) DescribeService(_ context.Context, input *apprunner.Descr
 
 func (f fakeAppRunner) ListTagsForResource(_ context.Context, input *apprunner.ListTagsForResourceInput, _ ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error) {
 	return &apprunner.ListTagsForResourceOutput{Tags: f.runtime.appRunnerTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeAppSync struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeAppSync) ListGraphqlApis(context.Context, *appsync.ListGraphqlApisInput, ...func(*appsync.Options)) (*appsync.ListGraphqlApisOutput, error) {
+	return &appsync.ListGraphqlApisOutput{GraphqlApis: f.runtime.appSyncAPIs}, nil
+}
+
+type recordingAppSync struct {
+	fake *recordingAWS
+}
+
+func (f recordingAppSync) ListGraphqlApis(ctx context.Context, input *appsync.ListGraphqlApisInput, options ...func(*appsync.Options)) (*appsync.ListGraphqlApisOutput, error) {
+	f.fake.record("appsync:ListGraphqlApis")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListGraphqlApis(ctx, input, options...)
 }
 
 type fakeStepFunctions struct {

@@ -6,6 +6,7 @@ emitted_kinds:
   - aws.access_analyzer
   - aws.acm_certificate
   - aws.apprunner_service
+  - aws.appsync_graphql_api
   - asset.data_sensitivity
   - aws.batch_compute_environment
   - aws.batch_job_queue
@@ -153,6 +154,7 @@ runtime_families:
   - access_analyzer
   - acm_certificate
   - apprunner_service
+  - appsync_graphql_api
   - asset_metadata
   - batch_compute_environment
   - batch_job_queue
@@ -375,10 +377,10 @@ coverage_contract:
     - id: appsync_graphql_api
       type: entity_family
       title: AWS AppSync GraphQL APIs
-      families: [asset_metadata]
+      families: [appsync_graphql_api]
       support: partial
       high_value: true
-      known_unsupported_fields: [authorization mode and resolver detail]
+      known_unsupported_fields: [resolver and data source detail]
     - id: backup_vault
       type: entity_family
       title: AWS Backup vaults
