@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/backup"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
+	"github.com/aws/aws-sdk-go-v2/service/bedrock"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -133,6 +134,7 @@ const (
 	familyBackupProtected                    = "backup_protected_resource"
 	familyBackupRecoveryPoint                = "backup_recovery_point"
 	familyBackupVault                        = "backup_vault"
+	familyBedrockCustomModel                 = "bedrock_custom_model"
 	familyCodeBuildProject                   = "codebuild_project"
 	familyCodeBuildSourceCredential          = "codebuild_source_credential"
 	familyCloudTrail                         = "cloudtrail"
@@ -378,6 +380,7 @@ type awsRuntimeClients struct {
 	sns            awsSNSAPI
 	appRunner      awsAppRunnerAPI
 	appSync        awsappsync.Client
+	bedrock        awsBedrockAPI
 	sageMaker      awsSageMakerAPI
 	stepFunctions  awsStepFunctionsAPI
 	eventBridge    awsEventBridgeAPI
@@ -407,6 +410,13 @@ type awsSageMakerAPI interface {
 	ListTrainingJobs(context.Context, *sagemaker.ListTrainingJobsInput, ...func(*sagemaker.Options)) (*sagemaker.ListTrainingJobsOutput, error)
 	DescribeTrainingJob(context.Context, *sagemaker.DescribeTrainingJobInput, ...func(*sagemaker.Options)) (*sagemaker.DescribeTrainingJobOutput, error)
 	ListTags(context.Context, *sagemaker.ListTagsInput, ...func(*sagemaker.Options)) (*sagemaker.ListTagsOutput, error)
+}
+
+type awsBedrockAPI interface {
+	ListCustomModels(context.Context, *bedrock.ListCustomModelsInput, ...func(*bedrock.Options)) (*bedrock.ListCustomModelsOutput, error)
+	GetCustomModel(context.Context, *bedrock.GetCustomModelInput, ...func(*bedrock.Options)) (*bedrock.GetCustomModelOutput, error)
+	GetResourcePolicy(context.Context, *bedrock.GetResourcePolicyInput, ...func(*bedrock.Options)) (*bedrock.GetResourcePolicyOutput, error)
+	ListTagsForResource(context.Context, *bedrock.ListTagsForResourceInput, ...func(*bedrock.Options)) (*bedrock.ListTagsForResourceOutput, error)
 }
 
 type awsAnalyticsClients struct {
@@ -1451,6 +1461,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(accessPoint awsS3MultiRegionAccessPoint) string {
 				return awssdk.ToString(accessPoint.Report.Name)
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBedrockCustomModel]{
+			Name:  familyBedrockCustomModel,
+			Label: "aws bedrock custom models",
+			List:  listBedrockCustomModels,
+			Event: bedrockCustomModelEvent,
+			URN: func(settings settings, model awsBedrockCustomModel) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_bedrock_custom_model:%s", settings.accountID, firstNonEmpty(bedrockCustomModelARN(model), bedrockCustomModelName(model))), nil
+			},
+			CursorFallback: func(model awsBedrockCustomModel) string {
+				return firstNonEmpty(bedrockCustomModelARN(model), bedrockCustomModelName(model))
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsSageMakerEndpointConfig]{
@@ -2735,6 +2757,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			sns:            sns.NewFromConfig(cfg),
 			appRunner:      apprunner.NewFromConfig(cfg),
 			appSync:        awsappsync.NewClient(cfg),
+			bedrock:        bedrock.NewFromConfig(cfg),
 			sageMaker:      sagemaker.NewFromConfig(cfg),
 			stepFunctions:  sfn.NewFromConfig(cfg),
 			eventBridge:    eventbridge.NewFromConfig(cfg),
@@ -2840,7 +2863,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayMethod, familyAPIGatewayRestAPI, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAppSyncGraphQLAPI, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRPublicRepository, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMPolicy, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySageMakerEndpointConfig, familySageMakerModel, familySageMakerModelPackageGroup, familySageMakerNotebookInstance, familySageMakerTrainingJob, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyEFSMountTarget, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayMethod, familyAPIGatewayRestAPI, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAppSyncGraphQLAPI, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyBedrockCustomModel, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRPublicRepository, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMPolicy, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySageMakerEndpointConfig, familySageMakerModel, familySageMakerModelPackageGroup, familySageMakerNotebookInstance, familySageMakerTrainingJob, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyEFSMountTarget, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName

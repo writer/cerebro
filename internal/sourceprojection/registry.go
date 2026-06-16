@@ -71,6 +71,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.backup_plan":                               awsBackupPlanProjections,
 	"aws.backup_protected_resource":                 awsBackupProtectedResourceProjections,
 	"aws.backup_recovery_point":                     awsBackupRecoveryPointProjections,
+	"aws.bedrock_custom_model":                      awsCloudResourceProjections,
 	"aws.codebuild_project":                         awsCloudResourceProjections,
 	"aws.codebuild_source_credential":               awsCloudResourceProjections,
 	"aws.cloudtrail":                                awsCloudTrailProjections,

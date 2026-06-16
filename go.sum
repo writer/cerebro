@@ -34,6 +34,8 @@ github.com/aws/aws-sdk-go-v2/service/backup v1.57.5 h1:ohRgK/UYcre3jF4pxxIrslY9k
 github.com/aws/aws-sdk-go-v2/service/backup v1.57.5/go.mod h1:buhCYnahTK+Q2AKqU21CsvhlB1iTb79M+L82ASQk+d0=
 github.com/aws/aws-sdk-go-v2/service/batch v1.65.5 h1:+bOiP++19XAWs3CRhFNkAhAe+DAGMF/eq7Q+4Ib5OlE=
 github.com/aws/aws-sdk-go-v2/service/batch v1.65.5/go.mod h1:H9zD0xL2LX2iF6XQAcvP1aJiMbIXTF2gVMoIG36mQTQ=
+github.com/aws/aws-sdk-go-v2/service/bedrock v1.63.0 h1:GhGAt2Ts45K2P/Imlpjh8N8yA01RCPcfLpfpBYvjz64=
+github.com/aws/aws-sdk-go-v2/service/bedrock v1.63.0/go.mod h1:L1Dj1EqgvYvL4GGPNNRBf8CwN6xvnqxz2rcZ4c6SopU=
 github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4 h1:gNpZEJpHw/ANDvgAk2Z9yaiLmuFWfDnjZmzXZBMfhaw=
 github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4/go.mod h1:fNEfSXojRCcvbtl0KYGJrkHS17eHaHvSgZqNNVOxZQU=
 github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1 h1:UXPRXa3HLrJolDM098DfXgLJrbB086+Zip3M+4Dy1WI=
