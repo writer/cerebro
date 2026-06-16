@@ -76,6 +76,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentPlatformContract'
+  /api/v1/agent-platform/capabilities:
+    get:
+      operationId: listAgentPlatformCapabilities
+      summary: List governed agent platform capabilities
+      tags:
+        - Platform
+      parameters:
+        - name: domain_id
+          in: query
+          schema:
+            type: string
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: owner
+          in: query
+          schema:
+            type: string
+        - name: risk
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high]
+        - name: default_on
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Filtered capability registry with operational totals.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformCapabilityRegistry'
+        '400':
+          description: Invalid capability filter.
+  /api/v1/agent-platform/capability-decisions:
+    post:
+      operationId: decideAgentPlatformCapability
+      summary: Decide whether an agent platform capability is selectable
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPlatformCapabilityDecisionRequest'
+      responses:
+        '200':
+          description: Capability selection decision with scopes, eval, connector, runtime event, and provenance gates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformCapabilityDecision'
+        '400':
+          description: Invalid capability decision request.
+        '404':
+          description: Capability was not found.
   /api/v1/mcp:
     get:
       summary: Reject MCP stateful event-stream transport
@@ -2996,6 +3056,189 @@ components:
             $ref: '#/components/schemas/AgentPlatformProvenanceRequirement'
         connector_infrastructure:
           $ref: '#/components/schemas/AgentPlatformConnectorInfrastructure'
+    AgentPlatformCapabilityRegistry:
+      type: object
+      required:
+        - version
+        - filters
+        - capabilities
+        - totals
+      properties:
+        version:
+          type: string
+        filters:
+          $ref: '#/components/schemas/AgentPlatformCapabilityRegistryFilter'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapability'
+        totals:
+          $ref: '#/components/schemas/AgentPlatformCapabilityRegistryTotals'
+    AgentPlatformCapabilityRegistryFilter:
+      type: object
+      properties:
+        domain_id:
+          type: string
+        kind:
+          type: string
+        owner:
+          type: string
+        risk:
+          type: string
+          enum: [low, medium, high]
+        default_on:
+          type: boolean
+    AgentPlatformCapabilityRegistryTotals:
+      type: object
+      required:
+        - capabilities
+        - default_on
+        - default_off
+        - by_domain
+        - by_risk
+      properties:
+        capabilities:
+          type: integer
+        default_on:
+          type: integer
+        default_off:
+          type: integer
+        by_domain:
+          type: object
+          additionalProperties:
+            type: integer
+        by_risk:
+          type: object
+          additionalProperties:
+            type: integer
+    AgentPlatformCapabilityDecisionRequest:
+      type: object
+      required:
+        - capability_id
+      properties:
+        capability_id:
+          type: string
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        requested_scopes:
+          type: array
+          items:
+            type: string
+        connector_readiness:
+          type: object
+          additionalProperties:
+            type: string
+        eval_status_overrides:
+          type: object
+          additionalProperties:
+            type: string
+        allow_preview:
+          type: boolean
+        selection_reason:
+          type: string
+        provenance_requirement:
+          type: string
+    AgentPlatformCapabilityDecision:
+      type: object
+      required:
+        - version
+        - capability_id
+        - capability_version
+        - domain_id
+        - enabled
+        - reason
+        - blockers
+        - required_scopes
+        - runtime_events
+        - provenance
+        - eval
+        - review
+      properties:
+        version:
+          type: string
+        capability_id:
+          type: string
+        capability_version:
+          type: string
+        domain_id:
+          type: string
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        enabled:
+          type: boolean
+        reason:
+          type: string
+        blockers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapabilityDecisionBlocker'
+        required_scopes:
+          type: array
+          items:
+            type: string
+        missing_scopes:
+          type: array
+          items:
+            type: string
+        required_connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformConnectorDependency'
+        runtime_events:
+          type: array
+          items:
+            type: string
+        provenance:
+          type: array
+          items:
+            type: string
+        eval:
+          $ref: '#/components/schemas/AgentPlatformCapabilityEvalGate'
+        review:
+          $ref: '#/components/schemas/AgentPlatformReviewStatus'
+        connector_infrastructure:
+          $ref: '#/components/schemas/AgentPlatformConnectorInfrastructure'
+    AgentPlatformCapabilityDecisionBlocker:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+    AgentPlatformCapabilityEvalGate:
+      type: object
+      required:
+        - required
+        - status
+        - passing
+        - scenario_sets
+        - rubrics
+      properties:
+        required:
+          type: boolean
+        status:
+          type: string
+        passing:
+          type: boolean
+        scenario_sets:
+          type: array
+          items:
+            type: string
+        rubrics:
+          type: array
+          items:
+            type: string
     AgentPlatformDomain:
       type: object
       required:
