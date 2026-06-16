@@ -23,6 +23,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerConnectRoutes(mux, cfg, deps, sources)
 	app.registerPublicRoutes(mux)
 	app.registerOAuthRoutes(mux)
+	app.registerAgentPlatformRoutes(mux)
 	app.registerReportRoutes(mux)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
@@ -49,6 +50,10 @@ func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /livez", routeSurfacePublicHTTP, app.handleLiveness)
 	registerHTTPRoute(mux, "GET /metrics", routeSurfacePlatformHTTP, app.handleMetrics)
 	registerHTTPRoute(mux, "GET /openapi.yaml", routeSurfacePublicHTTP, app.handleOpenAPI)
+}
+
+func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /api/v1/agent-platform/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformContract)
 }
 
 func (app *App) registerOAuthRoutes(mux *http.ServeMux) {
