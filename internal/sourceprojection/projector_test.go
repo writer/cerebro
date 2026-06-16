@@ -4016,6 +4016,79 @@ func TestProjectAWSEffectivePermissionWithoutRoleIDSkipsRoleNode(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationRepresentsIdentity, "urn:cerebro:writer:identity:login:aws:123456789012:user:analyst")
 }
 
+func TestProjectKubernetesInfrastructureEntities(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "k8s-node",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.node",
+			Attributes: map[string]string{
+				"cluster_id":                "prod-cluster",
+				"cluster_name":              "prod",
+				"container_runtime_version": "containerd://1.7.0",
+				"kubelet_version":           "v1.35.0",
+				"node_name":                 "ip-10-0-1-10",
+				"ready":                     "true",
+			},
+		},
+		{
+			Id:       "k8s-service",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.service",
+			Attributes: map[string]string{
+				"cluster_id":        "prod-cluster",
+				"namespace":         "payments",
+				"service_name":      "payments",
+				"service_type":      "LoadBalancer",
+				"load_balancer_ips": "198.51.100.20",
+			},
+		},
+		{
+			Id:       "k8s-ingress",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.ingress",
+			Attributes: map[string]string{
+				"backend_services":  "payments:443",
+				"cluster_id":        "prod-cluster",
+				"hosts":             "payments.example.com",
+				"ingress_name":      "payments",
+				"namespace":         "payments",
+				"tls_secret_names":  "payments-tls",
+				"load_balancer_ips": "198.51.100.30",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	nodeURN := "urn:cerebro:writer:kubernetes_node:prod-cluster:ip-10-0-1-10"
+	serviceURN := "urn:cerebro:writer:kubernetes_service:prod-cluster:payments:payments"
+	ingressURN := "urn:cerebro:writer:kubernetes_ingress:prod-cluster:payments:payments"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
+	if got := state.entities[nodeURN].EntityType; got != "kubernetes.node" {
+		t.Fatalf("node entity type = %q", got)
+	}
+	if got := state.entities[serviceURN].Attributes["service_type"]; got != "LoadBalancer" {
+		t.Fatalf("service_type = %q", got)
+	}
+	if got := state.entities[ingressURN].Attributes["tls_secret_names"]; got != "payments-tls" {
+		t.Fatalf("tls_secret_names = %q", got)
+	}
+	assertProjectedLink(t, state, nodeURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, serviceURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, ingressURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, ingressURN, relationCanReach, serviceURN)
+}
+
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

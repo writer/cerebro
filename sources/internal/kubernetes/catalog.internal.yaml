@@ -3,8 +3,11 @@ name: Kubernetes
 description: Kubernetes cluster, workload, service account, and workload identity source.
 emitted_kinds:
   - kubernetes.cluster
+  - kubernetes.ingress
   - kubernetes.namespace
+  - kubernetes.node
   - kubernetes.pod
+  - kubernetes.service
   - kubernetes.container
   - kubernetes.rbac_binding
   - kubernetes.rbac_role
@@ -20,6 +23,16 @@ event_contracts:
     required_payload_fields:
       - cluster_id
       - cluster_name
+  - kind: kubernetes.ingress
+    schema_ref: kubernetes/ingress/v1
+    required_attributes:
+      - cluster_id
+      - namespace
+      - ingress_name
+    required_payload_fields:
+      - name
+      - namespace
+      - rules
   - kind: kubernetes.namespace
     schema_ref: kubernetes/namespace/v1
     required_attributes:
@@ -28,6 +41,16 @@ event_contracts:
     required_payload_fields:
       - name
       - uid
+  - kind: kubernetes.node
+    schema_ref: kubernetes/node/v1
+    required_attributes:
+      - cluster_id
+      - node_name
+      - ready
+    required_payload_fields:
+      - name
+      - ready
+      - node_info
   - kind: kubernetes.pod
     schema_ref: kubernetes/pod/v1
     required_attributes:
@@ -38,6 +61,18 @@ event_contracts:
       - name
       - uid
       - namespace
+  - kind: kubernetes.service
+    schema_ref: kubernetes/service/v1
+    required_attributes:
+      - cluster_id
+      - namespace
+      - service_name
+      - service_type
+    required_payload_fields:
+      - name
+      - namespace
+      - type
+      - ports
   - kind: kubernetes.container
     schema_ref: kubernetes/container/v1
     required_attributes:
