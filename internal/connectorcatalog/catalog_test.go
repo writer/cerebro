@@ -9,7 +9,7 @@ import (
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
 	root := t.TempDir()
-	writeCatalogFile(t, root, "identity-access-secrets.yaml", `
+	writeCatalogFile(t, root, `
 entries:
   - classifier_output: supported
     definition:
@@ -64,7 +64,7 @@ entries:
 
 func TestAnalyzeDirRejectsClassifierMismatch(t *testing.T) {
 	root := t.TempDir()
-	writeCatalogFile(t, root, "identity-access-secrets.yaml", strings.ReplaceAll(minimalDefinitionYAML(), "classifier_output: supported", "classifier_output: bespoke_required"))
+	writeCatalogFile(t, root, strings.ReplaceAll(minimalDefinitionYAML(), "classifier_output: supported", "classifier_output: bespoke_required"))
 
 	analysis, err := AnalyzeDir(root, Options{})
 	if err != nil {
@@ -77,7 +77,7 @@ func TestAnalyzeDirRejectsClassifierMismatch(t *testing.T) {
 
 func TestAnalyzeDirRequiresProofGateFields(t *testing.T) {
 	root := t.TempDir()
-	writeCatalogFile(t, root, "identity-access-secrets.yaml", `
+	writeCatalogFile(t, root, `
 entries:
   - classifier_output: supported
     definition:
@@ -120,7 +120,7 @@ entries:
 
 func TestAnalyzeDirMarksOAuthSupportedDefinitionAsAuthExtension(t *testing.T) {
 	root := t.TempDir()
-	writeCatalogFile(t, root, "identity-access-secrets.yaml", strings.ReplaceAll(strings.ReplaceAll(minimalDefinitionYAML(),
+	writeCatalogFile(t, root, strings.ReplaceAll(strings.ReplaceAll(minimalDefinitionYAML(),
 		"model: bearer_token", "model: oauth_client_credentials\n        token_url: https://api.example.test/oauth/token"),
 		"key: token", "key: client_secret"))
 
@@ -214,9 +214,9 @@ entries:
 `
 }
 
-func writeCatalogFile(t *testing.T, root string, name string, content string) {
+func writeCatalogFile(t *testing.T, root string, content string) {
 	t.Helper()
-	path := filepath.Join(root, name)
+	path := filepath.Join(root, "identity-access-secrets.yaml")
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
