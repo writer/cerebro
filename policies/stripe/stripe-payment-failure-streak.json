@@ -17,5 +17,14 @@
     "churn-risk",
     "revenue",
     "stripe"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Revenue Operations",
+      "controls": [
+        "REV-4",
+        "REV-5"
+      ]
+    }
   ]
 }

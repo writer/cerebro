@@ -22,5 +22,36 @@
   "remediation": "Investigate the login event. Verify with the user. Consider forcing password reset and MFA re-enrollment. Review session for suspicious activity.",
   "risk_categories": [
     "IDENTITY_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.1",
+        "CC7.2",
+        "CC7.3"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.24",
+        "A.5.25",
+        "A.8.16"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IR-4",
+        "SI-4"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "8"
+      ]
+    }
   ]
 }

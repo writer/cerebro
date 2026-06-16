@@ -17,5 +17,13 @@
     "forecasting",
     "pipeline-hygiene",
     "salesforce"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Revenue Operations",
+      "controls": [
+        "REV-6"
+      ]
+    }
   ]
 }

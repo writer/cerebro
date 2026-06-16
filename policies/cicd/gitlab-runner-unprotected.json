@@ -19,5 +19,38 @@
     "runners",
     "supply-chain"
   ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.1",
+        "CC8.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "CM-5",
+        "CM-7",
+        "SI-7",
+        "SR-11"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "6.3",
+        "6.5"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "2",
+        "7",
+        "16"
+      ]
+    }
+  ],
   "remediation": "Configure runner to only accept jobs with protected tags."
 }

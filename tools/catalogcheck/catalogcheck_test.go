@@ -24,6 +24,16 @@ func TestCheckRepositoryAcceptsMinimalCatalogs(t *testing.T) {
   "frameworks": [{"name": "SOC 2", "controls": ["CC6"]}]
 }`)
 	writeFile(t, root, "policies/cerebro/control-mapping.json", `{"version":"1.0.0","controls":{}}`)
+	writeFile(t, root, "internal/compliance/control_families.yaml", `
+version: "2026-06-16"
+frameworks:
+  - name: SOC 2
+    families:
+      - id: CC6
+        name: Logical and Physical Access
+        controls:
+          - id: CC6
+`)
 	writeFile(t, root, "sources/github/catalog.yaml", `
 id: github
 name: GitHub
@@ -536,7 +546,7 @@ func TestCheckPoliciesRejectsSymlinkedPolicyFiles(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "missing.json"), filepath.Join(policiesDir, "policy.json")); err != nil {
 		t.Skipf("Symlink() unsupported: %v", err)
 	}
-	issues, err := checkPolicies(root)
+	issues, err := checkPolicies(root, nil)
 	if err != nil {
 		t.Fatalf("checkPolicies() error = %v", err)
 	}

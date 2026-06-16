@@ -19,5 +19,29 @@
     "content-safety",
     "guardrails"
   ],
+  "frameworks": [
+    {
+      "name": "ISO 42001",
+      "controls": [
+        "6.1",
+        "6.2",
+        "8.4",
+        "9.1"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.2"
+      ]
+    },
+    {
+      "name": "Cerebro AI Governance",
+      "controls": [
+        "AI-4",
+        "AI-5"
+      ]
+    }
+  ],
   "remediation": "Configure Bedrock Guardrails to filter harmful content and protect against prompt injection."
 }
