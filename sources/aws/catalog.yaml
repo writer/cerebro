@@ -134,6 +134,7 @@ emitted_kinds:
   - aws.s3_multi_region_access_point
   - aws.sagemaker_endpoint_configuration
   - aws.sagemaker_model
+  - aws.sagemaker_model_package_group
   - aws.sagemaker_notebook_instance
   - aws.sagemaker_training_job
   - aws.scheduler_schedule
@@ -287,6 +288,7 @@ runtime_families:
   - s3_multi_region_access_point
   - sagemaker_endpoint_configuration
   - sagemaker_model
+  - sagemaker_model_package_group
   - sagemaker_notebook_instance
   - sagemaker_training_job
   - scheduler_schedule
@@ -1119,10 +1121,9 @@ coverage_contract:
     - id: sagemaker_model_package_group
       type: entity_family
       title: AWS SageMaker model package groups
-      families: [asset_metadata]
-      support: partial
+      families: [sagemaker_model_package_group]
+      support: supported
       high_value: true
-      known_unsupported_fields: [versioning and approval policy detail]
     - id: sagemaker_notebook_instance
       type: entity_family
       title: AWS SageMaker notebook instances

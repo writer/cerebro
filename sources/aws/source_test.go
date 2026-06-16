@@ -576,6 +576,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyS3MultiRegionAccessPoint, kind: "aws.s3_multi_region_access_point"},
 		{family: familySageMakerEndpointConfig, kind: "aws.sagemaker_endpoint_configuration"},
 		{family: familySageMakerModel, kind: "aws.sagemaker_model"},
+		{family: familySageMakerModelPackageGroup, kind: "aws.sagemaker_model_package_group"},
 		{family: familySageMakerNotebookInstance, kind: "aws.sagemaker_notebook_instance"},
 		{family: familySageMakerTrainingJob, kind: "aws.sagemaker_training_job"},
 		{family: familySecret, kind: "aws.secret"},
@@ -1775,6 +1776,77 @@ func TestReadAWSSageMakerEndpointConfigInventoryEvent(t *testing.T) {
 		"security_group_ids":                "sg-123,sg-456",
 		"subnet_ids":                        "subnet-123,subnet-456",
 		"vpc_configured":                    "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadAWSSageMakerModelPackageGroupInventoryEvent(t *testing.T) {
+	groupARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package-group/research-models"
+	packageARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package/research-models/2"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSSageMaker: fakeAWSSageMaker{
+			sageMakerModelPackageGroups: []sagemakertypes.ModelPackageGroupSummary{{
+				CreationTime:            timePtr("2026-04-23T00:00:00Z"),
+				ModelPackageGroupArn:    awssdk.String(groupARN),
+				ModelPackageGroupName:   awssdk.String("research-models"),
+				ModelPackageGroupStatus: sagemakertypes.ModelPackageGroupStatusCompleted,
+			}},
+			sageMakerModelPackageGroupDetails: map[string]sagemaker.DescribeModelPackageGroupOutput{"research-models": {
+				CreationTime:                 timePtr("2026-04-23T00:00:00Z"),
+				ModelPackageGroupArn:         awssdk.String(groupARN),
+				ModelPackageGroupDescription: awssdk.String("Research model registry"),
+				ModelPackageGroupName:        awssdk.String("research-models"),
+				ModelPackageGroupStatus:      sagemakertypes.ModelPackageGroupStatusCompleted,
+			}},
+			sageMakerModelPackages: map[string][]sagemakertypes.ModelPackageSummary{"research-models": {
+				{
+					CreationTime:          timePtr("2026-04-24T00:00:00Z"),
+					ModelApprovalStatus:   sagemakertypes.ModelApprovalStatusPendingManualApproval,
+					ModelPackageArn:       awssdk.String(packageARN),
+					ModelPackageGroupName: awssdk.String("research-models"),
+					ModelPackageStatus:    sagemakertypes.ModelPackageStatusCompleted,
+					ModelPackageVersion:   awssdk.Int32(2),
+				},
+				{
+					CreationTime:          timePtr("2026-04-23T00:00:00Z"),
+					ModelApprovalStatus:   sagemakertypes.ModelApprovalStatusApproved,
+					ModelPackageArn:       awssdk.String("arn:aws:sagemaker:us-east-1:123456789012:model-package/research-models/1"),
+					ModelPackageGroupName: awssdk.String("research-models"),
+					ModelPackageStatus:    sagemakertypes.ModelPackageStatusCompleted,
+					ModelPackageVersion:   awssdk.Int32(1),
+				},
+			}},
+			sageMakerTags: map[string][]sagemakertypes.Tag{groupARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySageMakerModelPackageGroup}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familySageMakerModelPackageGroup, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.sagemaker_model_package_group" {
+		t.Fatalf("kind = %q, want aws.sagemaker_model_package_group", got)
+	}
+	for key, want := range map[string]string{
+		"model_approval_status":         "PendingManualApproval",
+		"model_approval_statuses":       "PendingManualApproval,Approved",
+		"model_package_arns":            packageARN + ",arn:aws:sagemaker:us-east-1:123456789012:model-package/research-models/1",
+		"model_package_count":           "2",
+		"model_package_group_arn":       groupARN,
+		"model_package_group_name":      "research-models",
+		"model_package_group_status":    "Completed",
+		"model_package_status":          "Completed",
+		"model_package_version":         "2",
+		"model_package_versions":        "2,1",
+		"owner":                         "ml@writer.com",
+		"pending_manual_approval_count": "1",
+		"resource_type":                 "sagemaker_model_package_group",
 	} {
 		if got := event.Attributes[key]; got != want {
 			t.Fatalf("%s = %q, want %q", key, got, want)
@@ -3937,6 +4009,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		ecrPublicARN := "arn:aws:ecr-public::123456789012:repository/orders-public"
 		endpointConfigARN := "arn:aws:sagemaker:us-east-1:123456789012:endpoint-config/research-endpoint-config"
 		modelARN := "arn:aws:sagemaker:us-east-1:123456789012:model/research-model"
+		modelPackageGroupARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package-group/research-models"
 		notebookARN := "arn:aws:sagemaker:us-east-1:123456789012:notebook-instance/research-notebook"
 		trainingJobARN := "arn:aws:sagemaker:us-east-1:123456789012:training-job/research-training"
 		fake.s3Buckets = []s3types.Bucket{{Name: awssdk.String("prod-data")}}
@@ -3967,15 +4040,19 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.sageMakerEndpointDetails = map[string]sagemaker.DescribeEndpointConfigOutput{"research-endpoint-config": {EndpointConfigArn: awssdk.String(endpointConfigARN), EndpointConfigName: awssdk.String("research-endpoint-config")}}
 		fake.sageMakerModels = []sagemakertypes.ModelSummary{{ModelArn: awssdk.String(modelARN), ModelName: awssdk.String("research-model")}}
 		fake.sageMakerModelDetails = map[string]sagemaker.DescribeModelOutput{"research-model": {ModelArn: awssdk.String(modelARN), ModelName: awssdk.String("research-model")}}
+		fake.sageMakerModelPackageGroups = []sagemakertypes.ModelPackageGroupSummary{{ModelPackageGroupArn: awssdk.String(modelPackageGroupARN), ModelPackageGroupName: awssdk.String("research-models"), ModelPackageGroupStatus: sagemakertypes.ModelPackageGroupStatusCompleted}}
+		fake.sageMakerModelPackageGroupDetails = map[string]sagemaker.DescribeModelPackageGroupOutput{"research-models": {ModelPackageGroupArn: awssdk.String(modelPackageGroupARN), ModelPackageGroupName: awssdk.String("research-models"), ModelPackageGroupStatus: sagemakertypes.ModelPackageGroupStatusCompleted}}
+		fake.sageMakerModelPackages = map[string][]sagemakertypes.ModelPackageSummary{"research-models": {{ModelApprovalStatus: sagemakertypes.ModelApprovalStatusPendingManualApproval, ModelPackageArn: awssdk.String("arn:aws:sagemaker:us-east-1:123456789012:model-package/research-models/1"), ModelPackageStatus: sagemakertypes.ModelPackageStatusCompleted, ModelPackageVersion: awssdk.Int32(1)}}}
 		fake.sageMakerNotebookInstances = []sagemakertypes.NotebookInstanceSummary{{NotebookInstanceArn: awssdk.String(notebookARN), NotebookInstanceName: awssdk.String("research-notebook")}}
 		fake.sageMakerNotebookDetails = map[string]sagemaker.DescribeNotebookInstanceOutput{"research-notebook": {NotebookInstanceArn: awssdk.String(notebookARN), NotebookInstanceName: awssdk.String("research-notebook")}}
 		fake.sageMakerTrainingJobs = []sagemakertypes.TrainingJobSummary{{TrainingJobArn: awssdk.String(trainingJobARN), TrainingJobName: awssdk.String("research-training")}}
 		fake.sageMakerTrainingJobDetails = map[string]sagemaker.DescribeTrainingJobOutput{"research-training": {TrainingJobArn: awssdk.String(trainingJobARN), TrainingJobName: awssdk.String("research-training")}}
 		fake.sageMakerTags = map[string][]sagemakertypes.Tag{
-			endpointConfigARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
-			modelARN:          {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
-			notebookARN:       {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
-			trainingJobARN:    {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			endpointConfigARN:    {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			modelARN:             {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			modelPackageGroupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			notebookARN:          {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			trainingJobARN:       {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
 		}
 		fake.codeBuildProjects = []string{"orders-build"}
 		fake.codeBuildProjectDetail = map[string]codebuildtypes.Project{"orders-build": {
@@ -4234,6 +4311,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familySageMakerModel,
 			seed:    cloudAssetData,
 			wantAPI: []string{"sagemaker:DescribeModel", "sagemaker:ListModels", "sagemaker:ListTags"},
+		},
+		{
+			family:  familySageMakerModelPackageGroup,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sagemaker:DescribeModelPackageGroup", "sagemaker:ListModelPackageGroups", "sagemaker:ListModelPackages", "sagemaker:ListTags"},
 		},
 		{
 			family:  familySageMakerNotebookInstance,
@@ -5168,15 +5250,18 @@ type fakeAWS struct {
 }
 
 type fakeAWSSageMaker struct {
-	sageMakerEndpointConfigs    []sagemakertypes.EndpointConfigSummary
-	sageMakerEndpointDetails    map[string]sagemaker.DescribeEndpointConfigOutput
-	sageMakerModels             []sagemakertypes.ModelSummary
-	sageMakerModelDetails       map[string]sagemaker.DescribeModelOutput
-	sageMakerNotebookInstances  []sagemakertypes.NotebookInstanceSummary
-	sageMakerNotebookDetails    map[string]sagemaker.DescribeNotebookInstanceOutput
-	sageMakerTrainingJobs       []sagemakertypes.TrainingJobSummary
-	sageMakerTrainingJobDetails map[string]sagemaker.DescribeTrainingJobOutput
-	sageMakerTags               map[string][]sagemakertypes.Tag
+	sageMakerEndpointConfigs          []sagemakertypes.EndpointConfigSummary
+	sageMakerEndpointDetails          map[string]sagemaker.DescribeEndpointConfigOutput
+	sageMakerModels                   []sagemakertypes.ModelSummary
+	sageMakerModelDetails             map[string]sagemaker.DescribeModelOutput
+	sageMakerModelPackageGroups       []sagemakertypes.ModelPackageGroupSummary
+	sageMakerModelPackageGroupDetails map[string]sagemaker.DescribeModelPackageGroupOutput
+	sageMakerModelPackages            map[string][]sagemakertypes.ModelPackageSummary
+	sageMakerNotebookInstances        []sagemakertypes.NotebookInstanceSummary
+	sageMakerNotebookDetails          map[string]sagemaker.DescribeNotebookInstanceOutput
+	sageMakerTrainingJobs             []sagemakertypes.TrainingJobSummary
+	sageMakerTrainingJobDetails       map[string]sagemaker.DescribeTrainingJobOutput
+	sageMakerTags                     map[string][]sagemakertypes.Tag
 }
 
 type fakeAWSIAMPolicy struct {
@@ -6620,6 +6705,21 @@ func (f recordingSageMaker) DescribeEndpointConfig(ctx context.Context, input *s
 	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeEndpointConfig(ctx, input, options...)
 }
 
+func (f recordingSageMaker) ListModelPackageGroups(ctx context.Context, input *sagemaker.ListModelPackageGroupsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListModelPackageGroupsOutput, error) {
+	f.fake.record("sagemaker:ListModelPackageGroups")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListModelPackageGroups(ctx, input, options...)
+}
+
+func (f recordingSageMaker) DescribeModelPackageGroup(ctx context.Context, input *sagemaker.DescribeModelPackageGroupInput, options ...func(*sagemaker.Options)) (*sagemaker.DescribeModelPackageGroupOutput, error) {
+	f.fake.record("sagemaker:DescribeModelPackageGroup")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeModelPackageGroup(ctx, input, options...)
+}
+
+func (f recordingSageMaker) ListModelPackages(ctx context.Context, input *sagemaker.ListModelPackagesInput, options ...func(*sagemaker.Options)) (*sagemaker.ListModelPackagesOutput, error) {
+	f.fake.record("sagemaker:ListModelPackages")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListModelPackages(ctx, input, options...)
+}
+
 func (f recordingSageMaker) ListModels(ctx context.Context, input *sagemaker.ListModelsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListModelsOutput, error) {
 	f.fake.record("sagemaker:ListModels")
 	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListModels(ctx, input, options...)
@@ -6666,6 +6766,19 @@ func (f fakeSageMaker) ListEndpointConfigs(context.Context, *sagemaker.ListEndpo
 func (f fakeSageMaker) DescribeEndpointConfig(_ context.Context, input *sagemaker.DescribeEndpointConfigInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeEndpointConfigOutput, error) {
 	detail := f.fake.sageMakerEndpointDetails[awssdk.ToString(input.EndpointConfigName)]
 	return &detail, nil
+}
+
+func (f fakeSageMaker) ListModelPackageGroups(context.Context, *sagemaker.ListModelPackageGroupsInput, ...func(*sagemaker.Options)) (*sagemaker.ListModelPackageGroupsOutput, error) {
+	return &sagemaker.ListModelPackageGroupsOutput{ModelPackageGroupSummaryList: f.fake.sageMakerModelPackageGroups}, nil
+}
+
+func (f fakeSageMaker) DescribeModelPackageGroup(_ context.Context, input *sagemaker.DescribeModelPackageGroupInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeModelPackageGroupOutput, error) {
+	detail := f.fake.sageMakerModelPackageGroupDetails[awssdk.ToString(input.ModelPackageGroupName)]
+	return &detail, nil
+}
+
+func (f fakeSageMaker) ListModelPackages(_ context.Context, input *sagemaker.ListModelPackagesInput, _ ...func(*sagemaker.Options)) (*sagemaker.ListModelPackagesOutput, error) {
+	return &sagemaker.ListModelPackagesOutput{ModelPackageSummaryList: f.fake.sageMakerModelPackages[awssdk.ToString(input.ModelPackageGroupName)]}, nil
 }
 
 func (f fakeSageMaker) ListModels(context.Context, *sagemaker.ListModelsInput, ...func(*sagemaker.Options)) (*sagemaker.ListModelsOutput, error) {

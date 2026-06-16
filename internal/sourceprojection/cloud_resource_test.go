@@ -204,6 +204,35 @@ func TestProjectAWSSageMakerModelLinksRuntimeRole(t *testing.T) {
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
 }
 
+func TestProjectAWSSageMakerModelPackageGroupLinksAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package-group/research-models"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-sagemaker-model-package-group-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.sagemaker_model_package_group",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-models",
+			"resource_provider": "aws",
+			"resource_type":     "sagemaker_model_package_group",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_sagemaker_model_package_group:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.sagemaker.model.package.group" {
+		t.Fatalf("sagemaker model package group entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
 func TestProjectAWSSageMakerTrainingJobLinksRuntimeRole(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
