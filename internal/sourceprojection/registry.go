@@ -194,6 +194,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.sagemaker_endpoint_configuration":          awsCloudResourceProjections,
 	"aws.sagemaker_model":                           awsCloudResourceProjections,
 	"aws.sagemaker_notebook_instance":               awsCloudResourceProjections,
+	"aws.sagemaker_training_job":                    awsCloudResourceProjections,
 	"aws.scheduler_schedule":                        awsCloudResourceProjections,
 	"aws.scheduler_schedule_group":                  awsCloudResourceProjections,
 	"aws.secret":                                    awsCloudResourceProjections,

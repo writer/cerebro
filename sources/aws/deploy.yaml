@@ -942,6 +942,13 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  - localId: sagemaker-training-job
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: sagemaker_training_job
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
   - localId: scheduler-schedule
     config:
       account_id: env:AWS_ACCOUNT_ID
