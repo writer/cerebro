@@ -22,11 +22,11 @@ jobs:
         with:
           fetch-depth: 1
       - name: Generate post-merge health context
-        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           DROID_POST_MERGE_HEAD: ${{ github.sha }}
+          DROID_POST_MERGE_STRICT: "true"
           DROID_POST_MERGE_OUT: tmp/droid-post-merge-health.md
           DROID_POST_MERGE_JSON_OUT: tmp/droid-post-merge-health.json
         run: |

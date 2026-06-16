@@ -11,6 +11,9 @@ import sys
 from dataclasses import dataclass
 
 
+DROID_BOT_LOGIN = "factory-droid[bot]"
+
+
 @dataclass
 class DroidComment:
     kind: str
@@ -84,7 +87,9 @@ def is_droid(item: dict[str, object]) -> bool:
     user = item.get("user") or {}
     if not isinstance(user, dict):
         return False
-    return str(user.get("login", "")).lower() in {"factory-droid", "factory-droid[bot]"}
+    login = str(user.get("login", "")).lower()
+    user_type = str(user.get("type") or "")
+    return login == DROID_BOT_LOGIN and (not user_type or user_type == "Bot")
 
 
 def is_superseded(body: str) -> bool:

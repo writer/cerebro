@@ -1,0 +1,14 @@
+{
+  "memories": [
+    {
+      "id": "ask-review-boundary",
+      "path_globs": ["internal/graphagent/**"],
+      "summary": "Ask review must validate tenant-scoped read-only query behavior."
+    },
+    {
+      "id": "workflow-permissions",
+      "path_globs": [".github/workflows/**"],
+      "summary": "Workflow changes must validate token permissions and failure visibility."
+    }
+  ]
+}
