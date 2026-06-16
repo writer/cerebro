@@ -66,6 +66,8 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -187,6 +189,8 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "internal_source")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "aws,auth0")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "limited preview")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "https://access.example.com/request?source={source_id}&tenant={tenant_id}")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "Request in Access Hub")
 	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES", "aws_secrets_manager,infisical")
 	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "us-east-1")
@@ -299,6 +303,12 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.ConnectorAccess.RestrictionReason != "limited preview" {
 		t.Fatalf("ConnectorAccess.RestrictionReason = %q, want limited preview", cfg.ConnectorAccess.RestrictionReason)
+	}
+	if cfg.ConnectorAccess.RequestAccessURL != "https://access.example.com/request?source={source_id}&tenant={tenant_id}" {
+		t.Fatalf("ConnectorAccess.RequestAccessURL = %q, want configured request URL template", cfg.ConnectorAccess.RequestAccessURL)
+	}
+	if cfg.ConnectorAccess.RequestAccessAction != "Request in Access Hub" {
+		t.Fatalf("ConnectorAccess.RequestAccessAction = %q, want configured request action", cfg.ConnectorAccess.RequestAccessAction)
 	}
 	if cfg.ConnectorSecretStores.AWSSecretsManager.Region != "us-east-1" ||
 		cfg.ConnectorSecretStores.AWSSecretsManager.Profile != "cerebro-security" ||
@@ -469,6 +479,8 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "")
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN", "")
