@@ -142,6 +142,69 @@ coverage_contract:
 	}
 }
 
+func TestCheckSourceCatalogsRejectsRuntimeFamilyMissingFixturePair(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/aws/catalog.yaml", `
+id: aws
+name: AWS
+description: AWS source
+emitted_kinds:
+  - aws.access_key
+runtime_families:
+  - access_key
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: aws
+  dimensions:
+    - id: access_key
+      type: entity_family
+      title: Access keys
+      families: [access_key]
+      support: supported
+`)
+	writeFile(t, root, "sources/aws/testdata/discover_access_key.json", `[]`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if !issueMessagesContain(issues, `runtime family fixture "read_access_key.json" is required`) {
+		t.Fatalf("issues = %#v, want missing runtime fixture issue", issues)
+	}
+}
+
+func TestCheckSourceCatalogsAcceptsRuntimeFamilyFixturePair(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/aws/catalog.yaml", `
+id: aws
+name: AWS
+description: AWS source
+emitted_kinds:
+  - aws.access_key
+runtime_families:
+  - access_key
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: aws
+  dimensions:
+    - id: access_key
+      type: entity_family
+      title: Access keys
+      families: [access_key]
+      support: supported
+`)
+	writeFile(t, root, "sources/aws/testdata/discover_access_key.json", `[]`)
+	writeFile(t, root, "sources/aws/testdata/read_access_key.json", `[]`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if issueMessagesContain(issues, "runtime family fixture") {
+		t.Fatalf("issues = %#v, want no runtime fixture issue", issues)
+	}
+}
+
 func TestCheckCloudPolicyCoverageRejectsUnmappedCloudPolicyResource(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "policies/cloud/test.json", `{"resource":"aws::unknown::thing"}`)
