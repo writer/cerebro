@@ -21,15 +21,16 @@ func (s *connectorTestStore) PutConnectorDefinition(_ context.Context, record *p
 	}
 	cloned := cloneConnectorDefinitionRecord(record)
 	now := time.Now().UTC()
-	if existing := s.definitions[record.ID]; existing != nil && !existing.CreatedAt.IsZero() {
-		cloned.CreatedAt = existing.CreatedAt
+	if existing := s.definitions[record.ID]; existing != nil {
+		if !existing.CreatedAt.IsZero() {
+			cloned.CreatedAt = existing.CreatedAt
+		}
+		cloned.CurrentVersion = existing.CurrentVersion + 1
 	} else {
 		cloned.CreatedAt = now
-	}
-	cloned.UpdatedAt = now
-	if cloned.CurrentVersion <= 0 {
 		cloned.CurrentVersion = 1
 	}
+	cloned.UpdatedAt = now
 	s.definitions[record.ID] = cloned
 	return cloneConnectorDefinitionRecord(cloned), nil
 }

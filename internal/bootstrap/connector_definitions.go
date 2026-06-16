@@ -262,7 +262,6 @@ func (a *App) saveConnectorDefinition(ctx context.Context, definition connectord
 	if store == nil {
 		return connectordefinitions.Definition{}, sourceruntime.ErrRuntimeUnavailable
 	}
-	version := 1
 	existing, err := store.GetConnectorDefinition(ctx, normalized.ID)
 	switch {
 	case err == nil:
@@ -272,12 +271,11 @@ func (a *App) saveConnectorDefinition(ctx context.Context, definition connectord
 		if existing.TenantID != normalized.TenantID {
 			return connectordefinitions.Definition{}, errTenantForbidden
 		}
-		version = existing.CurrentVersion + 1
 	case errors.Is(err, ports.ErrConnectorDefinitionNotFound):
 	default:
 		return connectordefinitions.Definition{}, err
 	}
-	normalized.CurrentVersion = version
+	normalized.CurrentVersion = 0
 	payload, err := json.Marshal(normalized)
 	if err != nil {
 		return connectordefinitions.Definition{}, fmt.Errorf("marshal connector definition: %w", err)
@@ -289,7 +287,6 @@ func (a *App) saveConnectorDefinition(ctx context.Context, definition connectord
 		DisplayName:    normalized.DisplayName,
 		Runtime:        normalized.Runtime,
 		Stage:          normalized.Stage,
-		CurrentVersion: normalized.CurrentVersion,
 		DefinitionJSON: payload,
 	})
 	if err != nil {

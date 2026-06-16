@@ -86,6 +86,37 @@ func TestValidateBlocksUnsafeDynamicDefinition(t *testing.T) {
 	}
 }
 
+func TestValidateBlocksProtocolRelativeResourcePaths(t *testing.T) {
+	for _, path := range []string{"//evil.example/v1/assets", `/\evil.example\v1\assets`} {
+		t.Run(path, func(t *testing.T) {
+			definition, err := Normalize(Definition{
+				ID:          "example",
+				TenantID:    "tenant-a",
+				SourceID:    "example",
+				DisplayName: "Example",
+				Runtime:     RuntimeJSONAPI,
+				Auth: AuthSpec{
+					Model: "none",
+				},
+				ResourceFamilies: []ResourceFamily{{
+					ID:      "assets",
+					Path:    path,
+					IDField: "id",
+				}},
+			})
+			if err != nil {
+				t.Fatalf("Normalize() error = %v", err)
+			}
+			if definition.Validation.Status != ValidationBlocked {
+				t.Fatalf("validation status = %q, want blocked", definition.Validation.Status)
+			}
+			if !hasBlockingCheck(definition.Validation.Checks, "path_assets") {
+				t.Fatalf("validation checks = %#v, want path_assets blocker", definition.Validation.Checks)
+			}
+		})
+	}
+}
+
 func TestPromoteMovesOneStageWhenReady(t *testing.T) {
 	definition, err := Normalize(Definition{
 		ID:          "example",
@@ -119,4 +150,13 @@ func TestPromoteMovesOneStageWhenReady(t *testing.T) {
 	if _, err := Promote(result.Definition, PromotionRequest{TargetStage: StageApproved}); err == nil {
 		t.Fatal("Promote() error = nil, want one-stage transition error")
 	}
+}
+
+func hasBlockingCheck(checks []ValidationCheck, id string) bool {
+	for _, check := range checks {
+		if check.ID == id && check.Blocking {
+			return true
+		}
+	}
+	return false
 }

@@ -56,61 +56,57 @@ func (s *Store) PutConnectorDefinition(ctx context.Context, definition *ports.Co
 		_ = tx.Rollback()
 	}()
 	record := *definition
-	if record.CurrentVersion <= 0 {
-		if err := tx.QueryRowContext(ctx, `SELECT current_version FROM connector_definitions WHERE id = $1`, record.ID).Scan(&record.CurrentVersion); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				record.CurrentVersion = 1
-			} else {
-				return nil, fmt.Errorf("read connector definition version %q: %w", record.ID, err)
-			}
-		} else {
-			record.CurrentVersion++
-		}
-	}
-	if _, err := tx.ExecContext(ctx, `
+	var payload string
+	if err := tx.QueryRowContext(ctx, `
 INSERT INTO connector_definitions (id, tenant_id, source_id, display_name, runtime, stage, current_version, definition_json)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+VALUES ($1, $2, $3, $4, $5, $6, 1, jsonb_set($7::jsonb, '{current_version}', to_jsonb(1::integer), true))
 ON CONFLICT (id)
-DO UPDATE SET tenant_id = EXCLUDED.tenant_id,
-              source_id = EXCLUDED.source_id,
+DO UPDATE SET source_id = EXCLUDED.source_id,
               display_name = EXCLUDED.display_name,
               runtime = EXCLUDED.runtime,
               stage = EXCLUDED.stage,
-              current_version = EXCLUDED.current_version,
-              definition_json = EXCLUDED.definition_json,
-              updated_at = NOW()`,
+              current_version = connector_definitions.current_version + 1,
+              definition_json = jsonb_set(EXCLUDED.definition_json, '{current_version}', to_jsonb((connector_definitions.current_version + 1)::integer), true),
+              updated_at = NOW()
+WHERE connector_definitions.tenant_id = EXCLUDED.tenant_id
+RETURNING current_version, definition_json::text, created_at, updated_at`,
 		record.ID,
 		record.TenantID,
 		record.SourceID,
 		record.DisplayName,
 		record.Runtime,
 		record.Stage,
-		record.CurrentVersion,
 		string(record.DefinitionJSON),
-	); err != nil {
+	).Scan(&record.CurrentVersion, &payload, &record.CreatedAt, &record.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("upsert connector definition %q: tenant mismatch or stale write", record.ID)
+		}
 		return nil, fmt.Errorf("upsert connector definition %q: %w", record.ID, err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	record.DefinitionJSON = []byte(payload)
+	result, err := tx.ExecContext(ctx, `
 INSERT INTO connector_definition_versions (definition_id, version, tenant_id, source_id, stage, definition_json)
 VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-ON CONFLICT (definition_id, version)
-DO UPDATE SET tenant_id = EXCLUDED.tenant_id,
-              source_id = EXCLUDED.source_id,
-              stage = EXCLUDED.stage,
-              definition_json = EXCLUDED.definition_json`,
+ON CONFLICT (definition_id, version) DO NOTHING`,
 		record.ID,
 		record.CurrentVersion,
 		record.TenantID,
 		record.SourceID,
 		record.Stage,
 		string(record.DefinitionJSON),
-	); err != nil {
+	)
+	if err != nil {
 		return nil, fmt.Errorf("record connector definition version %q/%d: %w", record.ID, record.CurrentVersion, err)
+	}
+	if inserted, err := result.RowsAffected(); err != nil {
+		return nil, fmt.Errorf("check connector definition version insert %q/%d: %w", record.ID, record.CurrentVersion, err)
+	} else if inserted != 1 {
+		return nil, fmt.Errorf("record connector definition version %q/%d: immutable version already exists", record.ID, record.CurrentVersion)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit connector definition %q: %w", record.ID, err)
 	}
-	return s.GetConnectorDefinition(ctx, record.ID)
+	return &record, nil
 }
 
 // GetConnectorDefinition loads one connector definition.

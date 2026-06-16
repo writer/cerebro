@@ -242,7 +242,8 @@ func Validate(definition Definition) ValidationResult {
 		if !idPattern.MatchString(family.ID) {
 			add(blocking("family_"+family.ID, "Resource family ID", "Family ids must be lowercase identifiers."))
 		}
-		if strings.TrimSpace(family.Path) == "" || !strings.HasPrefix(family.Path, "/") || strings.Contains(family.Path, "://") {
+		path := strings.TrimSpace(family.Path)
+		if path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://") {
 			add(blocking("path_"+family.ID, "Resource path", "Resource paths must be relative API paths such as /v1/assets."))
 		}
 		if method := strings.ToUpper(strings.TrimSpace(family.Method)); method != "" && method != "GET" {
