@@ -132,7 +132,7 @@ coverage_contract:
     - id: pods
       type: entity_family
       title: Kubernetes pods
-      families: [pod]
+      families: [pod, container]
       support: supported
       high_value: true
     - id: service_accounts

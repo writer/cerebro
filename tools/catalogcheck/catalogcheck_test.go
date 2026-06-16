@@ -188,6 +188,13 @@ func TestCloudPolicyCoverageMapsGCPExpansionTargets(t *testing.T) {
 		"gcp::certificatemanager::certificate_map":        "certificate_manager_certificate_map",
 		"gcp::certificatemanager::certificate_map_entry":  "certificate_manager_certificate_map_entry",
 		"gcp::certificatemanager::dns_authorization":      "certificate_manager_dns_authorization",
+		"gcp::cloudscheduler::job":                        "cloud_scheduler_job",
+		"gcp::dns::record_set":                            "dns_record_set",
+		"gcp::iam::effective_permission":                  "effective_permission",
+		"gcp::orgpolicy::policy":                          "org_policy",
+		"gcp::pubsub::subscription":                       "pubsub_subscription",
+		"gcp::pubsub::topic":                              "pubsub_topic",
+		"gcp::serviceusage::service":                      "service_usage_service",
 		"gcp::vpcaccess::connector":                       "vpc_access_connector",
 	}
 	for resource, wantDimension := range tests {
@@ -198,6 +205,44 @@ func TestCloudPolicyCoverageMapsGCPExpansionTargets(t *testing.T) {
 		if alias.SourceID != "gcp" || alias.DimensionID != wantDimension {
 			t.Fatalf("cloudPolicyCoverageAliases[%q] = %#v, want gcp/%s", resource, alias, wantDimension)
 		}
+	}
+}
+
+func TestCheckCloudPolicyCoverageRejectsUncoveredStrictRuntimeFamily(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "policies/cloud/test.json", `{"resource":"gcp::compute::instance"}`)
+	writeFile(t, root, "sources/gcp/catalog.yaml", `
+id: gcp
+name: GCP
+description: GCP source
+emitted_kinds:
+  - gcp.compute_instance
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: gcp
+  dimensions:
+    - id: compute_instance
+      type: entity_family
+      title: Compute instances
+      families: [compute_instance]
+      support: supported
+`)
+	writeFile(t, root, "sources/gcp/deploy.yaml", `
+runtimes:
+  - localId: compute-instance
+    config:
+      family: compute_instance
+  - localId: effective-permission
+    config:
+      family: effective_permission
+`)
+
+	issues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		t.Fatalf("checkCloudPolicyCoverage() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "coverage_contract does not cover deploy runtime families: effective_permission") {
+		t.Fatalf("issues = %#v, want missing strict runtime family coverage issue", issues)
 	}
 }
 
