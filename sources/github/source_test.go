@@ -23,6 +23,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/githubaudit"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -656,7 +657,7 @@ func TestGitHubAuditFreshnessProbeShortCircuitsUnchangedAuditLog(t *testing.T) {
 	if !ok {
 		t.Fatalf("first checkpoint %q missing freshness probe", first.Checkpoint.GetCursorOpaque())
 	}
-	if probe.Kind != "audit_log_latest_event" || probe.ResourceID != "github-audit-audit-doc-1" {
+	if probe.Kind != "audit_log_latest_event" || probe.ResourceID != "latest_event" {
 		t.Fatalf("probe = %#v, want audit log latest event canary", probe)
 	}
 
@@ -673,6 +674,197 @@ func TestGitHubAuditFreshnessProbeShortCircuitsUnchangedAuditLog(t *testing.T) {
 	}
 	if len(auditQueries) != 1 || auditQueries[0].Get("order") != "desc" {
 		t.Fatalf("audit requests after unchanged checkpoint = %#v, want one desc canary", auditQueries)
+	}
+}
+
+func TestGitHubAuditFreshnessProbeForcesReconcileAfterMaxSkips(t *testing.T) {
+	auditQueries := []url.Values{}
+	auditEntry := map[string]any{
+		"@timestamp":   1776916397852,
+		"_document_id": "audit-doc-1",
+		"action":       "org.update_member",
+		"created_at":   1776916397852,
+		"org":          "writer",
+		"org_id":       1,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		auditQueries = append(auditQueries, r.URL.Query())
+		if err := json.NewEncoder(w).Encode([]map[string]any{auditEntry}); err != nil {
+			t.Fatalf("encode audit response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	probe, ok := sourcecdk.FamilyFreshnessProbeFromCheckpoint("github", familyAudit, first.Checkpoint)
+	if !ok {
+		t.Fatalf("first checkpoint %q missing freshness probe", first.Checkpoint.GetCursorOpaque())
+	}
+	probe.SkipCount = githubaudit.FreshnessMaxSkipCount
+	probe.FullReadAt = time.Now().UTC()
+	checkpoint := sourcecdk.FamilyFreshnessCheckpoint("github", familyAudit, first.Checkpoint, probe)
+
+	auditQueries = nil
+	forced, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(forced) error = %v", err)
+	}
+	if len(forced.Events) != 1 {
+		t.Fatalf("len(forced.Events) = %d, want full audit scan after max skips", len(forced.Events))
+	}
+	if forced.ShortCircuitReason != "" {
+		t.Fatalf("forced.ShortCircuitReason = %q, want empty after full scan", forced.ShortCircuitReason)
+	}
+	if len(auditQueries) != 2 || auditQueries[0].Get("order") != "desc" || auditQueries[1].Get("order") != "asc" {
+		t.Fatalf("audit requests after max skips = %#v, want desc canary then asc scan", auditQueries)
+	}
+	nextProbe, ok := sourcecdk.FamilyFreshnessProbeFromCheckpoint("github", familyAudit, forced.Checkpoint)
+	if !ok {
+		t.Fatalf("forced checkpoint %q missing freshness probe", forced.Checkpoint.GetCursorOpaque())
+	}
+	if nextProbe.SkipCount != 0 {
+		t.Fatalf("forced skip count = %d, want reset", nextProbe.SkipCount)
+	}
+	if nextProbe.Reason != sourcecdk.FamilyFreshnessReasonMaxSkipCount {
+		t.Fatalf("forced reason = %q, want max_skip_count", nextProbe.Reason)
+	}
+}
+
+func TestGitHubAuditFreshnessProbeFailsOpenToFullRead(t *testing.T) {
+	auditQueries := []url.Values{}
+	auditEntry := map[string]any{
+		"@timestamp":   1776916397852,
+		"_document_id": "audit-doc-1",
+		"action":       "org.update_member",
+		"created_at":   1776916397852,
+		"org":          "writer",
+		"org_id":       1,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		query := r.URL.Query()
+		auditQueries = append(auditQueries, query)
+		if query.Get("order") == "desc" {
+			http.Error(w, "metadata probe failed", http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode([]map[string]any{auditEntry}); err != nil {
+			t.Fatalf("encode audit response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(pull.Events) = %d, want full audit scan after canary error", len(pull.Events))
+	}
+	if len(auditQueries) != 2 || auditQueries[0].Get("order") != "desc" || auditQueries[1].Get("order") != "asc" {
+		t.Fatalf("audit requests after canary error = %#v, want desc canary then asc scan", auditQueries)
+	}
+}
+
+func TestGitHubAuditFreshnessCheckpointDoesNotExposeProviderMetadata(t *testing.T) {
+	auditEntry := map[string]any{
+		"@timestamp":   1776916397852,
+		"_document_id": "audit-doc-sensitive-tenant-123",
+		"action":       "org.update_member",
+		"actor":        "octocat-sensitive",
+		"created_at":   1776916397852,
+		"org":          "writer",
+		"org_id":       1,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.URL.Query().Get("phrase"); got != "actor:octocat-sensitive repo:writer/private" {
+			t.Fatalf("audit phrase = %q, want configured phrase", got)
+		}
+		if err := json.NewEncoder(w).Encode([]map[string]any{auditEntry}); err != nil {
+			t.Fatalf("encode audit response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"phrase":   "actor:octocat-sensitive repo:writer/private",
+		"token":    "test-token",
+	})
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	envelope, ok := sourcecdk.DecodeCursorEnvelope(pull.Checkpoint.GetCursorOpaque())
+	if !ok {
+		t.Fatalf("checkpoint cursor %q is not an envelope", pull.Checkpoint.GetCursorOpaque())
+	}
+	for _, forbidden := range []string{
+		"audit-doc-sensitive-tenant-123",
+		"octocat-sensitive",
+		"actor:octocat-sensitive",
+		"repo:writer/private",
+	} {
+		if strings.Contains(pull.Checkpoint.GetCursorOpaque(), forbidden) {
+			t.Fatalf("checkpoint cursor leaked %q: %s", forbidden, pull.Checkpoint.GetCursorOpaque())
+		}
+		for key, value := range envelope.Extra {
+			if strings.Contains(value, forbidden) {
+				t.Fatalf("checkpoint extra %s leaked %q in %q", key, forbidden, value)
+			}
+		}
+	}
+	if got := envelope.Extra[sourcecdk.FamilyFreshnessExtraResourceID]; got != "latest_event" {
+		t.Fatalf("canary resource id = %q, want opaque latest_event", got)
 	}
 }
 

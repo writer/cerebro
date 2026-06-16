@@ -1,6 +1,7 @@
 package sourcecdk
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -150,5 +151,157 @@ func TestBeginFamilyFreshnessReadCarriesProbeFromContinuationCursor(t *testing.T
 	}
 	if _, ok := FamilyFreshnessProbeFromCheckpoint("github", "audit", readCheckpoint); !ok {
 		t.Fatalf("read checkpoint %q missing freshness probe", readCheckpoint.GetCursorOpaque())
+	}
+}
+
+func TestBeginFamilyFreshnessReadIncrementsHeuristicSkipCount(t *testing.T) {
+	now := time.Date(2026, 6, 16, 15, 30, 0, 0, time.UTC)
+	fullReadAt := now.Add(-time.Hour)
+	hash := FamilyFreshnessHash("audit_log_latest_event", "latest_event", now.Format(time.RFC3339Nano))
+	checkpoint := FamilyFreshnessCheckpoint("github", "audit", nil, FamilyFreshnessProbe{
+		Kind:       "audit_log_latest_event",
+		ResourceID: "latest_event",
+		UpdatedAt:  now,
+		Hash:       hash,
+		Confidence: FamilyFreshnessConfidenceHeuristic,
+		SkipCount:  1,
+		FullReadAt: fullReadAt,
+	})
+
+	readCheckpoint, shortCircuit, err := BeginFamilyFreshnessReadWithOptions("github", "audit", nil, checkpoint, func(*cerebrov1.SourceCheckpoint) (ChangeProbe, error) {
+		return FamilyFreshnessChangeProbe("github", "audit", checkpoint, FamilyFreshnessProbe{
+			Kind:       "audit_log_latest_event",
+			ResourceID: "latest_event",
+			ObservedAt: now.Add(time.Minute),
+			UpdatedAt:  now,
+			Hash:       hash,
+			Confidence: FamilyFreshnessConfidenceHeuristic,
+		}), nil
+	}, FamilyFreshnessReadOptions{
+		MaxSkipCount: 3,
+		MaxSkipAge:   24 * time.Hour,
+		Now:          func() time.Time { return now.Add(time.Minute) },
+	})
+	if err != nil {
+		t.Fatalf("BeginFamilyFreshnessReadWithOptions() error = %v", err)
+	}
+	if shortCircuit == nil {
+		t.Fatal("shortCircuit = nil, want unchanged probe short circuit")
+	}
+	probe, ok := FamilyFreshnessProbeFromCheckpoint("github", "audit", readCheckpoint)
+	if !ok {
+		t.Fatal("read checkpoint missing freshness probe")
+	}
+	if probe.SkipCount != 2 {
+		t.Fatalf("skip count = %d, want 2", probe.SkipCount)
+	}
+	if !probe.FullReadAt.Equal(fullReadAt) {
+		t.Fatalf("full read at = %s, want %s", probe.FullReadAt, fullReadAt)
+	}
+	if probe.Reason != FamilyFreshnessReasonShortCircuit {
+		t.Fatalf("reason = %q, want short_circuit", probe.Reason)
+	}
+}
+
+func TestBeginFamilyFreshnessReadForcesFullReadAfterMaxSkipCount(t *testing.T) {
+	now := time.Date(2026, 6, 16, 15, 30, 0, 0, time.UTC)
+	hash := FamilyFreshnessHash("audit_log_latest_event", "latest_event", now.Format(time.RFC3339Nano))
+	checkpoint := FamilyFreshnessCheckpoint("github", "audit", nil, FamilyFreshnessProbe{
+		Kind:       "audit_log_latest_event",
+		ResourceID: "latest_event",
+		UpdatedAt:  now,
+		Hash:       hash,
+		Confidence: FamilyFreshnessConfidenceHeuristic,
+		SkipCount:  3,
+		FullReadAt: now.Add(-time.Hour),
+	})
+
+	readCheckpoint, shortCircuit, err := BeginFamilyFreshnessReadWithOptions("github", "audit", nil, checkpoint, func(*cerebrov1.SourceCheckpoint) (ChangeProbe, error) {
+		return FamilyFreshnessChangeProbe("github", "audit", checkpoint, FamilyFreshnessProbe{
+			Kind:       "audit_log_latest_event",
+			ResourceID: "latest_event",
+			ObservedAt: now,
+			UpdatedAt:  now,
+			Hash:       hash,
+			Confidence: FamilyFreshnessConfidenceHeuristic,
+		}), nil
+	}, FamilyFreshnessReadOptions{
+		MaxSkipCount: 3,
+		Now:          func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("BeginFamilyFreshnessReadWithOptions() error = %v", err)
+	}
+	if shortCircuit != nil {
+		t.Fatalf("shortCircuit = %#v, want forced full read", shortCircuit)
+	}
+	probe, ok := FamilyFreshnessProbeFromCheckpoint("github", "audit", readCheckpoint)
+	if !ok {
+		t.Fatal("read checkpoint missing freshness probe")
+	}
+	if probe.SkipCount != 0 {
+		t.Fatalf("skip count = %d, want reset after forced read", probe.SkipCount)
+	}
+	if !probe.FullReadAt.Equal(now) {
+		t.Fatalf("full read at = %s, want %s", probe.FullReadAt, now)
+	}
+	if probe.Reason != FamilyFreshnessReasonMaxSkipCount {
+		t.Fatalf("reason = %q, want max_skip_count", probe.Reason)
+	}
+}
+
+func TestBeginFamilyFreshnessReadForcesFullReadAfterMaxSkipAge(t *testing.T) {
+	now := time.Date(2026, 6, 16, 15, 30, 0, 0, time.UTC)
+	hash := FamilyFreshnessHash("audit_log_latest_event", "latest_event", now.Format(time.RFC3339Nano))
+	checkpoint := FamilyFreshnessCheckpoint("github", "audit", nil, FamilyFreshnessProbe{
+		Kind:       "audit_log_latest_event",
+		ResourceID: "latest_event",
+		UpdatedAt:  now,
+		Hash:       hash,
+		Confidence: FamilyFreshnessConfidenceHeuristic,
+		FullReadAt: now.Add(-25 * time.Hour),
+	})
+
+	readCheckpoint, shortCircuit, err := BeginFamilyFreshnessReadWithOptions("github", "audit", nil, checkpoint, func(*cerebrov1.SourceCheckpoint) (ChangeProbe, error) {
+		return FamilyFreshnessChangeProbe("github", "audit", checkpoint, FamilyFreshnessProbe{
+			Kind:       "audit_log_latest_event",
+			ResourceID: "latest_event",
+			ObservedAt: now,
+			UpdatedAt:  now,
+			Hash:       hash,
+			Confidence: FamilyFreshnessConfidenceHeuristic,
+		}), nil
+	}, FamilyFreshnessReadOptions{
+		MaxSkipAge: 24 * time.Hour,
+		Now:        func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("BeginFamilyFreshnessReadWithOptions() error = %v", err)
+	}
+	if shortCircuit != nil {
+		t.Fatalf("shortCircuit = %#v, want forced full read", shortCircuit)
+	}
+	probe, ok := FamilyFreshnessProbeFromCheckpoint("github", "audit", readCheckpoint)
+	if !ok {
+		t.Fatal("read checkpoint missing freshness probe")
+	}
+	if probe.Reason != FamilyFreshnessReasonMaxSkipAge {
+		t.Fatalf("reason = %q, want max_skip_age", probe.Reason)
+	}
+}
+
+func TestBeginFamilyFreshnessReadCanFailOpenOnProbeError(t *testing.T) {
+	checkpoint := &cerebrov1.SourceCheckpoint{CursorOpaque: "checkpoint"}
+	readCheckpoint, shortCircuit, err := BeginFamilyFreshnessReadWithOptions("github", "audit", nil, checkpoint, func(*cerebrov1.SourceCheckpoint) (ChangeProbe, error) {
+		return ChangeProbe{}, errors.New("provider metadata probe failed")
+	}, FamilyFreshnessReadOptions{ProbeErrorMode: FamilyFreshnessProbeErrorFailOpen})
+	if err != nil {
+		t.Fatalf("BeginFamilyFreshnessReadWithOptions() error = %v", err)
+	}
+	if shortCircuit != nil {
+		t.Fatalf("shortCircuit = %#v, want normal read fallback", shortCircuit)
+	}
+	if readCheckpoint != checkpoint {
+		t.Fatalf("readCheckpoint = %p, want original checkpoint %p", readCheckpoint, checkpoint)
 	}
 }

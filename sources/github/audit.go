@@ -66,7 +66,7 @@ func (s *Source) discoverAudit(ctx context.Context, client *gogithub.Client, set
 }
 
 func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
-	readCheckpoint, shortCircuit, err := sourcecdk.BeginFamilyFreshnessRead("github", familyAudit, cursor, checkpoint, func(checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.ChangeProbe, error) {
+	readCheckpoint, shortCircuit, err := sourcecdk.BeginFamilyFreshnessReadWithOptions("github", familyAudit, cursor, checkpoint, func(checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.ChangeProbe, error) {
 		probe, err := githubaudit.LatestEventChangeProbe(ctx, settings.owner, settings.auditInclude, settings.auditPhrase, checkpoint, func(ctx context.Context, opts *gogithub.GetAuditLogOptions) ([]*gogithub.AuditEntry, *gogithub.Response, error) {
 			return client.Organizations.GetAuditLog(ctx, settings.owner, opts)
 		})
@@ -74,7 +74,7 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 			return sourcecdk.ChangeProbe{}, wrapLookupError(fmt.Sprintf("github audit log canary for org %s", settings.owner), err)
 		}
 		return probe, nil
-	})
+	}, githubaudit.FreshnessReadOptions())
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}

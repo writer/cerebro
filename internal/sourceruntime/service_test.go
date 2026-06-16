@@ -1264,6 +1264,58 @@ func TestSyncRuntimeTelemetryClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 }
 
+func TestSyncRuntimeTelemetryIncludesBoundedFreshnessMetadata(t *testing.T) {
+	checkpoint := sourcecdk.FamilyFreshnessCheckpoint("github", "audit", nil, sourcecdk.FamilyFreshnessProbe{
+		Kind:       "audit_log_latest_event",
+		ResourceID: "github-audit-sensitive-document-id",
+		Hash:       "sensitive-canary-hash",
+		Confidence: sourcecdk.FamilyFreshnessConfidenceHeuristic,
+		SkipCount:  2,
+		Reason:     sourcecdk.FamilyFreshnessReasonShortCircuit,
+	})
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Checkpoint:         checkpoint,
+		ShortCircuitReason: sourcecdk.PullShortCircuitReasonNotModified,
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:       "writer-checkpoint-aware",
+			SourceId: "checkpoint_aware",
+			TenantId: "writer",
+		},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"}); err != nil {
+			t.Fatalf("Sync() error = %v", err)
+		}
+	})
+
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync")
+	for key, want := range map[string]any{
+		"family_freshness_source":           "github",
+		"family_freshness_family":           "audit",
+		"family_freshness_confidence":       "heuristic",
+		"family_freshness_reconcile_reason": "short_circuit",
+		"family_freshness_forced_reconcile": false,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if got := payload["family_freshness_skip_count"]; got != float64(2) {
+		t.Fatalf("telemetry family_freshness_skip_count = %#v, want 2; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "github-audit-sensitive-document-id") || strings.Contains(stderr, "sensitive-canary-hash") {
+		t.Fatalf("freshness telemetry leaked raw canary metadata: %s", stderr)
+	}
+}
+
 func TestSyncRuntimePersistsFailureCategories(t *testing.T) {
 	for _, tt := range []struct {
 		name string

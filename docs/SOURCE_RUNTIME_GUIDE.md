@@ -148,9 +148,20 @@ canary_observed_at
 canary_updated_at
 canary_hash
 canary_confidence=authoritative|heuristic
+canary_skip_count
+canary_full_read_at
+canary_reconcile_reason=initial|changed|short_circuit|max_skip_count|max_skip_age
 ```
 
 Treat authoritative canaries, such as documented delta tokens, differently from heuristic canaries, such as newest audit-log event probes. Heuristic probes are dirty signals: they are useful for skipping likely unchanged scans, but they still need periodic full reconciliation if the provider does not document complete coverage.
+
+Use `sourcecdk.FamilyFreshnessReadOptions` to make that policy explicit:
+
+- set `MaxSkipCount` and `MaxSkipAge` for heuristic canaries so they cannot skip forever,
+- set `ProbeErrorMode=fail_open` only when a failed metadata call can safely fall through to the normal read path,
+- store opaque canary resource IDs and hashes only; do not persist provider document IDs, actor names, raw filter phrases, tenant names, or other customer-shaped metadata in `CursorEnvelope.Extra`.
+
+Runtime telemetry records bounded freshness labels such as source, family, confidence, skip count, and forced-reconciliation reason. It must not emit canary hashes or provider resource IDs.
 
 ## Bootstrap runtimes from JSON
 
