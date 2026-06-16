@@ -485,6 +485,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyBackupProtected, kind: "aws.backup_protected_resource"},
 		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point"},
 		{family: familyCodeBuildProject, kind: "aws.codebuild_project"},
+		{family: familyCodeBuildSourceCredential, kind: "aws.codebuild_source_credential"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location"},
 		{family: familyDataSyncTask, kind: "aws.datasync_task"},
 		{family: familyDocDBCluster, kind: "aws.docdb_cluster"},
@@ -1398,6 +1399,40 @@ func TestReadAWSCodeBuildProjectInventoryEvent(t *testing.T) {
 	}
 	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
 		t.Fatal("payload contains environment variable value")
+	}
+}
+
+func TestReadAWSCodeBuildSourceCredentialInventoryEvent(t *testing.T) {
+	arn := "arn:aws:codebuild:us-east-1:123456789012:source/github"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+			codeBuildSourceCredentials: []codebuildtypes.SourceCredentialsInfo{{
+				Arn:        awssdk.String(arn),
+				AuthType:   codebuildtypes.AuthTypeBasicAuth,
+				ServerType: codebuildtypes.ServerTypeGithub,
+			}},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCodeBuildSourceCredential}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyCodeBuildSourceCredential, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.codebuild_source_credential" {
+		t.Fatalf("kind = %q, want aws.codebuild_source_credential", got)
+	}
+	for key, want := range map[string]string{
+		"arn":           arn,
+		"auth_type":     "BASIC_AUTH",
+		"resource_type": "codebuild_source_credential",
+		"server_type":   "GITHUB",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -3075,6 +3110,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			Source:      &codebuildtypes.ProjectSource{Type: codebuildtypes.SourceTypeGithub},
 			Environment: &codebuildtypes.ProjectEnvironment{Type: codebuildtypes.EnvironmentTypeLinuxContainer},
 		}}
+		fake.codeBuildSourceCredentials = []codebuildtypes.SourceCredentialsInfo{{
+			Arn:        awssdk.String("arn:aws:codebuild:us-east-1:123456789012:source/github"),
+			AuthType:   codebuildtypes.AuthTypeBasicAuth,
+			ServerType: codebuildtypes.ServerTypeGithub,
+		}}
 		openSearchARN := "arn:aws:es:us-east-1:123456789012:domain/search-prod"
 		aossARN := "arn:aws:aoss:us-east-1:123456789012:collection/col-123"
 		elasticacheReplicationGroupARN := "arn:aws:elasticache:us-east-1:123456789012:replicationgroup:orders-rg"
@@ -3202,6 +3242,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyCodeBuildProject,
 			seed:    cloudAssetData,
 			wantAPI: []string{"codebuild:BatchGetProjects", "codebuild:ListProjects"},
+		},
+		{
+			family:  familyCodeBuildSourceCredential,
+			seed:    cloudAssetData,
+			wantAPI: []string{"codebuild:ListSourceCredentials"},
 		},
 		{
 			family:  familyBackupVault,
@@ -4283,15 +4328,16 @@ type fakeAWSRuntime struct {
 }
 
 type fakeAWSRuntimeApplication struct {
-	appRunnerSummaries     []apprunnertypes.ServiceSummary
-	appRunnerServices      map[string]apprunnertypes.Service
-	appRunnerTags          map[string][]apprunnertypes.Tag
-	codeBuildProjects      []string
-	codeBuildProjectDetail map[string]codebuildtypes.Project
-	sfnStateMachines       []sfntypes.StateMachineListItem
-	sfnStateMachineDetails map[string]sfn.DescribeStateMachineOutput
-	sfnActivities          []sfntypes.ActivityListItem
-	sfnTags                map[string][]sfntypes.Tag
+	appRunnerSummaries         []apprunnertypes.ServiceSummary
+	appRunnerServices          map[string]apprunnertypes.Service
+	appRunnerTags              map[string][]apprunnertypes.Tag
+	codeBuildProjects          []string
+	codeBuildProjectDetail     map[string]codebuildtypes.Project
+	codeBuildSourceCredentials []codebuildtypes.SourceCredentialsInfo
+	sfnStateMachines           []sfntypes.StateMachineListItem
+	sfnStateMachineDetails     map[string]sfn.DescribeStateMachineOutput
+	sfnActivities              []sfntypes.ActivityListItem
+	sfnTags                    map[string][]sfntypes.Tag
 }
 
 type fakeAWSRuntimeEventing struct {
@@ -4623,6 +4669,11 @@ func (f *recordingAWS) ListProjects(ctx context.Context, input *codebuild.ListPr
 func (f *recordingAWS) BatchGetProjects(ctx context.Context, input *codebuild.BatchGetProjectsInput, options ...func(*codebuild.Options)) (*codebuild.BatchGetProjectsOutput, error) {
 	f.record("codebuild:BatchGetProjects")
 	return f.fakeAWS.BatchGetProjects(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListSourceCredentials(ctx context.Context, input *codebuild.ListSourceCredentialsInput, options ...func(*codebuild.Options)) (*codebuild.ListSourceCredentialsOutput, error) {
+	f.record("codebuild:ListSourceCredentials")
+	return f.fakeAWS.ListSourceCredentials(ctx, input, options...)
 }
 
 func (f *recordingAWS) DescribeSecurityGroups(ctx context.Context, input *ec2.DescribeSecurityGroupsInput, options ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
@@ -6756,6 +6807,10 @@ func (f fakeAWS) BatchGetProjects(_ context.Context, input *codebuild.BatchGetPr
 		}
 	}
 	return &codebuild.BatchGetProjectsOutput{Projects: projects}, nil
+}
+
+func (f fakeAWS) ListSourceCredentials(context.Context, *codebuild.ListSourceCredentialsInput, ...func(*codebuild.Options)) (*codebuild.ListSourceCredentialsOutput, error) {
+	return &codebuild.ListSourceCredentialsOutput{SourceCredentialsInfos: f.codeBuildSourceCredentials}, nil
 }
 
 func (f fakeAWS) DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
