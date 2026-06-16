@@ -90,4 +90,8 @@ Sources live under `sources/<id>` and must include:
 - fixtures under `testdata/`
 - no direct store writes
 
-Arch tests and custom linters are the enforcement mechanism for keeping future sources inside the Source CDK and preventing regressions toward the older god-object architecture.
+Arch tests and custom linters are the enforcement mechanism for keeping future
+sources inside the Source CDK and preventing regressions toward the older
+god-object architecture. [`SOURCE_CDK_EXTRACTION.md`](./SOURCE_CDK_EXTRACTION.md)
+tracks grandfathered source LOC budgets and the extraction pressure that should
+move shared behavior back into the CDK.
