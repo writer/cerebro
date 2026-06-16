@@ -10,7 +10,7 @@ coverage_contract:
   authority_domain: panopticon
   dimensions:
     - id: alerts
-      type: lifecycle_state
+      type: audit_event
       title: Raw alerts for evidence and enrichment
       families: [alert]
       support: supported

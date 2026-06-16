@@ -1437,29 +1437,31 @@
       "pack_id": "grc",
       "pack_name": "GRC",
       "name": "Graph Resource Has Multiple Open Findings",
-      "description": "Detect resources with multiple active findings so remediation can be coordinated by shared resource rather than by individual alert.",
+      "description": "Retired graph meta-finding retained so stale open findings auto-resolve; multiple open findings on a resource is triage context, not a standalone risk.",
       "source_id": "graph",
       "evaluation_mode": "graph",
       "event_kinds": [
         "finding"
       ],
       "output_kind": "finding.graph_resource_multiple_open_findings",
-      "severity": "HIGH",
-      "status": "open",
-      "maturity": "test",
+      "severity": "INFO",
+      "status": "retired",
+      "maturity": "retired",
       "tags": [
+        "cleanup",
         "coordination",
         "finding",
         "graph-rule",
-        "prioritization"
+        "prioritization",
+        "retired"
       ],
       "references": [
         "https://www.iso.org/standard/27001"
       ],
       "false_positives": [
-        "Multiple findings may be duplicate projections of one upstream issue until deduplication rules converge."
+        "Multiple findings on one resource are expected during coordinated remediation and should be modeled as case context rather than a separate finding."
       ],
-      "runbook": "Prioritize the shared resource, group the findings by rule and owner, and remediate the common root cause.",
+      "runbook": "Use the underlying open findings or case context as the remediation queue; this meta-finding no longer emits.",
       "fingerprint_fields": [
         "resource_urn"
       ],

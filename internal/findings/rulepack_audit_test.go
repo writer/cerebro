@@ -85,7 +85,7 @@ func TestNoConvertRuleUsesEventIdOrMatchedAtFingerprint(t *testing.T) {
 func TestCloseoutSelectorCoversAllRetiredAndConvertRules(t *testing.T) {
 	targets := append(rulepackAuditRulesByClass(t, rulepackAuditClassConvert), rulepackAuditRulesByClass(t, rulepackAuditClassRetire)...)
 	sort.Slice(targets, func(i, j int) bool { return targets[i].RuleID < targets[j].RuleID })
-	if got, want := len(targets), 27; got != want {
+	if got, want := len(targets), 28; got != want {
 		t.Fatalf("CONVERT+RETIRE closeout target count = %d, want %d", got, want)
 	}
 	for i, entry := range targets {
@@ -825,7 +825,7 @@ func assertRulepackGraphEvidence(t *testing.T, store *stubFindingStore, findingI
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 40; got != want {
+	if got, want := len(keepRules), 39; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1038,7 +1038,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "finding-isolated-open-anchor", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "graph-aws-ec2-eni-link-missing", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "graph-orphan-nonfinding-node", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
-		{RuleID: "graph-resource-multiple-open-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
+		{RuleID: "graph-resource-multiple-open-findings", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "graph"},
 		{RuleID: "panopticon-curated-case", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "panopticon"},
 		{RuleID: "runtime-active-threat-evidence", Classification: "TTL_EVIDENCE_ONLY", BulkCloseoutThreshold: ">24h", Source: "runtime"},
 		{RuleID: "security-reviewer-reported-finding", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "security_reviewer"},

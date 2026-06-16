@@ -303,44 +303,30 @@ LIMIT $row_limit`, nil)
 }
 
 func newResourceMultipleOpenFindingsRule() Rule {
-	return newCoordinationGraphRule(RuleDefinition{
+	definition := RuleDefinition{
 		ID:          "graph-resource-multiple-open-findings",
 		Name:        "Graph Resource Has Multiple Open Findings",
-		Description: "Detect resources with multiple active findings so remediation can be coordinated by shared resource rather than by individual alert.",
+		Description: "Retired graph meta-finding retained so stale open findings auto-resolve; multiple open findings on a resource is triage context, not a standalone risk.",
 		SourceID:    "graph",
 		EventKinds:  []string{"finding"},
 		OutputKind:  "finding.graph_resource_multiple_open_findings",
-		Severity:    "HIGH",
-		Status:      findingStatusOpen,
-		Maturity:    "test",
-		Tags:        []string{"finding", "coordination", "graph-rule", "prioritization"},
+		Severity:    "INFO",
+		Status:      "retired",
+		Maturity:    RuleMaturityRetired,
+		Tags:        []string{"finding", "coordination", "graph-rule", "prioritization", "retired", "cleanup"},
 		References:  []string{"https://www.iso.org/standard/27001"},
 		FalsePositives: []string{
-			"Multiple findings may be duplicate projections of one upstream issue until deduplication rules converge.",
+			"Multiple findings on one resource are expected during coordinated remediation and should be modeled as case context rather than a separate finding.",
 		},
-		Runbook:           "Prioritize the shared resource, group the findings by rule and owner, and remediate the common root cause.",
+		Runbook:           "Use the underlying open findings or case context as the remediation queue; this meta-finding no longer emits.",
 		FingerprintFields: []string{"resource_urn"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.7"},
 		},
-	}, nil, `MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
-WHERE coalesce(finding.attributes_json, '') CONTAINS '"status":"open"'
-WITH resource, finding
-ORDER BY finding.urn
-WITH resource, collect(DISTINCT finding) AS findings, count(DISTINCT finding) AS finding_count
-WHERE finding_count >= $finding_threshold
-RETURN resource.urn AS primary_urn,
-       resource.label AS primary_label,
-       resource.entity_type AS primary_type,
-       resource.urn AS fingerprint_key,
-       'HIGH' AS severity,
-       'Resource has ' + toString(finding_count) + ' open finding(s)' AS summary,
-       'Coordinate remediation by the shared graph resource' AS action,
-       [resource.urn] AS resource_urns,
-       [f IN findings[0..20] | {urn: f.urn, label: f.label, entity_type: f.entity_type, relation: 'has_finding', attributes_json: coalesce(f.attributes_json, '')}] AS evidence
-ORDER BY finding_count DESC, resource.urn
-LIMIT $row_limit`, map[string]any{"finding_threshold": int64(coordinationGraphConcentrationMinimum)})
+		Lifecycle: Lifecycle{Kind: LifecycleRetired, Anchor: AnchorNone},
+	}
+	return newCoordinationGraphRule(definition, nil, "", nil)
 }
 
 func newCoordinationGraphRule(definition RuleDefinition, families map[string][]string, query string, params map[string]any) Rule {
@@ -410,6 +396,9 @@ func (r *coordinationGraphRule) QueryFor(runtime *cerebrov1.SourceRuntime) ports
 	if r == nil || runtime == nil || strings.TrimSpace(runtime.GetTenantId()) == "" {
 		return ports.CypherQueryRequest{}
 	}
+	if r.definition.Lifecycle.Kind == LifecycleRetired {
+		return ports.CypherQueryRequest{}
+	}
 	params := map[string]any{
 		"tenant_id": strings.TrimSpace(runtime.GetTenantId()),
 		"row_limit": int64(coordinationGraphRowLimit),
@@ -422,6 +411,9 @@ func (r *coordinationGraphRule) QueryFor(runtime *cerebrov1.SourceRuntime) ports
 
 func (r *coordinationGraphRule) EvaluateRows(_ context.Context, runtime *cerebrov1.SourceRuntime, rows []ports.CypherRow) ([]*ports.FindingRecord, error) {
 	if r == nil || runtime == nil || len(rows) == 0 {
+		return nil, nil
+	}
+	if r.definition.Lifecycle.Kind == LifecycleRetired {
 		return nil, nil
 	}
 	tenantID := strings.TrimSpace(runtime.GetTenantId())
