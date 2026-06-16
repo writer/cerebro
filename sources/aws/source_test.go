@@ -514,6 +514,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyECSTaskDefinition, kind: "aws.ecs_task_definition"},
 		{family: familyEFSAccessPoint, kind: "aws.efs_access_point"},
 		{family: familyEFSFileSystem, kind: "aws.efs_file_system"},
+		{family: familyEFSMountTarget, kind: "aws.efs_mount_target"},
 		{family: familyEKSCluster, kind: "aws.eks_cluster"},
 		{family: familyEKSNodegroup, kind: "aws.eks_nodegroup"},
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
@@ -2481,6 +2482,7 @@ func TestReadAWSEFSInventoryEvents(t *testing.T) {
 		want   string
 	}{
 		{family: familyEFSFileSystem, kind: "aws.efs_file_system", attr: "security_group_ids", want: "sg-123,sg-456"},
+		{family: familyEFSMountTarget, kind: "aws.efs_mount_target", attr: "subnet_id", want: "subnet-123"},
 		{family: familyEFSAccessPoint, kind: "aws.efs_access_point", attr: "root_directory_path", want: "/orders"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {

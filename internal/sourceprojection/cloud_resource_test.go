@@ -453,6 +453,41 @@ func TestProjectAWSDataResourceLinksNetworkAndElastiCacheContext(t *testing.T) {
 	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_elasticache_subnet_group:cache-subnets")
 }
 
+func TestProjectAWSEFSMountTargetLinksNetworkContext(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:elasticfilesystem:us-east-1:123456789012:mount-target/fsmt-123"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-efs-mount-target-fsmt-123",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.efs_mount_target",
+		Attributes: map[string]string{
+			"domain":             "123456789012",
+			"resource_id":        resourceARN,
+			"resource_name":      "fsmt-123",
+			"resource_provider":  "aws",
+			"resource_type":      "efs_mount_target",
+			"security_group_ids": "sg-efs",
+			"subnet_id":          "subnet-efs",
+			"vpc_id":             "vpc-efs",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_efs_mount_target:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.efs.mount.target" {
+		t.Fatalf("efs mount target entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_vpc:vpc-efs")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_subnet:subnet-efs")
+	assertProjectedLink(t, state, resourceURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-efs")
+}
+
 func TestProjectAWSDatabaseInstanceLinksClusterAndAccount(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

@@ -50,6 +50,7 @@ emitted_kinds:
   - aws.ecs_task_definition
   - aws.efs_access_point
   - aws.efs_file_system
+  - aws.efs_mount_target
   - aws.eks_cluster
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
@@ -203,6 +204,7 @@ runtime_families:
   - ecs_task_definition
   - efs_access_point
   - efs_file_system
+  - efs_mount_target
   - eks_cluster
   - eks_nodegroup
   - eks_fargate_profile
@@ -631,10 +633,9 @@ coverage_contract:
     - id: efs_mount_target
       type: entity_family
       title: AWS EFS mount targets
-      families: [efs_file_system]
-      support: partial
+      families: [efs_mount_target]
+      support: supported
       high_value: true
-      known_unsupported_fields: [dedicated mount target entities and subnet exposure detail]
     - id: eks_cluster
       type: entity_family
       title: AWS EKS clusters
