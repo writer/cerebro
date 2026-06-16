@@ -290,21 +290,28 @@ func (s *Source) enrichRecords(ctx context.Context, family Family, settings sett
 	for _, original := range records {
 		path, err := resolveRecordPath(s.options.SourceID, family.DetailPath, settings.pathParams, original.Values)
 		if err != nil {
-			return nil, fmt.Errorf("%s %s detail path: %w", s.options.SourceID, settings.family, err)
+			enriched = append(enriched, original)
+			continue
 		}
 		detailSettings := settings
 		detailSettings.path = path
 		var body json.RawMessage
 		if err := s.getJSON(ctx, detailSettings, url.Values{}, &body); err != nil {
-			return nil, err
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			enriched = append(enriched, original)
+			continue
 		}
 		raw, err := detailRecordRaw(body)
 		if err != nil {
-			return nil, fmt.Errorf("%s %s detail: %w", s.options.SourceID, settings.family, err)
+			enriched = append(enriched, original)
+			continue
 		}
 		next, err := mergedRecord(family, original, raw)
 		if err != nil {
-			return nil, fmt.Errorf("%s %s detail: %w", s.options.SourceID, settings.family, err)
+			enriched = append(enriched, original)
+			continue
 		}
 		enriched = append(enriched, next)
 	}

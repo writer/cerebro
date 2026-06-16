@@ -87,9 +87,15 @@ func TestReadCloudflareCoverageAttributes(t *testing.T) {
 			name:    "role permission groups",
 			family:  "role",
 			path:    "/accounts/account-1/roles",
+			detail:  "/accounts/account-1/roles/role-1",
 			config:  map[string]string{"account_id": "account-1"},
-			payload: map[string]any{"id": "role-1", "name": "Security Reviewer", "permission_groups": []map[string]any{{"id": "pg-logs", "name": "Logs Read"}}, "permissions": []map[string]any{{"id": "analytics:read"}}},
-			attr:    "permission_groups", contains: "Logs Read",
+			payload: map[string]any{"id": "role-1", "name": "Security Reviewer", "permissions": []map[string]any{{"id": "analytics:read"}}},
+			enriched: map[string]any{
+				"id":                "role-1",
+				"name":              "Security Reviewer",
+				"permission_groups": []map[string]any{{"id": "pg-logs", "name": "Logs Read"}},
+			},
+			attr: "permission_groups", contains: "Logs Read",
 		},
 		{
 			name:    "account ruleset rules",
@@ -185,5 +191,55 @@ func TestReadCloudflareCoverageAttributes(t *testing.T) {
 				t.Fatalf("%s = %q, want to contain %q", tt.attr, got, tt.contains)
 			}
 		})
+	}
+}
+
+func TestReadRulesetDetailFailureKeepsListRecords(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch got := r.URL.EscapedPath(); got {
+		case "/accounts/account-1/rulesets":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result": []map[string]any{
+					{"id": "ruleset-1", "name": "Stale WAF"},
+					{"id": "ruleset-2", "name": "Live WAF"},
+				},
+				"result_info": map[string]any{"page": 1, "total_pages": 2},
+			})
+		case "/accounts/account-1/rulesets/ruleset-1":
+			http.Error(w, "temporary detail error", http.StatusBadGateway)
+		case "/accounts/account-1/rulesets/ruleset-2":
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"id": "ruleset-2", "name": "Live WAF", "rules": []map[string]any{{"id": "rule-2", "action": "block"}}}})
+		default:
+			t.Fatalf("unexpected request path %q", got)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id": "account-1",
+		"base_url":   server.URL,
+		"family":     "account_ruleset",
+		"tenant_id":  "writer",
+		"token":      "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want 2", len(pull.Events))
+	}
+	if pull.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("NextCursor = %q, want 2", pull.NextCursor.GetOpaque())
+	}
+	if got := pull.Events[0].Attributes["name"]; got != "Stale WAF" {
+		t.Fatalf("first ruleset name = %q, want Stale WAF", got)
+	}
+	if got := pull.Events[1].Attributes["rules"]; !strings.Contains(got, "rule-2") {
+		t.Fatalf("second ruleset rules = %q, want rule-2", got)
 	}
 }

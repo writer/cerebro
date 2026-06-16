@@ -83,6 +83,7 @@ func cloudflareFamilies() []jsonapi.Family {
 		{
 			Name:             "role",
 			Path:             "/accounts/{account_id}/roles",
+			DetailPath:       "/accounts/{account_id}/roles/{id}",
 			PathParams:       []string{"account_id"},
 			URNKind:          "cloudflare_role",
 			IDKeys:           []string{"id"},
