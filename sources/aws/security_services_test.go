@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/accessanalyzer"
@@ -22,7 +23,9 @@ import (
 	securityhubtypes "github.com/aws/aws-sdk-go-v2/service/securityhub/types"
 	"github.com/aws/aws-sdk-go-v2/service/wafv2"
 	wafv2types "github.com/aws/aws-sdk-go-v2/service/wafv2/types"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -240,6 +243,165 @@ func TestListSecurityHubFindingsRetriesExpiredCursor(t *testing.T) {
 	}
 }
 
+func TestReadAWSFindingFamiliesWithCheckpointUseUpdatedTimeRequests(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	checkpoint := awsSecurityTestCheckpoint(watermark)
+
+	t.Run("securityhub", func(t *testing.T) {
+		fake := &fakeAWSSecurityServices{
+			securityHubFindings: []securityhubtypes.AwsSecurityFinding{
+				{Id: awssdk.String("new-finding"), UpdatedAt: awssdk.String(watermark.Add(time.Hour).Format(time.RFC3339))},
+				{Id: awssdk.String("old-finding"), UpdatedAt: awssdk.String(watermark.Add(-time.Hour).Format(time.RFC3339))},
+			},
+		}
+		source := newSecurityTestSource(t, fake)
+		pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySecurityHubFinding}), nil, checkpoint)
+		if err != nil {
+			t.Fatalf("ReadWithCheckpoint(securityhub_finding) error = %v", err)
+		}
+		if len(pull.Events) != 1 || pull.Events[0].GetId() != "aws-securityhub-finding-new-finding" {
+			t.Fatalf("events = %#v, want only new Security Hub finding", pull.Events)
+		}
+		if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+			t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+		}
+		if len(fake.securityHubInputs) != 1 {
+			t.Fatalf("len(securityHubInputs) = %d, want 1", len(fake.securityHubInputs))
+		}
+		input := fake.securityHubInputs[0]
+		if len(input.SortCriteria) != 1 || awssdk.ToString(input.SortCriteria[0].Field) != "UpdatedAt" || input.SortCriteria[0].SortOrder != securityhubtypes.SortOrderDescending {
+			t.Fatalf("Security Hub sort = %#v, want UpdatedAt desc", input.SortCriteria)
+		}
+		if input.Filters == nil || len(input.Filters.UpdatedAt) != 1 {
+			t.Fatalf("Security Hub UpdatedAt filter = %#v, want one start filter", input.Filters)
+		}
+		assertAWSFindingFilterStart(t, awssdk.ToString(input.Filters.UpdatedAt[0].Start), watermark)
+	})
+
+	t.Run("guardduty", func(t *testing.T) {
+		fake := &fakeAWSSecurityServices{
+			guardDutyDetectorIDs: []string{"detector-1"},
+			guardDutyFindingIDs:  map[string][]string{"detector-1": {"new-finding", "old-finding"}},
+			guardDutyFindings: map[string]guarddutytypes.Finding{
+				"new-finding": {Arn: awssdk.String("arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/new-finding"), Id: awssdk.String("new-finding"), UpdatedAt: awssdk.String(watermark.Add(time.Hour).Format(time.RFC3339))},
+				"old-finding": {Arn: awssdk.String("arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/old-finding"), Id: awssdk.String("old-finding"), UpdatedAt: awssdk.String(watermark.Add(-time.Hour).Format(time.RFC3339))},
+			},
+		}
+		source := newSecurityTestSource(t, fake)
+		pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyGuardDutyFinding}), nil, checkpoint)
+		if err != nil {
+			t.Fatalf("ReadWithCheckpoint(guardduty_finding) error = %v", err)
+		}
+		if len(pull.Events) != 1 || pull.Events[0].GetAttributes()["finding_id"] != "new-finding" {
+			t.Fatalf("events = %#v, want only new GuardDuty finding", pull.Events)
+		}
+		if len(fake.guardDutyListInputs) != 1 {
+			t.Fatalf("len(guardDutyListInputs) = %d, want 1", len(fake.guardDutyListInputs))
+		}
+		input := fake.guardDutyListInputs[0]
+		if input.SortCriteria == nil || awssdk.ToString(input.SortCriteria.AttributeName) != "updatedAt" || input.SortCriteria.OrderBy != guarddutytypes.OrderByDesc {
+			t.Fatalf("GuardDuty sort = %#v, want updatedAt DESC", input.SortCriteria)
+		}
+		condition := input.FindingCriteria.Criterion["updatedAt"]
+		if condition.GreaterThanOrEqual == nil || *condition.GreaterThanOrEqual != watermark.Add(-awsFindingCheckpointLookback).UnixMilli() {
+			t.Fatalf("GuardDuty updatedAt gte = %#v, want %d", condition.GreaterThanOrEqual, watermark.Add(-awsFindingCheckpointLookback).UnixMilli())
+		}
+	})
+
+	t.Run("macie", func(t *testing.T) {
+		newUpdatedAt := watermark.Add(time.Hour)
+		oldUpdatedAt := watermark.Add(-time.Hour)
+		fake := &fakeAWSSecurityServices{
+			macieFindingIDs: []string{"new-finding", "old-finding"},
+			macieFindings: []macie2types.Finding{
+				{Id: awssdk.String("new-finding"), UpdatedAt: &newUpdatedAt},
+				{Id: awssdk.String("old-finding"), UpdatedAt: &oldUpdatedAt},
+			},
+		}
+		source := newSecurityTestSource(t, fake)
+		pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyMacie2Finding}), nil, checkpoint)
+		if err != nil {
+			t.Fatalf("ReadWithCheckpoint(macie2_finding) error = %v", err)
+		}
+		if len(pull.Events) != 1 || pull.Events[0].GetId() != "aws-macie2-finding-new-finding" {
+			t.Fatalf("events = %#v, want only new Macie finding", pull.Events)
+		}
+		if len(fake.macieListInputs) != 1 {
+			t.Fatalf("len(macieListInputs) = %d, want 1", len(fake.macieListInputs))
+		}
+		input := fake.macieListInputs[0]
+		if input.SortCriteria == nil || awssdk.ToString(input.SortCriteria.AttributeName) != "updatedAt" || input.SortCriteria.OrderBy != macie2types.OrderByDesc {
+			t.Fatalf("Macie sort = %#v, want updatedAt DESC", input.SortCriteria)
+		}
+		criterion := input.FindingCriteria.Criterion["updatedAt"]
+		if criterion.Gte == nil || *criterion.Gte != watermark.Add(-awsFindingCheckpointLookback).UnixMilli() {
+			t.Fatalf("Macie updatedAt gte = %#v, want %d", criterion.Gte, watermark.Add(-awsFindingCheckpointLookback).UnixMilli())
+		}
+	})
+}
+
+func TestReadAWSSecurityHubCheckpointCursorKeepsOriginalWatermark(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	firstUpdatedAt := watermark.Add(2 * time.Hour)
+	secondUpdatedAt := watermark.Add(time.Hour)
+	fake := &fakeAWSSecurityServices{
+		securityHubFindings: []securityhubtypes.AwsSecurityFinding{{
+			Id:        awssdk.String("first-page"),
+			UpdatedAt: awssdk.String(firstUpdatedAt.Format(time.RFC3339)),
+		}},
+		securityHubNextToken: "token-2",
+	}
+	source := newSecurityTestSource(t, fake)
+	cfg := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySecurityHubFinding})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, awsSecurityTestCheckpoint(watermark))
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 1 || first.NextCursor == nil || first.Checkpoint == nil {
+		t.Fatalf("first pull = %#v, want event, checkpoint, and next cursor", first)
+	}
+	if got := first.Checkpoint.GetWatermark().AsTime(); !got.Equal(firstUpdatedAt) {
+		t.Fatalf("first checkpoint watermark = %s, want %s", got, firstUpdatedAt)
+	}
+
+	fake.securityHubFindings = []securityhubtypes.AwsSecurityFinding{{
+		Id:        awssdk.String("second-page"),
+		UpdatedAt: awssdk.String(secondUpdatedAt.Format(time.RFC3339)),
+	}}
+	fake.securityHubNextToken = ""
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, first.NextCursor, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 1 || second.Events[0].GetId() != "aws-securityhub-finding-second-page" {
+		t.Fatalf("second events = %#v, want second-page despite advanced runtime checkpoint", second.Events)
+	}
+	if len(fake.securityHubInputs) != 2 {
+		t.Fatalf("len(securityHubInputs) = %d, want 2", len(fake.securityHubInputs))
+	}
+	if got := awssdk.ToString(fake.securityHubInputs[1].NextToken); got != "token-2" {
+		t.Fatalf("second NextToken = %q, want token-2", got)
+	}
+	assertAWSFindingFilterStart(t, awssdk.ToString(fake.securityHubInputs[1].Filters.UpdatedAt[0].Start), watermark)
+}
+
+func awsSecurityTestCheckpoint(watermark time.Time) *cerebrov1.SourceCheckpoint {
+	return &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark.UTC())}
+}
+
+func assertAWSFindingFilterStart(t *testing.T, raw string, watermark time.Time) {
+	t.Helper()
+	got, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		t.Fatalf("parse filter start %q: %v", raw, err)
+	}
+	want := watermark.Add(-awsFindingCheckpointLookback)
+	if !got.Equal(want) {
+		t.Fatalf("filter start = %s, want %s", got, want)
+	}
+}
+
 func newSecurityTestSource(t *testing.T, fake *fakeAWSSecurityServices) *Source {
 	t.Helper()
 	spec, err := loadSpec()
@@ -274,13 +436,18 @@ type fakeAWSSecurityServices struct {
 	guardDutyDetectors           map[string]guardduty.GetDetectorOutput
 	guardDutyFindingIDs          map[string][]string
 	guardDutyFindings            map[string]guarddutytypes.Finding
+	guardDutyListInputs          []guardduty.ListFindingsInput
 	securityHubFindings          []securityhubtypes.AwsSecurityFinding
 	securityHubError             error
 	securityHubExpiredTokenError error
+	securityHubNextToken         string
+	securityHubInputs            []securityhub.GetFindingsInput
 	securityHubTokens            []string
 	inspector2Findings           []inspector2types.Finding
 	macieFindingIDs              []string
 	macieFindings                []macie2types.Finding
+	macieListInputs              []macie2.ListFindingsInput
+	macieNextToken               string
 	wafv2Summaries               []wafv2types.WebACLSummary
 	wafv2Details                 map[string]wafv2types.WebACL
 	lastWAFV2Scope               wafv2types.Scope
@@ -314,6 +481,7 @@ func (f fakeGuardDutySecurity) GetDetector(_ context.Context, input *guardduty.G
 }
 
 func (f fakeGuardDutySecurity) ListFindings(_ context.Context, input *guardduty.ListFindingsInput, _ ...func(*guardduty.Options)) (*guardduty.ListFindingsOutput, error) {
+	f.fake.guardDutyListInputs = append(f.fake.guardDutyListInputs, *input)
 	return &guardduty.ListFindingsOutput{FindingIds: f.fake.guardDutyFindingIDs[awssdk.ToString(input.DetectorId)]}, nil
 }
 
@@ -332,6 +500,7 @@ type fakeSecurityHubSecurity struct {
 }
 
 func (f fakeSecurityHubSecurity) GetFindings(_ context.Context, input *securityhub.GetFindingsInput, _ ...func(*securityhub.Options)) (*securityhub.GetFindingsOutput, error) {
+	f.fake.securityHubInputs = append(f.fake.securityHubInputs, *input)
 	token := awssdk.ToString(input.NextToken)
 	f.fake.securityHubTokens = append(f.fake.securityHubTokens, token)
 	if token != "" && f.fake.securityHubExpiredTokenError != nil {
@@ -340,7 +509,7 @@ func (f fakeSecurityHubSecurity) GetFindings(_ context.Context, input *securityh
 	if f.fake.securityHubError != nil {
 		return nil, f.fake.securityHubError
 	}
-	return &securityhub.GetFindingsOutput{Findings: f.fake.securityHubFindings}, nil
+	return &securityhub.GetFindingsOutput{Findings: f.fake.securityHubFindings, NextToken: stringPtr(f.fake.securityHubNextToken)}, nil
 }
 
 type fakeInspector2Security struct {
@@ -355,8 +524,9 @@ type fakeMacie2Security struct {
 	fake *fakeAWSSecurityServices
 }
 
-func (f fakeMacie2Security) ListFindings(context.Context, *macie2.ListFindingsInput, ...func(*macie2.Options)) (*macie2.ListFindingsOutput, error) {
-	return &macie2.ListFindingsOutput{FindingIds: f.fake.macieFindingIDs}, nil
+func (f fakeMacie2Security) ListFindings(_ context.Context, input *macie2.ListFindingsInput, _ ...func(*macie2.Options)) (*macie2.ListFindingsOutput, error) {
+	f.fake.macieListInputs = append(f.fake.macieListInputs, *input)
+	return &macie2.ListFindingsOutput{FindingIds: f.fake.macieFindingIDs, NextToken: stringPtr(f.fake.macieNextToken)}, nil
 }
 
 func (f fakeMacie2Security) GetFindings(context.Context, *macie2.GetFindingsInput, ...func(*macie2.Options)) (*macie2.GetFindingsOutput, error) {

@@ -28,22 +28,25 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/wafv2"
 	wafv2types "github.com/aws/aws-sdk-go-v2/service/wafv2/types"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/awssecurity"
 )
 
 const (
-	familyAccessAnalyzer      = "access_analyzer"
-	familyConfigRecorder      = "config_recorder"
-	familyGuardDutyDetector   = "guardduty_detector"
-	familyGuardDutyFinding    = "guardduty_finding"
-	familyInspector2Finding   = "inspector2_finding"
-	familyMacie2Finding       = "macie2_finding"
-	familyNetworkFirewall     = "network_firewall"
-	familySecurityHubFinding  = "securityhub_finding"
-	familyWAFV2WebACL         = "wafv2_web_acl"
-	accessAnalyzerMissing     = accessanalyzertypes.AnalyzerStatus("MISSING")
-	configRecorderMissingName = "missing-"
+	familyAccessAnalyzer         = "access_analyzer"
+	familyConfigRecorder         = "config_recorder"
+	familyGuardDutyDetector      = "guardduty_detector"
+	familyGuardDutyFinding       = "guardduty_finding"
+	familyInspector2Finding      = "inspector2_finding"
+	familyMacie2Finding          = "macie2_finding"
+	familyNetworkFirewall        = "network_firewall"
+	familySecurityHubFinding     = "securityhub_finding"
+	familyWAFV2WebACL            = "wafv2_web_acl"
+	accessAnalyzerMissing        = accessanalyzertypes.AnalyzerStatus("MISSING")
+	configRecorderMissingName    = "missing-"
+	awsFindingCheckpointLookback = 2 * time.Minute
 )
 
 type awsSecurityClients struct {
@@ -185,10 +188,11 @@ func awsSecurityFamilies(clientFactory awsClientFactory) []sourcecdk.Family[sett
 			CursorFallback: func(detector awsGuardDutyDetector) string { return detector.DetectorID },
 		}),
 		awsFamily(clientFactory, awsFamilyOptions[awsGuardDutyFinding]{
-			Name:  familyGuardDutyFinding,
-			Label: "aws guardduty findings",
-			List:  listGuardDutyFindings,
-			Event: guardDutyFindingEvent,
+			Name:               familyGuardDutyFinding,
+			Label:              "aws guardduty findings",
+			List:               listGuardDutyFindings,
+			ListWithCheckpoint: listGuardDutyFindingsWithCheckpoint,
+			Event:              guardDutyFindingEvent,
 			URN: func(settings settings, finding awsGuardDutyFinding) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_guardduty_finding:%s", settings.accountID, firstNonEmpty(awssdk.ToString(finding.Finding.Arn), awssdk.ToString(finding.Finding.Id))), nil
 			},
@@ -197,10 +201,11 @@ func awsSecurityFamilies(clientFactory awsClientFactory) []sourcecdk.Family[sett
 			},
 		}),
 		awsFamily(clientFactory, awsFamilyOptions[securityhubtypes.AwsSecurityFinding]{
-			Name:  familySecurityHubFinding,
-			Label: "aws security hub findings",
-			List:  listSecurityHubFindings,
-			Event: securityHubFindingEvent,
+			Name:               familySecurityHubFinding,
+			Label:              "aws security hub findings",
+			List:               listSecurityHubFindings,
+			ListWithCheckpoint: listSecurityHubFindingsWithCheckpoint,
+			Event:              securityHubFindingEvent,
 			URN: func(settings settings, finding securityhubtypes.AwsSecurityFinding) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_securityhub_finding:%s", settings.accountID, awssdk.ToString(finding.Id)), nil
 			},
@@ -221,10 +226,11 @@ func awsSecurityFamilies(clientFactory awsClientFactory) []sourcecdk.Family[sett
 			CursorFallback: func(finding inspector2types.Finding) string { return awssdk.ToString(finding.FindingArn) },
 		}),
 		awsFamily(clientFactory, awsFamilyOptions[macie2types.Finding]{
-			Name:  familyMacie2Finding,
-			Label: "aws macie2 findings",
-			List:  listMacie2Findings,
-			Event: macie2FindingEvent,
+			Name:               familyMacie2Finding,
+			Label:              "aws macie2 findings",
+			List:               listMacie2Findings,
+			ListWithCheckpoint: listMacie2FindingsWithCheckpoint,
+			Event:              macie2FindingEvent,
 			URN: func(settings settings, finding macie2types.Finding) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_macie2_finding:%s", settings.accountID, awssdk.ToString(finding.Id)), nil
 			},
@@ -330,7 +336,11 @@ func listGuardDutyDetectors(ctx context.Context, clients awsClients, settings se
 	return records, awssdk.ToString(output.NextToken), nil
 }
 
-func listGuardDutyFindings(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsGuardDutyFinding, string, error) {
+func listGuardDutyFindings(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsGuardDutyFinding, string, error) {
+	return listGuardDutyFindingsWithCheckpoint(ctx, clients, settings, cursor, limit, nil)
+}
+
+func listGuardDutyFindingsWithCheckpoint(ctx context.Context, clients awsClients, _ settings, cursor string, limit int, checkpoint *cerebrov1.SourceCheckpoint) ([]awsGuardDutyFinding, string, error) {
 	detectors, err := listAllGuardDutyDetectors(ctx, clients)
 	if err != nil {
 		return nil, "", err
@@ -353,11 +363,8 @@ func listGuardDutyFindings(ctx context.Context, clients awsClients, _ settings, 
 	records := make([]awsGuardDutyFinding, 0, remaining)
 	for state.DetectorIndex < len(detectors) && len(records) < remaining {
 		detectorID := detectors[state.DetectorIndex]
-		output, err := clients.guardDuty.ListFindings(ctx, &guardduty.ListFindingsInput{
-			DetectorId: awssdk.String(detectorID),
-			MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(remaining-len(records), 1, 50)),
-			NextToken:  stringPtr(state.FindingToken),
-		})
+		input := awssecurity.GuardDutyListFindingsInput(detectorID, boundedAWSPageSizeInt32(remaining-len(records), 1, 50), state.FindingToken, checkpoint, awsFindingCheckpointLookback)
+		output, err := clients.guardDuty.ListFindings(ctx, input)
 		if err != nil {
 			return nil, "", fmt.Errorf("list guardduty findings for detector %q: %w", detectorID, err)
 		}
@@ -381,13 +388,16 @@ func listGuardDutyFindings(ctx context.Context, clients awsClients, _ settings, 
 	return records, "", nil
 }
 
-func listSecurityHubFindings(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]securityhubtypes.AwsSecurityFinding, string, error) {
-	output, err := clients.securityHub.GetFindings(ctx, &securityhub.GetFindingsInput{
-		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100)),
-		NextToken:  stringPtr(cursor),
-	})
+func listSecurityHubFindings(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]securityhubtypes.AwsSecurityFinding, string, error) {
+	return listSecurityHubFindingsWithCheckpoint(ctx, clients, settings, cursor, limit, nil)
+}
+
+func listSecurityHubFindingsWithCheckpoint(ctx context.Context, clients awsClients, _ settings, cursor string, limit int, checkpoint *cerebrov1.SourceCheckpoint) ([]securityhubtypes.AwsSecurityFinding, string, error) {
+	input := awssecurity.SecurityHubGetFindingsInput(boundedAWSPageSizeInt32(limit, 1, 100), cursor, checkpoint, awsFindingCheckpointLookback)
+	output, err := clients.securityHub.GetFindings(ctx, input)
 	if cursor != "" && optionalAWSError(err, "InvalidInputException") && strings.Contains(fmt.Sprint(err), "NextToken") {
-		output, err = clients.securityHub.GetFindings(ctx, &securityhub.GetFindingsInput{MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 100))})
+		input.NextToken = nil
+		output, err = clients.securityHub.GetFindings(ctx, input)
 	}
 	if err != nil && optionalAWSError(err, "AccessDeniedException", "InvalidAccessException", "ResourceNotFoundException") {
 		return nil, "", nil
@@ -409,11 +419,13 @@ func listInspector2Findings(ctx context.Context, clients awsClients, _ settings,
 	return out.Findings, awssdk.ToString(out.NextToken), nil
 }
 
-func listMacie2Findings(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]macie2types.Finding, string, error) {
-	out, err := clients.macie2.ListFindings(ctx, &macie2.ListFindingsInput{
-		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 50)),
-		NextToken:  stringPtr(cursor),
-	})
+func listMacie2Findings(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]macie2types.Finding, string, error) {
+	return listMacie2FindingsWithCheckpoint(ctx, clients, settings, cursor, limit, nil)
+}
+
+func listMacie2FindingsWithCheckpoint(ctx context.Context, clients awsClients, _ settings, cursor string, limit int, checkpoint *cerebrov1.SourceCheckpoint) ([]macie2types.Finding, string, error) {
+	input := awssecurity.MacieListFindingsInput(boundedAWSPageSizeInt32(limit, 1, 50), cursor, checkpoint, awsFindingCheckpointLookback)
+	out, err := clients.macie2.ListFindings(ctx, input)
 	if err != nil {
 		return nil, "", err
 	}

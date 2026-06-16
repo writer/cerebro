@@ -12,11 +12,12 @@ import (
 
 // Family groups source behavior for one configured event family.
 type Family[S any] struct {
-	Name     string
-	Check    func(context.Context, S) error
-	Discover func(context.Context, S) ([]URN, error)
-	Probe    func(context.Context, S, *cerebrov1.SourceCheckpoint) (ChangeProbe, error)
-	Read     func(context.Context, S, *cerebrov1.SourceCursor) (Pull, error)
+	Name               string
+	Check              func(context.Context, S) error
+	Discover           func(context.Context, S) ([]URN, error)
+	Probe              func(context.Context, S, *cerebrov1.SourceCheckpoint) (ChangeProbe, error)
+	Read               func(context.Context, S, *cerebrov1.SourceCursor) (Pull, error)
+	ReadWithCheckpoint func(context.Context, S, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint) (Pull, error)
 }
 
 // ChangeProbe is an optional cheap pre-read result for families that can test
@@ -137,6 +138,13 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 			}
 			return Pull{Checkpoint: probe.Checkpoint, ShortCircuitReason: reason}, nil
 		}
+	}
+	if family.ReadWithCheckpoint != nil {
+		pull, err := family.ReadWithCheckpoint(ctx, settings, cursor, checkpoint)
+		if err != nil {
+			return Pull{}, err
+		}
+		return applyResourceScopePolicy(pull, policy), nil
 	}
 	if family.Read == nil {
 		return Pull{}, nil

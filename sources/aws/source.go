@@ -815,13 +815,14 @@ type awsIdentityStoreAPI interface {
 }
 
 type awsFamilyOptions[T any] struct {
-	Name           string
-	Label          string
-	List           func(context.Context, awsClients, settings, string, int) ([]T, string, error)
-	Event          func(settings, T) (*primitives.Event, error)
-	URN            func(settings, T) (string, error)
-	Discover       func(context.Context, awsClients, settings) ([]sourcecdk.URN, error)
-	CursorFallback func(T) string
+	Name               string
+	Label              string
+	List               func(context.Context, awsClients, settings, string, int) ([]T, string, error)
+	ListWithCheckpoint func(context.Context, awsClients, settings, string, int, *cerebrov1.SourceCheckpoint) ([]T, string, error)
+	Event              func(settings, T) (*primitives.Event, error)
+	URN                func(settings, T) (string, error)
+	Discover           func(context.Context, awsClients, settings) ([]sourcecdk.URN, error)
+	CursorFallback     func(T) string
 }
 
 type iamPolicyAssignment struct {
@@ -1033,6 +1034,12 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 // Read returns one page of normalized AWS events.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return s.families.Read(ctx, cfg, cursor)
+}
+
+// ReadWithCheckpoint lets AWS families with provider-supported update ordering
+// stop once they reach the durable runtime watermark.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
@@ -2547,7 +2554,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 }
 
 func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T]) sourcecdk.Family[settings] {
-	return sourcecdk.Family[settings]{
+	family := sourcecdk.Family[settings]{
 		Name: options.Name,
 		Check: func(ctx context.Context, settings settings) error {
 			clients, err := clientFactory(ctx, settings)
@@ -2580,9 +2587,25 @@ func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T
 				return sourcecdk.Pull{}, fmt.Errorf("lookup %s for %s: %w", options.Label, settings.accountID, err)
 			}
 			build := func(record T) (*primitives.Event, error) { return options.Event(settings, record) }
-			return awsPullFromRecords(records, next, build, options.CursorFallback)
+			return sourcecdk.PullFromRecords(records, next, build, options.CursorFallback)
 		},
 	}
+	if options.ListWithCheckpoint != nil {
+		family.ReadWithCheckpoint = func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+			clients, err := clientFactory(ctx, settings)
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("aws", options.Name, cursor, checkpoint)
+			records, next, err := options.ListWithCheckpoint(ctx, clients, settings, sourcecdk.CursorToken(cursor), settings.perPage, readCheckpoint)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("lookup %s for %s: %w", options.Label, settings.accountID, err)
+			}
+			build := func(record T) (*primitives.Event, error) { return options.Event(settings, record) }
+			return sourcecdk.IncrementalPullFromRecords("aws", options.Name, records, next, readCheckpoint, build)
+		}
+	}
+	return family
 }
 
 func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
@@ -4399,38 +4422,6 @@ func sourceEvent(settings settings, id string, kind string, schemaRef string, pa
 		Payload:    payload,
 		Attributes: attributes,
 	}, nil
-}
-
-func awsPullFromRecords[T any](records []T, next string, build func(T) (*primitives.Event, error), cursorFallback func(T) string) (sourcecdk.Pull, error) {
-	if len(records) == 0 {
-		if next != "" {
-			return sourcecdk.Pull{NextCursor: &cerebrov1.SourceCursor{Opaque: next}}, nil
-		}
-		return sourcecdk.Pull{}, nil
-	}
-	events := make([]*primitives.Event, 0, len(records))
-	for _, record := range records {
-		event, err := build(record)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
-	fallback := events[len(events)-1].GetId()
-	if cursorFallback != nil {
-		fallback = cursorFallback(records[len(records)-1])
-	}
-	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: firstNonEmpty(next, fallback),
-		},
-	}
-	if next != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
-	}
-	return pull, nil
 }
 
 func awsCheck[T any](ctx context.Context, clients awsClients, settings settings, list func(context.Context, awsClients, settings, string, int) ([]T, string, error), label string) error {

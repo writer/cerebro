@@ -165,3 +165,42 @@ func TestFamilyEngineProbeShortCircuitsBeforeRead(t *testing.T) {
 		t.Fatalf("ShortCircuitReason = %q, want not_modified", pull.ShortCircuitReason)
 	}
 }
+
+func TestFamilyEngineUsesCheckpointAwareRead(t *testing.T) {
+	checkpoint := &cerebrov1.SourceCheckpoint{
+		Watermark: timestamppb.New(time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)),
+	}
+	var seenCheckpoint *cerebrov1.SourceCheckpoint
+	readCalled := false
+	engine, err := NewFamilyEngine(func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name: "securityhub_finding",
+		Read: func(context.Context, string, *cerebrov1.SourceCursor) (Pull, error) {
+			readCalled = true
+			return Pull{}, nil
+		},
+		ReadWithCheckpoint: func(_ context.Context, _ string, _ *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+			seenCheckpoint = checkpoint
+			return Pull{ShortCircuitReason: PullShortCircuitReasonWatermarkReached}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngine() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{"family": "securityhub_finding"}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if readCalled {
+		t.Fatal("fallback Read was called")
+	}
+	if seenCheckpoint != checkpoint {
+		t.Fatalf("checkpoint = %p, want %p", seenCheckpoint, checkpoint)
+	}
+	if pull.ShortCircuitReason != PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+}
