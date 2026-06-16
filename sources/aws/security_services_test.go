@@ -86,7 +86,7 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 			Severity: &securityhubtypes.Severity{Label: securityhubtypes.SeverityLabel("HIGH"), Normalized: awssdk.Int32(70)},
 			Title:    awssdk.String("S3 bucket allows public access"),
 		}},
-		inspector2Findings: []inspector2types.Finding{{
+		inspector2: fakeAWSInspector2Findings{findings: []inspector2types.Finding{{
 			AwsAccountId: awssdk.String("123456789012"),
 			FindingArn:   awssdk.String("arn:aws:inspector2:us-east-1:123456789012:finding/inspector-finding-1"),
 			Resources: []inspector2types.Resource{{
@@ -98,7 +98,7 @@ func TestReadAWSSecurityServiceEvents(t *testing.T) {
 			Status:   inspector2types.FindingStatus("ACTIVE"),
 			Title:    awssdk.String("CVE finding"),
 			Type:     inspector2types.FindingType("PACKAGE_VULNERABILITY"),
-		}},
+		}}},
 		macieFindingIDs: []string{"macie-finding-1"},
 		macieFindings: []macie2types.Finding{{
 			AccountId: awssdk.String("123456789012"),
@@ -343,10 +343,10 @@ func TestReadAWSFindingFamiliesWithCheckpointUseUpdatedTimeRequests(t *testing.T
 		newObservedAt := watermark.Add(time.Hour)
 		oldObservedAt := watermark.Add(-time.Hour)
 		fake := &fakeAWSSecurityServices{
-			inspector2Findings: []inspector2types.Finding{
+			inspector2: fakeAWSInspector2Findings{findings: []inspector2types.Finding{
 				{FindingArn: awssdk.String("arn:aws:inspector2:us-east-1:123456789012:finding/new-finding"), LastObservedAt: &newObservedAt},
 				{FindingArn: awssdk.String("arn:aws:inspector2:us-east-1:123456789012:finding/old-finding"), LastObservedAt: &oldObservedAt},
-			},
+			}},
 		}
 		source := newSecurityTestSource(t, fake)
 		pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyInspector2Finding}), nil, checkpoint)
@@ -356,10 +356,10 @@ func TestReadAWSFindingFamiliesWithCheckpointUseUpdatedTimeRequests(t *testing.T
 		if len(pull.Events) != 1 || pull.Events[0].GetAttributes()["finding_arn"] != "arn:aws:inspector2:us-east-1:123456789012:finding/new-finding" {
 			t.Fatalf("events = %#v, want only new Inspector2 finding", pull.Events)
 		}
-		if len(fake.inspector2ListInputs) != 1 {
-			t.Fatalf("len(inspector2ListInputs) = %d, want 1", len(fake.inspector2ListInputs))
+		if len(fake.inspector2.listInputs) != 1 {
+			t.Fatalf("len(inspector2ListInputs) = %d, want 1", len(fake.inspector2.listInputs))
 		}
-		input := fake.inspector2ListInputs[0]
+		input := fake.inspector2.listInputs[0]
 		if input.SortCriteria == nil || input.SortCriteria.Field != inspector2types.SortFieldLastObservedAt || input.SortCriteria.SortOrder != inspector2types.SortOrderDesc {
 			t.Fatalf("Inspector2 sort = %#v, want LastObservedAt DESC", input.SortCriteria)
 		}
@@ -475,8 +475,7 @@ type fakeAWSSecurityServices struct {
 	securityHubNextToken         string
 	securityHubInputs            []securityhub.GetFindingsInput
 	securityHubTokens            []string
-	inspector2Findings           []inspector2types.Finding
-	inspector2ListInputs         []inspector2.ListFindingsInput
+	inspector2                   fakeAWSInspector2Findings
 	macieFindingIDs              []string
 	macieFindings                []macie2types.Finding
 	macieListInputs              []macie2.ListFindingsInput
@@ -486,6 +485,11 @@ type fakeAWSSecurityServices struct {
 	lastWAFV2Scope               wafv2types.Scope
 	firewalls                    []networkfirewalltypes.FirewallMetadata
 	firewallDetails              map[string]networkfirewalltypes.Firewall
+}
+
+type fakeAWSInspector2Findings struct {
+	findings   []inspector2types.Finding
+	listInputs []inspector2.ListFindingsInput
 }
 
 func (f *fakeAWSSecurityServices) ListAnalyzers(context.Context, *accessanalyzer.ListAnalyzersInput, ...func(*accessanalyzer.Options)) (*accessanalyzer.ListAnalyzersOutput, error) {
@@ -550,8 +554,8 @@ type fakeInspector2Security struct {
 }
 
 func (f fakeInspector2Security) ListFindings(_ context.Context, input *inspector2.ListFindingsInput, _ ...func(*inspector2.Options)) (*inspector2.ListFindingsOutput, error) {
-	f.fake.inspector2ListInputs = append(f.fake.inspector2ListInputs, *input)
-	return &inspector2.ListFindingsOutput{Findings: f.fake.inspector2Findings}, nil
+	f.fake.inspector2.listInputs = append(f.fake.inspector2.listInputs, *input)
+	return &inspector2.ListFindingsOutput{Findings: f.fake.inspector2.findings}, nil
 }
 
 type fakeMacie2Security struct {
