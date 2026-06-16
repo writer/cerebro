@@ -549,6 +549,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
 		{family: familyMacie2Finding, kind: "aws.macie2_finding"},
+		{family: familyNetworkACL, kind: "aws.network_acl"},
 		{family: familyNetworkFirewall, kind: "aws.network_firewall"},
 		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyOpenSearchDomain, kind: "aws.opensearch_domain"},
@@ -1437,6 +1438,62 @@ func TestReadAWSCodeBuildSourceCredentialInventoryEvent(t *testing.T) {
 		"auth_type":     "BASIC_AUTH",
 		"resource_type": "codebuild_source_credential",
 		"server_type":   "GITHUB",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadAWSNetworkACLInventoryEvent(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		fakeAWSNetwork: fakeAWSNetwork{fakeAWSNetworkExposure: fakeAWSNetworkExposure{
+			networkAcls: []ec2types.NetworkAcl{{
+				NetworkAclId: awssdk.String("acl-123"),
+				VpcId:        awssdk.String("vpc-123"),
+				IsDefault:    awssdk.Bool(false),
+				Associations: []ec2types.NetworkAclAssociation{{SubnetId: awssdk.String("subnet-123")}},
+				Entries: []ec2types.NetworkAclEntry{
+					{
+						CidrBlock:  awssdk.String("0.0.0.0/0"),
+						Egress:     awssdk.Bool(false),
+						PortRange:  &ec2types.PortRange{From: awssdk.Int32(22), To: awssdk.Int32(22)},
+						Protocol:   awssdk.String("6"),
+						RuleAction: ec2types.RuleActionAllow,
+						RuleNumber: awssdk.Int32(100),
+					},
+					{
+						CidrBlock:  awssdk.String("0.0.0.0/0"),
+						Egress:     awssdk.Bool(false),
+						PortRange:  &ec2types.PortRange{From: awssdk.Int32(3389), To: awssdk.Int32(3389)},
+						Protocol:   awssdk.String("6"),
+						RuleAction: ec2types.RuleActionDeny,
+						RuleNumber: awssdk.Int32(110),
+					},
+				},
+				Tags: []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("prod-acl")}},
+			}},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyNetworkACL}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyNetworkACL, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.network_acl" {
+		t.Fatalf("kind = %q, want aws.network_acl", got)
+	}
+	for key, want := range map[string]string{
+		"admin_ports_from_internet":        "22",
+		"allows_admin_ports_from_internet": "true",
+		"network_acl_id":                   "acl-123",
+		"resource_name":                    "prod-acl",
+		"resource_type":                    "network_acl",
+		"subnet_ids":                       "subnet-123",
+		"vpc_id":                           "vpc-123",
 	} {
 		if got := event.Attributes[key]; got != want {
 			t.Fatalf("%s = %q, want %q", key, got, want)
@@ -3082,6 +3139,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.subnets = []ec2types.Subnet{{SubnetId: awssdk.String("subnet-123"), VpcId: awssdk.String("vpc-123")}}
 		fake.securityGroups = []ec2types.SecurityGroup{{GroupId: awssdk.String("sg-123"), VpcId: awssdk.String("vpc-123")}}
 		fake.routeTables = []ec2types.RouteTable{{RouteTableId: awssdk.String("rtb-123"), VpcId: awssdk.String("vpc-123")}}
+		fake.networkAcls = []ec2types.NetworkAcl{{NetworkAclId: awssdk.String("acl-123"), VpcId: awssdk.String("vpc-123")}}
 		fake.internetGateways = []ec2types.InternetGateway{{InternetGatewayId: awssdk.String("igw-123")}}
 		fake.natGateways = []ec2types.NatGateway{{NatGatewayId: awssdk.String("nat-123"), VpcId: awssdk.String("vpc-123"), SubnetId: awssdk.String("subnet-123")}}
 		fake.vpcEndpoints = []ec2types.VpcEndpoint{{VpcEndpointId: awssdk.String("vpce-123"), VpcId: awssdk.String("vpc-123")}}
@@ -3300,6 +3358,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyRouteTable,
 			seed:    networkSubstrateData,
 			wantAPI: []string{"ec2:DescribeRouteTables"},
+		},
+		{
+			family:  familyNetworkACL,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeNetworkAcls"},
 		},
 		{
 			family:  familyInternetGateway,
@@ -4183,6 +4246,7 @@ type fakeAWSNetworkExposure struct {
 	vpcs              []ec2types.Vpc
 	subnets           []ec2types.Subnet
 	routeTables       []ec2types.RouteTable
+	networkAcls       []ec2types.NetworkAcl
 	internetGateways  []ec2types.InternetGateway
 	natGateways       []ec2types.NatGateway
 	vpcEndpoints      []ec2types.VpcEndpoint
@@ -4703,6 +4767,11 @@ func (f *recordingAWS) DescribeRouteTables(ctx context.Context, input *ec2.Descr
 	f.record("ec2:DescribeRouteTables")
 	f.routeTableMaxResults = append(f.routeTableMaxResults, awssdk.ToInt32(input.MaxResults))
 	return f.fakeAWS.DescribeRouteTables(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeNetworkAcls(ctx context.Context, input *ec2.DescribeNetworkAclsInput, options ...func(*ec2.Options)) (*ec2.DescribeNetworkAclsOutput, error) {
+	f.record("ec2:DescribeNetworkAcls")
+	return f.fakeAWS.DescribeNetworkAcls(ctx, input, options...)
 }
 
 func (f *recordingAWS) DescribeInternetGateways(ctx context.Context, input *ec2.DescribeInternetGatewaysInput, options ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
@@ -6835,6 +6904,10 @@ func (f fakeAWS) DescribeSubnets(context.Context, *ec2.DescribeSubnetsInput, ...
 
 func (f fakeAWS) DescribeRouteTables(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
 	return &ec2.DescribeRouteTablesOutput{RouteTables: f.routeTables}, nil
+}
+
+func (f fakeAWS) DescribeNetworkAcls(context.Context, *ec2.DescribeNetworkAclsInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkAclsOutput, error) {
+	return &ec2.DescribeNetworkAclsOutput{NetworkAcls: f.networkAcls}, nil
 }
 
 func (f fakeAWS) DescribeInternetGateways(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {

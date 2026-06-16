@@ -59,6 +59,17 @@ func listRouteTables(ctx context.Context, clients awsClients, _ settings, cursor
 	return out.RouteTables, awssdk.ToString(out.NextToken), nil
 }
 
+func listNetworkACLs(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.NetworkAcl, string, error) {
+	out, err := clients.ec2.DescribeNetworkAcls(ctx, &ec2.DescribeNetworkAclsInput{
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return out.NetworkAcls, awssdk.ToString(out.NextToken), nil
+}
+
 func listInternetGateways(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ec2types.InternetGateway, string, error) {
 	out, err := clients.ec2.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
 		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 5, 1000)),
@@ -160,6 +171,26 @@ func routeTableEvent(settings settings, table ec2types.RouteTable) (*primitives.
 	attributes["subnet_ids"] = strings.Join(routeTableSubnetIDs(table.Associations), ",")
 	attributes["vpc_id"] = awssdk.ToString(table.VpcId)
 	return networkSubstrateEvent(settings, "route-table", id, "aws.route_table", "aws/route_table/v1", map[string]any{"route_table": table}, attributes)
+}
+
+func networkACLEvent(settings settings, acl ec2types.NetworkAcl) (*primitives.Event, error) {
+	id := awssdk.ToString(acl.NetworkAclId)
+	tags := ec2Tags(acl.Tags)
+	adminPorts := networkACLAdminPortsFromInternet(acl.Entries)
+	public := len(adminPorts) > 0
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyNetworkACL, id, firstNonEmpty(ec2NameTag(acl.Tags), id), "network_acl", tags)
+	attributes["admin_ports_from_internet"] = strings.Join(adminPorts, ",")
+	attributes["allows_admin_ports_from_internet"] = boolString(public)
+	attributes["arn"] = ec2RegionalARN(settings, "network-acl", id)
+	attributes["association_count"] = strconv.Itoa(len(acl.Associations))
+	attributes["entry_count"] = strconv.Itoa(len(acl.Entries))
+	attributes["internet_exposed"] = boolString(public)
+	attributes["is_default"] = boolString(awssdk.ToBool(acl.IsDefault))
+	attributes["network_acl_id"] = id
+	attributes["public"] = boolString(public)
+	attributes["subnet_ids"] = strings.Join(networkACLSubnetIDs(acl.Associations), ",")
+	attributes["vpc_id"] = awssdk.ToString(acl.VpcId)
+	return networkSubstrateEvent(settings, "network-acl", id, "aws.network_acl", "aws/network_acl/v1", map[string]any{"network_acl": acl}, attributes)
 }
 
 func internetGatewayEvent(settings settings, gateway ec2types.InternetGateway) (*primitives.Event, error) {
@@ -292,6 +323,57 @@ func routeNATGatewayIDs(routes []ec2types.Route) []string {
 		values = append(values, awssdk.ToString(route.NatGatewayId))
 	}
 	return cleanStrings(values)
+}
+
+func networkACLSubnetIDs(associations []ec2types.NetworkAclAssociation) []string {
+	values := make([]string, 0, len(associations))
+	for _, association := range associations {
+		values = append(values, awssdk.ToString(association.SubnetId))
+	}
+	return cleanStrings(values)
+}
+
+func networkACLAdminPortsFromInternet(entries []ec2types.NetworkAclEntry) []string {
+	allows22 := false
+	allows3389 := false
+	for _, entry := range entries {
+		if awssdk.ToBool(entry.Egress) || entry.RuleAction != ec2types.RuleActionAllow || !networkACLPublicCIDR(entry) {
+			continue
+		}
+		allows22 = allows22 || networkACLEntryMatchesPort(entry, 22)
+		allows3389 = allows3389 || networkACLEntryMatchesPort(entry, 3389)
+	}
+	ports := make([]string, 0, 2)
+	if allows22 {
+		ports = append(ports, "22")
+	}
+	if allows3389 {
+		ports = append(ports, "3389")
+	}
+	return ports
+}
+
+func networkACLPublicCIDR(entry ec2types.NetworkAclEntry) bool {
+	return awssdk.ToString(entry.CidrBlock) == "0.0.0.0/0" || awssdk.ToString(entry.Ipv6CidrBlock) == "::/0"
+}
+
+func networkACLEntryMatchesPort(entry ec2types.NetworkAclEntry, port int32) bool {
+	protocol := strings.TrimSpace(awssdk.ToString(entry.Protocol))
+	if protocol == "-1" {
+		return true
+	}
+	if protocol != "6" && !strings.EqualFold(protocol, "tcp") {
+		return false
+	}
+	if entry.PortRange == nil {
+		return true
+	}
+	from := awssdk.ToInt32(entry.PortRange.From)
+	to := awssdk.ToInt32(entry.PortRange.To)
+	if to < from {
+		to = from
+	}
+	return port >= from && port <= to
 }
 
 func internetGatewayVPCIDs(attachments []ec2types.InternetGatewayAttachment) []string {

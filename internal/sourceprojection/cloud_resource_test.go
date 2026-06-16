@@ -487,6 +487,13 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			entityType:   "aws.codebuild.source.credential",
 		},
 		{
+			name:         "network acl",
+			kind:         "aws.network_acl",
+			resourceID:   "acl-123",
+			resourceType: "network_acl",
+			entityType:   "aws.network.acl",
+		},
+		{
 			name:         "public ebs snapshot",
 			kind:         "aws.ebs_snapshot",
 			resourceID:   "snap-123",

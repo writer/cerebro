@@ -93,6 +93,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.subnet":                                    awsSubnetProjections,
 	"aws.security_group":                            awsSecurityGroupProjections,
 	"aws.route_table":                               awsRouteTableProjections,
+	"aws.network_acl":                               awsCloudResourceProjections,
 	"aws.internet_gateway":                          awsInternetGatewayProjections,
 	"aws.nat_gateway":                               awsNATGatewayProjections,
 	"aws.vpc_endpoint":                              awsVPCEndpointProjections,
