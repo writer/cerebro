@@ -147,11 +147,11 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	if analysis.Summary.Total != 100 {
-		t.Fatalf("summary total = %d, want 100", analysis.Summary.Total)
+	if analysis.Summary.Total != 108 {
+		t.Fatalf("summary total = %d, want 108", analysis.Summary.Total)
 	}
-	if len(analysis.Entries) != 100 {
-		t.Fatalf("entries len = %d, want 100", len(analysis.Entries))
+	if len(analysis.Entries) != 108 {
+		t.Fatalf("entries len = %d, want 108", len(analysis.Entries))
 	}
 	if analysis.Summary.Generateable == 0 {
 		t.Fatalf("summary = %#v, want at least one generateable entry", analysis.Summary)
@@ -185,6 +185,30 @@ func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
 	}
 	if entry.Definition.SourceID != "jumpcloud" || entry.Status != StatusGenerateable {
 		t.Fatalf("entry = %#v, want generateable jumpcloud", entry)
+	}
+}
+
+func TestBuiltinCatalogIncludesVantaGapEntries(t *testing.T) {
+	for sourceID, wantStatus := range map[string]string{
+		"checkr":         StatusGenerateable,
+		"ethena":         StatusGenerateable,
+		"google_drive":   StatusNeedsAuthExtension,
+		"hitrust_mycsf":  StatusGenerateable,
+		"ramp":           StatusNeedsAuthExtension,
+		"rippling":       StatusGenerateable,
+		"segment":        StatusGenerateable,
+		"swif_ai":        StatusGenerateable,
+	} {
+		entry, ok, err := BuiltinEntry(sourceID)
+		if err != nil {
+			t.Fatalf("BuiltinEntry(%q) error = %v", sourceID, err)
+		}
+		if !ok {
+			t.Fatalf("BuiltinEntry(%q) ok = false, want true", sourceID)
+		}
+		if entry.Status != wantStatus {
+			t.Fatalf("BuiltinEntry(%q) status = %q, want %q", sourceID, entry.Status, wantStatus)
+		}
 	}
 }
 
