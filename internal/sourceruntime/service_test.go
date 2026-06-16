@@ -1264,6 +1264,58 @@ func TestSyncRuntimeTelemetryClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 }
 
+func TestSyncRuntimeTelemetryIncludesBoundedFreshnessMetadata(t *testing.T) {
+	checkpoint := sourcecdk.FamilyFreshnessCheckpoint("github", "audit", nil, sourcecdk.FamilyFreshnessProbe{
+		Kind:       "audit_log_latest_event",
+		ResourceID: "github-audit-sensitive-document-id",
+		Hash:       "sensitive-canary-hash",
+		Confidence: sourcecdk.FamilyFreshnessConfidenceHeuristic,
+		SkipCount:  2,
+		Reason:     sourcecdk.FamilyFreshnessReasonShortCircuit,
+	})
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Checkpoint:         checkpoint,
+		ShortCircuitReason: sourcecdk.PullShortCircuitReasonNotModified,
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:       "writer-checkpoint-aware",
+			SourceId: "checkpoint_aware",
+			TenantId: "writer",
+		},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"}); err != nil {
+			t.Fatalf("Sync() error = %v", err)
+		}
+	})
+
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync")
+	for key, want := range map[string]any{
+		"family_freshness_source":           "github",
+		"family_freshness_family":           "audit",
+		"family_freshness_confidence":       "heuristic",
+		"family_freshness_reconcile_reason": "short_circuit",
+		"family_freshness_forced_reconcile": false,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if got := payload["family_freshness_skip_count"]; got != float64(2) {
+		t.Fatalf("telemetry family_freshness_skip_count = %#v, want 2; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "github-audit-sensitive-document-id") || strings.Contains(stderr, "sensitive-canary-hash") {
+		t.Fatalf("freshness telemetry leaked raw canary metadata: %s", stderr)
+	}
+}
+
 func TestSyncRuntimePersistsFailureCategories(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -1489,6 +1541,40 @@ func TestSyncRuntimePassesCheckpointAndPersistsShortCircuitReason(t *testing.T) 
 	}
 }
 
+func TestSyncRuntimePersistsReconciliationReason(t *testing.T) {
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Events:               []*cerebrov1.EventEnvelope{runtimeTestEvent("event-1", "checkpoint_aware", "checkpoint_aware.event")},
+		ReconciliationReason: sourcecdk.PullReconciliationReasonMaxConsecutiveSkips,
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:       "writer-checkpoint-aware",
+			SourceId: "checkpoint_aware",
+			TenantId: "writer",
+		},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("EventsAppended = %d, want 1", resp.GetEventsAppended())
+	}
+	stored := store.runtimes["writer-checkpoint-aware"]
+	if got := stored.GetConfig()[runtimeReconciliationReasonConfigKey]; got != "max_consecutive_skips" {
+		t.Fatalf("reconciliation reason = %q, want max_consecutive_skips", got)
+	}
+	if got := stored.GetConfig()[runtimeShortCircuitReasonConfigKey]; got != "" {
+		t.Fatalf("short circuit reason = %q, want empty", got)
+	}
+}
+
 func TestSyncRuntimeDoesNotRegressCheckpointWatermark(t *testing.T) {
 	newer := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	older := newer.Add(-time.Hour)
@@ -1561,6 +1647,12 @@ func TestSyncRuntimeMergesEqualWatermarkCheckpointBoundaries(t *testing.T) {
 		ResumableCheckpoint: true,
 		Token:               "2",
 		BoundaryIDs:         []string{"first"},
+		Extra: map[string]string{
+			sourcecdk.FamilyFreshnessExtraKind:       "repo_updated_at",
+			sourcecdk.FamilyFreshnessExtraResourceID: "writer/cerebro",
+			sourcecdk.FamilyFreshnessExtraHash:       "old-hash",
+			"preserved":                              "yes",
+		},
 	}
 	sourcecdk.SetCursorWatermark(&existingEnvelope, watermark)
 	existingCursor, err := sourcecdk.EncodeCursorEnvelope(existingEnvelope)
@@ -1574,6 +1666,9 @@ func TestSyncRuntimeMergesEqualWatermarkCheckpointBoundaries(t *testing.T) {
 		Mode:                "incremental_watermark",
 		ResumableCheckpoint: true,
 		BoundaryIDs:         []string{"second"},
+		Extra: map[string]string{
+			sourcecdk.FamilyFreshnessExtraHash: "new-hash",
+		},
 	}
 	sourcecdk.SetCursorWatermark(&nextEnvelope, watermark)
 	nextCursor, err := sourcecdk.EncodeCursorEnvelope(nextEnvelope)
@@ -1615,6 +1710,15 @@ func TestSyncRuntimeMergesEqualWatermarkCheckpointBoundaries(t *testing.T) {
 	}
 	if got := storedEnvelope.BoundaryIDs; len(got) != 2 || got[0] != "first" || got[1] != "second" {
 		t.Fatalf("stored boundary IDs = %#v, want first and second", got)
+	}
+	if got := storedEnvelope.Extra["preserved"]; got != "yes" {
+		t.Fatalf("stored preserved extra = %q, want yes", got)
+	}
+	if got := storedEnvelope.Extra[sourcecdk.FamilyFreshnessExtraHash]; got != "new-hash" {
+		t.Fatalf("stored canary hash = %q, want next checkpoint hash", got)
+	}
+	if got := storedEnvelope.Extra[sourcecdk.FamilyFreshnessExtraKind]; got != "repo_updated_at" {
+		t.Fatalf("stored canary kind = %q, want existing kind", got)
 	}
 }
 

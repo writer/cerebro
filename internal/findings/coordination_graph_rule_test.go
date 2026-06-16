@@ -79,7 +79,6 @@ func TestReviewCoordinationGraphRulesHaveDirectCoverage(t *testing.T) {
 	}{
 		{name: "github org owner", rule: newGitHubOrgOwnerConcentrationRule(), sourceID: "github", family: "org_inventory", querySnippet: `"role":"admin"`},
 		{name: "github programmatic credential", rule: newGitHubProgrammaticCredentialReviewRule(), sourceID: "github", family: "audit", querySnippet: `"resource_type":"personal_access_token"`},
-		{name: "github self-hosted runner", rule: newGitHubSelfHostedRunnerReviewRule(), sourceID: "github", family: "audit", querySnippet: `"runner_ephemeral":"true"`},
 		{name: "okta oauth public client", rule: newOktaOAuthPublicClientReviewRule(), sourceID: "okta", family: "application", querySnippet: `"oauth_public_client":"true"`},
 		{name: "okta weak authenticator", rule: newOktaAuthenticatorWeakFactorRule(), sourceID: "okta", family: "authenticator", querySnippet: `"key":"sms"`},
 		{name: "okta threat insight", rule: newOktaThreatInsightNotBlockingRule(), sourceID: "okta", family: "threat_insight", querySnippet: `"action":"block"`},

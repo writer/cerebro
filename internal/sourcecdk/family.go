@@ -17,6 +17,7 @@ type Family[S any] struct {
 	Check                func(context.Context, S) error
 	Discover             func(context.Context, S) ([]URN, error)
 	Probe                func(context.Context, S, *cerebrov1.SourceCheckpoint) (ChangeProbe, error)
+	ProbeOptions         FamilyFreshnessReadOptions
 	Read                 func(context.Context, S, *cerebrov1.SourceCursor) (Pull, error)
 	ReadWithCheckpoint   func(context.Context, S, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint) (Pull, error)
 }
@@ -127,10 +128,17 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 	if policy.ExcludesFamily(e.sourceID, family.Name) {
 		return Pull{ShortCircuitReason: PullShortCircuitReasonScopeExcluded}, nil
 	}
+	readCheckpoint := checkpoint
 	if family.Probe != nil {
 		probe, err := family.Probe(ctx, settings, checkpoint)
 		if err != nil {
-			return Pull{}, err
+			if normalizeFamilyFreshnessProbeErrorMode(family.ProbeOptions.ProbeErrorMode) == FamilyFreshnessProbeErrorFailOpen {
+				probe = ChangeProbe{}
+			} else {
+				return Pull{}, err
+			}
+		} else {
+			probe = applyFamilyFreshnessReadOptions(e.sourceID, family.Name, checkpoint, probe, family.ProbeOptions)
 		}
 		if probe.Unchanged {
 			reason := probe.ShortCircuitReason
@@ -139,9 +147,12 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 			}
 			return Pull{Checkpoint: probe.Checkpoint, ShortCircuitReason: reason}, nil
 		}
+		if probe.Checkpoint != nil {
+			readCheckpoint = probe.Checkpoint
+		}
 	}
 	if family.ReadWithCheckpoint != nil {
-		pull, err := family.ReadWithCheckpoint(ctx, settings, cursor, checkpoint)
+		pull, err := family.ReadWithCheckpoint(ctx, settings, cursor, readCheckpoint)
 		if err != nil {
 			return Pull{}, err
 		}
@@ -155,7 +166,7 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 		return Pull{}, err
 	}
 	if family.IncrementalWatermark && e.sourceID != "" {
-		readCheckpoint := IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, checkpoint)
+		readCheckpoint := IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, readCheckpoint)
 		next := ""
 		if pull.NextCursor != nil {
 			next = CursorToken(pull.NextCursor)

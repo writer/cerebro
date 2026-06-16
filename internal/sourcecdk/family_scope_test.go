@@ -205,6 +205,66 @@ func TestFamilyEngineUsesCheckpointAwareRead(t *testing.T) {
 	}
 }
 
+func TestFamilyEngineForcedFreshnessReconcilePassesProbeCheckpointToRead(t *testing.T) {
+	now := time.Date(2026, 6, 16, 15, 30, 0, 0, time.UTC)
+	hash := FamilyFreshnessHash("audit_log_latest_event", "latest_event", now.Format(time.RFC3339Nano))
+	checkpoint := FamilyFreshnessCheckpoint("github", "audit", nil, FamilyFreshnessProbe{
+		Kind:       "audit_log_latest_event",
+		ResourceID: "latest_event",
+		UpdatedAt:  now,
+		Hash:       hash,
+		Confidence: FamilyFreshnessConfidenceHeuristic,
+		SkipCount:  1,
+		FullReadAt: now.Add(-time.Minute),
+	})
+	var seenCheckpoint *cerebrov1.SourceCheckpoint
+	engine, err := NewFamilyEngineWithSourceID("github", func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name: "audit",
+		Probe: func(context.Context, string, *cerebrov1.SourceCheckpoint) (ChangeProbe, error) {
+			return FamilyFreshnessChangeProbe("github", "audit", checkpoint, FamilyFreshnessProbe{
+				Kind:       "audit_log_latest_event",
+				ResourceID: "latest_event",
+				ObservedAt: now,
+				UpdatedAt:  now,
+				Hash:       hash,
+				Confidence: FamilyFreshnessConfidenceHeuristic,
+			}), nil
+		},
+		ProbeOptions: FamilyFreshnessReadOptions{
+			MaxSkipCount: 1,
+			Now:          func() time.Time { return now },
+		},
+		ReadWithCheckpoint: func(_ context.Context, _ string, _ *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+			seenCheckpoint = checkpoint
+			return Pull{Checkpoint: checkpoint}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngineWithSourceID() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{"family": "audit"}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if seenCheckpoint == nil {
+		t.Fatal("ReadWithCheckpoint checkpoint = nil, want forced reconcile checkpoint")
+	}
+	probe, ok := FamilyFreshnessProbeFromCheckpoint("github", "audit", seenCheckpoint)
+	if !ok {
+		t.Fatalf("seen checkpoint %q missing freshness probe", seenCheckpoint.GetCursorOpaque())
+	}
+	if probe.Reason != FamilyFreshnessReasonMaxSkipCount {
+		t.Fatalf("seen checkpoint reason = %q, want max_skip_count", probe.Reason)
+	}
+	if pull.Checkpoint != seenCheckpoint {
+		t.Fatal("pull did not preserve forced reconcile checkpoint")
+	}
+}
+
 func TestFamilyEngineAppliesIncrementalWatermarkFallback(t *testing.T) {
 	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	checkpoint := IncrementalWatermarkCheckpoint("github", "pull_request", []*primitives.Event{
