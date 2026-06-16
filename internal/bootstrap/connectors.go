@@ -151,20 +151,22 @@ type connectorVaultView struct {
 }
 
 type connectorStoreView struct {
-	ID                        string                          `json:"id"`
-	Label                     string                          `json:"label"`
-	Provider                  string                          `json:"provider"`
-	Available                 bool                            `json:"available"`
-	Default                   bool                            `json:"default,omitempty"`
-	Mode                      string                          `json:"mode"`
-	Status                    string                          `json:"status,omitempty"`
-	Detail                    string                          `json:"detail,omitempty"`
-	Description               string                          `json:"description,omitempty"`
-	ReferencePrefixes         []string                        `json:"reference_prefixes,omitempty"`
-	ReferencePlaceholder      string                          `json:"reference_placeholder,omitempty"`
-	NativeResolutionAvailable bool                            `json:"native_resolution_available,omitempty"`
-	SetupSteps                []connectorStoreSetupStepView   `json:"setup_steps,omitempty"`
-	RequiredConfig            []connectorStoreConfigFieldView `json:"required_config,omitempty"`
+	ID                         string                          `json:"id"`
+	Label                      string                          `json:"label"`
+	Provider                   string                          `json:"provider"`
+	Available                  bool                            `json:"available"`
+	Default                    bool                            `json:"default,omitempty"`
+	Mode                       string                          `json:"mode"`
+	Status                     string                          `json:"status,omitempty"`
+	Detail                     string                          `json:"detail,omitempty"`
+	Description                string                          `json:"description,omitempty"`
+	ReferencePrefixes          []string                        `json:"reference_prefixes,omitempty"`
+	ReferenceNamespaceTemplate string                          `json:"reference_namespace_template,omitempty"`
+	ReferenceFieldTemplate     string                          `json:"reference_field_template,omitempty"`
+	ReferencePlaceholder       string                          `json:"reference_placeholder,omitempty"`
+	NativeResolutionAvailable  bool                            `json:"native_resolution_available,omitempty"`
+	SetupSteps                 []connectorStoreSetupStepView   `json:"setup_steps,omitempty"`
+	RequiredConfig             []connectorStoreConfigFieldView `json:"required_config,omitempty"`
 }
 
 type connectorStoreSetupStepView struct {
@@ -312,11 +314,25 @@ type connectorScopePreviewView struct {
 }
 
 type connectorCredentialBoundaryView struct {
-	Mode           string   `json:"mode,omitempty"`
-	StoreID        string   `json:"credential_store_id,omitempty"`
-	SendsSecrets   bool     `json:"sends_secrets"`
-	ReferenceOnly  bool     `json:"reference_only"`
-	FieldsAccepted []string `json:"fields_accepted,omitempty"`
+	Mode                      string                           `json:"mode,omitempty"`
+	StoreID                   string                           `json:"credential_store_id,omitempty"`
+	StoreStatus               string                           `json:"store_status,omitempty"`
+	StoreDetail               string                           `json:"store_detail,omitempty"`
+	SendsSecrets              bool                             `json:"sends_secrets"`
+	ReferenceOnly             bool                             `json:"reference_only"`
+	ReferenceNamespace        string                           `json:"reference_namespace,omitempty"`
+	ReferencePrefixes         []string                         `json:"reference_prefixes,omitempty"`
+	NativeResolutionAvailable bool                             `json:"native_resolution_available,omitempty"`
+	FieldsAccepted            []string                         `json:"fields_accepted,omitempty"`
+	ReferenceTemplates        []connectorReferenceTemplateView `json:"reference_templates,omitempty"`
+}
+
+type connectorReferenceTemplateView struct {
+	Field       string `json:"field"`
+	Label       string `json:"label,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+	Reference   string `json:"reference"`
+	Description string `json:"description,omitempty"`
 }
 
 type connectorConnectionResponse struct {
@@ -748,7 +764,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 			NextAction: "choose_ready_store",
 			Blocking:   true,
 		})
-		response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+		response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, nil)
 		response.finalizePreflight()
 		return response, nil
 	}
@@ -830,7 +846,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 			NextAction: "fix_required_fields",
 			Blocking:   true,
 		})
-		response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, sortedStringKeys(request.CredentialReferences))
+		response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, sortedStringKeys(request.CredentialReferences))
 		response.finalizePreflight()
 		return response, nil
 	}
@@ -863,7 +879,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 				NextAction: "configure_credential_transport",
 				Blocking:   true,
 			})
-			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, nil)
 			response.finalizePreflight()
 			return response, nil
 		}
@@ -873,27 +889,27 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 		)
 		if decryptIssue != nil {
 			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(decryptIssue, "Encrypted credential payload could not be opened."), "fix_encrypted_payload"))
-			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, nil)
 			response.finalizePreflight()
 			return response, nil
 		}
 		fields, parseIssue := connectorcredentials.ParseCredentialFields(decrypted)
 		if parseIssue != nil {
 			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(parseIssue, "Encrypted credential payload is not a valid credential field map."), "fix_encrypted_payload"))
-			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, nil)
 			response.finalizePreflight()
 			return response, nil
 		}
 		if credentialIssue := validateConnectorCredentialFields(sourceID, authMethod, fields); credentialIssue != nil {
 			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(credentialIssue, "Credential fields do not match the connector contract."), "fix_credential_fields"))
-			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, connectorcredentials.SortedFieldNames(fields))
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, connectorcredentials.SortedFieldNames(fields))
 			response.finalizePreflight()
 			return response, nil
 		}
 		plaintextFields = fields
 		fieldNames = connectorcredentials.SortedFieldNames(fields)
 	}
-	response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, fieldNames)
+	response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, fieldNames)
 	response.addPreflightCheck(connectorPreflightCredentialPassed(authMethod))
 	for _, check := range connectorProviderPreflightChecks(sourceID, authMethod, runtimeConfig, scopePolicy) {
 		response.addPreflightCheck(check)
@@ -1242,14 +1258,95 @@ func connectorPreflightScopeCheck(preview connectorScopePreviewView) connectorPr
 	}
 }
 
-func connectorPreflightCredentialBoundary(authMethod string, storeID string, fields []string) connectorCredentialBoundaryView {
+func (a *App) connectorPreflightCredentialBoundary(sourceID string, tenantID string, runtimeID string, authMethod string, storeID string, fields []string) connectorCredentialBoundaryView {
 	authMethod = normalizeConnectorAuthMethod(authMethod)
-	return connectorCredentialBoundaryView{
+	storeID = strings.TrimSpace(storeID)
+	boundary := connectorCredentialBoundaryView{
 		Mode:           authMethod,
-		StoreID:        strings.TrimSpace(storeID),
+		StoreID:        storeID,
 		SendsSecrets:   authMethod == connectorAuthMethodEncryptedSubmission,
 		ReferenceOnly:  authMethod != connectorAuthMethodEncryptedSubmission,
 		FieldsAccepted: append([]string{}, fields...),
+	}
+	if store, ok := a.connectorPreflightStore(storeID); ok {
+		boundary.StoreStatus = store.Status
+		boundary.StoreDetail = store.Detail
+		boundary.ReferencePrefixes = append([]string{}, store.ReferencePrefixes...)
+		boundary.NativeResolutionAvailable = store.NativeResolutionAvailable
+	}
+	if boundary.ReferenceOnly {
+		if len(boundary.ReferencePrefixes) == 0 {
+			boundary.ReferencePrefixes = connectorsecretstores.ReferencePrefixes(storeID)
+		}
+		boundary.ReferenceNamespace = connectorReferenceNamespace(storeID, tenantID, sourceID, runtimeID)
+		boundary.ReferenceTemplates = a.connectorReferenceTemplates(sourceID, tenantID, runtimeID, storeID, fields)
+	}
+	return boundary
+}
+
+func (a *App) connectorReferenceTemplates(sourceID string, tenantID string, runtimeID string, storeID string, fields []string) []connectorReferenceTemplateView {
+	if len(fields) == 0 {
+		return nil
+	}
+	required := map[string]struct{}{}
+	if schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]; ok {
+		required = stringSet(schema.RequiredCredentials...)
+	}
+	templates := make([]connectorReferenceTemplateView, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		templates = append(templates, connectorReferenceTemplateView{
+			Field:       field,
+			Label:       connectorFieldLabel(field),
+			Required:    setContains(required, field),
+			Reference:   a.connectorReferenceForField(storeID, tenantID, sourceID, runtimeID, field),
+			Description: connectorReferenceTemplateDescription(storeID),
+		})
+	}
+	return templates
+}
+
+func (a *App) connectorReferenceForField(storeID string, tenantID string, sourceID string, runtimeID string, field string) string {
+	switch strings.TrimSpace(storeID) {
+	case connectorStoreAWSSecretsManager:
+		namespace := connectorReferenceNamespace(storeID, tenantID, sourceID, runtimeID)
+		if namespace == "" {
+			namespace = connectorStoreReferenceNamespaceTemplate(storeID)
+		}
+		region := strings.TrimSpace(a.cfg.ConnectorSecretStores.AWSSecretsManager.Region)
+		if region == "" {
+			region = "us-east-1"
+		}
+		return "aws-sm:" + region + ":" + namespace + "#" + strings.TrimSpace(field)
+	default:
+		return "env:" + connectorSuggestedEnvName(sourceID, field)
+	}
+}
+
+func connectorReferenceNamespace(storeID string, tenantID string, sourceID string, runtimeID string) string {
+	switch strings.TrimSpace(storeID) {
+	case connectorStoreAWSSecretsManager:
+		prefix := connectorsecretstores.RuntimeSecretPrefix(tenantID, sourceID, runtimeID)
+		if prefix == "" {
+			return ""
+		}
+		return strings.TrimSuffix(prefix, "/") + "/credentials"
+	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
+		return "CEREBRO_SOURCE_" + connectorEnvComponent(sourceID) + "_*"
+	default:
+		return ""
+	}
+}
+
+func connectorReferenceTemplateDescription(storeID string) string {
+	switch strings.TrimSpace(storeID) {
+	case connectorStoreAWSSecretsManager:
+		return "Scoped to this tenant, source, and runtime; unscoped aws-sm references are rejected before resolution."
+	default:
+		return "Environment projection reference resolved inside the Cerebro backend runtime."
 	}
 }
 
@@ -1954,16 +2051,18 @@ func connectorStoreViews(vaultStatus connectorVaultView, transport connectorTran
 			},
 		},
 		{
-			ID:                   connectorStoreEnvironmentManaged,
-			Label:                "Environment managed",
-			Provider:             "Deployment",
-			Available:            true,
-			Mode:                 "environment_managed",
-			Status:               "ready",
-			Detail:               "ready",
-			Description:          "Cerebro stores env: references and resolves them inside the backend process. The browser never receives the secret value.",
-			ReferencePrefixes:    []string{"env:"},
-			ReferencePlaceholder: "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>",
+			ID:                         connectorStoreEnvironmentManaged,
+			Label:                      "Environment managed",
+			Provider:                   "Deployment",
+			Available:                  true,
+			Mode:                       "environment_managed",
+			Status:                     "ready",
+			Detail:                     "ready",
+			Description:                "Cerebro stores env: references and resolves them inside the backend process. The browser never receives the secret value.",
+			ReferencePrefixes:          []string{"env:"},
+			ReferenceNamespaceTemplate: "CEREBRO_SOURCE_<SOURCE>_*",
+			ReferenceFieldTemplate:     "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>",
+			ReferencePlaceholder:       "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>",
 			SetupSteps: []connectorStoreSetupStepView{
 				{
 					ID:          "project_env",
@@ -1993,19 +2092,21 @@ func connectorExternalStoreView(secretStoreConfig config.ConnectorSecretStoreCon
 		detail = "native resolver ready"
 	}
 	return connectorStoreView{
-		ID:                        id,
-		Label:                     label,
-		Provider:                  provider,
-		Available:                 enabled,
-		Mode:                      connectorCredentialStoreModeRefs,
-		Status:                    status,
-		Detail:                    detail,
-		Description:               connectorExternalStoreDescription(id, label),
-		ReferencePrefixes:         connectorsecretstores.ReferencePrefixes(id),
-		ReferencePlaceholder:      connectorStoreReferencePlaceholder(id),
-		NativeResolutionAvailable: native,
-		SetupSteps:                connectorExternalStoreSetupSteps(id, native),
-		RequiredConfig:            connectorExternalStoreRequiredConfig(id),
+		ID:                         id,
+		Label:                      label,
+		Provider:                   provider,
+		Available:                  enabled,
+		Mode:                       connectorCredentialStoreModeRefs,
+		Status:                     status,
+		Detail:                     detail,
+		Description:                connectorExternalStoreDescription(id, label),
+		ReferencePrefixes:          connectorsecretstores.ReferencePrefixes(id),
+		ReferenceNamespaceTemplate: connectorStoreReferenceNamespaceTemplate(id),
+		ReferenceFieldTemplate:     connectorStoreReferenceFieldTemplate(id),
+		ReferencePlaceholder:       connectorStoreReferencePlaceholder(id),
+		NativeResolutionAvailable:  native,
+		SetupSteps:                 connectorExternalStoreSetupSteps(id, native),
+		RequiredConfig:             connectorExternalStoreRequiredConfig(id),
 	}
 }
 
@@ -2039,6 +2140,28 @@ func connectorStoreReferencePlaceholder(id string) string {
 		return "aws-sm:us-east-1:cerebro/<tenant>/<source>/<runtime>/credentials#<field>"
 	default:
 		return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+	}
+}
+
+func connectorStoreReferenceNamespaceTemplate(id string) string {
+	switch strings.TrimSpace(id) {
+	case connectorStoreAWSSecretsManager:
+		return "cerebro/<tenant>/<source>/<runtime>/credentials"
+	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
+		return "CEREBRO_SOURCE_<SOURCE>_*"
+	default:
+		return ""
+	}
+}
+
+func connectorStoreReferenceFieldTemplate(id string) string {
+	switch strings.TrimSpace(id) {
+	case connectorStoreAWSSecretsManager:
+		return "aws-sm:<region>:cerebro/<tenant>/<source>/<runtime>/credentials#<field>"
+	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
+		return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+	default:
+		return ""
 	}
 }
 
