@@ -117,6 +117,57 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertEqual(review["status"], "in_progress")
         self.assertEqual(review["active_progress_count"], 1)
 
+    def test_classify_droid_review_skips_cross_repository_pr_without_comment(self):
+        review = pm.classify_droid_review(
+            {
+                "number": 42,
+                "author": "alice",
+                "url": "https://pr",
+                "head_repository": "alice/cerebro",
+                "base_repository": "writer/cerebro",
+                "changed_files": ["internal/graphagent/ask.go"],
+            },
+            [],
+        )
+        self.assertEqual(review["status"], "skipped")
+        self.assertIn("Cross-repository", review["reason"])
+
+    def test_classify_droid_review_skips_no_review_required_changes_without_comment(self):
+        review = pm.classify_droid_review(
+            {
+                "number": 42,
+                "author": "alice",
+                "url": "https://pr",
+                "head_repository": "writer/cerebro",
+                "base_repository": "writer/cerebro",
+                "changed_files": ["docs/notes.md", ".factory/templates/example.md"],
+            },
+            [],
+        )
+        self.assertEqual(review["status"], "skipped")
+        self.assertIn("Changed files do not require", review["reason"])
+
+    def test_classify_droid_review_keeps_code_changes_without_comment_missing(self):
+        review = pm.classify_droid_review(
+            {
+                "number": 42,
+                "author": "alice",
+                "url": "https://pr",
+                "head_repository": "writer/cerebro",
+                "base_repository": "writer/cerebro",
+                "changed_files": ["scripts/droid_post_merge_health.py"],
+            },
+            [],
+        )
+        self.assertEqual(review["status"], "missing")
+
+    def test_requires_droid_review_matches_preflight_paths(self):
+        self.assertTrue(pm.requires_droid_review("internal/graphagent/ask.go"))
+        self.assertTrue(pm.requires_droid_review(".github/workflows/droid-review.yml"))
+        self.assertTrue(pm.requires_droid_review("go.mod"))
+        self.assertFalse(pm.requires_droid_review("docs/notes.md"))
+        self.assertFalse(pm.requires_droid_review(".factory/templates/example.md"))
+
     def test_summarize_marks_droid_review_errors_unhealthy(self):
         context = pm.summarize(
             branch="main",

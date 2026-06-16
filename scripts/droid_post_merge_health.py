@@ -13,6 +13,17 @@ from pathlib import Path
 COMMENT_MARKER = "<!-- droid-post-merge-health -->"
 DROID_LOGINS = {"factory-droid", "factory-droid[bot]"}
 TERMINAL_DROID_STATUSES = {"ok", "skipped"}
+DROID_REVIEW_REQUIRED_EXACT = {"go.mod", "go.sum", "Makefile"}
+DROID_REVIEW_REQUIRED_PREFIXES = (
+    ".github/workflows/",
+    "api/",
+    "cmd/",
+    "gen/",
+    "internal/",
+    "scripts/",
+    "sources/",
+    "tools/",
+)
 
 
 def request_json(path: str, token: str, repository: str) -> object:
@@ -62,6 +73,10 @@ def collect_pull_requests_for_commit(head_sha: str, token: str, repository: str)
         if not isinstance(item, dict):
             continue
         user = item.get("user") if isinstance(item.get("user"), dict) else {}
+        head = item.get("head") if isinstance(item.get("head"), dict) else {}
+        base = item.get("base") if isinstance(item.get("base"), dict) else {}
+        head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
+        base_repo = base.get("repo") if isinstance(base.get("repo"), dict) else {}
         pull_requests.append(
             {
                 "number": item.get("number"),
@@ -69,9 +84,29 @@ def collect_pull_requests_for_commit(head_sha: str, token: str, repository: str)
                 "url": item.get("html_url") or "",
                 "state": item.get("state") or "",
                 "author": user.get("login") or "",
+                "head_repository": head_repo.get("full_name") or "",
+                "base_repository": base_repo.get("full_name") or repository,
+                "head_label": head.get("label") or "",
+                "base_label": base.get("label") or "",
             }
         )
     return pull_requests
+
+
+def collect_pull_request_files(pr_number: object, token: str, repository: str) -> list[str]:
+    if not pr_number:
+        return []
+    files: list[str] = []
+    page = 1
+    while True:
+        raw = request_json(f"/pulls/{pr_number}/files?per_page=100&page={page}", token, repository)
+        if not isinstance(raw, list) or not raw:
+            break
+        for item in raw:
+            if isinstance(item, dict) and item.get("filename"):
+                files.append(str(item.get("filename") or ""))
+        page += 1
+    return files
 
 
 def collect_issue_comments(pr_number: object, token: str, repository: str) -> list[dict[str, object]]:
@@ -88,6 +123,36 @@ def collect_issue_comments(pr_number: object, token: str, repository: str) -> li
                 comments.append(item)
         page += 1
     return comments
+
+
+def requires_droid_review(file: str) -> bool:
+    normalized = file.replace("\\", "/")
+    return (
+        normalized.endswith(".go")
+        or normalized in DROID_REVIEW_REQUIRED_EXACT
+        or any(normalized.startswith(prefix) for prefix in DROID_REVIEW_REQUIRED_PREFIXES)
+    )
+
+
+def has_no_review_required_changes(pr: dict[str, object]) -> bool:
+    files = pr.get("changed_files")
+    if not isinstance(files, list) or not files:
+        return False
+    return not any(requires_droid_review(str(file)) for file in files)
+
+
+def is_cross_repository_pr(pr: dict[str, object]) -> bool:
+    head_repository = str(pr.get("head_repository") or "").lower()
+    base_repository = str(pr.get("base_repository") or "").lower()
+    if head_repository and base_repository and head_repository != base_repository:
+        return True
+    if head_repository or not base_repository:
+        return False
+
+    head_label = str(pr.get("head_label") or "")
+    head_owner = head_label.split(":", 1)[0].lower() if ":" in head_label else ""
+    base_owner = base_repository.split("/", 1)[0]
+    return bool(head_owner and head_owner != base_owner)
 
 
 def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object]]) -> dict[str, object]:
@@ -123,6 +188,12 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
     elif author == "dependabot[bot]":
         status = "skipped"
         reason = "Dependabot PRs skip the secret-backed Droid execution job."
+    elif is_cross_repository_pr(pr):
+        status = "skipped"
+        reason = "Cross-repository PRs skip the secret-backed Droid execution job."
+    elif has_no_review_required_changes(pr):
+        status = "skipped"
+        reason = "Changed files do not require the secret-backed Droid execution job."
     else:
         status = "missing"
         reason = "No finished Droid review comment was found."
@@ -140,6 +211,7 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
         "active_error_count": len(active_errors),
         "active_progress_count": len(active_progress),
         "finished_count": len(finished),
+        "changed_files": pr.get("changed_files") or [],
     }
 
 
@@ -262,6 +334,8 @@ def main() -> int:
     else:
         try:
             pull_requests = collect_pull_requests_for_commit(args.head, token, repository)
+            for pr in pull_requests:
+                pr["changed_files"] = collect_pull_request_files(pr.get("number"), token, repository)
             droid_reviews = [
                 classify_droid_review(pr, collect_issue_comments(pr.get("number"), token, repository))
                 for pr in pull_requests
