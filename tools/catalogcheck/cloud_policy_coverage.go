@@ -429,6 +429,7 @@ var minimumCloudCoverageDimensions = map[string][]string{
 }
 
 var strictCloudRuntimeCoverageSources = map[string]struct{}{
+	"aws":        {},
 	"azure":      {},
 	"cloudflare": {},
 	"gcp":        {},
@@ -602,6 +603,11 @@ func loadDeployRuntimeFamilies(path string) (map[string]struct{}, error) {
 func coverageFamilies(dimensions map[string]sourcecdk.CoverageDimension) map[string]struct{} {
 	families := map[string]struct{}{}
 	for _, dimension := range dimensions {
+		switch dimension.Support {
+		case sourcecdk.CoverageSupportSupported, sourcecdk.CoverageSupportPartial:
+		default:
+			continue
+		}
 		for _, family := range dimension.Families {
 			family = strings.TrimSpace(family)
 			if family != "" {

@@ -246,6 +246,41 @@ runtimes:
 	}
 }
 
+func TestCheckCloudPolicyCoverageRejectsUnsupportedStrictRuntimeFamily(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "policies/cloud/test.json", `{"resource":"gcp::compute::instance"}`)
+	writeFile(t, root, "sources/gcp/catalog.yaml", `
+id: gcp
+name: GCP
+description: GCP source
+emitted_kinds:
+  - gcp.effective_permission
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: gcp
+  dimensions:
+    - id: effective_permission
+      type: app_entitlement
+      title: Effective IAM permissions
+      families: [effective_permission]
+      support: planned
+`)
+	writeFile(t, root, "sources/gcp/deploy.yaml", `
+runtimes:
+  - localId: effective-permission
+    config:
+      family: effective_permission
+`)
+
+	issues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		t.Fatalf("checkCloudPolicyCoverage() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "coverage_contract does not cover deploy runtime families: effective_permission") {
+		t.Fatalf("issues = %#v, want unsupported strict runtime family coverage issue", issues)
+	}
+}
+
 func TestCheckRequiredCloudCoverageDimensionsRejectsMissingMinimum(t *testing.T) {
 	issues := checkRequiredCloudCoverageDimensions(map[string]map[string]sourcecdk.CoverageDimension{
 		"azure": {
