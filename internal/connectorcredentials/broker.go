@@ -216,6 +216,9 @@ func (b *Broker) Revoke(ctx context.Context, request RevokeRequest) (*ports.Conn
 	if err := authorizeRecord(record, request.SourceID, request.TenantID, request.RuntimeID); err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(record.Status) == StatusRevoked {
+		return record, nil
+	}
 	now := b.now()
 	updated, err := b.vault.store.UpdateConnectorCredentialMetadata(ctx, credentialID, ports.ConnectorCredentialMetadataUpdate{
 		Status:    StatusRevoked,

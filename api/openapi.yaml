@@ -341,6 +341,10 @@ paths:
                       type: string
         '200':
           description: Existing credential metadata and references returned for a replayed idempotent request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
         '400':
           description: Request shape, credential payload context, or credential fields were invalid.
         '403':
@@ -432,6 +436,10 @@ paths:
                 $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
         '200':
           description: Existing replacement credential returned for a replayed idempotent request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
         '400':
           description: Request shape, credential payload context, or credential fields were invalid.
         '403':

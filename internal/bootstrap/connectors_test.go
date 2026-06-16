@@ -538,6 +538,7 @@ func TestConnectorCredentialBrokerRotatesCredential(t *testing.T) {
 		"runtime_id":            "runtime-a",
 		"tenant_id":             "tenant-a",
 		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"idempotency_key":       "rotate-request-1",
 		"revoke_previous":       true,
 		"encrypted_credentials": rotatedEncrypted,
 	})
@@ -564,6 +565,29 @@ func TestConnectorCredentialBrokerRotatesCredential(t *testing.T) {
 	}
 	if got := store.credentials[created.Credential.ID].Status; got != connectorcredentials.StatusRevoked {
 		t.Fatalf("previous credential status = %q, want revoked", got)
+	}
+	revokedAt := store.credentials[created.Credential.ID].RevokedAt
+	auditCount := len(store.audit)
+	replayReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials/"+created.Credential.ID+"/rotate", bytes.NewReader(rotateBody))
+	replayReq.SetPathValue("sourceID", "bootstrap_token")
+	replayReq.SetPathValue("credentialID", created.Credential.ID)
+	replayRecorder := httptest.NewRecorder()
+	app.handleRotateConnectorCredential(replayRecorder, replayReq)
+	if replayRecorder.Code != http.StatusOK {
+		t.Fatalf("rotate replay status = %d, want 200: %s", replayRecorder.Code, replayRecorder.Body.String())
+	}
+	var replayed connectorCredentialBrokerResponse
+	if err := json.NewDecoder(replayRecorder.Body).Decode(&replayed); err != nil {
+		t.Fatalf("decode replay response: %v", err)
+	}
+	if replayed.Credential.ID != rotated.Credential.ID {
+		t.Fatalf("replayed credential id = %q, want %q", replayed.Credential.ID, rotated.Credential.ID)
+	}
+	if got := store.credentials[created.Credential.ID].RevokedAt; !got.Equal(revokedAt) {
+		t.Fatalf("replay mutated previous revoked_at = %s, want %s", got, revokedAt)
+	}
+	if got := len(store.audit); got != auditCount {
+		t.Fatalf("replay audit count = %d, want %d", got, auditCount)
 	}
 	broker, err := connectorCredentialBroker(app.cfg.ConnectorCredentials, app.deps.StateStore, nil)
 	if err != nil {
