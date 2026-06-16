@@ -827,7 +827,7 @@ func genericAzureARMExpectedAttributes(family string) map[string]string {
 	case "metric_alert_rule":
 		return map[string]string{"criteria_metric_names": "Percentage CPU", "criteria_thresholds": "90", "action_group_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}
 	case "postgresql_server":
-		return map[string]string{"public_host": "pg-prod.postgres.database.azure.com", "delegated_subnet_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/postgres", "auth_password_enabled": "Disabled"}
+		return map[string]string{"public_host": "pg-prod.postgres.database.azure.com", "storage_size_gb": "256", "delegated_subnet_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/postgres", "auth_password_enabled": "Disabled"}
 	case "role":
 		return map[string]string{"role_name": "Security Reader", "actions": "Microsoft.Security/*/read"}
 	case "route_table":
