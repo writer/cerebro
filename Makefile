@@ -13,6 +13,8 @@ PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
 DOCKER_SMOKE_GOARCH ?= amd64
+DOCKER_RUNTIME_BASE_IMAGE ?= alpine:3.24
+DOCKER_SMOKE_BASE_IMAGES ?= $(DOCKER_RUNTIME_BASE_IMAGE) public.ecr.aws/docker/library/alpine:3.24 mirror.gcr.io/library/alpine:3.24
 DOCKER_BUILD_ATTEMPTS ?= 3
 DOCKER_BUILD_RETRY_SLEEP ?= 10
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
@@ -241,19 +243,28 @@ docker-smoke: ## Build and smoke-test the runtime Docker image.
 	@command -v docker >/dev/null || { echo "docker is required for docker-smoke" >&2; exit 2; }
 	mkdir -p .dist
 	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -o .dist/cerebro ./cmd/cerebro
-	@attempt=1; \
-	while :; do \
-		if docker build -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .; then \
-			break; \
-		fi; \
-		if [ "$$attempt" -ge "$(DOCKER_BUILD_ATTEMPTS)" ]; then \
-			echo "docker build failed after $(DOCKER_BUILD_ATTEMPTS) attempts" >&2; \
-			exit 1; \
-		fi; \
-		echo "docker build failed; retrying in $(DOCKER_BUILD_RETRY_SLEEP)s" >&2; \
-		attempt=$$((attempt + 1)); \
-		sleep "$(DOCKER_BUILD_RETRY_SLEEP)"; \
-	done
+	@build_ok=0; \
+	for base_image in $(DOCKER_SMOKE_BASE_IMAGES); do \
+		attempt=1; \
+		while :; do \
+			echo "building runtime image with base $$base_image (attempt $$attempt/$(DOCKER_BUILD_ATTEMPTS))"; \
+			if docker build --build-arg RUNTIME_BASE_IMAGE="$$base_image" -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .; then \
+				build_ok=1; \
+				break 2; \
+			fi; \
+			if [ "$$attempt" -ge "$(DOCKER_BUILD_ATTEMPTS)" ]; then \
+				echo "docker build failed with base $$base_image after $(DOCKER_BUILD_ATTEMPTS) attempts" >&2; \
+				break; \
+			fi; \
+			echo "docker build failed; retrying in $(DOCKER_BUILD_RETRY_SLEEP)s" >&2; \
+			attempt=$$((attempt + 1)); \
+			sleep "$(DOCKER_BUILD_RETRY_SLEEP)"; \
+		done; \
+	done; \
+	if [ "$$build_ok" != "1" ]; then \
+		echo "docker build failed for all runtime base images: $(DOCKER_SMOKE_BASE_IMAGES)" >&2; \
+		exit 1; \
+	fi
 	@test -n "$$(docker run --rm "$(DOCKER_SMOKE_IMAGE)" version)"
 
 release-smoke: ## Validate GoReleaser configuration.
