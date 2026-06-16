@@ -334,27 +334,50 @@ func networkACLSubnetIDs(associations []ec2types.NetworkAclAssociation) []string
 }
 
 func networkACLAdminPortsFromInternet(entries []ec2types.NetworkAclEntry) []string {
-	allows22 := false
-	allows3389 := false
-	for _, entry := range entries {
-		if awssdk.ToBool(entry.Egress) || entry.RuleAction != ec2types.RuleActionAllow || !networkACLPublicCIDR(entry) {
-			continue
-		}
-		allows22 = allows22 || networkACLEntryMatchesPort(entry, 22)
-		allows3389 = allows3389 || networkACLEntryMatchesPort(entry, 3389)
-	}
 	ports := make([]string, 0, 2)
-	if allows22 {
+	if networkACLAllowsPublicPort(entries, 22) {
 		ports = append(ports, "22")
 	}
-	if allows3389 {
+	if networkACLAllowsPublicPort(entries, 3389) {
 		ports = append(ports, "3389")
 	}
 	return ports
 }
 
-func networkACLPublicCIDR(entry ec2types.NetworkAclEntry) bool {
-	return awssdk.ToString(entry.CidrBlock) == "0.0.0.0/0" || awssdk.ToString(entry.Ipv6CidrBlock) == "::/0"
+func networkACLAllowsPublicPort(entries []ec2types.NetworkAclEntry, port int32) bool {
+	return networkACLAllowsPublicPortCIDR(entries, port, false) || networkACLAllowsPublicPortCIDR(entries, port, true)
+}
+
+func networkACLAllowsPublicPortCIDR(entries []ec2types.NetworkAclEntry, port int32, ipv6 bool) bool {
+	matched := false
+	bestRuleNumber := int32(1<<31 - 1)
+	bestAction := ec2types.RuleAction("")
+	for _, entry := range entries {
+		if awssdk.ToBool(entry.Egress) || !networkACLPublicCIDR(entry, ipv6) || !networkACLEntryMatchesPort(entry, port) {
+			continue
+		}
+		ruleNumber := networkACLRuleNumber(entry)
+		if !matched || ruleNumber < bestRuleNumber {
+			matched = true
+			bestRuleNumber = ruleNumber
+			bestAction = entry.RuleAction
+		}
+	}
+	return matched && bestAction == ec2types.RuleActionAllow
+}
+
+func networkACLPublicCIDR(entry ec2types.NetworkAclEntry, ipv6 bool) bool {
+	if ipv6 {
+		return awssdk.ToString(entry.Ipv6CidrBlock) == "::/0"
+	}
+	return awssdk.ToString(entry.CidrBlock) == "0.0.0.0/0"
+}
+
+func networkACLRuleNumber(entry ec2types.NetworkAclEntry) int32 {
+	if entry.RuleNumber == nil {
+		return 1<<31 - 1
+	}
+	return awssdk.ToInt32(entry.RuleNumber)
 }
 
 func networkACLEntryMatchesPort(entry ec2types.NetworkAclEntry, port int32) bool {

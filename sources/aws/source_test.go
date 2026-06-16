@@ -1470,6 +1470,13 @@ func TestReadAWSNetworkACLInventoryEvent(t *testing.T) {
 						RuleAction: ec2types.RuleActionDeny,
 						RuleNumber: awssdk.Int32(110),
 					},
+					{
+						CidrBlock:  awssdk.String("0.0.0.0/0"),
+						Egress:     awssdk.Bool(false),
+						Protocol:   awssdk.String("-1"),
+						RuleAction: ec2types.RuleActionAllow,
+						RuleNumber: awssdk.Int32(200),
+					},
 				},
 				Tags: []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("prod-acl")}},
 			}},
