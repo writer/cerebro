@@ -6,6 +6,34 @@ emitted_kinds:
   - trivy.image_package
   - trivy.image_vulnerability
   - trivy.fix
+coverage_contract:
+  owner_domain: vulnerability_management
+  authority_domain: trivy
+  dimensions:
+    - id: fixes
+      type: remediation_state
+      title: Available package fixes
+      families: [fix]
+      support: supported
+      high_value: true
+    - id: image_packages
+      type: entity_family
+      title: Image packages
+      families: [image_package]
+      support: supported
+      high_value: true
+    - id: image_scans
+      type: entity_family
+      title: Image scan reports
+      families: [image_scan]
+      support: supported
+      high_value: true
+    - id: image_vulnerabilities
+      type: entity_family
+      title: Image vulnerabilities
+      families: [image_vulnerability]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: trivy.image_scan
     schema_ref: trivy/image_scan/v1

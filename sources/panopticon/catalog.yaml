@@ -5,6 +5,28 @@ emitted_kinds:
   - panopticon.alert
   - panopticon.case
   - panopticon.ioc
+coverage_contract:
+  owner_domain: security_operations
+  authority_domain: panopticon
+  dimensions:
+    - id: alerts
+      type: lifecycle_state
+      title: Alerts
+      families: [alert]
+      support: supported
+      high_value: true
+    - id: cases
+      type: lifecycle_state
+      title: Cases
+      families: [case]
+      support: supported
+      high_value: true
+    - id: iocs
+      type: entity_family
+      title: Indicators of compromise
+      families: [ioc]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: panopticon.alert
     schema_ref: panopticon/alert/v1

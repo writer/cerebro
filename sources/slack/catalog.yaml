@@ -6,6 +6,34 @@ emitted_kinds:
   - slack.user
   - slack.channel
   - slack.user_group
+coverage_contract:
+  owner_domain: collaboration
+  authority_domain: slack
+  dimensions:
+    - id: channels
+      type: entity_family
+      title: Channels
+      families: [channel]
+      support: supported
+      high_value: true
+    - id: teams
+      type: entity_family
+      title: Teams
+      families: [team]
+      support: supported
+      high_value: true
+    - id: user_groups
+      type: relationship
+      title: User groups
+      families: [user_group]
+      support: supported
+      high_value: true
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: slack.team
     schema_ref: slack/team/v1

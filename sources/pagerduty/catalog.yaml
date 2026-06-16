@@ -9,6 +9,51 @@ emitted_kinds:
   - pagerduty.escalation_policy
   - pagerduty.integration
   - pagerduty.vendor
+coverage_contract:
+  owner_domain: incident_management
+  authority_domain: pagerduty
+  dimensions:
+    - id: escalation_policies
+      type: lifecycle_state
+      title: Escalation policies
+      families: [escalation_policy]
+      support: supported
+      high_value: true
+    - id: integrations
+      type: entity_family
+      title: Service integrations
+      families: [integration]
+      support: supported
+      high_value: true
+    - id: schedules
+      type: entity_family
+      title: Schedules
+      families: [schedule]
+      support: supported
+      high_value: true
+    - id: services
+      type: entity_family
+      title: Services
+      families: [service]
+      support: supported
+      high_value: true
+    - id: teams
+      type: entity_family
+      title: Teams
+      families: [team]
+      support: supported
+      high_value: true
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+      high_value: true
+    - id: vendors
+      type: entity_family
+      title: Vendors
+      families: [vendor]
+      support: supported
 event_contracts:
   - kind: pagerduty.user
     schema_ref: pagerduty/user/v1

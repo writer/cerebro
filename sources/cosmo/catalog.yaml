@@ -6,3 +6,30 @@ emitted_kinds:
   - cosmo.message
   - cosmo.session
   - cosmo.survey_feedback
+coverage_contract:
+  owner_domain: product_telemetry
+  authority_domain: cosmo
+  dimensions:
+    - id: facts
+      type: entity_family
+      title: Memory facts
+      families: [fact]
+      support: supported
+      high_value: true
+    - id: messages
+      type: audit_event
+      title: Message exports
+      families: [message]
+      support: supported
+      high_value: true
+    - id: sessions
+      type: entity_family
+      title: Memory sessions
+      families: [session]
+      support: supported
+      high_value: true
+    - id: survey_feedback
+      type: entity_family
+      title: Survey feedback
+      families: [survey_feedback]
+      support: supported
