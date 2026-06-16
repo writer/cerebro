@@ -244,6 +244,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"azure.role":                                    azureCloudResourceProjections,
 	"azure.route_table":                             azureCloudResourceProjections,
 	"azure.security_contact":                        azureCloudResourceProjections,
+	"azure.server_vulnerability":                    azureCloudResourceProjections,
 	"azure.service_principal":                       azureServicePrincipalProjections,
 	"azure.sql_database":                            azureCloudResourceProjections,
 	"azure.sql_managed_instance":                    azureCloudResourceProjections,
