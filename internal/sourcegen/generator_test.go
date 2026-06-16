@@ -51,11 +51,18 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 		"- demo_source.asset_host",
 		"- demo_source.finding_vulnerability",
 		"- demo_source.evidence_cas_reference",
+		"coverage_contract:",
+		"authority_domain: demo_source",
+		"families: [asset_host]",
+		"id: incremental_sync",
 		"schema_ref: demo_source/asset_host/v1",
 	} {
 		if !strings.Contains(catalog, want) {
 			t.Fatalf("catalog missing %q:\n%s", want, catalog)
 		}
+	}
+	if _, err := sourcecdk.LoadSourceCatalog([]byte(catalog)); err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v\n%s", err, catalog)
 	}
 	receipt := map[string]any{}
 	if err := json.Unmarshal([]byte(readGeneratedFile(t, outputDir, "sources/demo_source/source_health_receipt.json")), &receipt); err != nil {

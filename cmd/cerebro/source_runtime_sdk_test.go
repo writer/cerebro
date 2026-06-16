@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -90,6 +91,55 @@ func TestRunSourceRuntimeSDKDryRunThroughSourceRuntimeCommand(t *testing.T) {
 	}
 	if payload.SourceID != "demo_source" || !payload.DryRun || len(payload.Files) == 0 {
 		t.Fatalf("dry-run payload = %#v", payload)
+	}
+}
+
+func TestRunSourceRuntimeSDKClassify(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "definition.json")
+	payload := []byte(`{
+		"schema_version": "cerebro.integration/v1",
+		"id": "example",
+		"tenant_id": "tenant-a",
+		"source_id": "example",
+		"display_name": "Example",
+		"auth": {
+			"model": "bearer_token",
+			"credential_fields": [{"key": "token", "secret": true, "reference_only": true}]
+		},
+		"transport": {
+			"base_url": "https://api.example.test",
+			"verification": {"path": "/v1/me"}
+		},
+		"resource_families": [{
+			"id": "users",
+			"path": "/v1/users",
+			"record_selector": "$.data[*]",
+			"id_field": "id",
+			"event": {"kind": "example.user", "schema_ref": "example/user/v1"},
+			"pagination": {"type": "cursor"},
+			"projection": {"template": "identity_user"},
+			"coverage": [{"type": "entity_family", "support": "supported"}]
+		}]
+	}`)
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatalf("write definition: %v", err)
+	}
+	stdout := captureCommandStdout(t, func() {
+		err := runSourceRuntime([]string{"sdk", "classify", path})
+		if err != nil {
+			t.Fatalf("runSourceRuntime sdk classify error = %v", err)
+		}
+	})
+	var report struct {
+		Verdict  string `json:"verdict"`
+		SourceID string `json:"source_id"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("unmarshal classify output: %v\n%s", err, stdout)
+	}
+	if report.SourceID != "example" || report.Verdict != "supported" {
+		t.Fatalf("classify report = %#v", report)
 	}
 }
 

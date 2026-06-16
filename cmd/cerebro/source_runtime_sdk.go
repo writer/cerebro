@@ -1,14 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcegen"
 )
 
-const sourceRuntimeSDKNewUsage = "usage: %s source-runtime sdk new <source-id> [source_type=json_api] [auth_model=bearer_token|api_token|api_key] [asset_schemas=<schema[,schema]>] [finding_schemas=<schema[,schema]>] [freshness_expectation=<duration>] [failure_modes=<mode[,mode]>] [name=<name>] [description=<description>] [health_path=<path>] [output_dir=<dir>] [dry_run=true] [force=true]"
+const sourceRuntimeSDKNewUsage = "usage: %s source-runtime sdk [new <source-id> [source_type=json_api] [auth_model=bearer_token|api_token|api_key] [asset_schemas=<schema[,schema]>] [finding_schemas=<schema[,schema]>] [freshness_expectation=<duration>] [failure_modes=<mode[,mode]>] [name=<name>] [description=<description>] [health_path=<path>] [output_dir=<dir>] [dry_run=true] [force=true] | classify <definition.json>]"
 
 func runSourceRuntimeSDK(args []string) error {
 	if len(args) == 0 {
@@ -25,9 +27,38 @@ func runSourceRuntimeSDK(args []string) error {
 			return err
 		}
 		return printJSON(result)
+	case "classify":
+		return runSourceRuntimeSDKClassify(args[1:])
 	default:
 		return usageError(fmt.Sprintf(sourceRuntimeSDKNewUsage, os.Args[0]))
 	}
+}
+
+func runSourceRuntimeSDKClassify(args []string) error {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		return usageError(fmt.Sprintf(sourceRuntimeSDKNewUsage, os.Args[0]))
+	}
+	payload, err := os.ReadFile(strings.TrimSpace(args[0])) // #nosec G304 -- operator-provided CLI path.
+	if err != nil {
+		return fmt.Errorf("read connector definition: %w", err)
+	}
+	var definitions []connectordefinitions.Definition
+	if err := json.Unmarshal(payload, &definitions); err == nil {
+		summary, err := connectordefinitions.ClassifyAll(definitions, connectordefinitions.DefaultGrammar())
+		if err != nil {
+			return err
+		}
+		return printJSON(summary)
+	}
+	var definition connectordefinitions.Definition
+	if err := json.Unmarshal(payload, &definition); err != nil {
+		return fmt.Errorf("decode connector definition or definition list: %w", err)
+	}
+	report, err := connectordefinitions.Classify(definition, connectordefinitions.DefaultGrammar())
+	if err != nil {
+		return err
+	}
+	return printJSON(report)
 }
 
 func parseSourceRuntimeSDKNewArgs(args []string) (sourcegen.Request, error) {

@@ -401,6 +401,24 @@ func renderCatalog(request normalizedRequest) string {
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - %s\n", family.EventKind)
 	}
+	fmt.Fprintf(&b, "coverage_contract:\n")
+	fmt.Fprintf(&b, "  owner_domain: source_runtime\n")
+	fmt.Fprintf(&b, "  authority_domain: %s\n", request.SourceID)
+	fmt.Fprintf(&b, "  dimensions:\n")
+	for _, family := range request.Families {
+		fmt.Fprintf(&b, "    - id: %s\n", family.Name)
+		fmt.Fprintf(&b, "      type: entity_family\n")
+		fmt.Fprintf(&b, "      title: %s\n", yamlString(titleFromID(family.Name)))
+		fmt.Fprintf(&b, "      families: [%s]\n", family.Name)
+		fmt.Fprintf(&b, "      support: partial\n")
+		fmt.Fprintf(&b, "      high_value: true\n")
+		fmt.Fprintf(&b, "      notes:\n")
+		fmt.Fprintf(&b, "        - Generated Source Runtime SDK mapping requires provider field review before certification.\n")
+	}
+	fmt.Fprintf(&b, "    - id: incremental_sync\n")
+	fmt.Fprintf(&b, "      type: incremental_sync\n")
+	fmt.Fprintf(&b, "      title: Incremental cursor sync\n")
+	fmt.Fprintf(&b, "      support: planned\n")
 	fmt.Fprintf(&b, "event_contracts:\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - kind: %s\n", family.EventKind)
