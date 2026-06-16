@@ -43,6 +43,9 @@ coverage_contract:
       high_value: true
       known_unsupported_fields:
         - remediation workflow state
+      notes:
+        - Google Workspace suspended, archived, member status, and audit attributes are provider lifecycle state, not Cerebro finding remediation state.
+        - Findings and source-runtime consumers must use Cerebro finding status for remediation lifecycle decisions.
     - id: role_assignments
       type: app_entitlement
       title: Role assignments

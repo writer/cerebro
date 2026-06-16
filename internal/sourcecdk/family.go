@@ -12,12 +12,13 @@ import (
 
 // Family groups source behavior for one configured event family.
 type Family[S any] struct {
-	Name               string
-	Check              func(context.Context, S) error
-	Discover           func(context.Context, S) ([]URN, error)
-	Probe              func(context.Context, S, *cerebrov1.SourceCheckpoint) (ChangeProbe, error)
-	Read               func(context.Context, S, *cerebrov1.SourceCursor) (Pull, error)
-	ReadWithCheckpoint func(context.Context, S, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint) (Pull, error)
+	Name                 string
+	IncrementalWatermark bool
+	Check                func(context.Context, S) error
+	Discover             func(context.Context, S) ([]URN, error)
+	Probe                func(context.Context, S, *cerebrov1.SourceCheckpoint) (ChangeProbe, error)
+	Read                 func(context.Context, S, *cerebrov1.SourceCursor) (Pull, error)
+	ReadWithCheckpoint   func(context.Context, S, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint) (Pull, error)
 }
 
 // ChangeProbe is an optional cheap pre-read result for families that can test
@@ -152,6 +153,14 @@ func (e *FamilyEngine[S]) ReadWithCheckpoint(ctx context.Context, cfg Config, cu
 	pull, err := family.Read(ctx, settings, cursor)
 	if err != nil {
 		return Pull{}, err
+	}
+	if family.IncrementalWatermark && e.sourceID != "" {
+		readCheckpoint := IncrementalCheckpointForCursor(e.sourceID, family.Name, cursor, checkpoint)
+		next := ""
+		if pull.NextCursor != nil {
+			next = CursorToken(pull.NextCursor)
+		}
+		pull = IncrementalPullFromEvents(e.sourceID, family.Name, pull.Events, next, readCheckpoint)
 	}
 	return applyResourceScopePolicy(pull, policy), nil
 }

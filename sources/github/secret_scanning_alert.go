@@ -55,26 +55,18 @@ func (s *Source) discoverSecretScanningAlerts(ctx context.Context, client *gogit
 }
 
 func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familySecretScanning, cursor, checkpoint)
 	alerts, resp, err := listSecretScanningAlertsForOrg(ctx, client, settings, cursor, settings.perPage)
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
-	}
-	if len(alerts) == 0 {
-		return sourcecdk.EmptyIncrementalWatermarkPull("github", familySecretScanning, checkpoint), nil
-	}
-	events := make([]*primitives.Event, 0, len(alerts))
-	for _, alert := range alerts {
-		event, err := secretScanningAlertEvent(settings, alert)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
 	}
 	nextCursor := ""
 	if resp != nil {
 		nextCursor = sourcecdk.NextAfterOrPageCursor(resp.After, resp.NextPageToken, resp.NextPage)
 	}
-	return sourcecdk.IncrementalWatermarkPull("github", familySecretScanning, events, checkpoint, nextCursor), nil
+	return sourcecdk.IncrementalPullFromRecords("github", familySecretScanning, alerts, nextCursor, readCheckpoint, func(alert *gogithub.SecretScanningAlert) (*primitives.Event, error) {
+		return secretScanningAlertEvent(settings, alert)
+	})
 }
 
 func listSecretScanningAlertsForOrg(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, perPage int) ([]*gogithub.SecretScanningAlert, *gogithub.Response, error) {
