@@ -180,12 +180,16 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	families := []sourcecdk.Family[settings]{}
 	for _, family := range []string{familyAudit, familyGroup, familyGroupMember, familyRoleAssign, familyUser} {
 		familyName := family
 		families = append(families, sourcecdk.Family[settings]{
-			Name: familyName,
+			Name: familyName, IncrementalWatermark: true,
 			Check: func(ctx context.Context, settings settings) error {
 				_, _, err := s.readRawPage(ctx, settings, "", 1)
 				return err
@@ -194,7 +198,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Read:     s.readFamily,
 		})
 	}
-	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string {
+	return sourcecdk.NewFamilyEngineWithSourceID("google_workspace", parseSettings, func(settings settings) string {
 		return settings.family
 	}, families...)
 }
@@ -218,7 +222,7 @@ func (s *Source) discoverFamily(ctx context.Context, settings settings) ([]sourc
 }
 
 func (s *Source) readFamily(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	rawRecords, next, err := s.readRawPage(ctx, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
+	rawRecords, next, err := s.readRawPage(ctx, settings, sourcecdk.CursorToken(cursor), settings.perPage)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
@@ -770,10 +774,7 @@ func checkpointCursor(next string, fallback string) string {
 }
 
 func boolString(value bool) string {
-	if value {
-		return "true"
-	}
-	return "false"
+	return strconv.FormatBool(value)
 }
 
 func trimEmpty(values map[string]string) map[string]string {

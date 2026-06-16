@@ -224,6 +224,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 }
 
 func (s *Source) readPullRequests(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familyPullRequest, cursor, checkpoint)
 	page, err := sourcecdk.CursorPage(cursor)
 	if err != nil {
 		return sourcecdk.Pull{}, err
@@ -240,63 +241,44 @@ func (s *Source) readPullRequests(ctx context.Context, client *gogithub.Client, 
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github repo %s/%s", settings.owner, settings.repo), err)
 	}
-	if len(pulls) == 0 {
-		return sourcecdk.EmptyIncrementalWatermarkPull("github", familyPullRequest, checkpoint), nil
-	}
-	events := make([]*primitives.Event, 0, len(pulls))
-	for _, pullRequest := range pulls {
-		event, err := pullRequestEvent(settings, pullRequest)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
 	nextCursor := ""
 	if resp != nil && resp.NextPage > 0 {
 		nextCursor = strconv.Itoa(resp.NextPage)
 	}
-	return sourcecdk.IncrementalWatermarkPull("github", familyPullRequest, events, checkpoint, nextCursor), nil
+	return sourcecdk.IncrementalPullFromRecords("github", familyPullRequest, pulls, nextCursor, readCheckpoint, func(pullRequest *gogithub.PullRequest) (*primitives.Event, error) {
+		return pullRequestEvent(settings, pullRequest)
+	})
 }
 
 func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familyRepository, cursor, checkpoint)
 	page, err := sourcecdk.CursorPage(cursor)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	if settings.repo != "" {
 		if page > 1 {
-			return sourcecdk.EmptyIncrementalWatermarkPull("github", familyRepository, checkpoint), nil
+			return sourcecdk.EmptyIncrementalWatermarkPull("github", familyRepository, readCheckpoint), nil
 		}
 		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
-		event, err := repositoryEvent(settings, repo)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		return sourcecdk.IncrementalWatermarkPull("github", familyRepository, []*primitives.Event{event}, checkpoint, ""), nil
+		return sourcecdk.IncrementalPullFromRecords("github", familyRepository, []*gogithub.Repository{repo}, "", readCheckpoint, func(repo *gogithub.Repository) (*primitives.Event, error) {
+			return repositoryEvent(settings, repo)
+		})
 	}
 	repos, resp, err := listReposPage(ctx, client, settings.owner, page, settings.perPage)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	if len(repos) == 0 {
-		return sourcecdk.EmptyIncrementalWatermarkPull("github", familyRepository, checkpoint), nil
-	}
-	events := make([]*primitives.Event, 0, len(repos))
-	for _, repo := range repos {
-		event, err := repositoryEvent(settings, repo)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
 	nextCursor := ""
 	if resp != nil && resp.NextPage > 0 {
 		nextCursor = strconv.Itoa(resp.NextPage)
 	}
-	return sourcecdk.IncrementalWatermarkPull("github", familyRepository, events, checkpoint, nextCursor), nil
+	return sourcecdk.IncrementalPullFromRecords("github", familyRepository, repos, nextCursor, readCheckpoint, func(repo *gogithub.Repository) (*primitives.Event, error) {
+		return repositoryEvent(settings, repo)
+	})
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {

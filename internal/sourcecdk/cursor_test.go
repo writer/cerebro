@@ -159,6 +159,16 @@ func TestIncrementalWatermarkFiltersBoundaryEvents(t *testing.T) {
 	}
 }
 
+func TestIncrementalCheckpointForCursorAllowsEmptyCursor(t *testing.T) {
+	checkpoint := &cerebrov1.SourceCheckpoint{}
+	if got := IncrementalCheckpointForCursor("github", "pull_request", nil, checkpoint); got != checkpoint {
+		t.Fatalf("IncrementalCheckpointForCursor(nil) = %#v, want original checkpoint", got)
+	}
+	if got := IncrementalCheckpointForCursor("github", "pull_request", &cerebrov1.SourceCursor{}, checkpoint); got != checkpoint {
+		t.Fatalf("IncrementalCheckpointForCursor(empty) = %#v, want original checkpoint", got)
+	}
+}
+
 func watermarkTestEvent(id string, occurredAt time.Time) *primitives.Event {
 	return &primitives.Event{
 		Id:         id,

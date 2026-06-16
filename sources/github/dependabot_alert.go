@@ -65,23 +65,15 @@ func (s *Source) discoverDependabotAlerts(ctx context.Context, client *gogithub.
 }
 
 func (s *Source) readDependabotAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familyDependabot, cursor, checkpoint)
 	after := sourcecdk.CursorToken(cursor)
 	alerts, resp, err := client.Dependabot.ListRepoAlerts(ctx, settings.owner, settings.repo, dependabotAlertOptions(settings, after, settings.perPage))
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github dependabot alerts for repo %s/%s", settings.owner, settings.repo), err)
 	}
-	if len(alerts) == 0 {
-		return sourcecdk.EmptyIncrementalWatermarkPull("github", familyDependabot, checkpoint), nil
-	}
-	events := make([]*primitives.Event, 0, len(alerts))
-	for _, alert := range alerts {
-		event, err := dependabotAlertEvent(settings, alert)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
-	return sourcecdk.IncrementalWatermarkPull("github", familyDependabot, events, checkpoint, nextAuditCursor(resp)), nil
+	return sourcecdk.IncrementalPullFromRecords("github", familyDependabot, alerts, nextAuditCursor(resp), readCheckpoint, func(alert *gogithub.DependabotAlert) (*primitives.Event, error) {
+		return dependabotAlertEvent(settings, alert)
+	})
 }
 
 func dependabotAlertOptions(settings settings, after string, perPage int) *gogithub.ListAlertsOptions {

@@ -204,3 +204,42 @@ func TestFamilyEngineUsesCheckpointAwareRead(t *testing.T) {
 		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
 	}
 }
+
+func TestFamilyEngineAppliesIncrementalWatermarkFallback(t *testing.T) {
+	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	checkpoint := IncrementalWatermarkCheckpoint("github", "pull_request", []*primitives.Event{
+		{Id: "known", OccurredAt: timestamppb.New(watermark)},
+	}, IncrementalWatermarkState{})
+	engine, err := NewFamilyEngineWithSourceID("github", func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name:                 "pull_request",
+		IncrementalWatermark: true,
+		Read: func(context.Context, string, *cerebrov1.SourceCursor) (Pull, error) {
+			return Pull{
+				Events: []*primitives.Event{
+					{Id: "new", OccurredAt: timestamppb.New(watermark.Add(time.Minute))},
+				},
+				NextCursor: &cerebrov1.SourceCursor{Opaque: "2"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngineWithSourceID() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{"family": "pull_request"}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "new" {
+		t.Fatalf("events = %#v, want event newer than checkpoint", pull.Events)
+	}
+	if pull.NextCursor == nil || CursorToken(pull.NextCursor) != "2" {
+		t.Fatalf("NextCursor = %#v, want provider token 2", pull.NextCursor)
+	}
+	if !ResumableCursorOpaque(pull.NextCursor.GetOpaque()) {
+		t.Fatalf("NextCursor opaque = %q, want resumable envelope", pull.NextCursor.GetOpaque())
+	}
+}

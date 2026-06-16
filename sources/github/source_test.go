@@ -321,17 +321,20 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "2" {
 		t.Fatalf("first.NextCursor = %#v, want page 2", first.NextCursor)
+	}
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
 	}
 	assertGitHubCheckpointEnvelope(t, first.Checkpoint, familyPullRequest)
 	firstCheckpoint, ok := sourcecdk.DecodeCursorEnvelope(first.Checkpoint.GetCursorOpaque())
 	if !ok || firstCheckpoint.Token != "2" {
 		t.Fatalf("first.Checkpoint = %#v, want resumable envelope with token 2", first.Checkpoint)
 	}
-	resumed, err := source.Read(context.Background(), readCfg, &cerebrov1.SourceCursor{Opaque: first.Checkpoint.GetCursorOpaque()})
+	resumed, err := source.ReadWithCheckpoint(context.Background(), readCfg, first.NextCursor, first.Checkpoint)
 	if err != nil {
-		t.Fatalf("Read(resumed from checkpoint envelope) error = %v", err)
+		t.Fatalf("ReadWithCheckpoint(resumed from continuation cursor) error = %v", err)
 	}
 	if len(resumed.Events) != 1 || resumed.Events[0].GetId() != "github-pr-writer-cerebro-442-1776902400" {
 		t.Fatalf("resumed events = %#v, want second fixture PR", resumed.Events)
@@ -516,7 +519,7 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(Read(audit first).Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "cursor-2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "cursor-2" {
 		t.Fatalf("first.NextCursor = %#v, want cursor-2", first.NextCursor)
 	}
 	if got := first.Events[0].Kind; got != "github.audit" {
@@ -693,8 +696,11 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(Read(dependabot_alert first).Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "cursor-2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "cursor-2" {
 		t.Fatalf("first.NextCursor = %#v, want cursor-2", first.NextCursor)
+	}
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
 	}
 	if got := first.Events[0].Kind; got != "github.dependabot_alert" {
 		t.Fatalf("first.Events[0].Kind = %q, want github.dependabot_alert", got)
@@ -792,8 +798,11 @@ func TestSecretScanningUsesUpdatedSortAndCursorPagination(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "after:cursor-2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "after:cursor-2" {
 		t.Fatalf("first.NextCursor = %#v, want after cursor", first.NextCursor)
+	}
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
 	}
 
 	second, err := source.ReadWithCheckpoint(context.Background(), cfg, first.NextCursor, nil)

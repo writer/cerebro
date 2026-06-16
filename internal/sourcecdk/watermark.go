@@ -210,11 +210,7 @@ func PullFromRecords[T any](records []T, next string, build func(T) (*primitives
 // than the run's starting watermark.
 func IncrementalPullFromRecords[T any](source string, family string, records []T, next string, checkpoint *cerebrov1.SourceCheckpoint, build func(T) (*primitives.Event, error)) (Pull, error) {
 	if len(records) == 0 {
-		pull := EmptyIncrementalWatermarkPull(source, family, checkpoint)
-		if next = strings.TrimSpace(next); next != "" {
-			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: IncrementalCursor(source, family, next, checkpoint)}
-		}
-		return pull, nil
+		return IncrementalPullFromEvents(source, family, nil, next, checkpoint), nil
 	}
 	events := make([]*primitives.Event, 0, len(records))
 	for _, record := range records {
@@ -224,16 +220,32 @@ func IncrementalPullFromRecords[T any](source string, family string, records []T
 		}
 		events = append(events, event)
 	}
+	return IncrementalPullFromEvents(source, family, events, next, checkpoint), nil
+}
+
+// IncrementalPullFromEvents applies durable watermark filtering to events that
+// were already projected by a provider reader.
+func IncrementalPullFromEvents(source string, family string, events []*primitives.Event, next string, checkpoint *cerebrov1.SourceCheckpoint) Pull {
+	if len(events) == 0 {
+		pull := EmptyIncrementalWatermarkPull(source, family, checkpoint)
+		if next = strings.TrimSpace(next); next != "" {
+			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: IncrementalCursor(source, family, next, checkpoint)}
+		}
+		return pull
+	}
 	pull := IncrementalWatermarkPull(source, family, events, checkpoint, next)
 	if pull.NextCursor != nil {
 		pull.NextCursor.Opaque = IncrementalCursor(source, family, next, checkpoint)
 	}
-	return pull, nil
+	return pull
 }
 
 // IncrementalCheckpointForCursor restores the starting comparison checkpoint
 // from a continuation cursor produced by IncrementalCursor.
 func IncrementalCheckpointForCursor(source string, family string, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {
+	if cursor == nil || strings.TrimSpace(cursor.GetOpaque()) == "" {
+		return checkpoint
+	}
 	envelope, ok := DecodeCursorEnvelope(cursor.GetOpaque())
 	if !ok || strings.TrimSpace(envelope.Source) != strings.TrimSpace(source) || strings.TrimSpace(envelope.Family) != strings.TrimSpace(family) {
 		return checkpoint

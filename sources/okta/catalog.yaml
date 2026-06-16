@@ -80,6 +80,9 @@ coverage_contract:
       high_value: true
       known_unsupported_fields:
         - remediation workflow state
+      notes:
+        - Okta user, app, assignment, policy, and audit status fields are provider lifecycle state, not Cerebro finding remediation state.
+        - Findings and source-runtime consumers must use Cerebro finding status for remediation lifecycle decisions.
     - id: threat_insight
       type: entity_family
       title: ThreatInsight configuration

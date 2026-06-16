@@ -324,6 +324,10 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 type oktaListFunc[T any] func(context.Context, settings, string, int) ([]T, string, error)
 
 type oktaFamilyOptions[T any] struct {
@@ -339,7 +343,7 @@ type oktaFamilyOptions[T any] struct {
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	auditList := s.listAudit
-	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string {
+	return sourcecdk.NewFamilyEngineWithSourceID("okta", s.parseSettings, func(settings settings) string {
 		return settings.family
 	},
 		oktaFamily(oktaFamilyOptions[auditRecord]{
@@ -435,7 +439,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 
 func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] {
 	return sourcecdk.Family[settings]{
-		Name: options.Name,
+		Name: options.Name, IncrementalWatermark: true,
 		Check: func(ctx context.Context, settings settings) error {
 			return oktaCheck(ctx, settings, options.List, options.Label)
 		},
@@ -450,7 +454,7 @@ func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] 
 			return oktaURNsFor(settings, records, options.URN)
 		},
 		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-			records, next, err := options.List(ctx, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
+			records, next, err := options.List(ctx, settings, sourcecdk.CursorToken(cursor), settings.perPage)
 			if err != nil {
 				return sourcecdk.Pull{}, wrapLookupError(oktaLabel(options.Label, settings), err)
 			}
@@ -1891,10 +1895,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func boolString(value bool) string {
-	if value {
-		return "true"
-	}
-	return "false"
+	return strconv.FormatBool(value)
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {
