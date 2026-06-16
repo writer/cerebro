@@ -26,14 +26,14 @@ coverage_contract:
       families: [access_application]
       support: partial
       high_value: true
-      known_unsupported_fields: [zone-scoped Access applications, nested policy expansion]
+      known_unsupported_fields: [zone-scoped Access applications]
     - id: access_groups
       type: app_entitlement
       title: Zero Trust Access groups
       families: [access_group]
       support: partial
       high_value: true
-      known_unsupported_fields: [zone-scoped Access groups, group rule expansion]
+      known_unsupported_fields: [zone-scoped Access groups]
     - id: accounts
       type: entity_family
       title: Accounts
@@ -44,9 +44,8 @@ coverage_contract:
       type: entity_family
       title: Account rulesets
       families: [account_ruleset]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [ruleset rule version expansion]
     - id: audit_logs
       type: audit_event
       title: Account audit logs
@@ -88,16 +87,15 @@ coverage_contract:
       type: app_entitlement
       title: Account roles
       families: [role]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [custom permission group expansion]
     - id: worker_scripts
       type: entity_family
       title: Workers scripts
       families: [worker_script]
       support: partial
       high_value: true
-      known_unsupported_fields: [script content and secret bindings]
+      known_unsupported_fields: [script content and secret binding values]
     - id: zones
       type: entity_family
       title: Zones
@@ -108,9 +106,8 @@ coverage_contract:
       type: entity_family
       title: Zone rulesets
       families: [zone_ruleset]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [ruleset rule version expansion]
 event_contracts:
   - kind: cloudflare.access_application
     schema_ref: cloudflare/access_application/v1
