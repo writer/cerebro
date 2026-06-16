@@ -298,13 +298,13 @@ func repositoryUpdatedAt(repo *gogithub.Repository, fallback time.Time) time.Tim
 		return fallback.UTC()
 	}
 	if updatedAt := repo.GetUpdatedAt(); !updatedAt.IsZero() {
-		return updatedAt.Time.UTC()
+		return updatedAt.UTC()
 	}
 	if pushedAt := timestamp(repo.PushedAt); pushedAt != nil {
 		return pushedAt.UTC()
 	}
 	if createdAt := repo.GetCreatedAt(); !createdAt.IsZero() {
-		return createdAt.Time.UTC()
+		return createdAt.UTC()
 	}
 	return fallback.UTC()
 }
