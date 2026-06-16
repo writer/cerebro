@@ -9,6 +9,32 @@ emitted_kinds:
   - github.org_member
   - github.pull_request
   - github.secret_scanning_alert
+families:
+  - id: audit
+    incremental: cursor
+  - id: dependabot_alert
+    incremental: watermark
+  - id: org_inventory
+    freshness_probe:
+      supported: true
+      canary_kind: newest_audit_event
+      confidence: heuristic
+      reconciliation_interval: 24h
+      max_skip_duration: 6h
+      max_consecutive_skips: 3
+  - id: pull_request
+    incremental: watermark
+  - id: repository
+    incremental: watermark
+    freshness_probe:
+      supported: true
+      canary_kind: newest_updated_resource
+      confidence: heuristic
+      reconciliation_interval: 24h
+      max_skip_duration: 6h
+      max_consecutive_skips: 3
+  - id: secret_scanning_alert
+    incremental: watermark
 coverage_contract:
   owner_domain: source_control
   authority_domain: github

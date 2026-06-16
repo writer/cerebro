@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/githubcanary"
 )
 
 //go:embed catalog.yaml
@@ -60,6 +61,7 @@ type settings struct {
 	auditInclude        string
 	auditPhrase         string
 	auditOrder          string
+	auditLogCanary      bool
 	perPage             int
 }
 
@@ -215,10 +217,10 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		return s.readSecretScanningAlerts(ctx, client, settings, cursor, checkpoint)
 	}
 	if settings.family == familyOrgInventory {
-		return s.readOrgInventory(ctx, client, settings)
+		return s.readOrgInventory(ctx, client, settings, checkpoint, sourcecdk.ConfigHash(cfg.Values()))
 	}
 	if settings.family == familyRepository {
-		return s.readRepositories(ctx, client, settings, cursor, checkpoint)
+		return s.readRepositories(ctx, client, settings, cursor, checkpoint, sourcecdk.ConfigHash(cfg.Values()))
 	}
 	return s.readPullRequests(ctx, client, settings, cursor, checkpoint)
 }
@@ -250,35 +252,10 @@ func (s *Source) readPullRequests(ctx context.Context, client *gogithub.Client, 
 	})
 }
 
-func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
-	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familyRepository, cursor, checkpoint)
-	page, err := sourcecdk.CursorPage(cursor)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	if settings.repo != "" {
-		if page > 1 {
-			return sourcecdk.EmptyIncrementalWatermarkPull("github", familyRepository, readCheckpoint), nil
-		}
-		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		return sourcecdk.IncrementalPullFromRecords("github", familyRepository, []*gogithub.Repository{repo}, "", readCheckpoint, func(repo *gogithub.Repository) (*primitives.Event, error) {
-			return repositoryEvent(settings, repo)
-		})
-	}
-	repos, resp, err := listReposPage(ctx, client, settings.owner, page, settings.perPage)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	nextCursor := ""
-	if resp != nil && resp.NextPage > 0 {
-		nextCursor = strconv.Itoa(resp.NextPage)
-	}
-	return sourcecdk.IncrementalPullFromRecords("github", familyRepository, repos, nextCursor, readCheckpoint, func(repo *gogithub.Repository) (*primitives.Event, error) {
-		return repositoryEvent(settings, repo)
-	})
+func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, configHash string) (sourcecdk.Pull, error) {
+	options := githubcanary.RepositoryReadOptions{Owner: settings.owner, Repo: settings.repo, PerPage: settings.perPage, ConfigHash: configHash, Cursor: cursor, Checkpoint: checkpoint}
+	options.Build = func(repo *gogithub.Repository) (*primitives.Event, error) { return repositoryEvent(settings, repo) }
+	return githubcanary.ReadRepositories(ctx, client, options)
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
@@ -387,7 +364,7 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 	switch settings.family {
 	case familyAudit, familyDependabot, familyOrgInventory, familyPullRequest, familyRepository, familySecretScanning:
 	default:
-		return settings, fmt.Errorf("github family must be one of %s, %s, %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot, familyRepository, familySecretScanning)
+		return settings, fmt.Errorf("github family must be one of %s, %s, %s, %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot, familyOrgInventory, familyRepository, familySecretScanning)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -398,6 +375,11 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 			return settings, fmt.Errorf("github per_page must be between 1 and %d", maxPageSize)
 		}
 		settings.perPage = perPage
+	}
+	if rawAuditLogCanary := configValue(cfg, "audit_log_canary"); rawAuditLogCanary != "" {
+		if settings.auditLogCanary, err = strconv.ParseBool(rawAuditLogCanary); err != nil {
+			return settings, fmt.Errorf("parse github audit_log_canary: %w", err)
+		}
 	}
 	switch settings.family {
 	case familyPullRequest:

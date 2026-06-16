@@ -273,6 +273,16 @@ Sources may include:
 - `sources/<source-id>/deploy.yaml`, which declares source-level secret names and canonical runtime config,
 - `sources/<source-id>/source_health_receipt.json`, when a source ships a health receipt.
 
+Catalogs may declare family-level freshness probes under `families[].freshness_probe`.
+Use `confidence: authoritative` only for provider tokens or resource versions that
+prove the scoped collection is unchanged. Use `confidence: heuristic` for cheap
+signals such as newest updated resources or newest audit-log events; these can
+reduce API calls, but runtimes must still force reconciliation after the declared
+skip duration, skip count, reconciliation interval, manifest-version change, or
+runtime config-hash change. GitHub audit-log canaries are a high-confidence broad
+organization dirty signal when credentials can read the audit log, but they are
+still heuristic and do not replace periodic family-specific reconciliation.
+
 The deploy manifest intentionally declares what the source needs, not when or where your platform should schedule it. Deployment cadence and concrete secrets belong in your deployment system.
 
 See [`docs/RELEASE_CONTRACT.md`](./RELEASE_CONTRACT.md) for how source manifests contribute to `cerebro-runtime-contract.json`.

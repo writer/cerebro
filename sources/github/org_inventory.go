@@ -13,6 +13,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubcanary"
 )
 
 const familyOrgInventory = "org_inventory"
@@ -55,8 +56,19 @@ func (s *Source) discoverOrgInventory(ctx context.Context, client *gogithub.Clie
 	return []sourcecdk.URN{sourcecdk.URN(fmt.Sprintf("urn:cerebro:%s:org_inventory", settings.owner))}, nil
 }
 
-func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, settings settings) (sourcecdk.Pull, error) {
+func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, settings settings, checkpoint *cerebrov1.SourceCheckpoint, configHash string) (sourcecdk.Pull, error) {
 	now := time.Now().UTC()
+	var canary *githubcanary.Result
+	var err error
+	if settings.auditLogCanary {
+		canary, err = githubcanary.ProbeAuditLog(ctx, client, settings.owner, checkpoint, configHash, now)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		if pull, ok := canary.ShortCircuitPull(); ok {
+			return pull, nil
+		}
+	}
 	var events []*primitives.Event
 
 	// Members
@@ -101,14 +113,15 @@ func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, 
 	}
 
 	if len(events) == 0 {
-		return sourcecdk.Pull{}, nil
+		return canary.Apply(sourcecdk.Pull{}, "github", familyOrgInventory), nil
 	}
-	return sourcecdk.Pull{
+	pull := sourcecdk.Pull{
 		Events: events,
 		Checkpoint: &cerebrov1.SourceCheckpoint{
 			Watermark: timestamppb.New(now),
 		},
-	}, nil
+	}
+	return canary.Apply(pull, "github", familyOrgInventory), nil
 }
 
 func orgMemberEvent(settings settings, user *gogithub.User, role string, now time.Time) (*primitives.Event, error) {
