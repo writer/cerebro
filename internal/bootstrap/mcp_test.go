@@ -1923,6 +1923,36 @@ LIMIT 25`,
 	}
 }
 
+func TestMCPGraphReasonMissingTenantWithoutAuthReportsInvalidRequest(t *testing.T) {
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{
+		StateStore:    &stubRuntimeStore{},
+		GraphStore:    &stubGraphStore{},
+		GraphAgentLLM: graphagent.NewStubLLMClient(),
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	response, _ := postMCPWithoutAuth(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.reason",
+			"arguments": map[string]any{
+				"question": "Which asset should I review first?",
+			},
+		},
+	})
+	result := response["result"].(map[string]any)
+	text := result["content"].([]any)[0].(map[string]any)["text"].(string)
+	if result["isError"] != true || !strings.Contains(text, "tenant_id is required") || strings.Contains(text, "scope forbidden") {
+		t.Fatalf("graph.reason missing tenant response = %#v", response)
+	}
+}
+
 func TestMCPAgentPreflight(t *testing.T) {
 	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, &stubGraphStore{}, graphagent.NewStubLLMClient())
 	defer server.Close()

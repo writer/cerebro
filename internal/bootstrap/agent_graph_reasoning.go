@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/writer/cerebro/internal/agentplatform"
@@ -41,7 +42,7 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 		ProvenanceRequirement: "graph-reasoning",
 	})
 	if !preflight.Enabled {
-		writeGRCError(w, errScopeForbidden)
+		writeGRCError(w, agentPreflightDeniedError(preflight))
 		return
 	}
 	request.PlatformContext = &preflight
@@ -65,4 +66,13 @@ func (a *App) handleAgentPlatformGraphReason(w http.ResponseWriter, r *http.Requ
 
 func (a *App) newGraphReasoningService() (*graphagent.Service, error) {
 	return newGraphReasoningFeatureService(newGraphReasoningFeatureDeps(a.deps))
+}
+
+func agentPreflightDeniedError(preflight agentplatform.AgentRunPreflight) error {
+	for _, blocker := range preflight.Blockers {
+		if blocker.Code == "tenant_required" {
+			return fmt.Errorf("%w: tenant_id is required", graphagent.ErrInvalidRequest)
+		}
+	}
+	return errScopeForbidden
 }

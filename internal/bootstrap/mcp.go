@@ -1471,7 +1471,7 @@ func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error
 		ProvenanceRequirement: "graph-reasoning",
 	})
 	if !preflight.Enabled {
-		return nil, errScopeForbidden
+		return nil, agentPreflightDeniedError(preflight)
 	}
 	request.PlatformContext = &preflight
 	if err := graphagent.ValidateRequest(request); err != nil {
@@ -3583,6 +3583,7 @@ func safeMCPToolError(err error) string {
 	case errors.Is(err, errTenantForbidden):
 		return "tenant forbidden"
 	case errors.Is(err, errInvalidHTTPRequest),
+		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
 		errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findingdomain.ErrInvalidRequest):
