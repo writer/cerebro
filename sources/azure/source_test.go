@@ -7,7 +7,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/azurearm"
 )
@@ -240,6 +244,7 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 		{family: familyActivityLog, kind: "azure.activity_log", attr: "actor_email", want: "admin@writer.com"},
 		{family: familyResourceExposure, kind: "azure.resource_exposure", attr: "internet_exposed", want: "true"},
 		{family: familyAppRoleAssignment, config: map[string]string{"service_principal_id": "sp-resource-1"}, kind: "azure.app_role_assignment", attr: "relationship", want: "assigned_to"},
+		{family: familyAuthorizationPolicy, kind: "azure.authorization_policy", attr: "allow_invites_from", want: "adminsAndGuestInviters"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"base_url": server.URL, "family": tt.family, "subscription_id": "sub-1", "tenant_id": "tenant-1", "token": "test-token"}
@@ -304,7 +309,7 @@ func TestReadLiveAzureGenericARMPreview(t *testing.T) {
 	}
 }
 
-func TestListSQLDatabasesDrainsServerAndDatabasePages(t *testing.T) {
+func TestListSQLDatabasesReturnsResumableNestedPages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/subscriptions/sub-1/providers/Microsoft.Sql/servers":
@@ -338,18 +343,44 @@ func TestListSQLDatabasesDrainsServerAndDatabasePages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listSQLDatabases: %v", err)
 	}
-	if next != "" {
-		t.Fatalf("next = %q, want empty after draining nested pages", next)
+	if next == "" {
+		t.Fatal("next is empty after first nested database page")
 	}
-	if got, want := len(records), 3; got != want {
+	if got, want := len(records), 1; got != want {
 		t.Fatalf("len(records) = %d, want %d", got, want)
 	}
-	if records[0].Database.Name != "db-a1" || records[1].Database.Name != "db-a2" || records[2].Database.Name != "db-b1" {
-		t.Fatalf("database order = %q, %q, %q", records[0].Database.Name, records[1].Database.Name, records[2].Database.Name)
+	if records[0].Database.Name != "db-a1" {
+		t.Fatalf("first database = %q, want db-a1", records[0].Database.Name)
+	}
+	records, next, err = listSQLDatabases(context.Background(), source, settings, next, 1)
+	if err != nil {
+		t.Fatalf("listSQLDatabases second page: %v", err)
+	}
+	if next == "" {
+		t.Fatal("next is empty after second nested database page")
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("len(second records) = %d, want %d", got, want)
+	}
+	if records[0].Database.Name != "db-a2" {
+		t.Fatalf("second database = %q, want db-a2", records[0].Database.Name)
+	}
+	records, next, err = listSQLDatabases(context.Background(), source, settings, next, 1)
+	if err != nil {
+		t.Fatalf("listSQLDatabases third page: %v", err)
+	}
+	if next != "" {
+		t.Fatalf("next after third page = %q, want empty", next)
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("len(third records) = %d, want %d", got, want)
+	}
+	if records[0].Database.Name != "db-b1" {
+		t.Fatalf("third database = %q, want db-b1", records[0].Database.Name)
 	}
 }
 
-func TestListKeyVaultChildrenDrainsVaultAndChildPages(t *testing.T) {
+func TestListKeyVaultChildrenReturnsResumableNestedPages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/subscriptions/sub-1/providers/Microsoft.KeyVault/vaults":
@@ -383,14 +414,77 @@ func TestListKeyVaultChildrenDrainsVaultAndChildPages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listKeyVaultKeys: %v", err)
 	}
-	if next != "" {
-		t.Fatalf("next = %q, want empty after draining nested pages", next)
+	if next == "" {
+		t.Fatal("next is empty after first nested key page")
 	}
-	if got, want := len(records), 3; got != want {
+	if got, want := len(records), 1; got != want {
 		t.Fatalf("len(records) = %d, want %d", got, want)
 	}
-	if records[0].Resource.Name != "key-a1" || records[1].Resource.Name != "key-a2" || records[2].Resource.Name != "key-b1" {
-		t.Fatalf("key order = %q, %q, %q", records[0].Resource.Name, records[1].Resource.Name, records[2].Resource.Name)
+	if records[0].Resource.Name != "key-a1" {
+		t.Fatalf("first key = %q, want key-a1", records[0].Resource.Name)
+	}
+	records, next, err = listKeyVaultKeys(context.Background(), source, settings, next, 1)
+	if err != nil {
+		t.Fatalf("listKeyVaultKeys second page: %v", err)
+	}
+	if next == "" {
+		t.Fatal("next is empty after second nested key page")
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("len(second records) = %d, want %d", got, want)
+	}
+	if records[0].Resource.Name != "key-a2" {
+		t.Fatalf("second key = %q, want key-a2", records[0].Resource.Name)
+	}
+	records, next, err = listKeyVaultKeys(context.Background(), source, settings, next, 1)
+	if err != nil {
+		t.Fatalf("listKeyVaultKeys third page: %v", err)
+	}
+	if next != "" {
+		t.Fatalf("next after third page = %q, want empty", next)
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("len(third records) = %d, want %d", got, want)
+	}
+	if records[0].Resource.Name != "key-b1" {
+		t.Fatalf("third key = %q, want key-b1", records[0].Resource.Name)
+	}
+}
+
+func TestReadAzureARMChildFamilyCarriesParentContext(t *testing.T) {
+	definition := azureChildDefinitionForTest(t, familyStorageContainer)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/subscriptions/sub-1/providers/Microsoft.Storage/storageAccounts":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/dataprod", "name": "dataprod", "type": "Microsoft.Storage/storageAccounts", "location": "eastus", "properties": map[string]any{"publicNetworkAccess": "Disabled"}}}})
+		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/dataprod/blobServices/default/containers":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/dataprod/blobServices/default/containers/audit", "name": "audit", "type": "Microsoft.Storage/storageAccounts/blobServices/containers", "properties": map[string]any{"publicAccess": "None", "hasImmutabilityPolicy": true}}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, settings := newAzurePaginationTestSource(t, server, definition.Name)
+
+	records, next, err := listAzureARMChildResources(context.Background(), source, settings, "", 1, definition)
+	if err != nil {
+		t.Fatalf("listAzureARMChildResources: %v", err)
+	}
+	if next != "" {
+		t.Fatalf("next = %q, want empty", next)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	event, err := azureARMChildResourceEvent(settings, records[0], definition)
+	if err != nil {
+		t.Fatalf("azureARMChildResourceEvent: %v", err)
+	}
+	if got := event.Attributes["parent_resource_id"]; got != "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/dataprod" {
+		t.Fatalf("parent_resource_id = %q", got)
+	}
+	if got := event.Attributes["public_access"]; got != "None" {
+		t.Fatalf("public_access = %q, want None", got)
 	}
 }
 
@@ -532,6 +626,94 @@ func newLiveTestSource() (*Source, error) {
 	return source, nil
 }
 
+func TestReadActivityLogsWithCheckpoint(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	var gotFilter string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/subscriptions/sub-1/providers/microsoft.insights/eventtypes/management/values" {
+			http.NotFound(w, r)
+			return
+		}
+		gotFilter = r.URL.Query().Get("$filter")
+		writeJSON(t, w, map[string]any{"value": []map[string]any{
+			{"id": "activity-new", "eventTimestamp": watermark.Add(time.Hour).Format(time.RFC3339Nano), "caller": "admin@writer.com", "operationName": map[string]any{"value": "Microsoft.Compute/virtualMachines/write"}, "resourceId": "/subscriptions/sub-1/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1"},
+			{"id": "activity-old", "eventTimestamp": watermark.Add(-time.Hour).Format(time.RFC3339Nano), "caller": "admin@writer.com", "operationName": map[string]any{"value": "Microsoft.Compute/virtualMachines/read"}, "resourceId": "/subscriptions/sub-1/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1"},
+		}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":        server.URL,
+		"family":          familyActivityLog,
+		"subscription_id": "sub-1",
+		"tenant_id":       "tenant-1",
+		"token":           "test-token",
+	}), nil, &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(%s) error = %v", familyActivityLog, err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "azure-activity-log-activity-new" {
+		t.Fatalf("events = %#v, want only new activity", pull.Events)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+	wantFilter := "eventTimestamp ge '" + watermark.Add(-azureCheckpointLookback).Format(time.RFC3339Nano) + "'"
+	if gotFilter != wantFilter {
+		t.Fatalf("$filter = %q, want %q", gotFilter, wantFilter)
+	}
+}
+
+func TestReadDirectoryAuditsWithCheckpoint(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	var gotFilter string
+	var gotOrderBy string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v1.0/auditLogs/directoryAudits" {
+			http.NotFound(w, r)
+			return
+		}
+		gotFilter = r.URL.Query().Get("$filter")
+		gotOrderBy = r.URL.Query().Get("$orderby")
+		writeJSON(t, w, map[string]any{"value": []map[string]any{
+			{"id": "audit-new", "activityDateTime": watermark.Add(time.Hour).Format(time.RFC3339Nano), "activityDisplayName": "Update policy", "operationType": "Update", "category": "Policy", "targetResources": []map[string]any{{"id": "policy-1", "displayName": "Require MFA", "type": "conditional_access_policy"}}},
+			{"id": "audit-old", "activityDateTime": watermark.Add(-time.Hour).Format(time.RFC3339Nano), "activityDisplayName": "Read policy", "operationType": "Read", "category": "Policy", "targetResources": []map[string]any{{"id": "policy-1", "displayName": "Require MFA", "type": "conditional_access_policy"}}},
+		}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyDirectoryAudit,
+		"tenant_id": "tenant-1",
+		"token":     "test-token",
+	}), nil, &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(%s) error = %v", familyDirectoryAudit, err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "azure-directory-audit-audit-new" {
+		t.Fatalf("events = %#v, want only new audit", pull.Events)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+	wantFilter := "activityDateTime ge " + watermark.Add(-azureCheckpointLookback).Format(time.RFC3339Nano)
+	if gotFilter != wantFilter {
+		t.Fatalf("$filter = %q, want %q", gotFilter, wantFilter)
+	}
+	if gotOrderBy != "activityDateTime desc" {
+		t.Fatalf("$orderby = %q, want activityDateTime desc", gotOrderBy)
+	}
+}
+
 func newAzureAPIHandler(t *testing.T) http.Handler {
 	t.Helper()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -554,6 +736,8 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "app-role-assignment-1", "principalId": "sp-1", "principalDisplayName": "Prod App", "principalType": "ServicePrincipal", "resourceId": "sp-resource-1", "resourceDisplayName": "Graph API", "appRoleId": "role-1", "createdDateTime": "2026-04-23T00:00:00Z"}}})
 		case "/v1.0/applications":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "app-object-1", "appId": "app-client-1", "displayName": "Prod App", "createdDateTime": "2026-04-23T00:00:00Z", "passwordCredentials": []map[string]any{{"keyId": "app-password-1", "displayName": "deploy secret", "startDateTime": "2026-04-23T00:00:00Z", "endDateTime": "2027-04-23T00:00:00Z"}}}}})
+		case "/v1.0/policies/authorizationPolicy/authorizationPolicy":
+			writeJSON(t, w, map[string]any{"id": "authorizationPolicy", "allowInvitesFrom": "adminsAndGuestInviters", "allowedToSignUpEmailBasedSubscriptions": false, "allowedToUseSSPR": true, "blockMsolPowerShell": true, "defaultUserRolePermissions": map[string]any{"allowedToCreateApps": false, "allowedToCreateSecurityGroups": false, "allowedToReadBitlockerKeysForOwnedDevice": true, "permissionGrantPoliciesAssigned": []any{"ManagePermissionGrantsForSelf.microsoft-user-default-low"}}})
 		case "/v1.0/servicePrincipals":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "sp-1", "appId": "app-client-1", "displayName": "Prod App", "servicePrincipalType": "Application", "accountEnabled": true, "keyCredentials": []map[string]any{{"keyId": "sp-key-1", "displayName": "certificate", "startDateTime": "2026-04-23T00:00:00Z", "endDateTime": "2027-04-23T00:00:00Z", "type": "AsymmetricX509Cert", "usage": "Verify"}}}}})
 		case "/v1.0/roleManagement/directory/roleAssignments":
@@ -866,6 +1050,17 @@ func newAzurePaginationTestSource(t *testing.T, server *httptest.Server, family 
 		subscriptionID: "sub-1",
 		tenantID:       "tenant-1",
 	}
+}
+
+func azureChildDefinitionForTest(t *testing.T, family string) azureARMChildDefinition {
+	t.Helper()
+	for _, definition := range azureARMChildDefinitions {
+		if definition.Name == family {
+			return definition
+		}
+	}
+	t.Fatalf("missing azure child definition for %s", family)
+	return azureARMChildDefinition{}
 }
 
 func serverURL(r *http.Request) string {

@@ -31,12 +31,15 @@ var catalogFS embed.FS
 const (
 	defaultFamily             = familyDirectoryAudit
 	defaultPageSize           = 10
+	azureCheckpointLookback   = 2 * time.Minute
 	maxPageSize               = 200
 	familyActivityLog         = "activity_log"
+	familyAuthorizationPolicy = "authorization_policy"
 	familyAppRoleAssignment   = "app_role_assignment"
 	familyApplication         = "application"
 	familyAssetMetadata       = "asset_metadata"
 	familyAKSCluster          = "aks_cluster"
+	familyAKSNodePool         = "aks_node_pool"
 	familyAppService          = "app_service"
 	familyContainerRegistry   = "container_registry"
 	familyCosmosAccount       = "cosmos_account"
@@ -51,6 +54,7 @@ const (
 	familyKeyVault            = "key_vault"
 	familyKeyVaultKey         = "key_vault_key"
 	familyKeyVaultSecret      = "key_vault_secret"
+	familyMySQLServer         = "mysql_server"
 	familyManagedDisk         = "managed_disk"
 	familyNetworkSecurityGrp  = "network_security_group"
 	familyPublicIPAddress     = "public_ip_address"
@@ -59,11 +63,29 @@ const (
 	familySQLDatabase         = "sql_database"
 	familySQLServer           = "sql_server"
 	familyStorageAccount      = "storage_account"
+	familyStorageContainer    = "storage_container"
+	familyStorageQueue        = "storage_queue"
 	familySubnet              = "subnet"
 	familyUser                = "user"
 	familyVirtualMachine      = "virtual_machine"
 	familyVirtualNetwork      = "virtual_network"
 )
+
+var azureARMChildDefinitions = []azureARMChildDefinition{
+	{Name: familyAKSNodePool, Label: "azure aks node pools", ParentProvider: "Microsoft.ContainerService/managedClusters", ParentAPIVersion: "2024-05-01", ChildPath: "agentPools", ChildAPIVersion: "2024-05-01", Kind: "azure.aks_node_pool", SchemaRef: "azure/aks_node_pool/v1"},
+	{Name: "cognitive_services_deployment", Label: "azure cognitive services deployments", ParentProvider: "Microsoft.CognitiveServices/accounts", ParentAPIVersion: "2023-05-01", ChildPath: "deployments", ChildAPIVersion: "2023-05-01", Kind: "azure.cognitive_services_deployment", SchemaRef: "azure/cognitive_services_deployment/v1"},
+	{Name: "cosmos_postgresql_firewall_rule", Label: "azure cosmos db for postgresql firewall rules", ParentProvider: "Microsoft.DBforPostgreSQL/serverGroupsv2", ParentAPIVersion: "2023-03-02-preview", ChildPath: "firewallRules", ChildAPIVersion: "2023-03-02-preview", Kind: "azure.cosmos_postgresql_firewall_rule", SchemaRef: "azure/cosmos_postgresql_firewall_rule/v1"},
+	{Name: "diagnostic_setting_resource", Label: "azure resource diagnostic settings", ParentProvider: "", ParentAPIVersion: "2021-04-01", ChildPath: "providers/Microsoft.Insights/diagnosticSettings", ChildAPIVersion: "2021-05-01-preview", Kind: "azure.diagnostic_setting_resource", SchemaRef: "azure/diagnostic_setting_resource/v1"},
+	{Name: "machine_learning_compute", Label: "azure machine learning computes", ParentProvider: "Microsoft.MachineLearningServices/workspaces", ParentAPIVersion: "2024-04-01", ChildPath: "computes", ChildAPIVersion: "2024-04-01", Kind: "azure.machine_learning_compute", SchemaRef: "azure/machine_learning_compute/v1"},
+	{Name: "postgresql_firewall_rule", Label: "azure postgresql firewall rules", ParentProvider: "Microsoft.DBforPostgreSQL/flexibleServers", ParentAPIVersion: "2023-06-01-preview", ChildPath: "firewallRules", ChildAPIVersion: "2023-06-01-preview", Kind: "azure.postgresql_firewall_rule", SchemaRef: "azure/postgresql_firewall_rule/v1"},
+	{Name: "server_vulnerability_subassessment", Label: "azure security subassessments", ParentProvider: "Microsoft.Security/assessments", ParentAPIVersion: "2020-01-01", ChildPath: "subAssessments", ChildAPIVersion: "2019-01-01-preview", Kind: "azure.server_vulnerability_subassessment", SchemaRef: "azure/server_vulnerability_subassessment/v1"},
+	{Name: "sql_managed_instance_tde", Label: "azure sql managed instance encryption protectors", ParentProvider: "Microsoft.Sql/managedInstances", ParentAPIVersion: "2022-05-01-preview", ChildPath: "encryptionProtector/current", ChildAPIVersion: "2022-05-01-preview", Kind: "azure.sql_managed_instance_tde", SchemaRef: "azure/sql_managed_instance_tde/v1", Singleton: true},
+	{Name: familyStorageContainer, Label: "azure storage containers", ParentProvider: "Microsoft.Storage/storageAccounts", ParentAPIVersion: "2023-01-01", ChildPath: "blobServices/default/containers", ChildAPIVersion: "2023-01-01", Kind: "azure.storage_container", SchemaRef: "azure/storage_container/v1"},
+	{Name: familyStorageQueue, Label: "azure storage queues", ParentProvider: "Microsoft.Storage/storageAccounts", ParentAPIVersion: "2023-01-01", ChildPath: "queueServices/default/queues", ChildAPIVersion: "2023-01-01", Kind: "azure.storage_queue", SchemaRef: "azure/storage_queue/v1"},
+	{Name: "synapse_sql_pool", Label: "azure synapse sql pools", ParentProvider: "Microsoft.Synapse/workspaces", ParentAPIVersion: "2021-06-01", ChildPath: "sqlPools", ChildAPIVersion: "2021-06-01", Kind: "azure.synapse_sql_pool", SchemaRef: "azure/synapse_sql_pool/v1"},
+	{Name: "virtual_machine_extension", Label: "azure virtual machine extensions", ParentProvider: "Microsoft.Compute/virtualMachines", ParentAPIVersion: "2024-07-01", ChildPath: "extensions", ChildAPIVersion: "2024-07-01", Kind: "azure.virtual_machine_extension", SchemaRef: "azure/virtual_machine_extension/v1"},
+	{Name: "virtual_machine_scale_set_instance", Label: "azure virtual machine scale set instances", ParentProvider: "Microsoft.Compute/virtualMachineScaleSets", ParentAPIVersion: "2024-07-01", ChildPath: "virtualMachines", ChildAPIVersion: "2024-07-01", Kind: "azure.virtual_machine_scale_set_instance", SchemaRef: "azure/virtual_machine_scale_set_instance/v1"},
+}
 
 // Source reads Azure Entra ID inventory, Azure RBAC, and audit/activity logs.
 type Source struct {
@@ -94,6 +116,18 @@ type graphPage struct {
 	Value        []json.RawMessage `json:"value"`
 	ODataNext    string            `json:"@odata.nextLink"`
 	NextPageLink string            `json:"nextLink"`
+}
+
+type authorizationPolicyRecord struct {
+	ID                                        string         `json:"id"`
+	AllowInvitesFrom                          string         `json:"allowInvitesFrom"`
+	AllowedToSignUpEmailBasedSubscriptions    *bool          `json:"allowedToSignUpEmailBasedSubscriptions"`
+	AllowedToUseSSPR                          *bool          `json:"allowedToUseSSPR"`
+	AllowEmailVerifiedUsersToJoinOrganization *bool          `json:"allowEmailVerifiedUsersToJoinOrganization"`
+	BlockMsolPowerShell                       *bool          `json:"blockMsolPowerShell"`
+	DefaultUserRolePermissions                map[string]any `json:"defaultUserRolePermissions"`
+	GuestUserRoleID                           string         `json:"guestUserRoleId"`
+	raw                                       json.RawMessage
 }
 
 type armPage struct {
@@ -294,6 +328,23 @@ type azureKeyVaultChildRecord struct {
 	Vault    armTypedResourceRecord
 }
 
+type azureARMChildDefinition struct {
+	Name             string
+	Label            string
+	ParentProvider   string
+	ParentAPIVersion string
+	ChildPath        string
+	ChildAPIVersion  string
+	Kind             string
+	SchemaRef        string
+	Singleton        bool
+}
+
+type azureARMChildRecord struct {
+	Resource armTypedResourceRecord
+	Parent   armTypedResourceRecord
+}
+
 type nsgRecord struct {
 	ID         string        `json:"id"`
 	Name       string        `json:"name"`
@@ -402,13 +453,14 @@ type activityAuth struct {
 }
 
 type azureFamilyOptions[T any] struct {
-	Name     string
-	Label    string
-	List     func(context.Context, *Source, settings, string, int) ([]T, string, error)
-	Check    func(context.Context, *Source, settings, string, int) ([]T, string, error)
-	Event    func(settings, T) (*primitives.Event, error)
-	URN      func(settings, T) (string, error)
-	Discover func(context.Context, *Source, settings) ([]sourcecdk.URN, error)
+	Name               string
+	Label              string
+	List               func(context.Context, *Source, settings, string, int) ([]T, string, error)
+	ListWithCheckpoint func(context.Context, *Source, settings, string, int, *cerebrov1.SourceCheckpoint) ([]T, string, error)
+	Check              func(context.Context, *Source, settings, string, int) ([]T, string, error)
+	Event              func(settings, T) (*primitives.Event, error)
+	URN                func(settings, T) (string, error)
+	Discover           func(context.Context, *Source, settings) ([]sourcecdk.URN, error)
 }
 
 // New constructs the live Azure source.
@@ -452,18 +504,33 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
+// ReadWithCheckpoint lets Azure audit families apply provider-side watermark filters and stop once they reach the durable runtime watermark.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	families := []sourcecdk.Family[settings]{
 		azureFamily(s, azureFamilyOptions[activityLogRecord]{
-			Name:  familyActivityLog,
-			Label: "azure activity logs",
-			List:  listActivityLogs,
-			Event: activityLogEvent,
+			Name:               familyActivityLog,
+			Label:              "azure activity logs",
+			List:               listActivityLogs,
+			ListWithCheckpoint: listActivityLogsWithCheckpoint,
+			Event:              activityLogEvent,
 			Discover: func(ctx context.Context, source *Source, settings settings) ([]sourcecdk.URN, error) {
 				if err := azureCheck(ctx, source, settings, listActivityLogs, "azure activity logs"); err != nil {
 					return nil, err
 				}
 				return parseAzureURNs(fmt.Sprintf("urn:cerebro:%s:azure_subscription:%s", tenantID(settings), settings.subscriptionID))
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[authorizationPolicyRecord]{
+			Name:  familyAuthorizationPolicy,
+			Label: "azure authorization policy",
+			List:  listAuthorizationPolicy,
+			Event: authorizationPolicyEvent,
+			URN: func(settings settings, policy authorizationPolicyRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:azure_authorization_policy:%s", tenantID(settings), firstNonEmpty(policy.ID, "authorizationPolicy")), nil
 			},
 		}),
 		azureFamily(s, azureFamilyOptions[appRoleAssignmentRecord]{
@@ -539,10 +606,11 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 		azureFamily(s, azureFamilyOptions[directoryAuditRecord]{
-			Name:  familyDirectoryAudit,
-			Label: "azure directory audits",
-			List:  listDirectoryAudits,
-			Event: directoryAuditEvent,
+			Name:               familyDirectoryAudit,
+			Label:              "azure directory audits",
+			List:               listDirectoryAudits,
+			ListWithCheckpoint: listDirectoryAuditsWithCheckpoint,
+			Event:              directoryAuditEvent,
 			Discover: func(ctx context.Context, source *Source, settings settings) ([]sourcecdk.URN, error) {
 				if err := azureCheck(ctx, source, settings, listDirectoryAudits, "azure directory audits"); err != nil {
 					return nil, err
@@ -709,6 +777,19 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
+			Name:  familyMySQLServer,
+			Label: "azure mysql flexible servers",
+			List: func(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armTypedResourceRecord, string, error) {
+				return listARMTypedResources(ctx, source, settings, pageToken, "Microsoft.DBforMySQL/flexibleServers", "2023-06-30", "azure mysql flexible server")
+			},
+			Event: func(settings settings, server armTypedResourceRecord) (*primitives.Event, error) {
+				return genericARMResourceEvent(settings, server, familyMySQLServer, "azure.mysql_server", "azure/mysql_server/v1")
+			},
+			URN: func(settings settings, server armTypedResourceRecord) (string, error) {
+				return azureTypedResourceURN(settings, familyMySQLServer, server), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armTypedResourceRecord]{
 			Name:  familySubnet,
 			Label: "azure subnets",
 			List:  listSubnets,
@@ -738,6 +819,22 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 	}
+	for _, definition := range azureARMChildDefinitions {
+		definition := definition
+		families = append(families, azureFamily(s, azureFamilyOptions[azureARMChildRecord]{
+			Name:  definition.Name,
+			Label: definition.Label,
+			List: func(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]azureARMChildRecord, string, error) {
+				return listAzureARMChildResources(ctx, source, settings, pageToken, limit, definition)
+			},
+			Event: func(settings settings, record azureARMChildRecord) (*primitives.Event, error) {
+				return azureARMChildResourceEvent(settings, record, definition)
+			},
+			URN: func(settings settings, record azureARMChildRecord) (string, error) {
+				return azureTypedResourceURN(settings, definition.Name, record.Resource), nil
+			},
+		}))
+	}
 	families = append(families, azurearm.Families(s, func(settings settings) int { return settings.perPage }, func(ctx context.Context, source *Source, settings settings, pageToken string, limit int, definition azurearm.Definition) ([]armTypedResourceRecord, string, error) {
 		return listARMTypedResources(ctx, source, settings, pageToken, definition.ProviderPath, definition.APIVersion, definition.Label)
 	}, func(settings settings, record armTypedResourceRecord, definition azurearm.Definition) (*primitives.Event, error) {
@@ -749,7 +846,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 }
 
 func azureFamily[T any](source *Source, options azureFamilyOptions[T]) sourcecdk.Family[settings] {
-	return sourcecdk.Family[settings]{
+	family := sourcecdk.Family[settings]{
 		Name: options.Name,
 		Check: func(ctx context.Context, settings settings) error {
 			checkList := options.List
@@ -777,6 +874,18 @@ func azureFamily[T any](source *Source, options azureFamilyOptions[T]) sourcecdk
 			return azurePullFromRecords(records, next, build)
 		},
 	}
+	if options.ListWithCheckpoint != nil {
+		family.ReadWithCheckpoint = func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+			readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("azure", options.Name, cursor, checkpoint)
+			records, next, err := options.ListWithCheckpoint(ctx, source, settings, sourcecdk.CursorToken(cursor), settings.perPage, readCheckpoint)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("lookup %s for %s: %w", options.Label, tenantID(settings), err)
+			}
+			build := func(record T) (*primitives.Event, error) { return options.Event(settings, record) }
+			return sourcecdk.IncrementalPullFromRecords("azure", options.Name, records, next, readCheckpoint, build)
+		}
+	}
+	return family
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -812,14 +921,14 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("azure tenant_id is required")
 	}
 	switch settings.family {
-	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAppService, "application_container", "application_gateway", "application_insight", familyAssetMetadata, "cognitive_services_account", familyContainerRegistry, familyCosmosAccount, "cosmos_postgresql", "databricks_workspace", "defender_config", "diagnostic_setting", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", "machine_learning_workspace", familyManagedDisk, "metric_alert_rule", familyNetworkSecurityGrp, "postgresql_server", familyPublicIPAddress, familyResourceExposure, "role", "route_table", "security_contact", "server_vulnerability", familySQLDatabase, "sql_managed_instance", "sql_server_on_virtual_machine", familySQLServer, familyStorageAccount, familySubnet, familyVirtualMachine, "virtual_machine_scale_set", familyVirtualNetwork:
+	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAKSNodePool, familyAppService, "application_container", "application_gateway", "application_insight", familyAssetMetadata, "cognitive_services_account", "cognitive_services_deployment", familyContainerRegistry, familyCosmosAccount, "cosmos_postgresql", "cosmos_postgresql_firewall_rule", "databricks_workspace", "defender_config", "diagnostic_setting", "diagnostic_setting_resource", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", "machine_learning_compute", "machine_learning_workspace", familyManagedDisk, "metric_alert_rule", familyMySQLServer, familyNetworkSecurityGrp, "policy_assignment", "postgresql_firewall_rule", "postgresql_server", familyPublicIPAddress, familyResourceExposure, "role", "route_table", "security_contact", "security_setting", "server_vulnerability", "server_vulnerability_subassessment", familySQLDatabase, "sql_managed_instance", "sql_managed_instance_tde", "sql_server_on_virtual_machine", familySQLServer, familyStorageAccount, familyStorageContainer, familyStorageQueue, familySubnet, "synapse_sql_pool", familyVirtualMachine, "virtual_machine_extension", "virtual_machine_scale_set", "virtual_machine_scale_set_instance", familyVirtualNetwork:
 		if settings.subscriptionID == "" {
 			return settings, fmt.Errorf("azure subscription_id is required when family=%q", settings.family)
 		}
 		if armToken(settings) == "" {
 			return settings, fmt.Errorf("azure arm_token or token is required when family=%q", settings.family)
 		}
-	case familyApplication, familyCredential, familyDirectoryAudit, familyDirectoryRoleAssign, familyGroup, familyServicePrincipal, familyUser:
+	case familyApplication, familyAuthorizationPolicy, familyCredential, familyDirectoryAudit, familyDirectoryRoleAssign, familyGroup, familyServicePrincipal, familyUser:
 		if graphToken(settings) == "" {
 			return settings, fmt.Errorf("azure graph_token or token is required when family=%q", settings.family)
 		}
@@ -901,6 +1010,22 @@ func listApplications(ctx context.Context, source *Source, settings settings, pa
 	return records, graphNext(response), err
 }
 
+func listAuthorizationPolicy(ctx context.Context, source *Source, settings settings, _ string, _ int) ([]authorizationPolicyRecord, string, error) {
+	var record authorizationPolicyRecord
+	if err := getGraphJSON(ctx, source, settings, "/v1.0/policies/authorizationPolicy/authorizationPolicy", nil, &record); err != nil {
+		return nil, "", err
+	}
+	if strings.TrimSpace(record.ID) == "" {
+		record.ID = "authorizationPolicy"
+	}
+	payload, err := json.Marshal(record)
+	if err != nil {
+		return nil, "", err
+	}
+	record.raw = append(json.RawMessage(nil), payload...)
+	return []authorizationPolicyRecord{record}, "", nil
+}
+
 func listServicePrincipals(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]servicePrincipalRecord, string, error) {
 	query := graphListQuery(settings, limit)
 	var response graphPage
@@ -952,7 +1077,15 @@ func listDirectoryRoleAssignments(ctx context.Context, source *Source, settings 
 }
 
 func listDirectoryAudits(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]directoryAuditRecord, string, error) {
+	return listDirectoryAuditsWithCheckpoint(ctx, source, settings, pageToken, limit, nil)
+}
+
+func listDirectoryAuditsWithCheckpoint(ctx context.Context, source *Source, settings settings, pageToken string, limit int, checkpoint *cerebrov1.SourceCheckpoint) ([]directoryAuditRecord, string, error) {
 	query := graphListQuery(settings, limit)
+	if start, ok := azureCheckpointStart(checkpoint); ok {
+		query.Set("$filter", azureCombineFilters(query.Get("$filter"), "activityDateTime ge "+start.Format(time.RFC3339Nano)))
+		query.Set("$orderby", "activityDateTime desc")
+	}
 	var response graphPage
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/auditLogs/directoryAudits"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
@@ -1177,32 +1310,31 @@ func listSQLDatabases(ctx context.Context, source *Source, settings settings, pa
 		}
 		return listSQLDatabasesForServer(ctx, source, settings, server, nextToken)
 	}
+	parentToken, startIndex, childToken, _, err := sourcecdk.DecodeChildPageCursor("azure", familySQLDatabase, pageToken)
+	if err != nil {
+		return nil, "", err
+	}
 	records := make([]azureSQLDatabaseRecord, 0)
-	for serverToken := pageToken; ; {
-		servers, nextServers, err := listSQLServers(ctx, source, settings, serverToken, limit)
+	servers, nextServers, err := listSQLServers(ctx, source, settings, parentToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	for index := startIndex; index < len(servers); index++ {
+		server := servers[index]
+		databases, nextDatabases, err := listSQLDatabasesForServer(ctx, source, settings, server, childToken)
 		if err != nil {
 			return nil, "", err
 		}
-		for _, server := range servers {
-			childToken := ""
-			for {
-				databases, nextDatabases, err := listSQLDatabasesForServer(ctx, source, settings, server, childToken)
-				if err != nil {
-					return nil, "", err
-				}
-				records = append(records, databases...)
-				if nextDatabases == "" {
-					break
-				}
-				childToken = nextDatabases
-			}
+		records = append(records, databases...)
+		if nextDatabases != "" {
+			return records, sourcecdk.EncodeChildPageCursor("azure", familySQLDatabase, parentToken, index, nextDatabases), nil
 		}
-		if nextServers == "" {
-			break
+		childToken = ""
+		if len(records) != 0 {
+			return records, sourcecdk.NextChildPageCursor("azure", familySQLDatabase, parentToken, nextServers, index+1, len(servers)), nil
 		}
-		serverToken = nextServers
 	}
-	return records, "", nil
+	return records, nextServers, nil
 }
 
 func listSQLDatabasesForServer(ctx context.Context, source *Source, settings settings, server armTypedResourceRecord, pageToken string) ([]azureSQLDatabaseRecord, string, error) {
@@ -1250,32 +1382,31 @@ func listKeyVaultChildren(ctx context.Context, source *Source, settings settings
 		}
 		return listKeyVaultChildrenForVault(ctx, source, settings, vault, nextToken, childPath, label)
 	}
+	parentToken, startIndex, childToken, _, err := sourcecdk.DecodeChildPageCursor("azure", childPath, pageToken)
+	if err != nil {
+		return nil, "", err
+	}
 	records := make([]azureKeyVaultChildRecord, 0)
-	for vaultToken := pageToken; ; {
-		vaults, nextVaults, err := listKeyVaults(ctx, source, settings, vaultToken, limit)
+	vaults, nextVaults, err := listKeyVaults(ctx, source, settings, parentToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	for index := startIndex; index < len(vaults); index++ {
+		vault := vaults[index]
+		children, nextChildren, err := listKeyVaultChildrenForVault(ctx, source, settings, vault, childToken, childPath, label)
 		if err != nil {
 			return nil, "", err
 		}
-		for _, vault := range vaults {
-			childToken := ""
-			for {
-				children, nextChildren, err := listKeyVaultChildrenForVault(ctx, source, settings, vault, childToken, childPath, label)
-				if err != nil {
-					return nil, "", err
-				}
-				records = append(records, children...)
-				if nextChildren == "" {
-					break
-				}
-				childToken = nextChildren
-			}
+		records = append(records, children...)
+		if nextChildren != "" {
+			return records, sourcecdk.EncodeChildPageCursor("azure", childPath, parentToken, index, nextChildren), nil
 		}
-		if nextVaults == "" {
-			break
+		childToken = ""
+		if len(records) != 0 {
+			return records, sourcecdk.NextChildPageCursor("azure", childPath, parentToken, nextVaults, index+1, len(vaults)), nil
 		}
-		vaultToken = nextVaults
 	}
-	return records, "", nil
+	return records, nextVaults, nil
 }
 
 func listKeyVaultChildrenForVault(ctx context.Context, source *Source, settings settings, vault armTypedResourceRecord, pageToken string, childPath string, label string) ([]azureKeyVaultChildRecord, string, error) {
@@ -1295,6 +1426,78 @@ func listKeyVaultChildrenForVault(ctx context.Context, source *Source, settings 
 	for _, child := range children {
 		child = inheritAzureResourceContext(child, vault)
 		records = append(records, azureKeyVaultChildRecord{Resource: child, Vault: vault})
+	}
+	return records, response.Next, nil
+}
+
+func listAzureARMChildResources(ctx context.Context, source *Source, settings settings, pageToken string, limit int, definition azureARMChildDefinition) ([]azureARMChildRecord, string, error) {
+	parentToken, startIndex, childToken, _, err := sourcecdk.DecodeChildPageCursor("azure", definition.Name, pageToken)
+	if err != nil {
+		return nil, "", err
+	}
+	parents, nextParents, err := listAzureARMChildParents(ctx, source, settings, parentToken, limit, definition)
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]azureARMChildRecord, 0)
+	for index := startIndex; index < len(parents); index++ {
+		parent := parents[index]
+		children, nextChildren, err := listAzureARMChildrenForParent(ctx, source, settings, parent, childToken, definition)
+		if err != nil {
+			return nil, "", err
+		}
+		records = append(records, children...)
+		if nextChildren != "" {
+			return records, sourcecdk.EncodeChildPageCursor("azure", definition.Name, parentToken, index, nextChildren), nil
+		}
+		childToken = ""
+		if len(records) != 0 {
+			return records, sourcecdk.NextChildPageCursor("azure", definition.Name, parentToken, nextParents, index+1, len(parents)), nil
+		}
+	}
+	return records, nextParents, nil
+}
+
+func listAzureARMChildParents(ctx context.Context, source *Source, settings settings, pageToken string, limit int, definition azureARMChildDefinition) ([]armTypedResourceRecord, string, error) {
+	if strings.TrimSpace(definition.ParentProvider) == "" {
+		records, next, err := listAssetMetadata(ctx, source, settings, pageToken, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		parents := make([]armTypedResourceRecord, 0, len(records))
+		for _, record := range records {
+			parents = append(parents, armTypedResourceRecord{ID: record.ID, Name: record.Name, Type: record.Type, Location: record.Location, Tags: record.Tags, raw: record.raw})
+		}
+		return parents, next, nil
+	}
+	return listARMTypedResources(ctx, source, settings, pageToken, definition.ParentProvider, definition.ParentAPIVersion, definition.Label+" parents")
+}
+
+func listAzureARMChildrenForParent(ctx context.Context, source *Source, settings settings, parent armTypedResourceRecord, pageToken string, definition azureARMChildDefinition) ([]azureARMChildRecord, string, error) {
+	query := url.Values{"api-version": {definition.ChildAPIVersion}}
+	path := strings.TrimRight(parent.ID, "/") + "/" + strings.Trim(definition.ChildPath, "/")
+	if definition.Singleton {
+		var child armTypedResourceRecord
+		if err := getARMJSON(ctx, source, settings, path, query, &child); err != nil {
+			return nil, "", err
+		}
+		child = inheritAzureResourceContext(child, parent)
+		return []azureARMChildRecord{{Resource: child, Parent: parent}}, "", nil
+	}
+	var response armPage
+	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
+		return nil, "", err
+	}
+	children, err := decodeAzureRecords(response.Value, definition.Label, func(record *armTypedResourceRecord, raw json.RawMessage) {
+		*record = inheritAzureResourceContext(*record, parent)
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]azureARMChildRecord, 0, len(children))
+	for _, child := range children {
+		records = append(records, azureARMChildRecord{Resource: child, Parent: parent})
 	}
 	return records, response.Next, nil
 }
@@ -1335,9 +1538,16 @@ func listResourceExposures(ctx context.Context, source *Source, settings setting
 }
 
 func listActivityLogs(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]activityLogRecord, string, error) {
+	return listActivityLogsWithCheckpoint(ctx, source, settings, pageToken, 0, nil)
+}
+
+func listActivityLogsWithCheckpoint(ctx context.Context, source *Source, settings settings, pageToken string, _ int, checkpoint *cerebrov1.SourceCheckpoint) ([]activityLogRecord, string, error) {
 	query := url.Values{"api-version": {"2015-04-01"}}
 	if settings.filter != "" {
 		query.Set("$filter", settings.filter)
+	}
+	if start, ok := azureCheckpointStart(checkpoint); ok {
+		query.Set("$filter", azureCombineFilters(query.Get("$filter"), fmt.Sprintf("eventTimestamp ge '%s'", start.Format(time.RFC3339Nano))))
 	}
 	var response armPage
 	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/providers/microsoft.insights/eventtypes/management/values"
@@ -1514,6 +1724,32 @@ func credentialEvent(settings settings, record credentialRecord) (*primitives.Ev
 	return sourceEvent(settings, "azure-credential-"+firstNonEmpty(record.CredentialID, record.OwnerID), "azure.credential", "azure/credential/v1", payload, attributes, occurredAt)
 }
 
+func authorizationPolicyEvent(settings settings, record authorizationPolicyRecord) (*primitives.Event, error) {
+	permissions := mapFromAny(record.DefaultUserRolePermissions)
+	attributes := map[string]string{
+		"allow_email_verified_users_to_join": strconv.FormatBool(boolPtrValue(record.AllowEmailVerifiedUsersToJoinOrganization)),
+		"allow_invites_from":                 record.AllowInvitesFrom,
+		"allowed_to_sign_up_email":           strconv.FormatBool(boolPtrValue(record.AllowedToSignUpEmailBasedSubscriptions)),
+		"allowed_to_use_sspr":                strconv.FormatBool(boolPtrValue(record.AllowedToUseSSPR)),
+		"block_msol_powershell":              strconv.FormatBool(boolPtrValue(record.BlockMsolPowerShell)),
+		"default_user_can_create_apps":       stringFromAny(permissions["allowedToCreateApps"]),
+		"default_user_can_create_groups":     stringFromAny(permissions["allowedToCreateSecurityGroups"]),
+		"default_user_can_read_bitlocker":    stringFromAny(permissions["allowedToReadBitlockerKeysForOwnedDevice"]),
+		"domain":                             tenantID(settings),
+		"family":                             familyAuthorizationPolicy,
+		"guest_user_role_id":                 record.GuestUserRoleID,
+		"resource_id":                        firstNonEmpty(record.ID, "authorizationPolicy"),
+		"resource_name":                      "authorizationPolicy",
+		"resource_provider":                  "azure",
+		"resource_type":                      "authorization_policy",
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"tenant_id": settings.tenantID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "azure-authorization-policy-"+firstNonEmpty(record.ID, "authorizationPolicy"), "azure.authorization_policy", "azure/authorization_policy/v1", payload, attributes, time.Now().UTC())
+}
+
 func directoryRoleAssignmentEvent(settings settings, record directoryRoleAssignmentRecord) (*primitives.Event, error) {
 	principal := record.Principal
 	roleID := firstNonEmpty(record.RoleDefinition.ID, record.RoleDefinitionID)
@@ -1647,6 +1883,19 @@ func genericARMResourceEvent(settings settings, record armTypedResourceRecord, f
 		return nil, err
 	}
 	return sourceEvent(settings, azureResourceEventID(family, record), kind, schemaRef, payload, attributes, time.Now().UTC())
+}
+
+func azureARMChildResourceEvent(settings settings, record azureARMChildRecord, definition azureARMChildDefinition) (*primitives.Event, error) {
+	event, err := genericARMResourceEvent(settings, record.Resource, definition.Name, definition.Kind, definition.SchemaRef)
+	if err != nil {
+		return nil, err
+	}
+	setAttributes(event.Attributes, map[string]string{
+		"parent_resource_id":   record.Parent.ID,
+		"parent_resource_name": record.Parent.Name,
+		"parent_resource_type": record.Parent.Type,
+	})
+	return event, nil
 }
 
 func virtualMachineEvent(settings settings, record azureVMRecord) (*primitives.Event, error) {
@@ -2566,6 +2815,30 @@ func prefixedNext(prefix string, next string) string {
 	return prefix + ":" + next
 }
 
+func azureCheckpointStart(checkpoint *cerebrov1.SourceCheckpoint) (time.Time, bool) {
+	if checkpoint == nil || checkpoint.GetWatermark() == nil {
+		return time.Time{}, false
+	}
+	watermark := checkpoint.GetWatermark().AsTime().UTC()
+	if watermark.IsZero() {
+		return time.Time{}, false
+	}
+	return watermark.Add(-azureCheckpointLookback), true
+}
+
+func azureCombineFilters(existing string, incremental string) string {
+	existing = strings.TrimSpace(existing)
+	incremental = strings.TrimSpace(incremental)
+	switch {
+	case existing == "":
+		return incremental
+	case incremental == "":
+		return existing
+	default:
+		return "(" + existing + ") and " + incremental
+	}
+}
+
 func graphToken(settings settings) string { return firstNonEmpty(settings.graphToken, settings.token) }
 
 func armToken(settings settings) string { return firstNonEmpty(settings.armToken, settings.token) }
@@ -2657,6 +2930,8 @@ func credentialStatus(endTime string) string {
 }
 
 func boolString(value bool) string { return strconv.FormatBool(value) }
+
+func boolPtrValue(value *bool) bool { return value != nil && *value }
 
 func addQuery(query url.Values, key string, value string) {
 	if strings.TrimSpace(value) != "" {

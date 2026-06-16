@@ -364,3 +364,120 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: aks-node-pool
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: aks_node_pool
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: authorization-policy
+    config:
+      family: authorization_policy
+      graph_token: env:AZURE_GRAPH_TOKEN
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: cognitive-services-deployment
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: cognitive_services_deployment
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: cosmos-postgresql-firewall-rule
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: cosmos_postgresql_firewall_rule
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: diagnostic-setting-resource
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: diagnostic_setting_resource
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: machine-learning-compute
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: machine_learning_compute
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: mysql-server
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: mysql_server
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: policy-assignment
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: policy_assignment
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: postgresql-firewall-rule
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: postgresql_firewall_rule
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: security-setting
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: security_setting
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: server-vulnerability-subassessment
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: server_vulnerability_subassessment
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: sql-managed-instance-tde
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: sql_managed_instance_tde
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: storage-container
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: storage_container
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: storage-queue
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: storage_queue
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: synapse-sql-pool
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: synapse_sql_pool
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: virtual-machine-extension
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: virtual_machine_extension
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: virtual-machine-scale-set-instance
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: virtual_machine_scale_set_instance
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID

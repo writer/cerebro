@@ -467,13 +467,29 @@ func TestReadLiveGCSObjectPaginatesWithinBucket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read(%s) error = %v", familyGCSObject, err)
 	}
-	if len(pull.Events) != 2 {
-		t.Fatalf("len(events) = %d, want 2", len(pull.Events))
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
 	}
 	if got := pull.Events[0].Attributes["object_name"]; got != "first.bin" {
 		t.Fatalf("first object_name = %q, want first.bin", got)
 	}
-	if got := pull.Events[1].Attributes["object_name"]; got != "second.bin" {
+	if pull.NextCursor.GetOpaque() == "" {
+		t.Fatal("NextCursor is empty after first object page")
+	}
+	pull, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyGCSObject,
+		"per_page":   "1",
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), pull.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(%s) second page error = %v", familyGCSObject, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(second page events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["object_name"]; got != "second.bin" {
 		t.Fatalf("second object_name = %q, want second.bin", got)
 	}
 }
@@ -949,6 +965,52 @@ func TestReadLiveGCPSecurityCenterFindingsWithCheckpoint(t *testing.T) {
 	}
 	if got := pull.Checkpoint.GetWatermark().AsTime(); !got.Equal(watermark.Add(time.Hour)) {
 		t.Fatalf("checkpoint watermark = %s, want %s", got, watermark.Add(time.Hour))
+	}
+}
+
+func TestReadLiveGCPAuditLogsWithCheckpoint(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v2/entries:list" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		writeJSON(t, w, map[string]any{"entries": []map[string]any{
+			{"insertId": "new-audit", "timestamp": watermark.Add(time.Hour).Format(time.RFC3339Nano), "protoPayload": map[string]any{"methodName": "storage.buckets.update", "serviceName": "storage.googleapis.com", "resourceName": "projects/_/buckets/prod"}},
+			{"insertId": "old-audit", "timestamp": watermark.Add(-time.Hour).Format(time.RFC3339Nano), "protoPayload": map[string]any{"methodName": "storage.buckets.get", "serviceName": "storage.googleapis.com", "resourceName": "projects/_/buckets/prod"}},
+		}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyAudit,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil, &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(%s) error = %v", familyAudit, err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "gcp-audit-new-audit" {
+		t.Fatalf("events = %#v, want only new audit", pull.Events)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+	if got := gotBody["orderBy"]; got != "timestamp desc" {
+		t.Fatalf("orderBy = %v, want timestamp desc", got)
+	}
+	wantFilter := `timestamp >= "` + watermark.Add(-gcpcloud.FindingCheckpointLookback).Format(time.RFC3339Nano) + `"`
+	if got := gotBody["filter"]; got != wantFilter {
+		t.Fatalf("filter = %v, want %s", got, wantFilter)
 	}
 }
 

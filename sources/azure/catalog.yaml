@@ -6,19 +6,24 @@ emitted_kinds:
   - azure.activity_log
   - azure.activity_log_alert
   - azure.aks_cluster
+  - azure.aks_node_pool
   - azure.app_role_assignment
   - azure.app_service
   - azure.application
   - azure.application_container
   - azure.application_gateway
   - azure.application_insight
+  - azure.authorization_policy
   - azure.cognitive_services_account
+  - azure.cognitive_services_deployment
   - azure.container_registry
   - azure.cosmos_account
   - azure.cosmos_postgresql
+  - azure.cosmos_postgresql_firewall_rule
   - azure.databricks_workspace
   - azure.defender_config
   - azure.diagnostic_setting
+  - azure.diagnostic_setting_resource
   - azure.credential
   - azure.directory_audit
   - azure.directory_role_assignment
@@ -32,46 +37,63 @@ emitted_kinds:
   - azure.key_vault_secret
   - azure.load_balancer
   - azure.log_alert
+  - azure.machine_learning_compute
   - azure.machine_learning_workspace
   - azure.managed_disk
   - azure.metric_alert_rule
+  - azure.mysql_server
   - azure.network_security_group
+  - azure.policy_assignment
+  - azure.postgresql_firewall_rule
   - azure.postgresql_server
   - azure.public_ip_address
   - azure.resource_exposure
   - azure.role
   - azure.route_table
   - azure.security_contact
+  - azure.security_setting
   - azure.server_vulnerability
+  - azure.server_vulnerability_subassessment
   - azure.service_principal
   - azure.sql_database
   - azure.sql_managed_instance
+  - azure.sql_managed_instance_tde
   - azure.sql_server
   - azure.sql_server_on_virtual_machine
   - azure.storage_account
+  - azure.storage_container
+  - azure.storage_queue
   - azure.subnet
+  - azure.synapse_sql_pool
   - azure.user
   - azure.virtual_machine
+  - azure.virtual_machine_extension
   - azure.virtual_machine_scale_set
+  - azure.virtual_machine_scale_set_instance
   - azure.virtual_network
 runtime_families:
   - activity_log
   - activity_log_alert
   - aks_cluster
+  - aks_node_pool
   - app_role_assignment
   - app_service
   - application
   - application_container
   - application_gateway
   - application_insight
+  - authorization_policy
   - asset_metadata
   - cognitive_services_account
+  - cognitive_services_deployment
   - container_registry
   - cosmos_account
   - cosmos_postgresql
+  - cosmos_postgresql_firewall_rule
   - databricks_workspace
   - defender_config
   - diagnostic_setting
+  - diagnostic_setting_resource
   - credential
   - directory_audit
   - directory_role_assignment
@@ -85,27 +107,39 @@ runtime_families:
   - key_vault_secret
   - load_balancer
   - log_alert
+  - machine_learning_compute
   - machine_learning_workspace
   - managed_disk
   - metric_alert_rule
+  - mysql_server
   - network_security_group
+  - policy_assignment
+  - postgresql_firewall_rule
   - postgresql_server
   - public_ip_address
   - resource_exposure
   - role
   - route_table
   - security_contact
+  - security_setting
   - server_vulnerability
+  - server_vulnerability_subassessment
   - service_principal
   - sql_database
   - sql_managed_instance
+  - sql_managed_instance_tde
   - sql_server
   - sql_server_on_virtual_machine
   - storage_account
+  - storage_container
+  - storage_queue
   - subnet
+  - synapse_sql_pool
   - user
   - virtual_machine
+  - virtual_machine_extension
   - virtual_machine_scale_set
+  - virtual_machine_scale_set_instance
   - virtual_network
 coverage_contract:
   owner_domain: cloud
@@ -126,10 +160,9 @@ coverage_contract:
     - id: ad_authorization_policy
       type: entity_family
       title: Azure authorization policy
-      families: [asset_metadata]
-      support: partial
+      families: [authorization_policy]
+      support: supported
       high_value: true
-      known_unsupported_fields: [tenant-wide guest and user authorization settings]
     - id: aks_cluster
       type: entity_family
       title: Azure AKS clusters
@@ -139,10 +172,9 @@ coverage_contract:
     - id: aks_node
       type: entity_family
       title: Azure AKS nodes and node pools
-      families: [aks_cluster]
-      support: partial
+      families: [aks_cluster, aks_node_pool, virtual_machine_scale_set_instance]
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-node kubelet and node image posture]
     - id: app_service
       type: entity_family
       title: Azure App Service apps
@@ -176,17 +208,15 @@ coverage_contract:
     - id: application_insight
       type: entity_family
       title: Azure Application Insights
-      families: [application_insight]
-      support: partial
+      families: [application_insight, activity_log_alert, log_alert, metric_alert_rule]
+      support: supported
       high_value: true
-      known_unsupported_fields: [alert settings]
     - id: cognitive_services_account
       type: entity_family
       title: Azure Cognitive Services accounts
-      families: [cognitive_services_account]
-      support: partial
+      families: [cognitive_services_account, cognitive_services_deployment]
+      support: supported
       high_value: true
-      known_unsupported_fields: [model deployment detail]
     - id: container_registry
       type: entity_family
       title: Azure Container Registry
@@ -203,10 +233,9 @@ coverage_contract:
     - id: container_vulnerability
       type: entity_family
       title: Azure container vulnerabilities
-      families: [asset_metadata]
-      support: partial
+      families: [server_vulnerability, server_vulnerability_subassessment]
+      support: supported
       high_value: true
-      known_unsupported_fields: [Defender vulnerability finding payloads]
     - id: cosmos_account
       type: entity_family
       title: Azure Cosmos DB accounts
@@ -216,10 +245,9 @@ coverage_contract:
     - id: cosmos_postgresql
       type: entity_family
       title: Azure Cosmos DB for PostgreSQL
-      families: [cosmos_postgresql]
-      support: partial
+      families: [cosmos_postgresql, cosmos_postgresql_firewall_rule]
+      support: supported
       high_value: true
-      known_unsupported_fields: [firewall rules]
     - id: credential
       type: entity_family
       title: Azure application and service principal credentials
@@ -229,10 +257,9 @@ coverage_contract:
     - id: database
       type: entity_family
       title: Azure database services
-      families: [cosmos_postgresql, postgresql_server, sql_database, sql_managed_instance]
-      support: partial
+      families: [cosmos_postgresql, mysql_server, postgresql_server, sql_database, sql_managed_instance, synapse_sql_pool]
+      support: supported
       high_value: true
-      known_unsupported_fields: [additional engine-specific services]
     - id: databricks_workspace
       type: entity_family
       title: Azure Databricks workspaces
@@ -242,10 +269,9 @@ coverage_contract:
     - id: diagnostic_setting
       type: entity_family
       title: Azure diagnostic settings
-      families: [diagnostic_setting]
-      support: partial
+      families: [diagnostic_setting, diagnostic_setting_resource]
+      support: supported
       high_value: true
-      known_unsupported_fields: [resource-scoped diagnostic setting expansion]
     - id: directory_audit
       type: audit_event
       title: Azure directory audits
@@ -267,10 +293,9 @@ coverage_contract:
     - id: foundry_model_deployment
       type: entity_family
       title: Azure Foundry model deployments
-      families: [asset_metadata]
-      support: partial
+      families: [cognitive_services_deployment]
+      support: supported
       high_value: true
-      known_unsupported_fields: [model deployment runtime and network settings]
     - id: function_app
       type: entity_family
       title: Azure Functions
@@ -328,10 +353,9 @@ coverage_contract:
     - id: machine_learning_workspace
       type: entity_family
       title: Azure Machine Learning workspaces
-      families: [machine_learning_workspace]
-      support: partial
+      families: [machine_learning_workspace, machine_learning_compute]
+      support: supported
       high_value: true
-      known_unsupported_fields: [workspace private endpoint and compute detail]
     - id: managed_disk
       type: entity_family
       title: Azure managed disks
@@ -347,10 +371,9 @@ coverage_contract:
     - id: defender_config
       type: entity_family
       title: Microsoft Defender for Cloud configuration
-      families: [defender_config]
-      support: partial
+      families: [defender_config, security_setting]
+      support: supported
       high_value: true
-      known_unsupported_fields: [security setting expansion beyond pricing tiers]
     - id: network_security_group
       type: entity_family
       title: Azure Network Security Groups
@@ -360,10 +383,9 @@ coverage_contract:
     - id: postgresql_server
       type: entity_family
       title: Azure PostgreSQL servers
-      families: [postgresql_server]
-      support: partial
+      families: [postgresql_server, postgresql_firewall_rule]
+      support: supported
       high_value: true
-      known_unsupported_fields: [firewall rule detail]
     - id: public_ip_address
       type: entity_family
       title: Azure public IP addresses
@@ -373,10 +395,9 @@ coverage_contract:
     - id: queue
       type: entity_family
       title: Azure Storage queues
-      families: [asset_metadata]
-      support: partial
+      families: [storage_queue]
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-queue ACLs and message settings]
     - id: resource_exposure
       type: relationship
       title: Azure public resource exposure
@@ -398,10 +419,9 @@ coverage_contract:
     - id: scale_set_virtual_machine
       type: entity_family
       title: Azure scale set virtual machines
-      families: [asset_metadata]
-      support: partial
+      families: [virtual_machine_scale_set_instance]
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-instance image and network posture]
     - id: security_contact
       type: entity_family
       title: Azure security contacts
@@ -411,10 +431,9 @@ coverage_contract:
     - id: server_vulnerability
       type: entity_family
       title: Azure server vulnerabilities
-      families: [server_vulnerability]
-      support: partial
+      families: [server_vulnerability, server_vulnerability_subassessment]
+      support: supported
       high_value: true
-      known_unsupported_fields: [Defender subassessment detail]
     - id: service_principal
       type: entity_family
       title: Azure service principals
@@ -430,10 +449,9 @@ coverage_contract:
     - id: sql_managed_instance
       type: entity_family
       title: Azure SQL managed instances
-      families: [sql_managed_instance]
-      support: partial
+      families: [sql_managed_instance, sql_managed_instance_tde]
+      support: supported
       high_value: true
-      known_unsupported_fields: [TDE settings]
     - id: sql_server
       type: entity_family
       title: Azure SQL servers
@@ -462,10 +480,9 @@ coverage_contract:
     - id: storage_container
       type: entity_family
       title: Azure Storage containers
-      families: [asset_metadata]
-      support: partial
+      families: [storage_container]
+      support: supported
       high_value: true
-      known_unsupported_fields: [container ACLs]
     - id: subnet
       type: entity_family
       title: Azure subnets
@@ -475,17 +492,15 @@ coverage_contract:
     - id: subscription
       type: entity_family
       title: Azure subscriptions
-      families: [asset_metadata]
-      support: partial
+      families: [asset_metadata, policy_assignment, security_contact]
+      support: supported
       high_value: true
-      known_unsupported_fields: [subscription policy and security contact expansion]
     - id: synapse_warehouse
       type: entity_family
       title: Azure Synapse warehouses
-      families: [asset_metadata]
-      support: partial
+      families: [synapse_sql_pool]
+      support: supported
       high_value: true
-      known_unsupported_fields: [workspace SQL pool posture]
     - id: user
       type: entity_family
       title: Azure users
@@ -501,17 +516,15 @@ coverage_contract:
     - id: virtual_machine_extension
       type: entity_family
       title: Azure virtual machine extensions
-      families: [asset_metadata]
-      support: partial
+      families: [virtual_machine_extension]
+      support: supported
       high_value: true
-      known_unsupported_fields: [extension publisher and protected settings]
     - id: virtual_machine_scale_set
       type: entity_family
       title: Azure virtual machine scale sets
-      families: [virtual_machine_scale_set]
-      support: partial
+      families: [virtual_machine_scale_set, virtual_machine_scale_set_instance]
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-instance posture]
     - id: virtual_network
       type: entity_family
       title: Azure virtual networks
