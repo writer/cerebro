@@ -1,6 +1,7 @@
 package awsnetwork
 
 import (
+	"sort"
 	"strings"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
@@ -66,34 +67,46 @@ func NetworkACLRuleCount(entries []ec2types.NetworkAclEntry, egress bool) int {
 }
 
 func NetworkACLAllowsAdminPortsFromInternet(acl ec2types.NetworkAcl) bool {
-	for _, entry := range acl.Entries {
-		if networkACLEntryAllowsAdminPortsFromInternet(entry) {
+	entries := append([]ec2types.NetworkAclEntry(nil), acl.Entries...)
+	sort.SliceStable(entries, func(i int, j int) bool {
+		return awssdk.ToInt32(entries[i].RuleNumber) < awssdk.ToInt32(entries[j].RuleNumber)
+	})
+	for _, port := range []int32{22, 3389} {
+		if allowed, matched := networkACLAdminPortInternetDecision(entries, port); matched && allowed {
 			return true
 		}
 	}
 	return false
 }
 
-func networkACLEntryAllowsAdminPortsFromInternet(entry ec2types.NetworkAclEntry) bool {
-	if awssdk.ToBool(entry.Egress) || entry.RuleAction != ec2types.RuleActionAllow {
-		return false
+func networkACLAdminPortInternetDecision(entries []ec2types.NetworkAclEntry, port int32) (bool, bool) {
+	for _, entry := range entries {
+		if networkACLEntryMatchesAdminPortFromInternet(entry, port) {
+			return entry.RuleAction == ec2types.RuleActionAllow, true
+		}
 	}
-	if !cidrIsInternet(awssdk.ToString(entry.CidrBlock)) && !cidrIsInternet(awssdk.ToString(entry.Ipv6CidrBlock)) {
-		return false
-	}
+	return false, false
+}
+
+func networkACLEntryMatchesAdminPortFromInternet(entry ec2types.NetworkAclEntry, port int32) bool {
+	return !awssdk.ToBool(entry.Egress) &&
+		(cidrIsInternet(awssdk.ToString(entry.CidrBlock)) || cidrIsInternet(awssdk.ToString(entry.Ipv6CidrBlock))) &&
+		networkACLProtocolAllowsPort(entry, port)
+}
+
+func networkACLProtocolAllowsPort(entry ec2types.NetworkAclEntry, port int32) bool {
 	protocol := strings.ToLower(strings.TrimSpace(awssdk.ToString(entry.Protocol)))
-	if protocol == "-1" || protocol == "all" {
+	switch protocol {
+	case "-1", "all":
 		return true
-	}
-	if protocol != "6" && protocol != "tcp" {
+	case "6", "tcp":
+		if entry.PortRange == nil {
+			return true
+		}
+		return portRangeContains(awssdk.ToInt32(entry.PortRange.From), awssdk.ToInt32(entry.PortRange.To), port)
+	default:
 		return false
 	}
-	if entry.PortRange == nil {
-		return true
-	}
-	from := awssdk.ToInt32(entry.PortRange.From)
-	to := awssdk.ToInt32(entry.PortRange.To)
-	return portRangeContains(from, to, 22) || portRangeContains(from, to, 3389)
 }
 
 func RouteGatewayIDs(routes []ec2types.Route) []string {
@@ -210,12 +223,18 @@ func portRangeContains(from int32, to int32, port int32) bool {
 }
 
 func cleanStrings(values []string) []string {
-	out := values[:0]
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		if value != "" {
-			out = append(out, value)
+		if value == "" {
+			continue
 		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
 	}
 	return out
 }
