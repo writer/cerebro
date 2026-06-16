@@ -308,7 +308,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		eventsRead := boundedUint32(len(pull.Events))
 		recordsScanned += eventsRead
-		telemetry.Event(ctx, "source_runtime.page_read", telemetry.Attrs(
+		pageReadAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
 			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
@@ -316,7 +316,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "events_read", Value: eventsRead},
 			telemetry.Field{Key: "has_next_cursor", Value: pull.NextCursor != nil},
 			telemetry.Field{Key: "short_circuit_reason", Value: pageShortCircuitReason},
-		))
+		), pull.Checkpoint)
+		telemetry.Event(ctx, "source_runtime.page_read", pageReadAttrs)
 		if pull.Checkpoint != nil {
 			advanceRuntimeCheckpoint(runtime, pull.Checkpoint)
 		}
@@ -374,7 +375,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 			return nil, err
 		}
-		telemetry.Event(ctx, "source_runtime.page_committed", telemetry.Attrs(
+		pageCommittedAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
 			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
@@ -387,7 +388,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "links_projected", Value: linksProjected},
 			telemetry.Field{Key: "has_next_cursor", Value: pull.NextCursor != nil},
 			telemetry.Field{Key: "short_circuit_reason", Value: pageShortCircuitReason},
-		))
+		), runtime.GetCheckpoint())
+		telemetry.Event(ctx, "source_runtime.page_committed", pageCommittedAttrs)
 		if pull.NextCursor == nil {
 			break
 		}
@@ -403,6 +405,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "links_projected", Value: linksProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "has_next_cursor", Value: runtime.GetNextCursor() != nil})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "short_circuit_reason", Value: shortCircuitReason})
+	spanAttributes = withFamilyFreshnessTelemetry(spanAttributes, runtime.GetCheckpoint())
 	if watermark, lagSeconds, ok := runtimeWatermarkLag(runtime, time.Now().UTC()); ok {
 		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "checkpoint_watermark", Value: watermark.Format(time.RFC3339Nano)})
 		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_runtime_watermark_lag_seconds", Value: lagSeconds})
@@ -658,6 +661,37 @@ func runtimeWatermarkLag(runtime *cerebrov1.SourceRuntime, now time.Time) (time.
 		lag = 0
 	}
 	return watermark, int64(lag.Seconds()), true
+}
+
+func withFamilyFreshnessTelemetry(attributes telemetry.Attributes, checkpoint *cerebrov1.SourceCheckpoint) telemetry.Attributes {
+	info, ok := sourcecdk.FamilyFreshnessInfoFromCheckpoint(checkpoint)
+	if !ok {
+		return attributes
+	}
+	if strings.TrimSpace(info.Source) != "" {
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_source", Value: info.Source})
+	}
+	if strings.TrimSpace(info.Family) != "" {
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_family", Value: info.Family})
+	}
+	if info.Confidence != "" {
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_confidence", Value: string(info.Confidence)})
+	}
+	attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_skip_count", Value: info.SkipCount})
+	if info.Reason != "" {
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_reconcile_reason", Value: info.Reason})
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_forced_reconcile", Value: familyFreshnessForcedReconcile(info.Reason)})
+	}
+	return attributes
+}
+
+func familyFreshnessForcedReconcile(reason string) bool {
+	switch strings.TrimSpace(reason) {
+	case sourcecdk.FamilyFreshnessReasonMaxSkipAge, sourcecdk.FamilyFreshnessReasonMaxSkipCount:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) resolveConfig(ctx context.Context, sourceID string, tenantID string, runtimeID string, config map[string]string) (map[string]string, error) {
