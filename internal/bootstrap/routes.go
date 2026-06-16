@@ -103,6 +103,7 @@ func (app *App) registerFindingRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "PUT /findings/{findingID}/due", routeSurfacePlatformHTTP, app.handleSetFindingDueDate)
 	registerHTTPRoute(mux, "POST /findings/{findingID}/notes", routeSurfacePlatformHTTP, app.handleAddFindingNote)
 	registerHTTPRoute(mux, "POST /findings/{findingID}/tickets", routeSurfacePlatformHTTP, app.handleLinkFindingTicket)
+	registerHTTPRoute(mux, "POST /findings/{findingID}/external-refs", routeSurfacePlatformHTTP, app.handleLinkFindingExternalRef)
 	registerHTTPRoute(mux, "GET /finding-candidates/{candidateID}", routeSurfacePlatformHTTP, app.handleGetFindingCandidate)
 	registerHTTPRoute(mux, "POST /finding-candidates/{candidateID}/promote", routeSurfacePlatformHTTP, app.handlePromoteFindingCandidate)
 	registerHTTPRoute(mux, "POST /finding-candidates/{candidateID}/reject", routeSurfacePlatformHTTP, app.handleRejectFindingCandidate)

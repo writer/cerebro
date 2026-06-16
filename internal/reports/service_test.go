@@ -126,6 +126,18 @@ func (s *stubFindingStore) LinkFindingTicket(_ context.Context, request ports.Fi
 	return nil, ports.ErrFindingNotFound
 }
 
+func (s *stubFindingStore) LinkFindingExternalRef(_ context.Context, request ports.FindingExternalRefLink) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.ExternalRefs = append(cloned.ExternalRefs, request.ExternalRef)
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
 type stubGraphStore struct {
 	rootURN       string
 	limit         int
@@ -1186,6 +1198,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           append([]ports.FindingNote(nil), finding.Notes...),
 			Tickets:         append([]ports.FindingTicket(nil), finding.Tickets...),
+			ExternalRefs:    append([]ports.FindingExternalRef(nil), finding.ExternalRefs...),
 			Assignee:        finding.Assignee,
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,

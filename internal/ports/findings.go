@@ -29,10 +29,24 @@ type FindingTicket struct {
 	LinkedAt   time.Time `json:"linked_at"`
 }
 
+// FindingExternalRef captures one source-native alert/case lifecycle reference
+// attached to a normalized finding.
+type FindingExternalRef struct {
+	System               string    `json:"system"`
+	Kind                 string    `json:"kind"`
+	ExternalID           string    `json:"external_id"`
+	URL                  string    `json:"url"`
+	ExternalStatus       string    `json:"external_status"`
+	ExternalStatusReason string    `json:"external_status_reason"`
+	LifecycleOwner       string    `json:"lifecycle_owner"`
+	ObservedAt           time.Time `json:"observed_at"`
+}
+
 // FindingWorkflow captures mutable analyst-managed finding workflow metadata.
 type FindingWorkflow struct {
 	Notes           []FindingNote
 	Tickets         []FindingTicket
+	ExternalRefs    []FindingExternalRef
 	Assignee        string
 	DueAt           time.Time
 	StatusReason    string
@@ -353,6 +367,12 @@ type FindingTicketLink struct {
 	Ticket    FindingTicket
 }
 
+// FindingExternalRefLink scopes one linked external lifecycle reference.
+type FindingExternalRefLink struct {
+	FindingID   string
+	ExternalRef FindingExternalRef
+}
+
 // ListFindingEvaluationRunsRequest scopes one finding evaluation run query.
 type ListFindingEvaluationRunsRequest struct {
 	RuntimeID string
@@ -466,6 +486,7 @@ type FindingStore interface {
 	UpdateFindingDueDate(context.Context, FindingDueDateUpdate) (*FindingRecord, error)
 	AddFindingNote(context.Context, FindingNoteCreate) (*FindingRecord, error)
 	LinkFindingTicket(context.Context, FindingTicketLink) (*FindingRecord, error)
+	LinkFindingExternalRef(context.Context, FindingExternalRefLink) (*FindingRecord, error)
 }
 
 // FindingEvaluationRunStore persists durable finding evaluation runs in the state store.

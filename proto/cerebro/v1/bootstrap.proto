@@ -40,6 +40,7 @@ service BootstrapService {
   rpc SetFindingDueDate(SetFindingDueDateRequest) returns (SetFindingDueDateResponse);
   rpc AddFindingNote(AddFindingNoteRequest) returns (AddFindingNoteResponse);
   rpc LinkFindingTicket(LinkFindingTicketRequest) returns (LinkFindingTicketResponse);
+  rpc LinkFindingExternalRef(LinkFindingExternalRefRequest) returns (LinkFindingExternalRefResponse);
   rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
   rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
   rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
@@ -371,6 +372,9 @@ message GetFindingResponse {
 message ResolveFindingRequest {
   string id = 1;
   string reason = 2;
+  string expected_status = 3;
+  google.protobuf.Timestamp last_observed_before = 4;
+  string status_source = 5;
 }
 
 // ResolveFindingResponse returns the updated resolved finding.
@@ -382,6 +386,9 @@ message ResolveFindingResponse {
 message SuppressFindingRequest {
   string id = 1;
   string reason = 2;
+  string expected_status = 3;
+  google.protobuf.Timestamp last_observed_before = 4;
+  string status_source = 5;
 }
 
 // SuppressFindingResponse returns the updated suppressed finding.
@@ -432,6 +439,24 @@ message LinkFindingTicketRequest {
 
 // LinkFindingTicketResponse returns the updated finding with linked tickets.
 message LinkFindingTicketResponse {
+  Finding finding = 1;
+}
+
+// LinkFindingExternalRefRequest appends or refreshes one external lifecycle reference on a finding.
+message LinkFindingExternalRefRequest {
+  string id = 1;
+  string system = 2;
+  string kind = 3;
+  string external_id = 4;
+  string url = 5;
+  string external_status = 6;
+  string external_status_reason = 7;
+  string lifecycle_owner = 8;
+  google.protobuf.Timestamp observed_at = 9;
+}
+
+// LinkFindingExternalRefResponse returns the updated finding with external lifecycle references.
+message LinkFindingExternalRefResponse {
   Finding finding = 1;
 }
 

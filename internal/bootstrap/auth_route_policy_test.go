@@ -65,6 +65,7 @@ func TestFindingLifecycleHTTPRoutesRequireWriteScope(t *testing.T) {
 		{method: http.MethodPut, path: "/findings/finding-1/due"},
 		{method: http.MethodPost, path: "/findings/finding-1/notes"},
 		{method: http.MethodPost, path: "/findings/finding-1/tickets"},
+		{method: http.MethodPost, path: "/findings/finding-1/external-refs"},
 	} {
 		policy := httpRoutePolicyFor(tt.method, tt.path)
 		if policy.Scope != scopeFindingLifecycleWrite || policy.AdminOnly {
@@ -118,6 +119,7 @@ func TestFindingLifecycleConnectProceduresRequireWriteScope(t *testing.T) {
 		cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure,
 		cerebrov1connect.BootstrapServiceAddFindingNoteProcedure,
 		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
+		cerebrov1connect.BootstrapServiceLinkFindingExternalRefProcedure,
 	} {
 		policy := connectProcedurePolicyFor(procedure)
 		if policy.Scope != scopeFindingLifecycleWrite || policy.AdminOnly {

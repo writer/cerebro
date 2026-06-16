@@ -130,6 +130,18 @@ message FindingTicket {
   google.protobuf.Timestamp linked_at = 4;
 }
 
+// FindingExternalRef captures a source-native alert or case lifecycle reference attached to a finding.
+message FindingExternalRef {
+  string system = 1;
+  string kind = 2;
+  string external_id = 3;
+  string url = 4;
+  string external_status = 5;
+  string external_status_reason = 6;
+  string lifecycle_owner = 7;
+  google.protobuf.Timestamp observed_at = 8;
+}
+
 // Finding is the normalized persisted finding view for the runtime evaluator.
 message Finding {
   string id = 1;
@@ -167,6 +179,7 @@ message Finding {
   repeated string risk_reasons = 33;
   string risk_model_version = 34;
   repeated FindingRiskFactor risk_factors = 35;
+  repeated FindingExternalRef external_refs = 36;
 }
 
 // FindingCandidateRun is the durable audit envelope for one non-production candidate evaluation.
