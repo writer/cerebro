@@ -788,12 +788,27 @@ func mergeEqualWatermarkCheckpoint(existing *cerebrov1.SourceCheckpoint, next *c
 		return next
 	}
 	nextEnvelope.BoundaryIDs = append(nextEnvelope.BoundaryIDs, existingEnvelope.BoundaryIDs...)
+	nextEnvelope.Extra = mergeCursorEnvelopeExtra(existingEnvelope.Extra, nextEnvelope.Extra)
 	opaque, err := sourcecdk.EncodeCursorEnvelope(nextEnvelope)
 	if err != nil {
 		return next
 	}
 	merged := cloneCheckpoint(next)
 	merged.CursorOpaque = opaque
+	return merged
+}
+
+func mergeCursorEnvelopeExtra(existing map[string]string, next map[string]string) map[string]string {
+	if len(existing) == 0 && len(next) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(existing)+len(next))
+	for key, value := range existing {
+		merged[key] = value
+	}
+	for key, value := range next {
+		merged[key] = value
+	}
 	return merged
 }
 

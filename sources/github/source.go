@@ -206,7 +206,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		return sourcecdk.Pull{}, err
 	}
 	if settings.family == familyAudit {
-		return s.readAudit(ctx, client, settings, cursor)
+		return s.readAudit(ctx, client, settings, cursor, checkpoint)
 	}
 	if settings.family == familyDependabot {
 		return s.readDependabotAlerts(ctx, client, settings, cursor, checkpoint)
