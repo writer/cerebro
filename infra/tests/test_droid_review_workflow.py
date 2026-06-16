@@ -29,6 +29,8 @@ class DroidReviewWorkflowTest(unittest.TestCase):
         self.assertIn("github.event.pull_request.draft == false", self.workflow)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", self.workflow)
         self.assertIn("github.actor != 'dependabot[bot]'", self.workflow)
+        self.assertIn("github.actor != 'writer-cerebro-deploy[bot]'", self.workflow)
+        self.assertIn("DROID_REVIEW_ACTOR: ${{ github.actor }}", self.workflow)
 
     def test_context_runs_before_droid_action(self) -> None:
         self.assertLess(self.workflow.index("droid-review-preflight:"), self.workflow.index("droid-review:"))

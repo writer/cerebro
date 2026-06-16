@@ -38,6 +38,13 @@ class DroidContextScriptTest(unittest.TestCase):
         self.assertIn("aws-infra-safety", pass_names)
         self.assertIn("workflow-permissions", pass_names)
 
+    def test_preflight_skips_deploy_automation_prs(self) -> None:
+        files = ["infra/aws/Pulumi.sec-dev.yaml"]
+
+        self.assertFalse(preflight.review_required(files, actor="writer-cerebro-deploy[bot]"))
+        self.assertFalse(preflight.review_required(files, actor="app/writer-cerebro-deploy"))
+        self.assertEqual(preflight.review_reason(False, "writer-cerebro-deploy[bot]"), "deploy automation bot PR")
+
     def test_ci_redaction_hides_tokens(self) -> None:
         text = "authorization: bearer secret123 token=abc api_key=xyz"
         redacted = ci.redact(text)
