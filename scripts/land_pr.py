@@ -2,8 +2,8 @@
 """Conservative PR landing helper for Cerebro.
 
 The helper exists to keep automated review branches alive until Droid has
-finished. It intentionally merges first and deletes the branch only after the
-review gates and merge have succeeded.
+finished. It intentionally waits for core checks, then merges and deletes the
+branch only after the review gates and merge have succeeded.
 """
 
 from __future__ import annotations
@@ -16,6 +16,35 @@ import time
 
 
 PASS_BUCKETS = {"pass"}
+DEFAULT_REQUIRED_CHECKS = (
+    "tenant-data leak check",
+    "gitleaks",
+    "semgrep",
+    "Semgrep OSS",
+    "build",
+    "test",
+    "race",
+    "coverage",
+    "sdk",
+    "sdk-dependency-audit",
+    "mcp",
+    "lint",
+    "proto",
+    "openapi",
+    "catalog",
+    "docs-drift",
+    "readme",
+    "oss-audit",
+    "govulncheck",
+    "release-smoke",
+    "docker-smoke",
+    "structural",
+    "droid-review-preflight",
+    "droid-review",
+    "verify",
+)
+DEFAULT_MAX_CHANGED_LINES = 5000
+DEFAULT_MAX_CHANGED_FILES = 50
 DROID_BOT_LOGIN = "factory-droid[bot]"
 DROID_FINISHED_MARKERS = ("Droid finished", "Review complete for PR")
 
@@ -35,7 +64,7 @@ def fetch_pr(pr_number: int, repo: str) -> dict[str, object]:
             "view",
             str(pr_number),
             "--json",
-            "number,state,headRefName,headRefOid,headRepository,headRepositoryOwner,url",
+            "number,state,headRefName,headRefOid,headRepository,headRepositoryOwner,url,additions,deletions,changedFiles,files",
         ],
         repo,
     )
@@ -86,6 +115,45 @@ def check_named_status(checks: list[dict[str, object]], name: str) -> tuple[bool
     if latest.get("bucket") in PASS_BUCKETS:
         return True, ""
     return False, f"{name!r} is {latest.get('bucket') or latest.get('state')}: {latest.get('link') or ''}"
+
+
+def check_required_statuses(checks: list[dict[str, object]], required: tuple[str, ...]) -> tuple[bool, str]:
+    failures = []
+    for name in required:
+        ok, reason = check_named_status(checks, name)
+        if not ok:
+            failures.append(reason)
+    if failures:
+        return False, "; ".join(failures[:8])
+    return True, ""
+
+
+def pr_change_count(pr: dict[str, object], key: str) -> int:
+    value = pr.get(key)
+    return int(value) if isinstance(value, int) else 0
+
+
+def check_pr_size(
+    pr: dict[str, object],
+    *,
+    max_changed_lines: int,
+    max_changed_files: int,
+    allow_large_pr: bool,
+) -> tuple[bool, str]:
+    changed_lines = pr_change_count(pr, "additions") + pr_change_count(pr, "deletions")
+    changed_files = pr_change_count(pr, "changedFiles")
+    failures = []
+    if changed_lines > max_changed_lines:
+        failures.append(f"{changed_lines} changed lines exceeds {max_changed_lines}")
+    if changed_files > max_changed_files:
+        failures.append(f"{changed_files} changed files exceeds {max_changed_files}")
+    if not failures:
+        return True, ""
+    reason = "; ".join(failures)
+    if allow_large_pr:
+        print(f"large PR override: {reason}")
+        return True, ""
+    return False, f"{reason}; rerun with --allow-large-pr after confirming the diff is intentionally large"
 
 
 def is_droid_comment(comment: dict[str, object]) -> bool:
@@ -188,17 +256,41 @@ def main() -> int:
     parser.add_argument("--interval-seconds", type=int, default=20)
     parser.add_argument("--admin", action="store_true", help="Pass --admin to gh pr merge.")
     parser.add_argument("--keep-branch", action="store_true", help="Do not delete the PR branch after merge.")
+    parser.add_argument(
+        "--required-check",
+        action="append",
+        default=[],
+        help="Required check name. Defaults to Cerebro's core PR checks when omitted.",
+    )
+    parser.add_argument(
+        "--allow-large-pr",
+        action="store_true",
+        help="Allow landing PRs above the default size guardrail after manual diff inspection.",
+    )
+    parser.add_argument("--max-changed-lines", type=int, default=DEFAULT_MAX_CHANGED_LINES)
+    parser.add_argument("--max-changed-files", type=int, default=DEFAULT_MAX_CHANGED_FILES)
     args = parser.parse_args()
 
     pr = fetch_pr(args.pr_number, args.repo)
     if pr.get("state") != "OPEN":
         raise RuntimeError(f"PR #{args.pr_number} is {pr.get('state')}, not OPEN.")
+    ok, reason = check_pr_size(
+        pr,
+        max_changed_lines=args.max_changed_lines,
+        max_changed_files=args.max_changed_files,
+        allow_large_pr=args.allow_large_pr,
+    )
+    if not ok:
+        raise RuntimeError(f"PR size guard failed: {reason}")
 
     wait_for_gate(
-        "tenant-data leak check",
+        "core PR checks",
         args.timeout_seconds,
         args.interval_seconds,
-        lambda: check_named_status(fetch_checks(args.pr_number, args.repo), "tenant-data leak check"),
+        lambda: check_required_statuses(
+            fetch_checks(args.pr_number, args.repo),
+            tuple(args.required_check) if args.required_check else DEFAULT_REQUIRED_CHECKS,
+        ),
     )
     wait_for_gate(
         "Droid review",
