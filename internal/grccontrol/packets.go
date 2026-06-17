@@ -327,7 +327,7 @@ func RenderMarkdown(result PacketResult) string {
 		writeMarkdownLine(&builder, "## "+markdownHeading(control.Control.FrameworkName+" "+control.Control.ControlID))
 		if title := strings.TrimSpace(control.Control.Title); title != "" {
 			writeMarkdownLine(&builder, "")
-			writeMarkdownLine(&builder, title)
+			writeMarkdownLine(&builder, markdownValue(title))
 		}
 		writeMarkdownLine(&builder, "")
 		writeMarkdownLine(&builder, "- Status: "+markdownValue(string(control.Status)))
@@ -353,9 +353,8 @@ func RenderMarkdown(result PacketResult) string {
 
 func RenderCustomMarkdown(result CustomPacketResult) string {
 	return RenderMarkdown(PacketResult{
-		Profile:  result.Profile,
-		Packet:   result.Packet,
-		Controls: result.Controls,
+		Profile: result.Profile,
+		Packet:  result.Packet,
 	})
 }
 
@@ -436,29 +435,44 @@ func writeMarkdownRow(builder *strings.Builder, cells ...string) {
 }
 
 func markdownHeading(value string) string {
-	value = strings.TrimSpace(value)
+	value = markdownSingleLine(value)
 	if value == "" {
 		return "Control"
 	}
-	return strings.ReplaceAll(value, "\n", " ")
+	return escapeMarkdownText(value)
 }
 
 func markdownCell(value string) string {
-	value = strings.TrimSpace(value)
+	value = markdownSingleLine(value)
 	if value == "" {
 		return "-"
 	}
-	value = strings.ReplaceAll(value, "\n", " ")
-	value = strings.ReplaceAll(value, "|", "\\|")
-	return value
+	return escapeMarkdownText(value)
 }
 
 func markdownValue(value string) string {
-	value = strings.TrimSpace(value)
+	value = markdownSingleLine(value)
 	if value == "" {
 		return "Not specified"
 	}
-	return strings.ReplaceAll(value, "\n", " ")
+	return escapeMarkdownText(value)
+}
+
+func markdownSingleLine(value string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+}
+
+func escapeMarkdownText(value string) string {
+	var builder strings.Builder
+	builder.Grow(len(value))
+	for _, char := range value {
+		switch char {
+		case '\\', '`', '*', '_', '~', '[', ']', '(', ')', '#', '!', '<', '>', '|':
+			builder.WriteByte('\\')
+		}
+		builder.WriteRune(char)
+	}
+	return builder.String()
 }
 
 func markdownTime(value time.Time) string {
