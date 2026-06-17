@@ -112,10 +112,26 @@ version: "2026-06-17"
 frameworks:
   - name: SOC 2
     families:
+      - id: A1
+        name: Availability
+        controls:
+          - id: A1.2
+          - id: A1.3
       - id: CC6
         name: Logical and Physical Access
         controls:
           - id: CC6.1
+      - id: CC7
+        name: System Operations
+        controls:
+          - id: CC7.1
+          - id: CC7.2
+          - id: CC7.3
+          - id: CC7.5
+      - id: CC9
+        name: Risk Mitigation
+        controls:
+          - id: CC9.2
 `)
 	writeTestFile(t, root, compliance.DefaultControlProfilesPath, `
 version: "2026-06-17"
@@ -147,11 +163,44 @@ profiles:
 		"id: customer-audit",
 		"framework_name: Customer Framework",
 		"control_id: IAM-1",
+		"control_id: LOG-1",
+		"control_id: VULN-1",
+		"control_id: BCDR-1",
+		"control_id: TPRM-1",
 		"privileged-mfa-state",
+		"security-log-retention",
+		"critical-vulnerability-sla",
+		"recovery-test-results",
+		"critical-vendor-review",
+		"status: auditor_ready",
 		"mapped_control_refs:",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated coverage index missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestControlExtensionScaffoldCatalogControlsAreAuditorReady(t *testing.T) {
+	options := newControlExtensionScaffoldOptions("customer-controls", "customer-controls", "Customer Controls", "customer", "Customer Framework", "customer-audit", "Customer Audit")
+	catalog := controlExtensionScaffoldCatalog(options)
+	for _, framework := range catalog.Frameworks {
+		for _, family := range framework.Families {
+			for _, control := range family.Controls {
+				readiness := compliance.EvaluateControlReadiness(compliance.ResolvedControl{
+					FrameworkID:      framework.ID,
+					FrameworkName:    framework.Name,
+					FrameworkVersion: framework.Version,
+					FamilyID:         family.ID,
+					FamilyName:       family.Name,
+					Control:          control,
+					EffectiveTags:    append(append([]string{}, framework.Tags...), family.Tags...),
+					Evidence:         control.EvidenceExpectations,
+				})
+				if readiness.Status != compliance.ControlReadinessAuditorReady {
+					t.Fatalf("%s readiness = %#v, want auditor-ready", control.ID, readiness)
+				}
+			}
 		}
 	}
 }
