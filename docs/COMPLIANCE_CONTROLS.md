@@ -89,6 +89,32 @@ Coverage is resolved in two steps:
 
 The result reports selected control count, mapped rule IDs, controls without rule coverage, rules by control, and controls by rule. This is the foundation for later control posture and auditor evidence packets.
 
+## Control Posture
+
+Control posture turns a selected control scope into an auditor-facing operating status. It combines:
+
+- selected controls from `ResolveControlSelection`
+- rule coverage from `ResolveRuleCoverage`
+- open finding signals
+- evidence signals
+- assessment overrides for exceptions, manual review, and not-applicable scope decisions
+
+`EvaluateControlPosture` returns one `ControlPosture` per selected control. Evidence and findings can attach directly to the selected control, to a mapped control reference, or to a mapped rule ID. This lets custom framework controls receive posture credit from existing generated rules while preserving the customer-facing control ID in the output.
+
+Statuses are intentionally ordered for audit review:
+
+| Status | Meaning |
+| --- | --- |
+| `not_applicable` | An active scope override says the control does not apply to this assessment. |
+| `exception` | An active exception or compensating-control approval covers the selected control. |
+| `failing` | One or more open findings map to the selected control. |
+| `missing_evidence` | Required evidence expectations are not present. |
+| `stale_evidence` | Evidence exists but is older than the control or evidence freshness window. |
+| `manual_review` | Evidence exists, but interview/manual assessment is still required before reliance. |
+| `passing` | Required evidence is present and no open findings are mapped to the control. |
+
+The posture output keeps control identity, finding IDs, evidence IDs, freshness data, and exception/not-applicable IDs in separate nested blocks. It includes mapped rule IDs, open finding IDs, evidence IDs, missing or stale evidence expectation IDs, exception/not-applicable IDs, freshness SLA, latest evidence time, and evidence due date. `SummarizeControlPosture` aggregates the posture list into counts by status for dashboard and report headers.
+
 ## Validation
 
 `go run ./tools/catalogcheck` validates the built-in control pack and policy mappings. The shared compliance package also exposes:
@@ -99,6 +125,8 @@ The result reports selected control count, mapped rule IDs, controls without rul
 - `LoadControlSelection`
 - `ResolveControlSelection`
 - `ResolveRuleCoverage`
+- `EvaluateControlPosture`
+- `SummarizeControlPosture`
 
 Run focused checks after changing control authoring code:
 
