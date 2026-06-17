@@ -2201,6 +2201,125 @@ paths:
       responses:
         '200':
           description: Profile metadata, posture summary, controls, findings, and evidence expectations.
+    post:
+      summary: GRC control evidence packet for a generated custom control profile
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional generated framework filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional generated control ID filter.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stateless custom control-pack build request.
+      responses:
+        '200':
+          description: Generated YAML preview plus live evidence packet for the generated profile.
+  /grc/control-packets/detail:
+    get:
+      summary: GRC control evidence detail for one control
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: profile
+          in: query
+          schema:
+            type: string
+          description: Built-in compliance profile ID. Defaults to soc2-security-core.
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional framework name or ID filter.
+        - name: control
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Control ID to open.
+      responses:
+        '200':
+          description: Profile metadata and exactly one detailed control evidence packet.
+  /grc/control-packets/export:
+    get:
+      summary: Export a GRC control evidence packet
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: profile
+          in: query
+          schema:
+            type: string
+          description: Built-in compliance profile ID. Defaults to soc2-security-core.
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional framework name or ID filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional control ID filter.
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [markdown, json]
+          description: Export format. Defaults to markdown.
+      responses:
+        '200':
+          description: Markdown or JSON control evidence packet export.
+    post:
+      summary: Export a generated custom GRC control evidence packet
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional generated framework filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional generated control ID filter.
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [markdown, json]
+          description: Export format. Defaults to markdown.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stateless custom control-pack build request.
+      responses:
+        '200':
+          description: Markdown or JSON export for the generated control evidence packet.
   /grc/audit-packets/{packetID}:
     get:
       summary: GRC audit packet for one finding

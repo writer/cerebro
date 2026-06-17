@@ -26,10 +26,27 @@ type BuildInput struct {
 	Now       time.Time
 }
 
+type CustomBuildInput struct {
+	Request   compliance.ControlPackBuildRequest
+	Framework string
+	ControlID string
+	Findings  []*ports.FindingRecord
+	Evidence  []*cerebrov1.FindingEvidence
+	SourceIDs map[string]string
+	Now       time.Time
+}
+
 type PacketResult struct {
 	Profile  Profile
 	Packet   compliance.ControlEvidencePacket
 	Controls []ControlItem
+}
+
+type CustomPacketResult struct {
+	Profile  Profile                          `json:"profile"`
+	Packet   compliance.ControlEvidencePacket `json:"packet"`
+	Controls []ControlItem                    `json:"controls"`
+	Preview  compliance.ControlPackPreview    `json:"preview"`
 }
 
 type Profile struct {
@@ -76,6 +93,9 @@ type ControlItem struct {
 	MissingEvidence  int           `json:"missing_evidence_items,omitempty"`
 	StaleEvidence    int           `json:"stale_evidence_items,omitempty"`
 	Expectations     int           `json:"evidence_expectations,omitempty"`
+	EvidenceScore    int           `json:"evidence_score"`
+	EvidenceQuality  string        `json:"evidence_quality,omitempty"`
+	AuditSummary     string        `json:"audit_summary,omitempty"`
 	MappedRules      []string      `json:"mapped_rules,omitempty"`
 	Reasons          []string      `json:"reasons,omitempty"`
 	Tags             []string      `json:"tags,omitempty"`
@@ -110,6 +130,65 @@ func BuildBuiltinEvidencePacket(input BuildInput) (PacketResult, error) {
 		Packet:   packet,
 		Controls: ControlItemsFromPacket(packet.Controls, input.Findings, input.SourceIDs),
 	}, nil
+}
+
+func BuildCustomEvidencePacket(input CustomBuildInput) (CustomPacketResult, []compliance.ValidationIssue, error) {
+	now := input.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	archetypes, err := compliance.LoadBuiltinControlArchetypeSet()
+	if err != nil {
+		return CustomPacketResult{}, nil, fmt.Errorf("load control archetypes: %w", err)
+	}
+	baseCatalog, err := compliance.LoadBuiltinControlCatalog()
+	if err != nil {
+		return CustomPacketResult{}, nil, fmt.Errorf("load control catalog: %w", err)
+	}
+	baseProfiles, err := compliance.LoadBuiltinControlProfileSet()
+	if err != nil {
+		return CustomPacketResult{}, nil, fmt.Errorf("load control profiles: %w", err)
+	}
+	preview, issues, err := compliance.BuildControlPackPreview(input.Request, archetypes, baseCatalog, baseProfiles, compliance.BuiltinRuleControlMappings())
+	if err != nil || len(issues) != 0 {
+		return CustomPacketResult{}, issues, err
+	}
+	catalogIndex, catalogIssues := compliance.BuildCatalogIndex(compliance.MergeControlCatalogs(baseCatalog, preview.Catalog))
+	if len(catalogIssues) != 0 {
+		return CustomPacketResult{}, catalogIssues, fmt.Errorf("%w: generated control catalog has validation issues", ErrInvalidRequest)
+	}
+	profiles := compliance.MergeControlProfileSets(baseProfiles, preview.Profiles)
+	resolved, profileIssues := compliance.ResolveControlProfiles(catalogIndex, profiles)
+	if len(profileIssues) != 0 {
+		return CustomPacketResult{}, profileIssues, fmt.Errorf("%w: generated control profiles have validation issues", ErrInvalidRequest)
+	}
+	profileID := strings.TrimSpace(preview.Coverage.ID)
+	for _, item := range resolved.Profiles {
+		if strings.TrimSpace(item.Profile.ID) != profileID {
+			continue
+		}
+		postureInput := compliance.ControlPostureInput{
+			Selection:    item.Resolution,
+			RuleCoverage: compliance.ResolveRuleCoverage(item.Resolution, compliance.BuiltinRuleControlMappings()),
+			Findings:     findingSignals(input.Findings),
+			Evidence:     evidenceSignals(input.Evidence, input.Findings, input.SourceIDs),
+			Now:          now,
+		}
+		packet := compliance.BuildControlEvidencePacket(postureInput)
+		packet.Controls = FilterPacketControls(packet.Controls, input.Framework, input.ControlID)
+		packet.Summary = SummarizePacket(packet.SelectionID, packet.Controls)
+		return CustomPacketResult{
+			Profile: Profile{
+				ID:          item.Profile.ID,
+				Name:        item.Profile.Name,
+				Description: item.Profile.Description,
+			},
+			Packet:   packet,
+			Controls: ControlItemsFromPacket(packet.Controls, input.Findings, input.SourceIDs),
+			Preview:  preview,
+		}, nil, nil
+	}
+	return CustomPacketResult{}, []compliance.ValidationIssue{{Path: "profile_id", Message: fmt.Sprintf("generated profile %q was not resolved", profileID)}}, nil
 }
 
 func ResolveBuiltinProfile(profileID string) (Profile, compliance.SelectionResolution, error) {
@@ -196,6 +275,9 @@ func ControlItemsFromPacket(packetControls []compliance.ControlEvidencePacketCon
 			MissingEvidence:  len(packetControl.Evidence.Summary.MissingEvidenceIDs),
 			StaleEvidence:    len(packetControl.Evidence.Summary.StaleEvidenceIDs),
 			Expectations:     len(packetControl.Evidence.Expectations),
+			EvidenceScore:    packetControl.Readiness.Score,
+			EvidenceQuality:  string(packetControl.Readiness.Rating),
+			AuditSummary:     packetControl.Readiness.Summary,
 			MappedRules:      append([]string(nil), packetControl.MappedRules...),
 			Reasons:          append([]string(nil), packetControl.Reasons...),
 			Tags:             append([]string(nil), packetControl.Tags...),
@@ -227,6 +309,163 @@ func ControlItemsFromPacket(packetControls []compliance.ControlEvidencePacketCon
 		return left.FrameworkName+left.ControlID < right.FrameworkName+right.ControlID
 	})
 	return controls
+}
+
+func RenderMarkdown(result PacketResult) string {
+	var builder strings.Builder
+	writeMarkdownLine(&builder, "# Control Evidence Packet")
+	writeMarkdownLine(&builder, "")
+	writeMarkdownLine(&builder, "- Profile: "+markdownValue(fallbackString(result.Profile.Name, result.Profile.ID)))
+	writeMarkdownLine(&builder, "- Profile ID: "+markdownValue(result.Profile.ID))
+	writeMarkdownLine(&builder, "- Generated: "+markdownTime(result.Packet.GeneratedAt))
+	writeMarkdownLine(&builder, "- Controls: "+fmt.Sprintf("%d", result.Packet.Summary.Total))
+	writeMarkdownLine(&builder, "- Failing controls: "+fmt.Sprintf("%d", result.Packet.Summary.ByStatus[compliance.ControlPostureFailing]))
+	writeMarkdownLine(&builder, "- Missing-evidence controls: "+fmt.Sprintf("%d", result.Packet.Summary.ByStatus[compliance.ControlPostureMissingEvidence]))
+	writeMarkdownLine(&builder, "- Stale-evidence controls: "+fmt.Sprintf("%d", result.Packet.Summary.ByStatus[compliance.ControlPostureStaleEvidence]))
+	for _, control := range result.Packet.Controls {
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "## "+markdownHeading(control.Control.FrameworkName+" "+control.Control.ControlID))
+		if title := strings.TrimSpace(control.Control.Title); title != "" {
+			writeMarkdownLine(&builder, "")
+			writeMarkdownLine(&builder, title)
+		}
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "- Status: "+markdownValue(string(control.Status)))
+		writeMarkdownLine(&builder, "- Evidence quality: "+markdownValue(string(control.Readiness.Rating)))
+		writeMarkdownLine(&builder, "- Evidence score: "+fmt.Sprintf("%d", control.Readiness.Score))
+		writeMarkdownLine(&builder, "- Owner domain: "+markdownValue(control.Control.OwnerDomain))
+		if control.Readiness.Summary != "" {
+			writeMarkdownLine(&builder, "- Auditor summary: "+markdownValue(control.Readiness.Summary))
+		}
+		if len(control.Reasons) != 0 {
+			writeMarkdownLine(&builder, "")
+			writeMarkdownLine(&builder, "### Assessment Notes")
+			for _, reason := range control.Reasons {
+				writeMarkdownLine(&builder, "- "+markdownValue(reason))
+			}
+		}
+		writeExpectationsMarkdown(&builder, control.Evidence.Expectations)
+		writeEvidenceItemsMarkdown(&builder, control.Evidence.Items)
+		writeFindingsMarkdown(&builder, control.Findings)
+	}
+	return strings.TrimRight(builder.String(), "\n") + "\n"
+}
+
+func RenderCustomMarkdown(result CustomPacketResult) string {
+	return RenderMarkdown(PacketResult{
+		Profile:  result.Profile,
+		Packet:   result.Packet,
+		Controls: result.Controls,
+	})
+}
+
+func writeExpectationsMarkdown(builder *strings.Builder, expectations []compliance.ControlEvidenceExpectationPosture) {
+	if len(expectations) == 0 {
+		return
+	}
+	writeMarkdownLine(builder, "")
+	writeMarkdownLine(builder, "### Evidence Expectations")
+	writeMarkdownLine(builder, "")
+	writeMarkdownLine(builder, "| Expectation | Type | Required | Status | Quality | Freshness | Evidence |")
+	writeMarkdownLine(builder, "| --- | --- | --- | --- | --- | --- | --- |")
+	for _, expectation := range expectations {
+		writeMarkdownRow(builder,
+			markdownCell(fallbackString(expectation.Title, expectation.ID)),
+			markdownCell(expectation.Type),
+			markdownCell(fmt.Sprintf("%t", expectation.Required)),
+			markdownCell(string(expectation.Status)),
+			markdownCell(string(expectation.Quality)),
+			markdownCell(expectation.FreshnessSLA),
+			markdownCell(strings.Join(expectation.EvidenceIDs, ", ")),
+		)
+	}
+}
+
+func writeEvidenceItemsMarkdown(builder *strings.Builder, evidence []compliance.ControlEvidencePacketEvidenceItem) {
+	if len(evidence) == 0 {
+		return
+	}
+	writeMarkdownLine(builder, "")
+	writeMarkdownLine(builder, "### Evidence Items")
+	writeMarkdownLine(builder, "")
+	writeMarkdownLine(builder, "| ID | Type | Status | Quality | Observed | Expires | Collection |")
+	writeMarkdownLine(builder, "| --- | --- | --- | --- | --- | --- | --- |")
+	for _, item := range evidence {
+		writeMarkdownRow(builder,
+			markdownCell(item.ID),
+			markdownCell(item.EvidenceType),
+			markdownCell(item.Status),
+			markdownCell(string(item.Quality)),
+			markdownCell(markdownTime(item.ObservedAt)),
+			markdownCell(markdownTime(item.ExpiresAt)),
+			markdownCell(item.Source),
+		)
+	}
+}
+
+func writeFindingsMarkdown(builder *strings.Builder, findings []compliance.ControlEvidencePacketFinding) {
+	if len(findings) == 0 {
+		return
+	}
+	writeMarkdownLine(builder, "")
+	writeMarkdownLine(builder, "### Open Findings")
+	writeMarkdownLine(builder, "")
+	writeMarkdownLine(builder, "| ID | Severity | Status | Rule | Title | Last Observed |")
+	writeMarkdownLine(builder, "| --- | --- | --- | --- | --- | --- |")
+	for _, finding := range findings {
+		writeMarkdownRow(builder,
+			markdownCell(finding.ID),
+			markdownCell(finding.Severity),
+			markdownCell(finding.Status),
+			markdownCell(finding.RuleID),
+			markdownCell(finding.Title),
+			markdownCell(markdownTime(finding.LastObservedAt)),
+		)
+	}
+}
+
+func writeMarkdownLine(builder *strings.Builder, line string) {
+	builder.WriteString(line)
+	builder.WriteByte('\n')
+}
+
+func writeMarkdownRow(builder *strings.Builder, cells ...string) {
+	builder.WriteString("| ")
+	builder.WriteString(strings.Join(cells, " | "))
+	builder.WriteString(" |\n")
+}
+
+func markdownHeading(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "Control"
+	}
+	return strings.ReplaceAll(value, "\n", " ")
+}
+
+func markdownCell(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "|", "\\|")
+	return value
+}
+
+func markdownValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "Not specified"
+	}
+	return strings.ReplaceAll(value, "\n", " ")
+}
+
+func markdownTime(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.UTC().Format(time.RFC3339)
 }
 
 func findingSignals(findings []*ports.FindingRecord) []compliance.ControlFindingSignal {

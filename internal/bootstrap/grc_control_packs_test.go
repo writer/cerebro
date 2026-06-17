@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -161,6 +162,99 @@ func TestGRCControlEvidencePacketEndpointBuildsProfilePosture(t *testing.T) {
 	}
 }
 
+func TestGRCControlEvidencePacketDetailEndpointReturnsOneControl(t *testing.T) {
+	server := newGRCControlPacketTestServer(t)
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/control-packets/detail?tenant_id=writer&profile=soc2-security-core&framework=SOC%202&control=CC6.1")
+	if err != nil {
+		t.Fatalf("GET /grc/control-packets/detail error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/control-packets/detail status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload struct {
+		Packet compliance.ControlEvidencePacket `json:"packet"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode control packet detail: %v", err)
+	}
+	if len(payload.Packet.Controls) != 1 {
+		t.Fatalf("packet controls = %d, want 1", len(payload.Packet.Controls))
+	}
+	control := payload.Packet.Controls[0]
+	if control.Control.ControlID != "CC6.1" || control.Readiness.Score == 0 || control.Readiness.Rating == "" {
+		t.Fatalf("control detail = %#v, want CC6.1 with audit readiness", control)
+	}
+}
+
+func TestGRCControlEvidencePacketExportEndpointReturnsMarkdown(t *testing.T) {
+	server := newGRCControlPacketTestServer(t)
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/control-packets/export?tenant_id=writer&profile=soc2-security-core&framework=SOC%202&control=CC6.1")
+	if err != nil {
+		t.Fatalf("GET /grc/control-packets/export error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/control-packets/export status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if contentType := resp.Header.Get("Content-Type"); !strings.Contains(contentType, "text/markdown") {
+		t.Fatalf("Content-Type = %q, want text/markdown", contentType)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read markdown export: %v", err)
+	}
+	markdown := string(body)
+	for _, want := range []string{"# Control Evidence Packet", "SOC 2 CC6.1", "Evidence Expectations", "Evidence score"} {
+		if !strings.Contains(markdown, want) {
+			t.Fatalf("markdown export missing %q:\n%s", want, markdown)
+		}
+	}
+}
+
+func TestGRCCustomControlEvidencePacketEndpointBuildsGeneratedProfilePacket(t *testing.T) {
+	server := newGRCControlPacketTestServer(t)
+	defer server.Close()
+
+	body := strings.NewReader(`{
+		"framework_id":"customer-security",
+		"framework_name":"Customer Security Framework",
+		"profile_id":"customer-security-audit",
+		"profile_name":"Customer Security Audit",
+		"archetype_ids":["privileged-mfa"]
+	}`)
+	resp, err := server.Client().Post(server.URL+"/grc/control-packets?tenant_id=writer", "application/json", body)
+	if err != nil {
+		t.Fatalf("POST /grc/control-packets error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /grc/control-packets status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload struct {
+		Profile  grccontrol.Profile               `json:"profile"`
+		Packet   compliance.ControlEvidencePacket `json:"packet"`
+		Controls []grccontrol.ControlItem         `json:"controls"`
+		Preview  compliance.ControlPackPreview    `json:"preview"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode custom control packet: %v", err)
+	}
+	if payload.Profile.ID != "customer-security-audit" || payload.Preview.Summary.Controls != 1 {
+		t.Fatalf("custom payload profile/preview = %#v %#v, want generated one-control profile", payload.Profile, payload.Preview.Summary)
+	}
+	if len(payload.Packet.Controls) != 1 || payload.Packet.Controls[0].Control.FrameworkName != "Customer Security Framework" {
+		t.Fatalf("custom packet controls = %#v, want generated framework control", payload.Packet.Controls)
+	}
+	if len(payload.Controls) != 1 || payload.Controls[0].EvidenceQuality == "" {
+		t.Fatalf("custom controls = %#v, want summarized audit quality", payload.Controls)
+	}
+}
+
 func TestGRCControlPackCreateEndpointReturnsStatelessExport(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -211,4 +305,39 @@ func TestGRCControlPackPreviewEndpointReturnsValidationIssues(t *testing.T) {
 	if payload.Issues[0].Path == "" || payload.Issues[0].Message == "" {
 		t.Fatalf("issue = %#v, want JSON-decoded path and message fields", payload.Issues[0])
 	}
+}
+
+func newGRCControlPacketTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	now := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-cc6": {
+				ID:             "finding-cc6",
+				TenantID:       "writer",
+				RuntimeID:      "writer-okta-audit",
+				RuleID:         "identity-api-token-or-oauth-app-created",
+				Title:          "Identity API token created",
+				Severity:       "HIGH",
+				Status:         "open",
+				ControlRefs:    []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+				LastObservedAt: now,
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-cc6": {
+				Id:            "evidence-cc6",
+				RuntimeId:     "writer-okta-audit",
+				RuleId:        "identity-api-token-or-oauth-app-created",
+				FindingId:     "finding-cc6",
+				GraphRootUrns: []string{"urn:cerebro:writer:okta_user:00u1"},
+				CreatedAt:     timestamppb.New(now),
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	return httptest.NewServer(app.Handler())
 }
