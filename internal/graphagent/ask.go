@@ -103,13 +103,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	var draft *DraftResponse
 	var conversion conversionResult
 	var rationale string
+	conversionStarted := time.Now()
 	if fastConversion, fastRationale, ok := deterministicFastPathConversion(request, s.options.EnableDeterministicFastPath); ok {
+		timings.ConversionMS = time.Since(conversionStarted).Milliseconds()
 		if err := emitProgress(emit, started, "planning_query", "Selecting a deterministic read-only graph query template."); err != nil {
 			return err
 		}
-		conversionStarted := time.Now()
 		conversion = fastConversion
-		timings.ConversionMS = time.Since(conversionStarted).Milliseconds()
 		rationale = fastRationale
 	} else {
 		if err := emitProgress(emit, started, "drafting_query", "Drafting a read-only graph query."); err != nil {

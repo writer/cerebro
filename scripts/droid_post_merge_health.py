@@ -152,7 +152,7 @@ def is_post_merge_checkout_error(pr: dict[str, object], comment: dict[str, objec
     if not merged_at:
         return False
     created_at = str(comment.get("created_at") or "")
-    return not created_at or created_at >= merged_at
+    return bool(created_at) and created_at >= merged_at
 
 
 def requires_droid_review(file: str) -> bool:

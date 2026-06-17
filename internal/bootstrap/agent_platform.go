@@ -220,7 +220,7 @@ func resolveAgentPlatformRequestContext(ctx context.Context, requestedTenantID s
 		return resolved, nil
 	}
 	resolved.Authenticated = true
-	tenantID := strings.TrimSpace(auth.principal.TenantID)
+	tenantID := firstNonEmpty(auth.principal.TenantID, resolved.TenantID)
 	if tenantID == "" {
 		return agentPlatformResolvedContext{}, errTenantForbidden
 	}

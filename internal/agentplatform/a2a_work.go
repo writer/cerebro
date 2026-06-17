@@ -178,10 +178,9 @@ func EvidencePacketRequestFromA2ASendMessage(params A2ASendMessageParams) (Evide
 				}
 				found = true
 			} else if a2ALooksLikeEvidencePacketRequest(data) {
-				if err := decodeEvidencePacketCandidate(data, &request); err != nil {
-					return EvidencePacketRequest{}, false, err
+				if err := decodeEvidencePacketCandidate(data, &request); err == nil {
+					found = true
 				}
-				found = true
 			}
 		}
 		if request.Question == "" {

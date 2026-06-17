@@ -297,7 +297,13 @@ func (h Handler) listTasks(ctx context.Context, request agentplatform.A2AJSONRPC
 		response.Error = &agentplatform.A2AJSONError{Code: -32603, Message: "InternalError", Data: map[string]any{"reason": "A2A task store is unavailable"}}
 		return response
 	}
-	jobs, err := h.Store.ListJobs(ctx, ports.JobFilter{TenantID: resolved.TenantID, Kind: agentplatform.A2AWorkJobKind, Limit: params.Limit})
+	filter := ports.JobFilter{TenantID: resolved.TenantID, Kind: agentplatform.A2AWorkJobKind, Limit: params.Limit}
+	jobs, err := h.Store.ListJobs(ctx, filter)
+	if err != nil {
+		response.Error = jsonRPCErrorFromError(err)
+		return response
+	}
+	totalSize, err := h.Store.CountJobs(ctx, filter)
 	if err != nil {
 		response.Error = jsonRPCErrorFromError(err)
 		return response
@@ -315,7 +321,7 @@ func (h Handler) listTasks(ctx context.Context, request agentplatform.A2AJSONRPC
 		task.History = nil
 		tasks = append(tasks, task)
 	}
-	response.Result = map[string]any{"tasks": tasks, "totalSize": len(tasks)}
+	response.Result = map[string]any{"tasks": tasks, "totalSize": totalSize, "returnedSize": len(tasks), "hasMore": totalSize > uint64(len(tasks))}
 	return response
 }
 

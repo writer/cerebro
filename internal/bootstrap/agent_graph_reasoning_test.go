@@ -86,6 +86,56 @@ func TestHandleAgentPlatformGraphReasonRejectsTenantOverride(t *testing.T) {
 	}
 }
 
+func TestHandleAgentPlatformGraphReasonAllowsAllowedTenantPrincipal(t *testing.T) {
+	graphStore := &stubGraphStore{
+		cypherRows: [][]ports.CypherRow{{
+			{Values: map[string]any{
+				"entity_urn":  "urn:cerebro:writer:asset:alpha",
+				"entity_type": "asset",
+				"label":       "alpha",
+			}},
+		}},
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				Key:            "test-key",
+				Principal:      "tester",
+				AllowedTenants: []string{"writer"},
+			}},
+		},
+	}, Dependencies{
+		GraphStore: graphStore,
+		GraphAgentLLM: &graphagent.StubLLMClient{
+			DraftResponse: &graphagent.DraftResponse{
+				Rationale: "Reasoning over scoped graph rows.",
+				Cypher: `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS entity_urn, e.entity_type AS entity_type, e.label AS label
+LIMIT 25`,
+			},
+			Summary: "Review `urn:cerebro:writer:asset:alpha` first.",
+		},
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp := postAgentGraphReason(t, server, `{"tenant_id":"writer","question":"Which scoped asset should I review?"}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var response graphagent.ReasonResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		t.Fatalf("decode graph reason response: %v", err)
+	}
+	if response.TenantID != "writer" {
+		t.Fatalf("tenant_id = %q, want writer", response.TenantID)
+	}
+}
+
 func TestHandleAgentPlatformGraphReasonMissingTenantWithoutAuthIsBadRequest(t *testing.T) {
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",

@@ -280,7 +280,7 @@ func A2AJSONRPCResponseFor(request A2AJSONRPCRequest, card A2AAgentCard) A2AJSON
 	case "SendMessage":
 		response.Result = map[string]any{"message": a2AContractMessage(card)}
 	case "ListTasks":
-		response.Result = map[string]any{"tasks": []any{}, "totalSize": 0}
+		response.Result = map[string]any{"tasks": []any{}, "totalSize": 0, "returnedSize": 0, "hasMore": false}
 	case "GetTask":
 		response.Error = &A2AJSONError{Code: -32001, Message: "TaskNotFoundError"}
 	case "":

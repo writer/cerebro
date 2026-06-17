@@ -1582,12 +1582,9 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 	neighborhoods := []any{}
 	partialErrors := []string{}
 	includeGraph := !mcpBoolArg(args, "skip_graph")
-	resourceURNs := make([]string, 0, assetLimit)
+	resourceURNs := make([]string, 0, len(finding.ResourceURNs))
 	seenResourceURNs := map[string]struct{}{}
 	for _, resourceURN := range finding.ResourceURNs {
-		if len(resourceURNs) >= assetLimit {
-			break
-		}
 		resourceURN = strings.TrimSpace(resourceURN)
 		if resourceURN == "" {
 			continue
@@ -1599,6 +1596,9 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 		resourceURNs = append(resourceURNs, resourceURN)
 	}
 	for _, result := range app.fetchMCPInvestigationResources(r.Context(), r, resourceURNs, includeGraph) {
+		if len(assets) >= assetLimit {
+			continue
+		}
 		if result.asset != nil {
 			assets = append(assets, *result.asset)
 		} else if result.assetErr != nil {
