@@ -53,7 +53,7 @@ Neo4j remains a projection in both cases; it is not a source of truth.
 - Current platform routes prefer `/platform/*` for shared platform resources.
 - Legacy `/graph/*` aliases have been removed; use the `/platform/graph/*` routes or the matching Connect RPCs.
 - HTTP-only surfaces are route-grouped in `internal/bootstrap/routes.go` so platform, internal, and public routes are explicit while the remaining Connect coverage gap is closed.
-- Public unauthenticated routes are limited to `/health`, `/healthz`, `/livez`, `/openapi.yaml`, OAuth metadata routes, and `/.well-known/device-jwks.json` when API auth is enabled.
+- Public unauthenticated routes are limited to `/health`, `/healthz`, `/livez`, `/openapi.yaml`, A2A Agent Card metadata, OAuth metadata routes, and `/.well-known/device-jwks.json` when API auth is enabled.
 
 ## Bootstrap ownership
 
@@ -82,6 +82,13 @@ The security-agent control plane also lives in `internal/agentplatform`. The
 bootstrap budget includes only the HTTP route registration, auth policy, and
 request/response mapping for exposing the registry, authorizing packet URNs
 against the authenticated tenant, and building tenant-forced evidence packets.
+
+A2A discovery, outbound event subscription metadata, and public idempotency
+semantics also live in `internal/agentplatform`. The bootstrap budget includes
+only public Agent Card serving and authenticated request/response mapping for
+the JSON-RPC contract, event subscription contract, and idempotency contract.
+Outbound webhook delivery remains a governed event contract until backed by a
+source/runtime adapter and durable delivery store.
 
 ## Postgres migrations
 

@@ -66,6 +66,15 @@ from before touching graph context, connector tools, findings, memory, or remedi
 
 The first supported integration strategies are:
 
+- A2A protocol boundary: public discovery is limited to `/.well-known/agent-card.json` and the legacy
+  `/.well-known/agent.json` alias. Authenticated JSON-RPC uses `/api/v1/a2a`; `SendMessage` returns contract
+  discovery content, `ListTasks` returns an empty task list, and task, streaming, or push-notification methods return
+  explicit unsupported-operation errors until backed by replayable runtime adapters.
+- Public event subscriptions: outbound webhook triggers are exposed first as a tenant-scoped contract at
+  `/api/v1/event-subscriptions/contract`, with event allow-lists, delivery IDs, `Idempotency-Key`, signing, retry, and
+  dead-letter semantics. The contract intentionally does not give agents unmediated third-party egress.
+- Public idempotency: `/api/v1/idempotency-contract` documents `Idempotency-Key` scope, replay, and 409-conflict
+  behavior for public mutating APIs and outbound webhook delivery attempts.
 - Evidence packets: every security-agent run starts from a tenant-scoped packet containing preflight results,
   evidence references, recommended roles, verifier results, action-stage status, eval scenarios, memory policy,
   connector gates, simulation bounds, confidence, and write-back requirements.
@@ -86,18 +95,21 @@ The first supported integration strategies are:
   and fixtures only, with live exploitation, credential harvesting, unbounded scanning, and destructive remediation
   outside the contract.
 
-### Running Security-Agent Evals
+### Running Agent-Platform Evals
 
-Use the focused eval target before changing security-agent control-plane behavior:
+Use the focused eval target before changing protocol, webhook, idempotency, or security-agent control-plane behavior:
 
 ```bash
 make agent-platform-eval
 go test ./internal/bootstrap -run TestAgentPlatformSecurityControlPlaneEndToEndWorkflow -count=1 -v
 ```
 
-The fixture suite lives at `internal/agentplatform/testdata/security_agent_eval_cases.json`. It covers every declared
-control-plane eval scenario and every integration strategy, including tenant isolation, stale coverage, prompt-injection
-handling, remediation safety, finding promotion gates, connector readiness, and bounded simulation.
+The platform fixture suite lives at `internal/agentplatform/testdata/agent_platform_eval_cases.json` and covers every
+declared scenario and integration strategy, including A2A discovery, outbound event subscription contracts,
+idempotency, tenant isolation, stale coverage, prompt-injection handling, remediation safety, finding promotion gates,
+connector readiness, and bounded simulation. The security behavior fixture remains in
+`internal/agentplatform/testdata/security_agent_eval_cases.json` and exercises evidence packets, verifiers, action
+gates, confidence, and write-back requirements.
 
 ## Execution Contract
 
