@@ -1,0 +1,50 @@
+{
+  "memories": [
+    {
+      "id": "connector-sourcegen-ready",
+      "path_globs": [
+        "internal/connectorcatalog/catalog/**",
+        "internal/connectordefinitions/**",
+        "internal/sourcegen/**"
+      ],
+      "summary": "The built-in connector catalog is intended to be definition-first. Review classifier output, proof-gate metadata, and sourcegen dry-run status before accepting hand-written runtime work."
+    },
+    {
+      "id": "source-runtime-fixture-ratchet",
+      "path_globs": [
+        "sources/**",
+        "internal/sourceprojection/**",
+        "internal/sourcecdk/**"
+      ],
+      "summary": "Source runtime coverage changes should preserve catalog coverage dimensions, read/discover fixture pairs, pagination boundaries, cursor/freshness semantics, and projector registration."
+    },
+    {
+      "id": "compliance-packet-single-contract",
+      "path_globs": [
+        "policies/**",
+        "internal/compliance/**",
+        "internal/findings/**",
+        "tools/policyrulegen/**"
+      ],
+      "summary": "Control selection, rule coverage, posture, and auditor evidence packets should share the compliance package matching logic instead of growing parallel mapping paths."
+    },
+    {
+      "id": "agent-evidence-packets-first",
+      "path_globs": [
+        "internal/agentplatform/**",
+        "internal/graphagent/**",
+        "internal/bootstrap/agent_platform*"
+      ],
+      "summary": "Security-agent behavior should start from bounded evidence packets, verifier status, connector gates, tenant scope, eval fixtures, and explicit action-stage limits."
+    },
+    {
+      "id": "release-train-skew-visible",
+      "path_globs": [
+        ".github/workflows/**",
+        "scripts/droid_post_merge_health.py",
+        "scripts/land_pr.py"
+      ],
+      "summary": "The release train is high cadence. Post-merge tooling should distinguish failed checks from expected tag lag, and should always show whether the latest release tag includes the merged commit."
+    }
+  ]
+}

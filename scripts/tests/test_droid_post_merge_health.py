@@ -41,6 +41,23 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertTrue(context["healthy"])
         self.assertEqual(len(context["pending_runs"]), 1)
 
+    def test_summarize_release_lag_is_informational(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[
+                {"id": 2, "workflow_name": "CI", "head_sha": "abc", "status": "completed", "conclusion": "success"},
+            ],
+            release_status={
+                "latest_tag": "v2.1.399",
+                "latest_tag_on_head": False,
+                "commits_since_latest_tag": 1,
+                "status": "tag_lag",
+            },
+        )
+        self.assertTrue(context["healthy"])
+        self.assertEqual(context["release_status"]["status"], "tag_lag")
+
     def test_render_markdown_mentions_failures(self):
         markdown = pm.render_markdown(
             {
@@ -54,6 +71,25 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertIn("Droid Post-Merge Health", markdown)
         self.assertIn("Failures", markdown)
         self.assertIn("https://ci", markdown)
+
+    def test_render_markdown_mentions_release_status(self):
+        markdown = pm.render_markdown(
+            {
+                "branch": "main",
+                "head_sha": "abc",
+                "healthy": True,
+                "failed_runs": [],
+                "pending_runs": [],
+                "release_status": {
+                    "latest_tag": "v2.1.399",
+                    "latest_tag_on_head": False,
+                    "commits_since_latest_tag": 1,
+                },
+            }
+        )
+        self.assertIn("Latest release tag", markdown)
+        self.assertIn("v2.1.399", markdown)
+        self.assertIn("Release Status", markdown)
 
     def test_classify_droid_review_accepts_finished_comment(self):
         review = pm.classify_droid_review(

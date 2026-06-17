@@ -38,6 +38,8 @@ node_modules/
 *.swp
 *.swo
 .factory/*
+!.factory/review-memory.json
+!.factory/review-passes.json
 !.factory/skills/
 !.factory/skills/**
 **/.cerebro/
@@ -54,5 +56,5 @@ cloudquery.log
 infra/__pycache__/*
 infra/aws/__pycache__/*
 sdk/python/cerebro_sdk/__pycache__/*
-scripts/__pycache__/*
+**/__pycache__/*
 coverage.out

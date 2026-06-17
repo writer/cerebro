@@ -1,0 +1,121 @@
+{
+  "passes": [
+    {
+      "name": "source-definition-contract",
+      "path_globs": [
+        "internal/connectorcatalog/catalog/**",
+        "internal/connectordefinitions/**",
+        "internal/sourcegen/**",
+        "cmd/cerebro/source_runtime_sdk.go"
+      ],
+      "invariants": [
+        "Connector definitions remain sourcegen-ready or clearly explain the missing grammar feature.",
+        "Definitions declare verification, resource families, projection templates, coverage dimensions, and reference-only secrets."
+      ],
+      "commands": [
+        "make sourcegen-check",
+        "go test ./internal/connectordefinitions ./internal/sourcegen ./internal/connectorcatalog -count=1"
+      ],
+      "required_evidence": [
+        "sourcegen summary counts",
+        "focused package tests",
+        "review of any classifier output changes"
+      ]
+    },
+    {
+      "name": "source-runtime-coverage",
+      "path_globs": [
+        "sources/**",
+        "internal/sourcecdk/**",
+        "internal/sourceruntime/**",
+        "internal/sourceprojection/**",
+        "internal/sourceregistry/**"
+      ],
+      "invariants": [
+        "Runtime families have catalog coverage, fixture pairs, pagination/cursor safety, and projection registration.",
+        "Provider reads preserve source HTTP safety, bounded responses, and tenant-scoped event shape."
+      ],
+      "commands": [
+        "make catalog-check",
+        "go test ./internal/sourcecdk ./internal/sourceprojection ./internal/sourceruntime -count=1"
+      ],
+      "required_evidence": [
+        "changed source package tests",
+        "catalog coverage proof",
+        "fixture diff review"
+      ]
+    },
+    {
+      "name": "compliance-policy-packet",
+      "path_globs": [
+        "policies/**",
+        "internal/compliance/**",
+        "internal/findings/**",
+        "tools/policyrulegen/**",
+        "tools/detectioncatalog/**",
+        "tools/catalogcheck/**"
+      ],
+      "invariants": [
+        "Policy rules, control refs, control selections, posture, and evidence packets use one shared compliance contract.",
+        "Generated detection and policy catalogs are regenerated instead of hand-edited."
+      ],
+      "commands": [
+        "make catalog-check",
+        "make policy-rule-check",
+        "make detection-catalog-check",
+        "go test ./internal/compliance ./internal/findings ./tools/catalogcheck -count=1"
+      ],
+      "required_evidence": [
+        "control ref validation",
+        "evidence packet contract smoke",
+        "generated catalog diff check"
+      ]
+    },
+    {
+      "name": "agent-graph-control-plane",
+      "path_globs": [
+        "internal/agentplatform/**",
+        "internal/graphagent/**",
+        "internal/graphstore/**",
+        "internal/graphprovenance/**",
+        "internal/bootstrap/agent_platform*",
+        "docs/AGENT_PLATFORM_CONTRACT.md"
+      ],
+      "invariants": [
+        "Agent-facing behavior starts from typed evidence packets, verifier results, tenant scope, and replayable events.",
+        "Graph Ask paths remain tenant-scoped, read-only, bounded, and citation-aware."
+      ],
+      "commands": [
+        "make agent-platform-eval",
+        "go test ./internal/graphagent ./internal/bootstrap -run 'TestAgentPlatform|TestAsk|TestGraph' -count=1"
+      ],
+      "required_evidence": [
+        "eval fixture coverage",
+        "tenant and verifier behavior",
+        "replay or trajectory evidence for agent-facing changes"
+      ]
+    },
+    {
+      "name": "workflow-review-release",
+      "path_globs": [
+        ".github/workflows/**",
+        "scripts/**",
+        ".factory/**",
+        "Makefile"
+      ],
+      "invariants": [
+        "Review and release automation should expose precise context, avoid duplicate manual loops, and preserve public PR data safety.",
+        "Post-merge health surfaces release/tag skew without making normal release lag look like a failed merge."
+      ],
+      "commands": [
+        "python3 -m unittest discover -s scripts/tests",
+        "make droid-review-preflight"
+      ],
+      "required_evidence": [
+        "script unit tests",
+        "rendered context shape",
+        "workflow permission review"
+      ]
+    }
+  ]
+}

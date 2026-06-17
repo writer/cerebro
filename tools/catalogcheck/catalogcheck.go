@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/connectorcatalog"
@@ -24,11 +25,16 @@ type issue struct {
 	message string
 }
 
+type repositoryCheckOptions struct {
+	requireSourcegenReady bool
+}
+
 func main() {
 	root := flag.String("root", ".", "repository root")
 	summary := flag.Bool("summary", true, "print connector definition catalog summary")
+	requireSourcegenReady := flag.Bool("require-sourcegen-ready", false, "fail when any connector definition is not sourcegen-ready")
 	flag.Parse()
-	issues, err := checkRepository(*root)
+	issues, err := checkRepositoryWithOptions(*root, repositoryCheckOptions{requireSourcegenReady: *requireSourcegenReady})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "catalog-check: %v\n", err)
 		os.Exit(1)
@@ -48,6 +54,10 @@ func main() {
 }
 
 func checkRepository(root string) ([]issue, error) {
+	return checkRepositoryWithOptions(root, repositoryCheckOptions{})
+}
+
+func checkRepositoryWithOptions(root string, options repositoryCheckOptions) ([]issue, error) {
 	root = filepath.Clean(root)
 	var issues []issue
 	controlCatalog, controlCatalogIssues, err := loadComplianceControlCatalog(root)
@@ -65,7 +75,7 @@ func checkRepository(root string) ([]issue, error) {
 		return nil, err
 	}
 	issues = append(issues, sourceIssues...)
-	connectorIssues, err := checkConnectorDefinitionCatalog(root)
+	connectorIssues, err := checkConnectorDefinitionCatalogWithOptions(root, options)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +91,7 @@ func checkRepository(root string) ([]issue, error) {
 	}
 	issues = append(issues, checkFindingRuleMetadata(findingControlCatalog)...)
 	issues = append(issues, checkCorrelationCatalog()...)
+	issues = append(issues, checkComplianceEvidencePacketContract(controlCatalog)...)
 	sort.Slice(issues, func(i int, j int) bool {
 		if issues[i].path != issues[j].path {
 			return issues[i].path < issues[j].path
@@ -113,6 +124,10 @@ func loadComplianceControlCatalog(root string) (*compliance.CatalogIndex, []issu
 }
 
 func checkConnectorDefinitionCatalog(root string) ([]issue, error) {
+	return checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{})
+}
+
+func checkConnectorDefinitionCatalogWithOptions(root string, options repositoryCheckOptions) ([]issue, error) {
 	catalogRoot, analysis, err := analyzeConnectorDefinitionCatalog(root)
 	if err != nil {
 		return nil, err
@@ -123,6 +138,21 @@ func checkConnectorDefinitionCatalog(root string) ([]issue, error) {
 			path:    slashRel(root, filepath.Join(catalogRoot, filepath.FromSlash(catalogIssue.Path))),
 			message: catalogIssue.Message,
 		})
+	}
+	if options.requireSourcegenReady {
+		for _, entry := range analysis.Entries {
+			if entry.Generateable {
+				continue
+			}
+			message := fmt.Sprintf("connector definition %q is %s, want %s", entry.Definition.SourceID, entry.Status, connectorcatalog.StatusGenerateable)
+			if entry.SourcegenError != "" {
+				message += ": " + entry.SourcegenError
+			}
+			issues = append(issues, issue{
+				path:    slashRel(root, filepath.Join(catalogRoot, filepath.FromSlash(entry.Path))),
+				message: message,
+			})
+		}
 	}
 	return issues, nil
 }
@@ -175,6 +205,66 @@ func checkCorrelationCatalog() []issue {
 		return []issue{{path: "internal/findings/correlation_patterns/builtin.json", message: err.Error()}}
 	}
 	return nil
+}
+
+func checkComplianceEvidencePacketContract(controlCatalog *compliance.CatalogIndex) []issue {
+	if controlCatalog == nil {
+		return nil
+	}
+	resolution, validationIssues := compliance.ResolveControlSelection(controlCatalog, compliance.ControlSelection{ID: "catalog-check-all"})
+	issues := make([]issue, 0, len(validationIssues))
+	for _, validationIssue := range validationIssues {
+		issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: "control selection: " + validationIssue.Message})
+	}
+	if len(resolution.Controls) == 0 {
+		return append(issues, issue{path: compliance.DefaultControlCatalogPath, message: "control evidence packet contract requires at least one resolved control"})
+	}
+	coverage := compliance.ResolveRuleCoverage(resolution, builtinRuleControlMappings())
+	packet := compliance.BuildControlEvidencePacket(compliance.ControlPostureInput{
+		Selection:    resolution,
+		RuleCoverage: coverage,
+		Now:          time.Unix(0, 0).UTC(),
+	})
+	if packet.Version == "" {
+		issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: "control evidence packet version is required"})
+	}
+	if packet.Summary.Total != len(resolution.Controls) {
+		issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: fmt.Sprintf("control evidence packet summary total = %d, want %d", packet.Summary.Total, len(resolution.Controls))})
+	}
+	if len(packet.Controls) != len(resolution.Controls) {
+		issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: fmt.Sprintf("control evidence packet controls = %d, want %d", len(packet.Controls), len(resolution.Controls))})
+	}
+	for idx, control := range packet.Controls {
+		if control.Control.FrameworkName == "" || control.Control.ControlID == "" {
+			issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: fmt.Sprintf("control evidence packet controls[%d] is missing framework or control identity", idx)})
+		}
+		if len(control.Evidence.Expectations) == 0 {
+			issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: fmt.Sprintf("control evidence packet control %s %s has no evidence expectation posture", control.Control.FrameworkName, control.Control.ControlID)})
+		}
+	}
+	return issues
+}
+
+func builtinRuleControlMappings() []compliance.RuleControlMapping {
+	metadata := findinganalysis.BuiltinRuleMetadata()
+	mappings := make([]compliance.RuleControlMapping, 0, len(metadata))
+	for _, rule := range metadata {
+		if len(rule.ControlRefs) == 0 {
+			continue
+		}
+		controlRefs := make([]compliance.ControlRef, 0, len(rule.ControlRefs))
+		for _, ref := range rule.ControlRefs {
+			controlRefs = append(controlRefs, compliance.ControlRef{
+				FrameworkName: ref.FrameworkName,
+				ControlID:     ref.ControlID,
+			})
+		}
+		mappings = append(mappings, compliance.RuleControlMapping{
+			RuleID:      rule.ID,
+			ControlRefs: controlRefs,
+		})
+	}
+	return mappings
 }
 
 func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issue, error) {
