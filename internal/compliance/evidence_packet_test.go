@@ -54,15 +54,21 @@ func TestBuildControlEvidencePacketIncludesAuditorEvidenceDetails(t *testing.T) 
 	if len(control.Evidence.Items) != 1 || control.Evidence.Items[0].Source != "identity-provider" {
 		t.Fatalf("Evidence.Items = %#v, want identity-provider evidence item", control.Evidence.Items)
 	}
+	if control.Evidence.Items[0].Quality != ControlEvidenceQualityStrong {
+		t.Fatalf("Evidence item quality = %q, want strong", control.Evidence.Items[0].Quality)
+	}
 	if len(control.Evidence.Expectations) != 1 {
 		t.Fatalf("Evidence.Expectations = %#v, want one expectation", control.Evidence.Expectations)
 	}
 	expectation := control.Evidence.Expectations[0]
-	if expectation.ID != "privileged-mfa-state" || expectation.Status != ControlEvidenceExpectationSatisfied {
-		t.Fatalf("expectation = %#v, want satisfied privileged-mfa-state", expectation)
+	if expectation.ID != "privileged-mfa-state" || expectation.Status != ControlEvidenceExpectationSatisfied || expectation.Quality != ControlEvidenceQualityStrong {
+		t.Fatalf("expectation = %#v, want satisfied strong privileged-mfa-state", expectation)
 	}
 	if len(expectation.EvidenceIDs) != 1 || expectation.EvidenceIDs[0] != "evidence-1" {
 		t.Fatalf("Expectation EvidenceIDs = %#v, want evidence-1", expectation.EvidenceIDs)
+	}
+	if control.Readiness.Score != 40 || control.Readiness.Rating != ControlEvidenceQualityPartial {
+		t.Fatalf("Readiness = %#v, want partial score 40 because open finding blocks reliance", control.Readiness)
 	}
 }
 
@@ -79,7 +85,7 @@ func TestBuildControlEvidencePacketShowsMissingAndStaleExpectations(t *testing.T
 		t.Fatalf("missing Status = %q, want missing_evidence", got)
 	}
 	missingExpectation := missing.Controls[0].Evidence.Expectations[0]
-	if missingExpectation.Status != ControlEvidenceExpectationMissing {
+	if missingExpectation.Status != ControlEvidenceExpectationMissing || missingExpectation.Quality != ControlEvidenceQualityMissing {
 		t.Fatalf("missing expectation = %#v, want missing", missingExpectation)
 	}
 
@@ -98,7 +104,7 @@ func TestBuildControlEvidencePacketShowsMissingAndStaleExpectations(t *testing.T
 		t.Fatalf("stale Status = %q, want stale_evidence", got)
 	}
 	staleExpectation := stale.Controls[0].Evidence.Expectations[0]
-	if staleExpectation.Status != ControlEvidenceExpectationStale {
+	if staleExpectation.Status != ControlEvidenceExpectationStale || staleExpectation.Quality != ControlEvidenceQualityStale {
 		t.Fatalf("stale expectation = %#v, want stale", staleExpectation)
 	}
 	if len(staleExpectation.StaleEvidenceIDs) != 1 || staleExpectation.StaleEvidenceIDs[0] != "evidence-stale" {
@@ -130,7 +136,7 @@ func TestBuildControlEvidencePacketMarksOptionalExpectations(t *testing.T) {
 		t.Fatalf("Status = %q, want passing: %#v", got, packet.Controls[0])
 	}
 	expectation := packet.Controls[0].Evidence.Expectations[0]
-	if expectation.ID != "quarterly-access-review" || expectation.Status != ControlEvidenceExpectationOptional || expectation.Required {
+	if expectation.ID != "quarterly-access-review" || expectation.Status != ControlEvidenceExpectationOptional || expectation.Quality != ControlEvidenceQualityOptional || expectation.Required {
 		t.Fatalf("expectation = %#v, want optional quarterly-access-review", expectation)
 	}
 }
