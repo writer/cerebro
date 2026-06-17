@@ -104,6 +104,110 @@ func TestValidateControlIndexFlagsRequiresMode(t *testing.T) {
 	}
 }
 
+func TestWriteControlExtensionScaffoldBuildsCoverageIndex(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, compliance.DefaultControlCatalogPath, `
+version: "2026-06-17"
+frameworks:
+  - name: SOC 2
+    families:
+      - id: CC6
+        name: Logical and Physical Access
+        controls:
+          - id: CC6.1
+`)
+	writeTestFile(t, root, compliance.DefaultControlProfilesPath, `
+version: "2026-06-17"
+profiles:
+  - id: base-soc2
+    name: Base SOC 2
+    frameworks:
+      - name: SOC 2
+        controls: [CC6.1]
+`)
+	options := newControlExtensionScaffoldOptions("customer-controls", "customer-controls", "Customer Controls", "customer", "Customer Framework", "customer-audit", "Customer Audit")
+	if err := writeControlExtensionScaffold(root, options); err != nil {
+		t.Fatalf("writeControlExtensionScaffold() error = %v", err)
+	}
+
+	pack, err := compliance.LoadControlExtensionPackFile(filepath.Join(root, "customer-controls/extension.yaml"))
+	if err != nil {
+		t.Fatalf("LoadControlExtensionPackFile() error = %v", err)
+	}
+	if issues := compliance.ValidateControlExtensionPack(pack); len(issues) != 0 {
+		t.Fatalf("ValidateControlExtensionPack() issues = %#v, want none", issues)
+	}
+	content, err := generateCoverageIndex(root, []string{compliance.DefaultControlCatalogPath}, compliance.DefaultControlProfilesPath, []string{"customer-controls/extension.yaml"}, []string{"customer-audit"})
+	if err != nil {
+		t.Fatalf("generateCoverageIndex() error = %v", err)
+	}
+	output := string(content)
+	for _, want := range []string{
+		"id: customer-audit",
+		"framework_name: Customer Framework",
+		"control_id: IAM-1",
+		"privileged-mfa-state",
+		"mapped_control_refs:",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated coverage index missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestWriteControlExtensionScaffoldRejectsExistingFiles(t *testing.T) {
+	root := t.TempDir()
+	options := newControlExtensionScaffoldOptions("customer-controls", "", "", "", "", "", "")
+	if err := writeControlExtensionScaffold(root, options); err != nil {
+		t.Fatalf("writeControlExtensionScaffold() error = %v", err)
+	}
+	err := writeControlExtensionScaffold(root, options)
+	if err == nil || !strings.Contains(err.Error(), "file already exists") {
+		t.Fatalf("writeControlExtensionScaffold() error = %v, want existing file error", err)
+	}
+}
+
+func TestValidateControlExtensionScaffoldFlags(t *testing.T) {
+	options := newControlExtensionScaffoldOptions("customer-controls", "", "", "", "", "", "")
+	if err := validateControlExtensionScaffoldFlags(false, false, nil, options); err != nil {
+		t.Fatalf("validateControlExtensionScaffoldFlags() error = %v, want nil", err)
+	}
+	for name, test := range map[string]struct {
+		write    bool
+		check    bool
+		profiles []string
+		options  controlExtensionScaffoldOptions
+		want     string
+	}{
+		"write": {
+			write:   true,
+			options: options,
+			want:    "cannot be combined with --write",
+		},
+		"check": {
+			check:   true,
+			options: options,
+			want:    "cannot be combined with --write or --check",
+		},
+		"profile": {
+			profiles: []string{"customer-audit"},
+			options:  options,
+			want:     "cannot be combined with --profile",
+		},
+		"directory": {
+			options: newControlExtensionScaffoldOptions("", "", "", "", "", "", ""),
+			want:    "directory is required",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := validateControlExtensionScaffoldFlags(test.write, test.check, test.profiles, test.options)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("validateControlExtensionScaffoldFlags() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func writeControlExtensionFixture(t *testing.T, root string) {
 	t.Helper()
 	writeTestFile(t, root, compliance.DefaultControlCatalogPath, `

@@ -2,9 +2,9 @@
 
 **Operations data platform for cloud, SaaS, identity, workflow, finding, and graph signals.**
 
-Cerebro is Writer's original operations platform repository. The current `main` branch is centered on a Go bootstrap service with Connect and JSON HTTP APIs, built-in source integrations, source runtime sync, finding and report workflows, append-log replay, MCP access, device-authenticated telemetry, and optional graph projection/query tooling.
+Cerebro is Writer's original operations platform repository. The current `main` branch is centered on a Go bootstrap service with Connect and JSON HTTP APIs, built-in source integrations, source runtime sync, finding and report workflows, compliance-control coverage, append-log replay, MCP access, device-authenticated telemetry, and optional graph projection/query tooling.
 
-In practical terms, Cerebro ingests source and runtime signals, turns them into claims, findings, reports, workflow events, and graph context, then exposes that substrate through the CLI, JSON HTTP, Connect RPC, SDK helpers, and MCP.
+In practical terms, Cerebro ingests source and runtime signals, turns them into claims, findings, reports, workflow events, compliance evidence, and graph context, then exposes that substrate through the CLI, JSON HTTP, Connect RPC, SDK helpers, and MCP.
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -22,7 +22,7 @@ In practical terms, Cerebro ingests source and runtime signals, turns them into 
 - **Graph operations** — Neo4j/Aura-backed graph counts, relation counts, neighborhoods, path summaries, impact queries, graph health, source/runtime ingest, ingest run status, repair/cleanup helpers, and isolated dry-run rebuilds.
 - **MCP and graph-agent surfaces** — an authenticated MCP endpoint, optional OAuth 2.1 authorization-server flow for MCP clients, and an optional graph agent LLM adapter.
 - **Device telemetry surface** — optional first-party device enrollment, token, telemetry ingest, and device vulnerability finding routes.
-- **Policy catalog** — JSON policy definitions under `policies/` for cloud, identity, GitHub, Kubernetes, SaaS, runtime, vulnerability, compliance, and business-operation checks.
+- **Policy and compliance catalogs** — JSON policy definitions under `policies/`, generated detection catalogs, compliance control profiles, coverage indexes, evidence/posture packet helpers, and extension packs for custom control frameworks.
 
 Cerebro has historical and forward-looking docs in `docs/`. For current runtime behavior, treat `cmd/cerebro`, `internal/config`, `internal/bootstrap`, `proto/cerebro/v1/bootstrap.proto`, and the Makefile as the source of truth.
 
@@ -124,6 +124,7 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a loc
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
 | Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |
 | Use SDK helpers | `sdk/python/README.md`, `sdk/typescript/README.md`, and `sources/sdk` | Maintained helpers target current bootstrap routes; the historical Agent SDK gateway is retired. |
+| Map compliance controls and evidence coverage | `docs/COMPLIANCE_CONTROLS.md`, `make control-index-check`, and `go run ./tools/controlindex --init-extension ...` | Built-in profiles cover SOC 2, ISO, CIS, PCI, DORA, FedRAMP, NIS2, CMMC, CJIS, NIST CSF, privacy, and AI governance scopes. Control extension packs scaffold custom `extension.yaml`, `controls.yaml`, and `profiles.yaml` files, then `--extension`, `--profile`, `--output`, and `--write` generate filtered coverage packets. |
 | Ingest Panopticon cases | `sources/panopticon`, source runtime config, and `sdk/python/examples/panopticon_push_claims.py` | API runtimes read curated `case` events by default; explicit `alert` and `ioc` families are available when raw signal evidence or IOC enrichment is needed. |
 | Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
 | Persist and sync a runtime | `docs/SOURCE_RUNTIME_GUIDE.md` and `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
@@ -134,7 +135,7 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a loc
 | Integrate MCP clients | `docs/MCP_DROID_SETUP.md` and `/api/v1/mcp` | Covers stateless Streamable HTTP, OAuth discovery, and compatibility checks. |
 | Shape agent-facing platform contracts | `docs/AGENT_PLATFORM_CONTRACT.md` and `internal/agentplatform` | Cerebro-native runtime, eval, capability, execution, replay, connector, and knowledge principles. |
 | Integrate endpoint telemetry | `docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md` | Covers device-authenticated telemetry, trusted endpoint claims, and trust-gate evidence. |
-| Author policies or finding rules | `policies/`, `internal/findings`, and catalog checks | Run the relevant catalog and finding-rule tests before opening a PR. |
+| Author policies, control mappings, or finding rules | `policies/`, `docs/COMPLIANCE_CONTROLS.md`, `internal/compliance`, `internal/findings`, and catalog checks | Run the relevant catalog, policy-rule, control-index, detection-catalog, and finding-rule checks before opening a PR. |
 | Contribute code or docs | `docs/DEVELOPMENT.md`, `docs/NON_GOALS.md`, and the Makefile | Prefer focused `make` targets while iterating; use `make verify` for broad PR preflight. |
 
 ---
@@ -354,6 +355,8 @@ Policy definitions live under `policies/` as JSON files. The catalog includes cl
 
 Useful directories include `policies/aws/`, `policies/azure/`, `policies/gcp/`, `policies/github/`, `policies/identity/`, `policies/kubernetes/`, `policies/okta/`, `policies/runtime/`, and `policies/vulnerability/`.
 
+Compliance control metadata lives under `internal/compliance/`. `internal/compliance/control_families.yaml` is the built-in control catalog, `internal/compliance/control_profiles.yaml` defines reusable audit scopes, and `internal/compliance/control_coverage_index.yaml` is generated by `make control-index-generate`. Use `docs/COMPLIANCE_CONTROLS.md` for custom framework authoring, extension pack scaffolding with `--init-extension`, and filtered coverage generation with `--extension` and `--profile`.
+
 ---
 
 ## Development
@@ -375,7 +378,7 @@ make oss-audit      # public repository hygiene scan
 make clean          # remove bin/
 ```
 
-Focused validation and utility targets include `make openapi-check`, `make openapi-lint`, `make catalog-check`, `make detection-catalog-check`, `make workflow-e2e-test`, `make workflow-replay-test`, `make finding-rule-test`, `make graph-rebuild-dryrun`, `make workflow-replay`, and `make workflow-neighborhood`.
+Focused validation and utility targets include `make openapi-check`, `make openapi-lint`, `make catalog-check`, `make policy-rule-check`, `make control-index-check`, `make detection-catalog-check`, `make workflow-e2e-test`, `make workflow-replay-test`, `make finding-rule-test`, `make graph-rebuild-dryrun`, `make workflow-replay`, and `make workflow-neighborhood`.
 
 Public-facing docs, config, or example changes should run:
 
@@ -391,9 +394,14 @@ Choose validators by change type:
 | Go runtime/API change | `make test` plus focused package tests |
 | OpenAPI route or handler change | `make openapi-check openapi-lint` |
 | Proto change | `make proto-lint` and generated contract checks when applicable |
-| Source catalog or policy change | `make catalog-check detection-catalog-check` |
+| Source catalog or policy change | `make catalog-check policy-rule-check detection-catalog-check` |
+| Compliance control/profile/scaffold change | `make catalog-check policy-rule-check control-index-check detection-catalog-check` |
 | Public docs/config/examples | `make docs-drift-check` when generated docs are touched, plus `make oss-audit` |
 | Broad PR preflight | `make verify` |
+
+### README freshness
+
+The README is maintained by `make readme-check`, which is part of CI and local changed-path validation. It compares the built-in source table with `internal/sourceregistry`, top-level CLI commands with `cmd/cerebro`, the documented Go toolchain with `go.mod`, selected config names with `internal/config` and `.env.example`, and README anchors for compliance control extension workflows. When a public capability, source, CLI command, config family, or control-index workflow changes, update the README and extend `scripts/readme_check.py` with the new source-of-truth assertion.
 
 ---
 
@@ -428,6 +436,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [Source runtime guide](docs/SOURCE_RUNTIME_GUIDE.md) | source preview, runtime persistence, sync, secrets, health, and scheduling |
 | [Auth and tenancy](docs/AUTH_TENANCY.md) | API keys, structured credentials, tenant scoping, public origin, proxy trust, and rotation |
 | [Graph operations](docs/GRAPH_OPERATIONS.md) | graph health, ingest, rebuild, cleanup, query safety, and troubleshooting |
+| [Compliance controls](docs/COMPLIANCE_CONTROLS.md) | control catalog schema, profiles, extension packs, coverage resolution, posture, and evidence packets |
 | [Release contract](docs/RELEASE_CONTRACT.md) | release artifacts, runtime deploy contract schema, source manifests, and verification |
 | [PR landing](docs/PR_LANDING.md) | merge ordering, Droid review gates, and branch deletion safety |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | symptom-driven cookbook for health, auth, source runtime, graph, MCP, and device-auth issues |
@@ -452,8 +461,8 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | Append log | NATS JetStream |
 | State store | Postgres |
 | Graph store | Neo4j/Aura |
-| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, EvidenceCAS, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, Panopticon, SDK, SentinelOne, Security Tooling Map, Trusted Endpoint, VulnView |
-| Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, OSS audit, custom structural linters, arch tests |
+| Source integrations | Built-in source registry under `sources/`; see the Built-in sources table above for the checked list |
+| Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, policy-rule checks, control-index checks, README drift checks, OSS audit, custom structural linters, arch tests |
 
 ---
 
