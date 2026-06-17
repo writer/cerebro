@@ -71,6 +71,7 @@ func New(config Config, options ...Option) (*Client, error) {
 		option(client)
 	}
 	transportClient := *client.httpClient
+	transportClient.Timeout = timeout
 	transportClient.CheckRedirect = blockRedirects
 	client.httpClient = &transportClient
 	return client, nil

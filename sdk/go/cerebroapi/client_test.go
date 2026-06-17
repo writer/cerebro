@@ -169,6 +169,25 @@ func TestWithHTTPClientStillBlocksRedirects(t *testing.T) {
 	}
 }
 
+func TestWithHTTPClientAppliesConfiguredTimeout(t *testing.T) {
+	httpClient := &http.Client{}
+	client, err := New(Config{
+		BaseURL:  "https://cerebro.example.com",
+		APIKey:   "secret-key",
+		TenantID: "tenant-a",
+		Timeout:  3 * time.Second,
+	}, WithHTTPClient(httpClient))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if client.httpClient.Timeout != 3*time.Second {
+		t.Fatalf("Timeout = %s, want 3s", client.httpClient.Timeout)
+	}
+	if httpClient.Timeout != 0 {
+		t.Fatalf("caller HTTP client was mutated: Timeout = %s", httpClient.Timeout)
+	}
+}
+
 func TestWriteClaimsSendsReplaceExistingAndParsesCounts(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

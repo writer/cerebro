@@ -49,8 +49,9 @@ func TestClaimConstructorsUseCanonicalClaimShapes(t *testing.T) {
 		SourceEventID: "evt-1",
 		ObservedAt:    "2026-06-16T12:00:00Z",
 		Attributes: map[string]string{
-			"provider": "github",
-			"empty":    "",
+			" provider ": " github ",
+			"empty":      "",
+			" ":          "ignored",
 		},
 	}
 
@@ -74,6 +75,12 @@ func TestClaimConstructorsUseCanonicalClaimShapes(t *testing.T) {
 			}
 			if _, ok := tc.claim.Attributes["empty"]; ok {
 				t.Fatalf("empty attribute was retained: %#v", tc.claim.Attributes)
+			}
+			if tc.claim.Attributes["provider"] != "github" {
+				t.Fatalf("provider attribute = %#v", tc.claim.Attributes)
+			}
+			if _, ok := tc.claim.Attributes[" provider "]; ok {
+				t.Fatalf("untrimmed attribute key was retained: %#v", tc.claim.Attributes)
 			}
 		})
 	}

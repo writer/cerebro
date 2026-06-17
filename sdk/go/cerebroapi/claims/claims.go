@@ -111,6 +111,10 @@ func copyAttributes(attributes map[string]string) map[string]string {
 	}
 	out := make(map[string]string, len(attributes))
 	for key, value := range attributes {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
 			out[key] = trimmed
 		}
