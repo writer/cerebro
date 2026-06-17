@@ -1,0 +1,30 @@
+[
+  {
+    "id": "okta-trusted-origin-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.trusted_origin",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/trusted_origin/v1",
+    "payload": {
+      "id": "origin-prod",
+      "domain": "writer.okta.com",
+      "name": "Production Console",
+      "origin": "https://app.example.com"
+    },
+    "attributes": {
+      "cors": "true",
+      "domain": "writer.okta.com",
+      "family": "trusted_origin",
+      "name": "Production Console",
+      "origin": "https://app.example.com",
+      "origin_host": "app.example.com",
+      "redirect": "true",
+      "scope_count": "2",
+      "scope_types": "CORS,REDIRECT",
+      "status": "ACTIVE",
+      "trusted_origin_id": "origin-prod",
+      "wildcard_origin": "false"
+    }
+  }
+]
