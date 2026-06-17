@@ -17,5 +17,19 @@
     "revenue",
     "guardrail",
     "hubspot"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Revenue Operations",
+      "controls": [
+        "REV-2"
+      ]
+    },
+    {
+      "name": "Cerebro Financial Controls",
+      "controls": [
+        "FIN-3"
+      ]
+    }
   ]
 }

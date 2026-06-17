@@ -22,5 +22,13 @@
   "risk_categories": [
     "CUSTOMER_HEALTH_RISK",
     "RESILIENCE_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Organizational Resilience",
+      "controls": [
+        "ORG-2"
+      ]
+    }
   ]
 }

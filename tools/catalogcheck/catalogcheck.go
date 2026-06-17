@@ -23,6 +23,31 @@ type issue struct {
 	message string
 }
 
+type complianceControlCatalogIndex struct {
+	controls map[string]map[string]struct{}
+}
+
+type complianceControlCatalog struct {
+	Version    string                              `yaml:"version"`
+	Frameworks []complianceControlCatalogFramework `yaml:"frameworks"`
+}
+
+type complianceControlCatalogFramework struct {
+	Name     string                           `yaml:"name"`
+	Families []complianceControlCatalogFamily `yaml:"families"`
+}
+
+type complianceControlCatalogFamily struct {
+	ID       string                            `yaml:"id"`
+	Name     string                            `yaml:"name"`
+	Controls []complianceControlCatalogControl `yaml:"controls"`
+}
+
+type complianceControlCatalogControl struct {
+	ID   string `yaml:"id"`
+	Name string `yaml:"name"`
+}
+
 func main() {
 	root := flag.String("root", ".", "repository root")
 	summary := flag.Bool("summary", true, "print connector definition catalog summary")
@@ -49,7 +74,12 @@ func main() {
 func checkRepository(root string) ([]issue, error) {
 	root = filepath.Clean(root)
 	var issues []issue
-	policyIssues, err := checkPolicies(root)
+	controlCatalog, controlCatalogIssues, err := loadComplianceControlCatalog(root)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, controlCatalogIssues...)
+	policyIssues, err := checkPolicies(root, controlCatalog)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +99,11 @@ func checkRepository(root string) ([]issue, error) {
 		return nil, err
 	}
 	issues = append(issues, coverageIssues...)
-	issues = append(issues, checkFindingRuleMetadata()...)
+	findingControlCatalog := controlCatalog
+	if _, err := os.Stat(filepath.Join(root, "internal", "findings")); errors.Is(err, os.ErrNotExist) {
+		findingControlCatalog = nil
+	}
+	issues = append(issues, checkFindingRuleMetadata(findingControlCatalog)...)
 	issues = append(issues, checkCorrelationCatalog()...)
 	sort.Slice(issues, func(i int, j int) bool {
 		if issues[i].path != issues[j].path {
@@ -78,6 +112,77 @@ func checkRepository(root string) ([]issue, error) {
 		return issues[i].message < issues[j].message
 	})
 	return issues, nil
+}
+
+func loadComplianceControlCatalog(root string) (*complianceControlCatalogIndex, []issue, error) {
+	path := filepath.Join(root, "internal", "compliance", "control_families.yaml")
+	rel := slashRel(root, path)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, []issue{{path: rel, message: "compliance control family catalog is required"}}, nil
+		}
+		return nil, nil, fmt.Errorf("read %s: %w", rel, err)
+	}
+	var catalog complianceControlCatalog
+	if err := yaml.Unmarshal(content, &catalog); err != nil {
+		return nil, []issue{{path: rel, message: "invalid YAML: " + err.Error()}}, nil
+	}
+	index := &complianceControlCatalogIndex{controls: map[string]map[string]struct{}{}}
+	var issues []issue
+	if strings.TrimSpace(catalog.Version) == "" {
+		issues = append(issues, issue{path: rel, message: "version is required"})
+	}
+	for frameworkIdx, framework := range catalog.Frameworks {
+		frameworkName := strings.TrimSpace(framework.Name)
+		if frameworkName == "" {
+			issues = append(issues, issue{path: rel, message: fmt.Sprintf("frameworks[%d].name is required", frameworkIdx)})
+			continue
+		}
+		if _, exists := index.controls[frameworkName]; exists {
+			issues = append(issues, issue{path: rel, message: fmt.Sprintf("framework %q is duplicated", frameworkName)})
+			continue
+		}
+		index.controls[frameworkName] = map[string]struct{}{}
+		if len(framework.Families) == 0 {
+			issues = append(issues, issue{path: rel, message: fmt.Sprintf("framework %q requires at least one family", frameworkName)})
+		}
+		for familyIdx, family := range framework.Families {
+			if strings.TrimSpace(family.ID) == "" {
+				issues = append(issues, issue{path: rel, message: fmt.Sprintf("framework %q families[%d].id is required", frameworkName, familyIdx)})
+			}
+			if strings.TrimSpace(family.Name) == "" {
+				issues = append(issues, issue{path: rel, message: fmt.Sprintf("framework %q families[%d].name is required", frameworkName, familyIdx)})
+			}
+			if len(family.Controls) == 0 {
+				issues = append(issues, issue{path: rel, message: fmt.Sprintf("framework %q family %q requires at least one control", frameworkName, strings.TrimSpace(family.ID))})
+			}
+			for controlIdx, control := range family.Controls {
+				controlID := strings.TrimSpace(control.ID)
+				if controlID == "" {
+					issues = append(issues, issue{path: rel, message: fmt.Sprintf("framework %q family %q controls[%d].id is required", frameworkName, strings.TrimSpace(family.ID), controlIdx)})
+					continue
+				}
+				if _, exists := index.controls[frameworkName][controlID]; exists {
+					issues = append(issues, issue{path: rel, message: fmt.Sprintf("framework %q control %q is duplicated", frameworkName, controlID)})
+				}
+				index.controls[frameworkName][controlID] = struct{}{}
+			}
+		}
+	}
+	return index, issues, nil
+}
+
+func (catalog *complianceControlCatalogIndex) hasControl(frameworkName, controlID string) bool {
+	if catalog == nil {
+		return true
+	}
+	controls, ok := catalog.controls[strings.TrimSpace(frameworkName)]
+	if !ok {
+		return false
+	}
+	_, ok = controls[strings.TrimSpace(controlID)]
+	return ok
 }
 
 func checkConnectorDefinitionCatalog(root string) ([]issue, error) {
@@ -116,8 +221,18 @@ func analyzeConnectorDefinitionCatalog(root string) (string, connectorcatalog.An
 	return catalogRoot, analysis, err
 }
 
-func checkFindingRuleMetadata() []issue {
+func checkFindingRuleMetadata(controlCatalog *complianceControlCatalogIndex) []issue {
 	var issues []issue
+	for _, metadata := range findinganalysis.BuiltinRuleMetadata() {
+		for _, ref := range metadata.ControlRefs {
+			if !controlCatalog.hasControl(ref.FrameworkName, ref.ControlID) {
+				issues = append(issues, issue{
+					path:    "internal/findings",
+					message: fmt.Sprintf("rule %q control ref %s %s is not declared in internal/compliance/control_families.yaml", metadata.ID, ref.FrameworkName, ref.ControlID),
+				})
+			}
+		}
+	}
 	for _, err := range findinganalysis.ValidateRuleMetadataCompleteness(findinganalysis.BuiltinRuleMetadata()) {
 		issues = append(issues, issue{path: "internal/findings", message: err.Error()})
 	}
@@ -135,7 +250,7 @@ func checkCorrelationCatalog() []issue {
 	return nil
 }
 
-func checkPolicies(root string) ([]issue, error) {
+func checkPolicies(root string, controlCatalog *complianceControlCatalogIndex) ([]issue, error) {
 	policiesRoot := filepath.Join(root, "policies")
 	ids := map[string]string{}
 	var issues []issue
@@ -171,7 +286,7 @@ func checkPolicies(root string) ([]issue, error) {
 		if policyID != "" {
 			ids[policyID] = rel
 		}
-		issues = append(issues, validatePolicy(rel, raw)...)
+		issues = append(issues, validatePolicy(rel, raw, controlCatalog)...)
 		return nil
 	})
 	if err != nil {
@@ -194,7 +309,7 @@ func validateControlMapping(path string, raw map[string]json.RawMessage) []issue
 	return issues
 }
 
-func validatePolicy(path string, raw map[string]json.RawMessage) []issue {
+func validatePolicy(path string, raw map[string]json.RawMessage, controlCatalog *complianceControlCatalogIndex) []issue {
 	var issues []issue
 	for _, field := range []string{"id", "name", "description", "severity"} {
 		if stringField(raw, field) == "" {
@@ -218,7 +333,7 @@ func validatePolicy(path string, raw map[string]json.RawMessage) []issue {
 		}
 	}
 	issues = append(issues, validateStringArrayField(path, raw, "tags")...)
-	issues = append(issues, validateFrameworks(path, raw)...)
+	issues = append(issues, validateFrameworks(path, raw, controlCatalog)...)
 	return issues
 }
 
@@ -239,10 +354,10 @@ func validateStringArrayField(path string, raw map[string]json.RawMessage, field
 	return nil
 }
 
-func validateFrameworks(path string, raw map[string]json.RawMessage) []issue {
+func validateFrameworks(path string, raw map[string]json.RawMessage, controlCatalog *complianceControlCatalogIndex) []issue {
 	value, ok := raw["frameworks"]
 	if !ok {
-		return nil
+		return []issue{{path: path, message: "frameworks is required"}}
 	}
 	var frameworks []struct {
 		Name     string   `json:"name"`
@@ -253,15 +368,21 @@ func validateFrameworks(path string, raw map[string]json.RawMessage) []issue {
 	}
 	var issues []issue
 	for idx, framework := range frameworks {
-		if strings.TrimSpace(framework.Name) == "" {
+		frameworkName := strings.TrimSpace(framework.Name)
+		if frameworkName == "" {
 			issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].name is required", idx)})
 		}
 		if len(framework.Controls) == 0 {
 			issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls is required", idx)})
 		}
 		for controlIdx, control := range framework.Controls {
-			if strings.TrimSpace(control) == "" {
+			controlID := strings.TrimSpace(control)
+			if controlID == "" {
 				issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls[%d] is required", idx, controlIdx)})
+				continue
+			}
+			if frameworkName != "" && !controlCatalog.hasControl(frameworkName, controlID) {
+				issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls[%d] %s %s is not declared in internal/compliance/control_families.yaml", idx, controlIdx, frameworkName, controlID)})
 			}
 		}
 	}

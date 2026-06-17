@@ -22,5 +22,19 @@
   "risk_categories": [
     "CHURN_RISK",
     "CUSTOMER_HEALTH_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Organizational Resilience",
+      "controls": [
+        "ORG-2"
+      ]
+    },
+    {
+      "name": "Cerebro Revenue Operations",
+      "controls": [
+        "REV-5"
+      ]
+    }
   ]
 }

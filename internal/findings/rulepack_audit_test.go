@@ -1076,6 +1076,9 @@ func rulepackAuditMetadataByID(t *testing.T) map[string]RuleDefinition {
 	t.Helper()
 	out := map[string]RuleDefinition{}
 	for _, definition := range BuiltinRuleMetadata() {
+		if policyRuleMetadata(definition) {
+			continue
+		}
 		if definition.ID == "" {
 			t.Fatal("BuiltinRuleMetadata returned empty rule ID")
 		}

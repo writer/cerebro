@@ -170,7 +170,7 @@ This reads normalized persisted findings, not transient rule output.
 
 ## Current Built-In Catalog
 
-The built-in public detection catalog currently contains 68 rules across cloud, identity, GitHub, GRC, runtime, endpoint, Panopticon/security-operations, and vulnerability domains. The generated public catalog lives at `internal/findings/public_detection_catalog.json`; `make detection-catalog-check` verifies that it stays in sync with the registered rule metadata.
+The built-in public detection catalog currently contains 1038 rules across cloud, identity, GitHub, GRC, runtime, endpoint, Panopticon/security-operations, vulnerability, data, email-domain, and generated policy domains. The generated public catalog lives at `internal/findings/public_detection_catalog.json`; `make detection-catalog-check` verifies that it stays in sync with the registered rule metadata.
 
 Rules live as small files under `internal/findings/` and register through the built-in registry. The original Okta lifecycle-tampering detector is now one example in a broader catalog, not the only supported rule. This shape keeps the service generic:
 
@@ -183,6 +183,8 @@ Rules live as small files under `internal/findings/` and register through the bu
 - `internal/findings/registry.go` — rule interface and rule catalog
 - `internal/findings/service.go` — replay orchestration, explicit rule selection, and durable evaluation run lifecycle
 - `internal/findings/*_rule.go` — built-in signal and graph-backed finding rules
+- `internal/findings/policy_rule.go` — generic generated-policy rule adapter for policy evidence/result events
+- `internal/findings/policy_rule_catalog_gen.go` — generated policy rule definitions from `policies/`
 - `internal/findings/public_detection_catalog.json` — generated public detection catalog
 - `internal/statestore/postgres/findingevaluationruns.go` — persisted evaluation run storage and query filters
 - `internal/bootstrap/app.go` — HTTP and ConnectRPC exposure
@@ -199,6 +201,8 @@ Rules live as small files under `internal/findings/` and register through the bu
    - service selection coverage
    - bootstrap forwarding coverage
 
+For policy catalog changes, edit `policies/`, run `make policy-rule-generate`, then run `make detection-catalog-generate`.
+
 ## What This Does Not Solve Yet
 
 This is a platform foundation, not the final findings system.
@@ -207,7 +211,7 @@ Still intentionally out of scope:
 
 - evaluating many rules in one request
 - cross-runtime or tenant-wide rule orchestration
-- control/check mapping
+- tenant-specific policy execution scheduling beyond dedicated policy evidence/result events
 - evidence bundles beyond current finding attributes and graph/report joins
 - retries, leases, or scheduler-owned evaluation execution
 - suppression, assignment, and lifecycle workflows in the bootstrap surface

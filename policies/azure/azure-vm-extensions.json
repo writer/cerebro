@@ -20,5 +20,28 @@
   "remediation": "Review and remove unapproved VM extensions.",
   "risk_categories": [
     "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "CM-7",
+        "SI-7"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1",
+        "CC7.1"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "4",
+        "7"
+      ]
+    }
   ]
 }

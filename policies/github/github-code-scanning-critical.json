@@ -19,6 +19,34 @@
     "code-scanning",
     "codeql"
   ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "7"
+      ]
+    }
+  ],
   "remediation": "Fix the vulnerability identified by the code scanner.",
   "mitre_attack": [
     {

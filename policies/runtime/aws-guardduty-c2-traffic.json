@@ -2,7 +2,7 @@
   "id": "aws-guardduty-c2-traffic",
   "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS GuardDuty Command and Control Traffic",
-  "description": "GuardDuty detected communication with known C\u0026C servers",
+  "description": "GuardDuty detected communication with known C&C servers",
   "effect": "forbid",
   "principal": "",
   "action": "",
@@ -18,6 +18,61 @@
     "botnet",
     "guardduty",
     "incident-response"
+  ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.1",
+        "CC7.2",
+        "CC7.3"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.24",
+        "A.5.25",
+        "A.8.16"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IR-4",
+        "SI-4"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "8"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.3",
+        "CC7.4",
+        "CC7.5"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.24",
+        "A.5.25",
+        "A.5.26"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IR-4",
+        "IR-5",
+        "IR-8"
+      ]
+    }
   ],
   "remediation": "Immediately isolate the instance, block C2 IP at the firewall, and initiate incident response."
 }

@@ -22,5 +22,14 @@
   "risk_categories": [
     "RESILIENCE_RISK",
     "KNOWLEDGE_CONCENTRATION"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Organizational Resilience",
+      "controls": [
+        "ORG-1",
+        "ORG-4"
+      ]
+    }
   ]
 }

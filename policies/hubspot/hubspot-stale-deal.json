@@ -19,5 +19,14 @@
     "revenue",
     "pipeline-hygiene",
     "hubspot"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Revenue Operations",
+      "controls": [
+        "REV-1",
+        "REV-5"
+      ]
+    }
   ]
 }

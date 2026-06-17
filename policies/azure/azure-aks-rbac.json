@@ -21,5 +21,39 @@
   "remediation": "Enable Kubernetes RBAC when creating the cluster (cannot be changed after).",
   "risk_categories": [
     "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS Benchmarks",
+      "controls": [
+        "5.1.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
   ]
 }

@@ -16,5 +16,19 @@
     "financial-controls",
     "revops",
     "billing"
+  ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "PI1.4"
+      ]
+    },
+    {
+      "name": "Cerebro Financial Controls",
+      "controls": [
+        "FIN-2"
+      ]
+    }
   ]
 }

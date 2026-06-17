@@ -18,5 +18,13 @@
     "conversion",
     "revenue",
     "stripe"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Revenue Operations",
+      "controls": [
+        "REV-3"
+      ]
+    }
   ]
 }

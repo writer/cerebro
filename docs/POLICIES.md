@@ -2,9 +2,9 @@
 
 ## Overview
 
-The `policies/` tree is a checked-in security policy and control-mapping catalog. It is validated by `make catalog-check` and documented here for authoring consistency.
+The `policies/` tree is the checked-in authoring catalog for security policy and control mappings. It is validated by `make catalog-check` and documented here for authoring consistency.
 
-The current bootstrap server does not evaluate these JSON files at request time. Runtime findings are produced by Go rule implementations in `internal/findings/` and source/runtime projections. Treat this catalog as compliance and policy metadata unless a future change explicitly wires a runtime evaluator.
+Policies are generated into Go rule definitions in `internal/findings/policy_rule_catalog_gen.go` with `make policy-rule-generate`. The generated policy rules register in the built-in `policy` rule pack, publish auditor-facing control refs in `internal/findings/public_detection_catalog.json`, and evaluate dedicated `policy.evidence` / `policy.result` events that identify a failed `policy_id`, `check_id`, or `rule_id`.
 
 ## Policy Structure
 
@@ -18,7 +18,10 @@ The current bootstrap server does not evaluate these JSON files at request time.
     "effect": "forbid",
     "conditions": ["field != expected_value"],
     "severity": "critical",
-    "tags": ["compliance-framework", "category", "resource-type"]
+    "tags": ["category", "resource-type"],
+    "frameworks": [
+        {"name": "SOC 2", "controls": ["CC6"]}
+    ]
 }
 ```
 
@@ -32,10 +35,12 @@ The current bootstrap server does not evaluate these JSON files at request time.
 | `effect` | string | Yes | `permit` or `forbid` |
 | `conditions` | array | Yes | Condition expressions to evaluate |
 | `severity` | string | Yes | `critical`, `high`, `medium`, `low` |
-| `tags` | array | No | Tags for categorization and compliance mapping |
+| `tags` | array | No | Tags for categorization and routing |
+| `frameworks` | array | Yes | Compliance framework/control mappings. Framework names and control IDs must exist in `internal/compliance/control_families.yaml` |
 | `principal` | string | No | Principal pattern for access control |
 | `action` | string | No | Action pattern for access control |
 | `resource` | string | No | Resource pattern for access control |
+| `query` | string | Conditional | SQL/evidence query for query-backed policy rules when `conditions` is not present |
 
 ### Severity Levels
 
@@ -589,7 +594,12 @@ cerebro policy test custom-check-name sample-asset.json
 
 ### Step 5: Deploy
 
-Place the policy file in the appropriate `policies/` subdirectory and restart Cerebro.
+Place the policy file in the appropriate `policies/` subdirectory, then regenerate the rule and detection catalogs:
+
+```bash
+make policy-rule-generate
+make detection-catalog-generate
+```
 
 ---
 
@@ -597,7 +607,7 @@ Place the policy file in the appropriate `policies/` subdirectory and restart Ce
 
 1. **Use descriptive IDs** - Include provider, service, and check name
 2. **Write clear descriptions** - Explain why the check matters
-3. **Map to compliance** - Use tags to link to compliance frameworks
+3. **Map to compliance** - Use `frameworks` entries from `internal/compliance/control_families.yaml`
 4. **Start with high severity** - Address critical issues first
 5. **Test before deploying** - Validate policies against real data
 6. **Document exceptions** - Use suppression with justification

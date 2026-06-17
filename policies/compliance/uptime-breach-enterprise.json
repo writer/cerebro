@@ -17,5 +17,20 @@
     "sla",
     "uptime",
     "operations"
+  ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "A1.1",
+        "A1.2"
+      ]
+    },
+    {
+      "name": "Cerebro Operational Resilience",
+      "controls": [
+        "OPS-2"
+      ]
+    }
   ]
 }
