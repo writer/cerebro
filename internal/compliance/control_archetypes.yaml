@@ -1,0 +1,522 @@
+version: "2026-06-17"
+archetypes:
+  - id: privileged-mfa
+    family_id: IAM
+    family_name: Identity and Access Management
+    family_description: Access controls that protect production systems and privileged actions.
+    recommended: true
+    control:
+      id: IAM-1
+      title: Privileged access requires MFA
+      objective: Privileged users authenticate with phishing-resistant MFA before production access is granted.
+      intent: Reduce account takeover risk for administrative and production access paths.
+      applicability: [production, privileged_access]
+      assessment_methods: [examine, test]
+      implementation_guidance:
+        - Require privileged identities to enroll MFA before production access is granted.
+        - Monitor privileged authentication posture continuously and remove access when MFA is missing.
+      audit_procedure:
+        - Compare privileged account inventory with current MFA enrollment evidence.
+        - Sample administrative users and verify the MFA method, enrollment date, and access path.
+      failure_modes:
+        - Privileged user has active production access without enrolled MFA.
+        - MFA posture cannot be reconciled to the privileged account inventory.
+      remediation_guidance:
+        - Remove privileged access until MFA enrollment is complete.
+        - Refresh identity evidence after remediation and attach the new posture snapshot.
+      exception_guidance: Time-bound exceptions require compensating monitoring, approval, and an expiration date.
+      evidence_expectations:
+        - id: privileged-mfa-state
+          title: Privileged MFA enrollment
+          type: identity_configuration
+          description: Current MFA posture for privileged users and production administrators.
+          required: true
+          assessment_methods: [examine, test]
+          freshness_sla: 30d
+          accepted_from: [identity_provider, source_snapshot, manual_attestation]
+      freshness_sla: 30d
+      owner_domain: identity
+      automatable: true
+      manual_evidence_allowed: true
+      tags: [identity, mfa, privileged_access]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: ISO 27001:2022
+          control_id: A.8.5
+        - framework_name: FedRAMP Rev. 5
+          control_id: AC-2
+  - id: access-review
+    family_id: IAM
+    family_name: Identity and Access Management
+    family_description: Access controls that protect production systems and privileged actions.
+    recommended: true
+    control:
+      id: IAM-2
+      title: Privileged access is reviewed and removed when inappropriate
+      objective: Production and administrative access is reviewed on a defined cadence and removed when users no longer require it.
+      intent: Keep access aligned to role, employment state, and business need.
+      applicability: [production, privileged_access, workforce]
+      assessment_methods: [examine, interview, test]
+      implementation_guidance:
+        - Maintain an owner-approved privileged access inventory.
+        - Review privileged users, groups, service accounts, and external collaborators at least quarterly.
+      audit_procedure:
+        - Inspect the most recent access review population, reviewer sign-off, removals, and overdue exceptions.
+        - Sample terminated or transferred users and verify production access was removed.
+      failure_modes:
+        - Active access remains for a terminated, transferred, or inactive user.
+        - Review evidence does not show population completeness or reviewer approval.
+      remediation_guidance:
+        - Remove inappropriate access, document the reviewer decision, and rerun access evidence collection.
+      exception_guidance: Exceptions require business justification, named owner, compensating monitoring, and renewal date.
+      evidence_expectations:
+        - id: access-review-results
+          title: Access review results
+          type: access_review
+          description: Review population, reviewer approval, access removals, and approved exceptions.
+          required: true
+          assessment_methods: [examine, test]
+          freshness_sla: 90d
+          accepted_from: [identity_provider, access_review_system, ticketing_system, manual_attestation]
+      freshness_sla: 90d
+      owner_domain: identity
+      automatable: true
+      manual_evidence_allowed: true
+      tags: [identity, access_review, least_privilege]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: ISO 27001:2022
+          control_id: A.5.18
+        - framework_name: FedRAMP Rev. 5
+          control_id: AC-2
+  - id: security-log-retention
+    family_id: LOG
+    family_name: Logging and Monitoring
+    family_description: Telemetry controls that preserve security-relevant activity and make review outcomes auditable.
+    recommended: true
+    control:
+      id: LOG-1
+      title: Security logs are retained and reviewed
+      objective: Production security logs are collected, protected, retained, and reviewed for suspicious activity.
+      intent: Provide reliable detection and investigation evidence for privileged, administrative, and security-significant events.
+      applicability: [production, security_monitoring]
+      assessment_methods: [examine, test]
+      implementation_guidance:
+        - Collect identity, administrative, network, and workload security events into a protected logging destination.
+        - Configure retention, alert routing, and ownership for security-significant events.
+      audit_procedure:
+        - Verify logging destinations, retention settings, alert routing, and recent review records.
+        - Sample a security-significant event and trace it from source event to review evidence.
+      failure_modes:
+        - Security logs are disabled, mutable, outside retention requirements, or not reviewed by an accountable owner.
+      remediation_guidance:
+        - Enable required log sources, restore retention, protect log storage, and document review ownership.
+      exception_guidance: Logging exceptions require documented compensating monitoring and a restoration date.
+      evidence_expectations:
+        - id: security-log-retention
+          title: Security log retention and review
+          type: logging_configuration
+          description: Current security log sources, retention settings, alert routing, and review evidence.
+          required: true
+          assessment_methods: [examine, test]
+          freshness_sla: 30d
+          accepted_from: [cloud_logging, siem, source_snapshot, manual_attestation]
+      freshness_sla: 30d
+      owner_domain: security_operations
+      automatable: true
+      manual_evidence_allowed: true
+      tags: [logging, detection, retention]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: ISO 27001:2022
+          control_id: A.8.15
+        - framework_name: FedRAMP Rev. 5
+          control_id: SI-4
+  - id: critical-vulnerability-sla
+    family_id: VULN
+    family_name: Vulnerability Management
+    family_description: Controls that identify, prioritize, and remediate weaknesses in production systems.
+    recommended: true
+    control:
+      id: VULN-1
+      title: Critical vulnerabilities are remediated within SLA
+      objective: Critical vulnerabilities affecting production systems are triaged and remediated within the approved service-level objective.
+      intent: Reduce exposure from known exploitable weaknesses before they can materially affect production systems or customer data.
+      applicability: [production, vulnerability_management]
+      assessment_methods: [examine, test]
+      implementation_guidance:
+        - Define severity-based remediation SLAs and track production vulnerability findings to closure.
+        - Require approved risk acceptance when remediation cannot meet the SLA.
+      audit_procedure:
+        - Review current vulnerability inventory, critical finding age, remediation evidence, and exception approvals.
+      failure_modes:
+        - Critical vulnerability remains open past SLA without an approved exception or compensating control.
+      remediation_guidance:
+        - Patch, mitigate, or isolate affected systems and record closure evidence for overdue critical vulnerabilities.
+      exception_guidance: SLA exceptions require risk acceptance, compensating controls, owner approval, and an expiration date.
+      evidence_expectations:
+        - id: critical-vulnerability-sla
+          title: Critical vulnerability SLA posture
+          type: vulnerability_management
+          description: Open critical vulnerability age, remediation status, and approved exception evidence.
+          required: true
+          assessment_methods: [examine, test]
+          freshness_sla: 14d
+          accepted_from: [vulnerability_scanner, ticketing_system, source_snapshot, manual_attestation]
+      freshness_sla: 14d
+      owner_domain: security_operations
+      automatable: true
+      manual_evidence_allowed: true
+      tags: [vulnerability, remediation_sla]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.5
+        - framework_name: ISO 27001:2022
+          control_id: A.8.8
+        - framework_name: FedRAMP Rev. 5
+          control_id: RA-5
+  - id: incident-response
+    family_id: IR
+    family_name: Incident Response
+    family_description: Controls that prove security incidents are detected, triaged, communicated, and improved from.
+    recommended: true
+    control:
+      id: IR-1
+      title: Security incidents are triaged and tracked to closure
+      objective: Security incidents are identified, assigned, investigated, communicated, remediated, and closed with retained evidence.
+      intent: Ensure security-impacting events receive accountable response and produce audit-ready lessons learned.
+      applicability: [production, security_operations]
+      assessment_methods: [examine, interview, test]
+      implementation_guidance:
+        - Maintain response procedures, severity criteria, escalation paths, and incident records.
+        - Link incident evidence to findings, affected assets, response actions, and closure approval.
+      audit_procedure:
+        - Sample recent incidents and verify severity, timeline, owner, containment, remediation, communication, and closure evidence.
+      failure_modes:
+        - Incident is missing owner, timeline, severity, containment evidence, or closure approval.
+      remediation_guidance:
+        - Complete missing response records, assign accountable owners, and document closure or lessons learned.
+      exception_guidance: Response exceptions require accountable approval and documented customer or operational impact assessment.
+      evidence_expectations:
+        - id: incident-response-record
+          title: Incident response record
+          type: incident_response
+          description: Incident timeline, severity, owner, actions, communications, and closure evidence.
+          required: true
+          assessment_methods: [examine, interview]
+          freshness_sla: 90d
+          accepted_from: [case_management, ticketing_system, siem, manual_attestation]
+      freshness_sla: 90d
+      owner_domain: security_operations
+      automatable: false
+      manual_evidence_allowed: true
+      tags: [incident_response, security_operations]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC7.4
+        - framework_name: SOC 2
+          control_id: CC7.5
+        - framework_name: ISO 27001:2022
+          control_id: A.5.25
+        - framework_name: FedRAMP Rev. 5
+          control_id: IR-4
+  - id: change-management
+    family_id: CHG
+    family_name: Change Management
+    family_description: Controls that ensure production changes are reviewed, tested, approved, and traceable.
+    recommended: true
+    control:
+      id: CHG-1
+      title: Production changes are reviewed and traceable
+      objective: Production changes are approved, tested, reviewed, and traceable from request through deployment.
+      intent: Reduce production risk from unauthorized, untested, or unreviewed changes.
+      applicability: [production, software_delivery]
+      assessment_methods: [examine, test]
+      implementation_guidance:
+        - Require code review, automated checks, deployment traceability, and approval for production changes.
+        - Preserve change request, pull request, build, deployment, and rollback evidence.
+      audit_procedure:
+        - Sample deployed changes and verify approval, testing, reviewer, deployment, and rollback evidence.
+      failure_modes:
+        - Production deployment has no approval, missing test results, or cannot be traced to a reviewed change.
+      remediation_guidance:
+        - Restore change evidence, remediate unauthorized changes, and update enforcement in the deployment path.
+      exception_guidance: Emergency changes require retrospective review, owner approval, and linked incident or risk rationale.
+      evidence_expectations:
+        - id: production-change-trace
+          title: Production change trace
+          type: change_management
+          description: Change request, reviewer approval, test result, deployment record, and rollback evidence.
+          required: true
+          assessment_methods: [examine, test]
+          freshness_sla: 30d
+          accepted_from: [source_control, ci_cd_system, ticketing_system, manual_attestation]
+      freshness_sla: 30d
+      owner_domain: engineering
+      automatable: true
+      manual_evidence_allowed: true
+      tags: [change_management, secure_delivery]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: ISO 27001:2022
+          control_id: A.8.32
+        - framework_name: FedRAMP Rev. 5
+          control_id: CM-3
+  - id: recovery-testing
+    family_id: BCDR
+    family_name: Business Continuity and Disaster Recovery
+    family_description: Resilience controls that prove recovery objectives are defined, tested, and operational.
+    recommended: true
+    control:
+      id: BCDR-1
+      title: Recovery objectives are tested
+      objective: Critical services have documented recovery objectives and tested recovery procedures.
+      intent: Maintain confidence that production services can be restored within approved business tolerances.
+      applicability: [production, availability]
+      assessment_methods: [examine, interview, test]
+      implementation_guidance:
+        - Document recovery objectives, backup dependencies, test cadence, and accountable owners for critical services.
+      audit_procedure:
+        - Review the latest recovery test, test scope, results, defects, and remediation evidence for critical services.
+      failure_modes:
+        - Recovery plan is missing, stale, untested, or has unresolved defects affecting recovery objectives.
+      remediation_guidance:
+        - Update recovery procedures, run a scoped test, remediate defects, and capture successful retest evidence.
+      exception_guidance: Recovery-test deferrals require business approval, alternative continuity measures, and a new test date.
+      evidence_expectations:
+        - id: recovery-test-results
+          title: Recovery test results
+          type: resilience_test
+          description: Recent recovery exercise scope, recovery objective results, defects, and retest evidence.
+          required: true
+          assessment_methods: [examine, interview, test]
+          freshness_sla: 180d
+          accepted_from: [bcdr_plan, ticketing_system, manual_attestation]
+      freshness_sla: 180d
+      owner_domain: platform_operations
+      automatable: false
+      manual_evidence_allowed: true
+      tags: [bcdr, recovery_testing]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: A1.2
+        - framework_name: SOC 2
+          control_id: A1.3
+        - framework_name: FedRAMP Rev. 5
+          control_id: CP-10
+  - id: vendor-review
+    family_id: TPRM
+    family_name: Third-Party Risk Management
+    family_description: Vendor controls that prove critical third parties are reviewed, approved, and monitored.
+    recommended: true
+    control:
+      id: TPRM-1
+      title: Critical vendors receive security review
+      objective: Critical vendors are risk-ranked, reviewed, approved, and monitored before or during use.
+      intent: Reduce inherited risk from third parties that process sensitive data or support critical operations.
+      applicability: [vendor, critical_service]
+      assessment_methods: [examine, interview]
+      implementation_guidance:
+        - Maintain critical vendor inventory, risk tiers, security-review evidence, contract status, and recurring review cadence.
+      audit_procedure:
+        - Sample critical vendors and verify risk tier, security review, approval, contract coverage, and current monitoring status.
+      failure_modes:
+        - Critical vendor is active without current security review, owner approval, or documented risk treatment.
+      remediation_guidance:
+        - Complete vendor review, document approval or risk treatment, and restrict use when unacceptable risk remains.
+      exception_guidance: Vendor review exceptions require accountable approval, documented compensating controls, and renewal tracking.
+      evidence_expectations:
+        - id: critical-vendor-review
+          title: Critical vendor review
+          type: third_party_risk
+          description: Critical vendor inventory entry, security review outcome, approval, and monitoring status.
+          required: true
+          assessment_methods: [examine, interview]
+          freshness_sla: 365d
+          accepted_from: [vendor_management_system, contract_repository, manual_attestation]
+      freshness_sla: 365d
+      owner_domain: governance_risk_compliance
+      automatable: false
+      manual_evidence_allowed: true
+      tags: [vendor_review, critical_vendor]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC9.2
+        - framework_name: ISO 27001:2022
+          control_id: A.5.19
+  - id: data-classification
+    family_id: DATA
+    family_name: Data Governance
+    family_description: Controls that govern sensitive data inventory, classification, retention, and protection.
+    recommended: false
+    control:
+      id: DATA-1
+      title: Sensitive data is inventoried and classified
+      objective: Sensitive data stores, processing locations, and owners are inventoried and classified.
+      intent: Establish reliable scope for privacy, security, retention, and access controls.
+      applicability: [production, sensitive_data, privacy]
+      assessment_methods: [examine, interview, test]
+      implementation_guidance:
+        - Maintain data inventory records with classification, owner, retention, and processing purpose.
+        - Reconcile discovered assets and data stores against the inventory.
+      audit_procedure:
+        - Sample sensitive data stores and verify classification, owner, purpose, retention, and access evidence.
+      failure_modes:
+        - Sensitive data store is missing from inventory or lacks owner, classification, or purpose.
+      remediation_guidance:
+        - Update inventory, assign owner, classify data, and connect evidence collection for the store.
+      exception_guidance: Inventory exceptions require privacy or security approval and a plan to restore inventory coverage.
+      evidence_expectations:
+        - id: sensitive-data-inventory
+          title: Sensitive data inventory
+          type: data_inventory
+          description: Current sensitive data locations, classifications, owners, purposes, and retention requirements.
+          required: true
+          assessment_methods: [examine, interview, test]
+          freshness_sla: 90d
+          accepted_from: [data_catalog, cloud_inventory, manual_attestation]
+      freshness_sla: 90d
+      owner_domain: data_governance
+      automatable: true
+      manual_evidence_allowed: true
+      tags: [data_inventory, classification, privacy]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: C1.1
+        - framework_name: ISO 27001:2022
+          control_id: A.5.12
+        - framework_name: GDPR
+          control_id: Art. 30
+  - id: encryption-key-management
+    family_id: DATA
+    family_name: Data Governance
+    family_description: Controls that govern sensitive data inventory, classification, retention, and protection.
+    recommended: false
+    control:
+      id: DATA-2
+      title: Sensitive data is encrypted with managed keys
+      objective: Sensitive production data is encrypted at rest and in transit using approved cryptography and managed key lifecycle controls.
+      intent: Reduce disclosure risk when systems, networks, or storage are accessed without authorization.
+      applicability: [production, sensitive_data]
+      assessment_methods: [examine, test]
+      implementation_guidance:
+        - Enforce encryption for storage, databases, backups, queues, and service-to-service traffic that handle sensitive data.
+        - Maintain key ownership, rotation, access, and recovery evidence.
+      audit_procedure:
+        - Sample sensitive stores and verify encryption configuration, key management, rotation, and access evidence.
+      failure_modes:
+        - Sensitive data store is unencrypted, uses unmanaged keys, or lacks key access/rotation evidence.
+      remediation_guidance:
+        - Enable approved encryption, migrate to managed keys, rotate exposed keys, and capture post-remediation evidence.
+      exception_guidance: Encryption exceptions require risk acceptance, compensating controls, and migration plan.
+      evidence_expectations:
+        - id: encryption-key-posture
+          title: Encryption and key posture
+          type: encryption_configuration
+          description: Encryption settings, key ownership, rotation, and privileged key access evidence for sensitive stores.
+          required: true
+          assessment_methods: [examine, test]
+          freshness_sla: 30d
+          accepted_from: [cloud_inventory, key_management_system, source_snapshot, manual_attestation]
+      freshness_sla: 30d
+      owner_domain: platform_operations
+      automatable: true
+      manual_evidence_allowed: true
+      tags: [encryption, key_management, sensitive_data]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC6.7
+        - framework_name: ISO 27001:2022
+          control_id: A.8.24
+        - framework_name: FedRAMP Rev. 5
+          control_id: SC-28
+  - id: ai-system-governance
+    family_id: AI
+    family_name: AI Governance
+    family_description: Controls that establish accountable, monitored, and auditable AI system use.
+    recommended: false
+    control:
+      id: AI-1
+      title: AI systems have accountable ownership and risk review
+      objective: AI systems that process sensitive data or support material decisions have documented owner, purpose, risk assessment, and monitoring plan.
+      intent: Keep AI use accountable, scoped, and reviewable before it affects customers, employees, or regulated data.
+      applicability: [ai_system, sensitive_data, production]
+      assessment_methods: [examine, interview]
+      implementation_guidance:
+        - Maintain AI system inventory with owner, purpose, input data classes, output use, model/provider, and risk tier.
+        - Review high-impact AI systems before launch and after material changes.
+      audit_procedure:
+        - Sample AI systems and verify owner, purpose, data classification, risk review, monitoring, and approval evidence.
+      failure_modes:
+        - AI system lacks owner, data classification, risk review, monitoring plan, or approval for material use.
+      remediation_guidance:
+        - Document AI system scope, complete risk review, assign owner, and establish monitoring or usage restrictions.
+      exception_guidance: AI risk exceptions require accountable approval, usage boundaries, monitoring, and renewal date.
+      evidence_expectations:
+        - id: ai-system-risk-review
+          title: AI system risk review
+          type: ai_governance
+          description: AI system inventory entry, owner, purpose, data classes, risk assessment, monitoring, and approval evidence.
+          required: true
+          assessment_methods: [examine, interview]
+          freshness_sla: 180d
+          accepted_from: [ai_inventory, risk_register, manual_attestation]
+      freshness_sla: 180d
+      owner_domain: governance_risk_compliance
+      automatable: false
+      manual_evidence_allowed: true
+      tags: [ai_governance, risk_review]
+      maps_to:
+        - framework_name: ISO 42001
+          control_id: "6.1.2"
+        - framework_name: ISO 42001
+          control_id: A.2.2
+  - id: security-awareness
+    family_id: GOV
+    family_name: Governance and Training
+    family_description: Controls that prove security responsibilities, policy awareness, and workforce training.
+    recommended: false
+    control:
+      id: GOV-1
+      title: Workforce security training is completed
+      objective: Workforce members complete required security awareness training within the defined cadence.
+      intent: Ensure employees and contractors understand security responsibilities and reporting paths.
+      applicability: [workforce, governance]
+      assessment_methods: [examine, interview]
+      implementation_guidance:
+        - Assign baseline security training at onboarding and refresh it at least annually.
+        - Track completion, overdue learners, exceptions, and role-specific training requirements.
+      audit_procedure:
+        - Review training assignment population, completion rate, overdue records, and sampled completion evidence.
+      failure_modes:
+        - Workforce member is active without required training completion or approved exception.
+      remediation_guidance:
+        - Assign or reassign training, notify owners, complete overdue training, and retain completion evidence.
+      exception_guidance: Training exceptions require manager approval, compensating communication, and completion due date.
+      evidence_expectations:
+        - id: workforce-training-completion
+          title: Workforce training completion
+          type: training_record
+          description: Assigned learners, completion status, overdue learners, and approved exceptions.
+          required: true
+          assessment_methods: [examine]
+          freshness_sla: 365d
+          accepted_from: [learning_management_system, identity_provider, manual_attestation]
+      freshness_sla: 365d
+      owner_domain: governance_risk_compliance
+      automatable: true
+      manual_evidence_allowed: true
+      tags: [training, governance]
+      maps_to:
+        - framework_name: SOC 2
+          control_id: CC1.4
+        - framework_name: ISO 27001:2022
+          control_id: A.6.3
