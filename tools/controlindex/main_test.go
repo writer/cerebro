@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,6 +165,48 @@ func TestWriteControlExtensionScaffoldRejectsExistingFiles(t *testing.T) {
 	err := writeControlExtensionScaffold(root, options)
 	if err == nil || !strings.Contains(err.Error(), "file already exists") {
 		t.Fatalf("writeControlExtensionScaffold() error = %v, want existing file error", err)
+	}
+}
+
+func TestWriteControlExtensionScaffoldRejectsSymlinkDirectory(t *testing.T) {
+	root := t.TempDir()
+	target := t.TempDir()
+	linkPath := filepath.Join(root, "customer-controls")
+	if err := os.Symlink(target, linkPath); err != nil {
+		t.Skipf("Symlink(%s, %s) error = %v", target, linkPath, err)
+	}
+
+	options := newControlExtensionScaffoldOptions("customer-controls", "", "", "", "", "", "")
+	if err := writeControlExtensionScaffold(root, options); err == nil {
+		t.Fatal("writeControlExtensionScaffold() error = nil, want symlink directory rejection")
+	}
+	if _, err := os.Stat(filepath.Join(target, "extension.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("symlink target extension.yaml stat error = %v, want not exist", err)
+	}
+}
+
+func TestWriteScaffoldYAMLFileRemovesPartialFileOnWriteError(t *testing.T) {
+	root := t.TempDir()
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatalf("OpenRoot(%s) error = %v", root, err)
+	}
+	defer rootFS.Close()
+
+	originalWrite := writeScaffoldFileContent
+	writeScaffoldFileContent = func(_ *os.File, _ []byte) (int, error) {
+		return 0, errors.New("injected write failure")
+	}
+	t.Cleanup(func() {
+		writeScaffoldFileContent = originalWrite
+	})
+
+	err = writeScaffoldYAMLFile(rootFS, "extension.yaml", map[string]string{"version": "2026-06-17"})
+	if err == nil || !strings.Contains(err.Error(), "injected write failure") {
+		t.Fatalf("writeScaffoldYAMLFile() error = %v, want injected write failure", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "extension.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("extension.yaml stat error = %v, want not exist after failed write", err)
 	}
 }
 
