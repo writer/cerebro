@@ -357,14 +357,14 @@ func matchingTenant(paramTenantID string, bodyTenantID string) (string, bool) {
 
 func (h Handler) idempotencyKey(params agentplatform.A2ASendMessageParams) (string, error) {
 	key := strings.TrimSpace(h.IdempotencyKey)
-	if key != "" && len(key) > agentplatform.Idempotency().MaxLengthBytes {
-		return "", requestError{code: -32602, message: "InvalidParams", reason: "Idempotency-Key exceeds the public contract length limit"}
-	}
 	if key == "" {
 		key = strings.TrimSpace(params.Message.MessageID)
 	}
 	if key == "" {
 		return "", nil
+	}
+	if len(key) > agentplatform.Idempotency().MaxLengthBytes {
+		return "", requestError{code: -32602, message: "InvalidParams", reason: "A2A idempotency key exceeds the public contract length limit"}
 	}
 	return "a2a:" + key, nil
 }

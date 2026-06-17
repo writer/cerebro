@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -62,6 +63,20 @@ func TestCreateEvidencePacketTaskChecksVisibilityOnIdempotentReplay(t *testing.T
 	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest("writer", "message-1"))
 	if response.Error == nil || response.Error.Code != -32001 {
 		t.Fatalf("cross-tenant replay response = %+v, want TaskNotFoundError", response)
+	}
+}
+
+func TestCreateEvidencePacketTaskRejectsLongMessageIDFallbackKey(t *testing.T) {
+	store := newGatewayTestJobStore()
+	handler := Handler{Store: store, Resolve: gatewayTestResolver}
+	longMessageID := strings.Repeat("m", agentplatform.Idempotency().MaxLengthBytes+1)
+
+	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest("writer", longMessageID))
+	if response.Error == nil || response.Error.Code != -32602 {
+		t.Fatalf("long messageId fallback response = %+v, want InvalidParams", response)
+	}
+	if len(store.jobs) != 0 {
+		t.Fatalf("jobs created = %d, want none", len(store.jobs))
 	}
 }
 

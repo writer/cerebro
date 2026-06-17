@@ -128,7 +128,6 @@ func DecodeA2AListTasksParams(raw json.RawMessage) (A2AListTasksParams, error) {
 
 func decodeA2AParams(raw json.RawMessage, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
