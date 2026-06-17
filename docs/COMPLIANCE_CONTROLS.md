@@ -129,6 +129,7 @@ profiles:
   - id: customer-production-access
     name: Customer Production Access
     description: Production identity and privileged-access scope for customer audit evidence.
+    include_profiles: [soc2-security-core]
     frameworks:
       - name: Customer Audit 2026
         controls: [IAM-1]
@@ -137,6 +138,26 @@ profiles:
 ```
 
 Use profiles for common auditor views, control subsets, custom framework launches, or product-packaged compliance views. Custom frameworks can ship their own profile YAML beside their control pack and use the same resolver APIs.
+
+Profiles can compose other profiles with `include_profiles`. Included profiles are resolved independently and unioned with the including profile, so each reusable selection keeps its own framework, tag, owner, evidence, applicability, and assessment-method semantics. The including profile's `exclude_controls` and `exclude_tags` are applied after the union, which lets teams build broad audit packets and then remove customer-irrelevant controls without copying the source profile definitions.
+
+```yaml
+version: "2026-06-17"
+profiles:
+  - id: customer-security-audit
+    name: Customer Security Audit
+    include_profiles:
+      - soc2-security-core
+      - cloud-security-benchmarks
+    frameworks:
+      - name: Customer Audit 2026
+        controls: [IAM-1]
+    exclude_controls:
+      - framework_name: SOC 2
+        control_id: CC6.2
+```
+
+Use composition for customer audit packets, internal control programs, product-specific compliance views, or custom framework launches that need to combine several built-in control groups with customer-specific controls.
 
 ## Coverage Resolution
 

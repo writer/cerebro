@@ -76,6 +76,19 @@ func TestResolveControlSelectionSupportsControlPostureFilters(t *testing.T) {
 	}
 }
 
+func TestResolveControlSelectionRejectsProfileIncludes(t *testing.T) {
+	resolution, issues := ResolveControlSelection(testSelectionIndex(t), ControlSelection{
+		ID:              "composed",
+		IncludeProfiles: []string{"identity-core"},
+	})
+	if len(resolution.Controls) != 0 {
+		t.Fatalf("Controls = %#v, want none without profile-set resolver", resolution.Controls)
+	}
+	if !validationIssuesContain(issues, "include_profiles can only be resolved by ResolveControlProfiles") {
+		t.Fatalf("issues = %#v, want include_profiles resolver issue", issues)
+	}
+}
+
 func TestResolveControlSelectionMatchesEvidenceAssessmentMethods(t *testing.T) {
 	index := testSelectionIndex(t)
 	resolution, issues := ResolveControlSelection(index, ControlSelection{

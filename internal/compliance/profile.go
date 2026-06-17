@@ -1,6 +1,7 @@
 package compliance
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -121,8 +122,9 @@ func LoadControlProfileSet(content []byte) (ControlProfileSet, error) {
 func ResolveControlProfiles(index *CatalogIndex, set ControlProfileSet) (ControlProfileResolution, []ValidationIssue) {
 	result := ControlProfileResolution{Version: strings.TrimSpace(set.Version)}
 	issues := validateControlProfileSet(set)
+	profilesByID := controlProfilesByID(set.Profiles)
 	for _, profile := range set.Profiles {
-		resolution, resolutionIssues := ResolveControlSelection(index, profile)
+		resolution, resolutionIssues := resolveControlProfile(index, profilesByID, profile, nil)
 		for _, issue := range resolutionIssues {
 			issue.Path = profileIssuePath(profile.ID, issue.Path)
 			issues = append(issues, issue)
@@ -138,6 +140,57 @@ func ResolveControlProfiles(index *CatalogIndex, set ControlProfileSet) (Control
 	return result, issues
 }
 
+func resolveControlProfile(index *CatalogIndex, profilesByID map[string]ControlSelection, profile ControlSelection, stack []string) (SelectionResolution, []ValidationIssue) {
+	id := strings.TrimSpace(profile.ID)
+	if profileIDInStack(stack, id) {
+		return SelectionResolution{SelectionID: id}, []ValidationIssue{{
+			Path:    "include_profiles",
+			Message: "profile include cycle detected: " + strings.Join(append(stack, id), " -> "),
+		}}
+	}
+	stack = append(stack, id)
+	selected := map[string]ResolvedControl{}
+	issues := []ValidationIssue{}
+
+	direct := profile
+	direct.IncludeProfiles = nil
+	direct.ExcludeControls = nil
+	direct.ExcludeTags = nil
+	if !selectionEmpty(direct) || len(profile.IncludeProfiles) == 0 {
+		resolution, resolutionIssues := ResolveControlSelection(index, direct)
+		issues = append(issues, resolutionIssues...)
+		addResolvedControls(selected, resolution.Controls)
+	}
+
+	for idx, includeID := range profile.IncludeProfiles {
+		includeID = strings.TrimSpace(includeID)
+		path := fmt.Sprintf("include_profiles[%d]", idx)
+		if includeID == "" {
+			issues = append(issues, ValidationIssue{Path: path, Message: "profile id is required"})
+			continue
+		}
+		if profileIDInStack(stack, includeID) {
+			cycle := append(append([]string(nil), stack...), includeID)
+			issues = append(issues, ValidationIssue{Path: path, Message: "profile include cycle detected: " + strings.Join(cycle, " -> ")})
+			continue
+		}
+		included, ok := profilesByID[includeID]
+		if !ok {
+			issues = append(issues, ValidationIssue{Path: path, Message: fmt.Sprintf("profile %q is not declared", includeID)})
+			continue
+		}
+		resolution, resolutionIssues := resolveControlProfile(index, profilesByID, included, stack)
+		for _, issue := range resolutionIssues {
+			issue.Path = nestedProfileIssuePath(path, issue.Path)
+			issues = append(issues, issue)
+		}
+		addResolvedControls(selected, resolution.Controls)
+	}
+
+	issues = append(issues, applyControlSelectionExclusions(index, selected, profile)...)
+	return controlSelectionResolution(id, selected), issues
+}
+
 func BuildControlCoverageIndex(index *CatalogIndex, set ControlProfileSet, rules []RuleControlMapping) (ControlCoverageIndex, []ValidationIssue) {
 	resolution, issues := ResolveControlProfiles(index, set)
 	result := ControlCoverageIndex{Version: resolution.Version}
@@ -149,6 +202,51 @@ func BuildControlCoverageIndex(index *CatalogIndex, set ControlProfileSet, rules
 		return result.Profiles[i].ID < result.Profiles[j].ID
 	})
 	return result, issues
+}
+
+func controlProfilesByID(profiles []ControlSelection) map[string]ControlSelection {
+	result := map[string]ControlSelection{}
+	for _, profile := range profiles {
+		id := strings.TrimSpace(profile.ID)
+		if id == "" {
+			continue
+		}
+		if _, ok := result[id]; ok {
+			continue
+		}
+		result[id] = profile
+	}
+	return result
+}
+
+func addResolvedControls(selected map[string]ResolvedControl, controls []ResolvedControl) {
+	for _, control := range controls {
+		selected[ControlKey(ControlRef{FrameworkName: control.FrameworkName, ControlID: control.Control.ID})] = control
+	}
+}
+
+func profileIDInStack(stack []string, id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, existing := range stack {
+		if existing == id {
+			return true
+		}
+	}
+	return false
+}
+
+func nestedProfileIssuePath(prefix, path string) string {
+	prefix = strings.TrimSpace(prefix)
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return prefix
+	}
+	if prefix == "" {
+		return path
+	}
+	return prefix + "." + path
 }
 
 func BuildControlCoverageProfile(selection ControlSelection, resolution SelectionResolution, coverage RuleCoverage) ControlCoverageProfile {
