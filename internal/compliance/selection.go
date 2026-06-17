@@ -22,6 +22,7 @@ type ControlSelection struct {
 	IncludeEvidenceTypes  []string             `json:"include_evidence_types,omitempty" yaml:"include_evidence_types,omitempty"`
 	IncludeApplicability  []string             `json:"include_applicability,omitempty" yaml:"include_applicability,omitempty"`
 	IncludeAssessments    []string             `json:"include_assessment_methods,omitempty" yaml:"include_assessment_methods,omitempty"`
+	IncludeReadiness      []string             `json:"include_readiness,omitempty" yaml:"include_readiness,omitempty"`
 	Automatable           *bool                `json:"automatable,omitempty" yaml:"automatable,omitempty"`
 	ManualEvidenceAllowed *bool                `json:"manual_evidence_allowed,omitempty" yaml:"manual_evidence_allowed,omitempty"`
 }
@@ -74,6 +75,7 @@ func ResolveControlSelection(index *CatalogIndex, selection ControlSelection) (S
 	if index == nil {
 		return SelectionResolution{SelectionID: strings.TrimSpace(selection.ID)}, []ValidationIssue{{Message: "control catalog index is required"}}
 	}
+	issues = append(issues, validateControlReadinessStatuses("include_readiness", selection.IncludeReadiness)...)
 	if len(selection.IncludeProfiles) != 0 {
 		issues = append(issues, ValidationIssue{Path: "include_profiles", Message: "include_profiles can only be resolved by ResolveControlProfiles"})
 	}
@@ -274,6 +276,7 @@ func selectionEmpty(selection ControlSelection) bool {
 		len(selection.IncludeEvidenceTypes) == 0 &&
 		len(selection.IncludeApplicability) == 0 &&
 		len(selection.IncludeAssessments) == 0 &&
+		len(selection.IncludeReadiness) == 0 &&
 		selection.Automatable == nil &&
 		selection.ManualEvidenceAllowed == nil
 }
@@ -284,6 +287,7 @@ func selectionHasControlFilters(selection ControlSelection) bool {
 		len(selection.IncludeEvidenceTypes) != 0 ||
 		len(selection.IncludeApplicability) != 0 ||
 		len(selection.IncludeAssessments) != 0 ||
+		len(selection.IncludeReadiness) != 0 ||
 		selection.Automatable != nil ||
 		selection.ManualEvidenceAllowed != nil
 }
@@ -302,6 +306,9 @@ func controlMatchesSelectionFilters(control ResolvedControl, selection ControlSe
 		return false
 	}
 	if len(selection.IncludeAssessments) != 0 && !controlHasAssessmentMethod(control, selection.IncludeAssessments) {
+		return false
+	}
+	if len(selection.IncludeReadiness) != 0 && !controlReadinessMatches(EvaluateControlReadiness(control).Status, selection.IncludeReadiness) {
 		return false
 	}
 	if selection.Automatable != nil && !controlBoolMatches(control.Control.Automatable, *selection.Automatable) {
