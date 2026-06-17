@@ -216,6 +216,23 @@ func TestGRCControlEvidencePacketExportEndpointReturnsMarkdown(t *testing.T) {
 	}
 }
 
+func TestWriteGRCMarkdownExportPreservesMarkdownBytes(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	body := "# Control & Evidence <Packet>\n\n- Link text: [literal](https://example.invalid)\n"
+
+	writeGRCMarkdownExport(recorder, "packet.md", body)
+
+	if got := recorder.Body.String(); got != body {
+		t.Fatalf("markdown body = %q, want raw %q", got, body)
+	}
+	if strings.Contains(recorder.Body.String(), "&amp;") || strings.Contains(recorder.Body.String(), "&lt;") {
+		t.Fatalf("markdown export was HTML-escaped: %q", recorder.Body.String())
+	}
+	if got := recorder.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+}
+
 func TestGRCCustomControlEvidencePacketEndpointBuildsGeneratedProfilePacket(t *testing.T) {
 	server := newGRCControlPacketTestServer(t)
 	defer server.Close()

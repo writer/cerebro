@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -203,7 +203,7 @@ func writeGRCMarkdownExport(w http.ResponseWriter, filename, body string) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write([]byte(html.EscapeString(body)))
+	_, _ = io.Copy(w, strings.NewReader(body))
 }
 
 func (a *App) handleGRCControlPackPreview(w http.ResponseWriter, r *http.Request) {

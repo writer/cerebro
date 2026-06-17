@@ -1,6 +1,7 @@
 package compliance
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -138,6 +139,82 @@ func TestBuildControlEvidencePacketMarksOptionalExpectations(t *testing.T) {
 	expectation := packet.Controls[0].Evidence.Expectations[0]
 	if expectation.ID != "quarterly-access-review" || expectation.Status != ControlEvidenceExpectationOptional || expectation.Quality != ControlEvidenceQualityOptional || expectation.Required {
 		t.Fatalf("expectation = %#v, want optional quarterly-access-review", expectation)
+	}
+}
+
+func TestControlPacketReadinessReportsExceptionWithOpenFindings(t *testing.T) {
+	readiness := controlPacketReadiness(ControlEvidencePacketControl{
+		Status: ControlPostureException,
+		Findings: []ControlEvidencePacketFinding{{
+			ID:     "finding-1",
+			Status: "open",
+		}},
+		Evidence: ControlEvidencePacketEvidence{
+			Items: []ControlEvidencePacketEvidenceItem{{ID: "evidence-1"}},
+		},
+	})
+
+	if readiness.Score != 40 {
+		t.Fatalf("Score = %d, want open-finding cap at 40", readiness.Score)
+	}
+	if readiness.Rating != ControlEvidenceQualityPartial {
+		t.Fatalf("Rating = %q, want partial", readiness.Rating)
+	}
+	normalizedSummary := strings.ToLower(readiness.Summary)
+	if !strings.Contains(normalizedSummary, "active exception") || !strings.Contains(normalizedSummary, "open findings") {
+		t.Fatalf("Summary = %q, want exception and open-finding context", readiness.Summary)
+	}
+}
+
+func TestControlPacketReadinessDoesNotUpgradeMissingEvidenceForException(t *testing.T) {
+	readiness := controlPacketReadiness(ControlEvidencePacketControl{
+		Status: ControlPostureException,
+		Evidence: ControlEvidencePacketEvidence{
+			Summary: ControlPostureEvidence{
+				MissingEvidenceIDs: []string{"evidence-1"},
+			},
+		},
+	})
+
+	if readiness.Score != 25 {
+		t.Fatalf("Score = %d, want missing-evidence score 25", readiness.Score)
+	}
+	if readiness.Rating != ControlEvidenceQualityMissing {
+		t.Fatalf("Rating = %q, want missing", readiness.Rating)
+	}
+	if !strings.Contains(readiness.Summary, "Required evidence is missing") || !strings.Contains(readiness.Summary, "active exception") {
+		t.Fatalf("Summary = %q, want missing evidence and exception context", readiness.Summary)
+	}
+}
+
+func TestControlPacketReadinessReportsExceptionWithStaleEvidenceAndOpenFindings(t *testing.T) {
+	readiness := controlPacketReadiness(ControlEvidencePacketControl{
+		Status: ControlPostureException,
+		Findings: []ControlEvidencePacketFinding{{
+			ID:     "finding-1",
+			Status: "open",
+		}},
+		Evidence: ControlEvidencePacketEvidence{
+			Summary: ControlPostureEvidence{
+				StaleEvidenceIDs: []string{"evidence-1"},
+			},
+			Items: []ControlEvidencePacketEvidenceItem{{
+				ID: "evidence-1",
+			}},
+		},
+	})
+
+	if readiness.Score != 40 {
+		t.Fatalf("Score = %d, want open-finding cap at 40", readiness.Score)
+	}
+	if readiness.Rating != ControlEvidenceQualityStale {
+		t.Fatalf("Rating = %q, want stale evidence to remain visible", readiness.Rating)
+	}
+	normalizedSummary := strings.ToLower(readiness.Summary)
+	for _, want := range []string{"evidence is stale", "open findings", "active exception"} {
+		if !strings.Contains(normalizedSummary, want) {
+			t.Fatalf("Summary = %q, want %q context", readiness.Summary, want)
+		}
 	}
 }
 

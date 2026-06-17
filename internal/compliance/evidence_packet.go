@@ -305,15 +305,42 @@ func controlPacketReadiness(control ControlEvidencePacketControl) ControlEvidenc
 	}
 	if readiness.OpenFindings > 0 && readiness.Score > 40 {
 		readiness.Score = 40
-		readiness.Rating = ControlEvidenceQualityPartial
+		if readiness.Rating == ControlEvidenceQualityStrong {
+			readiness.Rating = ControlEvidenceQualityPartial
+		}
 		readiness.Summary = "Evidence may be present, but open findings must be remediated before control reliance."
 	}
-	if control.Status == ControlPostureException && readiness.Score > 50 {
-		readiness.Score = 50
-		readiness.Rating = ControlEvidenceQualityPartial
-		readiness.Summary = "An active exception limits auditor reliance for this control."
+	if control.Status == ControlPostureException {
+		if readiness.Score > 50 {
+			readiness.Score = 50
+		}
+		if readiness.Rating == ControlEvidenceQualityStrong {
+			readiness.Rating = ControlEvidenceQualityPartial
+		}
+		readiness.Summary = controlPacketExceptionSummary(readiness)
 	}
 	return readiness
+}
+
+func controlPacketExceptionSummary(readiness ControlEvidencePacketReadiness) string {
+	conditions := make([]string, 0, 4)
+	if readiness.MissingEvidence > 0 || (readiness.EvidenceItems == 0 && readiness.RequiredExpectations > 0) {
+		conditions = append(conditions, "required evidence is missing")
+	}
+	if readiness.StaleEvidence > 0 {
+		conditions = append(conditions, "evidence is stale")
+	}
+	if readiness.ManualEvidence > 0 {
+		conditions = append(conditions, "manual evidence requires human assessment")
+	}
+	if readiness.OpenFindings > 0 {
+		conditions = append(conditions, "open findings remain visible for remediation tracking")
+	}
+	if len(conditions) == 0 {
+		return "An active exception limits auditor reliance for this control."
+	}
+	summary := strings.Join(conditions, "; ")
+	return strings.ToUpper(summary[:1]) + summary[1:] + "; an active exception limits auditor reliance for this control."
 }
 
 func requiredExpectationCount(expectations []ControlEvidenceExpectationPosture) int {
