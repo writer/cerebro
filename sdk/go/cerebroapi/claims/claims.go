@@ -30,10 +30,10 @@ func Ref(tenantID, runtimeID, entityType, externalID, label string) cerebroapi.E
 		URN: strings.Join([]string{
 			"urn",
 			"cerebro",
-			strings.TrimSpace(tenantID),
+			EncodeExternalID(strings.TrimSpace(tenantID)),
 			"runtime",
-			strings.TrimSpace(runtimeID),
-			strings.TrimSpace(entityType),
+			EncodeExternalID(strings.TrimSpace(runtimeID)),
+			EncodeExternalID(strings.TrimSpace(entityType)),
 			encodedExternalID,
 		}, ":"),
 		EntityType: strings.TrimSpace(entityType),
@@ -59,10 +59,6 @@ func EncodeExternalID(value string) string {
 			character == '(' ||
 			character == ')' {
 			builder.WriteByte(character)
-			continue
-		}
-		if character == ' ' {
-			builder.WriteByte('-')
 			continue
 		}
 		builder.WriteByte('%')

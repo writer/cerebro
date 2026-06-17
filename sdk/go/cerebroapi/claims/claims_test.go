@@ -14,9 +14,31 @@ func TestRefEncodesExternalIDLikeCerebroURNPathSegment(t *testing.T) {
 		"finding:id with spaces!*'()~:/?#[]@é",
 		"Encoded finding",
 	)
-	want := "urn:cerebro:tenant-a:runtime:runtime-main:finding:finding%3Aid-with-spaces!*'()~%3A%2F%3F%23%5B%5D%40%C3%A9"
+	want := "urn:cerebro:tenant-a:runtime:runtime-main:finding:finding%3Aid%20with%20spaces!*'()~%3A%2F%3F%23%5B%5D%40%C3%A9"
 	if ref.URN != want {
 		t.Fatalf("URN = %q, want %q", ref.URN, want)
+	}
+}
+
+func TestRefEncodesAllVariableURNSegments(t *testing.T) {
+	ref := Ref("tenant:a", "runtime:main", "finding:type", "external id", "Finding")
+	want := "urn:cerebro:tenant%3Aa:runtime:runtime%3Amain:finding%3Atype:external%20id"
+	if ref.URN != want {
+		t.Fatalf("URN = %q, want %q", ref.URN, want)
+	}
+	if ref.EntityType != "finding:type" {
+		t.Fatalf("EntityType = %q", ref.EntityType)
+	}
+}
+
+func TestEncodeExternalIDAvoidsSpaceHyphenCollision(t *testing.T) {
+	withSpace := EncodeExternalID("external id")
+	withHyphen := EncodeExternalID("external-id")
+	if withSpace == withHyphen {
+		t.Fatalf("space and hyphen encodings collided: %q", withSpace)
+	}
+	if withSpace != "external%20id" || withHyphen != "external-id" {
+		t.Fatalf("encodings = %q, %q", withSpace, withHyphen)
 	}
 }
 

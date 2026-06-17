@@ -13,7 +13,10 @@ import (
 	"strings"
 )
 
-const defaultUserAgent = "cerebro-go-sdk"
+const (
+	defaultUserAgent     = "cerebro-go-sdk"
+	maxResponseBodyBytes = 4 << 20
+)
 
 type Client struct {
 	baseURL    *url.URL
@@ -67,11 +70,9 @@ func New(config Config, options ...Option) (*Client, error) {
 	for _, option := range options {
 		option(client)
 	}
-	if client.httpClient.CheckRedirect == nil {
-		transportClient := *client.httpClient
-		transportClient.CheckRedirect = blockRedirects
-		client.httpClient = &transportClient
-	}
+	transportClient := *client.httpClient
+	transportClient.CheckRedirect = blockRedirects
+	client.httpClient = &transportClient
 	return client, nil
 }
 
@@ -212,11 +213,14 @@ func (c *Client) doJSON(ctx context.Context, method string, endpoint string, bod
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return newHTTPError(resp)
 	}
+	bodyBytes, err := readSuccessfulBody(resp.Body)
+	if err != nil {
+		return err
+	}
 	if target == nil {
-		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
-	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(target); err != nil {
 		return fmt.Errorf("decode cerebro response: %w", err)
 	}
 	return nil
@@ -342,4 +346,16 @@ func newHTTPError(resp *http.Response) error {
 		Status:     strings.TrimSpace(resp.Status),
 		Body:       strings.TrimSpace(string(body)),
 	}
+}
+
+func readSuccessfulBody(body io.Reader) ([]byte, error) {
+	limited := io.LimitReader(body, maxResponseBodyBytes+1)
+	bodyBytes, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(bodyBytes)) > maxResponseBodyBytes {
+		return nil, fmt.Errorf("cerebro response body exceeds %d bytes", maxResponseBodyBytes)
+	}
+	return bodyBytes, nil
 }

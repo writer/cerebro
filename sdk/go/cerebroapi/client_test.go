@@ -134,6 +134,41 @@ func TestPutSourceRuntimeSendsTenantScopedBearerRequest(t *testing.T) {
 	}
 }
 
+func TestWithHTTPClientStillBlocksRedirects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/source-runtimes/runtime-1" {
+			http.Redirect(w, r, "/redirected", http.StatusFound)
+			return
+		}
+		t.Fatalf("unexpected redirected request path: %s", r.URL.Path)
+	}))
+	defer server.Close()
+
+	httpClient := server.Client()
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return nil
+	}
+	client, err := New(Config{
+		BaseURL:  server.URL,
+		APIKey:   "secret-key",
+		TenantID: "tenant-a",
+	}, WithHTTPClient(httpClient))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = client.GetSourceRuntime(context.Background(), "runtime-1")
+	if err == nil {
+		t.Fatal("GetSourceRuntime() error = nil")
+	}
+	var httpErr HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("error type = %T, want HTTPError", err)
+	}
+	if httpErr.StatusCode != http.StatusFound {
+		t.Fatalf("StatusCode = %d, want %d", httpErr.StatusCode, http.StatusFound)
+	}
+}
+
 func TestWriteClaimsSendsReplaceExistingAndParsesCounts(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -193,6 +228,29 @@ func TestWriteClaimsSendsReplaceExistingAndParsesCounts(t *testing.T) {
 	}
 	if response.ClaimsWritten != 1 || response.ClaimsRetracted != 2 {
 		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestSuccessfulResponseBodyIsBounded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", maxResponseBodyBytes+1)))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:  server.URL,
+		APIKey:   "secret-key",
+		TenantID: "tenant-a",
+	}, WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = client.GetSourceRuntime(context.Background(), "runtime-1")
+	if err == nil {
+		t.Fatal("GetSourceRuntime() error = nil")
+	}
+	if !strings.Contains(err.Error(), "response body exceeds") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
