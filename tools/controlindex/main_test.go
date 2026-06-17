@@ -13,7 +13,7 @@ func TestGenerateCoverageIndexLoadsExtensionCatalogsAndProfiles(t *testing.T) {
 	root := t.TempDir()
 	writeControlExtensionFixture(t, root)
 
-	content, err := generateCoverageIndex(root, []string{compliance.DefaultControlCatalogPath}, compliance.DefaultControlProfilesPath, []string{"extensions/customer/extension.yaml"})
+	content, err := generateCoverageIndex(root, []string{compliance.DefaultControlCatalogPath}, compliance.DefaultControlProfilesPath, []string{"extensions/customer/extension.yaml"}, nil)
 	if err != nil {
 		t.Fatalf("generateCoverageIndex() error = %v", err)
 	}
@@ -38,11 +38,70 @@ func TestGenerateCoverageIndexLoadsExtensionsWithRelativeRoot(t *testing.T) {
 		}
 	}()
 
-	content, err := generateCoverageIndex("repo", []string{compliance.DefaultControlCatalogPath}, compliance.DefaultControlProfilesPath, []string{"extensions/customer/extension.yaml"})
+	content, err := generateCoverageIndex("repo", []string{compliance.DefaultControlCatalogPath}, compliance.DefaultControlProfilesPath, []string{"extensions/customer/extension.yaml"}, nil)
 	if err != nil {
 		t.Fatalf("generateCoverageIndex() error = %v", err)
 	}
 	assertGeneratedCoverageIndexContainsExtension(t, content)
+}
+
+func TestGenerateCoverageIndexFiltersProfiles(t *testing.T) {
+	root := t.TempDir()
+	writeControlExtensionFixture(t, root)
+
+	content, err := generateCoverageIndex(root, []string{compliance.DefaultControlCatalogPath}, compliance.DefaultControlProfilesPath, []string{"extensions/customer/extension.yaml"}, []string{"customer-audit"})
+	if err != nil {
+		t.Fatalf("generateCoverageIndex() error = %v", err)
+	}
+	output := string(content)
+	for _, want := range []string{
+		"id: customer-audit",
+		"framework_name: Customer Framework",
+		"framework_name: SOC 2",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated coverage index missing %q:\n%s", want, output)
+		}
+	}
+	for _, notWant := range []string{
+		"id: base-soc2",
+		"id: customer-iam",
+	} {
+		if strings.Contains(output, notWant) {
+			t.Fatalf("generated coverage index contains %q, want only selected profile:\n%s", notWant, output)
+		}
+	}
+}
+
+func TestGenerateCoverageIndexRejectsUnknownProfileFilter(t *testing.T) {
+	root := t.TempDir()
+	writeControlExtensionFixture(t, root)
+
+	_, err := generateCoverageIndex(root, []string{compliance.DefaultControlCatalogPath}, compliance.DefaultControlProfilesPath, []string{"extensions/customer/extension.yaml"}, []string{"missing-profile"})
+	if err == nil || !strings.Contains(err.Error(), `profile "missing-profile" is not declared`) {
+		t.Fatalf("generateCoverageIndex() error = %v, want missing profile error", err)
+	}
+}
+
+func TestValidateControlIndexFlagsRejectsProfileDefaultOutput(t *testing.T) {
+	err := validateControlIndexFlags(false, true, compliance.DefaultControlCoverageIndexPath, []string{"customer-audit"})
+	if err == nil || !strings.Contains(err.Error(), "--profile requires --output") {
+		t.Fatalf("validateControlIndexFlags() error = %v, want profile output error", err)
+	}
+	err = validateControlIndexFlags(true, false, "./"+compliance.DefaultControlCoverageIndexPath, []string{"customer-audit"})
+	if err == nil || !strings.Contains(err.Error(), "--profile requires --output") {
+		t.Fatalf("validateControlIndexFlags() error = %v, want profile output error", err)
+	}
+	if err := validateControlIndexFlags(false, true, "customer-controls/coverage.yaml", []string{"customer-audit"}); err != nil {
+		t.Fatalf("validateControlIndexFlags() error = %v, want nil for explicit profile output", err)
+	}
+}
+
+func TestValidateControlIndexFlagsRequiresMode(t *testing.T) {
+	err := validateControlIndexFlags(false, false, compliance.DefaultControlCoverageIndexPath, nil)
+	if err == nil || !strings.Contains(err.Error(), "one of --write or --check is required") {
+		t.Fatalf("validateControlIndexFlags() error = %v, want mode error", err)
+	}
 }
 
 func writeControlExtensionFixture(t *testing.T, root string) {
@@ -105,6 +164,9 @@ profiles:
     frameworks:
       - id: customer
         controls: [IAM-1]
+  - id: customer-audit
+    name: Customer Audit
+    include_profiles: [base-soc2, customer-iam]
 `)
 }
 

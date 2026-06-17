@@ -89,11 +89,12 @@ Manifest paths are resolved relative to the manifest file. Use an extension pack
 ```bash
 go run ./tools/controlindex \
   --extension customer-controls/extension.yaml \
+  --profile customer-security-audit \
   --output customer-controls/coverage.yaml \
   --write
 ```
 
-The generator merges extension catalogs with the built-in catalog, merges extension profile sets with the built-in profiles, validates all `maps_to` references, and emits a coverage index for every selected profile.
+The generator merges extension catalogs with the built-in catalog, merges extension profile sets with the built-in profiles, validates all `maps_to` references, and emits a coverage index for every selected profile. Repeat `--profile` to generate a packet for only the requested profile IDs. Included profiles remain available for `include_profiles` composition, but only explicitly requested profile IDs are emitted. Filtered profile output requires an explicit `--output` so the built-in canonical coverage index remains a complete all-profile index.
 
 ## Control Selections
 
