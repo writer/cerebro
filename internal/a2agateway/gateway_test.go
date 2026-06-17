@@ -19,7 +19,7 @@ func TestCreateEvidencePacketTaskFailsJobWhenCompletionUpdateFails(t *testing.T)
 	store.failCompleteUpdate = true
 	handler := Handler{Store: store, Resolve: gatewayTestResolver, IdempotencyKey: "task-key"}
 
-	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest("writer", "message-1"))
+	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest("message-1"))
 	if response.Error == nil {
 		t.Fatalf("Respond() error = nil, want transient store error")
 	}
@@ -31,7 +31,7 @@ func TestCreateEvidencePacketTaskFailsJobWhenCompletionUpdateFails(t *testing.T)
 		t.Fatal("job error is empty after compensation")
 	}
 
-	replay := handler.Respond(context.Background(), gatewayTestSendMessageRequest("writer", "message-1"))
+	replay := handler.Respond(context.Background(), gatewayTestSendMessageRequest("message-1"))
 	if replay.Error != nil {
 		t.Fatalf("replay error = %+v, want failed task result", replay.Error)
 	}
@@ -60,7 +60,7 @@ func TestCreateEvidencePacketTaskChecksVisibilityOnIdempotentReplay(t *testing.T
 	store.idempotent["writer\x00a2a:message-1"] = "job-other"
 	handler := Handler{Store: store, Resolve: gatewayTestResolver}
 
-	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest("writer", "message-1"))
+	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest("message-1"))
 	if response.Error == nil || response.Error.Code != -32001 {
 		t.Fatalf("cross-tenant replay response = %+v, want TaskNotFoundError", response)
 	}
@@ -71,7 +71,7 @@ func TestCreateEvidencePacketTaskRejectsLongMessageIDFallbackKey(t *testing.T) {
 	handler := Handler{Store: store, Resolve: gatewayTestResolver}
 	longMessageID := strings.Repeat("m", agentplatform.Idempotency().MaxLengthBytes+1)
 
-	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest("writer", longMessageID))
+	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest(longMessageID))
 	if response.Error == nil || response.Error.Code != -32602 {
 		t.Fatalf("long messageId fallback response = %+v, want InvalidParams", response)
 	}
@@ -80,7 +80,8 @@ func TestCreateEvidencePacketTaskRejectsLongMessageIDFallbackKey(t *testing.T) {
 	}
 }
 
-func gatewayTestSendMessageRequest(tenantID string, messageID string) agentplatform.A2AJSONRPCRequest {
+func gatewayTestSendMessageRequest(messageID string) agentplatform.A2AJSONRPCRequest {
+	const tenantID = "writer"
 	params := agentplatform.A2ASendMessageParams{
 		Tenant: tenantID,
 		Message: agentplatform.A2AMessage{
