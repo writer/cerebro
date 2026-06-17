@@ -37,6 +37,30 @@ func TestHandleAgentPlatformContract(t *testing.T) {
 	if len(contract.ConnectorInfrastructure.OAuthSurfaces) == 0 {
 		t.Fatal("contract response missing connector OAuth surfaces")
 	}
+	if len(contract.SecurityControlPlane.IntegrationStrategies) != 8 {
+		t.Fatalf("contract response integration strategies = %d, want 8", len(contract.SecurityControlPlane.IntegrationStrategies))
+	}
+}
+
+func TestHandleAgentPlatformSecurityControlPlane(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/agent-platform/security-control-plane", nil)
+
+	(&App{}).handleAgentPlatformSecurityControlPlane(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var controlPlane agentplatform.SecurityControlPlane
+	if err := json.Unmarshal(recorder.Body.Bytes(), &controlPlane); err != nil {
+		t.Fatalf("decode control plane: %v", err)
+	}
+	if controlPlane.Version != agentplatform.ContractVersion {
+		t.Fatalf("version = %q, want %q", controlPlane.Version, agentplatform.ContractVersion)
+	}
+	if len(controlPlane.AgentProfiles) == 0 || len(controlPlane.VerifierLayer) == 0 || len(controlPlane.ActionLadder) == 0 {
+		t.Fatalf("control plane missing core registries: %+v", controlPlane)
+	}
 }
 
 func TestHandleAgentPlatformCapabilities(t *testing.T) {
@@ -256,6 +280,139 @@ func TestHandleAgentPlatformPreflightIncludesCoverageContext(t *testing.T) {
 	}
 	if coverageCheck == nil || coverageCheck.Status != "warning" {
 		t.Fatalf("coverage policy check = %+v, checks=%+v", coverageCheck, preflight.Policy.Checks)
+	}
+}
+
+func TestAgentPlatformEvidencePacketForcesAuthenticatedContext(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/evidence-packets", bytes.NewReader([]byte(`{
+		"tenant_id": "writer",
+		"actor_id": "body-actor",
+		"question": "Triage this alert",
+		"scope_urn": "urn:cerebro:writer:finding:alert-1",
+		"capability_ids": ["graph-reasoning"],
+		"requested_scopes": ["not.real"],
+		"action": {"stage": "recommend"},
+		"memory_hints": [{"type": "prior_investigation", "urn": "urn:cerebro:writer:investigation:prev"}]
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST evidence packet: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var packet agentplatform.AgentEvidencePacket
+	if err := json.NewDecoder(resp.Body).Decode(&packet); err != nil {
+		t.Fatalf("decode packet: %v", err)
+	}
+	if packet.TenantID != "writer" || packet.ActorID != "tester" {
+		t.Fatalf("packet context = %+v, want authenticated tenant/actor", packet)
+	}
+	if !packet.Preflight.Enabled {
+		t.Fatalf("packet preflight enabled = false, blockers = %+v", packet.Preflight.Blockers)
+	}
+	if len(packet.RecommendedAgents) == 0 || len(packet.VerifierResults) == 0 {
+		t.Fatalf("packet missing agents or verifiers: %+v", packet)
+	}
+	if len(packet.SecurityMemory.ReadableTypes) == 0 || len(packet.ConnectorToolGates) == 0 {
+		t.Fatalf("packet missing memory or connector gates: %+v", packet)
+	}
+}
+
+func TestAgentPlatformEvidencePacketRejectsTenantOverride(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/evidence-packets", bytes.NewReader([]byte(`{
+		"tenant_id": "other",
+		"question": "Triage this alert",
+		"scope_urn": "urn:cerebro:other:finding:alert-1",
+		"capability_ids": ["graph-reasoning"]
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST evidence packet override: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestAgentPlatformEvidencePacketRejectsCrossTenantPacketURNs(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "evidence urn",
+			body: `{
+				"tenant_id": "writer",
+				"question": "Triage this alert",
+				"scope_urn": "urn:cerebro:writer:finding:alert-1",
+				"evidence_urns": ["urn:cerebro:other:finding:alert-2"],
+				"capability_ids": ["graph-reasoning"]
+			}`,
+		},
+		{
+			name: "action target urn",
+			body: `{
+				"tenant_id": "writer",
+				"question": "Triage this alert",
+				"scope_urn": "urn:cerebro:writer:finding:alert-1",
+				"capability_ids": ["graph-reasoning"],
+				"action": {"stage": "recommend", "target_urns": ["urn:cerebro:other:finding:alert-2"]}
+			}`,
+		},
+		{
+			name: "memory hint urn",
+			body: `{
+				"tenant_id": "writer",
+				"question": "Triage this alert",
+				"scope_urn": "urn:cerebro:writer:finding:alert-1",
+				"capability_ids": ["graph-reasoning"],
+				"memory_hints": [{"type": "prior_investigation", "urn": "urn:cerebro:other:investigation:prev"}]
+			}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/evidence-packets", bytes.NewReader([]byte(tt.body)))
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			req.Header.Set("Authorization", "Bearer test-key")
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := server.Client().Do(req)
+			if err != nil {
+				t.Fatalf("POST evidence packet: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403", resp.StatusCode)
+			}
+		})
 	}
 }
 

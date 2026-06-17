@@ -110,6 +110,22 @@ func TestConnectorInfrastructureIsFirstClass(t *testing.T) {
 	}
 }
 
+func TestSnapshotIncludesSecurityControlPlane(t *testing.T) {
+	snapshot := Snapshot()
+	if snapshot.SecurityControlPlane.Version != ContractVersion {
+		t.Fatalf("security control plane version = %q, want %q", snapshot.SecurityControlPlane.Version, ContractVersion)
+	}
+	if len(snapshot.SecurityControlPlane.AgentProfiles) == 0 {
+		t.Fatal("snapshot missing security agent profiles")
+	}
+	if len(snapshot.SecurityControlPlane.VerifierLayer) == 0 {
+		t.Fatal("snapshot missing security verifier layer")
+	}
+	if len(snapshot.SecurityControlPlane.IntegrationStrategies) != 8 {
+		t.Fatalf("integration strategies = %d, want 8", len(snapshot.SecurityControlPlane.IntegrationStrategies))
+	}
+}
+
 func TestListCapabilitiesFiltersAndTotals(t *testing.T) {
 	defaultOn := true
 	registry := ListCapabilities(CapabilityRegistryFilter{
@@ -229,6 +245,9 @@ func TestPreflightAgentRunBuildsGraphPlanningContext(t *testing.T) {
 	}
 	if !preflight.WriteBack.Required || !preflight.WriteBack.TraceIDRequired {
 		t.Fatalf("write-back contract = %+v, want required trace-linked write-back", preflight.WriteBack)
+	}
+	if len(preflight.SecurityControlPlane.ActionLadder) == 0 || len(preflight.SecurityControlPlane.IntegrationStrategies) != 8 {
+		t.Fatalf("preflight missing security control plane: %+v", preflight.SecurityControlPlane)
 	}
 }
 

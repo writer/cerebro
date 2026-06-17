@@ -1,0 +1,282 @@
+package agentplatform
+
+import "testing"
+
+func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
+	snapshot := SecurityControlPlaneSnapshot()
+	if snapshot.Version != ContractVersion {
+		t.Fatalf("version = %q, want %q", snapshot.Version, ContractVersion)
+	}
+	for _, required := range []string{
+		"preflight",
+		"evidence_refs",
+		"recommended_agents",
+		"verifier_results",
+		"action_ladder",
+		"eval_checklist",
+		"security_memory",
+		"connector_tool_gates",
+		"simulation_plan",
+		"confidence",
+	} {
+		if !containsString(snapshot.EvidencePacket.RequiredBlocks, required) {
+			t.Fatalf("evidence packet contract missing required block %q: %+v", required, snapshot.EvidencePacket.RequiredBlocks)
+		}
+	}
+
+	strategies := map[string]bool{}
+	for _, strategy := range snapshot.IntegrationStrategies {
+		strategies[strategy.ID] = true
+		if strategy.Purpose == "" || len(strategy.Benefits) == 0 || len(strategy.Controls) == 0 {
+			t.Fatalf("strategy must explain purpose, benefits, and controls: %+v", strategy)
+		}
+	}
+	for _, required := range []string{
+		"agent-evidence-packets",
+		"verifier-layer",
+		"specialized-agents",
+		"action-ladder",
+		"cerebro-sec-eval",
+		"security-memory",
+		"connector-oauth-agent-infra",
+		"defensive-simulation-harness",
+	} {
+		if !strategies[required] {
+			t.Fatalf("integration strategy %q missing: %+v", required, snapshot.IntegrationStrategies)
+		}
+	}
+
+	profiles := map[string]SecurityAgentProfile{}
+	for _, profile := range snapshot.AgentProfiles {
+		profiles[profile.ID] = profile
+		if len(profile.CapabilityIDs) == 0 || len(profile.RequiredVerifiers) == 0 || profile.MaxActionStage == "" {
+			t.Fatalf("profile must expose capability, verifier, and action bounds: %+v", profile)
+		}
+	}
+	for _, required := range []string{"coverage-scout", "remediation-planner", "detection-engineer"} {
+		if _, ok := profiles[required]; !ok {
+			t.Fatalf("profile %q missing: %+v", required, snapshot.AgentProfiles)
+		}
+	}
+
+	expectedStages := []string{
+		ActionStageObserve,
+		ActionStageExplain,
+		ActionStageRecommend,
+		ActionStageDryRun,
+		ActionStageApprove,
+		ActionStageExecute,
+		ActionStageVerify,
+		ActionStageCloseLoop,
+	}
+	if len(snapshot.ActionLadder) != len(expectedStages) {
+		t.Fatalf("action ladder length = %d, want %d", len(snapshot.ActionLadder), len(expectedStages))
+	}
+	for i, expected := range expectedStages {
+		stage := snapshot.ActionLadder[i]
+		if stage.ID != expected || stage.Order != i+1 {
+			t.Fatalf("stage[%d] = %+v, want id %q order %d", i, stage, expected, i+1)
+		}
+		if stage.ID == ActionStageExecute && (!stage.Mutating || !stage.RequiresApproval) {
+			t.Fatalf("execute stage must require approval and be marked mutating: %+v", stage)
+		}
+	}
+
+	scenarios := map[string]bool{}
+	for _, scenario := range snapshot.EvalSuite.Scenarios {
+		scenarios[scenario.ID] = true
+		if scenario.Capability == "" || len(scenario.Rubrics) == 0 {
+			t.Fatalf("eval scenario must bind capability and rubrics: %+v", scenario)
+		}
+	}
+	for _, required := range []string{"tenant-isolation", "simulation-bounds"} {
+		if !scenarios[required] {
+			t.Fatalf("eval scenario %q missing: %+v", required, snapshot.EvalSuite.Scenarios)
+		}
+	}
+	for _, required := range []string{"tenant_id", "source_urn", "citation_status"} {
+		if !containsString(snapshot.SecurityMemory.RequiredFields, required) {
+			t.Fatalf("security memory missing required field %q: %+v", required, snapshot.SecurityMemory.RequiredFields)
+		}
+	}
+	if snapshot.SimulationHarness.Mode != "graph_or_fixture_only" {
+		t.Fatalf("simulation mode = %q, want graph_or_fixture_only", snapshot.SimulationHarness.Mode)
+	}
+}
+
+func TestBuildEvidencePacketWarnsOnCoverageAndBlocksUnapprovedExecution(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Fix externally reachable exposure",
+		ScopeURN:        "urn:cerebro:tenant-1:asset:prod-app",
+		CapabilityIDs:   []string{"graph-reasoning", "runtime-response-actions"},
+		RequestedScopes: []string{"cosmo.security.read", "runtime.response.write"},
+		AllowPreview:    true,
+		Action: EvidencePacketAction{
+			Stage:      ActionStageExecute,
+			TargetURNs: []string{"urn:cerebro:tenant-1:asset:prod-app"},
+		},
+		CoverageContext: &AgentCoverageContext{
+			Version:        ContractVersion,
+			TenantID:       "tenant-1",
+			BlindSpotCount: 1,
+			TopBlindSpots: []AgentCoverageBlindSpot{{
+				SourceID:    "okta",
+				DimensionID: "applications",
+				Title:       "Application inventory",
+			}},
+		},
+	})
+
+	if packet.Confidence.Level != "blocked" {
+		t.Fatalf("confidence = %+v, want blocked", packet.Confidence)
+	}
+	if !packetHasVerifierStatus(packet, "coverage-blind-spots", "warning") {
+		t.Fatalf("packet missing coverage warning: %+v", packet.VerifierResults)
+	}
+	if !packetHasVerifierStatus(packet, "action-ladder", "blocked") || !packetHasVerifierStatus(packet, "remediation-safety", "blocked") {
+		t.Fatalf("packet missing action blockers: %+v", packet.VerifierResults)
+	}
+	if packet.SimulationPlan.Allowed {
+		t.Fatalf("simulation plan allowed = true, want blocked: %+v", packet.SimulationPlan)
+	}
+	if !packetHasRecommendedAgent(packet, "coverage-scout") || !packetHasRecommendedAgent(packet, "remediation-planner") {
+		t.Fatalf("recommended agents = %+v, want coverage scout and remediation planner", packet.RecommendedAgents)
+	}
+	if len(packet.RequiredWriteBack) == 0 || !containsString(packet.RequiredWriteBack, "verifier_results") {
+		t.Fatalf("required write-back = %+v, want verifier results", packet.RequiredWriteBack)
+	}
+}
+
+func TestBuildEvidencePacketKeepsBlockedConfidenceWithoutCoverage(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Fix this issue",
+		ScopeURN:        "urn:cerebro:tenant-1:asset:prod-app",
+		CapabilityIDs:   []string{"graph-reasoning", "runtime-response-actions"},
+		RequestedScopes: []string{"cosmo.security.read", "runtime.response.write"},
+		AllowPreview:    true,
+		Action: EvidencePacketAction{
+			Stage:      ActionStageExecute,
+			TargetURNs: []string{"urn:cerebro:tenant-1:asset:prod-app"},
+		},
+	})
+
+	if !packetHasVerifierStatus(packet, "action-ladder", "blocked") || !packetHasVerifierStatus(packet, "remediation-safety", "blocked") {
+		t.Fatalf("packet missing action blockers: %+v", packet.VerifierResults)
+	}
+	if packet.Confidence.Level != "blocked" {
+		t.Fatalf("confidence = %+v, want blocked even when coverage is unavailable", packet.Confidence)
+	}
+	if !containsString(packet.Confidence.Reasons, "coverage_unavailable") {
+		t.Fatalf("confidence reasons = %+v, want coverage_unavailable", packet.Confidence.Reasons)
+	}
+}
+
+func TestBuildEvidencePacketBlocksCrossTenantContextURN(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Triage this alert",
+		ScopeURN:        "urn:cerebro:tenant-1:finding:alert-1",
+		EvidenceURNs:    []string{"urn:cerebro:other:finding:alert-2"},
+		CapabilityIDs:   []string{"graph-reasoning"},
+		RequestedScopes: []string{"cosmo.security.read"},
+		Action: EvidencePacketAction{
+			Stage:      ActionStageRecommend,
+			TargetURNs: []string{"urn:cerebro:tenant-1:finding:alert-1"},
+		},
+		MemoryHints: []SecurityMemoryHint{{
+			Type: "prior_investigation",
+			URN:  "urn:cerebro:tenant-1:investigation:prev",
+		}},
+	})
+
+	if !packetHasVerifierStatus(packet, "tenant-scope", "blocked") {
+		t.Fatalf("packet missing tenant-scope blocker: %+v", packet.VerifierResults)
+	}
+	if packet.Confidence.Level != "blocked" {
+		t.Fatalf("confidence = %+v, want blocked", packet.Confidence)
+	}
+}
+
+func TestBuildEvidencePacketAllowsGraphOnlySimulationForScopedRecommendation(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Triage this alert",
+		ScopeURN:        "urn:cerebro:tenant-1:finding:alert-1",
+		CapabilityIDs:   []string{"graph-reasoning"},
+		RequestedScopes: []string{"cosmo.security.read"},
+		Action: EvidencePacketAction{
+			Stage: ActionStageRecommend,
+		},
+		CoverageContext: &AgentCoverageContext{
+			Version:     ContractVersion,
+			TenantID:    "tenant-1",
+			SourceID:    "okta",
+			GeneratedAt: "2026-06-16T00:00:00Z",
+		},
+		MemoryHints: []SecurityMemoryHint{{
+			Type: "prior_investigation",
+			URN:  "urn:cerebro:tenant-1:investigation:prev",
+		}},
+	})
+
+	if packet.Confidence.Level != "high" {
+		t.Fatalf("confidence = %+v, want high", packet.Confidence)
+	}
+	if packetHasAnyVerifierStatus(packet, "blocked") {
+		t.Fatalf("packet has blocked verifiers: %+v", packet.VerifierResults)
+	}
+	if !packet.SimulationPlan.Allowed || packet.SimulationPlan.Mode != "graph_or_fixture_only" {
+		t.Fatalf("simulation plan = %+v, want allowed graph-only mode", packet.SimulationPlan)
+	}
+	if len(packet.EvalChecklist) == 0 {
+		t.Fatal("packet missing eval checklist")
+	}
+	if status := packetActionStageStatus(packet, ActionStageRecommend); status != "requested" {
+		t.Fatalf("recommend stage status = %q, want requested", status)
+	}
+	if len(packet.SecurityMemory.ReadableTypes) == 0 || len(packet.SecurityMemory.Hints) != 1 {
+		t.Fatalf("security memory plan = %+v, want readable types and one hint", packet.SecurityMemory)
+	}
+}
+
+func packetHasRecommendedAgent(packet AgentEvidencePacket, id string) bool {
+	for _, agent := range packet.RecommendedAgents {
+		if agent.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func packetHasVerifierStatus(packet AgentEvidencePacket, id string, status string) bool {
+	for _, result := range packet.VerifierResults {
+		if result.ID == id && result.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+func packetHasAnyVerifierStatus(packet AgentEvidencePacket, status string) bool {
+	for _, result := range packet.VerifierResults {
+		if result.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+func packetActionStageStatus(packet AgentEvidencePacket, stageID string) string {
+	for _, status := range packet.ActionLadder {
+		if status.Stage.ID == stageID {
+			return status.Status
+		}
+	}
+	return ""
+}

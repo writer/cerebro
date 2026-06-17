@@ -159,6 +159,42 @@ paths:
           description: Invalid preflight request.
         '403':
           description: Tenant or graph scope is not allowed.
+  /api/v1/agent-platform/security-control-plane:
+    get:
+      operationId: getAgentPlatformSecurityControlPlane
+      summary: Get security agent control plane
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Security-agent evidence, verifier, role, action, eval, memory, connector, and simulation contracts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+  /api/v1/agent-platform/evidence-packets:
+    post:
+      operationId: buildAgentPlatformEvidencePacket
+      summary: Build a security agent evidence packet
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPlatformEvidencePacketRequest'
+      responses:
+        '200':
+          description: Tenant-scoped evidence packet with preflight, recommended agent profiles, verifier results, action stages, memory, connector gates, and simulation plan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformEvidencePacket'
+        '400':
+          description: Invalid evidence packet request.
+        '403':
+          description: Tenant or graph scope is not allowed.
   /api/v1/agent-platform/graph/reason:
     post:
       operationId: reasonOverAgentPlatformGraph
@@ -3120,6 +3156,7 @@ components:
         - runtime_events
         - provenance_requirements
         - connector_infrastructure
+        - security_control_plane
       properties:
         version:
           type: string
@@ -3145,6 +3182,8 @@ components:
             $ref: '#/components/schemas/AgentPlatformProvenanceRequirement'
         connector_infrastructure:
           $ref: '#/components/schemas/AgentPlatformConnectorInfrastructure'
+        security_control_plane:
+          $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
     AgentPlatformCapabilityRegistry:
       type: object
       required:
@@ -3261,6 +3300,7 @@ components:
         - capability_decisions
         - graph_context
         - connector_context
+        - security_control_plane
         - policy
         - write_back
         - runtime_events
@@ -3300,6 +3340,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentPlatformConnectorGraphNode'
+        coverage_context:
+          $ref: '#/components/schemas/AgentPlatformCoverageContext'
+        security_control_plane:
+          $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
         policy:
           $ref: '#/components/schemas/AgentPlatformPolicyDecision'
         write_back:
@@ -3309,6 +3353,195 @@ components:
           items:
             type: string
         provenance:
+          type: array
+          items:
+            type: string
+    AgentPlatformSecurityControlPlane:
+      type: object
+      required:
+        - version
+        - evidence_packet
+        - agent_profiles
+        - verifier_layer
+        - action_ladder
+        - eval_suite
+        - security_memory
+        - connector_tool_gates
+        - simulation_harness
+        - integration_strategies
+      properties:
+        version:
+          type: string
+        evidence_packet:
+          type: object
+          additionalProperties: true
+        agent_profiles:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        verifier_layer:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        action_ladder:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        eval_suite:
+          type: object
+          additionalProperties: true
+        security_memory:
+          type: object
+          additionalProperties: true
+        connector_tool_gates:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        simulation_harness:
+          type: object
+          additionalProperties: true
+        integration_strategies:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AgentPlatformEvidencePacketRequest:
+      type: object
+      properties:
+        question:
+          type: string
+        scope_urn:
+          type: string
+          description: Optional Cerebro URN inside the authenticated tenant to focus packet context.
+        model:
+          type: string
+        capability_ids:
+          type: array
+          items:
+            type: string
+        agent_profile_ids:
+          type: array
+          items:
+            type: string
+        connector_readiness:
+          type: object
+          additionalProperties:
+            type: string
+        eval_status_overrides:
+          type: object
+          additionalProperties:
+            type: string
+        allow_preview:
+          type: boolean
+        action:
+          $ref: '#/components/schemas/AgentPlatformEvidencePacketAction'
+        evidence_urns:
+          type: array
+          items:
+            type: string
+        memory_hints:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformSecurityMemoryHint'
+    AgentPlatformEvidencePacketAction:
+      type: object
+      properties:
+        stage:
+          type: string
+          enum: [observe, explain, recommend, dry_run, approve, execute, verify, close_loop]
+        target_urns:
+          type: array
+          items:
+            type: string
+        human_approved:
+          type: boolean
+    AgentPlatformSecurityMemoryHint:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+        urn:
+          type: string
+        note:
+          type: string
+    AgentPlatformEvidencePacket:
+      type: object
+      required:
+        - version
+        - generated_at
+        - preflight
+        - evidence_refs
+        - recommended_agents
+        - verifier_results
+        - action_ladder
+        - eval_checklist
+        - security_memory
+        - connector_tool_gates
+        - simulation_plan
+        - confidence
+        - required_write_back
+      properties:
+        version:
+          type: string
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        question:
+          type: string
+        scope_urn:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        preflight:
+          $ref: '#/components/schemas/AgentPlatformPreflight'
+        evidence_refs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        recommended_agents:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        verifier_results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        action_ladder:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        eval_checklist:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        security_memory:
+          type: object
+          additionalProperties: true
+        connector_tool_gates:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        simulation_plan:
+          type: object
+          additionalProperties: true
+        confidence:
+          type: object
+          additionalProperties: true
+        required_write_back:
           type: array
           items:
             type: string
@@ -3446,6 +3679,39 @@ components:
           type: array
           items:
             type: string
+    AgentPlatformCoverageContext:
+      type: object
+      properties:
+        version:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        total_dimensions:
+          type: integer
+        high_value_dimensions:
+          type: integer
+        blind_spot_count:
+          type: integer
+        unconfigured_count:
+          type: integer
+        stale_count:
+          type: integer
+        failed_count:
+          type: integer
+        unsupported_count:
+          type: integer
+        partial_count:
+          type: integer
+        top_blind_spots:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
     AgentPlatformContextBudget:
       type: object
       required:

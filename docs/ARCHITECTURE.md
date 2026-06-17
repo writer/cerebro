@@ -78,6 +78,11 @@ that preflight envelope to graph reasoning responses. Bootstrap also maps
 preflight tenant-required blockers into the graph reasoning boundary's
 invalid-request error shape.
 
+The security-agent control plane also lives in `internal/agentplatform`. The
+bootstrap budget includes only the HTTP route registration, auth policy, and
+request/response mapping for exposing the registry, authorizing packet URNs
+against the authenticated tenant, and building tenant-forced evidence packets.
+
 ## Postgres migrations
 
 State-store schema preparation runs at service startup and before store operations. Most migrations use additive `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, or `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` patterns.

@@ -27,6 +27,10 @@ func (a *App) handleAgentPlatformCapabilities(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, agentplatform.ListCapabilities(filter))
 }
 
+func (a *App) handleAgentPlatformSecurityControlPlane(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, agentplatform.SecurityControlPlaneSnapshot())
+}
+
 func (a *App) handleAgentPlatformCapabilityDecision(w http.ResponseWriter, r *http.Request) {
 	var request agentplatform.CapabilityDecisionRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProtoJSONBodyBytes)).Decode(&request); err != nil {
@@ -79,6 +83,49 @@ func (a *App) handleAgentPlatformPreflight(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	writeJSON(w, http.StatusOK, agentplatform.PreflightAgentRun(request))
+}
+
+func (a *App) handleAgentPlatformEvidencePacket(w http.ResponseWriter, r *http.Request) {
+	var request agentplatform.EvidencePacketRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProtoJSONBodyBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, request.ActorID, request.RequestedScopes)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	request.TenantID = resolved.TenantID
+	request.ActorID = resolved.ActorID
+	request.RequestedScopes = resolved.RequestedScopes
+	request.ScopeUnrestricted = resolved.ScopeUnrestricted
+	request.CoverageContext = a.agentCoverageContext(r.Context(), request.TenantID)
+	if err := authorizeAgentPlatformPacketURNs(r.Context(), request); err != nil {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	writeJSON(w, http.StatusOK, agentplatform.BuildEvidencePacket(request))
+}
+
+func authorizeAgentPlatformPacketURNs(ctx context.Context, request agentplatform.EvidencePacketRequest) error {
+	urns := append([]string{request.ScopeURN}, request.EvidenceURNs...)
+	urns = append(urns, request.Action.TargetURNs...)
+	for _, hint := range request.MemoryHints {
+		urns = append(urns, hint.URN)
+	}
+	for _, urn := range urns {
+		urn = strings.TrimSpace(urn)
+		if urn == "" {
+			continue
+		}
+		if err := authorizeCerebroURNTenant(ctx, urn); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *App) agentCoverageContext(ctx context.Context, tenantID string) *agentplatform.AgentCoverageContext {
