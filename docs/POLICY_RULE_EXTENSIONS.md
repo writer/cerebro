@@ -23,7 +23,7 @@ The generator uses extensions to populate:
 - rule runbooks with evidence review, owner/scope confirmation, remediation, and re-test language
 - false-positive guidance for exceptions, stale evidence, compensating controls, and scope issues
 - tags such as `assessment:examine` and `evidence:cloud_configuration`
-- policy finding attributes including `policy_evidence_type`, `policy_assessment_methods`, `policy_auditor_guidance`, `policy_risk_statement`, `policy_remediation`, `policy_exception_guidance`, and `policy_control_families`
+- policy finding attributes including `policy_evidence_type`, `policy_evidence_summary`, `policy_assessment_methods`, `policy_audit_impact`, `policy_auditor_guidance`, `policy_next_step`, `policy_risk_statement`, `policy_remediation`, `policy_exception_guidance`, and `policy_control_families`
 
 ## Authoring Guidance
 

@@ -41,11 +41,14 @@ func TestPolicyDescriptionNormalizesEnsuresCopy(t *testing.T) {
 		Description: "Ensures CloudTrail is enabled in all regions",
 		Resource:    "aws::cloudtrail::trail",
 	}, policyRuleExtension{RiskStatement: "Audit logging evidence may be incomplete."})
+	if !strings.Contains(description, "Flags failed manual-attestation evidence for aws cloudtrail trail: CloudTrail Enabled.") {
+		t.Fatalf("description = %q, want failed evidence framing", description)
+	}
 	if !strings.Contains(description, "Checks whether CloudTrail is enabled in all regions.") {
 		t.Fatalf("description = %q, want normalized copy", description)
 	}
-	if !strings.Contains(description, "Risk: Audit logging evidence may be incomplete.") {
-		t.Fatalf("description = %q, want risk statement", description)
+	if !strings.Contains(description, "Audit impact: Audit logging evidence may be incomplete.") {
+		t.Fatalf("description = %q, want audit impact statement", description)
 	}
 }
 

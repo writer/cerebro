@@ -142,9 +142,12 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 		"policy_category":         r.config.Category,
 		"policy_evidence":         r.config.EvidenceMode,
 		"policy_evidence_type":    r.config.EvidenceType,
+		"policy_evidence_summary": policyEvidenceSummary(r.config),
 		"policy_resource":         r.config.Resource,
 		"policy_resource_type":    r.config.ResourceType,
+		"policy_audit_impact":     r.config.RiskStatement,
 		"policy_auditor_guidance": r.config.AuditorGuidance,
+		"policy_next_step":        policyNextStep(r.config),
 		"policy_risk_statement":   r.config.RiskStatement,
 		"policy_remediation":      r.config.RemediationIntent,
 		"policy_status":           firstNonEmpty(attributes["policy_status"], attributes["compliance_status"], attributes["result"], attributes["status"], attributes["outcome"]),
@@ -198,17 +201,100 @@ func policyFindingTitle(name string) string {
 	if trimmed == "" {
 		return "Policy evidence failed"
 	}
-	lower := strings.ToLower(trimmed)
-	if strings.Contains(lower, "failed") || strings.Contains(lower, "noncompliant") || strings.Contains(lower, "not compliant") {
-		return trimmed
-	}
-	return trimmed + " policy failed"
+	return "Policy failed: " + trimmed
 }
 
 func policyFindingSummary(definition RuleDefinition, config policyRuleConfig, attributes map[string]string) string {
 	subject := firstNonEmpty(attributes["resource_label"], attributes["resource_name"], attributes["resource_id"], config.ResourceType, config.Resource, "the assessed subject")
 	risk := firstNonEmpty(config.RiskStatement, definition.Description)
-	return "Policy evidence shows " + subject + " does not satisfy " + definition.Name + ". " + risk
+	parts := []string{
+		"Policy evidence failed for " + subject + ": " + definition.Name + ".",
+	}
+	if risk != "" {
+		parts = append(parts, "Audit impact: "+risk)
+	}
+	if families := compactPolicyControlFamilies(config.ControlFamilies, 3); families != "" {
+		parts = append(parts, "Mapped control families: "+families)
+	}
+	if guidance := strings.TrimSpace(config.AuditorGuidance); guidance != "" {
+		parts = append(parts, "Auditor review: "+guidance)
+	}
+	return joinPolicySentences(parts)
+}
+
+func policyEvidenceSummary(config policyRuleConfig) string {
+	mode := strings.TrimSpace(config.EvidenceMode)
+	evidenceType := strings.TrimSpace(config.EvidenceType)
+	if evidenceType == "" {
+		evidenceType = "control evidence"
+	}
+	evidenceType = humanPolicyEvidenceType(evidenceType)
+	switch mode {
+	case "query":
+		return "Failed query-result evidence for " + evidenceType + ". Review each returned row as an exception candidate."
+	case "manual":
+		return "Failed manual-attestation evidence for " + evidenceType + ". Confirm owner, approval, and supporting evidence."
+	default:
+		return "Failed resource-state evidence for " + evidenceType + ". Review the normalized subject state and evaluated policy conditions."
+	}
+}
+
+func humanPolicyEvidenceType(value string) string {
+	value = strings.ReplaceAll(strings.TrimSpace(value), "_", " ")
+	value = strings.ReplaceAll(value, "-", " ")
+	if value == "" {
+		return "control evidence"
+	}
+	return value
+}
+
+func policyNextStep(config policyRuleConfig) string {
+	if remediation := strings.TrimSpace(config.RemediationIntent); remediation != "" {
+		return remediation
+	}
+	if guidance := strings.TrimSpace(config.AuditorGuidance); guidance != "" {
+		return guidance
+	}
+	return "Review the failed evidence, document remediation or exception status, and rerun evidence collection."
+}
+
+func compactPolicyControlFamilies(values []string, limit int) string {
+	trimmed := make([]string, 0, len(values))
+	for _, value := range values {
+		if item := strings.TrimSpace(value); item != "" {
+			trimmed = append(trimmed, item)
+		}
+	}
+	if len(trimmed) == 0 {
+		return ""
+	}
+	if limit <= 0 || len(trimmed) <= limit {
+		return strings.Join(trimmed, "; ") + "."
+	}
+	return strings.Join(trimmed[:limit], "; ") + "; +" + strconv.Itoa(len(trimmed)-limit) + " more."
+}
+
+func joinPolicySentences(parts []string) string {
+	sentences := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if sentence := policySentence(part); sentence != "" {
+			sentences = append(sentences, sentence)
+		}
+	}
+	return strings.Join(sentences, " ")
+}
+
+func policySentence(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	switch trimmed[len(trimmed)-1] {
+	case '.', '!', '?':
+		return trimmed
+	default:
+		return trimmed + "."
+	}
 }
 
 func policyRuleEventMatchesDefinition(ruleID string, attributes map[string]string) bool {

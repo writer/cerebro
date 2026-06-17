@@ -443,16 +443,16 @@ func policyDescription(policy policyFile, extension policyRuleExtension) string 
 	name := strings.TrimSpace(policy.Name)
 	subject := policySubject(policy)
 	if description == "" {
-		description = "Checks whether " + subject + " satisfies " + name + "."
+		description = "Checks whether " + subject + " is in the expected policy state."
 	}
-	if strings.HasPrefix(strings.ToLower(description), "detects ") {
-		return ensureSentence(description)
+	parts := []string{
+		"Flags failed " + policyEvidenceLabel(policyEvidenceMode(policy)) + " evidence for " + subject + ": " + name + ".",
+		description,
 	}
-	prefix := "Detects failed policy evidence showing that " + subject + " does not satisfy " + name + "."
 	if risk := policyRiskStatement(policy, extension); risk != "" {
-		return prefix + " " + ensureSentence(description) + " Risk: " + ensureSentence(risk)
+		parts = append(parts, "Audit impact: "+risk)
 	}
-	return prefix + " " + ensureSentence(description)
+	return joinSentences(parts)
 }
 
 func cleanPolicyDescription(value string) string {
@@ -523,6 +523,17 @@ func policySubject(policy policyFile) string {
 		return "the assessed subject"
 	}
 	return subject
+}
+
+func policyEvidenceLabel(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case "query":
+		return "query-result"
+	case "manual":
+		return "manual-attestation"
+	default:
+		return "resource-state"
+	}
 }
 
 func joinSentences(parts []string) string {

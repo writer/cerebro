@@ -68,11 +68,17 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 	if finding.Severity != "HIGH" {
 		t.Fatalf("Severity = %q, want HIGH", finding.Severity)
 	}
-	if finding.Title != "Policy Test policy failed" {
+	if finding.Title != "Policy failed: Policy Test" {
 		t.Fatalf("Title = %q, want generated failure title", finding.Title)
 	}
 	if finding.Summary == "" || !strings.Contains(finding.Summary, "Mapped controls may lack operating evidence.") {
 		t.Fatalf("Summary = %q, want generated risk statement", finding.Summary)
+	}
+	if !strings.Contains(finding.Summary, "Mapped control families: SOC 2 CC6 Logical and Physical Access.") {
+		t.Fatalf("Summary = %q, want mapped control family", finding.Summary)
+	}
+	if !strings.Contains(finding.Summary, "Auditor review: Review returned rows.") {
+		t.Fatalf("Summary = %q, want auditor guidance", finding.Summary)
 	}
 	if got := len(finding.ControlRefs); got != 1 {
 		t.Fatalf("len(ControlRefs) = %d, want 1", got)
@@ -82,6 +88,15 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 	}
 	if got := finding.Attributes["policy_evidence_type"]; got != "query_result" {
 		t.Fatalf("policy_evidence_type = %q, want query_result", got)
+	}
+	if got := finding.Attributes["policy_evidence_summary"]; got != "Failed query-result evidence for query result. Review each returned row as an exception candidate." {
+		t.Fatalf("policy_evidence_summary = %q, want query result evidence summary", got)
+	}
+	if got := finding.Attributes["policy_audit_impact"]; got != "Mapped controls may lack operating evidence." {
+		t.Fatalf("policy_audit_impact = %q, want audit impact", got)
+	}
+	if got := finding.Attributes["policy_next_step"]; got != "Restore expected control state." {
+		t.Fatalf("policy_next_step = %q, want next step", got)
 	}
 	if got := finding.Attributes["policy_assessment_methods"]; got != "examine" {
 		t.Fatalf("policy_assessment_methods = %q, want examine", got)
