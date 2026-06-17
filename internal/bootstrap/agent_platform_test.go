@@ -1077,6 +1077,25 @@ func (s *a2ATestJobStore) ListJobs(_ context.Context, filter ports.JobFilter) ([
 	return jobs, nil
 }
 
+func (s *a2ATestJobStore) CountJobs(_ context.Context, filter ports.JobFilter) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var count uint64
+	for _, job := range s.jobs {
+		if filter.TenantID != "" && job.TenantID != filter.TenantID {
+			continue
+		}
+		if filter.Kind != "" && job.Kind != filter.Kind {
+			continue
+		}
+		if filter.Status != "" && job.Status != filter.Status {
+			continue
+		}
+		count++
+	}
+	return count, nil
+}
+
 func (s *a2ATestJobStore) UpdateJob(_ context.Context, id string, update ports.JobUpdate) (*ports.Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

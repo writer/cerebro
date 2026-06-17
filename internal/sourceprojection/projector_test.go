@@ -833,6 +833,7 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 			kind: "okta.identity_provider",
 			attributes: map[string]string{
 				"domain":        "writer.okta.com",
+				"acs_type":      "HTTP-POST",
 				"idp_id":        "idp-saml",
 				"issuer":        "https://idp.example.com",
 				"name":          "Partner SAML IdP",
@@ -844,6 +845,7 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 			wantEntityType: "okta.identity_provider",
 			wantLabel:      "Partner SAML IdP",
 			wantAttrs: map[string]string{
+				"acs_type":      "HTTP-POST",
 				"idp_id":        "idp-saml",
 				"issuer":        "https://idp.example.com",
 				"name":          "Partner SAML IdP",

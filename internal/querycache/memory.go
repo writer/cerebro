@@ -27,9 +27,11 @@ func (c *MemoryCache) Get(_ context.Context, key string) (Entry, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	now := time.Now().UTC()
+	c.deleteExpiredLocked(now)
 	fullKey := cacheKey(c.options.Namespace, key)
 	entry, ok := c.entries[fullKey]
-	if !ok || entry.State(time.Now().UTC()) == StateMiss {
+	if !ok || entry.State(now) == StateMiss {
 		delete(c.entries, fullKey)
 		return Entry{}, ErrMiss
 	}
@@ -56,7 +58,9 @@ func (c *MemoryCache) Set(_ context.Context, key string, payload []byte, ttl tim
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.deleteExpiredLocked(now)
 	c.entries[cacheKey(c.options.Namespace, key)] = entry
+	c.evictOverflowLocked()
 	return nil
 }
 
@@ -80,4 +84,33 @@ func (c *MemoryCache) Ping(context.Context) error {
 
 func (c *MemoryCache) Close(context.Context) error {
 	return nil
+}
+
+func (c *MemoryCache) deleteExpiredLocked(now time.Time) {
+	for key, entry := range c.entries {
+		if entry.State(now) == StateMiss {
+			delete(c.entries, key)
+		}
+	}
+}
+
+func (c *MemoryCache) evictOverflowLocked() {
+	for c.options.MaxEntries > 0 && len(c.entries) > c.options.MaxEntries {
+		var oldestKey string
+		var oldestAt time.Time
+		for key, entry := range c.entries {
+			candidate := entry.CreatedAt
+			if candidate.IsZero() {
+				candidate = entry.StaleUntil
+			}
+			if oldestKey == "" || candidate.Before(oldestAt) {
+				oldestKey = key
+				oldestAt = candidate
+			}
+		}
+		if oldestKey == "" {
+			return
+		}
+		delete(c.entries, oldestKey)
+	}
 }

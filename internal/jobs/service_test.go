@@ -176,6 +176,10 @@ func (s *memoryJobStore) ListJobs(context.Context, ports.JobFilter) ([]*ports.Jo
 	return nil, nil
 }
 
+func (s *memoryJobStore) CountJobs(context.Context, ports.JobFilter) (uint64, error) {
+	return 0, nil
+}
+
 func (s *memoryJobStore) UpdateJob(_ context.Context, id string, update ports.JobUpdate) (*ports.Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -80,6 +80,55 @@ func TestCreateEvidencePacketTaskRejectsLongMessageIDFallbackKey(t *testing.T) {
 	}
 }
 
+func TestListTasksReportsTotalSizeBeyondReturnedPage(t *testing.T) {
+	store := newGatewayTestJobStore()
+	now := time.Now().UTC()
+	for index := 1; index <= 3; index++ {
+		id := "job-" + strconv.Itoa(index)
+		store.jobs[id] = &ports.Job{
+			ID:        id,
+			Kind:      agentplatform.A2AWorkJobKind,
+			Status:    ports.JobStatusCompleted,
+			TenantID:  "writer",
+			Payload:   map[string]any{"context_id": "ctx-" + strconv.Itoa(index)},
+			CreatedAt: now.Add(time.Duration(index) * time.Second),
+			UpdatedAt: now.Add(time.Duration(index) * time.Second),
+		}
+	}
+	handler := Handler{Store: store, Resolve: gatewayTestResolver}
+	response := handler.Respond(context.Background(), agentplatform.A2AJSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      "list",
+		Method:  "ListTasks",
+		Params:  json.RawMessage(`{"tenant":"writer","limit":2}`),
+	})
+	if response.Error != nil {
+		t.Fatalf("ListTasks error = %+v", response.Error)
+	}
+	var result struct {
+		Tasks        []agentplatform.A2ATask `json:"tasks"`
+		TotalSize    int                     `json:"totalSize"`
+		ReturnedSize int                     `json:"returnedSize"`
+		HasMore      bool                    `json:"hasMore"`
+	}
+	raw, err := json.Marshal(response.Result)
+	if err != nil {
+		t.Fatalf("marshal ListTasks result: %v", err)
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("decode ListTasks result: %v", err)
+	}
+	if result.TotalSize != 3 {
+		t.Fatalf("totalSize = %d, want 3", result.TotalSize)
+	}
+	if result.ReturnedSize != 2 || len(result.Tasks) != 2 {
+		t.Fatalf("returned tasks = %d/%d, want 2", result.ReturnedSize, len(result.Tasks))
+	}
+	if !result.HasMore {
+		t.Fatal("hasMore = false, want true")
+	}
+}
+
 func gatewayTestSendMessageRequest(messageID string) agentplatform.A2AJSONRPCRequest {
 	const tenantID = "writer"
 	params := agentplatform.A2ASendMessageParams{
@@ -216,9 +265,34 @@ func (s *gatewayTestJobStore) ListJobs(_ context.Context, filter ports.JobFilter
 		if filter.Kind != "" && job.Kind != filter.Kind {
 			continue
 		}
+		if filter.Status != "" && job.Status != filter.Status {
+			continue
+		}
 		jobs = append(jobs, cloneGatewayTestJob(job))
+		if filter.Limit > 0 && len(jobs) >= int(filter.Limit) {
+			break
+		}
 	}
 	return jobs, nil
+}
+
+func (s *gatewayTestJobStore) CountJobs(_ context.Context, filter ports.JobFilter) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var count uint64
+	for _, job := range s.jobs {
+		if filter.TenantID != "" && job.TenantID != filter.TenantID {
+			continue
+		}
+		if filter.Kind != "" && job.Kind != filter.Kind {
+			continue
+		}
+		if filter.Status != "" && job.Status != filter.Status {
+			continue
+		}
+		count++
+	}
+	return count, nil
 }
 
 func (s *gatewayTestJobStore) UpdateJob(_ context.Context, id string, update ports.JobUpdate) (*ports.Job, error) {

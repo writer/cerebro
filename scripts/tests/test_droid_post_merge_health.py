@@ -175,6 +175,26 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertEqual(review["post_merge_checkout_error_count"], 1)
         self.assertEqual(review["latest_comment_url"], "https://finished-comment")
 
+    def test_classify_droid_review_keeps_missing_created_at_checkout_error_active(self):
+        review = pm.classify_droid_review(
+            {
+                "number": 42,
+                "author": "alice",
+                "url": "https://pr",
+                "merged_at": "2026-06-17T04:47:49Z",
+            },
+            [
+                {
+                    "user": {"login": "factory-droid[bot]"},
+                    "body": "**Droid encountered an error**\n\nFailed to checkout PR #42 branch for review",
+                    "html_url": "https://checkout-error",
+                }
+            ],
+        )
+        self.assertEqual(review["status"], "error")
+        self.assertEqual(review["active_error_count"], 1)
+        self.assertEqual(review["post_merge_checkout_error_count"], 0)
+
     def test_classify_droid_review_accepts_superseded_error_plus_finished_comment(self):
         review = pm.classify_droid_review(
             {"number": 42, "author": "alice", "url": "https://pr"},

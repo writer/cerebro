@@ -43,3 +43,25 @@ func TestDecodeA2AParamsRejectsMultipleJSONValues(t *testing.T) {
 		t.Fatal("DecodeA2AGetTaskParams() error = nil, want multiple JSON values error")
 	}
 }
+
+func TestEvidencePacketRequestHeuristicIgnoresNonStructAction(t *testing.T) {
+	request, found, err := EvidencePacketRequestFromA2ASendMessage(A2ASendMessageParams{
+		Message: A2AMessage{
+			Parts: []A2APart{{
+				Text: "Build an evidence packet",
+				Data: map[string]any{
+					"action": "message/send",
+				},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("EvidencePacketRequestFromA2ASendMessage() error = %v", err)
+	}
+	if !found {
+		t.Fatal("found = false, want text part to produce a request")
+	}
+	if request.Question != "Build an evidence packet" {
+		t.Fatalf("Question = %q, want text part question", request.Question)
+	}
+}
