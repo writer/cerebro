@@ -7988,6 +7988,10 @@
         {
           "framework_name": "CIS AWS Foundations Benchmark v2.0",
           "control_id": "4.15"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
         }
       ]
     },
@@ -16449,6 +16453,10 @@
         {
           "framework_name": "PCI DSS v4.0",
           "control_id": "1.1"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
         }
       ]
     },
@@ -16501,7 +16509,7 @@
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "CP-9"
         }
       ]
     },
@@ -16656,7 +16664,11 @@
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
         }
       ]
     },
@@ -17874,6 +17886,14 @@
         {
           "framework_name": "CCPA",
           "control_id": "1798.100"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "RA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-8"
         }
       ]
     },
@@ -20198,6 +20218,14 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.1"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
         }
       ]
     },
@@ -20250,7 +20278,7 @@
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "CP-9"
         }
       ]
     },
@@ -20424,6 +20452,10 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.1"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
         }
       ]
     },
@@ -21595,6 +21627,14 @@
         {
           "framework_name": "PCI DSS v4.0",
           "control_id": "1.1"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
         }
       ]
     },
@@ -25931,6 +25971,10 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.1"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-3"
         }
       ]
     },
@@ -26500,6 +26544,14 @@
         {
           "framework_name": "CIS GitHub Benchmark",
           "control_id": "1.1.3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-5"
         }
       ]
     },

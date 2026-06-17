@@ -20,6 +20,13 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -34,6 +41,15 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-13
+            - framework_name: NIST 800-53 r5
+              control_id: SC-28
+            - framework_name: NIST 800-53 r5
+              control_id: SC-8
+          coverage_status: mapped
+          rule_count: 44
           mapped_rules:
             - aws-cloudfront-http
             - aws-cloudtrail-kms-encryption
@@ -90,6 +106,13 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: PS-4
+            - framework_name: SOC 2
+              control_id: CC1.4
+          coverage_status: mapped
+          rule_count: 5
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
@@ -107,6 +130,13 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-6
+            - framework_name: NIST 800-53 r5
+              control_id: CM-7
+          coverage_status: mapped
+          rule_count: 207
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -326,6 +356,15 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-2
+            - framework_name: NIST 800-53 r5
+              control_id: SI-3
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 64
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-guardduty-c2-traffic
@@ -402,6 +441,13 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: ISO 27001:2022
+              control_id: A.6.5
+            - framework_name: SOC 2
+              control_id: CC1.4
+          coverage_status: mapped
+          rule_count: 4
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
@@ -418,6 +464,13 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IR-4
+            - framework_name: NIST 800-53 r5
+              control_id: IR-8
+          coverage_status: mapped
+          rule_count: 14
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -444,6 +497,15 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-12
+            - framework_name: NIST 800-53 r5
+              control_id: AU-2
+            - framework_name: NIST 800-53 r5
+              control_id: AU-3
+          coverage_status: mapped
+          rule_count: 23
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -479,6 +541,13 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-12
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 41
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -532,6 +601,13 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-12
+            - framework_name: NIST 800-53 r5
+              control_id: AU-9
+          coverage_status: mapped
+          rule_count: 24
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-kms-encryption
@@ -568,6 +644,15 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-2
+            - framework_name: NIST 800-53 r5
+              control_id: AC-3
+            - framework_name: NIST 800-53 r5
+              control_id: AC-6
+          coverage_status: mapped
+          rule_count: 250
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -830,6 +915,13 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IA-2
+            - framework_name: NIST 800-53 r5
+              control_id: IA-5
+          coverage_status: mapped
+          rule_count: 109
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -1445,7 +1537,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SR-6
           coverage_status: mapped
-          rule_count: 3
+          rule_count: 5
           mapped_rules:
             - aws-rds-auto-minor-upgrade
             - github-automated-checks
@@ -1470,7 +1562,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-7
           coverage_status: mapped
-          rule_count: 57
+          rule_count: 58
           mapped_rules:
             - aws-cloudtrail-log-integrity
             - aws-ecr-immutable-tags
@@ -1646,7 +1738,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CP-9
           coverage_status: mapped
-          rule_count: 12
+          rule_count: 16
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -1796,7 +1888,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AU-2
           coverage_status: mapped
-          rule_count: 22
+          rule_count: 23
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -2234,7 +2326,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CM-7
           coverage_status: mapped
-          rule_count: 13
+          rule_count: 15
           mapped_rules:
             - aws-ecr-immutable-tags
             - aws-rds-auto-minor-upgrade
@@ -2267,7 +2359,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-28
           coverage_status: mapped
-          rule_count: 43
+          rule_count: 44
           mapped_rules:
             - aws-cloudfront-http
             - aws-cloudtrail-kms-encryption
@@ -11788,6 +11880,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-2
+          coverage_status: mapped
+          rule_count: 198
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -11998,6 +12095,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-3
+          coverage_status: mapped
+          rule_count: 105
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -12115,6 +12217,13 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-20
+            - framework_name: NIST 800-53 r5
+              control_id: SC-7
+          coverage_status: mapped
+          rule_count: 128
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -12255,6 +12364,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-3
+          coverage_status: mapped
+          rule_count: 105
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -12646,6 +12760,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-4
+          coverage_status: mapped
+          rule_count: 14
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ecs-ports-restricted
@@ -12672,6 +12791,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-6
+          coverage_status: mapped
+          rule_count: 200
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -12915,7 +13039,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AU-3
           coverage_status: mapped
-          rule_count: 22
+          rule_count: 23
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -12951,6 +13075,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-2
+          coverage_status: mapped
+          rule_count: 23
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -12986,6 +13115,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-3
+          coverage_status: mapped
+          rule_count: 1
           mapped_rules:
             - vpc-no-dns-resolver-logging
         - framework_id: cmmc-2
@@ -13028,7 +13162,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
           coverage_status: mapped
-          rule_count: 15
+          rule_count: 18
           mapped_rules:
             - aws-ecr-immutable-tags
             - aws-rds-auto-minor-upgrade
@@ -13059,6 +13193,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-3
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - aws-rds-auto-minor-upgrade
             - github-automated-checks
@@ -13074,6 +13213,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-7
+          coverage_status: mapped
+          rule_count: 12
           mapped_rules:
             - aws-ecr-immutable-tags
             - azure-vm-approved-extensions-only
@@ -13151,6 +13295,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IA-2
+          coverage_status: mapped
+          rule_count: 36
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -13199,6 +13348,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IA-5
+          coverage_status: mapped
+          rule_count: 105
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -13603,6 +13757,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: MP-4
+          coverage_status: mapped
+          rule_count: 1
           mapped_rules:
             - m365-sensitivity-labels-missing
         - framework_id: cmmc-2
@@ -13622,7 +13781,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-28
           coverage_status: mapped
-          rule_count: 43
+          rule_count: 44
           mapped_rules:
             - aws-cloudfront-http
             - aws-cloudtrail-kms-encryption
@@ -13743,6 +13902,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -13802,6 +13966,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -13861,6 +14030,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -13920,6 +14094,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -14366,6 +14545,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-5
+          coverage_status: mapped
+          rule_count: 42
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -14628,6 +14812,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-7
+          coverage_status: mapped
+          rule_count: 128
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -14768,6 +14957,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-7
+          coverage_status: mapped
+          rule_count: 128
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -14920,7 +15114,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-8
           coverage_status: mapped
-          rule_count: 214
+          rule_count: 215
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -15148,6 +15342,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-13
+          coverage_status: mapped
+          rule_count: 31
           mapped_rules:
             - aws-cloudfront-http
             - aws-cloudwatch-log-group-encrypted
@@ -15191,6 +15390,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-8
+          coverage_status: mapped
+          rule_count: 1
           mapped_rules:
             - aws-s3-https-only
         - framework_id: cmmc-2
@@ -15412,6 +15616,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-2
+          coverage_status: mapped
+          rule_count: 43
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -15467,6 +15676,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-3
+          coverage_status: mapped
+          rule_count: 6
           mapped_rules:
             - endpoint-edr-installed
             - endpoint-edr-reporting
@@ -15485,6 +15699,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-3
+          coverage_status: mapped
+          rule_count: 6
           mapped_rules:
             - endpoint-edr-installed
             - endpoint-edr-reporting
@@ -15503,6 +15722,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-3
+          coverage_status: mapped
+          rule_count: 6
           mapped_rules:
             - endpoint-edr-installed
             - endpoint-edr-reporting
@@ -15531,7 +15755,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-7
           coverage_status: mapped
-          rule_count: 71
+          rule_count: 73
           mapped_rules:
             - aws-cloudtrail-log-integrity
             - aws-ecr-immutable-tags
@@ -15617,6 +15841,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 19
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -15654,7 +15883,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-7
           coverage_status: mapped
-          rule_count: 26
+          rule_count: 28
           mapped_rules:
             - aws-cloudtrail-log-integrity
             - aws-ecr-immutable-tags
@@ -23416,6 +23645,13 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-2
+            - framework_name: NIST 800-53 r5
+              control_id: AC-3
+          coverage_status: mapped
+          rule_count: 242
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -23670,6 +23906,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-2
+          coverage_status: mapped
+          rule_count: 198
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -23880,6 +24121,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-3
+          coverage_status: mapped
+          rule_count: 105
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -23997,6 +24243,13 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-20
+            - framework_name: NIST 800-53 r5
+              control_id: SC-7
+          coverage_status: mapped
+          rule_count: 128
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -24137,6 +24390,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-3
+          coverage_status: mapped
+          rule_count: 105
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -24254,6 +24512,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IA-2
+          coverage_status: mapped
+          rule_count: 36
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -24302,6 +24565,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IA-2
+          coverage_status: mapped
+          rule_count: 36
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -24350,6 +24618,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IA-5
+          coverage_status: mapped
+          rule_count: 105
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -24467,6 +24740,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: MP-4
+          coverage_status: mapped
+          rule_count: 1
           mapped_rules:
             - m365-sensitivity-labels-missing
         - framework_id: cmmc-2
@@ -24480,6 +24758,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: MP-4
+          coverage_status: mapped
+          rule_count: 1
           mapped_rules:
             - m365-sensitivity-labels-missing
         - framework_id: cmmc-2
@@ -24493,6 +24776,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -24552,6 +24840,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -24611,6 +24904,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -24670,6 +24968,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -24729,6 +25032,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC6.6
+          coverage_status: mapped
+          rule_count: 47
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -24788,6 +25096,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-7
+          coverage_status: mapped
+          rule_count: 128
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -24928,6 +25241,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-7
+          coverage_status: mapped
+          rule_count: 128
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -25068,6 +25386,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-7
+          coverage_status: mapped
+          rule_count: 128
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -25208,6 +25531,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-2
+          coverage_status: mapped
+          rule_count: 43
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -25263,6 +25591,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-2
+          coverage_status: mapped
+          rule_count: 43
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -25318,6 +25651,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-3
+          coverage_status: mapped
+          rule_count: 6
           mapped_rules:
             - endpoint-edr-installed
             - endpoint-edr-reporting
@@ -25336,6 +25674,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-3
+          coverage_status: mapped
+          rule_count: 6
           mapped_rules:
             - endpoint-edr-installed
             - endpoint-edr-reporting
@@ -25354,6 +25697,11 @@ profiles:
             - defense
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-3
+          coverage_status: mapped
+          rule_count: 6
           mapped_rules:
             - endpoint-edr-installed
             - endpoint-edr-reporting
@@ -29472,6 +29820,15 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-11
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 7
           mapped_rules:
             - aws-ecr-immutable-tags
             - gitlab-runner-unprotected-tags
@@ -29491,6 +29848,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -29505,6 +29869,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SR-11
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 6
           mapped_rules:
             - aws-ecr-immutable-tags
             - gitlab-runner-unprotected-tags
@@ -29523,6 +29894,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CP-10
+            - framework_name: NIST 800-53 r5
+              control_id: CP-2
+          coverage_status: mapped
+          rule_count: 13
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -29548,6 +29926,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -29562,6 +29947,15 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-3
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - compliance-risk-assessment-annual
             - vendor-risk-assessed
@@ -29577,6 +29971,15 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-11
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 7
           mapped_rules:
             - aws-ecr-immutable-tags
             - gitlab-runner-unprotected-tags
@@ -29596,6 +29999,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -29754,7 +30164,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
           coverage_status: mapped
-          rule_count: 38
+          rule_count: 41
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -29816,7 +30226,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IR-5
           coverage_status: mapped
-          rule_count: 18
+          rule_count: 20
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -29857,7 +30267,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-28
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 52
           mapped_rules:
             - aws-cloudfront-http
             - aws-cloudtrail-kms-encryption
@@ -30008,7 +30418,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IR-5
           coverage_status: mapped
-          rule_count: 34
+          rule_count: 35
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -30062,7 +30472,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
           coverage_status: mapped
-          rule_count: 18
+          rule_count: 20
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -30200,7 +30610,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-7
           coverage_status: mapped
-          rule_count: 16
+          rule_count: 17
           mapped_rules:
             - aws-cloudtrail-log-integrity
             - aws-ecr-immutable-tags
@@ -30517,7 +30927,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC3.1
           coverage_status: mapped
-          rule_count: 34
+          rule_count: 31
           mapped_rules:
             - aws-alb-http-to-https
             - aws-dynamodb-pitr
@@ -30569,7 +30979,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 5
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -30744,6 +31154,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CP-10
+            - framework_name: NIST 800-53 r5
+              control_id: CP-2
+          coverage_status: mapped
+          rule_count: 13
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -30769,6 +31186,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -30783,6 +31207,15 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-3
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - compliance-risk-assessment-annual
             - vendor-risk-assessed
@@ -30798,6 +31231,15 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-11
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 7
           mapped_rules:
             - aws-ecr-immutable-tags
             - gitlab-runner-unprotected-tags
@@ -30817,6 +31259,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -30831,6 +31280,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-5
+            - framework_name: NIST 800-53 r5
+              control_id: SI-2
+          coverage_status: mapped
+          rule_count: 45
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -30888,6 +31344,15 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-12
+            - framework_name: NIST 800-53 r5
+              control_id: AU-2
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 41
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -30941,6 +31406,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-7
+            - framework_name: NIST 800-53 r5
+              control_id: SC-8
+          coverage_status: mapped
+          rule_count: 129
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -31082,6 +31554,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-12
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 41
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -31135,6 +31614,13 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-8
+            - framework_name: NIST 800-53 r5
+              control_id: RA-2
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -31150,6 +31636,15 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-12
+            - framework_name: NIST 800-53 r5
+              control_id: SC-13
+            - framework_name: NIST 800-53 r5
+              control_id: SC-28
+          coverage_status: mapped
+          rule_count: 104
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -34101,6 +34596,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CA-7
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - aws-iam-access-analyzer-enabled
             - aws-security-hub-enabled
@@ -34114,6 +34614,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-2
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -34127,6 +34632,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-3
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - compliance-risk-assessment-annual
             - vendor-risk-assessed
@@ -34140,6 +34650,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-5
+          coverage_status: mapped
+          rule_count: 42
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -34193,6 +34708,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-2
+          coverage_status: mapped
+          rule_count: 43
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -34247,6 +34767,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-3
+          coverage_status: mapped
+          rule_count: 6
           mapped_rules:
             - endpoint-edr-installed
             - endpoint-edr-reporting
@@ -34264,6 +34789,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 19
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -34294,6 +34824,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-7
+          coverage_status: mapped
+          rule_count: 9
           mapped_rules:
             - aws-cloudtrail-log-integrity
             - aws-ecr-immutable-tags
@@ -34314,6 +34849,11 @@ profiles:
             - cloud
             - federal
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-8
+          coverage_status: mapped
+          rule_count: 1
           mapped_rules:
             - m365-email-security-baseline
       rules:
@@ -34754,7 +35294,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AC-1
           coverage_status: mapped
-          rule_count: 32
+          rule_count: 29
           mapped_rules:
             - aws-alb-http-to-https
             - aws-dynamodb-pitr
@@ -35417,7 +35957,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
           coverage_status: mapped
-          rule_count: 21
+          rule_count: 22
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -35455,7 +35995,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AU-2
           coverage_status: mapped
-          rule_count: 22
+          rule_count: 23
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -35547,7 +36087,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
           coverage_status: mapped
-          rule_count: 1
+          rule_count: 3
           mapped_rules:
             - aws-rds-auto-minor-upgrade
             - github-automated-checks
@@ -35566,7 +36106,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CM-5
           coverage_status: mapped
-          rule_count: 5
+          rule_count: 6
           mapped_rules:
             - aws-ecr-immutable-tags
             - github-repo-branch-protection
@@ -35616,7 +36156,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
           coverage_status: mapped
-          rule_count: 2
+          rule_count: 3
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -35635,7 +36175,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
           coverage_status: mapped
-          rule_count: 5
+          rule_count: 7
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -35680,7 +36220,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CP-4
           coverage_status: mapped
-          rule_count: 6
+          rule_count: 7
           mapped_rules:
             - aws-rds-multi-az-enabled
             - backup-testing
@@ -35703,7 +36243,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CP-9
           coverage_status: mapped
-          rule_count: 6
+          rule_count: 8
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -36030,7 +36570,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: RA-2
           coverage_status: mapped
-          rule_count: 1
+          rule_count: 2
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -36369,7 +36909,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-28
           coverage_status: mapped
-          rule_count: 42
+          rule_count: 43
           mapped_rules:
             - aws-cloudfront-http
             - aws-cloudtrail-kms-encryption
@@ -36648,7 +37188,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
           coverage_status: mapped
-          rule_count: 5
+          rule_count: 6
           mapped_rules:
             - endpoint-edr-installed
             - endpoint-edr-reporting
@@ -36670,7 +37210,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
           coverage_status: mapped
-          rule_count: 17
+          rule_count: 19
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -41285,7 +41825,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CP-9
           coverage_status: mapped
-          rule_count: 12
+          rule_count: 16
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -41350,7 +41890,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: RA-5
           coverage_status: mapped
-          rule_count: 55
+          rule_count: 57
           mapped_rules:
             - aws-ecr-immutable-tags
             - aws-ecr-scan-on-push
@@ -41492,7 +42032,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-28
           coverage_status: mapped
-          rule_count: 103
+          rule_count: 104
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -41619,7 +42159,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
           coverage_status: mapped
-          rule_count: 211
+          rule_count: 212
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -42006,6 +42546,11 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: PS-4
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - identity-account-deprovision
             - identity-offboarding-sla
@@ -42021,6 +42566,15 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-2
+            - framework_name: NIST 800-53 r5
+              control_id: AC-6
+            - framework_name: NIST 800-53 r5
+              control_id: IA-2
+          coverage_status: mapped
+          rule_count: 226
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -42259,6 +42813,13 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-8
+            - framework_name: NIST 800-53 r5
+              control_id: RA-2
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -42274,6 +42835,15 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IR-4
+            - framework_name: NIST 800-53 r5
+              control_id: IR-5
+            - framework_name: NIST 800-53 r5
+              control_id: IR-8
+          coverage_status: mapped
+          rule_count: 14
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -42300,6 +42870,17 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CP-10
+            - framework_name: NIST 800-53 r5
+              control_id: CP-2
+            - framework_name: NIST 800-53 r5
+              control_id: CP-4
+            - framework_name: NIST 800-53 r5
+              control_id: CP-9
+          coverage_status: mapped
+          rule_count: 16
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -42328,6 +42909,15 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-11
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 7
           mapped_rules:
             - aws-ecr-immutable-tags
             - gitlab-runner-unprotected-tags
@@ -42347,6 +42937,13 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-3
+            - framework_name: NIST 800-53 r5
+              control_id: CM-7
+          coverage_status: mapped
+          rule_count: 15
           mapped_rules:
             - aws-ecr-immutable-tags
             - aws-rds-auto-minor-upgrade
@@ -42374,6 +42971,13 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CA-7
+            - framework_name: NIST 800-53 r5
+              control_id: RA-5
+          coverage_status: mapped
+          rule_count: 44
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-iam-access-analyzer-enabled
@@ -42430,6 +43034,13 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-5
+            - framework_name: NIST 800-53 r5
+              control_id: SI-2
+          coverage_status: mapped
+          rule_count: 45
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -42487,6 +43098,13 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          mapped_control_refs:
+            - framework_name: ISO 27001:2022
+              control_id: A.6.5
+            - framework_name: SOC 2
+              control_id: CC1.4
+          coverage_status: mapped
+          rule_count: 4
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
@@ -45635,7 +46253,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
           coverage_status: mapped
-          rule_count: 18
+          rule_count: 20
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -45668,6 +46286,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IR-5
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 20
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -45706,7 +46331,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
           coverage_status: mapped
-          rule_count: 38
+          rule_count: 41
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -45760,6 +46385,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-12
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 41
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -45813,6 +46445,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AU-12
+            - framework_name: NIST 800-53 r5
+              control_id: AU-2
+          coverage_status: mapped
+          rule_count: 23
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudtrail-s3-data-events
@@ -45848,6 +46487,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-8
+            - framework_name: NIST 800-53 r5
+              control_id: SI-4
+          coverage_status: mapped
+          rule_count: 22
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -45959,6 +46605,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC2.3
+            - framework_name: SOC 2
+              control_id: CC3.1
+          coverage_status: mapped
+          rule_count: 1
           mapped_rules:
             - compliance-risk-assessment-annual
         - framework_id: nist-csf-2.0
@@ -46013,6 +46666,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CA-7
+            - framework_name: SOC 2
+              control_id: CC4
+          coverage_status: mapped
+          rule_count: 22
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudwatch-alarm-missing
@@ -46141,6 +46801,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: ISO 27001:2022
+              control_id: A.5.1
+            - framework_name: NIST 800-53 r5
+              control_id: AC-1
+          coverage_status: mapped
+          rule_count: 75
           mapped_rules:
             - aws-alb-http-to-https
             - aws-dynamodb-pitr
@@ -46250,6 +46917,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-3
+            - framework_name: SOC 2
+              control_id: CC3.2
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - ai-risk-assessment
             - compliance-risk-assessment-annual
@@ -46370,6 +47044,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: SOC 2
+              control_id: CC1.1
+            - framework_name: SOC 2
+              control_id: CC1.4
+          coverage_status: mapped
+          rule_count: 86
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
@@ -46496,6 +47177,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -46510,6 +47198,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-11
+          coverage_status: mapped
+          rule_count: 7
           mapped_rules:
             - aws-ecr-immutable-tags
             - gitlab-runner-unprotected-tags
@@ -46533,7 +47228,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
           coverage_status: mapped
-          rule_count: 2
+          rule_count: 3
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -46549,6 +47244,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-8
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -46564,6 +47264,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-8
+          coverage_status: mapped
+          rule_count: 3
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -46579,6 +47284,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-8
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+          coverage_status: mapped
+          rule_count: 5
           mapped_rules:
             - compliance-data-inventory-maintained
             - compliance-inventory-data-tracking
@@ -46637,6 +47349,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CA-7
+            - framework_name: SOC 2
+              control_id: CC4
+          coverage_status: mapped
+          rule_count: 22
           mapped_rules:
             - aws-cloudtrail-enabled
             - aws-cloudwatch-alarm-missing
@@ -46734,6 +47453,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-5
+          coverage_status: mapped
+          rule_count: 42
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -46788,6 +47512,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: RA-3
+            - framework_name: NIST 800-53 r5
+              control_id: RA-5
+          coverage_status: mapped
+          rule_count: 44
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -47132,6 +47863,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-2
+            - framework_name: NIST 800-53 r5
+              control_id: IA-2
+          coverage_status: mapped
+          rule_count: 216
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -47360,6 +48098,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: AC-3
+            - framework_name: NIST 800-53 r5
+              control_id: AC-6
+          coverage_status: mapped
+          rule_count: 242
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -47637,6 +48382,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: ISO 27001:2022
+              control_id: A.6.5
+            - framework_name: SOC 2
+              control_id: CC1.4
+          coverage_status: mapped
+          rule_count: 4
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
@@ -47661,7 +48413,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-8
           coverage_status: mapped
-          rule_count: 104
+          rule_count: 105
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -47779,6 +48531,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-28
+          coverage_status: mapped
+          rule_count: 43
           mapped_rules:
             - aws-cloudfront-http
             - aws-cloudtrail-kms-encryption
@@ -47834,6 +48591,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SC-8
+          coverage_status: mapped
+          rule_count: 1
           mapped_rules:
             - aws-s3-https-only
         - framework_id: nist-csf-2.0
@@ -47855,7 +48617,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
           coverage_status: mapped
-          rule_count: 134
+          rule_count: 138
           mapped_rules:
             - aws-api-gateway-no-authorization
             - aws-bedrock-custom-model-public
@@ -48006,6 +48768,15 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CP-10
+            - framework_name: NIST 800-53 r5
+              control_id: CP-4
+            - framework_name: NIST 800-53 r5
+              control_id: CP-9
+          coverage_status: mapped
+          rule_count: 16
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -48042,7 +48813,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SI-7
           coverage_status: mapped
-          rule_count: 16
+          rule_count: 18
           mapped_rules:
             - aws-cloudtrail-log-integrity
             - aws-ecr-immutable-tags
@@ -48073,6 +48844,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CM-3
+            - framework_name: NIST 800-53 r5
+              control_id: CM-7
+          coverage_status: mapped
+          rule_count: 15
           mapped_rules:
             - aws-ecr-immutable-tags
             - aws-rds-auto-minor-upgrade
@@ -48100,6 +48878,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SI-2
+          coverage_status: mapped
+          rule_count: 43
           mapped_rules:
             - aws-ecr-scan-on-push
             - aws-lambda-runtime-supported
@@ -48180,6 +48963,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IR-8
+          coverage_status: mapped
+          rule_count: 8
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -48206,7 +48994,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: CP-9
           coverage_status: mapped
-          rule_count: 6
+          rule_count: 10
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -48229,6 +49017,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: CP-10
+          coverage_status: mapped
+          rule_count: 7
           mapped_rules:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
@@ -48305,6 +49098,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IR-8
+            - framework_name: SOC 2
+              control_id: CC7.4
+          coverage_status: mapped
+          rule_count: 10
           mapped_rules:
             - ai-incident-response
             - aws-guardduty-c2-traffic
@@ -48359,6 +49159,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IR-4
+          coverage_status: mapped
+          rule_count: 13
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -48384,6 +49189,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IR-5
+            - framework_name: NIST 800-53 r5
+              control_id: IR-8
+          coverage_status: mapped
+          rule_count: 9
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -48480,6 +49292,11 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: IR-4
+          coverage_status: mapped
+          rule_count: 13
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -53689,6 +54506,15 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-11
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 7
           mapped_rules:
             - aws-ecr-immutable-tags
             - gitlab-runner-unprotected-tags
@@ -53708,6 +54534,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-6
+          coverage_status: mapped
+          rule_count: 2
           mapped_rules:
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -53722,6 +54555,13 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          mapped_control_refs:
+            - framework_name: NIST 800-53 r5
+              control_id: SA-9
+            - framework_name: NIST 800-53 r5
+              control_id: SR-11
+          coverage_status: mapped
+          rule_count: 7
           mapped_rules:
             - aws-ecr-immutable-tags
             - gitlab-runner-unprotected-tags
