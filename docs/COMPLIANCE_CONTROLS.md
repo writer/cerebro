@@ -84,6 +84,25 @@ exclude_controls:
 
 Selections can include whole frameworks, families, explicit controls, tags, owner domains, evidence types, applicability labels, assessment methods, automatable controls, and controls that allow or disallow manual evidence. Assessment method filters match both control-level methods and expectation-level methods. Exclusions are applied last. An empty selection resolves to the full merged catalog, which is useful for completeness checks.
 
+## Control Profiles
+
+Control profiles are reusable YAML selections. The built-in profile set lives at `internal/compliance/control_profiles.yaml`; each profile uses the same fields as a `ControlSelection`.
+
+```yaml
+version: "2026-06-17"
+profiles:
+  - id: customer-production-access
+    name: Customer Production Access
+    description: Production identity and privileged-access scope for customer audit evidence.
+    frameworks:
+      - name: Customer Audit 2026
+        controls: [IAM-1]
+    include_applicability: [production]
+    include_assessment_methods: [examine, test]
+```
+
+Use profiles for common auditor views, control subsets, custom framework launches, or product-packaged compliance views. Custom frameworks can ship their own profile YAML beside their control pack and use the same resolver APIs.
+
 ## Coverage Resolution
 
 Coverage is resolved in two steps:
@@ -92,6 +111,15 @@ Coverage is resolved in two steps:
 2. Compare selected controls and their `maps_to` aliases with rule `ControlRefs`.
 
 The result reports selected control count, mapped rule IDs, controls without rule coverage, rules by control, and controls by rule. This is the foundation for later control posture and auditor evidence packets.
+
+`BuildControlCoverageIndex` applies this process to a full profile set. The checked-in `internal/compliance/control_coverage_index.yaml` is generated from the built-in profiles and builtin rule metadata. It gives reviewers a stable YAML view of selected controls, mapped rules, unmapped controls, and per-profile coverage summaries.
+
+Regenerate and verify the index with:
+
+```bash
+make control-index-generate
+make control-index-check
+```
 
 ## Control Posture
 
@@ -144,6 +172,9 @@ The packet builder uses the same matching rules as posture evaluation. Evidence 
 - `LoadControlSelection`
 - `ResolveControlSelection`
 - `ResolveRuleCoverage`
+- `LoadControlProfileSet`
+- `ResolveControlProfiles`
+- `BuildControlCoverageIndex`
 - `EvaluateControlPosture`
 - `SummarizeControlPosture`
 - `BuildControlEvidencePacket`
@@ -153,4 +184,5 @@ Run focused checks after changing control authoring code:
 ```bash
 go test ./internal/compliance ./tools/catalogcheck
 go run ./tools/catalogcheck -summary=false
+go run ./tools/controlindex --check
 ```
