@@ -219,14 +219,14 @@ func BuildA2AAgentCard(origin string) A2AAgentCard {
 			},
 		},
 		SecuritySchemes: map[string]A2ASecurityScheme{
-			"bearerAuth": {
+			"platform-http": { //nolint:gosec // Protocol security-scheme metadata; no credential value is embedded.
 				Type:         "http",
 				Scheme:       "bearer",
 				BearerFormat: "API key or OAuth access token",
 				Description:  "Use the same bearer credentials and tenant-scoped authorization model as the Cerebro platform API.",
 			},
 		},
-		Security:           []map[string][]string{{"bearerAuth": []string{"cerebro.cosmo.security.read"}}},
+		Security:           []map[string][]string{{"platform-http": []string{"cerebro.cosmo.security.read"}}},
 		DefaultInputModes:  []string{"text/plain", "application/json"},
 		DefaultOutputModes: []string{"text/plain", "application/json"},
 		Skills: []A2AAgentSkill{
