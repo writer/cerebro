@@ -58,6 +58,6 @@ Use `Idempotency-Key` for retried mutating API requests and outbound webhook del
 
 ## A2A And Webhook Contracts
 
-`GET /.well-known/agent-card.json` publishes public-safe A2A discovery metadata. Authenticated A2A JSON-RPC calls use `POST /api/v1/a2a`; `SendMessage` returns contract discovery content, `ListTasks` returns an empty task list, and unsupported task/streaming/push methods return A2A-style unsupported-operation errors until backed by replayable runtime adapters.
+`GET /.well-known/agent-card.json` publishes public-safe A2A discovery metadata. Authenticated A2A JSON-RPC calls use `POST /api/v1/a2a`; `SendMessage` returns contract discovery content by default, or creates a durable `agent-evidence-packet` task when message or request metadata sets `skillId` to `agent-evidence-packet`. `GetTask` and `ListTasks` read those tenant-scoped A2A work tasks from the platform job store. Streaming, cancellation, and push methods still return A2A-style unsupported-operation errors until backed by replayable runtime adapters.
 
 `GET /api/v1/event-subscriptions/contract` documents outbound HTTPS webhook trigger families, delivery headers, signing schemes, retries, dead-letter behavior, and webhook delivery idempotency. Subscription metadata remains tenant-scoped and event-type allow-listed.

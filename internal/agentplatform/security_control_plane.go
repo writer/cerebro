@@ -422,9 +422,9 @@ func agentActionLadder() []AgentActionStage {
 func agentEvalSuite() AgentEvalSuite {
 	return AgentEvalSuite{
 		ID:            "cerebro-agent-platform-eval",
-		LocalCommands: []string{"make agent-platform-eval", "go test ./internal/bootstrap -run 'TestAgentPlatformSecurityControlPlaneEndToEndWorkflow|TestHandleA2AJSONRPCSendMessage' -count=1"},
+		LocalCommands: []string{"make agent-platform-eval", "go test ./internal/bootstrap -run 'TestAgentPlatformSecurityControlPlaneEndToEndWorkflow|TestHandleA2AJSONRPC' -count=1"},
 		Scenarios: []AgentEvalScenario{
-			{ID: "a2a-contract-discovery", Purpose: "Publish public-safe A2A Agent Card metadata and authenticated JSON-RPC contract responses.", Capability: "a2a-contract-discovery", Rubrics: []string{"well-known discovery", "method honesty", "auth boundary", "public-safe metadata"}},
+			{ID: "a2a-contract-discovery", Purpose: "Publish public-safe A2A Agent Card metadata and authenticated JSON-RPC contract and task responses.", Capability: "a2a-contract-discovery", Rubrics: []string{"well-known discovery", "method honesty", "auth boundary", "public-safe metadata", "durable task artifact"}},
 			{ID: "event-subscription-contract", Purpose: "Expose outbound webhook event types, signing, retry, dead-letter, and delivery idempotency contracts.", Capability: "event-subscription-webhooks", Rubrics: []string{"event allow-list", "signature contract", "retry contract", "no sensitive metadata"}},
 			{ID: "idempotency-public-contract", Purpose: "Document Idempotency-Key semantics for mutating public APIs and outbound webhook deliveries.", Capability: "public-idempotency-contract", Rubrics: []string{"header documented", "scope documented", "409 conflict", "replay semantics"}},
 			{ID: "tenant-isolation", Purpose: "Reject cross-tenant scope hints and body tenant overrides.", Capability: "graph-reasoning", Rubrics: []string{"tenant forced", "scope rejected", "audit emitted"}},

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/a2agateway"
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/agentplatformcoverage"
 	"github.com/writer/cerebro/internal/ports"
@@ -34,8 +35,26 @@ func (a *App) handleA2AJSONRPC(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	response := agentplatform.A2AJSONRPCResponseFor(request, agentplatform.BuildA2AAgentCard(externalOrigin(r, a.cfg.Auth.RequestOrigin)))
+	response := a2agateway.Handler{
+		Store:                 jobStore(a.deps.StateStore),
+		Card:                  agentplatform.BuildA2AAgentCard(externalOrigin(r, a.cfg.Auth.RequestOrigin)),
+		Resolve:               a.resolveA2AGatewayContext,
+		CoverageContext:       a.agentCoverageContext,
+		AuthorizeEvidence:     authorizeAgentPlatformPacketURNs,
+		RecordRequestedTenant: recordAccessAuditRequestedTenant,
+		IdempotencyKey:        r.Header.Get("Idempotency-Key"),
+	}.Respond(r.Context(), request)
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (a *App) resolveA2AGatewayContext(ctx context.Context, tenantID string, actorID string, scopes []string) (a2agateway.ResolvedContext, error) {
+	resolved, err := resolveAgentPlatformRequestContext(ctx, tenantID, actorID, scopes)
+	return a2agateway.ResolvedContext{
+		TenantID:          resolved.TenantID,
+		ActorID:           resolved.ActorID,
+		RequestedScopes:   resolved.RequestedScopes,
+		ScopeUnrestricted: resolved.ScopeUnrestricted,
+	}, err
 }
 
 func (a *App) handleEventSubscriptionContract(w http.ResponseWriter, _ *http.Request) {

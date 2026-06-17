@@ -2,15 +2,19 @@ package bootstrap
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -103,6 +107,201 @@ func TestHandleA2AJSONRPCSendMessage(t *testing.T) {
 	}
 	if response.Error != nil || response.Result == nil || response.ID != "request-1" {
 		t.Fatalf("A2A response = %+v, want direct message result", response)
+	}
+}
+
+func TestHandleA2AJSONRPCEvidencePacketTask(t *testing.T) {
+	store := newA2ATestJobStore()
+	app := New(agentPlatformAuthConfig(), Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{
+		"jsonrpc": "2.0",
+		"id": "request-1",
+		"method": "SendMessage",
+		"params": {
+			"message": {
+				"role": "ROLE_USER",
+				"parts": [{"text": "Triage this alert before an agent run"}],
+				"messageId": "message-1"
+			},
+			"metadata": {
+				"skillId": "agent-evidence-packet",
+				"evidencePacket": {
+					"tenant_id": "writer",
+					"scope_urn": "urn:cerebro:writer:finding:alert-1",
+					"capability_ids": ["graph-reasoning"],
+					"action": {"stage": "recommend"}
+				}
+			}
+		}
+	}`)
+	resp := postA2AJSONRPC(t, server, "test-key", "task-key-1", body)
+	defer func() { _ = resp.Body.Close() }()
+	var response agentplatform.A2AJSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error != nil || response.Result == nil {
+		t.Fatalf("A2A response = %+v, want completed task", response)
+	}
+	task := decodeA2ATestTaskResult(t, response.Result, "task")
+	if task.Status.State != agentplatform.A2ATaskStateCompleted || len(task.Artifacts) != 1 {
+		t.Fatalf("task = %+v, want completed task with artifact", task)
+	}
+	packet := decodeA2ATestEvidencePacket(t, task.Artifacts[0].Parts[0].Data)
+	if packet.TenantID != "writer" || packet.ActorID != "tester" || !packet.Preflight.Enabled {
+		t.Fatalf("packet context/preflight = %+v, want authenticated enabled packet", packet)
+	}
+	if len(packet.VerifierResults) == 0 || len(packet.RequiredWriteBack) == 0 {
+		t.Fatalf("packet missing verifier or writeback guidance: %+v", packet)
+	}
+
+	replay := postA2AJSONRPC(t, server, "test-key", "task-key-1", body)
+	defer func() { _ = replay.Body.Close() }()
+	var replayResponse agentplatform.A2AJSONRPCResponse
+	if err := json.NewDecoder(replay.Body).Decode(&replayResponse); err != nil {
+		t.Fatalf("decode replay response: %v", err)
+	}
+	replayTask := decodeA2ATestTaskResult(t, replayResponse.Result, "task")
+	if replayTask.ID != task.ID || store.createCount != 1 {
+		t.Fatalf("replay task id/create count = %q/%d, want %q/1", replayTask.ID, store.createCount, task.ID)
+	}
+}
+
+func TestHandleA2AJSONRPCGetAndListTasks(t *testing.T) {
+	store := newA2ATestJobStore()
+	app := New(agentPlatformAuthConfig(), Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createBody := []byte(`{
+		"jsonrpc": "2.0",
+		"id": "create",
+		"method": "SendMessage",
+		"params": {
+			"message": {
+				"role": "ROLE_USER",
+				"contextId": "ctx-1",
+				"parts": [{"text": "Build an evidence packet"}],
+				"messageId": "message-1"
+			},
+			"metadata": {
+				"skillId": "agent-evidence-packet",
+				"evidencePacket": {
+					"tenant_id": "writer",
+					"scope_urn": "urn:cerebro:writer:finding:alert-1",
+					"capability_ids": ["graph-reasoning"]
+				}
+			}
+		}
+	}`)
+	createResp := postA2AJSONRPC(t, server, "test-key", "task-key-2", createBody)
+	defer func() { _ = createResp.Body.Close() }()
+	var createResponse agentplatform.A2AJSONRPCResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	created := decodeA2ATestTaskResult(t, createResponse.Result, "task")
+
+	getBody, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      "get",
+		"method":  "GetTask",
+		"params": map[string]any{
+			"id":            created.ID,
+			"historyLength": 0,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal get body: %v", err)
+	}
+	getResp := postA2AJSONRPC(t, server, "test-key", "", getBody)
+	defer func() { _ = getResp.Body.Close() }()
+	var getResponse agentplatform.A2AJSONRPCResponse
+	if err := json.NewDecoder(getResp.Body).Decode(&getResponse); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	got := decodeA2ATestTaskResult(t, getResponse.Result, "")
+	if got.ID != created.ID || len(got.History) != 0 || len(got.Artifacts) != 1 {
+		t.Fatalf("GetTask result = %+v, want same task without history", got)
+	}
+
+	listResp := postA2AJSONRPC(t, server, "test-key", "", []byte(`{"jsonrpc":"2.0","id":"list","method":"ListTasks","params":{"limit":10}}`))
+	defer func() { _ = listResp.Body.Close() }()
+	var listResponse agentplatform.A2AJSONRPCResponse
+	if err := json.NewDecoder(listResp.Body).Decode(&listResponse); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	var list struct {
+		Tasks     []agentplatform.A2ATask `json:"tasks"`
+		TotalSize int                     `json:"totalSize"`
+	}
+	decodeA2ATestResult(t, listResponse.Result, &list)
+	if list.TotalSize != 1 || len(list.Tasks) != 1 || list.Tasks[0].ID != created.ID {
+		t.Fatalf("ListTasks result = %+v, want created task", list)
+	}
+}
+
+func TestHandleA2AJSONRPCGetTaskHidesOtherTenantTasks(t *testing.T) {
+	store := newA2ATestJobStore()
+	cfg := agentPlatformAuthConfig()
+	cfg.Auth.APICredentials = append(cfg.Auth.APICredentials, config.APICredential{
+		ID:        "other-credential",
+		ClientID:  "other-client",
+		Key:       "other-key",
+		Principal: "other-tester",
+		TenantID:  "other",
+		Scopes:    []string{scopeCosmoSecurityRead},
+	})
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createResp := postA2AJSONRPC(t, server, "test-key", "task-key-3", []byte(`{
+		"jsonrpc": "2.0",
+		"id": "create",
+		"method": "SendMessage",
+		"params": {
+			"message": {
+				"role": "ROLE_USER",
+				"parts": [{"text": "Build an evidence packet"}],
+				"messageId": "message-1"
+			},
+			"metadata": {
+				"skillId": "agent-evidence-packet",
+				"evidencePacket": {
+					"tenant_id": "writer",
+					"scope_urn": "urn:cerebro:writer:finding:alert-1",
+					"capability_ids": ["graph-reasoning"]
+				}
+			}
+		}
+	}`))
+	defer func() { _ = createResp.Body.Close() }()
+	var createResponse agentplatform.A2AJSONRPCResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	created := decodeA2ATestTaskResult(t, createResponse.Result, "task")
+	getBody, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      "get",
+		"method":  "GetTask",
+		"params":  map[string]any{"id": created.ID},
+	})
+	if err != nil {
+		t.Fatalf("marshal get body: %v", err)
+	}
+	getResp := postA2AJSONRPC(t, server, "other-key", "", getBody)
+	defer func() { _ = getResp.Body.Close() }()
+	var getResponse agentplatform.A2AJSONRPCResponse
+	if err := json.NewDecoder(getResp.Body).Decode(&getResponse); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if getResponse.Error == nil || getResponse.Error.Code != -32001 {
+		t.Fatalf("cross-tenant GetTask response = %+v, want TaskNotFoundError", getResponse)
 	}
 }
 
@@ -729,4 +928,267 @@ func packetActionStatus(packet agentplatform.AgentEvidencePacket, stageID string
 		}
 	}
 	return ""
+}
+
+func postA2AJSONRPC(t *testing.T, server *httptest.Server, apiKey string, idempotencyKey string, body []byte) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/a2a", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST A2A: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	return resp
+}
+
+func decodeA2ATestTaskResult(t *testing.T, result any, wrapperKey string) agentplatform.A2ATask {
+	t.Helper()
+	if wrapperKey == "" {
+		var task agentplatform.A2ATask
+		decodeA2ATestResult(t, result, &task)
+		return task
+	}
+	var wrapped map[string]agentplatform.A2ATask
+	decodeA2ATestResult(t, result, &wrapped)
+	task, ok := wrapped[wrapperKey]
+	if !ok {
+		t.Fatalf("A2A result = %+v, missing %q", wrapped, wrapperKey)
+	}
+	return task
+}
+
+func decodeA2ATestEvidencePacket(t *testing.T, value any) agentplatform.AgentEvidencePacket {
+	t.Helper()
+	var packet agentplatform.AgentEvidencePacket
+	decodeA2ATestResult(t, value, &packet)
+	return packet
+}
+
+func decodeA2ATestResult(t *testing.T, value any, target any) {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
+	}
+	if err := json.Unmarshal(payload, target); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+}
+
+type a2ATestJobStore struct {
+	mu          sync.Mutex
+	nextID      int
+	createCount int
+	jobs        map[string]*ports.Job
+	idempotent  map[string]string
+	events      []*ports.JobEvent
+}
+
+func newA2ATestJobStore() *a2ATestJobStore {
+	return &a2ATestJobStore{
+		nextID:     1,
+		jobs:       map[string]*ports.Job{},
+		idempotent: map[string]string{},
+	}
+}
+
+func (s *a2ATestJobStore) Ping(context.Context) error {
+	return nil
+}
+
+func (s *a2ATestJobStore) CreateJob(_ context.Context, request ports.CreateJobRequest) (*ports.Job, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if request.IdempotencyKey != "" {
+		key := request.TenantID + "\x00" + request.IdempotencyKey
+		if id := s.idempotent[key]; id != "" {
+			return cloneA2ATestJob(s.jobs[id]), false, nil
+		}
+	}
+	id := "job-test"
+	if s.nextID > 1 {
+		id = "job-test-" + strconv.Itoa(s.nextID)
+	}
+	s.nextID++
+	s.createCount++
+	now := time.Now().UTC()
+	job := &ports.Job{
+		ID:             id,
+		Kind:           request.Kind,
+		Status:         ports.JobStatusQueued,
+		TenantID:       request.TenantID,
+		SubjectType:    request.SubjectType,
+		SubjectID:      request.SubjectID,
+		IdempotencyKey: request.IdempotencyKey,
+		Payload:        cloneA2ATestMap(request.Payload),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	s.jobs[id] = cloneA2ATestJob(job)
+	if request.IdempotencyKey != "" {
+		s.idempotent[request.TenantID+"\x00"+request.IdempotencyKey] = id
+	}
+	return cloneA2ATestJob(job), true, nil
+}
+
+func (s *a2ATestJobStore) GetJob(_ context.Context, id string) (*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job := s.jobs[id]
+	if job == nil {
+		return nil, ports.ErrJobNotFound
+	}
+	return cloneA2ATestJob(job), nil
+}
+
+func (s *a2ATestJobStore) ListJobs(_ context.Context, filter ports.JobFilter) ([]*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limit := int(filter.Limit)
+	if limit == 0 {
+		limit = 50
+	}
+	jobs := []*ports.Job{}
+	for _, job := range s.jobs {
+		if filter.TenantID != "" && job.TenantID != filter.TenantID {
+			continue
+		}
+		if filter.Kind != "" && job.Kind != filter.Kind {
+			continue
+		}
+		if filter.Status != "" && job.Status != filter.Status {
+			continue
+		}
+		jobs = append(jobs, cloneA2ATestJob(job))
+		if len(jobs) >= limit {
+			break
+		}
+	}
+	return jobs, nil
+}
+
+func (s *a2ATestJobStore) UpdateJob(_ context.Context, id string, update ports.JobUpdate) (*ports.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job := s.jobs[id]
+	if job == nil {
+		return nil, ports.ErrJobNotFound
+	}
+	if len(update.AllowedStatuses) > 0 && !a2ATestContainsStatus(update.AllowedStatuses, job.Status) {
+		return nil, ports.ErrJobUpdateConflict
+	}
+	if update.Status != "" {
+		job.Status = update.Status
+	}
+	if update.Progress != nil {
+		job.Progress = *update.Progress
+	}
+	if update.Message != "" {
+		job.Message = update.Message
+	}
+	if update.Error != "" {
+		job.Error = update.Error
+	}
+	if update.Result != nil {
+		job.Result = cloneA2ATestMap(update.Result)
+	}
+	if update.ResultRefs != nil {
+		job.ResultRefs = cloneA2ATestStringMap(update.ResultRefs)
+	}
+	if update.StartedAt != nil {
+		job.StartedAt = *update.StartedAt
+	}
+	if update.FinishedAt != nil {
+		job.FinishedAt = *update.FinishedAt
+	}
+	if update.CancelRequested != nil {
+		job.CancelRequested = *update.CancelRequested
+	}
+	job.UpdatedAt = time.Now().UTC()
+	return cloneA2ATestJob(job), nil
+}
+
+func (s *a2ATestJobStore) AppendJobEvent(_ context.Context, event ports.JobEvent) (*ports.JobEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	event.Sequence = uint64(len(s.events) + 1)
+	event.CreatedAt = time.Now().UTC()
+	cloned := event
+	cloned.Payload = cloneA2ATestMap(event.Payload)
+	s.events = append(s.events, &cloned)
+	return &cloned, nil
+}
+
+func (s *a2ATestJobStore) ListJobEvents(_ context.Context, jobID string, limit uint32) ([]*ports.JobEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	max := int(limit)
+	if max == 0 {
+		max = len(s.events)
+	}
+	events := []*ports.JobEvent{}
+	for _, event := range s.events {
+		if event.JobID != jobID {
+			continue
+		}
+		cloned := *event
+		cloned.Payload = cloneA2ATestMap(event.Payload)
+		events = append(events, &cloned)
+		if len(events) >= max {
+			break
+		}
+	}
+	return events, nil
+}
+
+func a2ATestContainsStatus(values []string, status string) bool {
+	for _, value := range values {
+		if value == status {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneA2ATestJob(job *ports.Job) *ports.Job {
+	if job == nil {
+		return nil
+	}
+	cloned := *job
+	cloned.Payload = cloneA2ATestMap(job.Payload)
+	cloned.Result = cloneA2ATestMap(job.Result)
+	cloned.ResultRefs = cloneA2ATestStringMap(job.ResultRefs)
+	return &cloned
+}
+
+func cloneA2ATestMap(values map[string]any) map[string]any {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneA2ATestStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }

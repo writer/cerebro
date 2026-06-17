@@ -160,7 +160,7 @@ func TestSnapshotIncludesPublicProtocolContracts(t *testing.T) {
 	if !containsString(snapshot.A2A.DiscoveryPaths, A2AAgentCardPath) || snapshot.A2A.JSONRPCPath != A2AJSONRPCPath {
 		t.Fatalf("A2A paths = discovery:%+v jsonrpc:%q", snapshot.A2A.DiscoveryPaths, snapshot.A2A.JSONRPCPath)
 	}
-	if !containsString(snapshot.A2A.SupportedMethods, "SendMessage") || !containsString(snapshot.A2A.UnsupportedMethods, "SendStreamingMessage") {
+	if !containsString(snapshot.A2A.SupportedMethods, "SendMessage") || !containsString(snapshot.A2A.SupportedMethods, "GetTask") || !containsString(snapshot.A2A.UnsupportedMethods, "SendStreamingMessage") {
 		t.Fatalf("A2A methods = supported:%+v unsupported:%+v", snapshot.A2A.SupportedMethods, snapshot.A2A.UnsupportedMethods)
 	}
 	if len(snapshot.EventSubscriptions.EventTypes) == 0 || snapshot.EventSubscriptions.Delivery.Transport != "https_webhook" {
@@ -182,8 +182,8 @@ func TestA2AAgentCardIsPublicSafeAndHonest(t *testing.T) {
 	if card.Capabilities.Streaming || card.Capabilities.PushNotifications || card.Capabilities.ExtendedAgentCard {
 		t.Fatalf("card over-advertises unsupported capabilities: %+v", card.Capabilities)
 	}
-	if len(card.Skills) < 3 {
-		t.Fatalf("card skills = %+v, want protocol, webhook, and idempotency discovery", card.Skills)
+	if len(card.Skills) < 4 {
+		t.Fatalf("card skills = %+v, want protocol, evidence-packet, webhook, and idempotency skills", card.Skills)
 	}
 }
 
@@ -200,6 +200,10 @@ func TestA2AJSONRPCContractMethods(t *testing.T) {
 	list := A2AJSONRPCResponseFor(A2AJSONRPCRequest{JSONRPC: "2.0", Method: "ListTasks", ID: "req-3"}, card)
 	if list.Error != nil || list.Result == nil {
 		t.Fatalf("ListTasks response = %+v, want empty task listing", list)
+	}
+	get := A2AJSONRPCResponseFor(A2AJSONRPCRequest{JSONRPC: "2.0", Method: "GetTask", ID: "req-4"}, card)
+	if get.Error == nil || get.Error.Code != -32001 {
+		t.Fatalf("GetTask response = %+v, want task-not-found error without durable store context", get)
 	}
 }
 
