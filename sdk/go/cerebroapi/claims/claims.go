@@ -119,5 +119,8 @@ func copyAttributes(attributes map[string]string) map[string]string {
 			out[key] = trimmed
 		}
 	}
+	if len(out) == 0 {
+		return nil
+	}
 	return out
 }

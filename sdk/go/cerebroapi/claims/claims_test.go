@@ -85,3 +85,13 @@ func TestClaimConstructorsUseCanonicalClaimShapes(t *testing.T) {
 		})
 	}
 }
+
+func TestCopyAttributesReturnsNilWhenAllEntriesFiltered(t *testing.T) {
+	attributes := copyAttributes(map[string]string{
+		"empty": "",
+		" ":     "ignored",
+	})
+	if attributes != nil {
+		t.Fatalf("attributes = %#v, want nil", attributes)
+	}
+}
