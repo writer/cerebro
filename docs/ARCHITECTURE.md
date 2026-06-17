@@ -88,6 +88,13 @@ bootstrap budget includes only the HTTP route registration, auth policy, and
 request/response mapping for exposing the registry, authorizing packet URNs
 against the authenticated tenant, and building tenant-forced evidence packets.
 
+Compliance control-pack generation lives in `internal/compliance`. The
+bootstrap budget includes only HTTP route registration, auth policy, request
+decoding, status selection, and response mapping for the control archetype,
+coverage, preview, and export endpoints; reusable control archetypes,
+validation, YAML generation, and rule coverage mapping stay behind the
+compliance package boundary.
+
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes
 only public Agent Card serving and authenticated request/response mapping for

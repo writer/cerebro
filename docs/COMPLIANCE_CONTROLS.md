@@ -174,6 +174,40 @@ profiles:
 
 Use composition for customer audit packets, internal control programs, product-specific compliance views, or custom framework launches that need to combine several built-in control groups with customer-specific controls.
 
+## Control Archetypes and Pack Generation
+
+Reusable control archetypes live in `internal/compliance/control_archetypes.yaml`. They are auditor-facing starter controls with objective, intent, applicability, assessment methods, audit procedure, failure modes, remediation guidance, exception guidance, evidence expectations, freshness SLA, owner domain, automation flags, tags, and mapped equivalent controls. Archetypes let a product surface or operator generate a custom framework without hand-writing every YAML field.
+
+The generator turns selected archetypes into four reviewable YAML outputs:
+
+- `extension.yaml` for the extension manifest.
+- `controls.yaml` for the generated custom framework.
+- `profiles.yaml` for the generated audit profile.
+- `coverage.yaml` for the generated profile's coverage, rule mapping, evidence expectations, and audit-readiness summary.
+
+The API exposes the same generation flow for UI and automation:
+
+- `GET /grc/control-archetypes` returns the reusable archetypes users can select.
+- `GET /grc/control-profiles` returns built-in profile coverage and readiness metadata.
+- `GET /grc/control-coverage?profile=<id>` returns the checked-in coverage index, optionally filtered to one profile.
+- `POST /grc/control-packs/preview` validates a custom framework request and returns generated YAML file content plus coverage summary.
+- `POST /grc/control-packs` returns the same generated pack with a create-style status for clients that treat generation as an export action.
+
+Example request:
+
+```json
+{
+  "framework_id": "customer-security",
+  "framework_name": "Customer Security Framework",
+  "profile_id": "customer-security-audit",
+  "profile_name": "Customer Security Audit",
+  "archetype_ids": ["privileged-mfa", "access-review", "critical-vulnerability-sla"],
+  "include_profiles": ["soc2-security-core"]
+}
+```
+
+If `archetype_ids` is omitted, the generator uses the recommended baseline archetypes. Generated controls map to equivalent built-in controls where possible, so existing rule coverage and evidence can be credited to the custom control ID while preserving the auditor-facing framework naming.
+
 ## Control Readiness
 
 Control readiness grades whether a control is auditor-ready or still needs authoring depth. `EvaluateControlReadiness` checks the fields auditors need to understand the control, test it, refresh evidence, and handle exceptions: title, objective, intent, applicability, assessment methods, implementation guidance, audit procedure, failure modes, remediation guidance, exception guidance, freshness SLA, owner domain, automation flags, and evidence expectation detail.
@@ -263,6 +297,9 @@ The packet builder uses the same matching rules as posture evaluation. Evidence 
 - `MergeControlProfileSets`
 - `ResolveControlProfiles`
 - `BuildControlCoverageIndex`
+- `LoadControlArchetypeSet`
+- `LoadBuiltinControlArchetypeSet`
+- `BuildControlPackPreview`
 - `EvaluateControlReadiness`
 - `EvaluateControlPosture`
 - `SummarizeControlPosture`

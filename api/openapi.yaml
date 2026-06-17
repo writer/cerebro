@@ -1818,6 +1818,130 @@ paths:
       responses:
         '200':
           description: Evidence items with finding context.
+  /grc/control-archetypes:
+    get:
+      summary: Control pack archetypes
+      tags:
+        - GRC
+      responses:
+        '200':
+          description: Reusable auditor-facing control archetypes for custom framework generation.
+  /grc/control-profiles:
+    get:
+      summary: Control profile coverage
+      tags:
+        - GRC
+      parameters:
+        - name: profile
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Built-in control profiles with coverage, readiness, audit plan, and evidence plan metadata.
+  /grc/control-coverage:
+    get:
+      summary: Control coverage index
+      tags:
+        - GRC
+      parameters:
+        - name: profile
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Generated compliance coverage index, optionally filtered to one profile.
+  /grc/control-packs/preview:
+    post:
+      summary: Preview generated control pack
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                extension_id:
+                  type: string
+                extension_name:
+                  type: string
+                description:
+                  type: string
+                framework_id:
+                  type: string
+                framework_name:
+                  type: string
+                framework_version:
+                  type: string
+                profile_id:
+                  type: string
+                profile_name:
+                  type: string
+                archetype_ids:
+                  type: array
+                  items:
+                    type: string
+                include_profiles:
+                  type: array
+                  items:
+                    type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Generated extension, controls, profiles, coverage summary, and YAML file payloads.
+        '400':
+          description: Invalid custom framework request or unresolved archetype.
+  /grc/control-packs:
+    post:
+      summary: Generate control pack
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                extension_id:
+                  type: string
+                extension_name:
+                  type: string
+                description:
+                  type: string
+                framework_id:
+                  type: string
+                framework_name:
+                  type: string
+                framework_version:
+                  type: string
+                profile_id:
+                  type: string
+                profile_name:
+                  type: string
+                archetype_ids:
+                  type: array
+                  items:
+                    type: string
+                include_profiles:
+                  type: array
+                  items:
+                    type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Generated extension, controls, profiles, coverage summary, and YAML file payloads.
+        '400':
+          description: Invalid custom framework request or unresolved archetype.
   /grc/inventory/categories:
     get:
       summary: Inventory categories
