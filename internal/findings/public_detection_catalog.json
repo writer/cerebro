@@ -39376,6 +39376,164 @@
       ]
     },
     {
+      "id": "identity-okta-vendor-app-broad-group-access",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Okta Vendor App Assigned to Broad Group",
+      "description": "Flags failed query-result evidence for okta app assignment: Okta Vendor App Assigned to Broad Group. Detects active Okta SaaS or vendor-facing applications assigned to broad groups such as everyone, all employees, or domain users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "evidence:identity_governance",
+        "group-access",
+        "identity",
+        "okta",
+        "policy",
+        "query",
+        "third-party-access",
+        "vendor-monitoring"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review each returned query row as an exception candidate, validate row-level scope, and retain the query result as audit evidence. Review the broad group assignment, replace it with least-privilege vendor access groups, and retain access-review evidence for the vendor application. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "resource_urn",
+        "resource_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        }
+      ]
+    },
+    {
+      "id": "identity-okta-vendor-app-review-overdue",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Okta Vendor App Linked to Overdue Vendor Review",
+      "description": "Flags failed query-result evidence for okta application: Okta Vendor App Linked to Overdue Vendor Review. Detects active Okta SaaS or vendor-facing applications whose matching GRC vendor record has no security owner or an overdue security review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "HIGH",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "access-review",
+        "assessment:examine",
+        "evidence:identity_governance",
+        "identity",
+        "okta",
+        "policy",
+        "query",
+        "third-party-risk",
+        "vendor-monitoring"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review each returned query row as an exception candidate, validate row-level scope, and retain the query result as audit evidence. Assign a security owner, complete or update the vendor security review, and confirm the Okta application remains approved for use. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "resource_urn",
+        "resource_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC9.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.19"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.20"
+        }
+      ]
+    },
+    {
+      "id": "identity-okta-vendor-app-without-grc-record",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Okta Vendor App Missing GRC Vendor Record",
+      "description": "Flags failed query-result evidence for okta application: Okta Vendor App Missing GRC Vendor Record. Detects active Okta SaaS or vendor-facing applications that do not have a matching GRC vendor record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+      "source_id": "policy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "policy.evidence",
+        "policy.result"
+      ],
+      "output_kind": "policy.finding",
+      "severity": "MEDIUM",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "evidence:identity_governance",
+        "identity",
+        "inventory",
+        "okta",
+        "policy",
+        "query",
+        "third-party-risk",
+        "vendor-monitoring"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review each returned query row as an exception candidate, validate row-level scope, and retain the query result as audit evidence. Create or link the GRC vendor record, assign business and security owners, and complete vendor risk review before granting or renewing access. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "fingerprint_fields": [
+        "tenant_id",
+        "policy_id",
+        "resource_urn",
+        "resource_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC9.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.19"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.20"
+        }
+      ]
+    },
+    {
       "id": "identity-onelogin-active-no-employee-record",
       "pack_id": "policy",
       "pack_name": "Policy",

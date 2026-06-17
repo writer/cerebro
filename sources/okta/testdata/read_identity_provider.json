@@ -1,0 +1,28 @@
+[
+  {
+    "id": "okta-identity-provider-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.identity_provider",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/identity_provider/v1",
+    "payload": {
+      "id": "idp-saml",
+      "domain": "writer.okta.com",
+      "name": "Partner SAML IdP",
+      "type": "SAML2"
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "family": "identity_provider",
+      "idp_id": "idp-saml",
+      "identity_provider_id": "idp-saml",
+      "idp_name": "Partner SAML IdP",
+      "idp_type": "SAML2",
+      "issuer": "https://idp.example.com",
+      "name": "Partner SAML IdP",
+      "protocol_type": "SAML2",
+      "status": "ACTIVE"
+    }
+  }
+]

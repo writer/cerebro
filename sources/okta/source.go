@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/oktaasset"
 	"github.com/writer/cerebro/sources/internal/oktaevent"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
@@ -29,21 +30,25 @@ import (
 var catalogFS embed.FS
 
 const (
-	defaultPageSize   = 10
-	maxPageSize       = 200
-	oktaHTTPTimeout   = 30 * time.Second
-	maxOktaBodyBytes  = 4 << 20
-	defaultFamily     = familyAudit
-	defaultAuditOrder = "ASCENDING"
-	defaultUserOrder  = "asc"
-	familyAudit       = "audit"
-	familyApplication = "application"
-	familyAppAssign   = "app_assignment"
-	familyAdminRole   = "admin_role"
-	familyGroup       = "group"
-	familyGroupMember = "group_membership"
-	familyPolicyRule  = "policy_rule"
-	familyUser        = "user"
+	defaultPageSize     = 10
+	maxPageSize         = 200
+	oktaHTTPTimeout     = 30 * time.Second
+	maxOktaBodyBytes    = 4 << 20
+	defaultFamily       = familyAudit
+	defaultAuditOrder   = "ASCENDING"
+	defaultUserOrder    = "asc"
+	familyAudit         = "audit"
+	familyApplication   = "application"
+	familyAppAssign     = "app_assignment"
+	familyAdminRole     = "admin_role"
+	familyAuthenticator = "authenticator"
+	familyGroup         = "group"
+	familyGroupMember   = "group_membership"
+	familyIDP           = "identity_provider"
+	familyNetworkZone   = "network_zone"
+	familyPolicyRule    = "policy_rule"
+	familyTrustedOrigin = "trusted_origin"
+	familyUser          = "user"
 )
 
 var defaultMFAFactorRetryBackoffs = []time.Duration{
@@ -391,15 +396,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 		s.policyRuleFamily(),
-		oktaFamily(oktaFamilyOptions[authenticatorRecord]{
-			Name:  familyAuthenticator,
-			Label: "okta authenticators",
-			List:  s.listAuthenticators,
-			Event: authenticatorEvent,
-			URN: func(settings settings, auth authenticatorRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:authenticator:%s", settings.domain, auth.ID), nil
-			},
-		}),
+		s.assetFamily(familyAuthenticator, "okta authenticators", "/api/v1/authenticators", "authenticator", oktaasset.KindAuthenticator, false),
 		s.threatInsightFamily(),
 		oktaFamily(oktaFamilyOptions[groupRecord]{
 			Name:  familyGroup,
@@ -410,6 +407,8 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:group:%s", settings.domain, group.ID), nil
 			},
 		}),
+		s.assetFamily(familyIDP, "okta identity providers", "/api/v1/idps", "identity_provider", oktaasset.KindIdentityProvider, true),
+		s.assetFamily(familyNetworkZone, "okta network zones", "/api/v1/zones", "network_zone", oktaasset.KindNetworkZone, true),
 		oktaFamily(oktaFamilyOptions[userRecord]{
 			Name:  familyGroupMember,
 			Label: "okta group memberships",
@@ -419,6 +418,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:group_membership:%s:%s", settings.domain, settings.groupID, member.ID), nil
 			},
 		}),
+		s.assetFamily(familyTrustedOrigin, "okta trusted origins", "/api/v1/trustedOrigins", "trusted_origin", oktaasset.KindTrustedOrigin, true),
 		oktaFamily(oktaFamilyOptions[userRecord]{
 			Name:   familyUser,
 			Label:  "okta users",
@@ -470,6 +470,22 @@ func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] 
 			return oktaPullFromRecordsWithCursor(records, next, build, options.CursorFallback)
 		},
 	}
+}
+
+func (s *Source) assetFamily(name string, label string, path string, urnFamily string, kind string, queryParams bool) sourcecdk.Family[settings] {
+	return oktaasset.Family(oktaasset.FamilyOptions[settings]{
+		Name: name, Label: label, Path: path, URNFamily: urnFamily, Kind: kind, QueryParams: queryParams,
+		Settings: oktaAssetSettings,
+		List:     s.listAssetRecords,
+	})
+}
+
+func oktaAssetSettings(settings settings) oktaasset.Settings {
+	return oktaasset.Settings{Domain: settings.domain, Filter: settings.filter, Q: settings.q, PerPage: settings.perPage}
+}
+
+func (s *Source) listAssetRecords(ctx context.Context, settings settings, requestPath string, query url.Values, label string) ([]oktaasset.Record, string, error) {
+	return listJSONRecords[oktaasset.Record](ctx, s, settings, requestPath, query, label, nil)
 }
 
 func oktaCheck[T any](ctx context.Context, settings settings, list oktaListFunc[T], label string) error {
@@ -539,9 +555,9 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyAuthenticator, familyGroup, familyGroupMember, familyPolicyRule, familyThreatInsight, familyUser:
+	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyAuthenticator, familyGroup, familyGroupMember, familyIDP, familyNetworkZone, familyPolicyRule, familyThreatInsight, familyTrustedOrigin, familyUser:
 	default:
-		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, group, group_membership, policy_rule, or user")
+		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, authenticator, group, group_membership, identity_provider, network_zone, policy_rule, threat_insight, trusted_origin, or user")
 	}
 	if settings.domain == "" {
 		return settings, fmt.Errorf("okta domain is required")
@@ -592,7 +608,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		if settings.appID == "" {
 			return settings, fmt.Errorf("okta app_id is required when family=%q", familyAppAssign)
 		}
-	case familyApplication, familyGroup, familyPolicyRule:
+	case familyApplication, familyAuthenticator, familyGroup, familyIDP, familyNetworkZone, familyPolicyRule, familyThreatInsight, familyTrustedOrigin:
 		if settings.since != "" || settings.until != "" {
 			return settings, fmt.Errorf("okta since and until are only supported when family=%q", familyAudit)
 		}

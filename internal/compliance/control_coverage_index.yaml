@@ -60990,7 +60990,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 915
+        mapped_rules: 918
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61538,7 +61538,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 426
+          rule_count: 427
           mapped_rules:
             - ai-data-governance
             - ai-model-inventory
@@ -61774,6 +61774,7 @@ profiles:
             - identity-okta-terminated-active-account
             - identity-okta-threat-insight-not-blocking
             - identity-okta-unauthorized-app-access-attempts-7d
+            - identity-okta-vendor-app-broad-group-access
             - identity-onelogin-active-no-employee-record
             - identity-onelogin-duplicate-email
             - identity-onelogin-duplicate-username
@@ -62355,9 +62356,11 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 6
           mapped_rules:
             - grc-vendor-review-overdue
+            - identity-okta-vendor-app-review-overdue
+            - identity-okta-vendor-app-without-grc-record
             - vendor-dpa-exists
             - vendor-risk-assessed
             - vendor-security-review-complete
@@ -64758,6 +64761,18 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC7.2
+        - rule_id: identity-okta-vendor-app-broad-group-access
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
+        - rule_id: identity-okta-vendor-app-review-overdue
+          controls:
+            - framework_name: SOC 2
+              control_id: CC9.2
+        - rule_id: identity-okta-vendor-app-without-grc-record
+          controls:
+            - framework_name: SOC 2
+              control_id: CC9.2
         - rule_id: identity-onelogin-active-no-employee-record
           controls:
             - framework_name: SOC 2

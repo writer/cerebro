@@ -145,7 +145,10 @@ func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
 		{family: "application", kind: "okta.application"},
 		{family: "group", kind: "okta.group"},
 		{family: "group_membership", config: map[string]string{"group_id": "grp-security"}, kind: "okta.group_membership"},
+		{family: "identity_provider", kind: "okta.identity_provider"},
+		{family: "network_zone", kind: "okta.network_zone"},
 		{family: "policy_rule", kind: "okta.policy_rule"},
+		{family: "trusted_origin", kind: "okta.trusted_origin"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{
@@ -922,6 +925,24 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 			kind:   "okta.admin_role",
 			attr:   "role_id",
 			want:   "super_admin",
+		},
+		{
+			family: "identity_provider",
+			kind:   "okta.identity_provider",
+			attr:   "issuer",
+			want:   "https://idp.example.com",
+		},
+		{
+			family: "network_zone",
+			kind:   "okta.network_zone",
+			attr:   "gateway_count",
+			want:   "1",
+		},
+		{
+			family: "trusted_origin",
+			kind:   "okta.trusted_origin",
+			attr:   "scope_types",
+			want:   "CORS,REDIRECT",
 		},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -1796,6 +1817,62 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"lastUpdated":    "2026-04-23T00:00:00Z",
 		},
 	}
+	idpRecords := []map[string]any{
+		{
+			"id":          "idp-saml",
+			"type":        "SAML2",
+			"name":        "Partner SAML IdP",
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+			"protocol": map[string]any{
+				"type": "SAML2",
+				"credentials": map[string]any{
+					"trust": map[string]any{
+						"issuer":   "https://idp.example.com",
+						"audience": "https://writer.okta.com/saml2/service-provider/sp",
+						"kid":      "kid-1",
+					},
+				},
+				"endpoints": map[string]any{
+					"sso": map[string]any{
+						"url":     "https://idp.example.com/sso",
+						"binding": "HTTP-POST",
+					},
+				},
+			},
+		},
+	}
+	networkZoneRecords := []map[string]any{
+		{
+			"id":          "zone-corp",
+			"name":        "Corporate VPN",
+			"type":        "IP",
+			"status":      "ACTIVE",
+			"usage":       "POLICY",
+			"system":      false,
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+			"gateways": []map[string]any{
+				{"type": "CIDR", "value": "203.0.113.0/24"},
+			},
+			"proxies": []map[string]any{},
+		},
+	}
+	trustedOriginRecords := []map[string]any{
+		{
+			"id":          "origin-prod",
+			"name":        "Production Console",
+			"origin":      "https://app.example.com",
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+			"scopes": []map[string]any{
+				{"type": "CORS"},
+				{"type": "REDIRECT"},
+			},
+		},
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1876,6 +1953,18 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 		case "/api/v1/users/00u1/roles":
 			if err := json.NewEncoder(w).Encode(roleRecords); err != nil {
 				t.Fatalf("encode admin roles: %v", err)
+			}
+		case "/api/v1/idps":
+			if err := json.NewEncoder(w).Encode(idpRecords); err != nil {
+				t.Fatalf("encode identity providers: %v", err)
+			}
+		case "/api/v1/zones":
+			if err := json.NewEncoder(w).Encode(networkZoneRecords); err != nil {
+				t.Fatalf("encode network zones: %v", err)
+			}
+		case "/api/v1/trustedOrigins":
+			if err := json.NewEncoder(w).Encode(trustedOriginRecords); err != nil {
+				t.Fatalf("encode trusted origins: %v", err)
 			}
 		case "/api/v1/users/00u1/factors":
 			if _, err := w.Write(mustOktaTestdata(t, "factors_enrolled.json")); err != nil {

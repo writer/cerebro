@@ -1,6 +1,6 @@
 id: okta
 name: Okta
-description: Okta audit log, identity inventory, group, application, assignment, and admin role source.
+description: Okta audit log, identity inventory, group, application, assignment, federation, network zone, trusted origin, and admin role source.
 emitted_kinds:
   - okta.audit
   - okta.admin_role
@@ -9,8 +9,11 @@ emitted_kinds:
   - okta.authenticator
   - okta.group
   - okta.group_membership
+  - okta.identity_provider
+  - okta.network_zone
   - okta.policy_rule
   - okta.threat_insight
+  - okta.trusted_origin
   - okta.user
 coverage_contract:
   owner_domain: identity
@@ -62,9 +65,21 @@ coverage_contract:
       families: [group_membership]
       support: supported
       high_value: true
+    - id: identity_providers
+      type: entity_family
+      title: Identity providers
+      families: [identity_provider]
+      support: supported
+      high_value: true
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
+      support: supported
+      high_value: true
+    - id: network_zones
+      type: entity_family
+      title: Network zones
+      families: [network_zone]
       support: supported
       high_value: true
     - id: policy_rules
@@ -76,18 +91,24 @@ coverage_contract:
     - id: remediation_state
       type: remediation_state
       title: Remediation lifecycle state
-      families: [admin_role, app_assignment, application, audit, policy_rule, user]
+      families: [admin_role, app_assignment, application, audit, identity_provider, network_zone, policy_rule, trusted_origin, user]
       support: partial
       high_value: true
       known_unsupported_fields:
         - Cerebro remediation workflow assignment, exception, SLA, and approval state
       notes:
-        - Okta user, app, assignment, policy, role grant, and audit status fields are surfaced as provider lifecycle evidence.
+        - Okta user, app, assignment, policy, federation, network, trusted origin, role grant, and audit status fields are surfaced as provider lifecycle evidence.
         - Cerebro finding remediation lifecycle remains owned by the finding/workflow surfaces and their typed action boundaries.
     - id: threat_insight
       type: entity_family
       title: ThreatInsight configuration
       families: [threat_insight]
+      support: supported
+      high_value: true
+    - id: trusted_origins
+      type: entity_family
+      title: Trusted origins
+      families: [trusted_origin]
       support: supported
       high_value: true
     - id: users
