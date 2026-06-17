@@ -102,7 +102,7 @@ paths:
   /api/v1/a2a:
     post:
       operationId: callA2AJSONRPC
-      summary: Call the authenticated A2A JSON-RPC contract endpoint
+      summary: Call the authenticated A2A JSON-RPC contract and work endpoint
       tags:
         - Platform
       requestBody:
@@ -113,7 +113,7 @@ paths:
               $ref: '#/components/schemas/A2AJSONRPCRequest'
       responses:
         '200':
-          description: JSON-RPC response. Unsupported task, streaming, and push methods return A2A UnsupportedOperationError until backed by replayable runtime adapters.
+          description: JSON-RPC response. SendMessage returns contract discovery by default and can create durable agent-evidence-packet tasks; GetTask and ListTasks read tenant-scoped A2A task records. Streaming, cancellation, and push methods return A2A UnsupportedOperationError until backed by replayable runtime adapters.
           content:
             application/json:
               schema:
