@@ -41,7 +41,21 @@ func Ref(tenantID, runtimeID, entityType, externalID, label string) cerebroapi.E
 	}
 }
 
+// EncodeExternalID percent-encodes an external identifier so it is safe to use
+// as a single Cerebro URN path segment. Spaces are encoded as %20.
 func EncodeExternalID(value string) string {
+	return encodeExternalID(value, false)
+}
+
+// EncodeExternalIDLegacy reproduces the pre-SDK Aperio encoder, which mapped a
+// space to '-' rather than %20. It exists only so consumers can keep URNs they
+// have already persisted; do not use it for new sources, because it collides
+// "a b" with "a-b".
+func EncodeExternalIDLegacy(value string) string {
+	return encodeExternalID(value, true)
+}
+
+func encodeExternalID(value string, spaceAsHyphen bool) string {
 	const upperHex = "0123456789ABCDEF"
 	var builder strings.Builder
 	for index := 0; index < len(value); index++ {
@@ -59,6 +73,10 @@ func EncodeExternalID(value string) string {
 			character == '(' ||
 			character == ')' {
 			builder.WriteByte(character)
+			continue
+		}
+		if spaceAsHyphen && character == ' ' {
+			builder.WriteByte('-')
 			continue
 		}
 		builder.WriteByte('%')

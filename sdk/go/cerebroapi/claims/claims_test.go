@@ -42,6 +42,18 @@ func TestEncodeExternalIDAvoidsSpaceHyphenCollision(t *testing.T) {
 	}
 }
 
+func TestEncodeExternalIDLegacyMapsSpaceToHyphen(t *testing.T) {
+	if got := EncodeExternalIDLegacy("external id"); got != "external-id" {
+		t.Fatalf("legacy space encoding = %q, want external-id", got)
+	}
+	if got := EncodeExternalIDLegacy("a:b/c"); got != "a%3Ab%2Fc" {
+		t.Fatalf("legacy non-space encoding = %q, want a%%3Ab%%2Fc", got)
+	}
+	if EncodeExternalIDLegacy("external id") == EncodeExternalID("external id") {
+		t.Fatal("legacy and canonical space encodings should differ")
+	}
+}
+
 func TestClaimConstructorsUseCanonicalClaimShapes(t *testing.T) {
 	finding := Ref("tenant-a", "runtime-main", "finding", "finding-1", "Finding 1")
 	asset := Ref("tenant-a", "runtime-main", "asset", "asset-1", "Asset 1")
