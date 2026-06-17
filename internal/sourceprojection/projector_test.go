@@ -818,6 +818,134 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 	}
 }
 
+func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
+	tests := []struct {
+		name           string
+		kind           string
+		attributes     map[string]string
+		wantURN        string
+		wantEntityType string
+		wantLabel      string
+		wantAttrs      map[string]string
+	}{
+		{
+			name: "identity provider",
+			kind: "okta.identity_provider",
+			attributes: map[string]string{
+				"domain":        "writer.okta.com",
+				"idp_id":        "idp-saml",
+				"issuer":        "https://idp.example.com",
+				"name":          "Partner SAML IdP",
+				"protocol_type": "SAML2",
+				"status":        "ACTIVE",
+				"type":          "SAML2",
+			},
+			wantURN:        "urn:cerebro:writer:okta_identity_provider:idp-saml",
+			wantEntityType: "okta.identity_provider",
+			wantLabel:      "Partner SAML IdP",
+			wantAttrs: map[string]string{
+				"idp_id":        "idp-saml",
+				"issuer":        "https://idp.example.com",
+				"name":          "Partner SAML IdP",
+				"protocol_type": "SAML2",
+				"status":        "ACTIVE",
+				"type":          "SAML2",
+			},
+		},
+		{
+			name: "network zone",
+			kind: "okta.network_zone",
+			attributes: map[string]string{
+				"domain":          "writer.okta.com",
+				"gateway_count":   "1",
+				"gateway_values":  "203.0.113.0/24",
+				"name":            "Corporate VPN",
+				"network_zone_id": "zone-corp",
+				"status":          "ACTIVE",
+				"type":            "IP",
+				"usage":           "POLICY",
+				"zone_id":         "zone-corp",
+			},
+			wantURN:        "urn:cerebro:writer:okta_network_zone:zone-corp",
+			wantEntityType: "okta.network_zone",
+			wantLabel:      "Corporate VPN",
+			wantAttrs: map[string]string{
+				"gateway_count":   "1",
+				"gateway_values":  "203.0.113.0/24",
+				"network_zone_id": "zone-corp",
+				"status":          "ACTIVE",
+				"type":            "IP",
+				"usage":           "POLICY",
+				"zone_id":         "zone-corp",
+			},
+		},
+		{
+			name: "trusted origin",
+			kind: "okta.trusted_origin",
+			attributes: map[string]string{
+				"cors":              "true",
+				"domain":            "writer.okta.com",
+				"name":              "Production Console",
+				"origin":            "https://app.example.com",
+				"origin_host":       "app.example.com",
+				"redirect":          "true",
+				"scope_count":       "2",
+				"scope_types":       "CORS,REDIRECT",
+				"status":            "ACTIVE",
+				"trusted_origin_id": "origin-prod",
+			},
+			wantURN:        "urn:cerebro:writer:okta_trusted_origin:origin-prod",
+			wantEntityType: "okta.trusted_origin",
+			wantLabel:      "Production Console",
+			wantAttrs: map[string]string{
+				"cors":              "true",
+				"origin":            "https://app.example.com",
+				"origin_host":       "app.example.com",
+				"redirect":          "true",
+				"scope_count":       "2",
+				"scope_types":       "CORS,REDIRECT",
+				"status":            "ACTIVE",
+				"trusted_origin_id": "origin-prod",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         "okta-durable-" + tt.name,
+				TenantId:   "writer",
+				SourceId:   "okta",
+				Kind:       tt.kind,
+				Attributes: tt.attributes,
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			if result.EntitiesProjected != 2 {
+				t.Fatalf("Project().EntitiesProjected = %d, want 2", result.EntitiesProjected)
+			}
+			entity, ok := state.entities[tt.wantURN]
+			if !ok {
+				t.Fatalf("state entity %q missing", tt.wantURN)
+			}
+			if got := entity.EntityType; got != tt.wantEntityType {
+				t.Fatalf("EntityType = %q, want %q", got, tt.wantEntityType)
+			}
+			if got := entity.Label; got != tt.wantLabel {
+				t.Fatalf("Label = %q, want %q", got, tt.wantLabel)
+			}
+			for key, want := range tt.wantAttrs {
+				if got := entity.Attributes[key]; got != want {
+					t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+				}
+			}
+			assertProjectedLink(t, state, tt.wantURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+		})
+	}
+}
+
 func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
 	tests := []struct {
 		name         string

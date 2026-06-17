@@ -1837,6 +1837,157 @@ func oktaThreatInsightProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	return projectedEntities, projectedLinks, nil
 }
 
+func oktaIdentityProviderProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	domain := strings.TrimSpace(attributes["domain"])
+	idpID := strings.TrimSpace(firstNonEmpty(attributes["idp_id"], attributes["identity_provider_id"]))
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "okta_org", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.org", Label: domain,
+			Attributes: map[string]string{"domain": domain},
+		})
+	}
+
+	idpURN := projectionURN(tenantID, "okta_identity_provider", idpID)
+	if idpID != "" {
+		idpAttrs := map[string]string{
+			"idp_id":               idpID,
+			"identity_provider_id": idpID,
+			"name":                 strings.TrimSpace(firstNonEmpty(attributes["name"], attributes["idp_name"])),
+			"status":               strings.TrimSpace(attributes["status"]),
+			"type":                 strings.TrimSpace(firstNonEmpty(attributes["type"], attributes["idp_type"])),
+		}
+		for _, key := range []string{"audience", "client_id", "issuer", "kid", "protocol_type", "sso_binding", "sso_url_host"} {
+			addProjectedAttribute(idpAttrs, key, attributes[key])
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        idpURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "okta.identity_provider",
+			Label:      firstNonEmpty(idpAttrs["name"], idpID),
+			Attributes: idpAttrs,
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), idpURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func oktaNetworkZoneProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	domain := strings.TrimSpace(attributes["domain"])
+	zoneID := strings.TrimSpace(firstNonEmpty(attributes["zone_id"], attributes["network_zone_id"]))
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "okta_org", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.org", Label: domain,
+			Attributes: map[string]string{"domain": domain},
+		})
+	}
+
+	zoneURN := projectionURN(tenantID, "okta_network_zone", zoneID)
+	if zoneID != "" {
+		zoneAttrs := map[string]string{
+			"name":            strings.TrimSpace(attributes["name"]),
+			"network_zone_id": zoneID,
+			"status":          strings.TrimSpace(attributes["status"]),
+			"type":            strings.TrimSpace(firstNonEmpty(attributes["type"], attributes["zone_type"])),
+			"usage":           strings.TrimSpace(attributes["usage"]),
+			"zone_id":         zoneID,
+		}
+		for _, key := range []string{"asn_count", "asns", "gateway_count", "gateway_values", "location_count", "proxy_count", "proxy_values", "system"} {
+			addProjectedAttribute(zoneAttrs, key, attributes[key])
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        zoneURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "okta.network_zone",
+			Label:      firstNonEmpty(zoneAttrs["name"], zoneID),
+			Attributes: zoneAttrs,
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), zoneURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func oktaTrustedOriginProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	domain := strings.TrimSpace(attributes["domain"])
+	originID := strings.TrimSpace(attributes["trusted_origin_id"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "okta_org", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.org", Label: domain,
+			Attributes: map[string]string{"domain": domain},
+		})
+	}
+
+	originURN := projectionURN(tenantID, "okta_trusted_origin", originID)
+	if originID != "" {
+		originAttrs := map[string]string{
+			"name":              strings.TrimSpace(attributes["name"]),
+			"origin":            strings.TrimSpace(attributes["origin"]),
+			"origin_host":       strings.TrimSpace(attributes["origin_host"]),
+			"status":            strings.TrimSpace(attributes["status"]),
+			"trusted_origin_id": originID,
+		}
+		for _, key := range []string{"cors", "redirect", "scope_count", "scope_types", "wildcard_origin"} {
+			addProjectedAttribute(originAttrs, key, attributes[key])
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        originURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "okta.trusted_origin",
+			Label:      firstNonEmpty(originAttrs["name"], originAttrs["origin"], originID),
+			Attributes: originAttrs,
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), originURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
 func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {

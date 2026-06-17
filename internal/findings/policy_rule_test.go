@@ -190,3 +190,22 @@ func TestPolicyCatalogRuleDisabledDoesNotSupportRuntimeOrEmit(t *testing.T) {
 		t.Fatalf("len(findings) = %d, want 0", len(findings))
 	}
 }
+
+func TestOktaVendorBroadGroupPolicyFingerprintsByApp(t *testing.T) {
+	var config *policyRuleConfig
+	for i := range generatedPolicyRuleCatalog {
+		if generatedPolicyRuleCatalog[i].Definition.ID == "identity-okta-vendor-app-broad-group-access" {
+			config = &generatedPolicyRuleCatalog[i]
+			break
+		}
+	}
+	if config == nil {
+		t.Fatal("identity-okta-vendor-app-broad-group-access missing from generated policy catalog")
+	}
+	if !strings.Contains(config.Query, "SELECT a.app_id AS id") {
+		t.Fatalf("query = %q, want app_id selected as id", config.Query)
+	}
+	if strings.Contains(config.Query, "SELECT a.assignee_id AS id") {
+		t.Fatalf("query = %q, must not fingerprint broad group rows by assignee_id", config.Query)
+	}
+}
