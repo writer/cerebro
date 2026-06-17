@@ -78,6 +78,9 @@ func LoadControlCoverageIndex(content []byte) (ControlCoverageIndex, error) {
 func BuildControlPackPreview(request ControlPackBuildRequest, archetypes ControlArchetypeSet, baseCatalog ControlCatalog, baseProfiles ControlProfileSet, rules []RuleControlMapping) (ControlPackPreview, []ValidationIssue, error) {
 	normalized := normalizeControlPackBuildRequest(request)
 	selected, selectionIssues := selectControlArchetypes(archetypes, normalized.ArchetypeIDs)
+	if len(selectionIssues) != 0 {
+		return ControlPackPreview{}, selectionIssues, nil
+	}
 	extension, catalog, profiles := buildControlPackFiles(normalized, archetypes.Version, selected)
 
 	mergedCatalog := MergeControlCatalogs(baseCatalog, catalog)
@@ -183,7 +186,7 @@ func selectControlArchetypes(set ControlArchetypeSet, ids []string) ([]ControlAr
 		seen[id] = struct{}{}
 		selected = append(selected, normalizeControlArchetype(archetype))
 	}
-	if len(selected) == 0 {
+	if len(selected) == 0 && len(issues) == 0 {
 		issues = append(issues, ValidationIssue{Path: "archetype_ids", Message: "at least one archetype is required"})
 	}
 	return selected, issues

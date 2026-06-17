@@ -102,4 +102,13 @@ func TestBuildControlPackPreviewRejectsUnknownArchetype(t *testing.T) {
 	if len(issues) == 0 {
 		t.Fatal("issues = 0, want unknown archetype validation issue")
 	}
+	if len(issues) != 1 {
+		t.Fatalf("issues = %#v, want only the unknown archetype issue", issues)
+	}
+	if issues[0].Path != "archetype_ids[0]" {
+		t.Fatalf("issue path = %q, want archetype_ids[0]", issues[0].Path)
+	}
+	if strings.Contains(issues[0].Message, "at least one") {
+		t.Fatalf("issue = %#v, want precise unknown archetype issue", issues[0])
+	}
 }
