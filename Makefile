@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -125,6 +125,9 @@ workflow-replay-test: ## Run workflow replay focused tests.
 
 finding-rule-test: ## Run finding rule focused tests.
 	go test ./internal/findings -run '$(FINDING_RULE_TESTS)' -count=1 -v
+
+agent-platform-eval: ## Run security agent control-plane eval fixtures.
+	go test ./internal/agentplatform -run 'TestRunSecurityAgentEvalSuiteFixture|TestSecurityAgentEvalFixtureCoversControlPlane' -count=1 -v
 
 github-findings-e2e: ## Run GitHub findings end-to-end test against configured repo.
 	CEREBRO_RUN_GITHUB_FINDINGS_E2E=1 CEREBRO_GITHUB_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_FINDINGS_REPO="$(GITHUB_FINDINGS_REPO)" go test ./cmd/cerebro -run '^TestGitHubDependabotFindingsEndToEndWithGHCLI$$' -count=1 -v

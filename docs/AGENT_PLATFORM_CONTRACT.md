@@ -86,6 +86,19 @@ The first supported integration strategies are:
   and fixtures only, with live exploitation, credential harvesting, unbounded scanning, and destructive remediation
   outside the contract.
 
+### Running Security-Agent Evals
+
+Use the focused eval target before changing security-agent control-plane behavior:
+
+```bash
+make agent-platform-eval
+go test ./internal/bootstrap -run TestAgentPlatformSecurityControlPlaneEndToEndWorkflow -count=1 -v
+```
+
+The fixture suite lives at `internal/agentplatform/testdata/security_agent_eval_cases.json`. It covers every declared
+control-plane eval scenario and every integration strategy, including tenant isolation, stale coverage, prompt-injection
+handling, remediation safety, finding promotion gates, connector readiness, and bounded simulation.
+
 ## Execution Contract
 
 Agents should never get an unmediated side-effect surface. Execution belongs behind adapters that report:
