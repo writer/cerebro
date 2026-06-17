@@ -73,6 +73,19 @@ Use `maps_to` to connect custom controls to controls already covered by generate
 
 Control extension packs are YAML manifests that package custom catalog and profile files together. This gives custom framework work a single generated-coverage entrypoint while keeping the actual control catalog YAML separate and reviewable.
 
+Start a custom pack with the scaffold command:
+
+```bash
+go run ./tools/controlindex \
+  --init-extension customer-controls \
+  --extension-id customer-controls \
+  --framework-id customer \
+  --framework-name "Customer Audit 2026" \
+  --profile-id customer-security-audit
+```
+
+The scaffold writes `extension.yaml`, `controls.yaml`, and `profiles.yaml` into the target directory and refuses to overwrite existing files. The starter control is intentionally rich: it includes objective, intent, applicability, assessment methods, audit procedure, failure modes, remediation guidance, exception guidance, evidence expectations, freshness SLA, owner domain, automation flags, and `maps_to` aliases that can be edited for the custom framework.
+
 ```yaml
 version: "2026-06-17"
 id: customer-controls
