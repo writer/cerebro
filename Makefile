@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -96,7 +96,11 @@ cover: ## Run Go coverage for high-stakes packages.
 
 test-coverage: cover ## Alias for coverage validation.
 
-sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
+sdk-test: sdk-go-test sdk-python-test sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
+
+sdk-go-test: ## Run Go SDK unit tests and vet.
+	go -C sdk/go/cerebroapi test ./...
+	go -C sdk/go/cerebroapi vet ./...
 
 sdk-python-test: ## Run Python SDK unit tests.
 	$(PYTHON) -m venv "$(SDK_PYTHON_VENV)"
@@ -202,9 +206,10 @@ proto-lint: ## Lint protobuf definitions.
 
 proto-generate: ## Generate protobuf-derived code.
 	$(BUF) generate
+	$(BUF) generate --template buf.gen.sdk.yaml --path proto/cerebro/v1/primitives.proto
 
 proto-generate-check: proto-generate ## Verify protobuf generated files are current.
-	git diff --exit-code -- gen sdk/python/cerebro/v1
+	git diff --exit-code -- gen sdk/python/cerebro/v1 sdk/go/cerebroapi/genproto
 
 proto-breaking: ## Check protobuf compatibility against PROTO_BREAKING_BASE.
 	$(BUF) breaking --against '.git#branch=$(PROTO_BREAKING_BASE)'
