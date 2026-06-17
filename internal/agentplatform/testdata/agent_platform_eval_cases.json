@@ -6,7 +6,7 @@
     "expect": {
       "required_capability_ids": ["a2a-contract-discovery"],
       "required_contract_paths": ["/.well-known/agent-card.json", "/.well-known/agent.json", "/api/v1/a2a"],
-      "required_a2a_methods": ["SendMessage", "ListTasks"],
+      "required_a2a_methods": ["SendMessage", "GetTask", "ListTasks"],
       "required_a2a_unsupported_methods": ["SendStreamingMessage", "CreateTaskPushNotificationConfig"],
       "required_provenance_surfaces": ["a2a-agent-card"],
       "required_integration_strategy_ids": ["a2a-protocol-boundary"]

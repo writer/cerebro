@@ -71,6 +71,11 @@ the long-running reasoning pipeline. That deadline is owned by `net/http` and
 the response writer, so the hook belongs in bootstrap instead of the graphagent
 domain package.
 
+The budget also includes the A2A gateway adapter that maps authenticated tenant
+context, the platform job store, coverage context, and evidence authorizers into
+`internal/a2agateway`. Durable task lifecycle behavior stays in that domain
+package; bootstrap only wires the HTTP boundary into it.
+
 The agent platform graph preflight contract lives in `internal/agentplatform`.
 The bootstrap budget includes the HTTP and MCP request/response mapping needed
 to force authenticated tenant context, expose preflight to agents, and attach

@@ -165,13 +165,12 @@ func A2AProtocol() A2AProtocolContract {
 		ProtocolVersion:  "1.0",
 		DiscoveryPaths:   []string{A2AAgentCardPath, A2ALegacyAgentCardPath},
 		JSONRPCPath:      A2AJSONRPCPath,
-		SupportedMethods: []string{"SendMessage", "ListTasks"},
+		SupportedMethods: []string{"SendMessage", "GetTask", "ListTasks"},
 		UnsupportedMethods: []string{
 			"CancelTask",
 			"CreateTaskPushNotificationConfig",
 			"DeleteTaskPushNotificationConfig",
 			"GetExtendedAgentCard",
-			"GetTask",
 			"GetTaskPushNotificationConfig",
 			"ListTaskPushNotificationConfigs",
 			"SendStreamingMessage",
@@ -180,8 +179,9 @@ func A2AProtocol() A2AProtocolContract {
 		Authentication: []string{"bearer API key", "OAuth bearer token with cerebro.cosmo.security.read"},
 		Controls: []string{
 			"public Agent Card contains no tenant, endpoint inventory, credential, or deployment labels",
-			"JSON-RPC methods force the authenticated platform tenant before returning contract data",
-			"task, streaming, and push-notification methods stay disabled until backed by replayable runtime adapters",
+			"JSON-RPC methods force the authenticated platform tenant before returning contract or task data",
+			"SendMessage can create durable agent-evidence-packet tasks backed by the platform job store",
+			"streaming, cancellation, and push-notification methods stay disabled until backed by replayable runtime adapters",
 		},
 	}
 }
@@ -238,6 +238,15 @@ func BuildA2AAgentCard(origin string) A2AAgentCard {
 				Examples:    []string{"List the public agent-platform contract endpoints."},
 				InputModes:  []string{"text/plain", "application/json"},
 				OutputModes: []string{"text/plain", "application/json"},
+			},
+			{
+				ID:          A2AWorkSkillAgentEvidencePacket,
+				Name:        "Agent evidence packet task",
+				Description: "Create a durable, tenant-scoped A2A task whose artifact contains Cerebro preflight, verifier, connector-gate, eval, memory, simulation, confidence, and write-back guidance.",
+				Tags:        []string{"security", "evidence-packet", "governed-work"},
+				Examples:    []string{"Create an evidence packet for this finding scope before an agent run."},
+				InputModes:  []string{"text/plain", "application/json"},
+				OutputModes: []string{"application/json"},
 			},
 			{
 				ID:          "event-subscription-contract",

@@ -68,8 +68,10 @@ The first supported integration strategies are:
 
 - A2A protocol boundary: public discovery is limited to `/.well-known/agent-card.json` and the legacy
   `/.well-known/agent.json` alias. Authenticated JSON-RPC uses `/api/v1/a2a`; `SendMessage` returns contract
-  discovery content, `ListTasks` returns an empty task list, and task, streaming, or push-notification methods return
-  explicit unsupported-operation errors until backed by replayable runtime adapters.
+  discovery content by default and can create a durable `agent-evidence-packet` task when the message metadata
+  selects that skill. `GetTask` and `ListTasks` read the resulting tenant-scoped task records from the platform job
+  store. Streaming, cancellation, and push-notification methods return explicit unsupported-operation errors until
+  backed by replayable runtime adapters.
 - Public event subscriptions: outbound webhook triggers are exposed first as a tenant-scoped contract at
   `/api/v1/event-subscriptions/contract`, with event allow-lists, delivery IDs, `Idempotency-Key`, signing, retry, and
   dead-letter semantics. The contract intentionally does not give agents unmediated third-party egress.

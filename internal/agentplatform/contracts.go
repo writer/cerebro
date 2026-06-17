@@ -5,7 +5,7 @@
 // Cerebro expects every agent-facing capability to preserve.
 package agentplatform
 
-const ContractVersion = "2026-06-16.cerebro-agent-platform"
+const ContractVersion = "2026-06-17.cerebro-agent-platform"
 
 const (
 	ScopeCosmoSecurityRead         = "cosmo.security.read"
@@ -316,15 +316,15 @@ var Capabilities = []Capability{
 		Owner:           "cerebro-platform",
 		Risk:            "medium",
 		DefaultOn:       true,
-		Summary:         "Publishes a public Agent Card and authenticated JSON-RPC contract responses for A2A-compatible clients.",
+		Summary:         "Publishes a public Agent Card and authenticated JSON-RPC contract and task responses for A2A-compatible clients.",
 		ConsoleSurfaces: []string{"Agent platform API", "OpenAPI", "A2A discovery"},
 		RequiredScopes:  []string{ScopeCosmoSecurityRead},
 		Eval: EvalStatus{
 			Required:      true,
 			Status:        "required",
 			LocalCommands: []string{"go test ./internal/agentplatform ./internal/bootstrap -run 'Test.*A2A|TestRunAgentPlatformEvalSuiteFixture'"},
-			ScenarioSets:  []string{"a2a-contract-discovery", "a2a-unsupported-methods"},
-			Rubrics:       []string{"public-safe metadata", "method honesty", "auth boundary", "contract discoverability"},
+			ScenarioSets:  []string{"a2a-contract-discovery", "a2a-work-tasks", "a2a-unsupported-methods"},
+			Rubrics:       []string{"public-safe metadata", "method honesty", "auth boundary", "contract discoverability", "durable task artifact"},
 		},
 		RuntimeEvents: []string{"agent.run.started", "agent.run.completed", "agent.run.failed"},
 		Provenance:    []string{"a2a-agent-card", "agent-run-preflight"},
