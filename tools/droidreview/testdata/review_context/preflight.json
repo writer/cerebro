@@ -4,7 +4,7 @@
     ".github/workflows/droid-review.yml"
   ],
   "run_droid_review": true,
-  "review_model": "claude-opus-4-8",
+  "review_model": "claude-sonnet-4-6",
   "review_reason": "code, workflow, API, source, or security-sensitive paths changed",
   "findings": [],
   "checks": ["cypher-safety"],

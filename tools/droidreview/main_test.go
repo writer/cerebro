@@ -33,8 +33,8 @@ func TestClassifyReviewSkipsDocsOnly(t *testing.T) {
 	if result.RunDroidReview {
 		t.Fatalf("RunDroidReview = true, want false for docs-only changes")
 	}
-	if result.ReviewModel != opusBugReviewModel {
-		t.Fatalf("ReviewModel = %q, want %q", result.ReviewModel, opusBugReviewModel)
+	if result.ReviewModel != sonnetBugReviewModel {
+		t.Fatalf("ReviewModel = %q, want %q", result.ReviewModel, sonnetBugReviewModel)
 	}
 }
 
@@ -63,7 +63,7 @@ func TestWriteJSONFilePersistsPreflightShape(t *testing.T) {
 	result := preflightResult{
 		ChangedFiles:   []string{"internal/graphagent/ask.go"},
 		RunDroidReview: true,
-		ReviewModel:    opusBugReviewModel,
+		ReviewModel:    sonnetBugReviewModel,
 		ReviewReason:   "code changed",
 		Checks:         []string{"cypher-safety"},
 		Findings:       []checkFinding{{Rule: "cypher-safety", File: "internal/graphagent/ask.go", Line: 12, Message: "bad cypher"}},

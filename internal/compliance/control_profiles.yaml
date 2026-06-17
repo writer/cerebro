@@ -1,0 +1,52 @@
+version: "2026-06-17"
+profiles:
+  - id: soc2-security-core
+    name: SOC 2 Security Core
+    description: Security audit scope covering control environment, communication, risk assessment, monitoring, access, operations, change, and risk mitigation.
+    frameworks:
+      - name: SOC 2
+        families: [CC1, CC2, CC3, CC4, CC5, CC6, CC7, CC8, CC9]
+  - id: soc2-availability
+    name: SOC 2 Availability
+    description: Availability controls for uptime, capacity, continuity, and operational resilience reviews.
+    frameworks:
+      - name: SOC 2
+        families: [A1]
+  - id: iso-technology-controls
+    name: ISO Technology Controls
+    description: Technology implementation controls for access, operations, logging, vulnerability management, and secure configuration evidence.
+    frameworks:
+      - name: "ISO 27001:2022"
+        families: [A.8]
+  - id: cloud-security-benchmarks
+    name: Cloud Security Benchmarks
+    description: Cloud and workload configuration controls for account management, vulnerability management, logging, network defense, and benchmark posture.
+    frameworks:
+      - name: CIS Controls v8
+        families: ["4", "5", "6", "7", "8", "12", "13"]
+      - name: CIS AWS Foundations Benchmark v2.0
+        include_all: true
+      - name: CIS Kubernetes Benchmark
+        include_all: true
+      - name: CIS GKE Benchmark v1.4
+        include_all: true
+      - name: CIS EKS Benchmark v1.3
+        include_all: true
+  - id: pci-operational-security
+    name: PCI Operational Security
+    description: Network, system, identity, logging, testing, and security program controls commonly used for payment-environment evidence review.
+    frameworks:
+      - name: PCI DSS v4.0.1
+        families: ["1", "6", "7", "8", "10", "11", "12"]
+  - id: privacy-ai-governance
+    name: Privacy and AI Governance
+    description: Privacy and AI governance controls for data handling, governance accountability, and AI system oversight reviews.
+    frameworks:
+      - name: GDPR
+        include_all: true
+      - name: CCPA
+        include_all: true
+      - name: "ISO 27701:2025"
+        families: [A.1, A.2, A.3]
+      - name: ISO 42001
+        families: ["6", "7", "8", "9", "10", A.2, A.3, A.4, A.5, A.6, A.7, A.8, A.9, A.10]

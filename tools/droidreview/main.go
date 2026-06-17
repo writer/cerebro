@@ -19,7 +19,7 @@ import (
 	"github.com/writer/cerebro/tools/droidreview/bodyread"
 )
 
-const opusBugReviewModel = "claude-opus-4-8"
+const sonnetBugReviewModel = "claude-sonnet-4-6"
 
 type preflightResult struct {
 	ChangedFiles   []string          `json:"changed_files"`
@@ -86,7 +86,7 @@ func writeJSONFile(path string, result preflightResult) error {
 func run(base, head, repo string) (preflightResult, error) {
 	files, err := changedFiles(base, head, repo)
 	if err != nil {
-		return preflightResult{RunDroidReview: true, ReviewModel: opusBugReviewModel}, err
+		return preflightResult{RunDroidReview: true, ReviewModel: sonnetBugReviewModel}, err
 	}
 	result := classifyReview(files)
 	result.Checks = []string{
@@ -229,7 +229,7 @@ func classifyReview(files []string) preflightResult {
 	result := preflightResult{
 		ChangedFiles:   files,
 		RunDroidReview: false,
-		ReviewModel:    opusBugReviewModel,
+		ReviewModel:    sonnetBugReviewModel,
 		ReviewReason:   "docs/templates only; fast preflight and CI are sufficient",
 	}
 	for _, file := range files {
