@@ -288,7 +288,7 @@ func (r Record) Time(key string) *time.Time {
 	if value == "" {
 		return nil
 	}
-	parsed, err := time.Parse(time.RFC3339, value)
+	parsed, err := time.Parse(time.RFC3339Nano, value)
 	if err != nil {
 		return nil
 	}
