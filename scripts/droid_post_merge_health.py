@@ -87,6 +87,7 @@ def collect_pull_requests_for_commit(head_sha: str, token: str, repository: str)
                 "title": item.get("title") or "",
                 "url": item.get("html_url") or "",
                 "state": item.get("state") or "",
+                "merged_at": item.get("merged_at") or "",
                 "author": user.get("login") or "",
                 "head_repository": head_repo.get("full_name") or "",
                 "base_repository": base_repo.get("full_name") or repository,
@@ -141,6 +142,19 @@ def is_finished_droid_review(body: object) -> bool:
     return any(marker in text for marker in DROID_FINISHED_MARKERS)
 
 
+def is_post_merge_checkout_error(pr: dict[str, object], comment: dict[str, object]) -> bool:
+    body = str(comment.get("body") or "")
+    if "Droid encountered an error" not in body:
+        return False
+    if "Failed to checkout PR #" not in body or "branch for review" not in body:
+        return False
+    merged_at = str(pr.get("merged_at") or "")
+    if not merged_at:
+        return False
+    created_at = str(comment.get("created_at") or "")
+    return not created_at or created_at >= merged_at
+
+
 def requires_droid_review(file: str) -> bool:
     normalized = file.replace("\\", "/")
     return (
@@ -179,12 +193,16 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
 
     active_errors = []
     active_progress = []
+    post_merge_checkout_errors = []
     finished = []
     for comment in droid_comments:
         body = comment.get("body") or ""
         superseded = "Superseded Droid error" in body or "Superseded Droid review" in body
         if "Droid encountered an error" in body and not superseded:
-            active_errors.append(comment)
+            if is_post_merge_checkout_error(pr, comment):
+                post_merge_checkout_errors.append(comment)
+            else:
+                active_errors.append(comment)
         if "Droid is reviewing code and running a security check" in body and not superseded:
             active_progress.append(comment)
         if is_finished_droid_review(body):
@@ -192,12 +210,17 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
 
     author = str(pr.get("author") or "")
     latest = droid_comments[-1] if droid_comments else {}
+    latest_report_comment = latest
     if active_errors:
         status = "error"
         reason = "Droid has an unsuperseded error comment."
     elif active_progress:
         status = "in_progress"
         reason = "Droid has an unsuperseded in-progress comment."
+    elif post_merge_checkout_errors and finished:
+        status = "ok"
+        reason = "Droid finished before a post-merge branch checkout error."
+        latest_report_comment = finished[-1]
     elif latest and is_finished_droid_review(latest.get("body")):
         status = "ok"
         reason = "Droid has a finished review comment."
@@ -225,10 +248,11 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
         "author": author,
         "status": status,
         "reason": reason,
-        "latest_comment_url": latest.get("html_url") or "",
+        "latest_comment_url": latest_report_comment.get("html_url") or "",
         "droid_comment_count": len(droid_comments),
         "active_error_count": len(active_errors),
         "active_progress_count": len(active_progress),
+        "post_merge_checkout_error_count": len(post_merge_checkout_errors),
         "finished_count": len(finished),
         "changed_files": pr.get("changed_files") or [],
     }
