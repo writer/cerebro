@@ -82,6 +82,31 @@ func TestGRCControlPackPreviewEndpointReturnsYAMLFilesAndCoverage(t *testing.T) 
 	}
 }
 
+func TestGRCControlPackCreateEndpointReturnsStatelessExport(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := strings.NewReader(`{
+		"framework_id":"customer-security",
+		"framework_name":"Customer Security Framework",
+		"profile_id":"customer-security-audit",
+		"profile_name":"Customer Security Audit",
+		"archetype_ids":["privileged-mfa"]
+	}`)
+	resp, err := server.Client().Post(server.URL+"/grc/control-packs", "application/json", body)
+	if err != nil {
+		t.Fatalf("POST /grc/control-packs error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /grc/control-packs status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if location := resp.Header.Get("Location"); location != "" {
+		t.Fatalf("Location header = %q, want none for stateless export", location)
+	}
+}
+
 func TestGRCControlPackPreviewEndpointReturnsValidationIssues(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -103,5 +128,8 @@ func TestGRCControlPackPreviewEndpointReturnsValidationIssues(t *testing.T) {
 	}
 	if len(payload.Issues) == 0 {
 		t.Fatal("issues = 0, want validation issue")
+	}
+	if payload.Issues[0].Path == "" || payload.Issues[0].Message == "" {
+		t.Fatalf("issue = %#v, want JSON-decoded path and message fields", payload.Issues[0])
 	}
 }

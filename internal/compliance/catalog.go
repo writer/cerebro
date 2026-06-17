@@ -13,8 +13,8 @@ import (
 const DefaultControlCatalogPath = "internal/compliance/control_families.yaml"
 
 type ValidationIssue struct {
-	Path    string
-	Message string
+	Path    string `json:"path,omitempty" yaml:"path,omitempty"`
+	Message string `json:"message" yaml:"message"`
 }
 
 func (i ValidationIssue) Error() string {

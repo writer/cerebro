@@ -41,7 +41,7 @@ func (a *App) handleGRCControlPackPreview(w http.ResponseWriter, r *http.Request
 }
 
 func (a *App) handleGRCControlPackCreate(w http.ResponseWriter, r *http.Request) {
-	a.writeGRCControlPackPreview(w, r, http.StatusCreated)
+	a.writeGRCControlPackPreview(w, r, http.StatusOK)
 }
 
 func (a *App) writeGRCControlPackPreview(w http.ResponseWriter, r *http.Request, status int) {
