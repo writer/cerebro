@@ -112,3 +112,31 @@ func TestBuildControlPackPreviewRejectsUnknownArchetype(t *testing.T) {
 		t.Fatalf("issue = %#v, want precise unknown archetype issue", issues[0])
 	}
 }
+
+func TestBuildControlPackPreviewRejectsBlankArchetype(t *testing.T) {
+	archetypes, err := LoadBuiltinControlArchetypeSet()
+	if err != nil {
+		t.Fatalf("load archetypes: %v", err)
+	}
+	baseCatalog, err := LoadBuiltinControlCatalog()
+	if err != nil {
+		t.Fatalf("load catalog: %v", err)
+	}
+	baseProfiles, err := LoadBuiltinControlProfileSet()
+	if err != nil {
+		t.Fatalf("load profiles: %v", err)
+	}
+	preview, issues, err := BuildControlPackPreview(ControlPackBuildRequest{ArchetypeIDs: []string{" "}}, archetypes, baseCatalog, baseProfiles, nil)
+	if err != nil {
+		t.Fatalf("BuildControlPackPreview error = %v", err)
+	}
+	if preview.Summary.Controls != 0 {
+		t.Fatalf("controls = %d, want no default controls for explicit blank archetype", preview.Summary.Controls)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("issues = %#v, want only the blank archetype issue", issues)
+	}
+	if issues[0].Path != "archetype_ids[0]" || issues[0].Message != "archetype id is required" {
+		t.Fatalf("issue = %#v, want precise blank archetype issue", issues[0])
+	}
+}

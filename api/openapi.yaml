@@ -1938,8 +1938,8 @@ paths:
                   items:
                     type: string
       responses:
-        '201':
-          description: Generated extension, controls, profiles, coverage summary, and YAML file payloads.
+        '200':
+          description: Generated extension, controls, profiles, coverage summary, and YAML file payloads for a stateless export. No resource is persisted.
         '400':
           description: Invalid custom framework request or unresolved archetype.
   /grc/inventory/categories:

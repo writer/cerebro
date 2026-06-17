@@ -138,7 +138,7 @@ func normalizeControlPackBuildRequest(request ControlPackBuildRequest) ControlPa
 		FrameworkVersion: strings.TrimSpace(firstNonEmpty(request.FrameworkVersion, "2026")),
 		ProfileID:        profileID,
 		ProfileName:      profileName,
-		ArchetypeIDs:     sortedUniqueStrings(request.ArchetypeIDs),
+		ArchetypeIDs:     trimmedStrings(request.ArchetypeIDs),
 		IncludeProfiles:  sortedUniqueStrings(request.IncludeProfiles),
 		Tags:             sortedUniqueStrings(append([]string{"custom_framework"}, request.Tags...)),
 	}
@@ -190,6 +190,17 @@ func selectControlArchetypes(set ControlArchetypeSet, ids []string) ([]ControlAr
 		issues = append(issues, ValidationIssue{Path: "archetype_ids", Message: "at least one archetype is required"})
 	}
 	return selected, issues
+}
+
+func trimmedStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	trimmed := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed = append(trimmed, strings.TrimSpace(value))
+	}
+	return trimmed
 }
 
 func normalizeControlArchetype(archetype ControlArchetype) ControlArchetype {
