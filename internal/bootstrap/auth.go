@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
@@ -226,7 +227,7 @@ func isPublicPath(path string) bool {
 	switch path {
 	case "/health", "/healthz", "/livez", "/openapi.yaml":
 		return true
-	case "/.well-known/device-jwks.json":
+	case "/.well-known/device-jwks.json", agentplatform.A2AAgentCardPath, agentplatform.A2ALegacyAgentCardPath:
 		return true
 	case oauthProtectedResourceMetadataPath, oauthProtectedResourceMetadataMCPPath, oauthAuthorizationServerMetadataPath:
 		return true

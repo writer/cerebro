@@ -37,8 +37,126 @@ func TestHandleAgentPlatformContract(t *testing.T) {
 	if len(contract.ConnectorInfrastructure.OAuthSurfaces) == 0 {
 		t.Fatal("contract response missing connector OAuth surfaces")
 	}
-	if len(contract.SecurityControlPlane.IntegrationStrategies) != 8 {
-		t.Fatalf("contract response integration strategies = %d, want 8", len(contract.SecurityControlPlane.IntegrationStrategies))
+	if contract.A2A.JSONRPCPath == "" || contract.EventSubscriptions.Resource == "" || contract.Idempotency.Header == "" {
+		t.Fatalf("contract response missing public protocol contracts: %+v", contract)
+	}
+}
+
+func TestHandleA2AAgentCard(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/.well-known/agent-card.json", nil)
+	request.Host = "api.example.com"
+
+	(&App{}).handleA2AAgentCard(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if recorder.Header().Get("Cache-Control") == "" {
+		t.Fatal("agent card response missing cache-control")
+	}
+	var card agentplatform.A2AAgentCard
+	if err := json.Unmarshal(recorder.Body.Bytes(), &card); err != nil {
+		t.Fatalf("decode card: %v", err)
+	}
+	if card.Version != agentplatform.ContractVersion {
+		t.Fatalf("version = %q, want %q", card.Version, agentplatform.ContractVersion)
+	}
+	if len(card.SupportedInterfaces) != 1 || card.SupportedInterfaces[0].URL != "http://api.example.com/api/v1/a2a" {
+		t.Fatalf("card interfaces = %+v", card.SupportedInterfaces)
+	}
+}
+
+func TestHandleA2AJSONRPCSendMessage(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/a2a", bytes.NewReader([]byte(`{
+		"jsonrpc": "2.0",
+		"id": "request-1",
+		"method": "SendMessage",
+		"params": {
+			"message": {
+				"role": "ROLE_USER",
+				"parts": [{"text": "List public contracts"}],
+				"messageId": "message-1"
+			}
+		}
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST A2A: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var response agentplatform.A2AJSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error != nil || response.Result == nil || response.ID != "request-1" {
+		t.Fatalf("A2A response = %+v, want direct message result", response)
+	}
+}
+
+func TestHandleA2AJSONRPCUnsupportedMethod(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/a2a", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":"request-2","method":"SendStreamingMessage"}`)))
+
+	(&App{}).handleA2AJSONRPC(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var response agentplatform.A2AJSONRPCResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error == nil || response.Error.Code != -32004 {
+		t.Fatalf("response = %+v, want unsupported operation error", response)
+	}
+}
+
+func TestHandleEventSubscriptionContract(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/event-subscriptions/contract", nil)
+
+	(&App{}).handleEventSubscriptionContract(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var contract agentplatform.EventSubscriptionContract
+	if err := json.Unmarshal(recorder.Body.Bytes(), &contract); err != nil {
+		t.Fatalf("decode contract: %v", err)
+	}
+	if contract.Delivery.Transport != "https_webhook" || len(contract.EventTypes) == 0 {
+		t.Fatalf("event subscription contract = %+v", contract)
+	}
+}
+
+func TestHandleIdempotencyContract(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/idempotency-contract", nil)
+
+	(&App{}).handleIdempotencyContract(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var contract agentplatform.IdempotencyContract
+	if err := json.Unmarshal(recorder.Body.Bytes(), &contract); err != nil {
+		t.Fatalf("decode contract: %v", err)
+	}
+	if contract.Header != "Idempotency-Key" || contract.ConflictStatus != http.StatusConflict {
+		t.Fatalf("idempotency contract = %+v", contract)
 	}
 }
 

@@ -63,6 +63,63 @@ paths:
       responses:
         '200':
           description: Embedded OpenAPI YAML.
+  /.well-known/agent-card.json:
+    get:
+      operationId: getA2AAgentCard
+      summary: Get public A2A Agent Card
+      tags:
+        - Platform
+      security: []
+      responses:
+        '200':
+          description: Public Agent2Agent discovery document with supported interfaces, skills, authentication, and capability metadata.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A2AAgentCard'
+  /.well-known/agent.json:
+    get:
+      operationId: getLegacyA2AAgentCard
+      summary: Get legacy A2A Agent Card alias
+      tags:
+        - Platform
+      security: []
+      responses:
+        '200':
+          description: Compatibility alias for clients that still discover A2A metadata from /.well-known/agent.json.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A2AAgentCard'
+  /api/v1/a2a:
+    post:
+      operationId: callA2AJSONRPC
+      summary: Call the authenticated A2A JSON-RPC contract endpoint
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/A2AJSONRPCRequest'
+      responses:
+        '200':
+          description: JSON-RPC response. Unsupported task, streaming, and push methods return A2A UnsupportedOperationError until backed by replayable runtime adapters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A2AJSONRPCResponse'
+        '400':
+          description: Malformed JSON-RPC request body.
   /api/v1/agent-platform/contract:
     get:
       operationId: getAgentPlatformContract
@@ -172,6 +229,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+  /api/v1/event-subscriptions/contract:
+    get:
+      operationId: getEventSubscriptionContract
+      summary: Get outbound event subscription contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Supported outbound webhook event types, delivery headers, signing, retry, dead-letter, and idempotency semantics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubscriptionContract'
+  /api/v1/idempotency-contract:
+    get:
+      operationId: getIdempotencyContract
+      summary: Get public idempotency contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Public Idempotency-Key semantics for retry-safe mutating requests and outbound webhook deliveries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdempotencyContract'
   /api/v1/agent-platform/evidence-packets:
     post:
       operationId: buildAgentPlatformEvidencePacket
@@ -3146,6 +3229,343 @@ components:
         type: integer
         minimum: 1
   schemas:
+    A2AAgentCard:
+      type: object
+      required:
+        - name
+        - description
+        - supportedInterfaces
+        - provider
+        - version
+        - capabilities
+        - defaultInputModes
+        - defaultOutputModes
+        - skills
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        supportedInterfaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/A2AAgentInterface'
+        provider:
+          type: object
+          required: [organization]
+          properties:
+            organization:
+              type: string
+            url:
+              type: string
+              format: uri
+        version:
+          type: string
+        documentationUrl:
+          type: string
+          format: uri
+        capabilities:
+          $ref: '#/components/schemas/A2AAgentCapabilities'
+        securitySchemes:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        security:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
+        defaultInputModes:
+          type: array
+          items:
+            type: string
+        defaultOutputModes:
+          type: array
+          items:
+            type: string
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/A2AAgentSkill'
+    A2AAgentInterface:
+      type: object
+      required:
+        - url
+        - protocolBinding
+        - protocolVersion
+      properties:
+        url:
+          type: string
+          format: uri
+        protocolBinding:
+          type: string
+        protocolVersion:
+          type: string
+    A2AAgentCapabilities:
+      type: object
+      required:
+        - streaming
+        - pushNotifications
+        - stateTransitionHistory
+        - extendedAgentCard
+      properties:
+        streaming:
+          type: boolean
+        pushNotifications:
+          type: boolean
+        stateTransitionHistory:
+          type: boolean
+        extendedAgentCard:
+          type: boolean
+        extensions:
+          type: array
+          items:
+            type: object
+            required: [uri, description, required]
+            properties:
+              uri:
+                type: string
+                format: uri
+              description:
+                type: string
+              required:
+                type: boolean
+    A2AAgentSkill:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - tags
+        - inputModes
+        - outputModes
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        examples:
+          type: array
+          items:
+            type: string
+        inputModes:
+          type: array
+          items:
+            type: string
+        outputModes:
+          type: array
+          items:
+            type: string
+    A2AJSONRPCRequest:
+      type: object
+      required:
+        - jsonrpc
+        - method
+      properties:
+        jsonrpc:
+          type: string
+          enum: ['2.0']
+        method:
+          type: string
+          enum:
+            - SendMessage
+            - ListTasks
+            - GetTask
+            - SendStreamingMessage
+            - CancelTask
+            - SubscribeToTask
+            - CreateTaskPushNotificationConfig
+            - GetTaskPushNotificationConfig
+            - ListTaskPushNotificationConfigs
+            - DeleteTaskPushNotificationConfig
+            - GetExtendedAgentCard
+        params:
+          type: object
+          additionalProperties: true
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+    A2AJSONRPCResponse:
+      type: object
+      required:
+        - jsonrpc
+      properties:
+        jsonrpc:
+          type: string
+          enum: ['2.0']
+        result:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: '#/components/schemas/A2AJSONRPCError'
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+    A2AJSONRPCError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+    A2AProtocolContract:
+      type: object
+      required:
+        - protocol_version
+        - discovery_paths
+        - jsonrpc_path
+        - supported_methods
+        - unsupported_methods
+        - authentication
+        - controls
+      properties:
+        protocol_version:
+          type: string
+        discovery_paths:
+          type: array
+          items:
+            type: string
+        jsonrpc_path:
+          type: string
+        supported_methods:
+          type: array
+          items:
+            type: string
+        unsupported_methods:
+          type: array
+          items:
+            type: string
+        authentication:
+          type: array
+          items:
+            type: string
+        controls:
+          type: array
+          items:
+            type: string
+    EventSubscriptionContract:
+      type: object
+      required:
+        - version
+        - resource
+        - summary
+        - event_types
+        - delivery
+        - signing
+        - retry
+        - idempotency
+        - required_controls
+      properties:
+        version:
+          type: string
+        resource:
+          type: string
+        summary:
+          type: string
+        event_types:
+          type: array
+          items:
+            type: object
+            required: [name, family, description, payload_fields]
+            properties:
+              name:
+                type: string
+              family:
+                type: string
+              description:
+                type: string
+              payload_fields:
+                type: array
+                items:
+                  type: string
+        delivery:
+          type: object
+          additionalProperties: true
+        signing:
+          type: object
+          additionalProperties: true
+        retry:
+          type: object
+          additionalProperties: true
+        idempotency:
+          $ref: '#/components/schemas/IdempotencyContract'
+        required_controls:
+          type: array
+          items:
+            type: string
+    IdempotencyContract:
+      type: object
+      required:
+        - version
+        - header
+        - max_length_bytes
+        - key_scope
+        - conflict_status
+        - replay_headers
+        - semantics
+        - routes
+      properties:
+        version:
+          type: string
+        header:
+          type: string
+          enum:
+            - Idempotency-Key
+        max_length_bytes:
+          type: integer
+          minimum: 1
+        key_scope:
+          type: array
+          items:
+            type: string
+        conflict_status:
+          type: integer
+          enum:
+            - 409
+        replay_headers:
+          type: array
+          items:
+            type: string
+        semantics:
+          type: array
+          items:
+            type: string
+        routes:
+          type: array
+          items:
+            type: object
+            required: [method, path, requirement, scope, replay]
+            properties:
+              method:
+                type: string
+              path:
+                type: string
+              requirement:
+                type: string
+              scope:
+                type: string
+              replay:
+                type: string
     AgentPlatformContract:
       type: object
       required:
@@ -3157,6 +3577,9 @@ components:
         - provenance_requirements
         - connector_infrastructure
         - security_control_plane
+        - a2a
+        - event_subscriptions
+        - idempotency
       properties:
         version:
           type: string
@@ -3184,6 +3607,12 @@ components:
           $ref: '#/components/schemas/AgentPlatformConnectorInfrastructure'
         security_control_plane:
           $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+        a2a:
+          $ref: '#/components/schemas/A2AProtocolContract'
+        event_subscriptions:
+          $ref: '#/components/schemas/EventSubscriptionContract'
+        idempotency:
+          $ref: '#/components/schemas/IdempotencyContract'
     AgentPlatformCapabilityRegistry:
       type: object
       required:

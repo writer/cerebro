@@ -145,8 +145,61 @@ func TestSnapshotIncludesSecurityControlPlane(t *testing.T) {
 	if len(snapshot.SecurityControlPlane.VerifierLayer) == 0 {
 		t.Fatal("snapshot missing security verifier layer")
 	}
-	if len(snapshot.SecurityControlPlane.IntegrationStrategies) != 8 {
-		t.Fatalf("integration strategies = %d, want 8", len(snapshot.SecurityControlPlane.IntegrationStrategies))
+	for _, id := range []string{"a2a-protocol-boundary", "event-subscription-webhooks", "public-idempotency-contract"} {
+		if !evalSnapshotHasIntegrationStrategy(snapshot, id) {
+			t.Fatalf("snapshot missing integration strategy %q", id)
+		}
+	}
+}
+
+func TestSnapshotIncludesPublicProtocolContracts(t *testing.T) {
+	snapshot := Snapshot()
+	if snapshot.A2A.ProtocolVersion != "1.0" {
+		t.Fatalf("A2A protocol version = %q, want 1.0", snapshot.A2A.ProtocolVersion)
+	}
+	if !containsString(snapshot.A2A.DiscoveryPaths, A2AAgentCardPath) || snapshot.A2A.JSONRPCPath != A2AJSONRPCPath {
+		t.Fatalf("A2A paths = discovery:%+v jsonrpc:%q", snapshot.A2A.DiscoveryPaths, snapshot.A2A.JSONRPCPath)
+	}
+	if !containsString(snapshot.A2A.SupportedMethods, "SendMessage") || !containsString(snapshot.A2A.UnsupportedMethods, "SendStreamingMessage") {
+		t.Fatalf("A2A methods = supported:%+v unsupported:%+v", snapshot.A2A.SupportedMethods, snapshot.A2A.UnsupportedMethods)
+	}
+	if len(snapshot.EventSubscriptions.EventTypes) == 0 || snapshot.EventSubscriptions.Delivery.Transport != "https_webhook" {
+		t.Fatalf("event subscription contract incomplete: %+v", snapshot.EventSubscriptions)
+	}
+	if snapshot.Idempotency.Header != "Idempotency-Key" || snapshot.Idempotency.ConflictStatus != 409 {
+		t.Fatalf("idempotency contract incomplete: %+v", snapshot.Idempotency)
+	}
+}
+
+func TestA2AAgentCardIsPublicSafeAndHonest(t *testing.T) {
+	card := BuildA2AAgentCard("https://api.example.com")
+	if card.Name == "" || card.Version != ContractVersion {
+		t.Fatalf("card = %+v", card)
+	}
+	if len(card.SupportedInterfaces) != 1 || card.SupportedInterfaces[0].URL != "https://api.example.com"+A2AJSONRPCPath {
+		t.Fatalf("card interfaces = %+v", card.SupportedInterfaces)
+	}
+	if card.Capabilities.Streaming || card.Capabilities.PushNotifications || card.Capabilities.ExtendedAgentCard {
+		t.Fatalf("card over-advertises unsupported capabilities: %+v", card.Capabilities)
+	}
+	if len(card.Skills) < 3 {
+		t.Fatalf("card skills = %+v, want protocol, webhook, and idempotency discovery", card.Skills)
+	}
+}
+
+func TestA2AJSONRPCContractMethods(t *testing.T) {
+	card := BuildA2AAgentCard("https://api.example.com")
+	response := A2AJSONRPCResponseFor(A2AJSONRPCRequest{JSONRPC: "2.0", Method: "SendMessage", ID: "req-1"}, card)
+	if response.Error != nil || response.Result == nil || response.ID != "req-1" {
+		t.Fatalf("SendMessage response = %+v, want direct contract message", response)
+	}
+	unsupported := A2AJSONRPCResponseFor(A2AJSONRPCRequest{JSONRPC: "2.0", Method: "SendStreamingMessage", ID: "req-2"}, card)
+	if unsupported.Error == nil || unsupported.Error.Code != -32004 {
+		t.Fatalf("unsupported response = %+v, want A2A unsupported operation error", unsupported)
+	}
+	list := A2AJSONRPCResponseFor(A2AJSONRPCRequest{JSONRPC: "2.0", Method: "ListTasks", ID: "req-3"}, card)
+	if list.Error != nil || list.Result == nil {
+		t.Fatalf("ListTasks response = %+v, want empty task listing", list)
 	}
 }
 
@@ -270,7 +323,7 @@ func TestPreflightAgentRunBuildsGraphPlanningContext(t *testing.T) {
 	if !preflight.WriteBack.Required || !preflight.WriteBack.TraceIDRequired {
 		t.Fatalf("write-back contract = %+v, want required trace-linked write-back", preflight.WriteBack)
 	}
-	if len(preflight.SecurityControlPlane.ActionLadder) == 0 || len(preflight.SecurityControlPlane.IntegrationStrategies) != 8 {
+	if len(preflight.SecurityControlPlane.ActionLadder) == 0 || len(preflight.SecurityControlPlane.IntegrationStrategies) < 8 {
 		t.Fatalf("preflight missing security control plane: %+v", preflight.SecurityControlPlane)
 	}
 }

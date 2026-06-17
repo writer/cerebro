@@ -168,7 +168,7 @@
     "id": "failed-eval-blocks-finding-promotion",
     "scenario_id": "false-positive-suppression",
     "description": "A non-passing finding-rule eval blocks promotion-oriented agent output.",
-    "covered_strategy_ids": ["cerebro-sec-eval"],
+    "covered_strategy_ids": ["cerebro-agent-platform-eval"],
     "request": {
       "tenant_id": "tenant-1",
       "actor_id": "eval-analyst",

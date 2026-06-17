@@ -18,6 +18,34 @@ func (a *App) handleAgentPlatformContract(w http.ResponseWriter, _ *http.Request
 	writeJSON(w, http.StatusOK, agentplatform.Snapshot())
 }
 
+func (a *App) handleA2AAgentCard(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	writeJSON(w, http.StatusOK, agentplatform.BuildA2AAgentCard(externalOrigin(r, a.cfg.Auth.RequestOrigin)))
+}
+
+func (a *App) handleA2AJSONRPC(w http.ResponseWriter, r *http.Request) {
+	var request agentplatform.A2AJSONRPCRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProtoJSONBodyBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, agentplatform.A2AJSONRPCResponse{
+			JSONRPC: "2.0",
+			Error:   &agentplatform.A2AJSONError{Code: -32700, Message: "Parse error"},
+		})
+		return
+	}
+	response := agentplatform.A2AJSONRPCResponseFor(request, agentplatform.BuildA2AAgentCard(externalOrigin(r, a.cfg.Auth.RequestOrigin)))
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleEventSubscriptionContract(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, agentplatform.EventSubscriptions())
+}
+
+func (a *App) handleIdempotencyContract(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, agentplatform.Idempotency())
+}
+
 func (a *App) handleAgentPlatformCapabilities(w http.ResponseWriter, r *http.Request) {
 	filter, err := agentPlatformCapabilityFilterFromRequest(r)
 	if err != nil {
