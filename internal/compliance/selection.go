@@ -12,6 +12,7 @@ type ControlSelection struct {
 	ID                    string               `json:"id" yaml:"id"`
 	Name                  string               `json:"name" yaml:"name"`
 	Description           string               `json:"description,omitempty" yaml:"description,omitempty"`
+	IncludeProfiles       []string             `json:"include_profiles,omitempty" yaml:"include_profiles,omitempty"`
 	Frameworks            []FrameworkSelection `json:"frameworks,omitempty" yaml:"frameworks,omitempty"`
 	IncludeControls       []ControlRef         `json:"include_controls,omitempty" yaml:"include_controls,omitempty"`
 	ExcludeControls       []ControlRef         `json:"exclude_controls,omitempty" yaml:"exclude_controls,omitempty"`
@@ -73,6 +74,9 @@ func ResolveControlSelection(index *CatalogIndex, selection ControlSelection) (S
 	if index == nil {
 		return SelectionResolution{SelectionID: strings.TrimSpace(selection.ID)}, []ValidationIssue{{Message: "control catalog index is required"}}
 	}
+	if len(selection.IncludeProfiles) != 0 {
+		issues = append(issues, ValidationIssue{Path: "include_profiles", Message: "include_profiles can only be resolved by ResolveControlProfiles"})
+	}
 	selected := map[string]ResolvedControl{}
 	if selectionEmpty(selection) {
 		for _, control := range index.Controls() {
@@ -103,6 +107,18 @@ func ResolveControlSelection(index *CatalogIndex, selection ControlSelection) (S
 			}
 		}
 	}
+	issues = append(issues, applyControlSelectionExclusions(index, selected, selection)...)
+	return controlSelectionResolution(strings.TrimSpace(selection.ID), selected), issues
+}
+
+func applyControlSelectionExclusions(index *CatalogIndex, selected map[string]ResolvedControl, selection ControlSelection) []ValidationIssue {
+	var issues []ValidationIssue
+	if index == nil {
+		if len(selection.ExcludeControls) != 0 {
+			return []ValidationIssue{{Path: "exclude_controls", Message: "control catalog index is required"}}
+		}
+		return nil
+	}
 	for idx, ref := range selection.ExcludeControls {
 		control, ok := index.Control(ref)
 		if !ok {
@@ -117,14 +133,18 @@ func ResolveControlSelection(index *CatalogIndex, selection ControlSelection) (S
 			delete(selected, key)
 		}
 	}
-	result := SelectionResolution{SelectionID: strings.TrimSpace(selection.ID)}
+	return issues
+}
+
+func controlSelectionResolution(selectionID string, selected map[string]ResolvedControl) SelectionResolution {
+	result := SelectionResolution{SelectionID: strings.TrimSpace(selectionID)}
 	for key, control := range selected {
 		result.ControlKeys = append(result.ControlKeys, key)
 		result.Controls = append(result.Controls, control)
 	}
 	sort.Strings(result.ControlKeys)
 	sortResolvedControls(result.Controls)
-	return result, issues
+	return result
 }
 
 func ResolveRuleCoverage(resolution SelectionResolution, rules []RuleControlMapping) RuleCoverage {
@@ -246,7 +266,8 @@ func resolveFrameworkSelection(index *CatalogIndex, idx int, selection Framework
 }
 
 func selectionEmpty(selection ControlSelection) bool {
-	return len(selection.Frameworks) == 0 &&
+	return len(selection.IncludeProfiles) == 0 &&
+		len(selection.Frameworks) == 0 &&
 		len(selection.IncludeControls) == 0 &&
 		len(selection.IncludeTags) == 0 &&
 		len(selection.IncludeOwnerDomains) == 0 &&

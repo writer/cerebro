@@ -8,6 +8,7 @@ version: "2026-06-17"
 profiles:
   - id: production-access
     name: Production Access
+    include_profiles: [identity-core]
     frameworks:
       - name: Custom Framework
         controls: [IAM-1]
@@ -16,7 +17,7 @@ profiles:
 	if err != nil {
 		t.Fatalf("LoadControlProfileSet() error = %v", err)
 	}
-	if set.Version != "2026-06-17" || len(set.Profiles) != 1 || set.Profiles[0].ID != "production-access" {
+	if set.Version != "2026-06-17" || len(set.Profiles) != 1 || set.Profiles[0].ID != "production-access" || len(set.Profiles[0].IncludeProfiles) != 1 {
 		t.Fatalf("set = %#v, want parsed profile set", set)
 	}
 }
@@ -101,6 +102,91 @@ func TestBuildControlCoverageIndexCreditsMappedCustomControls(t *testing.T) {
 	if len(profile.Rules) != 1 || len(profile.Rules[0].Controls) != 1 || profile.Rules[0].Controls[0].ControlID != "IAM-1" {
 		t.Fatalf("Rules = %#v, want rule mapped to custom IAM-1", profile.Rules)
 	}
+}
+
+func TestResolveControlProfilesComposesIncludedProfiles(t *testing.T) {
+	set := ControlProfileSet{
+		Version: "2026-06-17",
+		Profiles: []ControlSelection{
+			{
+				ID:   "soc2-access",
+				Name: "SOC 2 Access",
+				Frameworks: []FrameworkSelection{{
+					Name:     "SOC 2",
+					Controls: []string{"CC6.1"},
+				}},
+			},
+			{
+				ID:   "custom-identity",
+				Name: "Custom Identity",
+				Frameworks: []FrameworkSelection{{
+					ID:       "custom",
+					Controls: []string{"IAM-1"},
+				}},
+			},
+			{
+				ID:              "customer-audit",
+				Name:            "Customer Audit",
+				IncludeProfiles: []string{"soc2-access", "custom-identity"},
+				ExcludeControls: []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+			},
+		},
+	}
+
+	resolution, issues := ResolveControlProfiles(testSelectionIndex(t), set)
+	if len(issues) != 0 {
+		t.Fatalf("ResolveControlProfiles() issues = %#v, want none", issues)
+	}
+	profile := resolvedProfileByID(t, resolution, "customer-audit")
+	if len(profile.Resolution.Controls) != 1 {
+		t.Fatalf("Controls = %#v, want one custom identity control after exclusion", profile.Resolution.Controls)
+	}
+	control := profile.Resolution.Controls[0]
+	if control.FrameworkName != "Custom Framework" || control.Control.ID != "IAM-1" {
+		t.Fatalf("Control = %#v, want Custom Framework IAM-1", control)
+	}
+}
+
+func TestResolveControlProfilesReportsUnknownIncludedProfile(t *testing.T) {
+	set := ControlProfileSet{
+		Version: "2026-06-17",
+		Profiles: []ControlSelection{{
+			ID:              "customer-audit",
+			Name:            "Customer Audit",
+			IncludeProfiles: []string{"missing-profile"},
+		}},
+	}
+
+	_, issues := ResolveControlProfiles(testSelectionIndex(t), set)
+	if !validationIssuesContain(issues, `profile "missing-profile" is not declared`) {
+		t.Fatalf("issues = %#v, want missing profile issue", issues)
+	}
+}
+
+func TestResolveControlProfilesReportsIncludeCycles(t *testing.T) {
+	set := ControlProfileSet{
+		Version: "2026-06-17",
+		Profiles: []ControlSelection{
+			{ID: "profile-a", Name: "Profile A", IncludeProfiles: []string{"profile-b"}},
+			{ID: "profile-b", Name: "Profile B", IncludeProfiles: []string{"profile-a"}},
+		},
+	}
+
+	_, issues := ResolveControlProfiles(testSelectionIndex(t), set)
+	if !validationIssuesContain(issues, "profile include cycle detected: profile-a -> profile-b -> profile-a") {
+		t.Fatalf("issues = %#v, want include cycle issue", issues)
+	}
+}
+
+func resolvedProfileByID(t *testing.T, resolution ControlProfileResolution, id string) ResolvedControlProfile {
+	t.Helper()
+	for _, profile := range resolution.Profiles {
+		if profile.Profile.ID == id {
+			return profile
+		}
+	}
+	t.Fatalf("profile %q not found in %#v", id, resolution.Profiles)
+	return ResolvedControlProfile{}
 }
 
 func validationIssuesContain(issues []ValidationIssue, want string) bool {
