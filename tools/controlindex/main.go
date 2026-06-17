@@ -254,17 +254,21 @@ func writeControlExtensionScaffold(root string, options controlExtensionScaffold
 		"profiles.yaml":  controlExtensionScaffoldProfiles(options),
 	}
 	names := []string{"extension.yaml", "controls.yaml", "profiles.yaml"}
+	return writeScaffoldYAMLFiles(rootFS, dir, files, names, writeScaffoldYAMLFile)
+}
+
+func writeScaffoldYAMLFiles(root *os.Root, dir string, files map[string]any, names []string, writeFile func(*os.Root, string, any) error) error {
 	for _, name := range names {
-		if err := rejectExistingScaffoldFile(rootFS, filepath.Join(dir, name)); err != nil {
+		if err := rejectExistingScaffoldFile(root, filepath.Join(dir, name)); err != nil {
 			return err
 		}
 	}
 	written := []string{}
 	for _, name := range names {
 		path := filepath.Join(dir, name)
-		if err := writeScaffoldYAMLFile(rootFS, path, files[name]); err != nil {
-			for _, createdPath := range written {
-				_ = rootFS.Remove(createdPath)
+		if err := writeFile(root, path, files[name]); err != nil {
+			if cleanupErr := removeScaffoldFiles(root, written); cleanupErr != nil {
+				return fmt.Errorf("%w; cleanup partial scaffold: %v", err, cleanupErr)
 			}
 			return err
 		}
@@ -400,6 +404,20 @@ func writeScaffoldYAMLFile(root *os.Root, path string, value any) error {
 func removeScaffoldFile(root *os.Root, path string) error {
 	if err := root.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
+	}
+	return nil
+}
+
+func removeScaffoldFiles(root *os.Root, paths []string) error {
+	var cleanupErrors []string
+	for idx := len(paths) - 1; idx >= 0; idx-- {
+		path := paths[idx]
+		if err := removeScaffoldFile(root, path); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Sprintf("%s: %v", path, err))
+		}
+	}
+	if len(cleanupErrors) != 0 {
+		return errors.New(strings.Join(cleanupErrors, "; "))
 	}
 	return nil
 }
