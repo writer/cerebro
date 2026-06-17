@@ -43,6 +43,7 @@ type AgentRunPreflight struct {
 	GraphContext         AgentGraphPlanningContext   `json:"graph_context"`
 	ConnectorContext     []AgentConnectorGraphNode   `json:"connector_context"`
 	CoverageContext      *AgentCoverageContext       `json:"coverage_context,omitempty"`
+	SecurityControlPlane SecurityControlPlane        `json:"security_control_plane"`
 	Policy               AgentPolicyDecision         `json:"policy"`
 	WriteBack            AgentWriteBackContract      `json:"write_back"`
 	RuntimeEvents        []string                    `json:"runtime_events"`
@@ -228,6 +229,7 @@ func PreflightAgentRun(request AgentRunPreflightRequest) AgentRunPreflight {
 		GraphContext:         graphContext,
 		ConnectorContext:     connectorContext,
 		CoverageContext:      cloneCoverageContext(request.CoverageContext),
+		SecurityControlPlane: SecurityControlPlaneSnapshot(),
 		Policy:               policy,
 		WriteBack:            writeBack,
 		RuntimeEvents:        runtimeEvents,

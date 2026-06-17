@@ -58,6 +58,34 @@ Cerebro capabilities should be artifacts, not hidden prompt fragments:
 - Ownership and review state are visible where the capability can influence agent output.
 - Capability output is evidence or guidance until a governed workflow promotes it.
 
+## Security Agent Control Plane
+
+Security-agent behavior is exposed through `internal/agentplatform.SecurityControlPlaneSnapshot` and the
+`/api/v1/agent-platform/security-control-plane` route. The control plane is the registry that agents should reason
+from before touching graph context, connector tools, findings, memory, or remediation surfaces.
+
+The first supported integration strategies are:
+
+- Evidence packets: every security-agent run starts from a tenant-scoped packet containing preflight results,
+  evidence references, recommended roles, verifier results, action-stage status, eval scenarios, memory policy,
+  connector gates, simulation bounds, confidence, and write-back requirements.
+- Verifier layer: tenant scope, graph provenance, freshness, coverage gaps, connector readiness, action-stage
+  safety, eval readiness, and memory provenance are independent pass/warn/block checks.
+- Specialized security roles: narrow profiles such as exposure, identity drift, coverage, remediation, triage, and
+  detection analysis declare their capabilities, semantic graph views, required verifiers, and maximum action stage.
+- Action ladder: agents move through observe, explain, recommend, dry-run, approve, execute, verify, and close-loop
+  stages, with mutating stages requiring explicit approval and post-action verification.
+- Local eval contracts: default-on security-agent behavior declares local commands, scenario ids, capabilities, and
+  rubrics so tenant isolation, stale data handling, prompt-injection resistance, remediation safety, finding quality,
+  and simulation bounds are regression-tested.
+- Security memory: accepted risks, false positives, prior investigations, remediation outcomes, and detector learnings
+  are typed, tenant-scoped, provenance-bearing records with retention policy and required fields.
+- Connector and OAuth agent infrastructure: connector readiness, token owner, scope declarations, credential
+  boundaries, OAuth surfaces, and MCP exposure are first-class preconditions for connector-backed tool use.
+- Defensive simulation harness: agents may simulate attack paths or remediation effects from tenant-scoped graph facts
+  and fixtures only, with live exploitation, credential harvesting, unbounded scanning, and destructive remediation
+  outside the contract.
+
 ## Execution Contract
 
 Agents should never get an unmediated side-effect surface. Execution belongs behind adapters that report:
