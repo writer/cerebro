@@ -334,7 +334,6 @@ def _graph_health_degradation_category(status: int, diagnostics: str) -> str | N
         return None
     text = diagnostics.lower()
     blocking_tokens = (
-        "graph integrity",
         "graph relation counts missing",
         "graph paths missing",
         "missing required relation",

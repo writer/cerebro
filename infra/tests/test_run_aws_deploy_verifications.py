@@ -427,6 +427,40 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(category, "missing_ingest_run_history")
 
+    def test_ingest_integrity_aggregate_degrades_when_allowed(self) -> None:
+        diagnostics = (
+            'ERROR: graph integrity check "github_workflow_job_runners_projected_as_assets" failed: '
+            "actual=704 expected=0; missing graph ingest run history for 6 declared runtime(s): "
+            "runtime-a, runtime-b; latest graph ingest run failed for 2 runtime(s): "
+            "runtime-c:graph-ingest:runtime-c:20260617T010101Z:status=failed; "
+            "latest graph ingest projected no graph records for 1 runtime(s): runtime-d; "
+            "graph integrity failed 1 checks: github_workflow_job_runners_projected_as_assets=704"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "outputs.txt"
+            with patch(
+                "scripts.run_aws_deploy_verifications._stream_graph_health",
+                return_value=run_aws_deploy_verifications.GraphHealthResult(23, diagnostics),
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.sec-dev.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--github-output",
+                        str(output_path),
+                    ]
+                )
+                outputs = output_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, 0)
+        self.assertIn("graph_health_degraded=true", outputs)
+        self.assertIn("graph_health_degradation_category=stale_or_transient_ingest_run", outputs)
+
     def test_graph_integrity_failure_remains_blocking_when_degradation_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch(
