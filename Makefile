@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -217,8 +217,15 @@ openapi-lint: ## Lint the OpenAPI spec with Spectral.
 openapi-sync: ## Update OpenAPI route parity metadata.
 	go run ./scripts/openapi_route_parity.go --write
 
-catalog-check: ## Verify the source catalog is current.
+catalog-check: ## Verify source, connector, and compliance catalogs are current.
 	go run ./tools/catalogcheck
+	go run ./tools/controlindex --check
+
+control-index-generate: ## Regenerate compliance control coverage index.
+	go run ./tools/controlindex --write
+
+control-index-check: ## Verify compliance control coverage index is current.
+	go run ./tools/controlindex --check
 
 policy-rule-generate: ## Regenerate generated policy rule catalog.
 	go run ./tools/policyrulegen --write
@@ -232,7 +239,7 @@ detection-catalog-generate: ## Regenerate public detection catalog.
 detection-catalog-check: ## Verify public detection catalog is current.
 	go run ./tools/detectioncatalog --check
 
-docs-autogen: openapi-sync proto-generate policy-rule-generate detection-catalog-generate ## Regenerate checked-in generated docs and catalogs.
+docs-autogen: openapi-sync proto-generate policy-rule-generate control-index-generate detection-catalog-generate ## Regenerate checked-in generated docs and catalogs.
 
 docs-drift-check: ## Check documentation drift rules.
 	python3 scripts/docs_drift_check.py
