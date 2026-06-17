@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,15 @@ type pathList []string
 type profileList []string
 
 const controlExtensionScaffoldVersion = "2026-06-17"
+
+var (
+	writeScaffoldFileContent = func(file *os.File, content []byte) (int, error) {
+		return file.Write(content)
+	}
+	closeScaffoldFile = func(file *os.File) error {
+		return file.Close()
+	}
+)
 
 func main() {
 	root := flag.String("root", ".", "repository root")
@@ -216,11 +226,26 @@ func validateControlExtensionScaffoldFlags(write bool, check bool, selectedProfi
 }
 
 func writeControlExtensionScaffold(root string, options controlExtensionScaffoldOptions) error {
-	dir := resolveRootPath(root, options.Dir)
-	if err := rejectSymlink(dir); err != nil {
+	absoluteRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return fmt.Errorf("resolve root: %w", err)
+	}
+	if err := rejectSymlink(absoluteRoot); err != nil {
 		return fmt.Errorf("create extension directory: %w", err)
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := scaffoldRootRelativePath(absoluteRoot, options.Dir)
+	if err != nil {
+		return fmt.Errorf("create extension directory: %w", err)
+	}
+	rootFS, err := os.OpenRoot(absoluteRoot)
+	if err != nil {
+		return fmt.Errorf("create extension directory: %w", err)
+	}
+	defer rootFS.Close()
+	if err := rootFS.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create extension directory: %w", err)
+	}
+	if err := rejectRootSymlinkPath(rootFS, dir); err != nil {
 		return fmt.Errorf("create extension directory: %w", err)
 	}
 	files := map[string]any{
@@ -230,14 +255,20 @@ func writeControlExtensionScaffold(root string, options controlExtensionScaffold
 	}
 	names := []string{"extension.yaml", "controls.yaml", "profiles.yaml"}
 	for _, name := range names {
-		if err := rejectExistingScaffoldFile(filepath.Join(dir, name)); err != nil {
+		if err := rejectExistingScaffoldFile(rootFS, filepath.Join(dir, name)); err != nil {
 			return err
 		}
 	}
+	written := []string{}
 	for _, name := range names {
-		if err := writeScaffoldYAMLFile(filepath.Join(dir, name), files[name]); err != nil {
+		path := filepath.Join(dir, name)
+		if err := writeScaffoldYAMLFile(rootFS, path, files[name]); err != nil {
+			for _, createdPath := range written {
+				_ = rootFS.Remove(createdPath)
+			}
 			return err
 		}
+		written = append(written, path)
 	}
 	return nil
 }
@@ -324,33 +355,63 @@ func controlExtensionScaffoldProfiles(options controlExtensionScaffoldOptions) c
 	}
 }
 
-func writeScaffoldYAMLFile(path string, value any) error {
-	if err := rejectSymlink(path); err != nil {
+func writeScaffoldYAMLFile(root *os.Root, path string, value any) error {
+	if err := rejectRootSymlinkPath(root, filepath.Dir(path)); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := rejectRootSymlink(root, path); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	content, err := yaml.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("encode %s: %w", path, err)
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	file, err := root.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		if os.IsExist(err) {
 			return fmt.Errorf("write %s: file already exists", path)
 		}
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	defer file.Close()
-	if _, err := file.Write(content); err != nil {
+	written, err := writeScaffoldFileContent(file, content)
+	if err == nil && written != len(content) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		closeErr := closeScaffoldFile(file)
+		removeErr := removeScaffoldFile(root, path)
+		if removeErr != nil {
+			return fmt.Errorf("write %s: %w; cleanup failed: %v", path, err, removeErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("write %s: %w; close failed: %v", path, err, closeErr)
+		}
 		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := closeScaffoldFile(file); err != nil {
+		if removeErr := removeScaffoldFile(root, path); removeErr != nil {
+			return fmt.Errorf("close %s: %w; cleanup failed: %v", path, err, removeErr)
+		}
+		return fmt.Errorf("close %s: %w", path, err)
 	}
 	return nil
 }
 
-func rejectExistingScaffoldFile(path string) error {
-	if err := rejectSymlink(path); err != nil {
+func removeScaffoldFile(root *os.Root, path string) error {
+	if err := root.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func rejectExistingScaffoldFile(root *os.Root, path string) error {
+	if err := rejectRootSymlinkPath(root, filepath.Dir(path)); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	_, err := os.Lstat(path)
+	if err := rejectRootSymlink(root, path); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	_, err := root.Lstat(path)
 	if err == nil {
 		return fmt.Errorf("write %s: file already exists", path)
 	}
@@ -566,12 +627,72 @@ func resolveRootPath(root string, path string) string {
 	return filepath.Join(root, filepath.FromSlash(path))
 }
 
+func scaffoldRootRelativePath(root string, path string) (string, error) {
+	path = strings.TrimSpace(path)
+	var absolutePath string
+	if filepath.IsAbs(path) {
+		absolutePath = filepath.Clean(path)
+	} else {
+		absolutePath = filepath.Join(root, filepath.FromSlash(path))
+	}
+	rel, err := filepath.Rel(root, absolutePath)
+	if err != nil {
+		return "", err
+	}
+	if rel == "." {
+		return rel, nil
+	}
+	if rel == ".." || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path %q escapes root %q", path, root)
+	}
+	return rel, nil
+}
+
 func resolveExtensionPath(manifestDir string, path string) string {
 	path = strings.TrimSpace(path)
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
 	}
 	return filepath.Join(manifestDir, filepath.FromSlash(path))
+}
+
+func rejectRootSymlink(root *os.Root, path string) error {
+	info, err := root.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("symlinked generated files are not allowed")
+	}
+	return nil
+}
+
+func rejectRootSymlinkPath(root *os.Root, path string) error {
+	path = filepath.Clean(path)
+	if path == "." {
+		return nil
+	}
+	current := ""
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part == "" || part == "." {
+			continue
+		}
+		if part == ".." {
+			return fmt.Errorf("generated paths must stay under the repository root")
+		}
+		if current == "" {
+			current = part
+		} else {
+			current = filepath.Join(current, part)
+		}
+		if err := rejectRootSymlink(root, current); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func builtinRuleControlMappings() []compliance.RuleControlMapping {
