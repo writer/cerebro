@@ -210,6 +210,34 @@ func TestWriteScaffoldYAMLFileRemovesPartialFileOnWriteError(t *testing.T) {
 	}
 }
 
+func TestWriteControlExtensionScaffoldCleansUpEarlierFilesOnLaterWriteError(t *testing.T) {
+	root := t.TempDir()
+	options := newControlExtensionScaffoldOptions("customer-controls", "", "", "", "", "", "")
+	injected := errors.New("injected second write failure")
+	calls := 0
+	originalWrite := writeScaffoldFileContent
+	writeScaffoldFileContent = func(file *os.File, content []byte) (int, error) {
+		calls++
+		if calls == 2 {
+			return 0, injected
+		}
+		return file.Write(content)
+	}
+	t.Cleanup(func() {
+		writeScaffoldFileContent = originalWrite
+	})
+
+	err := writeControlExtensionScaffold(root, options)
+	if !errors.Is(err, injected) {
+		t.Fatalf("writeControlExtensionScaffold() error = %v, want injected second write failure", err)
+	}
+	for _, path := range []string{"customer-controls/extension.yaml", "customer-controls/controls.yaml", "customer-controls/profiles.yaml"} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); !os.IsNotExist(err) {
+			t.Fatalf("%s stat error = %v, want not exist after rollback", path, err)
+		}
+	}
+}
+
 func TestValidateControlExtensionScaffoldFlags(t *testing.T) {
 	options := newControlExtensionScaffoldOptions("customer-controls", "", "", "", "", "", "")
 	if err := validateControlExtensionScaffoldFlags(false, false, nil, options); err != nil {
