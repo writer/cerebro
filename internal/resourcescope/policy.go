@@ -115,6 +115,60 @@ func (p Policy) Empty() bool {
 		len(p.ExcludedResources) == 0
 }
 
+// SelectorFromURN returns the exact-resource selector represented by a
+// Cerebro inventory URN. The URN itself is the source of truth; type/id are
+// added so runtimes can filter raw events before projection when they expose
+// provider identifiers instead of a projected URN.
+func SelectorFromURN(urn string, reason string) ResourceSelector {
+	urn = strings.TrimSpace(urn)
+	selector := ResourceSelector{URN: urn, Reason: strings.TrimSpace(reason)}
+	parts := strings.Split(urn, ":")
+	if strings.HasPrefix(urn, "urn:cerebro:") && len(parts) >= 5 {
+		selector.Type = parts[len(parts)-2]
+		selector.ID = parts[len(parts)-1]
+	}
+	return selector
+}
+
+// AddExcludedResource returns a policy that excludes the concrete resource.
+func AddExcludedResource(policy Policy, selector ResourceSelector) (Policy, error) {
+	if strings.TrimSpace(selector.URN) != "" {
+		policy.ExcludedResourceURNs = append(policy.ExcludedResourceURNs, selector.URN)
+	}
+	policy.ExcludedResources = append(policy.ExcludedResources, selector)
+	return Normalize(policy)
+}
+
+// RemoveExcludedResource returns a policy with the concrete resource exclusion removed.
+func RemoveExcludedResource(policy Policy, selector ResourceSelector) (Policy, error) {
+	normalized, err := Normalize(Policy{ExcludedResources: []ResourceSelector{selector}})
+	if err != nil {
+		return Policy{}, err
+	}
+	if len(normalized.ExcludedResources) == 0 {
+		return Normalize(policy)
+	}
+	target := normalized.ExcludedResources[0]
+	targetURN := strings.TrimSpace(target.URN)
+	urns := make([]string, 0, len(policy.ExcludedResourceURNs))
+	for _, urn := range policy.ExcludedResourceURNs {
+		if strings.TrimSpace(urn) == targetURN {
+			continue
+		}
+		urns = append(urns, urn)
+	}
+	resources := make([]ResourceSelector, 0, len(policy.ExcludedResources))
+	for _, resource := range policy.ExcludedResources {
+		if sameResourceSelector(resource, target) {
+			continue
+		}
+		resources = append(resources, resource)
+	}
+	policy.ExcludedResourceURNs = urns
+	policy.ExcludedResources = resources
+	return Normalize(policy)
+}
+
 // ExcludesFamily returns true when a runtime family should be skipped before source IO.
 func (p Policy) ExcludesFamily(sourceID string, family string) bool {
 	if p.Empty() {
@@ -253,6 +307,23 @@ func normalizeResources(values []ResourceSelector) ([]ResourceSelector, error) {
 		return left < right
 	})
 	return out, nil
+}
+
+func sameResourceSelector(left ResourceSelector, right ResourceSelector) bool {
+	leftNormalized, err := normalizeResources([]ResourceSelector{left})
+	if err != nil || len(leftNormalized) == 0 {
+		return false
+	}
+	rightNormalized, err := normalizeResources([]ResourceSelector{right})
+	if err != nil || len(rightNormalized) == 0 {
+		return false
+	}
+	left = leftNormalized[0]
+	right = rightNormalized[0]
+	if left.URN != "" && right.URN != "" {
+		return left.URN == right.URN
+	}
+	return left.Type != "" && left.ID != "" && left.Type == right.Type && left.ID == right.ID
 }
 
 func familyCandidates(sourceID string, family string) map[string]bool {
