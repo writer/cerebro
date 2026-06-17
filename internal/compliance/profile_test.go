@@ -73,6 +73,28 @@ func TestBuildControlCoverageIndexCreditsMappedCustomControls(t *testing.T) {
 	if len(profile.Controls) != 1 || profile.Controls[0].ControlID != "IAM-1" {
 		t.Fatalf("Controls = %#v, want custom IAM-1", profile.Controls)
 	}
+	control := profile.Controls[0]
+	if control.CoverageStatus != "mapped" || control.RuleCount != 1 {
+		t.Fatalf("coverage fields = status %q rule_count %d, want mapped/1", control.CoverageStatus, control.RuleCount)
+	}
+	if control.AuditPlan == nil || control.AuditPlan.Objective == "" || len(control.AuditPlan.AuditProcedure) != 2 || control.AuditPlan.ExceptionGuidance == "" {
+		t.Fatalf("auditor guidance fields = %#v, want objective, audit procedure, and exception guidance", control)
+	}
+	wantProcedure := []string{
+		"Review privileged production access approvals before checking MFA enrollment.",
+		"Compare privileged account inventory against MFA enrollment evidence.",
+	}
+	for idx, want := range wantProcedure {
+		if got := control.AuditPlan.AuditProcedure[idx]; got != want {
+			t.Fatalf("AuditProcedure[%d] = %q, want %q", idx, got, want)
+		}
+	}
+	if control.EvidencePlan == nil || len(control.EvidencePlan.Expectations) != 1 || control.EvidencePlan.Expectations[0].ID != "privileged-mfa-state" || !control.EvidencePlan.Expectations[0].Required {
+		t.Fatalf("EvidencePlan = %#v, want required privileged-mfa-state", control.EvidencePlan)
+	}
+	if len(control.MappedControlRefs) != 1 || control.MappedControlRefs[0].FrameworkName != "SOC 2" || control.MappedControlRefs[0].ControlID != "CC6.1" {
+		t.Fatalf("MappedControlRefs = %#v, want SOC 2 CC6.1", control.MappedControlRefs)
+	}
 	if got := profile.Controls[0].MappedRules; len(got) != 1 || got[0] != "identity-mfa-required" {
 		t.Fatalf("MappedRules = %#v, want identity-mfa-required", got)
 	}

@@ -47,19 +47,24 @@ type Family struct {
 }
 
 type Control struct {
-	ID                    string                `json:"id" yaml:"id"`
-	Title                 string                `json:"title,omitempty" yaml:"title,omitempty"`
-	Objective             string                `json:"objective,omitempty" yaml:"objective,omitempty"`
-	Intent                string                `json:"intent,omitempty" yaml:"intent,omitempty"`
-	Applicability         []string              `json:"applicability,omitempty" yaml:"applicability,omitempty"`
-	AssessmentMethods     []string              `json:"assessment_methods,omitempty" yaml:"assessment_methods,omitempty"`
-	EvidenceExpectations  []EvidenceExpectation `json:"evidence_expectations,omitempty" yaml:"evidence_expectations,omitempty"`
-	FreshnessSLA          string                `json:"freshness_sla,omitempty" yaml:"freshness_sla,omitempty"`
-	OwnerDomain           string                `json:"owner_domain,omitempty" yaml:"owner_domain,omitempty"`
-	Automatable           *bool                 `json:"automatable,omitempty" yaml:"automatable,omitempty"`
-	ManualEvidenceAllowed *bool                 `json:"manual_evidence_allowed,omitempty" yaml:"manual_evidence_allowed,omitempty"`
-	Tags                  []string              `json:"tags,omitempty" yaml:"tags,omitempty"`
-	MapsTo                []ControlRef          `json:"maps_to,omitempty" yaml:"maps_to,omitempty"`
+	ID                     string                `json:"id" yaml:"id"`
+	Title                  string                `json:"title,omitempty" yaml:"title,omitempty"`
+	Objective              string                `json:"objective,omitempty" yaml:"objective,omitempty"`
+	Intent                 string                `json:"intent,omitempty" yaml:"intent,omitempty"`
+	Applicability          []string              `json:"applicability,omitempty" yaml:"applicability,omitempty"`
+	AssessmentMethods      []string              `json:"assessment_methods,omitempty" yaml:"assessment_methods,omitempty"`
+	ImplementationGuidance []string              `json:"implementation_guidance,omitempty" yaml:"implementation_guidance,omitempty"`
+	AuditProcedure         []string              `json:"audit_procedure,omitempty" yaml:"audit_procedure,omitempty"`
+	FailureModes           []string              `json:"failure_modes,omitempty" yaml:"failure_modes,omitempty"`
+	RemediationGuidance    []string              `json:"remediation_guidance,omitempty" yaml:"remediation_guidance,omitempty"`
+	ExceptionGuidance      string                `json:"exception_guidance,omitempty" yaml:"exception_guidance,omitempty"`
+	EvidenceExpectations   []EvidenceExpectation `json:"evidence_expectations,omitempty" yaml:"evidence_expectations,omitempty"`
+	FreshnessSLA           string                `json:"freshness_sla,omitempty" yaml:"freshness_sla,omitempty"`
+	OwnerDomain            string                `json:"owner_domain,omitempty" yaml:"owner_domain,omitempty"`
+	Automatable            *bool                 `json:"automatable,omitempty" yaml:"automatable,omitempty"`
+	ManualEvidenceAllowed  *bool                 `json:"manual_evidence_allowed,omitempty" yaml:"manual_evidence_allowed,omitempty"`
+	Tags                   []string              `json:"tags,omitempty" yaml:"tags,omitempty"`
+	MapsTo                 []ControlRef          `json:"maps_to,omitempty" yaml:"maps_to,omitempty"`
 }
 
 type EvidenceExpectation struct {
@@ -403,6 +408,11 @@ func validateControl(path string, control Control) []ValidationIssue {
 	var issues []ValidationIssue
 	issues = append(issues, validateAssessmentMethods(path+".assessment_methods", control.AssessmentMethods)...)
 	issues = append(issues, validateTags(path+".tags", control.Tags)...)
+	issues = append(issues, validateStringList(path+".applicability", control.Applicability)...)
+	issues = append(issues, validateStringList(path+".implementation_guidance", control.ImplementationGuidance)...)
+	issues = append(issues, validateStringList(path+".audit_procedure", control.AuditProcedure)...)
+	issues = append(issues, validateStringList(path+".failure_modes", control.FailureModes)...)
+	issues = append(issues, validateStringList(path+".remediation_guidance", control.RemediationGuidance)...)
 	for expectationIdx, expectation := range control.EvidenceExpectations {
 		expectationPath := fmt.Sprintf("%s.evidence_expectations[%d]", path, expectationIdx)
 		if strings.TrimSpace(expectation.ID) == "" {
@@ -530,6 +540,10 @@ func cloneResolvedControl(control ResolvedControl) ResolvedControl {
 func cloneControl(control Control) Control {
 	control.Applicability = append([]string(nil), control.Applicability...)
 	control.AssessmentMethods = append([]string(nil), control.AssessmentMethods...)
+	control.ImplementationGuidance = append([]string(nil), control.ImplementationGuidance...)
+	control.AuditProcedure = append([]string(nil), control.AuditProcedure...)
+	control.FailureModes = append([]string(nil), control.FailureModes...)
+	control.RemediationGuidance = append([]string(nil), control.RemediationGuidance...)
 	control.EvidenceExpectations = cloneEvidenceExpectations(control.EvidenceExpectations)
 	control.Tags = append([]string(nil), control.Tags...)
 	control.MapsTo = append([]ControlRef(nil), control.MapsTo...)

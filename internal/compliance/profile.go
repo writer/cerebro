@@ -49,22 +49,57 @@ type ControlCoverageSummary struct {
 }
 
 type ControlCoverageControl struct {
-	FrameworkID            string   `json:"framework_id,omitempty" yaml:"framework_id,omitempty"`
-	FrameworkName          string   `json:"framework_name" yaml:"framework_name"`
-	FrameworkVersion       string   `json:"framework_version,omitempty" yaml:"framework_version,omitempty"`
-	FamilyID               string   `json:"family_id" yaml:"family_id"`
-	FamilyName             string   `json:"family_name" yaml:"family_name"`
-	ControlID              string   `json:"control_id" yaml:"control_id"`
-	Title                  string   `json:"title,omitempty" yaml:"title,omitempty"`
-	OwnerDomain            string   `json:"owner_domain,omitempty" yaml:"owner_domain,omitempty"`
-	Tags                   []string `json:"tags,omitempty" yaml:"tags,omitempty"`
-	EvidenceExpectationIDs []string `json:"evidence_expectation_ids,omitempty" yaml:"evidence_expectation_ids,omitempty"`
-	MappedRules            []string `json:"mapped_rules,omitempty" yaml:"mapped_rules,omitempty"`
+	FrameworkID            string                       `json:"framework_id,omitempty" yaml:"framework_id,omitempty"`
+	FrameworkName          string                       `json:"framework_name" yaml:"framework_name"`
+	FrameworkVersion       string                       `json:"framework_version,omitempty" yaml:"framework_version,omitempty"`
+	FamilyID               string                       `json:"family_id" yaml:"family_id"`
+	FamilyName             string                       `json:"family_name" yaml:"family_name"`
+	ControlID              string                       `json:"control_id" yaml:"control_id"`
+	Title                  string                       `json:"title,omitempty" yaml:"title,omitempty"`
+	OwnerDomain            string                       `json:"owner_domain,omitempty" yaml:"owner_domain,omitempty"`
+	Tags                   []string                     `json:"tags,omitempty" yaml:"tags,omitempty"`
+	EvidenceExpectationIDs []string                     `json:"evidence_expectation_ids,omitempty" yaml:"evidence_expectation_ids,omitempty"`
+	AuditPlan              *ControlCoverageAuditPlan    `json:"audit_plan,omitempty" yaml:"audit_plan,omitempty"`
+	EvidencePlan           *ControlCoverageEvidencePlan `json:"evidence_plan,omitempty" yaml:"evidence_plan,omitempty"`
+	MappedControlRefs      []ControlRef                 `json:"mapped_control_refs,omitempty" yaml:"mapped_control_refs,omitempty"`
+	CoverageStatus         string                       `json:"coverage_status" yaml:"coverage_status"`
+	RuleCount              int                          `json:"rule_count" yaml:"rule_count"`
+	MappedRules            []string                     `json:"mapped_rules,omitempty" yaml:"mapped_rules,omitempty"`
+}
+
+type ControlCoverageAuditPlan struct {
+	Objective              string   `json:"objective,omitempty" yaml:"objective,omitempty"`
+	Intent                 string   `json:"intent,omitempty" yaml:"intent,omitempty"`
+	FreshnessSLA           string   `json:"freshness_sla,omitempty" yaml:"freshness_sla,omitempty"`
+	Applicability          []string `json:"applicability,omitempty" yaml:"applicability,omitempty"`
+	AssessmentMethods      []string `json:"assessment_methods,omitempty" yaml:"assessment_methods,omitempty"`
+	ImplementationGuidance []string `json:"implementation_guidance,omitempty" yaml:"implementation_guidance,omitempty"`
+	AuditProcedure         []string `json:"audit_procedure,omitempty" yaml:"audit_procedure,omitempty"`
+	FailureModes           []string `json:"failure_modes,omitempty" yaml:"failure_modes,omitempty"`
+	RemediationGuidance    []string `json:"remediation_guidance,omitempty" yaml:"remediation_guidance,omitempty"`
+	ExceptionGuidance      string   `json:"exception_guidance,omitempty" yaml:"exception_guidance,omitempty"`
+	Automatable            *bool    `json:"automatable,omitempty" yaml:"automatable,omitempty"`
+	ManualEvidenceAllowed  *bool    `json:"manual_evidence_allowed,omitempty" yaml:"manual_evidence_allowed,omitempty"`
+}
+
+type ControlCoverageEvidencePlan struct {
+	Expectations []ControlCoverageEvidenceExpectation `json:"expectations,omitempty" yaml:"expectations,omitempty"`
 }
 
 type ControlCoverageRule struct {
 	RuleID   string       `json:"rule_id" yaml:"rule_id"`
 	Controls []ControlRef `json:"controls" yaml:"controls"`
+}
+
+type ControlCoverageEvidenceExpectation struct {
+	ID                string   `json:"id" yaml:"id"`
+	Title             string   `json:"title,omitempty" yaml:"title,omitempty"`
+	Type              string   `json:"type" yaml:"type"`
+	Required          bool     `json:"required" yaml:"required"`
+	Description       string   `json:"description,omitempty" yaml:"description,omitempty"`
+	AssessmentMethods []string `json:"assessment_methods,omitempty" yaml:"assessment_methods,omitempty"`
+	FreshnessSLA      string   `json:"freshness_sla,omitempty" yaml:"freshness_sla,omitempty"`
+	AcceptedFrom      []string `json:"accepted_from,omitempty" yaml:"accepted_from,omitempty"`
 }
 
 func LoadControlProfileSetFile(path string) (ControlProfileSet, error) {
@@ -130,6 +165,10 @@ func BuildControlCoverageProfile(selection ControlSelection, resolution Selectio
 			profile.Summary.MappedControls++
 		}
 		expectationIDs, _ := evidenceExpectationIDs(control.Evidence)
+		coverageStatus := "unmapped"
+		if len(mappedRules) != 0 {
+			coverageStatus = "mapped"
+		}
 		profile.Controls = append(profile.Controls, ControlCoverageControl{
 			FrameworkID:            strings.TrimSpace(control.FrameworkID),
 			FrameworkName:          strings.TrimSpace(control.FrameworkName),
@@ -141,6 +180,11 @@ func BuildControlCoverageProfile(selection ControlSelection, resolution Selectio
 			OwnerDomain:            strings.TrimSpace(control.Control.OwnerDomain),
 			Tags:                   sortedUniqueStrings(control.EffectiveTags),
 			EvidenceExpectationIDs: expectationIDs,
+			AuditPlan:              controlCoverageAuditPlan(control.Control),
+			EvidencePlan:           controlCoverageEvidencePlan(control.Evidence, control.Control.FreshnessSLA),
+			MappedControlRefs:      sortedControlRefs(control.Control.MapsTo),
+			CoverageStatus:         coverageStatus,
+			RuleCount:              len(mappedRules),
 			MappedRules:            mappedRules,
 		})
 	}
@@ -205,6 +249,9 @@ func sortControlCoverageProfile(profile *ControlCoverageProfile) {
 	for idx := range profile.Controls {
 		profile.Controls[idx].Tags = sortedUniqueStrings(profile.Controls[idx].Tags)
 		profile.Controls[idx].EvidenceExpectationIDs = sortedUniqueStrings(profile.Controls[idx].EvidenceExpectationIDs)
+		normalizeControlCoverageAuditPlan(profile.Controls[idx].AuditPlan)
+		sortControlCoverageEvidencePlan(profile.Controls[idx].EvidencePlan)
+		profile.Controls[idx].MappedControlRefs = sortedControlRefs(profile.Controls[idx].MappedControlRefs)
 		profile.Controls[idx].MappedRules = sortedUniqueStrings(profile.Controls[idx].MappedRules)
 	}
 }
@@ -215,6 +262,95 @@ func sortedControlRefs(refs []ControlRef) []ControlRef {
 		return ControlKey(result[i]) < ControlKey(result[j])
 	})
 	return result
+}
+
+func controlCoverageAuditPlan(control Control) *ControlCoverageAuditPlan {
+	plan := ControlCoverageAuditPlan{
+		Objective:              strings.TrimSpace(control.Objective),
+		Intent:                 strings.TrimSpace(control.Intent),
+		FreshnessSLA:           strings.TrimSpace(control.FreshnessSLA),
+		Applicability:          orderedUniqueStrings(control.Applicability),
+		AssessmentMethods:      orderedUniqueStrings(control.AssessmentMethods),
+		ImplementationGuidance: orderedUniqueStrings(control.ImplementationGuidance),
+		AuditProcedure:         orderedUniqueStrings(control.AuditProcedure),
+		FailureModes:           orderedUniqueStrings(control.FailureModes),
+		RemediationGuidance:    orderedUniqueStrings(control.RemediationGuidance),
+		ExceptionGuidance:      strings.TrimSpace(control.ExceptionGuidance),
+		Automatable:            cloneBool(control.Automatable),
+		ManualEvidenceAllowed:  cloneBool(control.ManualEvidenceAllowed),
+	}
+	if controlCoverageAuditPlanEmpty(plan) {
+		return nil
+	}
+	return &plan
+}
+
+func controlCoverageEvidencePlan(expectations []EvidenceExpectation, fallbackFreshnessSLA string) *ControlCoverageEvidencePlan {
+	values := make([]ControlCoverageEvidenceExpectation, 0, len(expectations))
+	for _, expectation := range expectations {
+		expectation = expectationWithControlFreshness(expectation, fallbackFreshnessSLA)
+		values = append(values, ControlCoverageEvidenceExpectation{
+			ID:                strings.TrimSpace(expectation.ID),
+			Title:             strings.TrimSpace(expectation.Title),
+			Type:              strings.TrimSpace(expectation.Type),
+			Required:          evidenceExpectationRequired(expectation),
+			Description:       strings.TrimSpace(expectation.Description),
+			AssessmentMethods: sortedUniqueStrings(expectation.AssessmentMethods),
+			FreshnessSLA:      strings.TrimSpace(expectation.FreshnessSLA),
+			AcceptedFrom:      sortedUniqueStrings(expectation.AcceptedFrom),
+		})
+	}
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].ID < values[j].ID
+	})
+	if len(values) == 0 {
+		return nil
+	}
+	return &ControlCoverageEvidencePlan{Expectations: values}
+}
+
+func normalizeControlCoverageAuditPlan(plan *ControlCoverageAuditPlan) {
+	if plan == nil {
+		return
+	}
+	plan.Applicability = orderedUniqueStrings(plan.Applicability)
+	plan.AssessmentMethods = orderedUniqueStrings(plan.AssessmentMethods)
+	plan.ImplementationGuidance = orderedUniqueStrings(plan.ImplementationGuidance)
+	plan.AuditProcedure = orderedUniqueStrings(plan.AuditProcedure)
+	plan.FailureModes = orderedUniqueStrings(plan.FailureModes)
+	plan.RemediationGuidance = orderedUniqueStrings(plan.RemediationGuidance)
+}
+
+func sortControlCoverageEvidencePlan(plan *ControlCoverageEvidencePlan) {
+	if plan == nil {
+		return
+	}
+	sort.Slice(plan.Expectations, func(i, j int) bool {
+		return plan.Expectations[i].ID < plan.Expectations[j].ID
+	})
+}
+
+func controlCoverageAuditPlanEmpty(plan ControlCoverageAuditPlan) bool {
+	return plan.Objective == "" &&
+		plan.Intent == "" &&
+		plan.FreshnessSLA == "" &&
+		len(plan.Applicability) == 0 &&
+		len(plan.AssessmentMethods) == 0 &&
+		len(plan.ImplementationGuidance) == 0 &&
+		len(plan.AuditProcedure) == 0 &&
+		len(plan.FailureModes) == 0 &&
+		len(plan.RemediationGuidance) == 0 &&
+		plan.ExceptionGuidance == "" &&
+		plan.Automatable == nil &&
+		plan.ManualEvidenceAllowed == nil
+}
+
+func cloneBool(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func profileIssuePath(id, path string) string {

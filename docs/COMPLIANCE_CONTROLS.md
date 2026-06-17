@@ -24,6 +24,15 @@ frameworks:
             intent: Reduce account takeover risk for administrative access.
             applicability: [production, privileged_access]
             assessment_methods: [examine, test]
+            implementation_guidance:
+              - Require privileged identities to enroll MFA before production access is granted.
+            audit_procedure:
+              - Compare privileged account inventory with current MFA enrollment evidence.
+            failure_modes:
+              - Privileged user has active production access without enrolled MFA.
+            remediation_guidance:
+              - Remove privileged access until MFA enrollment is complete.
+            exception_guidance: Time-bound exceptions require compensating monitoring and approval.
             owner_domain: identity
             automatable: true
             manual_evidence_allowed: true
@@ -42,7 +51,7 @@ frameworks:
                 control_id: CC6.1
 ```
 
-Required fields are intentionally small for compatibility: catalog `version`, framework `name`, family `id` and `name`, and control `id`. Rich controls should add `title`, `objective`, `intent`, `assessment_methods`, `evidence_expectations`, and `maps_to` as soon as they are known.
+Required fields are intentionally small for compatibility: catalog `version`, framework `name`, family `id` and `name`, and control `id`. Rich controls should add `title`, `objective`, `intent`, `assessment_methods`, `implementation_guidance`, `audit_procedure`, `failure_modes`, `remediation_guidance`, `evidence_expectations`, and `maps_to` as soon as they are known.
 
 Assessment methods are limited to `examine`, `interview`, and `test`. Evidence expectations require `id` and `type` when present. `maps_to` entries must reference controls that exist in the merged catalog.
 
@@ -59,6 +68,32 @@ index, issues := compliance.BuildCatalogIndex(catalog)
 ```
 
 Use `maps_to` to connect custom controls to controls already covered by generated policy rules. Rule coverage resolution credits the selected custom control when a rule maps to any equivalent control in `maps_to`.
+
+## Control Extension Packs
+
+Control extension packs are YAML manifests that package custom catalog and profile files together. This gives custom framework work a single generated-coverage entrypoint while keeping the actual control catalog YAML separate and reviewable.
+
+```yaml
+version: "2026-06-17"
+id: customer-controls
+name: Customer Controls
+description: Custom framework and reusable audit selections.
+catalogs:
+  - controls.yaml
+profiles:
+  - profiles.yaml
+```
+
+Manifest paths are resolved relative to the manifest file. Use an extension pack when a customer, business unit, or product surface needs its own control IDs and profile selections:
+
+```bash
+go run ./tools/controlindex \
+  --extension customer-controls/extension.yaml \
+  --output customer-controls/coverage.yaml \
+  --write
+```
+
+The generator merges extension catalogs with the built-in catalog, merges extension profile sets with the built-in profiles, validates all `maps_to` references, and emits a coverage index for every selected profile.
 
 ## Control Selections
 
@@ -112,7 +147,7 @@ Coverage is resolved in two steps:
 
 The result reports selected control count, mapped rule IDs, controls without rule coverage, rules by control, and controls by rule. This is the foundation for later control posture and auditor evidence packets.
 
-`BuildControlCoverageIndex` applies this process to a full profile set. The checked-in `internal/compliance/control_coverage_index.yaml` is generated from the built-in profiles and builtin rule metadata. It gives reviewers a stable YAML view of selected controls, mapped rules, unmapped controls, and per-profile coverage summaries.
+`BuildControlCoverageIndex` applies this process to a full profile set. The checked-in `internal/compliance/control_coverage_index.yaml` is generated from the built-in profiles and builtin rule metadata. It gives reviewers a stable YAML view of selected controls, coverage status, rule counts, mapped rules, mapped equivalent controls, evidence expectations, unmapped controls, and per-profile coverage summaries.
 
 Regenerate and verify the index with:
 
@@ -173,6 +208,9 @@ The packet builder uses the same matching rules as posture evaluation. Evidence 
 - `ResolveControlSelection`
 - `ResolveRuleCoverage`
 - `LoadControlProfileSet`
+- `LoadControlExtensionPack`
+- `ValidateControlExtensionPack`
+- `MergeControlProfileSets`
 - `ResolveControlProfiles`
 - `BuildControlCoverageIndex`
 - `EvaluateControlPosture`
