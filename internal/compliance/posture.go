@@ -670,3 +670,18 @@ func sortedUniqueStrings(values []string) []string {
 	sort.Strings(unique)
 	return unique
 }
+
+func orderedUniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	unique := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		unique = appendUniqueString(unique, value)
+	}
+	return unique
+}

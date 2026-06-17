@@ -142,16 +142,33 @@ frameworks:
         name: Identity Controls
         controls:
           - id: IAM-1
+            title: Privileged access requires MFA
+            objective: Privileged production access requires strong authentication evidence.
+            intent: Reduce account takeover risk for privileged production identities.
             owner_domain: identity
+            freshness_sla: 30d
             applicability: [production, privileged_access]
             assessment_methods: [test]
+            implementation_guidance:
+              - Enforce MFA before privileged production access is granted.
+            audit_procedure:
+              - Review privileged production access approvals before checking MFA enrollment.
+              - Compare privileged account inventory against MFA enrollment evidence.
+            failure_modes:
+              - Privileged account has production access without MFA evidence.
+            remediation_guidance:
+              - Remove privileged access until MFA is enrolled.
+            exception_guidance: Exceptions require compensating monitoring and approval.
             automatable: true
             manual_evidence_allowed: false
             tags: [identity]
             evidence_expectations:
               - id: privileged-mfa-state
+                title: Privileged MFA state
                 type: identity_configuration
+                required: true
                 assessment_methods: [examine]
+                accepted_from: [okta]
             maps_to:
               - framework_id: soc2
                 control_id: CC6.1

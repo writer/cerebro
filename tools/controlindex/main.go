@@ -23,7 +23,9 @@ func main() {
 	write := flag.Bool("write", false, "write the generated control coverage index")
 	check := flag.Bool("check", false, "check that the generated control coverage index is fresh")
 	var catalogs pathList
+	var extensions pathList
 	flag.Var(&catalogs, "catalog", "control catalog YAML path relative to root; may be repeated")
+	flag.Var(&extensions, "extension", "control extension manifest path relative to root; may be repeated")
 	flag.Parse()
 
 	if len(catalogs) == 0 {
@@ -34,7 +36,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	content, err := generateCoverageIndex(filepath.Clean(*root), catalogs, *profiles)
+	content, err := generateCoverageIndex(filepath.Clean(*root), catalogs, *profiles, extensions)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "controlindex: %v\n", err)
 		os.Exit(1)
@@ -84,7 +86,17 @@ func (p *pathList) Set(value string) error {
 	return nil
 }
 
-func generateCoverageIndex(root string, catalogPaths []string, profilePath string) ([]byte, error) {
+func generateCoverageIndex(root string, catalogPaths []string, profilePath string, extensionPaths []string) ([]byte, error) {
+	absoluteRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return nil, fmt.Errorf("resolve root: %w", err)
+	}
+	root = absoluteRoot
+	extensionCatalogs, extensionProfiles, err := loadControlExtensions(root, extensionPaths)
+	if err != nil {
+		return nil, err
+	}
+	catalogPaths = append(catalogPaths, extensionCatalogs...)
 	catalog, err := loadControlCatalog(root, catalogPaths)
 	if err != nil {
 		return nil, err
@@ -92,6 +104,17 @@ func generateCoverageIndex(root string, catalogPaths []string, profilePath strin
 	profiles, err := loadControlProfiles(root, profilePath)
 	if err != nil {
 		return nil, err
+	}
+	if len(extensionProfiles) != 0 {
+		profileSets := []compliance.ControlProfileSet{profiles}
+		for _, path := range extensionProfiles {
+			extensionProfile, err := loadControlProfiles(root, path)
+			if err != nil {
+				return nil, err
+			}
+			profileSets = append(profileSets, extensionProfile)
+		}
+		profiles = compliance.MergeControlProfileSets(profileSets...)
 	}
 	index, issues := compliance.BuildControlCoverageIndex(catalog, profiles, builtinRuleControlMappings())
 	if len(issues) != 0 {
@@ -107,7 +130,7 @@ func generateCoverageIndex(root string, catalogPaths []string, profilePath strin
 func loadControlCatalog(root string, paths []string) (*compliance.CatalogIndex, error) {
 	catalogPaths := make([]string, 0, len(paths))
 	for _, path := range paths {
-		catalogPaths = append(catalogPaths, filepath.Join(root, filepath.FromSlash(strings.TrimSpace(path))))
+		catalogPaths = append(catalogPaths, resolveRootPath(root, strings.TrimSpace(path)))
 	}
 	catalog, err := compliance.LoadControlCatalogFiles(catalogPaths...)
 	if err != nil {
@@ -121,7 +144,46 @@ func loadControlCatalog(root string, paths []string) (*compliance.CatalogIndex, 
 }
 
 func loadControlProfiles(root string, path string) (compliance.ControlProfileSet, error) {
-	return compliance.LoadControlProfileSetFile(filepath.Join(root, filepath.FromSlash(path)))
+	return compliance.LoadControlProfileSetFile(resolveRootPath(root, path))
+}
+
+func loadControlExtensions(root string, paths []string) ([]string, []string, error) {
+	catalogPaths := []string{}
+	profilePaths := []string{}
+	for _, path := range paths {
+		manifestPath := resolveRootPath(root, path)
+		pack, err := compliance.LoadControlExtensionPackFile(manifestPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load extension %s: %w", path, err)
+		}
+		if issues := compliance.ValidateControlExtensionPack(pack); len(issues) != 0 {
+			return nil, nil, validationIssuesError(path, issues)
+		}
+		manifestDir := filepath.Dir(manifestPath)
+		for _, catalog := range pack.Catalogs {
+			catalogPaths = append(catalogPaths, resolveExtensionPath(manifestDir, catalog))
+		}
+		for _, profiles := range pack.Profiles {
+			profilePaths = append(profilePaths, resolveExtensionPath(manifestDir, profiles))
+		}
+	}
+	return catalogPaths, profilePaths, nil
+}
+
+func resolveRootPath(root string, path string) string {
+	path = strings.TrimSpace(path)
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(root, filepath.FromSlash(path))
+}
+
+func resolveExtensionPath(manifestDir string, path string) string {
+	path = strings.TrimSpace(path)
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(manifestDir, filepath.FromSlash(path))
 }
 
 func builtinRuleControlMappings() []compliance.RuleControlMapping {

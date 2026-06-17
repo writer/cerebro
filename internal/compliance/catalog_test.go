@@ -38,6 +38,15 @@ frameworks:
             intent: Reduce the likelihood of account takeover for administrative access.
             owner_domain: identity
             assessment_methods: [examine, test]
+            implementation_guidance:
+              - Require privileged identities to enroll phishing-resistant MFA before production access is granted.
+            audit_procedure:
+              - Compare privileged account inventory with current MFA enrollment evidence.
+            failure_modes:
+              - Privileged user has active production access without enrolled MFA.
+            remediation_guidance:
+              - Remove privileged access until MFA enrollment is complete.
+            exception_guidance: Time-bound exceptions require compensating monitoring and approval.
             evidence_expectations:
               - id: privileged-mfa-state
                 type: identity_configuration
@@ -57,6 +66,9 @@ frameworks:
 	}
 	if control.Control.Objective == "" || control.Control.Intent == "" {
 		t.Fatalf("rich control fields were not retained: %#v", control.Control)
+	}
+	if len(control.Control.AuditProcedure) != 1 || control.Control.ExceptionGuidance == "" {
+		t.Fatalf("auditor guidance fields were not retained: %#v", control.Control)
 	}
 	if !stringSliceContains(control.EffectiveTags, "identity") {
 		t.Fatalf("EffectiveTags = %#v, want inherited identity tag", control.EffectiveTags)
