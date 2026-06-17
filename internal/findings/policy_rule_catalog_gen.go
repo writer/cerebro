@@ -8,7 +8,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "account-lateral-dormant",
 			Name:              "Account with a lateral movement finding to admin is inactive for over 90 days",
-			Description:       "Detects failed policy evidence showing that iam user or iam service account does not satisfy Account with a lateral movement finding to admin is inactive for over 90 days. A dormant account has an attack path to admin privileges, posing a risk if the account is compromised. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user or iam service account: Account with a lateral movement finding to admin is inactive for over 90 days. A dormant account has an attack path to admin privileges, posing a risk if the account is compromised. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -48,7 +48,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "admin-inactive-keys",
 			Name:              "Admin user/service account with active access keys that are inactive for over 90 days",
-			Description:       "Detects failed policy evidence showing that iam user or iam service account does not satisfy Admin user/service account with active access keys that are inactive for over 90 days. An admin account has access keys that have been inactive for over 90 days. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user or iam service account: Admin user/service account with active access keys that are inactive for over 90 days. An admin account has access keys that have been inactive for over 90 days. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -92,7 +92,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "admin-keys-unrotated",
 			Name:              "Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year",
-			Description:       "Detects failed policy evidence showing that iam user or iam service account does not satisfy Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year. An active admin access key has not been rotated in over a year. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user or iam service account: Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year. An active admin access key has not been rotated in over a year. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -136,7 +136,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "admin-keys-year-unrotated",
 			Name:              "Admin user/service account with active access keys unrotated in the past year",
-			Description:       "Detects failed policy evidence showing that iam user or iam service account does not satisfy Admin user/service account with active access keys unrotated in the past year. An admin account has access keys that have not been rotated in over a year. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user or iam service account: Admin user/service account with active access keys unrotated in the past year. An admin account has access keys that have not been rotated in over a year. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -180,7 +180,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-agent-lambda-data-access",
 			Name:              "AI Agent that is using a lambda function with access to sensitive data",
-			Description:       "Detects failed policy evidence showing that ai agent does not satisfy AI Agent that is using a lambda function with access to sensitive data. An AI agent uses a Lambda function that has access to sensitive data. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for ai agent: AI Agent that is using a lambda function with access to sensitive data. An AI agent uses a Lambda function that has access to sensitive data. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -220,7 +220,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-bias-testing",
 			Name:              "AI Model Bias Testing Performed",
-			Description:       "Detects failed policy evidence showing that ai models does not satisfy AI Model Bias Testing Performed. Checks whether AI models are tested for bias and fairness before deployment (ISO 42001). Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ai models: AI Model Bias Testing Performed. Checks whether AI models are tested for bias and fairness before deployment (ISO 42001). Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -257,7 +257,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-data-governance",
 			Name:              "AI Training Data Governance",
-			Description:       "Detects failed policy evidence showing that ai datasets does not satisfy AI Training Data Governance. Checks whether AI training data has documented lineage and usage rights (ISO 42001). Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ai datasets: AI Training Data Governance. Checks whether AI training data has documented lineage and usage rights (ISO 42001). Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -296,7 +296,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-explainability",
 			Name:              "AI Model Explainability Documentation",
-			Description:       "Detects failed policy evidence showing that ai models does not satisfy AI Model Explainability Documentation. Checks whether AI models have documented explanations of how decisions are made (ISO 42001). Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ai models: AI Model Explainability Documentation. Checks whether AI models have documented explanations of how decisions are made (ISO 42001). Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -333,7 +333,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-human-oversight",
 			Name:              "AI High-Risk Decisions Human Oversight",
-			Description:       "Detects failed policy evidence showing that ai models does not satisfy AI High-Risk Decisions Human Oversight. Checks whether high-risk AI decisions have human oversight mechanisms (ISO 42001, EU AI Act). Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ai models: AI High-Risk Decisions Human Oversight. Checks whether high-risk AI decisions have human oversight mechanisms (ISO 42001, EU AI Act). Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -370,7 +370,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-incident-response",
 			Name:              "AI Incident Response Plan",
-			Description:       "Detects failed policy evidence showing that ai models does not satisfy AI Incident Response Plan. Checks whether AI systems have documented incident response procedures (ISO 42001). Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ai models: AI Incident Response Plan. Checks whether AI systems have documented incident response procedures (ISO 42001). Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -407,7 +407,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-model-excessive-agency",
 			Name:              "AI Model with excessive agency",
-			Description:       "Detects failed policy evidence showing that ai model or ai endpoint does not satisfy AI Model with excessive agency. An AI model has excessive permissions or agency that could lead to unintended actions. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for ai model or ai endpoint: AI Model with excessive agency. An AI model has excessive permissions or agency that could lead to unintended actions. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -447,7 +447,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-model-inventory",
 			Name:              "AI Model Inventory Maintained",
-			Description:       "Detects failed policy evidence showing that ai models does not satisfy AI Model Inventory Maintained. Checks whether all AI/ML models are documented in a central inventory (ISO 42001). Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ai models: AI Model Inventory Maintained. Checks whether all AI/ML models are documented in a central inventory (ISO 42001). Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -484,7 +484,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-model-monitoring",
 			Name:              "AI Model Performance Monitoring",
-			Description:       "Detects failed policy evidence showing that ai models does not satisfy AI Model Performance Monitoring. Checks whether deployed AI models have monitoring for performance degradation and drift (ISO 42001). Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ai models: AI Model Performance Monitoring. Checks whether deployed AI models have monitoring for performance degradation and drift (ISO 42001). Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -521,7 +521,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-model-third-party-access",
 			Name:              "3rd party access to AI model in bucket",
-			Description:       "Detects failed policy evidence showing that storage bucket does not satisfy 3rd party access to AI model in bucket. A third party has access to AI model artifacts stored in a bucket. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket: 3rd party access to AI model in bucket. A third party has access to AI model artifacts stored in a bucket. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -561,7 +561,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ai-risk-assessment",
 			Name:              "AI Model Risk Assessment Completed",
-			Description:       "Detects failed policy evidence showing that ai models does not satisfy AI Model Risk Assessment Completed. Checks whether risk assessments are completed for all AI models before deployment (ISO 42001). Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ai models: AI Model Risk Assessment Completed. Checks whether risk assessments are completed for all AI models before deployment (ISO 42001). Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -598,7 +598,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-alb-http-to-https",
 			Name:              "ALB HTTP to HTTPS Redirect",
-			Description:       "Detects failed policy evidence showing that aws lb listener does not satisfy ALB HTTP to HTTPS Redirect. Checks whether Application Load Balancers redirect HTTP traffic to HTTPS. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed query-result evidence for aws lb listener: ALB HTTP to HTTPS Redirect. Checks whether Application Load Balancers redirect HTTP traffic to HTTPS. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -634,7 +634,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-alb-no-authentication",
 			Name:              "AWS ALB No Authentication",
-			Description:       "Detects failed policy evidence showing that aws elbv2 listener does not satisfy AWS ALB No Authentication. Application Load Balancer listener has no authentication action. Risk: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
+			Description:       "Flags failed resource-state evidence for aws elbv2 listener: AWS ALB No Authentication. Application Load Balancer listener has no authentication action. Audit impact: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -673,7 +673,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-api-gateway-no-authorization",
 			Name:              "AWS API Gateway No Authorization",
-			Description:       "Detects failed policy evidence showing that aws apigateway method does not satisfy AWS API Gateway No Authorization. API Gateway endpoint has no authorization configured. Risk: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
+			Description:       "Flags failed resource-state evidence for aws apigateway method: AWS API Gateway No Authorization. API Gateway endpoint has no authorization configured. Audit impact: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -719,7 +719,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-apigateway-public",
 			Name:              "API Gateway Publicly Accessible",
-			Description:       "Detects failed policy evidence showing that aws apigateway rest api does not satisfy API Gateway Publicly Accessible. API Gateway REST API is publicly accessible from the internet without authorization. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws apigateway rest api: API Gateway Publicly Accessible. API Gateway REST API is publicly accessible from the internet without authorization. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -760,7 +760,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-appsync-no-authorization",
 			Name:              "AWS AppSync No Authorization",
-			Description:       "Detects failed policy evidence showing that aws appsync graphql api does not satisfy AWS AppSync No Authorization. AppSync GraphQL API has no authorization configured. Risk: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
+			Description:       "Flags failed resource-state evidence for aws appsync graphql api: AWS AppSync No Authorization. AppSync GraphQL API has no authorization configured. Audit impact: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -799,7 +799,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-bedrock-custom-model-public",
 			Name:              "AWS Bedrock Custom Model Public Access",
-			Description:       "Detects failed policy evidence showing that aws bedrock custom model does not satisfy AWS Bedrock Custom Model Public Access. Bedrock custom model training data stored in publicly accessible S3 bucket. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws bedrock custom model: AWS Bedrock Custom Model Public Access. Bedrock custom model training data stored in publicly accessible S3 bucket. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -845,7 +845,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-bedrock-model-no-guardrails",
 			Name:              "Bedrock Model Without Guardrails",
-			Description:       "Detects failed policy evidence showing that aws bedrock provisioned model throughput does not satisfy Bedrock Model Without Guardrails. Amazon Bedrock custom model deployed without content guardrails. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws bedrock provisioned model throughput: Bedrock Model Without Guardrails. Amazon Bedrock custom model deployed without content guardrails. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -886,7 +886,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-cloudfront-http",
 			Name:              "CloudFront Distribution Allows HTTP",
-			Description:       "Detects failed policy evidence showing that aws cloudfront distribution does not satisfy CloudFront Distribution Allows HTTP. CloudFront distribution allows unencrypted HTTP traffic instead of requiring HTTPS. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws cloudfront distribution: CloudFront Distribution Allows HTTP. CloudFront distribution allows unencrypted HTTP traffic instead of requiring HTTPS. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -926,7 +926,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-cloudtrail-enabled",
 			Name:              "CloudTrail Enabled",
-			Description:       "Detects failed policy evidence showing that aws cloudtrail trail does not satisfy CloudTrail Enabled. CloudTrail should be enabled in all regions. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws cloudtrail trail: CloudTrail Enabled. CloudTrail should be enabled in all regions. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -968,7 +968,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-cloudtrail-kms-encryption",
 			Name:              "CloudTrail KMS Encryption Enabled",
-			Description:       "Detects failed policy evidence showing that aws cloudtrail trails does not satisfy CloudTrail KMS Encryption Enabled. CloudTrail trails should have KMS encryption enabled using an AWS KMS key for additional security of log files stored in S3. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws cloudtrail trails: CloudTrail KMS Encryption Enabled. CloudTrail trails should have KMS encryption enabled using an AWS KMS key for additional security of log files stored in S3. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1008,7 +1008,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-cloudtrail-log-integrity",
 			Name:              "CloudTrail Log File Integrity Validation",
-			Description:       "Detects failed policy evidence showing that aws cloudtrail trails does not satisfy CloudTrail Log File Integrity Validation. CloudTrail trails should have log file integrity validation enabled to detect tampering or unauthorized modifications to log files. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws cloudtrail trails: CloudTrail Log File Integrity Validation. CloudTrail trails should have log file integrity validation enabled to detect tampering or unauthorized modifications to log files. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1047,7 +1047,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-cloudtrail-s3-data-events",
 			Name:              "CloudTrail S3 Data Events Logging",
-			Description:       "Detects failed policy evidence showing that aws cloudtrail trails does not satisfy CloudTrail S3 Data Events Logging. CloudTrail should be configured to log S3 object-level data events (read and write) for comprehensive audit logging of bucket access. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws cloudtrail trails: CloudTrail S3 Data Events Logging. CloudTrail should be configured to log S3 object-level data events (read and write) for comprehensive audit logging of bucket access. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1088,7 +1088,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-cloudwatch-alarm-missing",
 			Name:              "CloudTrail Without CloudWatch Alarm",
-			Description:       "Detects failed policy evidence showing that aws cloudtrail trail does not satisfy CloudTrail Without CloudWatch Alarm. CloudTrail trail does not have CloudWatch alarms configured for security events. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws cloudtrail trail: CloudTrail Without CloudWatch Alarm. CloudTrail trail does not have CloudWatch alarms configured for security events. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1130,7 +1130,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-cloudwatch-log-group-encrypted",
 			Name:              "CloudWatch Log Group Encrypted",
-			Description:       "Detects failed policy evidence showing that aws logs log group does not satisfy CloudWatch Log Group Encrypted. CloudWatch log groups should be encrypted with KMS. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws logs log group: CloudWatch Log Group Encrypted. CloudWatch log groups should be encrypted with KMS. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1177,7 +1177,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-cloudwatch-log-group-retention",
 			Name:              "CloudWatch Log Group Retention",
-			Description:       "Detects failed policy evidence showing that aws logs log group does not satisfy CloudWatch Log Group Retention. CloudWatch log groups should have a retention policy set. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws logs log group: CloudWatch Log Group Retention. CloudWatch log groups should have a retention policy set. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1218,7 +1218,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-codebuild-plaintext-secrets",
 			Name:              "AWS CodeBuild Plaintext Secrets",
-			Description:       "Detects failed policy evidence showing that aws codebuild project does not satisfy AWS CodeBuild Plaintext Secrets. CodeBuild project has secrets in plaintext environment variables. Risk: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
+			Description:       "Flags failed resource-state evidence for aws codebuild project: AWS CodeBuild Plaintext Secrets. CodeBuild project has secrets in plaintext environment variables. Audit impact: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1256,7 +1256,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-codebuild-privileged-mode",
 			Name:              "AWS CodeBuild Privileged Mode",
-			Description:       "Detects failed policy evidence showing that aws codebuild project does not satisfy AWS CodeBuild Privileged Mode. CodeBuild project runs with privileged container mode enabled. Risk: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
+			Description:       "Flags failed resource-state evidence for aws codebuild project: AWS CodeBuild Privileged Mode. CodeBuild project runs with privileged container mode enabled. Audit impact: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1296,7 +1296,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-codebuild-public-logs",
 			Name:              "AWS CodeBuild Public Build Logs",
-			Description:       "Detects failed policy evidence showing that aws codebuild project does not satisfy AWS CodeBuild Public Build Logs. CodeBuild project has publicly accessible build logs. Risk: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
+			Description:       "Flags failed resource-state evidence for aws codebuild project: AWS CodeBuild Public Build Logs. CodeBuild project has publicly accessible build logs. Audit impact: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1343,7 +1343,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-codebuild-public-trigger",
 			Name:              "CodeBuild Project with Public Webhook",
-			Description:       "Detects failed policy evidence showing that aws codebuild project does not satisfy CodeBuild Project with Public Webhook. CodeBuild project has a public webhook that can be triggered by external sources. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws codebuild project: CodeBuild Project with Public Webhook. CodeBuild project has a public webhook that can be triggered by external sources. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1384,7 +1384,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-codebuild-secrets-in-env-vars",
 			Name:              "CodeBuild Secrets in Environment Variables",
-			Description:       "Detects failed policy evidence showing that aws codebuild project does not satisfy CodeBuild Secrets in Environment Variables. CodeBuild project has potential secrets stored in plaintext environment variables. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws codebuild project: CodeBuild Secrets in Environment Variables. CodeBuild project has potential secrets stored in plaintext environment variables. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1422,7 +1422,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-codebuild-source-credential",
 			Name:              "CodeBuild Source Credentials Stored Insecurely",
-			Description:       "Detects failed policy evidence showing that aws codebuild source credential does not satisfy CodeBuild Source Credentials Stored Insecurely. CodeBuild project stores source credentials directly instead of using Secrets Manager or Parameter Store. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws codebuild source credential: CodeBuild Source Credentials Stored Insecurely. CodeBuild project stores source credentials directly instead of using Secrets Manager or Parameter Store. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1460,7 +1460,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-config-enabled-all-regions",
 			Name:              "AWS Config Enabled All Regions",
-			Description:       "Detects failed policy evidence showing that aws config configuration recorder does not satisfy AWS Config Enabled All Regions. AWS Config should be enabled in all regions to track resource configuration changes. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws config configuration recorder: AWS Config Enabled All Regions. AWS Config should be enabled in all regions to track resource configuration changes. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1502,7 +1502,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-default-sg-no-rules",
 			Name:              "Default Security Group Restricts All Traffic",
-			Description:       "Detects failed policy evidence showing that aws ec2 security groups does not satisfy Default Security Group Restricts All Traffic. The default security group in each VPC should have no inbound or outbound rules to ensure it cannot be accidentally used to allow unintended traffic. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 security groups: Default Security Group Restricts All Traffic. The default security group in each VPC should have no inbound or outbound rules to ensure it cannot be accidentally used to allow unintended traffic. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1541,7 +1541,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-dynamodb-encryption",
 			Name:              "DynamoDB Table Not Encrypted with CMK",
-			Description:       "Detects failed policy evidence showing that aws dynamodb table does not satisfy DynamoDB Table Not Encrypted with CMK. DynamoDB table is using default AWS-owned key instead of customer-managed KMS key. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws dynamodb table: DynamoDB Table Not Encrypted with CMK. DynamoDB table is using default AWS-owned key instead of customer-managed KMS key. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1583,7 +1583,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-dynamodb-pitr",
 			Name:              "DynamoDB Point-in-Time Recovery Enabled",
-			Description:       "Detects failed policy evidence showing that aws dynamodb table does not satisfy DynamoDB Point-in-Time Recovery Enabled. Checks whether DynamoDB tables have Point-in-Time Recovery (PITR) enabled for backup and restore. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed query-result evidence for aws dynamodb table: DynamoDB Point-in-Time Recovery Enabled. Checks whether DynamoDB tables have Point-in-Time Recovery (PITR) enabled for backup and restore. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1619,7 +1619,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ebs-encryption-default",
 			Name:              "EBS Encryption by Default",
-			Description:       "Detects failed policy evidence showing that aws ec2 ebs encryption by default does not satisfy EBS Encryption by Default. EBS encryption should be enabled by default in each region. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 ebs encryption by default: EBS Encryption by Default. EBS encryption should be enabled by default in each region. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1660,7 +1660,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-ami-not-public",
 			Name:              "EC2 AMI Not Public",
-			Description:       "Detects failed policy evidence showing that aws ec2 ami does not satisfy EC2 AMI Not Public. EC2 AMIs should not be publicly accessible. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 ami: EC2 AMI Not Public. EC2 AMIs should not be publicly accessible. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1706,7 +1706,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-detailed-monitoring-enabled",
 			Name:              "EC2 Detailed Monitoring Enabled",
-			Description:       "Detects failed policy evidence showing that aws ec2 instance does not satisfy EC2 Detailed Monitoring Enabled. EC2 instances should have detailed monitoring enabled for better observability. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 instance: EC2 Detailed Monitoring Enabled. EC2 instances should have detailed monitoring enabled for better observability. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1747,7 +1747,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-ebs-snapshot-not-public",
 			Name:              "EBS Snapshot Not Public",
-			Description:       "Detects failed policy evidence showing that aws ec2 ebs snapshot does not satisfy EBS Snapshot Not Public. EBS snapshots should not be publicly accessible. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 ebs snapshot: EBS Snapshot Not Public. EBS snapshots should not be publicly accessible. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1793,7 +1793,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-ebs-volume-encrypted",
 			Name:              "EBS Volume Encrypted",
-			Description:       "Detects failed policy evidence showing that aws ec2 ebs volume does not satisfy EBS Volume Encrypted. EBS volume should be encrypted at rest. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 ebs volume: EBS Volume Encrypted. EBS volume should be encrypted at rest. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1834,7 +1834,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-iam-instance-profile",
 			Name:              "EC2 Instances Use IAM Instance Profiles",
-			Description:       "Detects failed policy evidence showing that aws ec2 instances does not satisfy EC2 Instances Use IAM Instance Profiles. EC2 instances should use IAM instance profiles/roles for AWS API access instead of embedded access keys, which are harder to rotate and audit. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 instances: EC2 Instances Use IAM Instance Profiles. EC2 instances should use IAM instance profiles/roles for AWS API access instead of embedded access keys, which are harder to rotate and audit. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1872,7 +1872,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-imdsv2-required",
 			Name:              "EC2 IMDSv2 Required",
-			Description:       "Detects failed policy evidence showing that aws ec2 instance does not satisfy EC2 IMDSv2 Required. EC2 instances should require IMDSv2 to prevent SSRF attacks. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 instance: EC2 IMDSv2 Required. EC2 instances should require IMDSv2 to prevent SSRF attacks. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1907,7 +1907,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-instance-profile-attached",
 			Name:              "EC2 Instance Profile Attached",
-			Description:       "Detects failed policy evidence showing that aws ec2 instance does not satisfy EC2 Instance Profile Attached. EC2 instances should use instance profiles instead of hardcoded credentials. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 instance: EC2 Instance Profile Attached. EC2 instances should use instance profiles instead of hardcoded credentials. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1951,7 +1951,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-internet-facing-iam",
 			Name:              "Internet-Facing EC2 with Privileged IAM Role",
-			Description:       "Detects failed policy evidence showing that aws ec2 instance does not satisfy Internet-Facing EC2 with Privileged IAM Role. EC2 instance with public IP has an IAM role with administrative or sensitive permissions. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 instance: Internet-Facing EC2 with Privileged IAM Role. EC2 instance with public IP has an IAM role with administrative or sensitive permissions. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -1997,7 +1997,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-public-ip-rdp",
 			Name:              "EC2 Public IP with RDP Exposed",
-			Description:       "Detects failed policy evidence showing that aws ec2 instance does not satisfy EC2 Public IP with RDP Exposed. EC2 instance has public IP with RDP port 3389 open to the internet (0.0.0.0/0). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 instance: EC2 Public IP with RDP Exposed. EC2 instance has public IP with RDP port 3389 open to the internet (0.0.0.0/0). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2039,7 +2039,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-public-ip-ssh",
 			Name:              "EC2 Public IP with SSH Exposed",
-			Description:       "Detects failed policy evidence showing that aws ec2 instance does not satisfy EC2 Public IP with SSH Exposed. EC2 instance has public IP with SSH port 22 open to the internet (0.0.0.0/0). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 instance: EC2 Public IP with SSH Exposed. EC2 instance has public IP with SSH port 22 open to the internet (0.0.0.0/0). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2081,7 +2081,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-public-ports-restricted",
 			Name:              "EC2 Instance Public Ports Restricted",
-			Description:       "Detects failed policy evidence showing that aws ec2 instances does not satisfy EC2 Instance Public Ports Restricted. Checks whether EC2 instances do not expose sensitive ports (SSH, RDP, databases) to the public internet. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 instances: EC2 Instance Public Ports Restricted. Checks whether EC2 instances do not expose sensitive ports (SSH, RDP, databases) to the public internet. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2121,7 +2121,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ec2-sg-no-all-traffic-ingress",
 			Name:              "Security Group No All Traffic Ingress",
-			Description:       "Detects failed policy evidence showing that aws ec2 security group does not satisfy Security Group No All Traffic Ingress. Security group should not allow all traffic (0.0.0.0/0 on all ports) inbound. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 security group: Security Group No All Traffic Ingress. Security group should not allow all traffic (0.0.0.0/0 on all ports) inbound. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2163,7 +2163,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ecr-immutable-tags",
 			Name:              "ECR Immutable Image Tags",
-			Description:       "Detects failed policy evidence showing that aws ecr repository does not satisfy ECR Immutable Image Tags. ECR repositories should use immutable image tags to prevent overwrites. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ecr repository: ECR Immutable Image Tags. ECR repositories should use immutable image tags to prevent overwrites. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2208,7 +2208,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ecr-public-repository",
 			Name:              "ECR Public Repository",
-			Description:       "Detects failed policy evidence showing that aws ecr public repository does not satisfy ECR Public Repository. ECR repository is publicly accessible, potentially exposing container images. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ecr public repository: ECR Public Repository. ECR repository is publicly accessible, potentially exposing container images. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2254,7 +2254,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ecr-scan-on-push",
 			Name:              "ECR Scan on Push Enabled",
-			Description:       "Detects failed policy evidence showing that aws ecr repository does not satisfy ECR Scan on Push Enabled. ECR repositories should have scan on push enabled to detect vulnerabilities. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ecr repository: ECR Scan on Push Enabled. ECR repositories should have scan on push enabled to detect vulnerabilities. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2293,7 +2293,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ecs-ports-restricted",
 			Name:              "ECS Services Restrict Public Ports",
-			Description:       "Detects failed policy evidence showing that aws ecs services does not satisfy ECS Services Restrict Public Ports. ECS services should restrict public ports to only 80 and 443, minimizing attack surface from unnecessary exposed ports. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ecs services: ECS Services Restrict Public Ports. ECS services should restrict public ports to only 80 and 443, minimizing attack surface from unnecessary exposed ports. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2332,7 +2332,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ecs-secrets-in-env-vars",
 			Name:              "ECS Task Secrets in Environment Variables",
-			Description:       "Detects failed policy evidence showing that aws ecs task definition does not satisfy ECS Task Secrets in Environment Variables. ECS task definition has potential secrets stored in plaintext environment variables. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ecs task definition: ECS Task Secrets in Environment Variables. ECS task definition has potential secrets stored in plaintext environment variables. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2377,7 +2377,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-ecs-ssh-denied",
 			Name:              "ECS Services Deny Public SSH Access",
-			Description:       "Detects failed policy evidence showing that aws ecs services does not satisfy ECS Services Deny Public SSH Access. ECS services should not allow public SSH access (port 22) through their associated security groups. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ecs services: ECS Services Deny Public SSH Access. ECS services should not allow public SSH access (port 22) through their associated security groups. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2416,7 +2416,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-eks-control-plane-logging",
 			Name:              "EKS Control Plane Logging",
-			Description:       "Detects failed policy evidence showing that aws eks cluster does not satisfy EKS Control Plane Logging. EKS cluster should have control plane logging enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws eks cluster: EKS Control Plane Logging. EKS cluster should have control plane logging enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2457,7 +2457,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-eks-private-endpoint",
 			Name:              "EKS Cluster Private Endpoint Enabled",
-			Description:       "Detects failed policy evidence showing that aws eks clusters does not satisfy EKS Cluster Private Endpoint Enabled. EKS clusters should have private endpoint access enabled to allow communication within the VPC without traversing the public internet. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws eks clusters: EKS Cluster Private Endpoint Enabled. EKS clusters should have private endpoint access enabled to allow communication within the VPC without traversing the public internet. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2495,7 +2495,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-eks-public-endpoint-disabled",
 			Name:              "EKS Public Endpoint Disabled",
-			Description:       "Detects failed policy evidence showing that aws eks cluster does not satisfy EKS Public Endpoint Disabled. EKS cluster API server endpoint should not be publicly accessible. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws eks cluster: EKS Public Endpoint Disabled. EKS cluster API server endpoint should not be publicly accessible. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2541,7 +2541,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-eks-secrets-encryption",
 			Name:              "EKS Secrets Encryption",
-			Description:       "Detects failed policy evidence showing that aws eks cluster does not satisfy EKS Secrets Encryption. EKS cluster should have envelope encryption for Kubernetes secrets. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws eks cluster: EKS Secrets Encryption. EKS cluster should have envelope encryption for Kubernetes secrets. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2583,7 +2583,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-elasticache-public",
 			Name:              "ElastiCache Cluster in Public Subnet",
-			Description:       "Detects failed policy evidence showing that aws elasticache cluster does not satisfy ElastiCache Cluster in Public Subnet. ElastiCache cluster is deployed in a public subnet, potentially exposing it to the internet. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws elasticache cluster: ElastiCache Cluster in Public Subnet. ElastiCache cluster is deployed in a public subnet, potentially exposing it to the internet. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2624,7 +2624,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-elb-certificate-expiry",
 			Name:              "Load Balancer Certificate Expiring Soon",
-			Description:       "Detects failed policy evidence showing that aws elbv2 listener does not satisfy Load Balancer Certificate Expiring Soon. SSL/TLS certificate attached to load balancer listener expires within 30 days. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws elbv2 listener: Load Balancer Certificate Expiring Soon. SSL/TLS certificate attached to load balancer listener expires within 30 days. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2664,7 +2664,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-elb-https-only",
 			Name:              "Load Balancer Listener Without HTTPS",
-			Description:       "Detects failed policy evidence showing that aws elbv2 listener does not satisfy Load Balancer Listener Without HTTPS. Application or Network Load Balancer has a listener accepting unencrypted HTTP traffic. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws elbv2 listener: Load Balancer Listener Without HTTPS. Application or Network Load Balancer has a listener accepting unencrypted HTTP traffic. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2704,7 +2704,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-elb-internet-facing-no-waf",
 			Name:              "Internet-Facing ALB Without WAF",
-			Description:       "Detects failed policy evidence showing that aws elbv2 load balancer does not satisfy Internet-Facing ALB Without WAF. Application Load Balancer is internet-facing without AWS WAF protection. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws elbv2 load balancer: Internet-Facing ALB Without WAF. Application Load Balancer is internet-facing without AWS WAF protection. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2745,7 +2745,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-elb-target-public-subnet",
 			Name:              "Load Balancer Targets in Public Subnet",
-			Description:       "Detects failed policy evidence showing that aws elbv2 target group does not satisfy Load Balancer Targets in Public Subnet. Load balancer target group contains instances or IPs in public subnets, potentially exposing backend services. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws elbv2 target group: Load Balancer Targets in Public Subnet. Load balancer target group contains instances or IPs in public subnets, potentially exposing backend services. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2786,7 +2786,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-elb-tls-version",
 			Name:              "Load Balancer Using Weak TLS Policy",
-			Description:       "Detects failed policy evidence showing that aws elbv2 listener does not satisfy Load Balancer Using Weak TLS Policy. Load Balancer is using a TLS security policy that allows TLS 1.0 or 1.1. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws elbv2 listener: Load Balancer Using Weak TLS Policy. Load Balancer is using a TLS security policy that allows TLS 1.0 or 1.1. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2826,7 +2826,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-guardduty-c2-traffic",
 			Name:              "AWS GuardDuty Command and Control Traffic",
-			Description:       "Detects failed policy evidence showing that aws guardduty finding does not satisfy AWS GuardDuty Command and Control Traffic. GuardDuty detected communication with known C&C servers. Risk: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
+			Description:       "Flags failed resource-state evidence for aws guardduty finding: AWS GuardDuty Command and Control Traffic. GuardDuty detected communication with known C&C servers. Audit impact: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2874,7 +2874,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-guardduty-crypto-mining",
 			Name:              "AWS GuardDuty Crypto Mining Detection",
-			Description:       "Detects failed policy evidence showing that aws guardduty finding does not satisfy AWS GuardDuty Crypto Mining Detection. GuardDuty detected cryptocurrency mining activity. Risk: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
+			Description:       "Flags failed resource-state evidence for aws guardduty finding: AWS GuardDuty Crypto Mining Detection. GuardDuty detected cryptocurrency mining activity. Audit impact: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2922,7 +2922,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-guardduty-disabled",
 			Name:              "GuardDuty Not Enabled",
-			Description:       "Detects failed policy evidence showing that aws guardduty detector does not satisfy GuardDuty Not Enabled. AWS GuardDuty threat detection is not enabled in the region. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws guardduty detector: GuardDuty Not Enabled. AWS GuardDuty threat detection is not enabled in the region. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -2957,7 +2957,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-guardduty-malware-finding",
 			Name:              "AWS GuardDuty Malware Finding",
-			Description:       "Detects failed policy evidence showing that aws guardduty finding does not satisfy AWS GuardDuty Malware Finding. GuardDuty detected malware on EC2 instance or EBS volume. Risk: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
+			Description:       "Flags failed resource-state evidence for aws guardduty finding: AWS GuardDuty Malware Finding. GuardDuty detected malware on EC2 instance or EBS volume. Audit impact: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3005,7 +3005,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-guardduty-notifications",
 			Name:              "GuardDuty Findings Have Notifications Configured",
-			Description:       "Detects failed policy evidence showing that aws guardduty detectors does not satisfy GuardDuty Findings Have Notifications Configured. GuardDuty findings should be configured to send notifications via SNS, EventBridge, or another alerting mechanism to ensure security team awareness. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws guardduty detectors: GuardDuty Findings Have Notifications Configured. GuardDuty findings should be configured to send notifications via SNS, EventBridge, or another alerting mechanism to ensure security team awareness. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3045,7 +3045,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-access-analyzer-enabled",
 			Name:              "IAM Access Analyzer Enabled",
-			Description:       "Detects failed policy evidence showing that aws accessanalyzer analyzers does not satisfy IAM Access Analyzer Enabled. IAM Access Analyzer should be enabled in all regions to identify resources shared with external entities and validate IAM policies. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws accessanalyzer analyzers: IAM Access Analyzer Enabled. IAM Access Analyzer should be enabled in all regions to identify resources shared with external entities and validate IAM policies. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3084,7 +3084,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-access-key-rotation",
 			Name:              "IAM Access Key Rotation",
-			Description:       "Detects failed policy evidence showing that aws iam access key does not satisfy IAM Access Key Rotation. IAM access keys should be rotated within 90 days. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam access key: IAM Access Key Rotation. IAM access keys should be rotated within 90 days. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3129,7 +3129,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-expired-certificates",
 			Name:              "IAM Server Certificates Not Expired",
-			Description:       "Detects failed policy evidence showing that aws iam server certificates does not satisfy IAM Server Certificates Not Expired. Expired SSL/TLS server certificates stored in IAM should be removed as they can no longer be used and indicate poor certificate lifecycle management. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam server certificates: IAM Server Certificates Not Expired. Expired SSL/TLS server certificates stored in IAM should be removed as they can no longer be used and indicate poor certificate lifecycle management. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3167,7 +3167,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-no-full-admin",
 			Name:              "IAM Policies No Full Administrative Privileges",
-			Description:       "Detects failed policy evidence showing that aws iam policy does not satisfy IAM Policies No Full Administrative Privileges. Checks whether IAM policies do not allow full administrative privileges (Action:* on Resource:*). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed query-result evidence for aws iam policy: IAM Policies No Full Administrative Privileges. Checks whether IAM policies do not allow full administrative privileges (Action:* on Resource:*). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3204,7 +3204,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-no-policies-attached-user",
 			Name:              "IAM Policies Attached to Groups Not Users",
-			Description:       "Detects failed policy evidence showing that aws iam user does not satisfy IAM Policies Attached to Groups Not Users. IAM policies should be attached to groups or roles, not directly to users. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam user: IAM Policies Attached to Groups Not Users. IAM policies should be attached to groups or roles, not directly to users. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3245,7 +3245,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-password-policy",
 			Name:              "IAM Password Policy Requirements",
-			Description:       "Detects failed policy evidence showing that aws iam account password policy does not satisfy IAM Password Policy Requirements. IAM password policy should enforce strong passwords with minimum length, complexity, and rotation requirements. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam account password policy: IAM Password Policy Requirements. IAM password policy should enforce strong passwords with minimum length, complexity, and rotation requirements. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3292,7 +3292,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-policy-no-admin-star",
 			Name:              "IAM Policy No Admin Star",
-			Description:       "Detects failed policy evidence showing that aws iam policy does not satisfy IAM Policy No Admin Star. IAM policy should not grant full administrative privileges (*:*). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam policy: IAM Policy No Admin Star. IAM policy should not grant full administrative privileges (*:*). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3333,7 +3333,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-role-confused-deputy-prevention",
 			Name:              "IAM Role Confused Deputy Prevention",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy IAM Role Confused Deputy Prevention. IAM role trusted by AWS service should have ExternalId or SourceAccount condition. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam role: IAM Role Confused Deputy Prevention. IAM role trusted by AWS service should have ExternalId or SourceAccount condition. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3373,7 +3373,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-role-cross-account-admin",
 			Name:              "IAM Role Cross Account Admin",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy IAM Role Cross Account Admin. IAM role can be assumed from external account and has administrator privileges. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam role: IAM Role Cross Account Admin. IAM role can be assumed from external account and has administrator privileges. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3413,7 +3413,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-role-trust-any-principal",
 			Name:              "IAM Role Trusts Any Principal",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy IAM Role Trusts Any Principal. IAM role trust policy allows any AWS principal to assume the role. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam role: IAM Role Trusts Any Principal. IAM role trust policy allows any AWS principal to assume the role. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3453,7 +3453,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-role-wildcard-trust",
 			Name:              "IAM Role Wildcard Trust Policy",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy IAM Role Wildcard Trust Policy. IAM role trust policy allows assumption from any AWS account or principal. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam role: IAM Role Wildcard Trust Policy. IAM role trust policy allows assumption from any AWS account or principal. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3493,7 +3493,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-root-mfa-enabled",
 			Name:              "Root Account MFA Enabled",
-			Description:       "Detects failed policy evidence showing that aws iam account summary does not satisfy Root Account MFA Enabled. Root account should have MFA enabled for additional security. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam account summary: Root Account MFA Enabled. Root account should have MFA enabled for additional security. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3538,7 +3538,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-root-no-access-keys",
 			Name:              "Root Account Access Keys",
-			Description:       "Detects failed policy evidence showing that aws iam credential report does not satisfy Root Account Access Keys. The root account should not have active access keys. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam credential report: Root Account Access Keys. The root account should not have active access keys. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3583,7 +3583,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-saml-provider-stale",
 			Name:              "IAM SAML Provider Metadata Stale",
-			Description:       "Detects failed policy evidence showing that aws iam saml provider does not satisfy IAM SAML Provider Metadata Stale. IAM SAML provider metadata may be outdated (over 1 year old). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam saml provider: IAM SAML Provider Metadata Stale. IAM SAML provider metadata may be outdated (over 1 year old). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3623,7 +3623,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-service-account-open-assume",
 			Name:              "IAM Role with Overly Permissive Trust Policy",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy IAM Role with Overly Permissive Trust Policy. IAM role trust policy allows any AWS service or account to assume the role. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam role: IAM Role with Overly Permissive Trust Policy. IAM role trust policy allows any AWS service or account to assume the role. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3663,7 +3663,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-single-access-key",
 			Name:              "IAM Users Have Single Active Access Key",
-			Description:       "Detects failed policy evidence showing that aws iam users does not satisfy IAM Users Have Single Active Access Key. IAM users should have at most one active access key. Having multiple active access keys increases the risk of credential exposure. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam users: IAM Users Have Single Active Access Key. IAM users should have at most one active access key. Having multiple active access keys increases the risk of credential exposure. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3701,7 +3701,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-support-role",
 			Name:              "AWS IAM Support Role Exists",
-			Description:       "Detects failed policy evidence showing that aws iam roles does not satisfy AWS IAM Support Role Exists. An IAM role with the AWSSupportAccess managed policy should exist to enable authorized personnel to manage incidents with AWS Support. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam roles: AWS IAM Support Role Exists. An IAM role with the AWSSupportAccess managed policy should exist to enable authorized personnel to manage incidents with AWS Support. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3738,7 +3738,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-user-console-inactive",
 			Name:              "IAM User Console Inactive",
-			Description:       "Detects failed policy evidence showing that aws iam credential report does not satisfy IAM User Console Inactive. IAM user with console access has not logged in for 90+ days. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam credential report: IAM User Console Inactive. IAM user with console access has not logged in for 90+ days. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3779,7 +3779,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-user-mfa-enabled",
 			Name:              "IAM User MFA Enabled",
-			Description:       "Detects failed policy evidence showing that aws iam user does not satisfy IAM User MFA Enabled. IAM users should have MFA enabled for console access. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam user: IAM User MFA Enabled. IAM users should have MFA enabled for console access. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3824,7 +3824,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-user-multiple-access-keys",
 			Name:              "IAM User Multiple Access Keys",
-			Description:       "Detects failed policy evidence showing that aws iam user does not satisfy IAM User Multiple Access Keys. IAM user has more than one active access key. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam user: IAM User Multiple Access Keys. IAM user has more than one active access key. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3868,7 +3868,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-user-unused-credentials",
 			Name:              "IAM User Unused Credentials",
-			Description:       "Detects failed policy evidence showing that aws iam credential report does not satisfy IAM User Unused Credentials. IAM user credentials (password or access keys) have not been used in 90+ days. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam credential report: IAM User Unused Credentials. IAM user credentials (password or access keys) have not been used in 90+ days. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3916,7 +3916,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-iam-users-via-groups",
 			Name:              "IAM Users Receive Permissions Only Through Groups",
-			Description:       "Detects failed policy evidence showing that aws iam users does not satisfy IAM Users Receive Permissions Only Through Groups. IAM users should receive permissions exclusively through group memberships, not through directly attached policies, for easier permission management and auditing. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam users: IAM Users Receive Permissions Only Through Groups. IAM users should receive permissions exclusively through group memberships, not through directly attached policies, for easier permission management and auditing. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3955,7 +3955,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-kms-key-rotation-enabled",
 			Name:              "KMS Key Rotation Enabled",
-			Description:       "Detects failed policy evidence showing that aws kms key does not satisfy KMS Key Rotation Enabled. Customer-managed KMS keys should have automatic rotation enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws kms key: KMS Key Rotation Enabled. Customer-managed KMS keys should have automatic rotation enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -3998,7 +3998,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-lambda-in-vpc",
 			Name:              "Lambda In VPC",
-			Description:       "Detects failed policy evidence showing that aws lambda function does not satisfy Lambda In VPC. Lambda functions should be deployed in a VPC for network isolation. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws lambda function: Lambda In VPC. Lambda functions should be deployed in a VPC for network isolation. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4039,7 +4039,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-lambda-no-env-secrets",
 			Name:              "Lambda No Environment Secrets",
-			Description:       "Detects failed policy evidence showing that aws lambda function does not satisfy Lambda No Environment Secrets. Lambda functions should not have secrets in environment variables. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws lambda function: Lambda No Environment Secrets. Lambda functions should not have secrets in environment variables. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4077,7 +4077,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-lambda-not-publicly-accessible",
 			Name:              "Lambda Not Publicly Accessible",
-			Description:       "Detects failed policy evidence showing that aws lambda function does not satisfy Lambda Not Publicly Accessible. Lambda functions should not be publicly invocable. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws lambda function: Lambda Not Publicly Accessible. Lambda functions should not be publicly invocable. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4123,7 +4123,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-lambda-runtime-supported",
 			Name:              "Lambda Runtime Supported",
-			Description:       "Detects failed policy evidence showing that aws lambda function does not satisfy Lambda Runtime Supported. Lambda functions should use supported runtimes. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws lambda function: Lambda Runtime Supported. Lambda functions should use supported runtimes. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4163,7 +4163,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-lambda-secrets-in-env-vars",
 			Name:              "Lambda Secrets in Environment Variables",
-			Description:       "Detects failed policy evidence showing that aws lambda function does not satisfy Lambda Secrets in Environment Variables. Lambda function has potential secrets stored in plaintext environment variables. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws lambda function: Lambda Secrets in Environment Variables. Lambda function has potential secrets stored in plaintext environment variables. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4208,7 +4208,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-logs-retention-365",
 			Name:              "CloudWatch Logs Retention 365 Days",
-			Description:       "Detects failed policy evidence showing that aws cloudwatch log group does not satisfy CloudWatch Logs Retention 365 Days. Checks whether CloudWatch log groups have retention set to at least 365 days. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed query-result evidence for aws cloudwatch log group: CloudWatch Logs Retention 365 Days. Checks whether CloudWatch log groups have retention set to at least 365 days. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4244,7 +4244,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-nacl-admin-ports-restricted",
 			Name:              "Network ACLs Restrict Admin Port Access",
-			Description:       "Detects failed policy evidence showing that aws ec2 network acls does not satisfy Network ACLs Restrict Admin Port Access. Network ACLs should not allow unrestricted ingress (0.0.0.0/0) to remote server administration ports (SSH port 22, RDP port 3389). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 network acls: Network ACLs Restrict Admin Port Access. Network ACLs should not allow unrestricted ingress (0.0.0.0/0) to remote server administration ports (SSH port 22, RDP port 3389). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4284,7 +4284,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-opensearch-public",
 			Name:              "OpenSearch Domain Publicly Accessible",
-			Description:       "Detects failed policy evidence showing that aws opensearch domain does not satisfy OpenSearch Domain Publicly Accessible. OpenSearch domain allows public access without VPC configuration. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws opensearch domain: OpenSearch Domain Publicly Accessible. OpenSearch domain allows public access without VPC configuration. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4330,7 +4330,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-password-policy-minimum-length",
 			Name:              "IAM Password Policy Minimum Length",
-			Description:       "Detects failed policy evidence showing that aws iam account password policy does not satisfy IAM Password Policy Minimum Length. IAM password policy should require a minimum password length of at least 14 characters to ensure strong passwords. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam account password policy: IAM Password Policy Minimum Length. IAM password policy should require a minimum password length of at least 14 characters to ensure strong passwords. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4368,7 +4368,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-password-policy-no-reuse",
 			Name:              "IAM Password Policy Prevents Reuse",
-			Description:       "Detects failed policy evidence showing that aws iam account password policy does not satisfy IAM Password Policy Prevents Reuse. IAM password policy should prevent password reuse by remembering at least 24 previous passwords. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws iam account password policy: IAM Password Policy Prevents Reuse. IAM password policy should prevent password reuse by remembering at least 24 previous passwords. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4406,7 +4406,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-auto-minor-upgrade",
 			Name:              "RDS Auto Minor Version Upgrade Enabled",
-			Description:       "Detects failed policy evidence showing that aws rds instances does not satisfy RDS Auto Minor Version Upgrade Enabled. RDS instances should have automatic minor version upgrades enabled to receive security patches and bug fixes automatically. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws rds instances: RDS Auto Minor Version Upgrade Enabled. RDS instances should have automatic minor version upgrades enabled to receive security patches and bug fixes automatically. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4445,7 +4445,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-backup-enabled",
 			Name:              "RDS Backup Enabled",
-			Description:       "Detects failed policy evidence showing that aws rds db instance does not satisfy RDS Backup Enabled. RDS instances should have automated backups enabled with adequate retention. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws rds db instance: RDS Backup Enabled. RDS instances should have automated backups enabled with adequate retention. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4486,7 +4486,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-deletion-protection",
 			Name:              "RDS Deletion Protection",
-			Description:       "Detects failed policy evidence showing that aws rds db instance does not satisfy RDS Deletion Protection. RDS instances should have deletion protection enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws rds db instance: RDS Deletion Protection. RDS instances should have deletion protection enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4527,7 +4527,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-encryption-enabled",
 			Name:              "RDS Encryption Enabled",
-			Description:       "Detects failed policy evidence showing that aws rds instance does not satisfy RDS Encryption Enabled. RDS instances should have encryption at rest enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws rds instance: RDS Encryption Enabled. RDS instances should have encryption at rest enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4568,7 +4568,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-iam-authentication",
 			Name:              "RDS IAM Authentication",
-			Description:       "Detects failed policy evidence showing that aws rds db instance does not satisfy RDS IAM Authentication. RDS instances should have IAM database authentication enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws rds db instance: RDS IAM Authentication. RDS instances should have IAM database authentication enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4612,7 +4612,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-logging-enabled",
 			Name:              "RDS Logging Enabled",
-			Description:       "Detects failed policy evidence showing that aws rds db instance does not satisfy RDS Logging Enabled. RDS instances should export logs to CloudWatch. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws rds db instance: RDS Logging Enabled. RDS instances should export logs to CloudWatch. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4653,7 +4653,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-multi-az-enabled",
 			Name:              "RDS Multi-AZ Enabled",
-			Description:       "Detects failed policy evidence showing that aws rds db instance does not satisfy RDS Multi-AZ Enabled. RDS instances should have Multi-AZ enabled for high availability. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws rds db instance: RDS Multi-AZ Enabled. RDS instances should have Multi-AZ enabled for high availability. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4694,7 +4694,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-no-public-access",
 			Name:              "RDS No Public Access",
-			Description:       "Detects failed policy evidence showing that aws rds db instance does not satisfy RDS No Public Access. RDS instances should not be publicly accessible. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws rds db instance: RDS No Public Access. RDS instances should not be publicly accessible. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4741,7 +4741,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-rds-public-snapshot",
 			Name:              "AWS RDS Public Snapshot",
-			Description:       "Detects failed policy evidence showing that aws rds db snapshot does not satisfy AWS RDS Public Snapshot. RDS database snapshot is publicly accessible. Risk: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
+			Description:       "Flags failed resource-state evidence for aws rds db snapshot: AWS RDS Public Snapshot. RDS database snapshot is publicly accessible. Audit impact: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4787,7 +4787,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-redshift-no-encryption",
 			Name:              "AWS Redshift Not Encrypted",
-			Description:       "Detects failed policy evidence showing that aws redshift cluster does not satisfy AWS Redshift Not Encrypted. Redshift cluster is not encrypted at rest. Risk: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
+			Description:       "Flags failed resource-state evidence for aws redshift cluster: AWS Redshift Not Encrypted. Redshift cluster is not encrypted at rest. Audit impact: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4828,7 +4828,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-redshift-public",
 			Name:              "Redshift Cluster Publicly Accessible",
-			Description:       "Detects failed policy evidence showing that aws redshift cluster does not satisfy Redshift Cluster Publicly Accessible. Redshift cluster is configured with public accessibility enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws redshift cluster: Redshift Cluster Publicly Accessible. Redshift cluster is configured with public accessibility enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4875,7 +4875,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-bucket-cleartext-key",
 			Name:              "S3 Bucket Contains Potential Credentials",
-			Description:       "Detects failed policy evidence showing that aws s3 object does not satisfy S3 Bucket Contains Potential Credentials. S3 bucket objects contain potential secrets, API keys, or credentials based on filename patterns. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 object: S3 Bucket Contains Potential Credentials. S3 bucket objects contain potential secrets, API keys, or credentials based on filename patterns. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4920,7 +4920,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-bucket-encryption-enabled",
 			Name:              "S3 Bucket Encryption Enabled",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket Encryption Enabled. S3 bucket should have default encryption enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket Encryption Enabled. S3 bucket should have default encryption enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -4961,7 +4961,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-bucket-logging-enabled",
 			Name:              "S3 Bucket Logging Enabled",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket Logging Enabled. S3 bucket should have server access logging enabled for audit trail. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket Logging Enabled. S3 bucket should have server access logging enabled for audit trail. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5009,7 +5009,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-bucket-mfa-delete",
 			Name:              "S3 Bucket MFA Delete",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket MFA Delete. S3 bucket should have MFA delete enabled for versioned objects. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket MFA Delete. S3 bucket should have MFA delete enabled for versioned objects. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5048,7 +5048,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-bucket-no-public-access",
 			Name:              "S3 Bucket Public Access",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket Public Access. S3 buckets should not allow public access. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket Public Access. S3 buckets should not allow public access. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5095,7 +5095,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-bucket-policy-public",
 			Name:              "S3 Bucket Policy Allows Public Access",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket Policy Allows Public Access. S3 bucket policy allows public access via Principal: '*' without restrictive conditions. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket Policy Allows Public Access. S3 bucket policy allows public access via Principal: '*' without restrictive conditions. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5142,7 +5142,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-bucket-ssl-only",
 			Name:              "S3 Bucket Requires SSL",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket Requires SSL. S3 bucket policy should enforce SSL/TLS for all requests. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket Requires SSL. S3 bucket policy should enforce SSL/TLS for all requests. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5183,7 +5183,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-bucket-versioning-enabled",
 			Name:              "S3 Bucket Versioning Enabled",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket Versioning Enabled. S3 bucket should have versioning enabled for data protection. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket Versioning Enabled. S3 bucket should have versioning enabled for data protection. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5224,7 +5224,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-cross-region-replication",
 			Name:              "S3 Buckets Have Cross-Region Replication",
-			Description:       "Detects failed policy evidence showing that aws s3 buckets does not satisfy S3 Buckets Have Cross-Region Replication. Critical S3 buckets should have cross-region replication enabled for disaster recovery and data durability. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 buckets: S3 Buckets Have Cross-Region Replication. Critical S3 buckets should have cross-region replication enabled for disaster recovery and data durability. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5263,7 +5263,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-https-only",
 			Name:              "S3 Buckets Enforce HTTPS Only",
-			Description:       "Detects failed policy evidence showing that aws s3 buckets does not satisfy S3 Buckets Enforce HTTPS Only. S3 bucket policies should deny requests that are not made over HTTPS (SSL/TLS) to ensure data in transit is encrypted. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 buckets: S3 Buckets Enforce HTTPS Only. S3 bucket policies should deny requests that are not made over HTTPS (SSL/TLS) to ensure data in transit is encrypted. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5304,7 +5304,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-s3-public-write",
 			Name:              "S3 Bucket Allows Public Write Access",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket Allows Public Write Access. S3 bucket policy or ACL grants write permissions to anonymous users or all authenticated AWS users. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket Allows Public Write Access. S3 bucket policy or ACL grants write permissions to anonymous users or all authenticated AWS users. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5350,7 +5350,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sagemaker-endpoint-no-encryption",
 			Name:              "SageMaker Endpoint Without Encryption",
-			Description:       "Detects failed policy evidence showing that aws sagemaker endpoint configuration does not satisfy SageMaker Endpoint Without Encryption. SageMaker endpoint does not have KMS encryption configured. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws sagemaker endpoint configuration: SageMaker Endpoint Without Encryption. SageMaker endpoint does not have KMS encryption configured. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5390,7 +5390,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sagemaker-model-artifact-public",
 			Name:              "AWS SageMaker Model Artifact Public",
-			Description:       "Detects failed policy evidence showing that aws sagemaker model does not satisfy AWS SageMaker Model Artifact Public. SageMaker model artifact stored in publicly accessible S3 bucket. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws sagemaker model: AWS SageMaker Model Artifact Public. SageMaker model artifact stored in publicly accessible S3 bucket. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5436,7 +5436,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sagemaker-notebook-internet-access",
 			Name:              "SageMaker Notebook Direct Internet Access",
-			Description:       "Detects failed policy evidence showing that aws sagemaker notebook instance does not satisfy SageMaker Notebook Direct Internet Access. SageMaker notebook instance has direct internet access enabled. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws sagemaker notebook instance: SageMaker Notebook Direct Internet Access. SageMaker notebook instance has direct internet access enabled. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5482,7 +5482,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sagemaker-notebook-root-access",
 			Name:              "SageMaker Notebook Root Access",
-			Description:       "Detects failed policy evidence showing that aws sagemaker notebook instance does not satisfy SageMaker Notebook Root Access. SageMaker notebook instance allows root access. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws sagemaker notebook instance: SageMaker Notebook Root Access. SageMaker notebook instance allows root access. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5522,7 +5522,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sagemaker-training-no-vpc",
 			Name:              "SageMaker Training Job Without VPC",
-			Description:       "Detects failed policy evidence showing that aws sagemaker training job does not satisfy SageMaker Training Job Without VPC. SageMaker training job runs without VPC isolation. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws sagemaker training job: SageMaker Training Job Without VPC. SageMaker training job runs without VPC isolation. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5563,7 +5563,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sagemaker-training-unencrypted",
 			Name:              "SageMaker Training Job Unencrypted Storage",
-			Description:       "Detects failed policy evidence showing that aws sagemaker training job does not satisfy SageMaker Training Job Unencrypted Storage. SageMaker training job does not encrypt output data. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws sagemaker training job: SageMaker Training Job Unencrypted Storage. SageMaker training job does not encrypt output data. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5603,7 +5603,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-secretsmanager-rotation-enabled",
 			Name:              "Secrets Manager Rotation Enabled",
-			Description:       "Detects failed policy evidence showing that aws secretsmanager secret does not satisfy Secrets Manager Rotation Enabled. Secrets Manager secrets should have automatic rotation enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws secretsmanager secret: Secrets Manager Rotation Enabled. Secrets Manager secrets should have automatic rotation enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5641,7 +5641,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-secretsmanager-secret-used",
 			Name:              "Secrets Manager Secret Used",
-			Description:       "Detects failed policy evidence showing that aws secretsmanager secret does not satisfy Secrets Manager Secret Used. Secrets Manager secrets should be accessed within 90 days. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws secretsmanager secret: Secrets Manager Secret Used. Secrets Manager secrets should be accessed within 90 days. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5685,7 +5685,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-security-group-restrict-rdp",
 			Name:              "Security Group RDP Restriction",
-			Description:       "Detects failed policy evidence showing that aws ec2 security group does not satisfy Security Group RDP Restriction. Security groups should not allow unrestricted RDP access (0.0.0.0/0 on port 3389). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 security group: Security Group RDP Restriction. Security groups should not allow unrestricted RDP access (0.0.0.0/0 on port 3389). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5726,7 +5726,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-security-group-restrict-ssh",
 			Name:              "Security Group SSH Restriction",
-			Description:       "Detects failed policy evidence showing that aws ec2 security group does not satisfy Security Group SSH Restriction. Security groups should not allow unrestricted SSH access (0.0.0.0/0 on port 22). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 security group: Security Group SSH Restriction. Security groups should not allow unrestricted SSH access (0.0.0.0/0 on port 22). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5767,7 +5767,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-security-hub-enabled",
 			Name:              "AWS Security Hub Enabled",
-			Description:       "Detects failed policy evidence showing that aws securityhub hubs does not satisfy AWS Security Hub Enabled. AWS Security Hub should be enabled in all regions to provide centralized security findings and compliance checks. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws securityhub hubs: AWS Security Hub Enabled. AWS Security Hub should be enabled in all regions to provide centralized security findings and compliance checks. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5806,7 +5806,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sns-public-access",
 			Name:              "SNS Topic Allows Public Access",
-			Description:       "Detects failed policy evidence showing that aws sns topic does not satisfy SNS Topic Allows Public Access. SNS topic policy allows access from any AWS account or public access. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws sns topic: SNS Topic Allows Public Access. SNS topic policy allows access from any AWS account or public access. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5852,7 +5852,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sns-topic-encrypted",
 			Name:              "SNS Topic Encrypted",
-			Description:       "Detects failed policy evidence showing that aws sns topic does not satisfy SNS Topic Encrypted. SNS topics should be encrypted with KMS. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws sns topic: SNS Topic Encrypted. SNS topics should be encrypted with KMS. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5892,7 +5892,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sqs-public-access",
 			Name:              "SQS Queue Allows Public Access",
-			Description:       "Detects failed policy evidence showing that aws sqs queue does not satisfy SQS Queue Allows Public Access. SQS queue policy allows access from any AWS account or public access. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws sqs queue: SQS Queue Allows Public Access. SQS queue policy allows access from any AWS account or public access. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5938,7 +5938,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-sqs-queue-encrypted",
 			Name:              "SQS Queue Encrypted",
-			Description:       "Detects failed policy evidence showing that aws sqs queue does not satisfy SQS Queue Encrypted. SQS queues should be encrypted with KMS. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws sqs queue: SQS Queue Encrypted. SQS queues should be encrypted with KMS. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -5978,7 +5978,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-user-data-no-mfa",
 			Name:              "AWS user account with access to sensitive data and MFA disabled",
-			Description:       "Detects failed policy evidence showing that aws iam user does not satisfy AWS user account with access to sensitive data and MFA disabled. An AWS user with access to sensitive data does not have MFA enabled. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws iam user: AWS user account with access to sensitive data and MFA disabled. An AWS user with access to sensitive data does not have MFA enabled. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6022,7 +6022,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-user-inactive-admin-no-mfa",
 			Name:              "Inactive AWS user account with admin privileges and MFA disabled",
-			Description:       "Detects failed policy evidence showing that aws iam user does not satisfy Inactive AWS user account with admin privileges and MFA disabled. An inactive AWS user with admin privileges does not have MFA enabled. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws iam user: Inactive AWS user account with admin privileges and MFA disabled. An inactive AWS user with admin privileges does not have MFA enabled. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6066,7 +6066,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-user-inactive-data-no-mfa",
 			Name:              "Inactive AWS user account with data access to sensitive data and MFA disabled",
-			Description:       "Detects failed policy evidence showing that aws iam user does not satisfy Inactive AWS user account with data access to sensitive data and MFA disabled. An inactive AWS user with access to sensitive data does not have MFA enabled. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws iam user: Inactive AWS user account with data access to sensitive data and MFA disabled. An inactive AWS user with access to sensitive data does not have MFA enabled. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6110,7 +6110,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "aws-vpc-flow-logs-enabled",
 			Name:              "VPC Flow Logs Enabled",
-			Description:       "Detects failed policy evidence showing that aws ec2 vpc does not satisfy VPC Flow Logs Enabled. VPC Flow Logs should be enabled for all VPCs to capture network traffic metadata. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for aws ec2 vpc: VPC Flow Logs Enabled. VPC Flow Logs should be enabled for all VPCs to capture network traffic metadata. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6152,7 +6152,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-ad-guest-access-restricted",
 			Name:              "Azure AD Guest Access Restricted",
-			Description:       "Detects failed policy evidence showing that azure ad authorization policy does not satisfy Azure AD Guest Access Restricted. Azure AD should restrict guest user access to directory objects. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure ad authorization policy: Azure AD Guest Access Restricted. Azure AD should restrict guest user access to directory objects. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6192,7 +6192,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-aks-rbac-enabled",
 			Name:              "Azure AKS RBAC Enabled",
-			Description:       "Detects failed policy evidence showing that azure containerservice managed cluster does not satisfy Azure AKS RBAC Enabled. AKS clusters should have Kubernetes RBAC enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure containerservice managed cluster: Azure AKS RBAC Enabled. AKS clusters should have Kubernetes RBAC enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6233,7 +6233,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-appservice-https",
 			Name:              "App Service HTTPS Only Not Enabled",
-			Description:       "Detects failed policy evidence showing that azure app service web app does not satisfy App Service HTTPS Only Not Enabled. Azure App Service does not enforce HTTPS-only connections. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure app service web app: App Service HTTPS Only Not Enabled. Azure App Service does not enforce HTTPS-only connections. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6273,7 +6273,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-cosmosdb-public",
 			Name:              "CosmosDB Public Network Access Enabled",
-			Description:       "Detects failed policy evidence showing that azure cosmosdb account does not satisfy CosmosDB Public Network Access Enabled. Azure CosmosDB account allows access from public networks. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure cosmosdb account: CosmosDB Public Network Access Enabled. Azure CosmosDB account allows access from public networks. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6319,7 +6319,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-cosmosdb-public-access",
 			Name:              "Azure Cosmos DB Public Access",
-			Description:       "Detects failed policy evidence showing that azure cosmosdb database account does not satisfy Azure Cosmos DB Public Access. Azure Cosmos DB allows public network access. Risk: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
+			Description:       "Flags failed resource-state evidence for azure cosmosdb database account: Azure Cosmos DB Public Access. Azure Cosmos DB allows public network access. Audit impact: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6365,7 +6365,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-defender-storage",
 			Name:              "Microsoft Defender for Storage Disabled",
-			Description:       "Detects failed policy evidence showing that azure storage account does not satisfy Microsoft Defender for Storage Disabled. Microsoft Defender for Storage is not enabled on the storage account. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure storage account: Microsoft Defender for Storage Disabled. Microsoft Defender for Storage is not enabled on the storage account. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6408,7 +6408,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-function-anonymous-access",
 			Name:              "Azure Function Anonymous Access",
-			Description:       "Detects failed policy evidence showing that azure web function does not satisfy Azure Function Anonymous Access. Azure Function allows anonymous HTTP trigger access. Risk: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
+			Description:       "Flags failed resource-state evidence for azure web function: Azure Function Anonymous Access. Azure Function allows anonymous HTTP trigger access. Audit impact: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6452,7 +6452,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-function-public",
 			Name:              "Azure Function App Publicly Accessible",
-			Description:       "Detects failed policy evidence showing that azure functionapp function does not satisfy Azure Function App Publicly Accessible. Azure Function App allows anonymous access without authentication. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure functionapp function: Azure Function App Publicly Accessible. Azure Function App allows anonymous access without authentication. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6496,7 +6496,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-keyvault-key-expiry-set",
 			Name:              "Azure Key Vault Key Expiry Set",
-			Description:       "Detects failed policy evidence showing that azure keyvault key does not satisfy Azure Key Vault Key Expiry Set. Azure Key Vault keys should have expiration dates set. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure keyvault key: Azure Key Vault Key Expiry Set. Azure Key Vault keys should have expiration dates set. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6534,7 +6534,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-keyvault-logging",
 			Name:              "Key Vault Diagnostic Logging Disabled",
-			Description:       "Detects failed policy evidence showing that azure keyvault vault does not satisfy Key Vault Diagnostic Logging Disabled. Azure Key Vault does not have diagnostic logging enabled for audit events. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure keyvault vault: Key Vault Diagnostic Logging Disabled. Azure Key Vault does not have diagnostic logging enabled for audit events. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6579,7 +6579,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-keyvault-purge-protection",
 			Name:              "Azure Key Vault Purge Protection",
-			Description:       "Detects failed policy evidence showing that azure keyvault vault does not satisfy Azure Key Vault Purge Protection. Azure Key Vaults should have purge protection enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure keyvault vault: Azure Key Vault Purge Protection. Azure Key Vaults should have purge protection enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6617,7 +6617,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-keyvault-soft-delete-enabled",
 			Name:              "Key Vault Soft Delete",
-			Description:       "Detects failed policy evidence showing that azure keyvault vault does not satisfy Key Vault Soft Delete. Azure Key Vault should have soft delete enabled to protect against accidental deletion. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure keyvault vault: Key Vault Soft Delete. Azure Key Vault should have soft delete enabled to protect against accidental deletion. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6655,7 +6655,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-ml-workspace-public-network",
 			Name:              "Azure ML Workspace Public Network Access",
-			Description:       "Detects failed policy evidence showing that azure machine learning workspace does not satisfy Azure ML Workspace Public Network Access. Azure Machine Learning workspace allows public network access. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for azure machine learning workspace: Azure ML Workspace Public Network Access. Azure Machine Learning workspace allows public network access. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6701,7 +6701,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-nsg-admin-port",
 			Name:              "NSG Allows Admin Ports from Internet",
-			Description:       "Detects failed policy evidence showing that azure network security group does not satisfy NSG Allows Admin Ports from Internet. Network Security Group allows SSH (22) or RDP (3389) access from any source (Internet). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure network security group: NSG Allows Admin Ports from Internet. Network Security Group allows SSH (22) or RDP (3389) access from any source (Internet). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6747,7 +6747,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-nsg-restrict-ssh",
 			Name:              "NSG SSH Restriction",
-			Description:       "Detects failed policy evidence showing that azure network security group does not satisfy NSG SSH Restriction. Network Security Groups should not allow unrestricted SSH access from the internet. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure network security group: NSG SSH Restriction. Network Security Groups should not allow unrestricted SSH access from the internet. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6793,7 +6793,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-openai-public-network",
 			Name:              "Azure OpenAI Public Network Access",
-			Description:       "Detects failed policy evidence showing that azure cognitive services account does not satisfy Azure OpenAI Public Network Access. Azure OpenAI service allows public network access. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for azure cognitive services account: Azure OpenAI Public Network Access. Azure OpenAI service allows public network access. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6839,7 +6839,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-postgresql-ssl",
 			Name:              "PostgreSQL SSL Enforcement Disabled",
-			Description:       "Detects failed policy evidence showing that azure postgresql server does not satisfy PostgreSQL SSL Enforcement Disabled. Azure Database for PostgreSQL does not enforce SSL connections. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure postgresql server: PostgreSQL SSL Enforcement Disabled. Azure Database for PostgreSQL does not enforce SSL connections. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6879,7 +6879,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-sp-credential-expiring",
 			Name:              "Azure Service Principal Credential Expiring",
-			Description:       "Detects failed policy evidence showing that azure ad service principal does not satisfy Azure Service Principal Credential Expiring. Azure service principal has credentials expiring within 30 days. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure ad service principal: Azure Service Principal Credential Expiring. Azure service principal has credentials expiring within 30 days. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6917,7 +6917,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-sql-auditing-enabled",
 			Name:              "SQL Database Auditing",
-			Description:       "Detects failed policy evidence showing that azure sql database does not satisfy SQL Database Auditing. Azure SQL Database should have auditing enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure sql database: SQL Database Auditing. Azure SQL Database should have auditing enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6958,7 +6958,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-sql-azure-ad-admin",
 			Name:              "Azure SQL Azure AD Admin",
-			Description:       "Detects failed policy evidence showing that azure sql server does not satisfy Azure SQL Azure AD Admin. Azure SQL servers should have an Azure AD administrator configured. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure sql server: Azure SQL Azure AD Admin. Azure SQL servers should have an Azure AD administrator configured. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -6997,7 +6997,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-sql-public-network-access",
 			Name:              "Azure SQL Public Network Access",
-			Description:       "Detects failed policy evidence showing that azure sql server does not satisfy Azure SQL Public Network Access. Azure SQL database allows public network access. Risk: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
+			Description:       "Flags failed resource-state evidence for azure sql server: Azure SQL Public Network Access. Azure SQL database allows public network access. Audit impact: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7043,7 +7043,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-sql-transparent-data-encryption",
 			Name:              "Azure SQL Transparent Data Encryption",
-			Description:       "Detects failed policy evidence showing that azure sql database does not satisfy Azure SQL Transparent Data Encryption. Azure SQL databases should have Transparent Data Encryption enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure sql database: Azure SQL Transparent Data Encryption. Azure SQL databases should have Transparent Data Encryption enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7083,7 +7083,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-sqlserver-public",
 			Name:              "Azure SQL Server Allows All Azure IPs",
-			Description:       "Detects failed policy evidence showing that azure sql server does not satisfy Azure SQL Server Allows All Azure IPs. Azure SQL Server firewall allows connections from all Azure services (0.0.0.0). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure sql server: Azure SQL Server Allows All Azure IPs. Azure SQL Server firewall allows connections from all Azure services (0.0.0.0). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7124,7 +7124,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-storage-blob-public-access-disabled",
 			Name:              "Azure Storage Blob Public Access Disabled",
-			Description:       "Detects failed policy evidence showing that azure storage account does not satisfy Azure Storage Blob Public Access Disabled. Storage accounts should have blob public access disabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure storage account: Azure Storage Blob Public Access Disabled. Storage accounts should have blob public access disabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7170,7 +7170,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-storage-https-only",
 			Name:              "Azure Storage HTTPS Only",
-			Description:       "Detects failed policy evidence showing that azure storage account does not satisfy Azure Storage HTTPS Only. Azure Storage accounts should require HTTPS traffic only. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure storage account: Azure Storage HTTPS Only. Azure Storage accounts should require HTTPS traffic only. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7210,7 +7210,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-storage-minimum-tls-1-2",
 			Name:              "Azure Storage Minimum TLS 1.2",
-			Description:       "Detects failed policy evidence showing that azure storage account does not satisfy Azure Storage Minimum TLS 1.2. Storage accounts should enforce minimum TLS version 1.2. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure storage account: Azure Storage Minimum TLS 1.2. Storage accounts should enforce minimum TLS version 1.2. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7250,7 +7250,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-storage-network-allow",
 			Name:              "Azure Storage Network Default Allow",
-			Description:       "Detects failed policy evidence showing that azure storage account does not satisfy Azure Storage Network Default Allow. Storage account network rules default to allowing access from all networks. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure storage account: Azure Storage Network Default Allow. Storage account network rules default to allowing access from all networks. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7290,7 +7290,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-storage-network-default-deny",
 			Name:              "Azure Storage Network Default Deny",
-			Description:       "Detects failed policy evidence showing that azure storage account does not satisfy Azure Storage Network Default Deny. Storage accounts should deny access by default. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure storage account: Azure Storage Network Default Deny. Storage accounts should deny access by default. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7330,7 +7330,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-storage-public-write",
 			Name:              "Azure Storage Container Allows Public Write",
-			Description:       "Detects failed policy evidence showing that azure storage container does not satisfy Azure Storage Container Allows Public Write. Storage container has public access level that could allow anonymous writes. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure storage container: Azure Storage Container Allows Public Write. Storage container has public access level that could allow anonymous writes. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7376,7 +7376,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-storage-secrets-artifact",
 			Name:              "Azure Storage Contains Credential Artifacts",
-			Description:       "Detects failed policy evidence showing that azure storage blob does not satisfy Azure Storage Contains Credential Artifacts. Azure Storage blob contains potential credentials, private keys, or sensitive configuration files. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure storage blob: Azure Storage Contains Credential Artifacts. Azure Storage blob contains potential credentials, private keys, or sensitive configuration files. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7421,7 +7421,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-user-mfa-disabled",
 			Name:              "Azure AD User Without MFA",
-			Description:       "Detects failed policy evidence showing that azure ad user does not satisfy Azure AD User Without MFA. Azure AD user does not have multi-factor authentication methods registered. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure ad user: Azure AD User Without MFA. Azure AD user does not have multi-factor authentication methods registered. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7460,7 +7460,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-vm-approved-extensions-only",
 			Name:              "Azure VM Approved Extensions Only",
-			Description:       "Detects failed policy evidence showing that azure compute virtual machine extension does not satisfy Azure VM Approved Extensions Only. Azure VMs should only have approved extensions installed. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure compute virtual machine extension: Azure VM Approved Extensions Only. Azure VMs should only have approved extensions installed. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7500,7 +7500,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-vm-disk-encryption",
 			Name:              "Azure VM Disk Encryption",
-			Description:       "Detects failed policy evidence showing that azure compute virtual machine does not satisfy Azure VM Disk Encryption. Azure VMs should have disk encryption enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure compute virtual machine: Azure VM Disk Encryption. Azure VMs should have disk encryption enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7540,7 +7540,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-vm-public-ip-rdp",
 			Name:              "Azure VM Public IP with RDP Exposed",
-			Description:       "Detects failed policy evidence showing that azure compute virtual machine does not satisfy Azure VM Public IP with RDP Exposed. Azure VM has public IP with RDP port 3389 allowed from Any source in NSG. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure compute virtual machine: Azure VM Public IP with RDP Exposed. Azure VM has public IP with RDP port 3389 allowed from Any source in NSG. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7581,7 +7581,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-vm-public-ip-ssh",
 			Name:              "Azure VM Public IP with SSH Exposed",
-			Description:       "Detects failed policy evidence showing that azure compute virtual machine does not satisfy Azure VM Public IP with SSH Exposed. Azure VM has public IP with SSH port 22 allowed from Any source in NSG. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure compute virtual machine: Azure VM Public IP with SSH Exposed. Azure VM has public IP with SSH port 22 allowed from Any source in NSG. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7622,7 +7622,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "azure-vm-unmanaged-disk",
 			Name:              "Azure VM Using Unmanaged Disks",
-			Description:       "Detects failed policy evidence showing that azure compute virtual machine does not satisfy Azure VM Using Unmanaged Disks. Azure VM is using unmanaged disks stored in storage accounts instead of Managed Disks. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for azure compute virtual machine: Azure VM Using Unmanaged Disks. Azure VM is using unmanaged disks stored in storage accounts instead of Managed Disks. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7660,7 +7660,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "backup-encryption",
 			Name:              "Backups Encrypted at Rest",
-			Description:       "Detects failed policy evidence showing that backup does not satisfy Backups Encrypted at Rest. Checks whether all backups are encrypted using strong cryptography. Risk: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
+			Description:       "Flags failed query-result evidence for backup: Backups Encrypted at Rest. Checks whether all backups are encrypted using strong cryptography. Audit impact: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7697,7 +7697,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "backup-offsite",
 			Name:              "Offsite Backup Storage",
-			Description:       "Detects failed policy evidence showing that backup does not satisfy Offsite Backup Storage. Checks whether critical system backups are stored offsite or in a different region. Risk: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
+			Description:       "Flags failed query-result evidence for backup: Offsite Backup Storage. Checks whether critical system backups are stored offsite or in a different region. Audit impact: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7733,7 +7733,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "backup-retention",
 			Name:              "Backup Retention Policy Compliance",
-			Description:       "Detects failed policy evidence showing that backup does not satisfy Backup Retention Policy Compliance. Checks whether backups are retained according to data classification requirements. Risk: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
+			Description:       "Flags failed query-result evidence for backup: Backup Retention Policy Compliance. Checks whether backups are retained according to data classification requirements. Audit impact: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7769,7 +7769,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "backup-rpo-compliance",
 			Name:              "Recovery Point Objective (RPO) Compliance",
-			Description:       "Detects failed policy evidence showing that backup does not satisfy Recovery Point Objective (RPO) Compliance. Checks whether backup frequency meets defined RPO requirements. Risk: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
+			Description:       "Flags failed query-result evidence for backup: Recovery Point Objective (RPO) Compliance. Checks whether backup frequency meets defined RPO requirements. Audit impact: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7804,7 +7804,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "backup-testing",
 			Name:              "Backup Restoration Testing",
-			Description:       "Detects failed policy evidence showing that backup does not satisfy Backup Restoration Testing. Checks whether backup restoration is tested at least quarterly. Risk: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
+			Description:       "Flags failed query-result evidence for backup: Backup Restoration Testing. Checks whether backup restoration is tested at least quarterly. Audit impact: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7840,7 +7840,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bedrock-excessive-permissions",
 			Name:              "Bedrock AI Service Role with Excessive Permissions",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy Bedrock AI Service Role with Excessive Permissions. An AWS Bedrock service role has excessive permissions beyond model invocation. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws iam role: Bedrock AI Service Role with Excessive Permissions. An AWS Bedrock service role has excessive permissions beyond model invocation. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7880,7 +7880,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bucket-cleartext-admin-keys",
 			Name:              "Bucket with cleartext highly privileged cloud keys",
-			Description:       "Detects failed policy evidence showing that storage bucket or storage blob container does not satisfy Bucket with cleartext highly privileged cloud keys. A bucket contains cleartext cloud keys with high privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket or storage blob container: Bucket with cleartext highly privileged cloud keys. A bucket contains cleartext cloud keys with high privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7924,7 +7924,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bucket-cleartext-keys-data",
 			Name:              "Bucket with cleartext cloud keys granting data access to sensitive data",
-			Description:       "Detects failed policy evidence showing that storage bucket or storage blob container does not satisfy Bucket with cleartext cloud keys granting data access to sensitive data. A bucket contains cleartext cloud keys that grant access to sensitive data. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket or storage blob container: Bucket with cleartext cloud keys granting data access to sensitive data. A bucket contains cleartext cloud keys that grant access to sensitive data. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -7968,7 +7968,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bucket-dormant-principal",
 			Name:              "Bucket with sensitive data can be accessed by a principal that has been inactive in the last 90 days",
-			Description:       "Detects failed policy evidence showing that storage bucket or storage blob container does not satisfy Bucket with sensitive data can be accessed by a principal that has been inactive in the last 90 days. A dormant principal still has access to a bucket containing sensitive data. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket or storage blob container: Bucket with sensitive data can be accessed by a principal that has been inactive in the last 90 days. A dormant principal still has access to a bucket containing sensitive data. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8008,7 +8008,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bucket-keys-excessive-access",
 			Name:              "Bucket with cleartext cloud keys allowing high privileges can be accessed by an account with excessive data access",
-			Description:       "Detects failed policy evidence showing that storage bucket or storage blob container does not satisfy Bucket with cleartext cloud keys allowing high privileges can be accessed by an account with excessive data access. A bucket with privileged keys can be accessed by an overly permissive account. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket or storage blob container: Bucket with cleartext cloud keys allowing high privileges can be accessed by an account with excessive data access. A bucket with privileged keys can be accessed by an overly permissive account. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8052,7 +8052,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bucket-public-large-files",
 			Name:              "Publicly readable bucket contains large log and data files",
-			Description:       "Detects failed policy evidence showing that storage bucket or storage blob container does not satisfy Publicly readable bucket contains large log and data files. A public bucket contains large files that may contain sensitive information. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket or storage blob container: Publicly readable bucket contains large log and data files. A public bucket contains large files that may contain sensitive information. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8093,7 +8093,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bucket-public-low-exposure",
 			Name:              "Publicly readable non-empty bucket with low exposure level",
-			Description:       "Detects failed policy evidence showing that storage bucket or storage blob container does not satisfy Publicly readable non-empty bucket with low exposure level. A non-empty bucket is publicly readable even with low exposure level. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket or storage blob container: Publicly readable non-empty bucket with low exposure level. A non-empty bucket is publicly readable even with low exposure level. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8139,7 +8139,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bucket-public-sensitive",
 			Name:              "Publicly readable bucket contains sensitive data",
-			Description:       "Detects failed policy evidence showing that gcp storage bucket does not satisfy Publicly readable bucket contains sensitive data. Storage bucket allows anonymous read access (allUsers) and may contain sensitive data, creating a direct data breach risk. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp storage bucket: Publicly readable bucket contains sensitive data. Storage bucket allows anonymous read access (allUsers) and may contain sensitive data, creating a direct data breach risk. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8183,7 +8183,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "bucket-sensitive-no-lock",
 			Name:              "Bucket with sensitive data has object lock disabled",
-			Description:       "Detects failed policy evidence showing that storage bucket does not satisfy Bucket with sensitive data has object lock disabled. A bucket containing sensitive data does not have object lock enabled. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket: Bucket with sensitive data has object lock disabled. A bucket containing sensitive data does not have object lock enabled. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8224,7 +8224,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cert-expired",
 			Name:              "Expired SSL/TLS Certificates",
-			Description:       "Detects failed policy evidence showing that certificate does not satisfy Expired SSL/TLS Certificates. Identifies SSL/TLS certificates that have already expired. Risk: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
+			Description:       "Flags failed query-result evidence for certificate: Expired SSL/TLS Certificates. Identifies SSL/TLS certificates that have already expired. Audit impact: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8260,7 +8260,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cert-expiry-30-days",
 			Name:              "SSL/TLS Certificates Expiring Within 30 Days",
-			Description:       "Detects failed policy evidence showing that certificate does not satisfy SSL/TLS Certificates Expiring Within 30 Days. Identifies SSL/TLS certificates that will expire within the next 30 days. Risk: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
+			Description:       "Flags failed query-result evidence for certificate: SSL/TLS Certificates Expiring Within 30 Days. Identifies SSL/TLS certificates that will expire within the next 30 days. Audit impact: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8296,7 +8296,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cert-self-signed",
 			Name:              "Self-Signed Certificates in Production",
-			Description:       "Detects failed policy evidence showing that certificate does not satisfy Self-Signed Certificates in Production. Identifies self-signed certificates that should not be used in production environments. Risk: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
+			Description:       "Flags failed query-result evidence for certificate: Self-Signed Certificates in Production. Identifies self-signed certificates that should not be used in production environments. Audit impact: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8331,7 +8331,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cert-weak-key",
 			Name:              "Certificates Using Weak Key Sizes",
-			Description:       "Detects failed policy evidence showing that certificate does not satisfy Certificates Using Weak Key Sizes. Identifies certificates using RSA keys smaller than 2048 bits or ECC keys smaller than 256 bits. Risk: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
+			Description:       "Flags failed query-result evidence for certificate: Certificates Using Weak Key Sizes. Identifies certificates using RSA keys smaller than 2048 bits or ECC keys smaller than 256 bits. Audit impact: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8367,7 +8367,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cert-weak-signature",
 			Name:              "Certificates Using Weak Signature Algorithms",
-			Description:       "Detects failed policy evidence showing that certificate does not satisfy Certificates Using Weak Signature Algorithms. Identifies certificates using deprecated signature algorithms like SHA-1 or MD5. Risk: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
+			Description:       "Flags failed query-result evidence for certificate: Certificates Using Weak Signature Algorithms. Identifies certificates using deprecated signature algorithms like SHA-1 or MD5. Audit impact: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8403,7 +8403,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cisa-kev-vulnerability-present",
 			Name:              "CISA KEV Vulnerability Present",
-			Description:       "Detects failed policy evidence showing that vulnerability finding does not satisfy CISA KEV Vulnerability Present. Instance has vulnerability from CISA Known Exploited Vulnerabilities catalog. Risk: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
+			Description:       "Flags failed resource-state evidence for vulnerability finding: CISA KEV Vulnerability Present. Instance has vulnerability from CISA Known Exploited Vulnerabilities catalog. Audit impact: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8442,7 +8442,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-background-checks",
 			Name:              "Background Checks on New Hires",
-			Description:       "Detects failed policy evidence showing that employee does not satisfy Background Checks on New Hires. Checks whether background checks are completed for all new employees. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed query-result evidence for employee: Background Checks on New Hires. Checks whether background checks are completed for all new employees. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8478,7 +8478,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-bcdr-plan-exists",
 			Name:              "Business Continuity Plan Exists",
-			Description:       "Detects failed policy evidence showing that compliance documents does not satisfy Business Continuity Plan Exists. The organization should have a documented business continuity and disaster recovery plan that is tested annually. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for compliance documents: Business Continuity Plan Exists. The organization should have a documented business continuity and disaster recovery plan that is tested annually. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8520,7 +8520,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-data-inventory-maintained",
 			Name:              "Data Inventory Maintained",
-			Description:       "Detects failed policy evidence showing that compliance documents does not satisfy Data Inventory Maintained. The organization should maintain an inventory of personal data processing activities as required by privacy regulations. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for compliance documents: Data Inventory Maintained. The organization should maintain an inventory of personal data processing activities as required by privacy regulations. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8558,7 +8558,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-gdpr-policy",
 			Name:              "GDPR Compliance Policy Exists",
-			Description:       "Detects failed policy evidence showing that policy document does not satisfy GDPR Compliance Policy Exists. Checks whether the organization has an approved GDPR compliance policy. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed query-result evidence for policy document: GDPR Compliance Policy Exists. Checks whether the organization has an approved GDPR compliance policy. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8593,7 +8593,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-inventory-data-tracking",
 			Name:              "Inventory Tracks Resources with User Data",
-			Description:       "Detects failed policy evidence showing that infrastructure inventory does not satisfy Inventory Tracks Resources with User Data. Checks whether infrastructure inventory identifies and tracks resources that contain or process user data. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for infrastructure inventory: Inventory Tracks Resources with User Data. Checks whether infrastructure inventory identifies and tracks resources that contain or process user data. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8634,7 +8634,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-inventory-owners",
 			Name:              "Inventory Items Have Active Owners",
-			Description:       "Detects failed policy evidence showing that infrastructure inventory does not satisfy Inventory Items Have Active Owners. Checks whether all infrastructure inventory items have assigned active owners for accountability. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for infrastructure inventory: Inventory Items Have Active Owners. Checks whether all infrastructure inventory items have assigned active owners for accountability. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8671,7 +8671,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-ir-gdpr-addendum",
 			Name:              "Incident Response Plan GDPR Addendum",
-			Description:       "Detects failed policy evidence showing that policy document does not satisfy Incident Response Plan GDPR Addendum. Checks whether incident response plan includes GDPR breach notification procedures. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed query-result evidence for policy document: Incident Response Plan GDPR Addendum. Checks whether incident response plan includes GDPR breach notification procedures. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8706,7 +8706,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-ir-plan-exists",
 			Name:              "Incident Response Plan Exists",
-			Description:       "Detects failed policy evidence showing that compliance documents does not satisfy Incident Response Plan Exists. The organization should have a documented incident response plan that is reviewed and approved annually. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for compliance documents: Incident Response Plan Exists. The organization should have a documented incident response plan that is reviewed and approved annually. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8750,7 +8750,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-p1-security-issues",
 			Name:              "P1 Security Issues Resolved Timely",
-			Description:       "Detects failed policy evidence showing that security issues does not satisfy P1 Security Issues Resolved Timely. Checks whether P1 (critical) security issues are resolved within SLA (24-48 hours). Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for security issues: P1 Security Issues Resolved Timely. Checks whether P1 (critical) security issues are resolved within SLA (24-48 hours). Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8790,7 +8790,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-p2-security-issues",
 			Name:              "P2 Security Issues Resolved Timely",
-			Description:       "Detects failed policy evidence showing that security issues does not satisfy P2 Security Issues Resolved Timely. Checks whether P2 (high) security issues are resolved within SLA (7 days). Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for security issues: P2 Security Issues Resolved Timely. Checks whether P2 (high) security issues are resolved within SLA (7 days). Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8827,7 +8827,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-risk-assessment-annual",
 			Name:              "Annual Risk Assessment Completed",
-			Description:       "Detects failed policy evidence showing that compliance documents does not satisfy Annual Risk Assessment Completed. The organization should complete a formal risk assessment at least annually to identify and prioritize security risks. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for compliance documents: Annual Risk Assessment Completed. The organization should complete a formal risk assessment at least annually to identify and prioritize security risks. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8867,7 +8867,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "compliance-security-training",
 			Name:              "Security Awareness Training Completed",
-			Description:       "Detects failed policy evidence showing that employee does not satisfy Security Awareness Training Completed. Checks whether all employees have completed security awareness training. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed query-result evidence for employee: Security Awareness Training Completed. Checks whether all employees have completed security awareness training. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8904,7 +8904,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-cleartext-cloud-keys",
 			Name:              "Container image with cleartext cloud keys granting high privileges",
-			Description:       "Detects failed policy evidence showing that aws ecs task definition does not satisfy Container image with cleartext cloud keys granting high privileges. A container image contains hardcoded cloud credentials (AWS access keys, GCP service account keys) that grant high privileges, enabling lateral movement if the container is compromised. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws ecs task definition: Container image with cleartext cloud keys granting high privileges. A container image contains hardcoded cloud credentials (AWS access keys, GCP service account keys) that grant high privileges, enabling lateral movement if the container is compromised. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8944,7 +8944,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-cross-account-keys",
 			Name:              "Internal container using a container image with cleartext cloud keys granting permission to access resources in other subscriptions",
-			Description:       "Detects failed policy evidence showing that container image does not satisfy Internal container using a container image with cleartext cloud keys granting permission to access resources in other subscriptions. A container uses an image with cleartext cross-account access keys. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for container image: Internal container using a container image with cleartext cloud keys granting permission to access resources in other subscriptions. A container uses an image with cleartext cross-account access keys. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -8988,7 +8988,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-eol-writable",
 			Name:              "Container with end-of-life software on the writable layer",
-			Description:       "Detects failed policy evidence showing that container pod or container deployment does not satisfy Container with end-of-life software on the writable layer. A running container has end-of-life software installed on the writable layer. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for container pod or container deployment: Container with end-of-life software on the writable layer. A running container has end-of-life software installed on the writable layer. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9028,7 +9028,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-host-network",
 			Name:              "Container Host Network Disabled",
-			Description:       "Detects failed policy evidence showing that container does not satisfy Container Host Network Disabled. Checks whether containers do not use host network namespace. Risk: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
+			Description:       "Flags failed query-result evidence for container: Container Host Network Disabled. Checks whether containers do not use host network namespace. Audit impact: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9064,7 +9064,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-image-cleartext-keys",
 			Name:              "Container image with cleartext cloud keys granting high privileges",
-			Description:       "Detects failed policy evidence showing that container image does not satisfy Container image with cleartext cloud keys granting high privileges. A container image contains cleartext cloud keys with high privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for container image: Container image with cleartext cloud keys granting high privileges. A container image contains cleartext cloud keys with high privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9108,7 +9108,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-image-scan",
 			Name:              "Container Image Vulnerability Scan",
-			Description:       "Detects failed policy evidence showing that container image does not satisfy Container Image Vulnerability Scan. Checks whether container images are scanned for vulnerabilities before deployment. Risk: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
+			Description:       "Flags failed query-result evidence for container image: Container Image Vulnerability Scan. Checks whether container images are scanned for vulnerabilities before deployment. Audit impact: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9144,7 +9144,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-openssl-vuln",
 			Name:              "Internal container has an image vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability)",
-			Description:       "Detects failed policy evidence showing that container image does not satisfy Internal container has an image vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability). A container is running an image vulnerable to OpenSSL vulnerabilities. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for container image: Internal container has an image vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability). A container is running an image vulnerable to OpenSSL vulnerabilities. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9189,7 +9189,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-privileged",
 			Name:              "Container Privileged Mode Disabled",
-			Description:       "Detects failed policy evidence showing that container does not satisfy Container Privileged Mode Disabled. Checks whether containers are not running in privileged mode. Risk: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
+			Description:       "Flags failed query-result evidence for container: Container Privileged Mode Disabled. Checks whether containers are not running in privileged mode. Audit impact: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9225,7 +9225,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-readonly-fs",
 			Name:              "Container Read-Only Filesystem",
-			Description:       "Detects failed policy evidence showing that container does not satisfy Container Read-Only Filesystem. Checks whether container root filesystems are mounted read-only where possible. Risk: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
+			Description:       "Flags failed query-result evidence for container: Container Read-Only Filesystem. Checks whether container root filesystems are mounted read-only where possible. Audit impact: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9261,7 +9261,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-resource-limits",
 			Name:              "Container Resource Limits Set",
-			Description:       "Detects failed policy evidence showing that container does not satisfy Container Resource Limits Set. Checks whether containers have CPU and memory limits defined. Risk: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
+			Description:       "Flags failed query-result evidence for container: Container Resource Limits Set. Checks whether containers have CPU and memory limits defined. Audit impact: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9296,7 +9296,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-root-user",
 			Name:              "Container Running as Root",
-			Description:       "Detects failed policy evidence showing that container does not satisfy Container Running as Root. Checks whether containers are not running as root user. Risk: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
+			Description:       "Flags failed query-result evidence for container: Container Running as Root. Checks whether containers are not running as root user. Audit impact: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9332,7 +9332,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "container-runtime-exec-detected",
 			Name:              "Container Runtime Exec Detected",
-			Description:       "Detects failed policy evidence showing that kubernetes audit event does not satisfy Container Runtime Exec Detected. kubectl exec or docker exec detected in production container. Risk: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
+			Description:       "Flags failed resource-state evidence for kubernetes audit event: Container Runtime Exec Detected. kubectl exec or docker exec detected in production container. Audit impact: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9380,7 +9380,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "contract-billing-mismatch",
 			Name:              "Contract and Billing Mismatch",
-			Description:       "Detects failed policy evidence showing that billing contract does not satisfy Contract and Billing Mismatch. Flags records where contractual and billed amounts are inconsistent. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for billing contract: Contract and Billing Mismatch. Flags records where contractual and billed amounts are inconsistent. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9416,7 +9416,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cross-provider-dormant-privileged",
 			Name:              "Dormant Account with Privileged Access",
-			Description:       "Detects failed policy evidence showing that cross provider identity cluster does not satisfy Dormant Account with Privileged Access. User has not logged in for 90+ days but still has administrative access across providers. Risk: The mapped control may not be operating effectively for the assessment period.",
+			Description:       "Flags failed resource-state evidence for cross provider identity cluster: Dormant Account with Privileged Access. User has not logged in for 90+ days but still has administrative access across providers. Audit impact: The mapped control may not be operating effectively for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9456,7 +9456,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cross-provider-privileged-access-no-mfa",
 			Name:              "Privileged Access Without MFA",
-			Description:       "Detects failed policy evidence showing that cross provider identity cluster does not satisfy Privileged Access Without MFA. User with administrative privileges in any cloud provider does not have MFA enabled. Risk: The mapped control may not be operating effectively for the assessment period.",
+			Description:       "Flags failed resource-state evidence for cross provider identity cluster: Privileged Access Without MFA. User with administrative privileges in any cloud provider does not have MFA enabled. Audit impact: The mapped control may not be operating effectively for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9500,7 +9500,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cve-2021-45046",
 			Name:              "VM/serverless vulnerable to CVE-2021-45046",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy VM/serverless vulnerable to CVE-2021-45046. A resource is vulnerable to CVE-2021-45046 (Log4j bypass). Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: VM/serverless vulnerable to CVE-2021-45046. A resource is vulnerable to CVE-2021-45046 (Log4j bypass). Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9539,7 +9539,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cve-2021-45105",
 			Name:              "VM/serverless vulnerable to CVE-2021-45105",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy VM/serverless vulnerable to CVE-2021-45105. A resource is vulnerable to CVE-2021-45105 (Log4j DoS). Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: VM/serverless vulnerable to CVE-2021-45105. A resource is vulnerable to CVE-2021-45105 (Log4j DoS). Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9578,7 +9578,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cve-2023-20867",
 			Name:              "Publicly exposed VM vulnerable to CVE-2023-20867 (VMware ESXi backdoor vulnerability)",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM vulnerable to CVE-2023-20867 (VMware ESXi backdoor vulnerability). A publicly exposed VM is vulnerable to CVE-2023-20867 exploited by threat actors. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM vulnerable to CVE-2023-20867 (VMware ESXi backdoor vulnerability). A publicly exposed VM is vulnerable to CVE-2023-20867 exploited by threat actors. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9624,7 +9624,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cve-2023-4863",
 			Name:              "Publicly exposed VM vulnerable to CVE-2023-4863 (WebP vulnerability)",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM vulnerable to CVE-2023-4863 (WebP vulnerability). A publicly exposed VM is vulnerable to the WebP heap buffer overflow. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM vulnerable to CVE-2023-4863 (WebP vulnerability). A publicly exposed VM is vulnerable to the WebP heap buffer overflow. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9670,7 +9670,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cve-2024-21626",
 			Name:              "VM vulnerable to CVE-2024-21626 (runC container escape)",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy VM vulnerable to CVE-2024-21626 (runC container escape). A VM with high K8s privileges is vulnerable to runC container escape and uses external images. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: VM vulnerable to CVE-2024-21626 (runC container escape). A VM with high K8s privileges is vulnerable to runC container escape and uses external images. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9715,7 +9715,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "cve-2024-6387",
 			Name:              "Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH)",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH). A publicly exposed VM is vulnerable to regreSSHion OpenSSH RCE. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM vulnerable to CVE-2024-6387 (RCE vulnerabilities in OpenSSH). A publicly exposed VM is vulnerable to regreSSHion OpenSSH RCE. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9761,7 +9761,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "data-access-keys-unrotated",
 			Name:              "User/service account with access to sensitive data and active access keys unrotated in the past year",
-			Description:       "Detects failed policy evidence showing that iam user or iam service account does not satisfy User/service account with access to sensitive data and active access keys unrotated in the past year. An account with access to sensitive data has access keys that have not been rotated in over a year. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user or iam service account: User/service account with access to sensitive data and active access keys unrotated in the past year. An account with access to sensitive data has access keys that have not been rotated in over a year. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9805,7 +9805,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "data-resource-excessive-access",
 			Name:              "Data resource with sensitive data has excessive access permissions",
-			Description:       "Detects failed policy evidence showing that storage bucket or database instance or storage blob container does not satisfy Data resource with sensitive data has excessive access permissions. A data resource with sensitive data has overly broad access permissions. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket or database instance or storage blob container: Data resource with sensitive data has excessive access permissions. A data resource with sensitive data has overly broad access permissions. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9845,7 +9845,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "data-resource-org-access",
 			Name:              "Data resource with sensitive data allows organization-wide access",
-			Description:       "Detects failed policy evidence showing that storage bucket or database instance or storage blob container does not satisfy Data resource with sensitive data allows organization-wide access. A resource with sensitive data allows access to the entire organization. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for storage bucket or database instance or storage blob container: Data resource with sensitive data allows organization-wide access. A resource with sensitive data allows access to the entire organization. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9885,7 +9885,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "db-audit-logging",
 			Name:              "Database Audit Logging Enabled",
-			Description:       "Detects failed policy evidence showing that database does not satisfy Database Audit Logging Enabled. Checks whether audit logging is enabled for database activity tracking. Risk: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
+			Description:       "Flags failed query-result evidence for database: Database Audit Logging Enabled. Checks whether audit logging is enabled for database activity tracking. Audit impact: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9922,7 +9922,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "db-backup-enabled",
 			Name:              "Database Automated Backups Enabled",
-			Description:       "Detects failed policy evidence showing that database does not satisfy Database Automated Backups Enabled. Checks whether automated backups are enabled for all databases. Risk: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
+			Description:       "Flags failed query-result evidence for database: Database Automated Backups Enabled. Checks whether automated backups are enabled for all databases. Audit impact: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9958,7 +9958,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "db-dormant-principal",
 			Name:              "Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days",
-			Description:       "Detects failed policy evidence showing that database instance or database cluster does not satisfy Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days. A dormant principal still has access to a database containing sensitive data. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for database instance or database cluster: Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days. A dormant principal still has access to a database containing sensitive data. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -9998,7 +9998,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "db-encryption-at-rest",
 			Name:              "Database Encryption at Rest",
-			Description:       "Detects failed policy evidence showing that database does not satisfy Database Encryption at Rest. Checks whether all databases have encryption at rest enabled. Risk: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
+			Description:       "Flags failed query-result evidence for database: Database Encryption at Rest. Checks whether all databases have encryption at rest enabled. Audit impact: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10035,7 +10035,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "db-multi-az",
 			Name:              "Production Database Multi-AZ Deployment",
-			Description:       "Detects failed policy evidence showing that database does not satisfy Production Database Multi-AZ Deployment. Checks whether production databases have Multi-AZ deployment for high availability. Risk: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
+			Description:       "Flags failed query-result evidence for database: Production Database Multi-AZ Deployment. Checks whether production databases have Multi-AZ deployment for high availability. Audit impact: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10070,7 +10070,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "db-public-access",
 			Name:              "Database Public Access Disabled",
-			Description:       "Detects failed policy evidence showing that database does not satisfy Database Public Access Disabled. Checks whether databases are not publicly accessible from the internet. Risk: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
+			Description:       "Flags failed query-result evidence for database: Database Public Access Disabled. Checks whether databases are not publicly accessible from the internet. Audit impact: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10106,7 +10106,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "db-ssl-connections",
 			Name:              "Database SSL Connections Enforced",
-			Description:       "Detects failed policy evidence showing that database does not satisfy Database SSL Connections Enforced. Checks whether SSL/TLS is required for all database connections. Risk: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
+			Description:       "Flags failed query-result evidence for database: Database SSL Connections Enforced. Checks whether SSL/TLS is required for all database connections. Audit impact: Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10142,7 +10142,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "dirty-pipe-privileged",
 			Name:              "VM with high privileges vulnerable to CVE-2022-0847 (Dirty Pipe)",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy VM with high privileges vulnerable to CVE-2022-0847 (Dirty Pipe). A privileged VM is vulnerable to the Dirty Pipe kernel exploit. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: VM with high privileges vulnerable to CVE-2022-0847 (Dirty Pipe). A privileged VM is vulnerable to the Dirty Pipe kernel exploit. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10187,7 +10187,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "efs-public-subnet",
 			Name:              "AWS EFS mount target associated with a public subnet",
-			Description:       "Detects failed policy evidence showing that aws efs mount target does not satisfy AWS EFS mount target associated with a public subnet. An EFS mount target is in a public subnet, potentially exposing file data. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws efs mount target: AWS EFS mount target associated with a public subnet. An EFS mount target is in a public subnet, potentially exposing file data. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10228,7 +10228,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-disk-encryption",
 			Name:              "Endpoint Disk Encryption Enabled",
-			Description:       "Detects failed policy evidence showing that mdm devices does not satisfy Endpoint Disk Encryption Enabled. Corporate endpoints (laptops/desktops) should have full disk encryption enabled (FileVault on macOS, BitLocker on Windows). Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed resource-state evidence for mdm devices: Endpoint Disk Encryption Enabled. Corporate endpoints (laptops/desktops) should have full disk encryption enabled (FileVault on macOS, BitLocker on Windows). Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10268,7 +10268,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-edr-installed",
 			Name:              "EDR Agent Installed on Endpoints",
-			Description:       "Detects failed policy evidence showing that mdm devices does not satisfy EDR Agent Installed on Endpoints. Corporate endpoints should have an EDR (Endpoint Detection and Response) agent installed for threat detection and response. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed resource-state evidence for mdm devices: EDR Agent Installed on Endpoints. Corporate endpoints should have an EDR (Endpoint Detection and Response) agent installed for threat detection and response. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10308,7 +10308,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-edr-reporting",
 			Name:              "EDR Agents Actively Reporting",
-			Description:       "Detects failed policy evidence showing that edr agents does not satisfy EDR Agents Actively Reporting. EDR agents should be actively reporting to the console. Agents that haven't checked in recently may indicate offline devices or tampering. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed resource-state evidence for edr agents: EDR Agents Actively Reporting. EDR agents should be actively reporting to the console. Agents that haven't checked in recently may indicate offline devices or tampering. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10346,7 +10346,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-intune-disk-encryption",
 			Name:              "Intune Devices Without Disk Encryption",
-			Description:       "Detects failed policy evidence showing that intune managed device does not satisfy Intune Devices Without Disk Encryption. Identifies Intune-managed devices without disk encryption enabled. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for intune managed device: Intune Devices Without Disk Encryption. Identifies Intune-managed devices without disk encryption enabled. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10385,7 +10385,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-intune-noncompliant",
 			Name:              "Intune Devices Not Compliant",
-			Description:       "Detects failed policy evidence showing that intune managed device does not satisfy Intune Devices Not Compliant. Identifies Intune-managed devices reporting a non-compliant state. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for intune managed device: Intune Devices Not Compliant. Identifies Intune-managed devices reporting a non-compliant state. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10421,7 +10421,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-jamf-disk-encryption",
 			Name:              "Jamf Devices Without Disk Encryption",
-			Description:       "Detects failed policy evidence showing that jamf computer does not satisfy Jamf Devices Without Disk Encryption. Identifies Jamf-managed macOS computers without FileVault disk encryption enabled. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for jamf computer: Jamf Devices Without Disk Encryption. Identifies Jamf-managed macOS computers without FileVault disk encryption enabled. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10460,7 +10460,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-jamf-screenlock",
 			Name:              "Jamf Mobile Devices Without Screen Lock",
-			Description:       "Detects failed policy evidence showing that jamf mobile device does not satisfy Jamf Mobile Devices Without Screen Lock. Identifies Jamf-managed mobile devices without a compliant passcode. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for jamf mobile device: Jamf Mobile Devices Without Screen Lock. Identifies Jamf-managed mobile devices without a compliant passcode. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10498,7 +10498,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-kandji-disk-encryption",
 			Name:              "Kandji Devices Without Disk Encryption",
-			Description:       "Detects failed policy evidence showing that kandji device does not satisfy Kandji Devices Without Disk Encryption. Identifies Kandji-managed devices without FileVault disk encryption enabled. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for kandji device: Kandji Devices Without Disk Encryption. Identifies Kandji-managed devices without FileVault disk encryption enabled. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10537,7 +10537,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-kandji-edr-installed",
 			Name:              "Kandji Devices Missing EDR Agent",
-			Description:       "Detects failed policy evidence showing that kandji device does not satisfy Kandji Devices Missing EDR Agent. Identifies Kandji-managed devices missing an approved EDR/antivirus agent. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for kandji device: Kandji Devices Missing EDR Agent. Identifies Kandji-managed devices missing an approved EDR/antivirus agent. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10576,7 +10576,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-kandji-password-manager",
 			Name:              "Kandji Devices Missing Password Manager",
-			Description:       "Detects failed policy evidence showing that kandji device does not satisfy Kandji Devices Missing Password Manager. Identifies Kandji-managed devices missing an approved password manager. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for kandji device: Kandji Devices Missing Password Manager. Identifies Kandji-managed devices missing an approved password manager. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10612,7 +10612,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-malware-detection",
 			Name:              "Malware Detection on Endpoints",
-			Description:       "Detects failed policy evidence showing that endpoint does not satisfy Malware Detection on Endpoints. Checks whether corporate endpoints have malware detection software installed and active. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for endpoint: Malware Detection on Endpoints. Checks whether corporate endpoints have malware detection software installed and active. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10649,7 +10649,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-mdm-enrolled",
 			Name:              "Endpoints Enrolled in MDM",
-			Description:       "Detects failed policy evidence showing that endpoint does not satisfy Endpoints Enrolled in MDM. Checks whether all corporate endpoints are enrolled in mobile device management. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for endpoint: Endpoints Enrolled in MDM. Checks whether all corporate endpoints are enrolled in mobile device management. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10685,7 +10685,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-password-manager",
 			Name:              "Password Manager Installed on Endpoints",
-			Description:       "Detects failed policy evidence showing that endpoint does not satisfy Password Manager Installed on Endpoints. Checks whether corporate endpoints have an approved password manager installed. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for endpoint: Password Manager Installed on Endpoints. Checks whether corporate endpoints have an approved password manager installed. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10721,7 +10721,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-screenlock-configured",
 			Name:              "Endpoint Screen Lock Configured",
-			Description:       "Detects failed policy evidence showing that mdm devices does not satisfy Endpoint Screen Lock Configured. Corporate endpoints should have automatic screen lock configured to activate after a maximum of 15 minutes of inactivity. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed resource-state evidence for mdm devices: Endpoint Screen Lock Configured. Corporate endpoints should have automatic screen lock configured to activate after a maximum of 15 minutes of inactivity. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10760,7 +10760,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "endpoint-sentinelone-active",
 			Name:              "SentinelOne Agents Actively Reporting",
-			Description:       "Detects failed policy evidence showing that sentinelone agent does not satisfy SentinelOne Agents Actively Reporting. Checks whether SentinelOne agents are installed and actively reporting on all endpoints. Risk: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
+			Description:       "Flags failed query-result evidence for sentinelone agent: SentinelOne Agents Actively Reporting. Checks whether SentinelOne agents are installed and actively reporting on all endpoints. Audit impact: Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10796,7 +10796,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "exposed-saas-api-token",
 			Name:              "Validated exposure of SaaS API token",
-			Description:       "Detects failed policy evidence showing that gcp cloudrun revision does not satisfy Validated exposure of SaaS API token. A SaaS API token has been found exposed in a resource configuration, environment variable, or code, potentially allowing unauthorized access to external services. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp cloudrun revision: Validated exposure of SaaS API token. A SaaS API token has been found exposed in a resource configuration, environment variable, or code, potentially allowing unauthorized access to external services. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10836,7 +10836,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-audit-logging-enabled",
 			Name:              "Audit Logging Enabled",
-			Description:       "Detects failed policy evidence showing that gcp resourcemanager project does not satisfy Audit Logging Enabled. Cloud Audit Logging should be enabled for all services. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp resourcemanager project: Audit Logging Enabled. Cloud Audit Logging should be enabled for all services. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10877,7 +10877,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-bigquery-no-cmek",
 			Name:              "GCP BigQuery No Customer Managed Encryption",
-			Description:       "Detects failed policy evidence showing that gcp bigquery dataset does not satisfy GCP BigQuery No Customer Managed Encryption. BigQuery dataset does not use customer-managed encryption keys. Risk: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
+			Description:       "Flags failed resource-state evidence for gcp bigquery dataset: GCP BigQuery No Customer Managed Encryption. BigQuery dataset does not use customer-managed encryption keys. Audit impact: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10919,7 +10919,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-bigquery-public",
 			Name:              "BigQuery Dataset Publicly Accessible",
-			Description:       "Detects failed policy evidence showing that gcp bigquery dataset does not satisfy BigQuery Dataset Publicly Accessible. BigQuery dataset grants access to allUsers or allAuthenticatedUsers. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp bigquery dataset: BigQuery Dataset Publicly Accessible. BigQuery dataset grants access to allUsers or allAuthenticatedUsers. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -10965,7 +10965,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-bigquery-public-dataset",
 			Name:              "GCP BigQuery Public Dataset",
-			Description:       "Detects failed policy evidence showing that gcp bigquery dataset does not satisfy GCP BigQuery Public Dataset. BigQuery dataset is accessible by allUsers or allAuthenticatedUsers. Risk: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
+			Description:       "Flags failed resource-state evidence for gcp bigquery dataset: GCP BigQuery Public Dataset. BigQuery dataset is accessible by allUsers or allAuthenticatedUsers. Audit impact: Sensitive data discovery, classification, access, or protection evidence may be incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11011,7 +11011,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-bucket-public-write",
 			Name:              "GCS Bucket Allows Public Write Access",
-			Description:       "Detects failed policy evidence showing that gcp storage bucket does not satisfy GCS Bucket Allows Public Write Access. Cloud Storage bucket grants write permissions to allUsers or allAuthenticatedUsers. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp storage bucket: GCS Bucket Allows Public Write Access. Cloud Storage bucket grants write permissions to allUsers or allAuthenticatedUsers. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11057,7 +11057,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-bucket-secrets",
 			Name:              "GCS Bucket Contains Potential Credentials",
-			Description:       "Detects failed policy evidence showing that gcp storage object does not satisfy GCS Bucket Contains Potential Credentials. Cloud Storage bucket objects contain potential secrets, API keys, or credentials. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp storage object: GCS Bucket Contains Potential Credentials. Cloud Storage bucket objects contain potential secrets, API keys, or credentials. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11102,7 +11102,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-cloud-ids-notifications",
 			Name:              "GCP Cloud IDS Notifications Configured",
-			Description:       "Detects failed policy evidence showing that gcp ids endpoints does not satisfy GCP Cloud IDS Notifications Configured. GCP Cloud IDS (Intrusion Detection System) should have notifications configured to alert the security team of detected threats. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp ids endpoints: GCP Cloud IDS Notifications Configured. GCP Cloud IDS (Intrusion Detection System) should have notifications configured to alert the security team of detected threats. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11142,7 +11142,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-cloud-run-allow-unauthenticated",
 			Name:              "GCP Cloud Run Allow Unauthenticated",
-			Description:       "Detects failed policy evidence showing that gcp run service does not satisfy GCP Cloud Run Allow Unauthenticated. Cloud Run service allows unauthenticated invocations. Risk: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
+			Description:       "Flags failed resource-state evidence for gcp run service: GCP Cloud Run Allow Unauthenticated. Cloud Run service allows unauthenticated invocations. Audit impact: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11181,7 +11181,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-cloudrun-default-service-account",
 			Name:              "Cloud Run Service Using Default Compute Service Account",
-			Description:       "Detects failed policy evidence showing that gcp cloudrun revision does not satisfy Cloud Run Service Using Default Compute Service Account. Cloud Run services using the default compute service account have excessive privileges and pose a security risk. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp cloudrun revision: Cloud Run Service Using Default Compute Service Account. Cloud Run services using the default compute service account have excessive privileges and pose a security risk. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11220,7 +11220,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-cloudrun-no-vpc-connector",
 			Name:              "Cloud Run Service Without VPC Connector",
-			Description:       "Detects failed policy evidence showing that gcp cloudrun revision does not satisfy Cloud Run Service Without VPC Connector. Cloud Run service is not configured with a VPC connector, allowing direct egress to the public internet. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp cloudrun revision: Cloud Run Service Without VPC Connector. Cloud Run service is not configured with a VPC connector, allowing direct egress to the public internet. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11256,7 +11256,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-cloudrun-public-ingress",
 			Name:              "Cloud Run Service Allows Public Internet Access",
-			Description:       "Detects failed policy evidence showing that gcp cloudrun service does not satisfy Cloud Run Service Allows Public Internet Access. Cloud Run service is configured to allow ingress from all sources including the public internet. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp cloudrun service: Cloud Run Service Allows Public Internet Access. Cloud Run service is configured to allow ingress from all sources including the public internet. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11295,7 +11295,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-cloudsql-no-public-ip",
 			Name:              "Cloud SQL Public IP",
-			Description:       "Detects failed policy evidence showing that gcp sql database instance does not satisfy Cloud SQL Public IP. Cloud SQL instances should not have public IP addresses. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp sql database instance: Cloud SQL Public IP. Cloud SQL instances should not have public IP addresses. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11336,7 +11336,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-compute-metadata-v1",
 			Name:              "GCP Instance Metadata v1 Enabled",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy GCP Instance Metadata v1 Enabled. GCP Compute instance does not block legacy metadata endpoint (v1), making it vulnerable to SSRF attacks. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: GCP Instance Metadata v1 Enabled. GCP Compute instance does not block legacy metadata endpoint (v1), making it vulnerable to SSRF attacks. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11374,7 +11374,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-compute-no-default-service-account",
 			Name:              "GCP Compute No Default Service Account",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy GCP Compute No Default Service Account. Compute instances should not use the default service account. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: GCP Compute No Default Service Account. Compute instances should not use the default service account. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11414,7 +11414,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-compute-no-public-ip",
 			Name:              "Compute Instance Public IP",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy Compute Instance Public IP. Compute instances should not have public IP addresses unless required. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: Compute Instance Public IP. Compute instances should not have public IP addresses unless required. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11455,7 +11455,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-compute-public-ssh",
 			Name:              "GCP Instance Public IP with SSH Exposed",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy GCP Instance Public IP with SSH Exposed. GCP Compute instance has external IP with firewall allowing SSH from 0.0.0.0/0. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: GCP Instance Public IP with SSH Exposed. GCP Compute instance has external IP with firewall allowing SSH from 0.0.0.0/0. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11496,7 +11496,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-compute-serial-port-disabled",
 			Name:              "GCP Compute Serial Port Disabled",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy GCP Compute Serial Port Disabled. Compute instances should have serial port access disabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: GCP Compute Serial Port Disabled. Compute instances should have serial port access disabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11536,7 +11536,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-compute-shielded-vm",
 			Name:              "GCP Compute Shielded VM",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy GCP Compute Shielded VM. Compute instances should use shielded VM features. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: GCP Compute Shielded VM. Compute instances should use shielded VM features. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11573,7 +11573,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-container-vuln-critical",
 			Name:              "GCP Container Critical Vulnerabilities Addressed",
-			Description:       "Detects failed policy evidence showing that gcp container vulnerabilities does not satisfy GCP Container Critical Vulnerabilities Addressed. Checks whether critical vulnerabilities in GCP container images are remediated within SLA (7 days). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container vulnerabilities: GCP Container Critical Vulnerabilities Addressed. Checks whether critical vulnerabilities in GCP container images are remediated within SLA (7 days). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11612,7 +11612,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-container-vuln-high",
 			Name:              "GCP Container High Vulnerabilities Addressed",
-			Description:       "Detects failed policy evidence showing that gcp container vulnerabilities does not satisfy GCP Container High Vulnerabilities Addressed. Checks whether high vulnerabilities in GCP container images are remediated within SLA (14 days). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container vulnerabilities: GCP Container High Vulnerabilities Addressed. Checks whether high vulnerabilities in GCP container images are remediated within SLA (14 days). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11650,7 +11650,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-container-vuln-low",
 			Name:              "GCP Container Low Vulnerabilities Addressed",
-			Description:       "Detects failed policy evidence showing that gcp container vulnerabilities does not satisfy GCP Container Low Vulnerabilities Addressed. Checks whether low vulnerabilities in GCP container images are tracked and addressed within SLA (90 days). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container vulnerabilities: GCP Container Low Vulnerabilities Addressed. Checks whether low vulnerabilities in GCP container images are tracked and addressed within SLA (90 days). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11686,7 +11686,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-container-vuln-medium",
 			Name:              "GCP Container Medium Vulnerabilities Addressed",
-			Description:       "Detects failed policy evidence showing that gcp container vulnerabilities does not satisfy GCP Container Medium Vulnerabilities Addressed. Checks whether medium vulnerabilities in GCP container images are remediated within SLA (30 days). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container vulnerabilities: GCP Container Medium Vulnerabilities Addressed. Checks whether medium vulnerabilities in GCP container images are remediated within SLA (30 days). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11723,7 +11723,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-dns-dnssec",
 			Name:              "Cloud DNS DNSSEC Disabled",
-			Description:       "Detects failed policy evidence showing that gcp dns managed zone does not satisfy Cloud DNS DNSSEC Disabled. Cloud DNS managed zone does not have DNSSEC enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp dns managed zone: Cloud DNS DNSSEC Disabled. Cloud DNS managed zone does not have DNSSEC enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11761,7 +11761,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-external-domain-admin",
 			Name:              "User account with non organizational domain (gmail) and high/admin access in GCP",
-			Description:       "Detects failed policy evidence showing that gcp iam member does not satisfy User account with non organizational domain (gmail) and high/admin access in GCP. A personal email account (non-organizational) has high or admin access to GCP resources. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp iam member: User account with non organizational domain (gmail) and high/admin access in GCP. A personal email account (non-organizational) has high or admin access to GCP resources. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11801,7 +11801,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-firewall-admin-port",
 			Name:              "GCP Firewall Allows Admin Ports from Internet",
-			Description:       "Detects failed policy evidence showing that gcp compute firewall does not satisfy GCP Firewall Allows Admin Ports from Internet. Firewall rule allows SSH (22) or RDP (3389) access from any source (0.0.0.0/0). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp compute firewall: GCP Firewall Allows Admin Ports from Internet. Firewall rule allows SSH (22) or RDP (3389) access from any source (0.0.0.0/0). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11841,7 +11841,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-auto-repair",
 			Name:              "GKE Node Pool Auto-Repair Enabled",
-			Description:       "Detects failed policy evidence showing that gcp container node pools does not satisfy GKE Node Pool Auto-Repair Enabled. GKE node pools should have auto-repair enabled to automatically repair unhealthy nodes. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container node pools: GKE Node Pool Auto-Repair Enabled. GKE node pools should have auto-repair enabled to automatically repair unhealthy nodes. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11877,7 +11877,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-auto-upgrade",
 			Name:              "GKE Node Pool Auto-Upgrade Enabled",
-			Description:       "Detects failed policy evidence showing that gcp container node pools does not satisfy GKE Node Pool Auto-Upgrade Enabled. GKE node pools should have auto-upgrade enabled to automatically receive security patches and updates. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container node pools: GKE Node Pool Auto-Upgrade Enabled. GKE node pools should have auto-upgrade enabled to automatically receive security patches and updates. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11914,7 +11914,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-cos-containerd",
 			Name:              "GKE Nodes Use Container-Optimized OS",
-			Description:       "Detects failed policy evidence showing that gcp container node pools does not satisfy GKE Nodes Use Container-Optimized OS. GKE node pools should use Container-Optimized OS with containerd (cos_containerd) for optimal security and performance. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container node pools: GKE Nodes Use Container-Optimized OS. GKE node pools should use Container-Optimized OS with containerd (cos_containerd) for optimal security and performance. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11949,7 +11949,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-dashboard-disabled",
 			Name:              "GKE Kubernetes Dashboard Disabled",
-			Description:       "Detects failed policy evidence showing that gcp container clusters does not satisfy GKE Kubernetes Dashboard Disabled. The Kubernetes Dashboard should be disabled on GKE clusters as it can be a security risk and is deprecated in favor of Cloud Console. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container clusters: GKE Kubernetes Dashboard Disabled. The Kubernetes Dashboard should be disabled on GKE clusters as it can be a security risk and is deprecated in favor of Cloud Console. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -11985,7 +11985,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-default-sa",
 			Name:              "GKE Node Pool Using Default Service Account",
-			Description:       "Detects failed policy evidence showing that gcp container node pool does not satisfy GKE Node Pool Using Default Service Account. GKE node pool is using the Compute Engine default service account instead of a dedicated service account. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container node pool: GKE Node Pool Using Default Service Account. GKE node pool is using the Compute Engine default service account instead of a dedicated service account. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12025,7 +12025,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-metadata-server",
 			Name:              "GKE Workload Identity (Metadata Server) Enabled",
-			Description:       "Detects failed policy evidence showing that gcp container node pools does not satisfy GKE Workload Identity (Metadata Server) Enabled. GKE node pools should have GKE Metadata Server enabled to use Workload Identity for secure pod authentication to Google Cloud APIs. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container node pools: GKE Workload Identity (Metadata Server) Enabled. GKE node pools should have GKE Metadata Server enabled to use Workload Identity for secure pod authentication to Google Cloud APIs. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12063,7 +12063,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-network-policy-enabled",
 			Name:              "GKE Network Policy Enabled",
-			Description:       "Detects failed policy evidence showing that gcp container clusters does not satisfy GKE Network Policy Enabled. GKE clusters should have network policy enabled to control traffic flow between pods and implement microsegmentation. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container clusters: GKE Network Policy Enabled. GKE clusters should have network policy enabled to control traffic flow between pods and implement microsegmentation. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12101,7 +12101,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-no-alpha-clusters",
 			Name:              "GKE Clusters No Alpha Features",
-			Description:       "Detects failed policy evidence showing that gcp container clusters does not satisfy GKE Clusters No Alpha Features. GKE clusters should not have alpha features enabled as they are not covered by GKE SLA and may have stability issues. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container clusters: GKE Clusters No Alpha Features. GKE clusters should not have alpha features enabled as they are not covered by GKE SLA and may have stability issues. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12136,7 +12136,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-private-cluster",
 			Name:              "GKE Private Cluster",
-			Description:       "Detects failed policy evidence showing that gcp container cluster does not satisfy GKE Private Cluster. GKE clusters should be private with no public endpoint. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container cluster: GKE Private Cluster. GKE clusters should be private with no public endpoint. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12177,7 +12177,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-secrets-kms-encryption",
 			Name:              "GKE Secrets Encrypted with Cloud KMS",
-			Description:       "Detects failed policy evidence showing that gcp container clusters does not satisfy GKE Secrets Encrypted with Cloud KMS. GKE clusters should use Cloud KMS keys to encrypt Kubernetes secrets at the application layer for enhanced security. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container clusters: GKE Secrets Encrypted with Cloud KMS. GKE clusters should use Cloud KMS keys to encrypt Kubernetes secrets at the application layer for enhanced security. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12216,7 +12216,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-gke-shielded-nodes",
 			Name:              "GKE Shielded Nodes Enabled",
-			Description:       "Detects failed policy evidence showing that gcp container clusters does not satisfy GKE Shielded Nodes Enabled. GKE clusters should have Shielded GKE Nodes enabled to protect against rootkit and bootkit attacks. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp container clusters: GKE Shielded Nodes Enabled. GKE clusters should have Shielded GKE Nodes enabled to protect against rootkit and bootkit attacks. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12252,7 +12252,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-iam-binding-no-allAuthenticatedUsers",
 			Name:              "GCP IAM Binding No allAuthenticatedUsers",
-			Description:       "Detects failed policy evidence showing that gcp iam policy does not satisfy GCP IAM Binding No allAuthenticatedUsers. IAM bindings should not grant roles to allAuthenticatedUsers. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp iam policy: GCP IAM Binding No allAuthenticatedUsers. IAM bindings should not grant roles to allAuthenticatedUsers. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12292,7 +12292,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-iam-binding-no-allUsers",
 			Name:              "GCP IAM Binding No allUsers",
-			Description:       "Detects failed policy evidence showing that gcp iam policy does not satisfy GCP IAM Binding No allUsers. IAM bindings should not grant roles to allUsers (public access). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp iam policy: GCP IAM Binding No allUsers. IAM bindings should not grant roles to allUsers (public access). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12338,7 +12338,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-iam-minimize-user-managed-keys",
 			Name:              "GCP Minimize User Managed Service Account Keys",
-			Description:       "Detects failed policy evidence showing that gcp iam service account key does not satisfy GCP Minimize User Managed Service Account Keys. Service accounts should use GCP-managed keys instead of user-managed keys where possible. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp iam service account key: GCP Minimize User Managed Service Account Keys. Service accounts should use GCP-managed keys instead of user-managed keys where possible. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12382,7 +12382,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-iam-sa-no-admin-privileges",
 			Name:              "GCP Service Account No Admin Privileges",
-			Description:       "Detects failed policy evidence showing that gcp iam service account does not satisfy GCP Service Account No Admin Privileges. Service accounts should not have Owner or Editor roles at project level. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp iam service account: GCP Service Account No Admin Privileges. Service accounts should not have Owner or Editor roles at project level. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12422,7 +12422,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-kms-admin-combined",
 			Name:              "User account with both 'Cloud KMS Admin' and 'Cloud CryptoKey Encrypter/Decrypter' roles assigned",
-			Description:       "Detects failed policy evidence showing that gcp iam member does not satisfy User account with both 'Cloud KMS Admin' and 'Cloud CryptoKey Encrypter/Decrypter' roles assigned. A user can both manage KMS keys and use them for encryption, bypassing separation of duties. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp iam member: User account with both 'Cloud KMS Admin' and 'Cloud CryptoKey Encrypter/Decrypter' roles assigned. A user can both manage KMS keys and use them for encryption, bypassing separation of duties. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12464,7 +12464,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-kms-public",
 			Name:              "KMS Key Publicly Accessible",
-			Description:       "Detects failed policy evidence showing that gcp kms crypto key does not satisfy KMS Key Publicly Accessible. Cloud KMS key grants access to allUsers or allAuthenticatedUsers. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp kms crypto key: KMS Key Publicly Accessible. Cloud KMS key grants access to allUsers or allAuthenticatedUsers. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12518,7 +12518,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-log-sink-access",
 			Name:              "GCP Log Sink Access Restricted",
-			Description:       "Detects failed policy evidence showing that gcp logging sink does not satisfy GCP Log Sink Access Restricted. Checks whether only authorized users can access log sink destinations. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed query-result evidence for gcp logging sink: GCP Log Sink Access Restricted. Checks whether only authorized users can access log sink destinations. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12554,7 +12554,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-logging-disabled",
 			Name:              "GCP Cloud Logging Disabled",
-			Description:       "Detects failed policy evidence showing that gcp logging project sink does not satisfy GCP Cloud Logging Disabled. Cloud Logging is not enabled or log sinks are not configured for the project. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp logging project sink: GCP Cloud Logging Disabled. Cloud Logging is not enabled or log sinks are not configured for the project. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12595,7 +12595,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-sa-admin-privileges",
 			Name:              "GCP Service Account with Admin Privileges",
-			Description:       "Detects failed policy evidence showing that gcp iam service account does not satisfy GCP Service Account with Admin Privileges. Service account has been granted organization or project admin roles. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp iam service account: GCP Service Account with Admin Privileges. Service account has been granted organization or project admin roles. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12635,7 +12635,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-sa-admin-user-combined",
 			Name:              "User account with both 'Service Account Admin' and 'Service Account User' roles assigned",
-			Description:       "Detects failed policy evidence showing that gcp iam member does not satisfy User account with both 'Service Account Admin' and 'Service Account User' roles assigned. A user can both create and impersonate service accounts, a dangerous privilege combination. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp iam member: User account with both 'Service Account Admin' and 'Service Account User' roles assigned. A user can both create and impersonate service accounts, a dangerous privilege combination. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12675,7 +12675,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-sa-impersonation",
 			Name:              "GCP user account assigned with the 'Service Account User' or 'Service Account Token Creator' roles",
-			Description:       "Detects failed policy evidence showing that gcp iam member does not satisfy GCP user account assigned with the 'Service Account User' or 'Service Account Token Creator' roles. A GCP user can impersonate service accounts, potentially escalating privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp iam member: GCP user account assigned with the 'Service Account User' or 'Service Account Token Creator' roles. A GCP user can impersonate service accounts, potentially escalating privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12715,7 +12715,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-sa-no-full-project-access",
 			Name:              "GCP Service Account No Full Access Scopes",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy GCP Service Account No Full Access Scopes. Service account should not have cloud-platform (full access) scope on compute instances. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: GCP Service Account No Full Access Scopes. Service account should not have cloud-platform (full access) scope on compute instances. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12755,7 +12755,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-service-account-key-rotation",
 			Name:              "Service Account Key Rotation",
-			Description:       "Detects failed policy evidence showing that gcp iam service account key does not satisfy Service Account Key Rotation. Service account keys should be rotated within 90 days. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp iam service account key: Service Account Key Rotation. Service account keys should be rotated within 90 days. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12799,7 +12799,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-sql-backup-enabled",
 			Name:              "GCP Cloud SQL Backup Enabled",
-			Description:       "Detects failed policy evidence showing that gcp sql database instance does not satisfy GCP Cloud SQL Backup Enabled. Cloud SQL instances should have automated backups enabled. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp sql database instance: GCP Cloud SQL Backup Enabled. Cloud SQL instances should have automated backups enabled. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12840,7 +12840,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-sql-ssl-required",
 			Name:              "GCP Cloud SQL SSL Required",
-			Description:       "Detects failed policy evidence showing that gcp sql database instance does not satisfy GCP Cloud SQL SSL Required. Cloud SQL instances should require SSL/TLS for all connections. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp sql database instance: GCP Cloud SQL SSL Required. Cloud SQL instances should require SSL/TLS for all connections. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12880,7 +12880,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-storage-bucket-no-public",
 			Name:              "GCP Storage Bucket Public Access",
-			Description:       "Detects failed policy evidence showing that gcp storage bucket does not satisfy GCP Storage Bucket Public Access. GCP Storage buckets should not be publicly accessible. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp storage bucket: GCP Storage Bucket Public Access. GCP Storage buckets should not be publicly accessible. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12926,7 +12926,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-storage-no-public-allusers",
 			Name:              "GCP Storage No Public allUsers Access",
-			Description:       "Detects failed policy evidence showing that gcp storage bucket does not satisfy GCP Storage No Public allUsers Access. Cloud Storage buckets should not grant access to allUsers (public). Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp storage bucket: GCP Storage No Public allUsers Access. Cloud Storage buckets should not grant access to allUsers (public). Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -12972,7 +12972,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-storage-uniform-bucket-access",
 			Name:              "GCP Storage Uniform Bucket Access",
-			Description:       "Detects failed policy evidence showing that gcp storage bucket does not satisfy GCP Storage Uniform Bucket Access. Cloud Storage buckets should use uniform bucket-level access. Risk: Cloud resource configuration may not satisfy the mapped security or compliance control.",
+			Description:       "Flags failed resource-state evidence for gcp storage bucket: GCP Storage Uniform Bucket Access. Cloud Storage buckets should use uniform bucket-level access. Audit impact: Cloud resource configuration may not satisfy the mapped security or compliance control.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13012,7 +13012,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-vertex-ai-dataset-public",
 			Name:              "GCP Vertex AI Dataset Public Access",
-			Description:       "Detects failed policy evidence showing that gcp aiplatform dataset does not satisfy GCP Vertex AI Dataset Public Access. Vertex AI dataset is accessible by allUsers or allAuthenticatedUsers. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for gcp aiplatform dataset: GCP Vertex AI Dataset Public Access. Vertex AI dataset is accessible by allUsers or allAuthenticatedUsers. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13058,7 +13058,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcp-vertex-ai-public-endpoint",
 			Name:              "GCP Vertex AI Public Endpoint",
-			Description:       "Detects failed policy evidence showing that gcp aiplatform endpoint does not satisfy GCP Vertex AI Public Endpoint. Vertex AI endpoint is publicly accessible without VPC restrictions. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for gcp aiplatform endpoint: GCP Vertex AI Public Endpoint. Vertex AI endpoint is publicly accessible without VPC restrictions. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13104,7 +13104,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcr-excessive-privileges",
 			Name:              "Google Container Registry allows excessive high privileges to user/service accounts",
-			Description:       "Detects failed policy evidence showing that gcp artifact registry repository or gcp container registry registry does not satisfy Google Container Registry allows excessive high privileges to user/service accounts. GCR grants excessive privileges that could allow supply chain attacks. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp artifact registry repository or gcp container registry registry: Google Container Registry allows excessive high privileges to user/service accounts. GCR grants excessive privileges that could allow supply chain attacks. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13144,7 +13144,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gcr-unscanned",
 			Name:              "GCP container registry contains an unscanned image that is used by a container",
-			Description:       "Detects failed policy evidence showing that container image does not satisfy GCP container registry contains an unscanned image that is used by a container. An unscanned container image from GCR is in use. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for container image: GCP container registry contains an unscanned image that is used by a container. An unscanned container image from GCR is in use. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13184,7 +13184,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-actions-dangerous-trigger",
 			Name:              "GitHub Actions Dangerous Trigger",
-			Description:       "Detects failed policy evidence showing that github actions workflow does not satisfy GitHub Actions Dangerous Trigger. Workflow uses pull_request_target trigger which can expose secrets to forked PRs. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github actions workflow: GitHub Actions Dangerous Trigger. Workflow uses pull_request_target trigger which can expose secrets to forked PRs. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13222,7 +13222,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-actions-self-hosted-public",
 			Name:              "GitHub Actions Self-Hosted Runner on Public Repo",
-			Description:       "Detects failed policy evidence showing that github repository does not satisfy GitHub Actions Self-Hosted Runner on Public Repo. Self-hosted runner used on public repository poses security risk. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github repository: GitHub Actions Self-Hosted Runner on Public Repo. Self-hosted runner used on public repository poses security risk. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13263,7 +13263,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-admin-without-2fa",
 			Name:              "GitHub Admin Without 2FA",
-			Description:       "Detects failed policy evidence showing that github user does not satisfy GitHub Admin Without 2FA. Organization admin or repository admin does not have two-factor authentication enabled. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github user: GitHub Admin Without 2FA. Organization admin or repository admin does not have two-factor authentication enabled. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13307,7 +13307,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-automated-checks",
 			Name:              "GitHub Code Changes Have Automated Checks",
-			Description:       "Detects failed policy evidence showing that github branch protection does not satisfy GitHub Code Changes Have Automated Checks. Checks whether repositories have required status checks configured for pull requests. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed query-result evidence for github branch protection: GitHub Code Changes Have Automated Checks. Checks whether repositories have required status checks configured for pull requests. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13342,7 +13342,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-branch-protection-admin",
 			Name:              "GitHub Branch Protection Enforced for Admins",
-			Description:       "Detects failed policy evidence showing that github branch protection does not satisfy GitHub Branch Protection Enforced for Admins. Checks whether branch protection rules apply to administrators and cannot be bypassed. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed query-result evidence for github branch protection: GitHub Branch Protection Enforced for Admins. Checks whether branch protection rules apply to administrators and cannot be bypassed. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13377,7 +13377,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-code-scanning-critical",
 			Name:              "GitHub Code Scanning Critical Alert",
-			Description:       "Detects failed policy evidence showing that github code scanning alert does not satisfy GitHub Code Scanning Critical Alert. Repository has critical code scanning alert from CodeQL or third-party scanner. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github code scanning alert: GitHub Code Scanning Critical Alert. Repository has critical code scanning alert from CodeQL or third-party scanner. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13417,7 +13417,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-dependabot-critical-alert",
 			Name:              "GitHub Critical Dependabot Alert",
-			Description:       "Detects failed policy evidence showing that github repository dependabot alert does not satisfy GitHub Critical Dependabot Alert. Repository has critical Dependabot security alert open for more than 7 days. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github repository dependabot alert: GitHub Critical Dependabot Alert. Repository has critical Dependabot security alert open for more than 7 days. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13457,7 +13457,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-dependabot-high-alert",
 			Name:              "GitHub High Dependabot Alert",
-			Description:       "Detects failed policy evidence showing that github repository dependabot alert does not satisfy GitHub High Dependabot Alert. Repository has high severity Dependabot security alert open for more than 14 days. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github repository dependabot alert: GitHub High Dependabot Alert. Repository has high severity Dependabot security alert open for more than 14 days. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13497,7 +13497,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-oidc-overly-permissive",
 			Name:              "GitHub Actions OIDC Overly Permissive",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy GitHub Actions OIDC Overly Permissive. AWS IAM role trust policy for GitHub OIDC allows any repository or branch. Risk: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
+			Description:       "Flags failed resource-state evidence for aws iam role: GitHub Actions OIDC Overly Permissive. AWS IAM role trust policy for GitHub OIDC allows any repository or branch. Audit impact: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13537,7 +13537,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-org-2fa-disabled",
 			Name:              "GitHub Organization 2FA Not Required",
-			Description:       "Detects failed policy evidence showing that github organization does not satisfy GitHub Organization 2FA Not Required. GitHub organization does not require two-factor authentication for all members. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github organization: GitHub Organization 2FA Not Required. GitHub organization does not require two-factor authentication for all members. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13577,7 +13577,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-org-workflow-permissions",
 			Name:              "GitHub Organization Default Workflow Permissions",
-			Description:       "Detects failed policy evidence showing that github organization does not satisfy GitHub Organization Default Workflow Permissions. Organization allows repositories to have default write permissions for GitHub Actions workflows. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github organization: GitHub Organization Default Workflow Permissions. Organization allows repositories to have default write permissions for GitHub Actions workflows. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13617,7 +13617,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-public-repo-branch-protection",
 			Name:              "GitHub Public Repository Without Branch Protection",
-			Description:       "Detects failed policy evidence showing that github repository does not satisfy GitHub Public Repository Without Branch Protection. Public repository does not have branch protection rules on the default branch. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github repository: GitHub Public Repository Without Branch Protection. Public repository does not have branch protection rules on the default branch. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13659,7 +13659,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-repo-branch-protection",
 			Name:              "GitHub Repository Branch Protection",
-			Description:       "Detects failed policy evidence showing that github repository does not satisfy GitHub Repository Branch Protection. GitHub repository default branch lacks branch protection rules. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github repository: GitHub Repository Branch Protection. GitHub repository default branch lacks branch protection rules. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13694,7 +13694,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-repo-internal-exposed",
 			Name:              "GitHub Internal Repository Made Public",
-			Description:       "Detects failed policy evidence showing that github repository does not satisfy GitHub Internal Repository Made Public. Repository appears to contain internal code but is publicly visible. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github repository: GitHub Internal Repository Made Public. Repository appears to contain internal code but is publicly visible. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13735,7 +13735,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-repo-secrets-exposure",
 			Name:              "GitHub Repository Secrets in Workflow Logs",
-			Description:       "Detects failed policy evidence showing that github workflow does not satisfy GitHub Repository Secrets in Workflow Logs. Repository workflow may expose secrets in logs through echo or debug statements. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github workflow: GitHub Repository Secrets in Workflow Logs. Repository workflow may expose secrets in logs through echo or debug statements. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13780,7 +13780,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-runner-group-scope",
 			Name:              "GitHub Runner Group with Broad Repository Access",
-			Description:       "Detects failed policy evidence showing that github runner group does not satisfy GitHub Runner Group with Broad Repository Access. Self-hosted runner group is accessible to all repositories or allows public repositories. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github runner group: GitHub Runner Group with Broad Repository Access. Self-hosted runner group is accessible to all repositories or allows public repositories. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13826,7 +13826,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-runner-public-repo",
 			Name:              "GitHub Self-Hosted Runner on Public Repository",
-			Description:       "Detects failed policy evidence showing that github runner does not satisfy GitHub Self-Hosted Runner on Public Repository. Self-hosted runner is configured on a public repository, allowing arbitrary code execution from external pull requests. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github runner: GitHub Self-Hosted Runner on Public Repository. Self-hosted runner is configured on a public repository, allowing arbitrary code execution from external pull requests. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13867,7 +13867,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-secret-scanning-alert",
 			Name:              "GitHub Secret Scanning Alert",
-			Description:       "Detects failed policy evidence showing that github secret scanning alert does not satisfy GitHub Secret Scanning Alert. Repository has exposed secret detected by GitHub secret scanning. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github secret scanning alert: GitHub Secret Scanning Alert. Repository has exposed secret detected by GitHub secret scanning. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13912,7 +13912,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-vuln-low",
 			Name:              "GitHub Repo Low Vulnerabilities Addressed",
-			Description:       "Detects failed policy evidence showing that github dependabot alerts does not satisfy GitHub Repo Low Vulnerabilities Addressed. Checks whether low vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (90 days). Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github dependabot alerts: GitHub Repo Low Vulnerabilities Addressed. Checks whether low vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (90 days). Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13948,7 +13948,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-vuln-medium",
 			Name:              "GitHub Repo Medium Vulnerabilities Addressed",
-			Description:       "Detects failed policy evidence showing that github dependabot alerts does not satisfy GitHub Repo Medium Vulnerabilities Addressed. Checks whether medium vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (30 days). Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github dependabot alerts: GitHub Repo Medium Vulnerabilities Addressed. Checks whether medium vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (30 days). Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -13986,7 +13986,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "github-workflow-write-permissions",
 			Name:              "GitHub Actions Default Write Permissions",
-			Description:       "Detects failed policy evidence showing that github repository does not satisfy GitHub Actions Default Write Permissions. Repository grants GitHub Actions workflows default write permissions, increasing blast radius of compromised workflows. Risk: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
+			Description:       "Flags failed resource-state evidence for github repository: GitHub Actions Default Write Permissions. Repository grants GitHub Actions workflows default write permissions, increasing blast radius of compromised workflows. Audit impact: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14026,7 +14026,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gitlab-runner-unprotected-tags",
 			Name:              "GitLab Runner Without Protected Tags",
-			Description:       "Detects failed policy evidence showing that gitlab runner does not satisfy GitLab Runner Without Protected Tags. GitLab runner accepts jobs without requiring protected tags. Risk: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
+			Description:       "Flags failed resource-state evidence for gitlab runner: GitLab Runner Without Protected Tags. GitLab runner accepts jobs without requiring protected tags. Audit impact: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14071,7 +14071,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gke-cluster-admin",
 			Name:              "GKE cluster-admin role is used by an account",
-			Description:       "Detects failed policy evidence showing that gcp gke cluster role binding or k8s rbac risky binding does not satisfy GKE cluster-admin role is used by an account. An account is using the cluster-admin role in GKE, granting full cluster control. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp gke cluster role binding or k8s rbac risky binding: GKE cluster-admin role is used by an account. An account is using the cluster-admin role in GKE, granting full cluster control. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14114,7 +14114,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gke-pod-create",
 			Name:              "GKE user/service accounts with the privileges to create pods",
-			Description:       "Detects failed policy evidence showing that gcp gke cluster role or gcp gke role or k8s rbac risky binding does not satisfy GKE user/service accounts with the privileges to create pods. An identity can create pods in GKE, which could be used for privilege escalation. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp gke cluster role or gcp gke role or k8s rbac risky binding: GKE user/service accounts with the privileges to create pods. An identity can create pods in GKE, which could be used for privilege escalation. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14154,7 +14154,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gke-secrets-access",
 			Name:              "User/service account with get/list/watch permissions on secrets in a GKE cluster",
-			Description:       "Detects failed policy evidence showing that gcp gke cluster role or gcp gke role or k8s rbac risky binding does not satisfy User/service account with get/list/watch permissions on secrets in a GKE cluster. An identity can read secrets across the GKE cluster. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp gke cluster role or gcp gke role or k8s rbac risky binding: User/service account with get/list/watch permissions on secrets in a GKE cluster. An identity can read secrets across the GKE cluster. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14192,7 +14192,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "gke-wildcard-permissions",
 			Name:              "GKE role/cluster role assigned permissions that contain wildcards",
-			Description:       "Detects failed policy evidence showing that gcp gke cluster role or gcp gke role or k8s rbac risky binding does not satisfy GKE role/cluster role assigned permissions that contain wildcards. A GKE role uses wildcard permissions which grant overly broad access. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp gke cluster role or gcp gke role or k8s rbac risky binding: GKE role/cluster role assigned permissions that contain wildcards. A GKE role uses wildcard permissions which grant overly broad access. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14232,7 +14232,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "group-excessive-admin",
 			Name:              "Group with excessive admin privileges",
-			Description:       "Detects failed policy evidence showing that iam group does not satisfy Group with excessive admin privileges. A group has excessive administrative privileges, affecting all members. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam group: Group with excessive admin privileges. A group has excessive administrative privileges, affecting all members. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14272,7 +14272,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "group-excessive-data-priv",
 			Name:              "Group with excessive data privileges",
-			Description:       "Detects failed policy evidence showing that iam group does not satisfy Group with excessive data privileges. A group has excessive data access privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam group: Group with excessive data privileges. A group has excessive data access privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14312,7 +14312,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "group-excessive-high-priv",
 			Name:              "Group with excessive high privileges",
-			Description:       "Detects failed policy evidence showing that iam group does not satisfy Group with excessive high privileges. A group has excessive high-level privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam group: Group with excessive high privileges. A group has excessive high-level privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14352,7 +14352,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hipaa-access-controls",
 			Name:              "HIPAA Unique User Identification",
-			Description:       "Detects failed policy evidence showing that user account does not satisfy HIPAA Unique User Identification. Checks whether unique user IDs for PHI system access (HIPAA 164.312(a)(2)(i)). Risk: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
+			Description:       "Flags failed query-result evidence for user account: HIPAA Unique User Identification. Checks whether unique user IDs for PHI system access (HIPAA 164.312(a)(2)(i)). Audit impact: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14386,7 +14386,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hipaa-audit-controls",
 			Name:              "HIPAA Audit Controls",
-			Description:       "Detects failed policy evidence showing that system does not satisfy HIPAA Audit Controls. Checks whether audit controls are implemented for PHI systems (HIPAA 164.312(b)). Risk: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
+			Description:       "Flags failed query-result evidence for system: HIPAA Audit Controls. Checks whether audit controls are implemented for PHI systems (HIPAA 164.312(b)). Audit impact: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14420,7 +14420,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hipaa-automatic-logoff",
 			Name:              "HIPAA Automatic Logoff",
-			Description:       "Detects failed policy evidence showing that system does not satisfy HIPAA Automatic Logoff. Checks whether automatic logoff is enabled for PHI systems after inactivity (HIPAA 164.312(a)(2)(iii)). Risk: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
+			Description:       "Flags failed query-result evidence for system: HIPAA Automatic Logoff. Checks whether automatic logoff is enabled for PHI systems after inactivity (HIPAA 164.312(a)(2)(iii)). Audit impact: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14454,7 +14454,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hipaa-baa-required",
 			Name:              "HIPAA Business Associate Agreements",
-			Description:       "Detects failed policy evidence showing that vendor does not satisfy HIPAA Business Associate Agreements. Checks whether Business Associate Agreements exist for vendors with PHI access (HIPAA 164.308(b)(1)). Risk: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
+			Description:       "Flags failed query-result evidence for vendor: HIPAA Business Associate Agreements. Checks whether Business Associate Agreements exist for vendors with PHI access (HIPAA 164.308(b)(1)). Audit impact: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14488,7 +14488,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hipaa-phi-encryption",
 			Name:              "PHI Data Encrypted at Rest",
-			Description:       "Detects failed policy evidence showing that database does not satisfy PHI Data Encrypted at Rest. Checks whether Protected Health Information is encrypted at rest (HIPAA 164.312(a)(2)(iv)). Risk: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
+			Description:       "Flags failed query-result evidence for database: PHI Data Encrypted at Rest. Checks whether Protected Health Information is encrypted at rest (HIPAA 164.312(a)(2)(iv)). Audit impact: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14522,7 +14522,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hipaa-transmission-security",
 			Name:              "HIPAA Transmission Security",
-			Description:       "Detects failed policy evidence showing that network endpoint does not satisfy HIPAA Transmission Security. Checks whether PHI is encrypted during transmission (HIPAA 164.312(e)(2)(ii)). Risk: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
+			Description:       "Flags failed query-result evidence for network endpoint: HIPAA Transmission Security. Checks whether PHI is encrypted during transmission (HIPAA 164.312(e)(2)(ii)). Audit impact: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14556,7 +14556,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hubspot-excessive-discount",
 			Name:              "Excessive Discount on Small Deal",
-			Description:       "Detects failed policy evidence showing that hubspot deal does not satisfy Excessive Discount on Small Deal. Flags unusually high discount percentages on lower-value deals. Risk: Customer, renewal, or revenue-process evidence may indicate an unmanaged operational control gap.",
+			Description:       "Flags failed resource-state evidence for hubspot deal: Excessive Discount on Small Deal. Flags unusually high discount percentages on lower-value deals. Audit impact: Customer, renewal, or revenue-process evidence may indicate an unmanaged operational control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14592,7 +14592,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hubspot-no-next-step",
 			Name:              "Open Deal Without Next Step",
-			Description:       "Detects failed policy evidence showing that hubspot deal does not satisfy Open Deal Without Next Step. Flags active deals missing a defined next-step field. Risk: Customer, renewal, or revenue-process evidence may indicate an unmanaged operational control gap.",
+			Description:       "Flags failed resource-state evidence for hubspot deal: Open Deal Without Next Step. Flags active deals missing a defined next-step field. Audit impact: Customer, renewal, or revenue-process evidence may indicate an unmanaged operational control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14627,7 +14627,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "hubspot-stale-deal",
 			Name:              "Stale High-Value Deal",
-			Description:       "Detects failed policy evidence showing that hubspot deal does not satisfy Stale High-Value Deal. Flags high-value open deals with no recent activity. Risk: Customer, renewal, or revenue-process evidence may indicate an unmanaged operational control gap.",
+			Description:       "Flags failed resource-state evidence for hubspot deal: Stale High-Value Deal. Flags high-value open deals with no recent activity. Audit impact: Customer, renewal, or revenue-process evidence may indicate an unmanaged operational control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14663,7 +14663,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "iam-inactive-privileged-account",
 			Name:              "Service account with high privileges is inactive for over 90 days",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy Service account with high privileges is inactive for over 90 days. An IAM role or service account with high privileges has not been used in over 90 days, indicating potential over-provisioning and creating unnecessary attack surface. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws iam role: Service account with high privileges is inactive for over 90 days. An IAM role or service account with high privileges has not been used in over 90 days, indicating potential over-provisioning and creating unnecessary attack surface. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14702,7 +14702,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "iam-unknown-account-trusted",
 			Name:              "Unknown AWS account with trusted access to IAM role",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy Unknown AWS account with trusted access to IAM role. An IAM role's trust policy allows assumption by an AWS account that is not part of the known organization, potentially enabling unauthorized cross-account access. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws iam role: Unknown AWS account with trusted access to IAM role. An IAM role's trust policy allows assumption by an AWS account that is not part of the known organization, potentially enabling unauthorized cross-account access. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14742,7 +14742,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-account-deprovision",
 			Name:              "Terminated User Accounts Deprovisioned",
-			Description:       "Detects failed policy evidence showing that identity user accounts does not satisfy Terminated User Accounts Deprovisioned. User accounts in cloud and SaaS systems should be deprovisioned within SLA when the associated employee is terminated in the HRIS. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for identity user accounts: Terminated User Accounts Deprovisioned. User accounts in cloud and SaaS systems should be deprovisioned within SLA when the associated employee is terminated in the HRIS. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14784,7 +14784,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-active-no-employee-record",
 			Name:              "Atlassian Active Accounts Without Employee Record",
-			Description:       "Detects active Atlassian accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for atlassian user: Atlassian Active Accounts Without Employee Record. Detects active Atlassian accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14819,7 +14819,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-duplicate-email",
 			Name:              "Atlassian Duplicate Account Emails",
-			Description:       "Detects duplicate active atlassian accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for atlassian user: Atlassian Duplicate Account Emails. Detects duplicate active atlassian accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14854,7 +14854,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-duplicate-group-name",
 			Name:              "Atlassian Duplicate Group Names",
-			Description:       "Detects duplicate group names in atlassian, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for atlassian group: Atlassian Duplicate Group Names. Detects duplicate group names in atlassian, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14889,7 +14889,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-duplicate-membership-assignment",
 			Name:              "Atlassian Duplicate Membership Assignments",
-			Description:       "Detects duplicate Atlassian group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for atlassian group membership: Atlassian Duplicate Membership Assignments. Detects duplicate Atlassian group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14924,7 +14924,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-empty-groups",
 			Name:              "Atlassian Empty Access Groups",
-			Description:       "Detects empty groups in atlassian that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for atlassian group: Atlassian Empty Access Groups. Detects empty groups in atlassian that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14959,7 +14959,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-missing-email",
 			Name:              "Atlassian Active Accounts Missing Email",
-			Description:       "Detects active atlassian accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for atlassian user: Atlassian Active Accounts Missing Email. Detects active atlassian accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -14994,7 +14994,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-personal-email-domain",
 			Name:              "Atlassian Accounts Using Personal Email Domains",
-			Description:       "Detects active atlassian accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for atlassian user: Atlassian Accounts Using Personal Email Domains. Detects active atlassian accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15029,7 +15029,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-privileged-personal-email",
 			Name:              "Atlassian Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged atlassian accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for atlassian user: Atlassian Privileged Accounts on Personal Email Domains. Detects privileged atlassian accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15064,7 +15064,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-atlassian-terminated-active-account",
 			Name:              "Atlassian Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in atlassian.",
+			Description:       "Flags failed query-result evidence for atlassian user: Atlassian Terminated Accounts Still Active. Detects terminated employees that still have active access in atlassian. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15099,7 +15099,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-active-no-employee-record",
 			Name:              "Auth0 Active Accounts Without Employee Record",
-			Description:       "Detects active Auth0 accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Active Accounts Without Employee Record. Detects active Auth0 accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15134,7 +15134,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-duplicate-email",
 			Name:              "Auth0 Duplicate Account Emails",
-			Description:       "Detects duplicate active auth0 accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Duplicate Account Emails. Detects duplicate active auth0 accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15169,7 +15169,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-missing-email",
 			Name:              "Auth0 Active Accounts Missing Email",
-			Description:       "Detects active auth0 accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Active Accounts Missing Email. Detects active auth0 accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15204,7 +15204,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-never-logged-in-30d",
 			Name:              "Auth0 Accounts Never Used After Provisioning",
-			Description:       "Detects active auth0 accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Accounts Never Used After Provisioning. Detects active auth0 accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15239,7 +15239,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-never-logged-in-90d",
 			Name:              "Auth0 Accounts Never Used (90 days)",
-			Description:       "Detects active Auth0 accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Accounts Never Used (90 days). Detects active Auth0 accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15274,7 +15274,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-personal-email-domain",
 			Name:              "Auth0 Accounts Using Personal Email Domains",
-			Description:       "Detects active auth0 accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Accounts Using Personal Email Domains. Detects active auth0 accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15309,7 +15309,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-stale-login-180d",
 			Name:              "Auth0 Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active auth0 accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Stale Active Accounts (180 days). Detects long-dormant active auth0 accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15344,7 +15344,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-stale-login-365d",
 			Name:              "Auth0 Stale Active Accounts (365 days)",
-			Description:       "Detects active Auth0 accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Stale Active Accounts (365 days). Detects active Auth0 accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15379,7 +15379,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-stale-login-90d",
 			Name:              "Auth0 Stale Active Accounts (90 days)",
-			Description:       "Detects active auth0 accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Stale Active Accounts (90 days). Detects active auth0 accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15414,7 +15414,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-auth0-terminated-active-account",
 			Name:              "Auth0 Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in auth0.",
+			Description:       "Flags failed query-result evidence for auth0 user: Auth0 Terminated Accounts Still Active. Detects terminated employees that still have active access in auth0. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15449,7 +15449,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-active-no-employee-record",
 			Name:              "Cyberark Active Accounts Without Employee Record",
-			Description:       "Detects active Cyberark accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for cyberark user: Cyberark Active Accounts Without Employee Record. Detects active Cyberark accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15484,7 +15484,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-deprovision",
 			Name:              "CyberArk Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that cyberark user does not satisfy CyberArk Accounts Deprovisioned on Termination. Checks whether CyberArk access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for cyberark user: CyberArk Accounts Deprovisioned on Termination. Checks whether CyberArk access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15519,7 +15519,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-duplicate-email",
 			Name:              "Cyberark Duplicate Account Emails",
-			Description:       "Detects duplicate active cyberark accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for cyberark user: Cyberark Duplicate Account Emails. Detects duplicate active cyberark accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15554,7 +15554,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-duplicate-group-name",
 			Name:              "Cyberark Duplicate Group Names",
-			Description:       "Detects duplicate group names in cyberark, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for cyberark group: Cyberark Duplicate Group Names. Detects duplicate group names in cyberark, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15589,7 +15589,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-duplicate-membership-assignment",
 			Name:              "Cyberark Duplicate Membership Assignments",
-			Description:       "Detects duplicate Cyberark group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for cyberark group membership: Cyberark Duplicate Membership Assignments. Detects duplicate Cyberark group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15624,7 +15624,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-duplicate-username",
 			Name:              "Cyberark Duplicate Usernames",
-			Description:       "Detects active Cyberark identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for cyberark user: Cyberark Duplicate Usernames. Detects active Cyberark identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15659,7 +15659,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-empty-groups",
 			Name:              "Cyberark Empty Access Groups",
-			Description:       "Detects empty groups in cyberark that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for cyberark group: Cyberark Empty Access Groups. Detects empty groups in cyberark that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15694,7 +15694,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-group-description-missing",
 			Name:              "Cyberark Groups Missing Description",
-			Description:       "Detects cyberark groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for cyberark group: Cyberark Groups Missing Description. Detects cyberark groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15729,7 +15729,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-membership-inactive-user",
 			Name:              "Cyberark Memberships With Inactive Users",
-			Description:       "Detects Cyberark group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for cyberark group membership: Cyberark Memberships With Inactive Users. Detects Cyberark group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15764,7 +15764,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-membership-personal-email-domain",
 			Name:              "Cyberark Memberships Using Personal Email Domains",
-			Description:       "Detects Cyberark group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for cyberark group membership: Cyberark Memberships Using Personal Email Domains. Detects Cyberark group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15799,7 +15799,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-missing-email",
 			Name:              "Cyberark Active Accounts Missing Email",
-			Description:       "Detects active cyberark accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for cyberark user: Cyberark Active Accounts Missing Email. Detects active cyberark accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15834,7 +15834,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-orphaned-membership-group",
 			Name:              "Cyberark Memberships With Missing Groups",
-			Description:       "Detects orphaned cyberark memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for cyberark group membership: Cyberark Memberships With Missing Groups. Detects orphaned cyberark memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15869,7 +15869,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-orphaned-membership-user",
 			Name:              "Cyberark Group Memberships With Missing Users",
-			Description:       "Detects orphaned cyberark group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for cyberark group membership: Cyberark Group Memberships With Missing Users. Detects orphaned cyberark group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15904,7 +15904,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-personal-email-domain",
 			Name:              "Cyberark Accounts Using Personal Email Domains",
-			Description:       "Detects active cyberark accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for cyberark user: Cyberark Accounts Using Personal Email Domains. Detects active cyberark accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15939,7 +15939,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-cyberark-terminated-active-account",
 			Name:              "Cyberark Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in cyberark.",
+			Description:       "Flags failed query-result evidence for cyberark user: Cyberark Terminated Accounts Still Active. Detects terminated employees that still have active access in cyberark. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -15974,7 +15974,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-active-no-employee-record",
 			Name:              "Duo Active Accounts Without Employee Record",
-			Description:       "Detects active Duo accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Active Accounts Without Employee Record. Detects active Duo accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16009,7 +16009,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-deprovision",
 			Name:              "Duo Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that duo user does not satisfy Duo Accounts Deprovisioned on Termination. Checks whether Duo access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Accounts Deprovisioned on Termination. Checks whether Duo access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16044,7 +16044,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-duplicate-email",
 			Name:              "Duo Duplicate Account Emails",
-			Description:       "Detects duplicate active duo accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Duplicate Account Emails. Detects duplicate active duo accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16079,7 +16079,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-duplicate-group-name",
 			Name:              "Duo Duplicate Group Names",
-			Description:       "Detects duplicate group names in duo, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for duo group: Duo Duplicate Group Names. Detects duplicate group names in duo, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16114,7 +16114,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-duplicate-membership-assignment",
 			Name:              "Duo Duplicate Membership Assignments",
-			Description:       "Detects duplicate Duo group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for duo group membership: Duo Duplicate Membership Assignments. Detects duplicate Duo group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16149,7 +16149,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-duplicate-username",
 			Name:              "Duo Duplicate Usernames",
-			Description:       "Detects active Duo identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Duplicate Usernames. Detects active Duo identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16184,7 +16184,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-empty-groups",
 			Name:              "Duo Empty Access Groups",
-			Description:       "Detects empty groups in duo that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for duo group: Duo Empty Access Groups. Detects empty groups in duo that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16219,7 +16219,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-group-description-missing",
 			Name:              "Duo Groups Missing Description",
-			Description:       "Detects duo groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for duo group: Duo Groups Missing Description. Detects duo groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16254,7 +16254,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-membership-inactive-user",
 			Name:              "Duo Memberships With Inactive Users",
-			Description:       "Detects Duo group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for duo group membership: Duo Memberships With Inactive Users. Detects Duo group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16289,7 +16289,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-missing-email",
 			Name:              "Duo Active Accounts Missing Email",
-			Description:       "Detects active duo accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Active Accounts Missing Email. Detects active duo accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16324,7 +16324,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-never-logged-in-30d",
 			Name:              "Duo Accounts Never Used After Provisioning",
-			Description:       "Detects active duo accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Accounts Never Used After Provisioning. Detects active duo accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16359,7 +16359,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-never-logged-in-90d",
 			Name:              "Duo Accounts Never Used (90 days)",
-			Description:       "Detects active Duo accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Accounts Never Used (90 days). Detects active Duo accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16394,7 +16394,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-orphaned-membership-group",
 			Name:              "Duo Memberships With Missing Groups",
-			Description:       "Detects orphaned duo memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for duo group membership: Duo Memberships With Missing Groups. Detects orphaned duo memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16429,7 +16429,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-orphaned-membership-user",
 			Name:              "Duo Group Memberships With Missing Users",
-			Description:       "Detects orphaned duo group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for duo group membership: Duo Group Memberships With Missing Users. Detects orphaned duo group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16464,7 +16464,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-personal-email-domain",
 			Name:              "Duo Accounts Using Personal Email Domains",
-			Description:       "Detects active duo accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Accounts Using Personal Email Domains. Detects active duo accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16499,7 +16499,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-stale-login-180d",
 			Name:              "Duo Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active duo accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Stale Active Accounts (180 days). Detects long-dormant active duo accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16534,7 +16534,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-stale-login-365d",
 			Name:              "Duo Stale Active Accounts (365 days)",
-			Description:       "Detects active Duo accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Stale Active Accounts (365 days). Detects active Duo accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16569,7 +16569,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-stale-login-90d",
 			Name:              "Duo Stale Active Accounts (90 days)",
-			Description:       "Detects active duo accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Stale Active Accounts (90 days). Detects active duo accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16604,7 +16604,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-duo-terminated-active-account",
 			Name:              "Duo Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in duo.",
+			Description:       "Flags failed query-result evidence for duo user: Duo Terminated Accounts Still Active. Detects terminated employees that still have active access in duo. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16639,7 +16639,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-active-no-employee-record",
 			Name:              "Entra ID Active Accounts Without Employee Record",
-			Description:       "Detects active Entra ID accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for entra user: Entra ID Active Accounts Without Employee Record. Detects active Entra ID accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16674,7 +16674,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-duplicate-email",
 			Name:              "Entra Duplicate Account Emails",
-			Description:       "Detects duplicate active entra accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Duplicate Account Emails. Detects duplicate active entra accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16709,7 +16709,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-duplicate-group-name",
 			Name:              "Entra Duplicate Group Names",
-			Description:       "Detects duplicate group names in entra, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for entra group: Entra Duplicate Group Names. Detects duplicate group names in entra, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16744,7 +16744,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-duplicate-username",
 			Name:              "Entra ID Duplicate Usernames",
-			Description:       "Detects active Entra ID identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for entra user: Entra ID Duplicate Usernames. Detects active Entra ID identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16779,7 +16779,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-group-description-missing",
 			Name:              "Entra Groups Missing Description",
-			Description:       "Detects entra groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for entra group: Entra Groups Missing Description. Detects entra groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16814,7 +16814,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-mfa-missing-active",
 			Name:              "Entra Active Accounts Without MFA",
-			Description:       "Detects active entra accounts that do not meet MFA requirements.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Active Accounts Without MFA. Detects active entra accounts that do not meet MFA requirements. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16849,7 +16849,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-missing-email",
 			Name:              "Entra Active Accounts Missing Email",
-			Description:       "Detects active entra accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Active Accounts Missing Email. Detects active entra accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16884,7 +16884,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-never-logged-in-30d",
 			Name:              "Entra Accounts Never Used After Provisioning",
-			Description:       "Detects active entra accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Accounts Never Used After Provisioning. Detects active entra accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16919,7 +16919,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-never-logged-in-90d",
 			Name:              "Entra ID Accounts Never Used (90 days)",
-			Description:       "Detects active Entra ID accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for entra user: Entra ID Accounts Never Used (90 days). Detects active Entra ID accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16954,7 +16954,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-personal-email-domain",
 			Name:              "Entra Accounts Using Personal Email Domains",
-			Description:       "Detects active entra accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Accounts Using Personal Email Domains. Detects active entra accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -16989,7 +16989,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-privileged-no-mfa",
 			Name:              "Entra Privileged Accounts Without MFA",
-			Description:       "Detects privileged entra accounts missing MFA protections.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Privileged Accounts Without MFA. Detects privileged entra accounts missing MFA protections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17024,7 +17024,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-privileged-personal-email",
 			Name:              "Entra Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged entra accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Privileged Accounts on Personal Email Domains. Detects privileged entra accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17059,7 +17059,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-privileged-recently-created-7d",
 			Name:              "Entra ID Newly Created Privileged Accounts",
-			Description:       "Detects privileged Entra ID accounts created in the last 7 days for expedited review.",
+			Description:       "Flags failed query-result evidence for entra user: Entra ID Newly Created Privileged Accounts. Detects privileged Entra ID accounts created in the last 7 days for expedited review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17094,7 +17094,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-privileged-stale-login-30d",
 			Name:              "Entra Privileged Accounts Stale (30 days)",
-			Description:       "Detects privileged entra accounts with stale login activity.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Privileged Accounts Stale (30 days). Detects privileged entra accounts with stale login activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17129,7 +17129,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-risky-active-no-employee-record",
 			Name:              "Entra Risky Users Active Accounts Without Employee Record",
-			Description:       "Detects active Entra Risky Users accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for entra risky user: Entra Risky Users Active Accounts Without Employee Record. Detects active Entra Risky Users accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17164,7 +17164,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-risky-duplicate-email",
 			Name:              "Entra Risky Duplicate Account Emails",
-			Description:       "Detects duplicate active entra_risky accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for entra risky user: Entra Risky Duplicate Account Emails. Detects duplicate active entra_risky accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17199,7 +17199,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-risky-duplicate-username",
 			Name:              "Entra Risky Users Duplicate Usernames",
-			Description:       "Detects active Entra Risky Users identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for entra risky user: Entra Risky Users Duplicate Usernames. Detects active Entra Risky Users identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17234,7 +17234,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-risky-missing-email",
 			Name:              "Entra Risky Active Accounts Missing Email",
-			Description:       "Detects active entra_risky accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for entra risky user: Entra Risky Active Accounts Missing Email. Detects active entra_risky accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17269,7 +17269,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-risky-personal-email-domain",
 			Name:              "Entra Risky Accounts Using Personal Email Domains",
-			Description:       "Detects active entra_risky accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for entra risky user: Entra Risky Accounts Using Personal Email Domains. Detects active entra_risky accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17304,7 +17304,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-risky-terminated-active-account",
 			Name:              "Entra Risky Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in entra_risky.",
+			Description:       "Flags failed query-result evidence for entra risky user: Entra Risky Terminated Accounts Still Active. Detects terminated employees that still have active access in entra_risky. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17339,7 +17339,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-stale-login-180d",
 			Name:              "Entra Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active entra accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Stale Active Accounts (180 days). Detects long-dormant active entra accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17374,7 +17374,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-stale-login-365d",
 			Name:              "Entra ID Stale Active Accounts (365 days)",
-			Description:       "Detects active Entra ID accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for entra user: Entra ID Stale Active Accounts (365 days). Detects active Entra ID accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17409,7 +17409,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-stale-login-90d",
 			Name:              "Entra Stale Active Accounts (90 days)",
-			Description:       "Detects active entra accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Stale Active Accounts (90 days). Detects active entra accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17444,7 +17444,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-entra-terminated-active-account",
 			Name:              "Entra Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in entra.",
+			Description:       "Flags failed query-result evidence for entra user: Entra Terminated Accounts Still Active. Detects terminated employees that still have active access in entra. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17479,7 +17479,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-active-no-employee-record",
 			Name:              "ForgeRock Active Accounts Without Employee Record",
-			Description:       "Detects active ForgeRock accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for forgerock user: ForgeRock Active Accounts Without Employee Record. Detects active ForgeRock accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17514,7 +17514,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-deprovision",
 			Name:              "ForgeRock Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that forgerock user does not satisfy ForgeRock Accounts Deprovisioned on Termination. Checks whether ForgeRock access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for forgerock user: ForgeRock Accounts Deprovisioned on Termination. Checks whether ForgeRock access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17549,7 +17549,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-duplicate-email",
 			Name:              "Forgerock Duplicate Account Emails",
-			Description:       "Detects duplicate active forgerock accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for forgerock user: Forgerock Duplicate Account Emails. Detects duplicate active forgerock accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17584,7 +17584,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-duplicate-group-name",
 			Name:              "Forgerock Duplicate Group Names",
-			Description:       "Detects duplicate group names in forgerock, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for forgerock group: Forgerock Duplicate Group Names. Detects duplicate group names in forgerock, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17619,7 +17619,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-duplicate-membership-assignment",
 			Name:              "ForgeRock Duplicate Membership Assignments",
-			Description:       "Detects duplicate ForgeRock group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for forgerock group membership: ForgeRock Duplicate Membership Assignments. Detects duplicate ForgeRock group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17654,7 +17654,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-duplicate-username",
 			Name:              "ForgeRock Duplicate Usernames",
-			Description:       "Detects active ForgeRock identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for forgerock user: ForgeRock Duplicate Usernames. Detects active ForgeRock identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17689,7 +17689,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-empty-groups",
 			Name:              "Forgerock Empty Access Groups",
-			Description:       "Detects empty groups in forgerock that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for forgerock group: Forgerock Empty Access Groups. Detects empty groups in forgerock that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17724,7 +17724,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-group-description-missing",
 			Name:              "Forgerock Groups Missing Description",
-			Description:       "Detects forgerock groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for forgerock group: Forgerock Groups Missing Description. Detects forgerock groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17759,7 +17759,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-membership-inactive-user",
 			Name:              "ForgeRock Memberships With Inactive Users",
-			Description:       "Detects ForgeRock group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for forgerock group membership: ForgeRock Memberships With Inactive Users. Detects ForgeRock group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17794,7 +17794,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-membership-personal-email-domain",
 			Name:              "ForgeRock Memberships Using Personal Email Domains",
-			Description:       "Detects ForgeRock group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for forgerock group membership: ForgeRock Memberships Using Personal Email Domains. Detects ForgeRock group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17829,7 +17829,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-missing-email",
 			Name:              "Forgerock Active Accounts Missing Email",
-			Description:       "Detects active forgerock accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for forgerock user: Forgerock Active Accounts Missing Email. Detects active forgerock accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17864,7 +17864,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-orphaned-membership-group",
 			Name:              "Forgerock Memberships With Missing Groups",
-			Description:       "Detects orphaned forgerock memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for forgerock group membership: Forgerock Memberships With Missing Groups. Detects orphaned forgerock memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17899,7 +17899,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-orphaned-membership-user",
 			Name:              "Forgerock Group Memberships With Missing Users",
-			Description:       "Detects orphaned forgerock group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for forgerock group membership: Forgerock Group Memberships With Missing Users. Detects orphaned forgerock group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17934,7 +17934,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-personal-email-domain",
 			Name:              "Forgerock Accounts Using Personal Email Domains",
-			Description:       "Detects active forgerock accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for forgerock user: Forgerock Accounts Using Personal Email Domains. Detects active forgerock accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -17969,7 +17969,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-forgerock-terminated-active-account",
 			Name:              "Forgerock Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in forgerock.",
+			Description:       "Flags failed query-result evidence for forgerock user: Forgerock Terminated Accounts Still Active. Detects terminated employees that still have active access in forgerock. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18004,7 +18004,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-active-no-employee-record",
 			Name:              "GitHub Active Accounts Without Employee Record",
-			Description:       "Detects active GitHub accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for github organization member: GitHub Active Accounts Without Employee Record. Detects active GitHub accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18039,7 +18039,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-deprovision",
 			Name:              "GitHub Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that github user does not satisfy GitHub Accounts Deprovisioned on Termination. Checks whether GitHub organization access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for github user: GitHub Accounts Deprovisioned on Termination. Checks whether GitHub organization access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18074,7 +18074,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-duplicate-email",
 			Name:              "Github Duplicate Account Emails",
-			Description:       "Detects duplicate active github accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for github organization member: Github Duplicate Account Emails. Detects duplicate active github accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18109,7 +18109,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-duplicate-username",
 			Name:              "GitHub Duplicate Usernames",
-			Description:       "Detects active GitHub identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for github organization member: GitHub Duplicate Usernames. Detects active GitHub identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18144,7 +18144,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-member-mfa",
 			Name:              "GitHub Members Without MFA",
-			Description:       "Detects active GitHub organization members that do not have MFA enabled.",
+			Description:       "Flags failed query-result evidence for github organization member: GitHub Members Without MFA. Detects active GitHub organization members that do not have MFA enabled. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18179,7 +18179,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-mfa-missing-active",
 			Name:              "Github Active Accounts Without MFA",
-			Description:       "Detects active github accounts that do not meet MFA requirements.",
+			Description:       "Flags failed query-result evidence for github organization member: Github Active Accounts Without MFA. Detects active github accounts that do not meet MFA requirements. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18214,7 +18214,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-missing-email",
 			Name:              "Github Active Accounts Missing Email",
-			Description:       "Detects active github accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for github organization member: Github Active Accounts Missing Email. Detects active github accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18249,7 +18249,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-personal-email-domain",
 			Name:              "Github Accounts Using Personal Email Domains",
-			Description:       "Detects active github accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for github organization member: Github Accounts Using Personal Email Domains. Detects active github accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18284,7 +18284,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-privileged-no-mfa",
 			Name:              "Github Privileged Accounts Without MFA",
-			Description:       "Detects privileged github accounts missing MFA protections.",
+			Description:       "Flags failed query-result evidence for github organization member: Github Privileged Accounts Without MFA. Detects privileged github accounts missing MFA protections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18319,7 +18319,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-privileged-personal-email",
 			Name:              "Github Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged github accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for github organization member: Github Privileged Accounts on Personal Email Domains. Detects privileged github accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18354,7 +18354,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-runner-duplicate-group-name",
 			Name:              "Github Runner Duplicate Group Names",
-			Description:       "Detects duplicate group names in github_runner, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for github runner group: Github Runner Duplicate Group Names. Detects duplicate group names in github_runner, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18389,7 +18389,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-github-terminated-active-account",
 			Name:              "Github Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in github.",
+			Description:       "Flags failed query-result evidence for github organization member: Github Terminated Accounts Still Active. Detects terminated employees that still have active access in github. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18424,7 +18424,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-gong-active-no-employee-record",
 			Name:              "Gong Active Accounts Without Employee Record",
-			Description:       "Detects active Gong accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for gong user: Gong Active Accounts Without Employee Record. Detects active Gong accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18459,7 +18459,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-gong-duplicate-email",
 			Name:              "Gong Duplicate Account Emails",
-			Description:       "Detects duplicate active gong accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for gong user: Gong Duplicate Account Emails. Detects duplicate active gong accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18494,7 +18494,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-gong-missing-email",
 			Name:              "Gong Active Accounts Missing Email",
-			Description:       "Detects active gong accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for gong user: Gong Active Accounts Missing Email. Detects active gong accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18529,7 +18529,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-gong-personal-email-domain",
 			Name:              "Gong Accounts Using Personal Email Domains",
-			Description:       "Detects active gong accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for gong user: Gong Accounts Using Personal Email Domains. Detects active gong accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18564,7 +18564,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-gong-terminated-active-account",
 			Name:              "Gong Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in gong.",
+			Description:       "Flags failed query-result evidence for gong user: Gong Terminated Accounts Still Active. Detects terminated employees that still have active access in gong. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18599,7 +18599,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-active-no-employee-record",
 			Name:              "Google Workspace Active Accounts Without Employee Record",
-			Description:       "Detects active Google Workspace accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Active Accounts Without Employee Record. Detects active Google Workspace accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18634,7 +18634,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-admin-mfa",
 			Name:              "Google Workspace Admin MFA Enforced",
-			Description:       "Detects failed policy evidence showing that google workspace user does not satisfy Google Workspace Admin MFA Enforced. Checks whether Google Workspace admin users are enrolled in and enforced on 2-Step Verification. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Admin MFA Enforced. Checks whether Google Workspace admin users are enrolled in and enforced on 2-Step Verification. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18669,7 +18669,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-duplicate-email",
 			Name:              "Google Workspace Duplicate Account Emails",
-			Description:       "Detects duplicate active google_workspace accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Duplicate Account Emails. Detects duplicate active google_workspace accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18704,7 +18704,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-duplicate-group-name",
 			Name:              "Google Workspace Duplicate Group Names",
-			Description:       "Detects duplicate group names in google_workspace, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for google workspace group: Google Workspace Duplicate Group Names. Detects duplicate group names in google_workspace, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18739,7 +18739,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-duplicate-membership-assignment",
 			Name:              "Google Workspace Duplicate Membership Assignments",
-			Description:       "Detects duplicate Google Workspace group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for google workspace group member: Google Workspace Duplicate Membership Assignments. Detects duplicate Google Workspace group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18774,7 +18774,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-empty-groups",
 			Name:              "Google Workspace Empty Access Groups",
-			Description:       "Detects empty groups in google_workspace that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for google workspace group: Google Workspace Empty Access Groups. Detects empty groups in google_workspace that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18809,7 +18809,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-group-description-missing",
 			Name:              "Google Workspace Groups Missing Description",
-			Description:       "Detects google_workspace groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for google workspace group: Google Workspace Groups Missing Description. Detects google_workspace groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18844,7 +18844,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-group-personal-email-domain",
 			Name:              "Google Workspace Groups Using Personal Email Domains",
-			Description:       "Detects Google Workspace groups configured with personal email domains.",
+			Description:       "Flags failed query-result evidence for google workspace group: Google Workspace Groups Using Personal Email Domains. Detects Google Workspace groups configured with personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18879,7 +18879,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-membership-personal-email-domain",
 			Name:              "Google Workspace Memberships Using Personal Email Domains",
-			Description:       "Detects Google Workspace group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for google workspace group member: Google Workspace Memberships Using Personal Email Domains. Detects Google Workspace group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18914,7 +18914,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-mfa",
 			Name:              "Google Workspace MFA Enforced",
-			Description:       "Detects failed policy evidence showing that google workspace users does not satisfy Google Workspace MFA Enforced. Checks whether all Google Workspace users have MFA enabled. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for google workspace users: Google Workspace MFA Enforced. Checks whether all Google Workspace users have MFA enabled. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18951,7 +18951,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-mfa-missing-active",
 			Name:              "Google Workspace Active Accounts Without MFA",
-			Description:       "Detects active google_workspace accounts that do not meet MFA requirements.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Active Accounts Without MFA. Detects active google_workspace accounts that do not meet MFA requirements. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -18986,7 +18986,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-missing-email",
 			Name:              "Google Workspace Active Accounts Missing Email",
-			Description:       "Detects active google_workspace accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Active Accounts Missing Email. Detects active google_workspace accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19021,7 +19021,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-never-logged-in-30d",
 			Name:              "Google Workspace Accounts Never Used After Provisioning",
-			Description:       "Detects active google_workspace accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Accounts Never Used After Provisioning. Detects active google_workspace accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19056,7 +19056,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-never-logged-in-90d",
 			Name:              "Google Workspace Accounts Never Used (90 days)",
-			Description:       "Detects active Google Workspace accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Accounts Never Used (90 days). Detects active Google Workspace accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19091,7 +19091,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-orphaned-membership-group",
 			Name:              "Google Workspace Memberships With Missing Groups",
-			Description:       "Detects orphaned google_workspace memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for google workspace group member: Google Workspace Memberships With Missing Groups. Detects orphaned google_workspace memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19126,7 +19126,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-personal-email-domain",
 			Name:              "Google Workspace Accounts Using Personal Email Domains",
-			Description:       "Detects active google_workspace accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Accounts Using Personal Email Domains. Detects active google_workspace accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19161,7 +19161,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-privileged-no-mfa",
 			Name:              "Google Workspace Privileged Accounts Without MFA",
-			Description:       "Detects privileged google_workspace accounts missing MFA protections.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Privileged Accounts Without MFA. Detects privileged google_workspace accounts missing MFA protections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19196,7 +19196,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-privileged-personal-email",
 			Name:              "Google Workspace Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged google_workspace accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Privileged Accounts on Personal Email Domains. Detects privileged google_workspace accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19231,7 +19231,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-privileged-recently-created-7d",
 			Name:              "Google Workspace Newly Created Privileged Accounts",
-			Description:       "Detects privileged Google Workspace accounts created in the last 7 days for expedited review.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Newly Created Privileged Accounts. Detects privileged Google Workspace accounts created in the last 7 days for expedited review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19266,7 +19266,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-privileged-stale-login-30d",
 			Name:              "Google Workspace Privileged Accounts Stale (30 days)",
-			Description:       "Detects privileged google_workspace accounts with stale login activity.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Privileged Accounts Stale (30 days). Detects privileged google_workspace accounts with stale login activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19301,7 +19301,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-stale-login-180d",
 			Name:              "Google Workspace Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active google_workspace accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Stale Active Accounts (180 days). Detects long-dormant active google_workspace accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19336,7 +19336,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-stale-login-365d",
 			Name:              "Google Workspace Stale Active Accounts (365 days)",
-			Description:       "Detects active Google Workspace accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Stale Active Accounts (365 days). Detects active Google Workspace accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19371,7 +19371,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-stale-login-90d",
 			Name:              "Google Workspace Stale Active Accounts (90 days)",
-			Description:       "Detects active google_workspace accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Stale Active Accounts (90 days). Detects active google_workspace accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19406,7 +19406,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-google-workspace-terminated-active-account",
 			Name:              "Google Workspace Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in google_workspace.",
+			Description:       "Flags failed query-result evidence for google workspace user: Google Workspace Terminated Accounts Still Active. Detects terminated employees that still have active access in google_workspace. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19441,7 +19441,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jamf-active-no-employee-record",
 			Name:              "Jamf Active Accounts Without Employee Record",
-			Description:       "Detects active Jamf accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for jamf user: Jamf Active Accounts Without Employee Record. Detects active Jamf accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19476,7 +19476,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jamf-duplicate-email",
 			Name:              "Jamf Duplicate Account Emails",
-			Description:       "Detects duplicate active jamf accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for jamf user: Jamf Duplicate Account Emails. Detects duplicate active jamf accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19511,7 +19511,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jamf-missing-email",
 			Name:              "Jamf Active Accounts Missing Email",
-			Description:       "Detects active jamf accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for jamf user: Jamf Active Accounts Missing Email. Detects active jamf accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19546,7 +19546,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jamf-personal-email-domain",
 			Name:              "Jamf Accounts Using Personal Email Domains",
-			Description:       "Detects active jamf accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for jamf user: Jamf Accounts Using Personal Email Domains. Detects active jamf accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19581,7 +19581,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jamf-privileged-personal-email",
 			Name:              "Jamf Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged jamf accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for jamf user: Jamf Privileged Accounts on Personal Email Domains. Detects privileged jamf accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19616,7 +19616,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jamf-terminated-active-account",
 			Name:              "Jamf Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in jamf.",
+			Description:       "Flags failed query-result evidence for jamf user: Jamf Terminated Accounts Still Active. Detects terminated employees that still have active access in jamf. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19651,7 +19651,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-active-no-employee-record",
 			Name:              "JumpCloud Active Accounts Without Employee Record",
-			Description:       "Detects active JumpCloud accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: JumpCloud Active Accounts Without Employee Record. Detects active JumpCloud accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19686,7 +19686,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-deprovision",
 			Name:              "JumpCloud Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that jumpcloud user does not satisfy JumpCloud Accounts Deprovisioned on Termination. Checks whether JumpCloud access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: JumpCloud Accounts Deprovisioned on Termination. Checks whether JumpCloud access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19721,7 +19721,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-duplicate-email",
 			Name:              "Jumpcloud Duplicate Account Emails",
-			Description:       "Detects duplicate active jumpcloud accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: Jumpcloud Duplicate Account Emails. Detects duplicate active jumpcloud accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19756,7 +19756,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-duplicate-group-name",
 			Name:              "Jumpcloud Duplicate Group Names",
-			Description:       "Detects duplicate group names in jumpcloud, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for jumpcloud group: Jumpcloud Duplicate Group Names. Detects duplicate group names in jumpcloud, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19791,7 +19791,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-duplicate-membership-assignment",
 			Name:              "JumpCloud Duplicate Membership Assignments",
-			Description:       "Detects duplicate JumpCloud group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for jumpcloud group membership: JumpCloud Duplicate Membership Assignments. Detects duplicate JumpCloud group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19826,7 +19826,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-duplicate-username",
 			Name:              "JumpCloud Duplicate Usernames",
-			Description:       "Detects active JumpCloud identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: JumpCloud Duplicate Usernames. Detects active JumpCloud identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19861,7 +19861,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-empty-groups",
 			Name:              "Jumpcloud Empty Access Groups",
-			Description:       "Detects empty groups in jumpcloud that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for jumpcloud group: Jumpcloud Empty Access Groups. Detects empty groups in jumpcloud that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19896,7 +19896,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-group-description-missing",
 			Name:              "Jumpcloud Groups Missing Description",
-			Description:       "Detects jumpcloud groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for jumpcloud group: Jumpcloud Groups Missing Description. Detects jumpcloud groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19931,7 +19931,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-group-personal-email-domain",
 			Name:              "JumpCloud Groups Using Personal Email Domains",
-			Description:       "Detects JumpCloud groups configured with personal email domains.",
+			Description:       "Flags failed query-result evidence for jumpcloud group: JumpCloud Groups Using Personal Email Domains. Detects JumpCloud groups configured with personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -19966,7 +19966,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-membership-inactive-user",
 			Name:              "JumpCloud Memberships With Inactive Users",
-			Description:       "Detects JumpCloud group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for jumpcloud group membership: JumpCloud Memberships With Inactive Users. Detects JumpCloud group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20001,7 +20001,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-membership-personal-email-domain",
 			Name:              "JumpCloud Memberships Using Personal Email Domains",
-			Description:       "Detects JumpCloud group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for jumpcloud group membership: JumpCloud Memberships Using Personal Email Domains. Detects JumpCloud group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20036,7 +20036,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-mfa",
 			Name:              "JumpCloud Active Users Without MFA",
-			Description:       "Detects active JumpCloud users that do not have MFA enabled.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: JumpCloud Active Users Without MFA. Detects active JumpCloud users that do not have MFA enabled. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20071,7 +20071,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-mfa-missing-active",
 			Name:              "Jumpcloud Active Accounts Without MFA",
-			Description:       "Detects active jumpcloud accounts that do not meet MFA requirements.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: Jumpcloud Active Accounts Without MFA. Detects active jumpcloud accounts that do not meet MFA requirements. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20106,7 +20106,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-missing-email",
 			Name:              "Jumpcloud Active Accounts Missing Email",
-			Description:       "Detects active jumpcloud accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: Jumpcloud Active Accounts Missing Email. Detects active jumpcloud accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20141,7 +20141,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-orphaned-membership-group",
 			Name:              "Jumpcloud Memberships With Missing Groups",
-			Description:       "Detects orphaned jumpcloud memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for jumpcloud group membership: Jumpcloud Memberships With Missing Groups. Detects orphaned jumpcloud memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20176,7 +20176,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-orphaned-membership-user",
 			Name:              "Jumpcloud Group Memberships With Missing Users",
-			Description:       "Detects orphaned jumpcloud group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for jumpcloud group membership: Jumpcloud Group Memberships With Missing Users. Detects orphaned jumpcloud group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20211,7 +20211,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-personal-email-domain",
 			Name:              "Jumpcloud Accounts Using Personal Email Domains",
-			Description:       "Detects active jumpcloud accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: Jumpcloud Accounts Using Personal Email Domains. Detects active jumpcloud accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20246,7 +20246,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-jumpcloud-terminated-active-account",
 			Name:              "Jumpcloud Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in jumpcloud.",
+			Description:       "Flags failed query-result evidence for jumpcloud user: Jumpcloud Terminated Accounts Still Active. Detects terminated employees that still have active access in jumpcloud. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20281,7 +20281,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kandji-active-no-employee-record",
 			Name:              "Kandji Active Accounts Without Employee Record",
-			Description:       "Detects active Kandji accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for kandji user: Kandji Active Accounts Without Employee Record. Detects active Kandji accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20316,7 +20316,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kandji-duplicate-email",
 			Name:              "Kandji Duplicate Account Emails",
-			Description:       "Detects duplicate active kandji accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for kandji user: Kandji Duplicate Account Emails. Detects duplicate active kandji accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20351,7 +20351,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kandji-missing-email",
 			Name:              "Kandji Active Accounts Missing Email",
-			Description:       "Detects active kandji accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for kandji user: Kandji Active Accounts Missing Email. Detects active kandji accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20386,7 +20386,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kandji-personal-email-domain",
 			Name:              "Kandji Accounts Using Personal Email Domains",
-			Description:       "Detects active kandji accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for kandji user: Kandji Accounts Using Personal Email Domains. Detects active kandji accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20421,7 +20421,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kandji-privileged-personal-email",
 			Name:              "Kandji Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged kandji accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for kandji user: Kandji Privileged Accounts on Personal Email Domains. Detects privileged kandji accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20456,7 +20456,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kandji-privileged-recently-created-7d",
 			Name:              "Kandji Newly Created Privileged Accounts",
-			Description:       "Detects privileged Kandji accounts created in the last 7 days for expedited review.",
+			Description:       "Flags failed query-result evidence for kandji user: Kandji Newly Created Privileged Accounts. Detects privileged Kandji accounts created in the last 7 days for expedited review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20491,7 +20491,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kandji-terminated-active-account",
 			Name:              "Kandji Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in kandji.",
+			Description:       "Flags failed query-result evidence for kandji user: Kandji Terminated Accounts Still Active. Detects terminated employees that still have active access in kandji. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20526,7 +20526,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-active-no-employee-record",
 			Name:              "Kolide Active Accounts Without Employee Record",
-			Description:       "Detects active Kolide accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Active Accounts Without Employee Record. Detects active Kolide accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20561,7 +20561,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-duplicate-email",
 			Name:              "Kolide Duplicate Account Emails",
-			Description:       "Detects duplicate active kolide accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Duplicate Account Emails. Detects duplicate active kolide accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20596,7 +20596,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-missing-email",
 			Name:              "Kolide Active Accounts Missing Email",
-			Description:       "Detects active kolide accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Active Accounts Missing Email. Detects active kolide accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20631,7 +20631,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-personal-email-domain",
 			Name:              "Kolide Accounts Using Personal Email Domains",
-			Description:       "Detects active kolide accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Accounts Using Personal Email Domains. Detects active kolide accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20666,7 +20666,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-privileged-personal-email",
 			Name:              "Kolide Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged kolide accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Privileged Accounts on Personal Email Domains. Detects privileged kolide accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20701,7 +20701,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-privileged-stale-login-30d",
 			Name:              "Kolide Privileged Accounts Stale (30 days)",
-			Description:       "Detects privileged kolide accounts with stale login activity.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Privileged Accounts Stale (30 days). Detects privileged kolide accounts with stale login activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20736,7 +20736,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-stale-login-180d",
 			Name:              "Kolide Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active kolide accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Stale Active Accounts (180 days). Detects long-dormant active kolide accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20771,7 +20771,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-stale-login-365d",
 			Name:              "Kolide Stale Active Accounts (365 days)",
-			Description:       "Detects active Kolide accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Stale Active Accounts (365 days). Detects active Kolide accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20806,7 +20806,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-stale-login-90d",
 			Name:              "Kolide Stale Active Accounts (90 days)",
-			Description:       "Detects active kolide accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Stale Active Accounts (90 days). Detects active kolide accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20841,7 +20841,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-kolide-terminated-active-account",
 			Name:              "Kolide Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in kolide.",
+			Description:       "Flags failed query-result evidence for kolide user: Kolide Terminated Accounts Still Active. Detects terminated employees that still have active access in kolide. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20876,7 +20876,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-offboarding-sla",
 			Name:              "Offboarding Completed Within SLA",
-			Description:       "Detects failed policy evidence showing that hris terminations does not satisfy Offboarding Completed Within SLA. Employee offboarding should be completed within the defined SLA (typically 24-72 hours) after termination date. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for hris terminations: Offboarding Completed Within SLA. Employee offboarding should be completed within the defined SLA (typically 24-72 hours) after termination date. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20915,7 +20915,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-office365-deprovision",
 			Name:              "Office 365 Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that entra user does not satisfy Office 365 Accounts Deprovisioned on Termination. Checks whether Office 365 access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for entra user: Office 365 Accounts Deprovisioned on Termination. Checks whether Office 365 access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20950,7 +20950,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-account-lock-events-24h",
 			Name:              "Okta Repeated Account Lock Events (24 hours)",
-			Description:       "Detects repeated Okta account lock events that can indicate brute-force, password-spray, or credential stuffing activity.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Repeated Account Lock Events (24 hours). Detects repeated Okta account lock events that can indicate brute-force, password-spray, or credential stuffing activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -20985,7 +20985,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-active-no-employee-record",
 			Name:              "Okta Active Accounts Without Employee Record",
-			Description:       "Detects active Okta accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Active Accounts Without Employee Record. Detects active Okta accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21020,7 +21020,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-admin-mfa",
 			Name:              "Okta Admin Accounts Without MFA",
-			Description:       "Detects active Okta admin users that are not enrolled in MFA.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Admin Accounts Without MFA. Detects active Okta admin users that are not enrolled in MFA. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21055,7 +21055,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-admin-no-mfa-granular",
 			Name:              "Okta Admin Role Assignments Without MFA",
-			Description:       "Detects active users with specific Okta admin role assignments who are not enrolled in MFA.",
+			Description:       "Flags failed query-result evidence for okta admin role: Okta Admin Role Assignments Without MFA. Detects active users with specific Okta admin role assignments who are not enrolled in MFA. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21090,7 +21090,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-admin-plus-app-owner",
 			Name:              "Okta Admin with App-Owner-Like Access",
-			Description:       "Detects users who hold Okta admin roles and also have user app assignments that appear owner/admin scoped.",
+			Description:       "Flags failed query-result evidence for okta admin role: Okta Admin with App-Owner-Like Access. Detects users who hold Okta admin roles and also have user app assignments that appear owner/admin scoped. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21125,7 +21125,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-admin-privilege-grant-events-30d",
 			Name:              "Okta Admin Privilege Grant Events (30 days)",
-			Description:       "Detects recent Okta administrator privilege grants to users or groups, aligned with public Elastic and Panther persistence detections.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Admin Privilege Grant Events (30 days). Detects recent Okta administrator privilege grants to users or groups, aligned with public Elastic and Panther persistence detections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21160,7 +21160,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-api-token-created-30d",
 			Name:              "Okta API Token Created (30 days)",
-			Description:       "Detects successful API token creation events in Okta system logs, aligned with public Panther detections.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta API Token Created (30 days). Detects successful API token creation events in Okta system logs, aligned with public Panther detections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21195,7 +21195,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-api-token-revoked-30d",
 			Name:              "Okta API Token Revoked (30 days)",
-			Description:       "Detects successful API token revocation events in Okta system logs, useful for tracking sensitive credential lifecycle changes.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta API Token Revoked (30 days). Detects successful API token revocation events in Okta system logs, useful for tracking sensitive credential lifecycle changes. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21230,7 +21230,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-app-access-without-assignment",
 			Name:              "Okta App Access Without Assignment",
-			Description:       "Detects users authenticating to Okta applications without an active direct or group assignment.",
+			Description:       "Flags failed query-result evidence for okta app assignment: Okta App Access Without Assignment. Detects users authenticating to Okta applications without an active direct or group assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21265,7 +21265,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-application-lifecycle-tampering-30d",
 			Name:              "Okta Application Lifecycle Tampering (30 days)",
-			Description:       "Detects successful Okta application update, deactivate, or delete events that can disrupt access or weaken controls.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Application Lifecycle Tampering (30 days). Detects successful Okta application update, deactivate, or delete events that can disrupt access or weaken controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21300,7 +21300,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-duplicate-email",
 			Name:              "Okta Duplicate Account Emails",
-			Description:       "Detects duplicate active okta accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Duplicate Account Emails. Detects duplicate active okta accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21335,7 +21335,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-duplicate-group-name",
 			Name:              "Okta Duplicate Group Names",
-			Description:       "Detects duplicate group names in okta, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for okta group: Okta Duplicate Group Names. Detects duplicate group names in okta, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21370,7 +21370,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-duplicate-username",
 			Name:              "Okta Duplicate Usernames",
-			Description:       "Detects active Okta identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Duplicate Usernames. Detects active Okta identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21405,7 +21405,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-external-user-internal-app",
 			Name:              "External-Domain User Assigned Internal Okta App",
-			Description:       "Detects active users on external personal domains assigned to non-test Okta applications.",
+			Description:       "Flags failed query-result evidence for okta app assignment: External-Domain User Assigned Internal Okta App. Detects active users on external personal domains assigned to non-test Okta applications. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21440,7 +21440,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-group-description-missing",
 			Name:              "Okta Groups Missing Description",
-			Description:       "Detects okta groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for okta group: Okta Groups Missing Description. Detects okta groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21475,7 +21475,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-group-grants-admin-app",
 			Name:              "Okta Group Grants Admin-Like Application Access",
-			Description:       "Detects Okta groups that are assigned to applications with admin-like names.",
+			Description:       "Flags failed query-result evidence for okta app assignment: Okta Group Grants Admin-Like Application Access. Detects Okta groups that are assigned to applications with admin-like names. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21510,7 +21510,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-idp-lifecycle-changes-30d",
 			Name:              "Okta Identity Provider Lifecycle Changes (30 days)",
-			Description:       "Detects identity provider lifecycle create/update/activate/deactivate/delete events in Okta, aligned with public Panther detections.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Identity Provider Lifecycle Changes (30 days). Detects identity provider lifecycle create/update/activate/deactivate/delete events in Okta, aligned with public Panther detections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21545,7 +21545,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-mfa-factor-reset-events-30d",
 			Name:              "Okta MFA Factor Reset/Suspend Events (30 days)",
-			Description:       "Detects MFA reset or suspension actions in Okta system logs, aligned with public Okta persistence detections.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta MFA Factor Reset/Suspend Events (30 days). Detects MFA reset or suspension actions in Okta system logs, aligned with public Okta persistence detections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21580,7 +21580,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-mfa-missing-active",
 			Name:              "Okta Active Accounts Without MFA",
-			Description:       "Detects active okta accounts that do not meet MFA requirements.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Active Accounts Without MFA. Detects active okta accounts that do not meet MFA requirements. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21615,7 +21615,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-missing-email",
 			Name:              "Okta Active Accounts Missing Email",
-			Description:       "Detects active okta accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Active Accounts Missing Email. Detects active okta accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21650,7 +21650,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-network-zone-deactivation-30d",
 			Name:              "Okta Network Zone Deactivation (30 days)",
-			Description:       "Detects successful Okta network zone deactivation events that can weaken geo/IP-based access restrictions.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Network Zone Deactivation (30 days). Detects successful Okta network zone deactivation events that can weaken geo/IP-based access restrictions. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21685,7 +21685,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-network-zone-delete-events-30d",
 			Name:              "Okta Network Zone Deletion Events (30 days)",
-			Description:       "Detects successful Okta network zone deletion events that can remove geo/IP-based access restrictions.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Network Zone Deletion Events (30 days). Detects successful Okta network zone deletion events that can remove geo/IP-based access restrictions. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21720,7 +21720,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-network-zone-modify-events-30d",
 			Name:              "Okta Network Zone Modification Events (30 days)",
-			Description:       "Detects successful Okta network zone modification events that can weaken IP/geolocation controls.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Network Zone Modification Events (30 days). Detects successful Okta network zone modification events that can weaken IP/geolocation controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21755,7 +21755,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-never-logged-in-30d",
 			Name:              "Okta Accounts Never Used After Provisioning",
-			Description:       "Detects active okta accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Accounts Never Used After Provisioning. Detects active okta accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21790,7 +21790,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-never-logged-in-90d",
 			Name:              "Okta Accounts Never Used (90 days)",
-			Description:       "Detects active Okta accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Accounts Never Used (90 days). Detects active Okta accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21825,7 +21825,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-org2org-lifecycle-change-30d",
 			Name:              "Okta Org2Org Application Lifecycle Change (30 days)",
-			Description:       "Detects create/update/activate lifecycle changes to Org2Org applications in Okta, aligned with public Panther detections.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Org2Org Application Lifecycle Change (30 days). Detects create/update/activate lifecycle changes to Org2Org applications in Okta, aligned with public Panther detections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21860,7 +21860,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-password-reset-or-unlock-attempt-spike-24h",
 			Name:              "Okta Password Reset or Unlock Attempt Spike (24 hours)",
-			Description:       "Detects repeated Okta password-reset or account-unlock attempts that can indicate account recovery abuse.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Password Reset or Unlock Attempt Spike (24 hours). Detects repeated Okta password-reset or account-unlock attempts that can indicate account recovery abuse. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21895,7 +21895,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-password-view-events-30d",
 			Name:              "Okta Password View Events (30 days)",
-			Description:       "Detects password view events in Okta system logs, aligned with public Panther detections for password access activity.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Password View Events (30 days). Detects password view events in Okta system logs, aligned with public Panther detections for password access activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21930,7 +21930,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-personal-email-domain",
 			Name:              "Okta Accounts Using Personal Email Domains",
-			Description:       "Detects active okta accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Accounts Using Personal Email Domains. Detects active okta accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -21965,7 +21965,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-policy-lifecycle-tampering-30d",
 			Name:              "Okta Policy Lifecycle Tampering (30 days)",
-			Description:       "Detects successful Okta policy update, deactivate, or delete events that may weaken authentication and access controls.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Policy Lifecycle Tampering (30 days). Detects successful Okta policy update, deactivate, or delete events that may weaken authentication and access controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22000,7 +22000,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-policy-rule-lifecycle-tampering-30d",
 			Name:              "Okta Policy Rule Lifecycle Tampering (30 days)",
-			Description:       "Detects successful Okta policy rule update, deactivate, or delete events that can reduce enforcement strength.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Policy Rule Lifecycle Tampering (30 days). Detects successful Okta policy rule update, deactivate, or delete events that can reduce enforcement strength. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22035,7 +22035,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-possible-dos-attack-1h",
 			Name:              "Okta Possible DoS Attack Signals (1 hour)",
-			Description:       "Detects concentrated Okta rate-limit warning/violation events that may indicate denial-of-service activity.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Possible DoS Attack Signals (1 hour). Detects concentrated Okta rate-limit warning/violation events that may indicate denial-of-service activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22070,7 +22070,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-privileged-no-mfa",
 			Name:              "Okta Privileged Accounts Without MFA",
-			Description:       "Detects privileged okta accounts missing MFA protections.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Privileged Accounts Without MFA. Detects privileged okta accounts missing MFA protections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22105,7 +22105,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-privileged-personal-email",
 			Name:              "Okta Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged okta accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Privileged Accounts on Personal Email Domains. Detects privileged okta accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22140,7 +22140,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-privileged-recently-created-7d",
 			Name:              "Okta Newly Created Privileged Accounts",
-			Description:       "Detects privileged Okta accounts created in the last 7 days for expedited review.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Newly Created Privileged Accounts. Detects privileged Okta accounts created in the last 7 days for expedited review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22175,7 +22175,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-privileged-stale-login-30d",
 			Name:              "Okta Privileged Accounts Stale (30 days)",
-			Description:       "Detects privileged okta accounts with stale login activity.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Privileged Accounts Stale (30 days). Detects privileged okta accounts with stale login activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22210,7 +22210,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-rate-limit-violations-24h",
 			Name:              "Okta Rate-Limit Violation Spike (24 hours)",
-			Description:       "Detects repeated Okta rate-limit violation events that can indicate abusive traffic or credential attack activity.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Rate-Limit Violation Spike (24 hours). Detects repeated Okta rate-limit violation events that can indicate abusive traffic or credential attack activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22245,7 +22245,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-stale-app-assignment-30d",
 			Name:              "Okta Stale App Assignment (30 days)",
-			Description:       "Detects active Okta user-to-app assignments with no observed app usage in the last 30 days.",
+			Description:       "Flags failed query-result evidence for okta app assignment: Okta Stale App Assignment (30 days). Detects active Okta user-to-app assignments with no observed app usage in the last 30 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22280,7 +22280,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-stale-app-assignment-90d",
 			Name:              "Okta Stale App Assignment (90 days)",
-			Description:       "Detects active Okta user-to-app assignments with no observed app usage in the last 90 days.",
+			Description:       "Flags failed query-result evidence for okta app assignment: Okta Stale App Assignment (90 days). Detects active Okta user-to-app assignments with no observed app usage in the last 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22315,7 +22315,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-stale-group-membership-90d",
 			Name:              "Okta Stale Group Membership (90 days)",
-			Description:       "Detects active Okta group memberships for users with no recent login activity in 90 days.",
+			Description:       "Flags failed query-result evidence for okta group membership: Okta Stale Group Membership (90 days). Detects active Okta group memberships for users with no recent login activity in 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22350,7 +22350,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-stale-login-180d",
 			Name:              "Okta Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active okta accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Stale Active Accounts (180 days). Detects long-dormant active okta accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22385,7 +22385,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-stale-login-365d",
 			Name:              "Okta Stale Active Accounts (365 days)",
-			Description:       "Detects active Okta accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Stale Active Accounts (365 days). Detects active Okta accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22420,7 +22420,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-stale-login-90d",
 			Name:              "Okta Stale Active Accounts (90 days)",
-			Description:       "Detects active okta accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Stale Active Accounts (90 days). Detects active okta accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22455,7 +22455,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-superadmin-count",
 			Name:              "Excessive Okta Super Admins",
-			Description:       "Detects failed policy evidence showing that okta admin role does not satisfy Excessive Okta Super Admins. Identifies when more than 5 users are assigned Okta Super Admin roles. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for okta admin role: Excessive Okta Super Admins. Identifies when more than 5 users are assigned Okta Super Admin roles. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22490,7 +22490,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-support-session-impersonation-30d",
 			Name:              "Okta Support Session Impersonation Events (30 days)",
-			Description:       "Detects support impersonation grant/initiation events in Okta, aligned with public Panther detections.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Support Session Impersonation Events (30 days). Detects support impersonation grant/initiation events in Okta, aligned with public Panther detections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22525,7 +22525,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-terminated-active-account",
 			Name:              "Okta Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in okta.",
+			Description:       "Flags failed query-result evidence for okta user: Okta Terminated Accounts Still Active. Detects terminated employees that still have active access in okta. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22560,7 +22560,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-threatinsight-detected-30d",
 			Name:              "Okta ThreatInsight Suspected Threats Not Blocked (30 days)",
-			Description:       "Detects Okta ThreatInsight threat-detected events where suspicious activity was not explicitly denied or blocked.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta ThreatInsight Suspected Threats Not Blocked (30 days). Detects Okta ThreatInsight threat-detected events where suspicious activity was not explicitly denied or blocked. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22595,7 +22595,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-unauthorized-app-access-attempts-7d",
 			Name:              "Okta Repeated Unauthorized App Access Attempts (7 days)",
-			Description:       "Detects users with repeated unauthorized Okta application access attempts, aligned with public Okta detections in Elastic and Panther.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta Repeated Unauthorized App Access Attempts (7 days). Detects users with repeated unauthorized Okta application access attempts, aligned with public Okta detections in Elastic and Panther. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22630,7 +22630,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-okta-user-reported-suspicious-activity-30d",
 			Name:              "Okta User Reported Suspicious Activity (30 days)",
-			Description:       "Detects user-reported suspicious activity events in Okta, aligned with public Okta detections.",
+			Description:       "Flags failed query-result evidence for okta system log: Okta User Reported Suspicious Activity (30 days). Detects user-reported suspicious activity events in Okta, aligned with public Okta detections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22665,7 +22665,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-active-no-employee-record",
 			Name:              "OneLogin Active Accounts Without Employee Record",
-			Description:       "Detects active OneLogin accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for onelogin user: OneLogin Active Accounts Without Employee Record. Detects active OneLogin accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22700,7 +22700,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-duplicate-email",
 			Name:              "Onelogin Duplicate Account Emails",
-			Description:       "Detects duplicate active onelogin accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for onelogin user: Onelogin Duplicate Account Emails. Detects duplicate active onelogin accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22735,7 +22735,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-duplicate-username",
 			Name:              "OneLogin Duplicate Usernames",
-			Description:       "Detects active OneLogin identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for onelogin user: OneLogin Duplicate Usernames. Detects active OneLogin identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22770,7 +22770,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-missing-email",
 			Name:              "Onelogin Active Accounts Missing Email",
-			Description:       "Detects active onelogin accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for onelogin user: Onelogin Active Accounts Missing Email. Detects active onelogin accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22805,7 +22805,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-never-logged-in-30d",
 			Name:              "Onelogin Accounts Never Used After Provisioning",
-			Description:       "Detects active onelogin accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for onelogin user: Onelogin Accounts Never Used After Provisioning. Detects active onelogin accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22840,7 +22840,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-never-logged-in-90d",
 			Name:              "OneLogin Accounts Never Used (90 days)",
-			Description:       "Detects active OneLogin accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for onelogin user: OneLogin Accounts Never Used (90 days). Detects active OneLogin accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22875,7 +22875,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-personal-email-domain",
 			Name:              "Onelogin Accounts Using Personal Email Domains",
-			Description:       "Detects active onelogin accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for onelogin user: Onelogin Accounts Using Personal Email Domains. Detects active onelogin accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22910,7 +22910,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-stale-login-180d",
 			Name:              "Onelogin Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active onelogin accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for onelogin user: Onelogin Stale Active Accounts (180 days). Detects long-dormant active onelogin accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22945,7 +22945,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-stale-login-365d",
 			Name:              "OneLogin Stale Active Accounts (365 days)",
-			Description:       "Detects active OneLogin accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for onelogin user: OneLogin Stale Active Accounts (365 days). Detects active OneLogin accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -22980,7 +22980,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-stale-login-90d",
 			Name:              "Onelogin Stale Active Accounts (90 days)",
-			Description:       "Detects active onelogin accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for onelogin user: Onelogin Stale Active Accounts (90 days). Detects active onelogin accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23015,7 +23015,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-onelogin-terminated-active-account",
 			Name:              "Onelogin Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in onelogin.",
+			Description:       "Flags failed query-result evidence for onelogin user: Onelogin Terminated Accounts Still Active. Detects terminated employees that still have active access in onelogin. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23050,7 +23050,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-active-no-employee-record",
 			Name:              "Oracle IDCS Active Accounts Without Employee Record",
-			Description:       "Detects active Oracle IDCS accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for oracle idcs user: Oracle IDCS Active Accounts Without Employee Record. Detects active Oracle IDCS accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23085,7 +23085,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-deprovision",
 			Name:              "Oracle IDCS Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that oracle idcs user does not satisfy Oracle IDCS Accounts Deprovisioned on Termination. Checks whether Oracle IDCS access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for oracle idcs user: Oracle IDCS Accounts Deprovisioned on Termination. Checks whether Oracle IDCS access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23120,7 +23120,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-duplicate-email",
 			Name:              "Oracle Idcs Duplicate Account Emails",
-			Description:       "Detects duplicate active oracle_idcs accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for oracle idcs user: Oracle Idcs Duplicate Account Emails. Detects duplicate active oracle_idcs accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23155,7 +23155,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-duplicate-group-name",
 			Name:              "Oracle Idcs Duplicate Group Names",
-			Description:       "Detects duplicate group names in oracle_idcs, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for oracle idcs group: Oracle Idcs Duplicate Group Names. Detects duplicate group names in oracle_idcs, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23190,7 +23190,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-duplicate-membership-assignment",
 			Name:              "Oracle IDCS Duplicate Membership Assignments",
-			Description:       "Detects duplicate Oracle IDCS group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for oracle idcs group membership: Oracle IDCS Duplicate Membership Assignments. Detects duplicate Oracle IDCS group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23225,7 +23225,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-duplicate-username",
 			Name:              "Oracle IDCS Duplicate Usernames",
-			Description:       "Detects active Oracle IDCS identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for oracle idcs user: Oracle IDCS Duplicate Usernames. Detects active Oracle IDCS identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23260,7 +23260,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-empty-groups",
 			Name:              "Oracle Idcs Empty Access Groups",
-			Description:       "Detects empty groups in oracle_idcs that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for oracle idcs group: Oracle Idcs Empty Access Groups. Detects empty groups in oracle_idcs that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23295,7 +23295,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-group-description-missing",
 			Name:              "Oracle Idcs Groups Missing Description",
-			Description:       "Detects oracle_idcs groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for oracle idcs group: Oracle Idcs Groups Missing Description. Detects oracle_idcs groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23330,7 +23330,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-membership-inactive-user",
 			Name:              "Oracle IDCS Memberships With Inactive Users",
-			Description:       "Detects Oracle IDCS group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for oracle idcs group membership: Oracle IDCS Memberships With Inactive Users. Detects Oracle IDCS group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23365,7 +23365,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-membership-personal-email-domain",
 			Name:              "Oracle IDCS Memberships Using Personal Email Domains",
-			Description:       "Detects Oracle IDCS group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for oracle idcs group membership: Oracle IDCS Memberships Using Personal Email Domains. Detects Oracle IDCS group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23400,7 +23400,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-missing-email",
 			Name:              "Oracle Idcs Active Accounts Missing Email",
-			Description:       "Detects active oracle_idcs accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for oracle idcs user: Oracle Idcs Active Accounts Missing Email. Detects active oracle_idcs accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23435,7 +23435,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-orphaned-membership-group",
 			Name:              "Oracle Idcs Memberships With Missing Groups",
-			Description:       "Detects orphaned oracle_idcs memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for oracle idcs group membership: Oracle Idcs Memberships With Missing Groups. Detects orphaned oracle_idcs memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23470,7 +23470,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-orphaned-membership-user",
 			Name:              "Oracle Idcs Group Memberships With Missing Users",
-			Description:       "Detects orphaned oracle_idcs group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for oracle idcs group membership: Oracle Idcs Group Memberships With Missing Users. Detects orphaned oracle_idcs group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23505,7 +23505,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-personal-email-domain",
 			Name:              "Oracle Idcs Accounts Using Personal Email Domains",
-			Description:       "Detects active oracle_idcs accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for oracle idcs user: Oracle Idcs Accounts Using Personal Email Domains. Detects active oracle_idcs accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23540,7 +23540,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-oracle-idcs-terminated-active-account",
 			Name:              "Oracle Idcs Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in oracle_idcs.",
+			Description:       "Flags failed query-result evidence for oracle idcs user: Oracle Idcs Terminated Accounts Still Active. Detects terminated employees that still have active access in oracle_idcs. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23575,7 +23575,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-panther-active-no-employee-record",
 			Name:              "Panther Active Accounts Without Employee Record",
-			Description:       "Detects active Panther accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for panther user: Panther Active Accounts Without Employee Record. Detects active Panther accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23610,7 +23610,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-panther-duplicate-email",
 			Name:              "Panther Duplicate Account Emails",
-			Description:       "Detects duplicate active panther accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for panther user: Panther Duplicate Account Emails. Detects duplicate active panther accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23645,7 +23645,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-panther-missing-email",
 			Name:              "Panther Active Accounts Missing Email",
-			Description:       "Detects active panther accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for panther user: Panther Active Accounts Missing Email. Detects active panther accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23680,7 +23680,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-panther-personal-email-domain",
 			Name:              "Panther Accounts Using Personal Email Domains",
-			Description:       "Detects active panther accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for panther user: Panther Accounts Using Personal Email Domains. Detects active panther accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23715,7 +23715,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-panther-privileged-personal-email",
 			Name:              "Panther Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged panther accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for panther user: Panther Privileged Accounts on Personal Email Domains. Detects privileged panther accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23750,7 +23750,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-panther-privileged-recently-created-7d",
 			Name:              "Panther Newly Created Privileged Accounts",
-			Description:       "Detects privileged Panther accounts created in the last 7 days for expedited review.",
+			Description:       "Flags failed query-result evidence for panther user: Panther Newly Created Privileged Accounts. Detects privileged Panther accounts created in the last 7 days for expedited review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23785,7 +23785,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-panther-terminated-active-account",
 			Name:              "Panther Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in panther.",
+			Description:       "Flags failed query-result evidence for panther user: Panther Terminated Accounts Still Active. Detects terminated employees that still have active access in panther. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23820,7 +23820,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-active-no-employee-record",
 			Name:              "PingIdentity Active Accounts Without Employee Record",
-			Description:       "Detects active PingIdentity accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for pingidentity user: PingIdentity Active Accounts Without Employee Record. Detects active PingIdentity accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23855,7 +23855,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-deprovision",
 			Name:              "PingIdentity Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that pingidentity user does not satisfy PingIdentity Accounts Deprovisioned on Termination. Checks whether PingIdentity access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for pingidentity user: PingIdentity Accounts Deprovisioned on Termination. Checks whether PingIdentity access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23890,7 +23890,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-duplicate-email",
 			Name:              "Pingidentity Duplicate Account Emails",
-			Description:       "Detects duplicate active pingidentity accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for pingidentity user: Pingidentity Duplicate Account Emails. Detects duplicate active pingidentity accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23925,7 +23925,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-duplicate-group-name",
 			Name:              "Pingidentity Duplicate Group Names",
-			Description:       "Detects duplicate group names in pingidentity, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for pingidentity group: Pingidentity Duplicate Group Names. Detects duplicate group names in pingidentity, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23960,7 +23960,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-duplicate-membership-assignment",
 			Name:              "PingIdentity Duplicate Membership Assignments",
-			Description:       "Detects duplicate PingIdentity group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for pingidentity group membership: PingIdentity Duplicate Membership Assignments. Detects duplicate PingIdentity group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -23995,7 +23995,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-duplicate-username",
 			Name:              "PingIdentity Duplicate Usernames",
-			Description:       "Detects active PingIdentity identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for pingidentity user: PingIdentity Duplicate Usernames. Detects active PingIdentity identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24030,7 +24030,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-empty-groups",
 			Name:              "Pingidentity Empty Access Groups",
-			Description:       "Detects empty groups in pingidentity that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for pingidentity group: Pingidentity Empty Access Groups. Detects empty groups in pingidentity that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24065,7 +24065,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-group-description-missing",
 			Name:              "Pingidentity Groups Missing Description",
-			Description:       "Detects pingidentity groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for pingidentity group: Pingidentity Groups Missing Description. Detects pingidentity groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24100,7 +24100,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-membership-inactive-user",
 			Name:              "PingIdentity Memberships With Inactive Users",
-			Description:       "Detects PingIdentity group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for pingidentity group membership: PingIdentity Memberships With Inactive Users. Detects PingIdentity group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24135,7 +24135,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-membership-personal-email-domain",
 			Name:              "PingIdentity Memberships Using Personal Email Domains",
-			Description:       "Detects PingIdentity group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for pingidentity group membership: PingIdentity Memberships Using Personal Email Domains. Detects PingIdentity group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24170,7 +24170,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-missing-email",
 			Name:              "Pingidentity Active Accounts Missing Email",
-			Description:       "Detects active pingidentity accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for pingidentity user: Pingidentity Active Accounts Missing Email. Detects active pingidentity accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24205,7 +24205,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-never-logged-in-30d",
 			Name:              "Pingidentity Accounts Never Used After Provisioning",
-			Description:       "Detects active pingidentity accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for pingidentity user: Pingidentity Accounts Never Used After Provisioning. Detects active pingidentity accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24240,7 +24240,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-never-logged-in-90d",
 			Name:              "PingIdentity Accounts Never Used (90 days)",
-			Description:       "Detects active PingIdentity accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for pingidentity user: PingIdentity Accounts Never Used (90 days). Detects active PingIdentity accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24275,7 +24275,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-orphaned-membership-group",
 			Name:              "Pingidentity Memberships With Missing Groups",
-			Description:       "Detects orphaned pingidentity memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for pingidentity group membership: Pingidentity Memberships With Missing Groups. Detects orphaned pingidentity memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24310,7 +24310,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-orphaned-membership-user",
 			Name:              "Pingidentity Group Memberships With Missing Users",
-			Description:       "Detects orphaned pingidentity group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for pingidentity group membership: Pingidentity Group Memberships With Missing Users. Detects orphaned pingidentity group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24345,7 +24345,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-personal-email-domain",
 			Name:              "Pingidentity Accounts Using Personal Email Domains",
-			Description:       "Detects active pingidentity accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for pingidentity user: Pingidentity Accounts Using Personal Email Domains. Detects active pingidentity accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24380,7 +24380,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-stale-login-180d",
 			Name:              "Pingidentity Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active pingidentity accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for pingidentity user: Pingidentity Stale Active Accounts (180 days). Detects long-dormant active pingidentity accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24415,7 +24415,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-stale-login-365d",
 			Name:              "PingIdentity Stale Active Accounts (365 days)",
-			Description:       "Detects active PingIdentity accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for pingidentity user: PingIdentity Stale Active Accounts (365 days). Detects active PingIdentity accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24450,7 +24450,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-stale-login-90d",
 			Name:              "Pingidentity Stale Active Accounts (90 days)",
-			Description:       "Detects active pingidentity accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for pingidentity user: Pingidentity Stale Active Accounts (90 days). Detects active pingidentity accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24485,7 +24485,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-pingidentity-terminated-active-account",
 			Name:              "Pingidentity Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in pingidentity.",
+			Description:       "Flags failed query-result evidence for pingidentity user: Pingidentity Terminated Accounts Still Active. Detects terminated employees that still have active access in pingidentity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24520,7 +24520,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-ramp-active-no-employee-record",
 			Name:              "Ramp Active Accounts Without Employee Record",
-			Description:       "Detects active Ramp accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for ramp user: Ramp Active Accounts Without Employee Record. Detects active Ramp accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24555,7 +24555,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-ramp-duplicate-email",
 			Name:              "Ramp Duplicate Account Emails",
-			Description:       "Detects duplicate active ramp accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for ramp user: Ramp Duplicate Account Emails. Detects duplicate active ramp accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24590,7 +24590,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-ramp-missing-email",
 			Name:              "Ramp Active Accounts Missing Email",
-			Description:       "Detects active ramp accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for ramp user: Ramp Active Accounts Missing Email. Detects active ramp accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24625,7 +24625,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-ramp-personal-email-domain",
 			Name:              "Ramp Accounts Using Personal Email Domains",
-			Description:       "Detects active ramp accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for ramp user: Ramp Accounts Using Personal Email Domains. Detects active ramp accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24660,7 +24660,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-ramp-privileged-personal-email",
 			Name:              "Ramp Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged ramp accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for ramp user: Ramp Privileged Accounts on Personal Email Domains. Detects privileged ramp accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24695,7 +24695,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-ramp-terminated-active-account",
 			Name:              "Ramp Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in ramp.",
+			Description:       "Flags failed query-result evidence for ramp user: Ramp Terminated Accounts Still Active. Detects terminated employees that still have active access in ramp. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24730,7 +24730,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saas-mfa-enforced",
 			Name:              "MFA Enforced on SaaS Applications",
-			Description:       "Detects failed policy evidence showing that identity user accounts does not satisfy MFA Enforced on SaaS Applications. All users should have MFA enabled on critical SaaS applications including identity providers, email, and collaboration tools. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for identity user accounts: MFA Enforced on SaaS Applications. All users should have MFA enabled on critical SaaS applications including identity providers, email, and collaboration tools. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24771,7 +24771,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-active-no-employee-record",
 			Name:              "SailPoint Active Accounts Without Employee Record",
-			Description:       "Detects active SailPoint accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for sailpoint user: SailPoint Active Accounts Without Employee Record. Detects active SailPoint accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24806,7 +24806,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-deprovision",
 			Name:              "SailPoint Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that sailpoint user does not satisfy SailPoint Accounts Deprovisioned on Termination. Checks whether SailPoint access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for sailpoint user: SailPoint Accounts Deprovisioned on Termination. Checks whether SailPoint access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24841,7 +24841,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-duplicate-email",
 			Name:              "Sailpoint Duplicate Account Emails",
-			Description:       "Detects duplicate active sailpoint accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for sailpoint user: Sailpoint Duplicate Account Emails. Detects duplicate active sailpoint accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24876,7 +24876,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-duplicate-group-name",
 			Name:              "Sailpoint Duplicate Group Names",
-			Description:       "Detects duplicate group names in sailpoint, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for sailpoint group: Sailpoint Duplicate Group Names. Detects duplicate group names in sailpoint, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24911,7 +24911,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-duplicate-membership-assignment",
 			Name:              "SailPoint Duplicate Membership Assignments",
-			Description:       "Detects duplicate SailPoint group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for sailpoint group membership: SailPoint Duplicate Membership Assignments. Detects duplicate SailPoint group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24946,7 +24946,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-duplicate-username",
 			Name:              "SailPoint Duplicate Usernames",
-			Description:       "Detects active SailPoint identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for sailpoint user: SailPoint Duplicate Usernames. Detects active SailPoint identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -24981,7 +24981,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-empty-groups",
 			Name:              "Sailpoint Empty Access Groups",
-			Description:       "Detects empty groups in sailpoint that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for sailpoint group: Sailpoint Empty Access Groups. Detects empty groups in sailpoint that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25016,7 +25016,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-group-description-missing",
 			Name:              "Sailpoint Groups Missing Description",
-			Description:       "Detects sailpoint groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for sailpoint group: Sailpoint Groups Missing Description. Detects sailpoint groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25051,7 +25051,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-membership-inactive-user",
 			Name:              "SailPoint Memberships With Inactive Users",
-			Description:       "Detects SailPoint group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for sailpoint group membership: SailPoint Memberships With Inactive Users. Detects SailPoint group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25086,7 +25086,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-membership-personal-email-domain",
 			Name:              "SailPoint Memberships Using Personal Email Domains",
-			Description:       "Detects SailPoint group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for sailpoint group membership: SailPoint Memberships Using Personal Email Domains. Detects SailPoint group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25121,7 +25121,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-missing-email",
 			Name:              "Sailpoint Active Accounts Missing Email",
-			Description:       "Detects active sailpoint accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for sailpoint user: Sailpoint Active Accounts Missing Email. Detects active sailpoint accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25156,7 +25156,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-orphaned-membership-group",
 			Name:              "Sailpoint Memberships With Missing Groups",
-			Description:       "Detects orphaned sailpoint memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for sailpoint group membership: Sailpoint Memberships With Missing Groups. Detects orphaned sailpoint memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25191,7 +25191,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-orphaned-membership-user",
 			Name:              "Sailpoint Group Memberships With Missing Users",
-			Description:       "Detects orphaned sailpoint group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for sailpoint group membership: Sailpoint Group Memberships With Missing Users. Detects orphaned sailpoint group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25226,7 +25226,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-personal-email-domain",
 			Name:              "Sailpoint Accounts Using Personal Email Domains",
-			Description:       "Detects active sailpoint accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for sailpoint user: Sailpoint Accounts Using Personal Email Domains. Detects active sailpoint accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25261,7 +25261,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-sailpoint-terminated-active-account",
 			Name:              "Sailpoint Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in sailpoint.",
+			Description:       "Flags failed query-result evidence for sailpoint user: Sailpoint Terminated Accounts Still Active. Detects terminated employees that still have active access in sailpoint. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25296,7 +25296,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-salesforce-active-no-employee-record",
 			Name:              "Salesforce Active Accounts Without Employee Record",
-			Description:       "Detects active Salesforce accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for salesforce user: Salesforce Active Accounts Without Employee Record. Detects active Salesforce accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25331,7 +25331,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-salesforce-duplicate-email",
 			Name:              "Salesforce Duplicate Account Emails",
-			Description:       "Detects duplicate active salesforce accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for salesforce user: Salesforce Duplicate Account Emails. Detects duplicate active salesforce accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25366,7 +25366,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-salesforce-duplicate-username",
 			Name:              "Salesforce Duplicate Usernames",
-			Description:       "Detects active Salesforce identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for salesforce user: Salesforce Duplicate Usernames. Detects active Salesforce identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25401,7 +25401,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-salesforce-missing-email",
 			Name:              "Salesforce Active Accounts Missing Email",
-			Description:       "Detects active salesforce accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for salesforce user: Salesforce Active Accounts Missing Email. Detects active salesforce accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25436,7 +25436,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-salesforce-personal-email-domain",
 			Name:              "Salesforce Accounts Using Personal Email Domains",
-			Description:       "Detects active salesforce accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for salesforce user: Salesforce Accounts Using Personal Email Domains. Detects active salesforce accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25471,7 +25471,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-salesforce-privileged-personal-email",
 			Name:              "Salesforce Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged salesforce accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for salesforce user: Salesforce Privileged Accounts on Personal Email Domains. Detects privileged salesforce accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25506,7 +25506,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-salesforce-privileged-recently-created-7d",
 			Name:              "Salesforce Newly Created Privileged Accounts",
-			Description:       "Detects privileged Salesforce accounts created in the last 7 days for expedited review.",
+			Description:       "Flags failed query-result evidence for salesforce user: Salesforce Newly Created Privileged Accounts. Detects privileged Salesforce accounts created in the last 7 days for expedited review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25541,7 +25541,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-salesforce-terminated-active-account",
 			Name:              "Salesforce Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in salesforce.",
+			Description:       "Flags failed query-result evidence for salesforce user: Salesforce Terminated Accounts Still Active. Detects terminated employees that still have active access in salesforce. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25576,7 +25576,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-active-no-employee-record",
 			Name:              "Saviynt Active Accounts Without Employee Record",
-			Description:       "Detects active Saviynt accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for saviynt user: Saviynt Active Accounts Without Employee Record. Detects active Saviynt accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25611,7 +25611,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-deprovision",
 			Name:              "Saviynt Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that saviynt user does not satisfy Saviynt Accounts Deprovisioned on Termination. Checks whether Saviynt access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for saviynt user: Saviynt Accounts Deprovisioned on Termination. Checks whether Saviynt access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25646,7 +25646,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-duplicate-email",
 			Name:              "Saviynt Duplicate Account Emails",
-			Description:       "Detects duplicate active saviynt accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for saviynt user: Saviynt Duplicate Account Emails. Detects duplicate active saviynt accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25681,7 +25681,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-duplicate-group-name",
 			Name:              "Saviynt Duplicate Group Names",
-			Description:       "Detects duplicate group names in saviynt, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for saviynt group: Saviynt Duplicate Group Names. Detects duplicate group names in saviynt, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25716,7 +25716,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-duplicate-membership-assignment",
 			Name:              "Saviynt Duplicate Membership Assignments",
-			Description:       "Detects duplicate Saviynt group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for saviynt group membership: Saviynt Duplicate Membership Assignments. Detects duplicate Saviynt group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25751,7 +25751,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-duplicate-username",
 			Name:              "Saviynt Duplicate Usernames",
-			Description:       "Detects active Saviynt identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for saviynt user: Saviynt Duplicate Usernames. Detects active Saviynt identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25786,7 +25786,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-empty-groups",
 			Name:              "Saviynt Empty Access Groups",
-			Description:       "Detects empty groups in saviynt that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for saviynt group: Saviynt Empty Access Groups. Detects empty groups in saviynt that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25821,7 +25821,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-group-description-missing",
 			Name:              "Saviynt Groups Missing Description",
-			Description:       "Detects saviynt groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for saviynt group: Saviynt Groups Missing Description. Detects saviynt groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25856,7 +25856,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-membership-inactive-user",
 			Name:              "Saviynt Memberships With Inactive Users",
-			Description:       "Detects Saviynt group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for saviynt group membership: Saviynt Memberships With Inactive Users. Detects Saviynt group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25891,7 +25891,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-membership-personal-email-domain",
 			Name:              "Saviynt Memberships Using Personal Email Domains",
-			Description:       "Detects Saviynt group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for saviynt group membership: Saviynt Memberships Using Personal Email Domains. Detects Saviynt group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25926,7 +25926,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-missing-email",
 			Name:              "Saviynt Active Accounts Missing Email",
-			Description:       "Detects active saviynt accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for saviynt user: Saviynt Active Accounts Missing Email. Detects active saviynt accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25961,7 +25961,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-orphaned-membership-group",
 			Name:              "Saviynt Memberships With Missing Groups",
-			Description:       "Detects orphaned saviynt memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for saviynt group membership: Saviynt Memberships With Missing Groups. Detects orphaned saviynt memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -25996,7 +25996,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-orphaned-membership-user",
 			Name:              "Saviynt Group Memberships With Missing Users",
-			Description:       "Detects orphaned saviynt group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for saviynt group membership: Saviynt Group Memberships With Missing Users. Detects orphaned saviynt group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26031,7 +26031,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-personal-email-domain",
 			Name:              "Saviynt Accounts Using Personal Email Domains",
-			Description:       "Detects active saviynt accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for saviynt user: Saviynt Accounts Using Personal Email Domains. Detects active saviynt accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26066,7 +26066,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-saviynt-terminated-active-account",
 			Name:              "Saviynt Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in saviynt.",
+			Description:       "Flags failed query-result evidence for saviynt user: Saviynt Terminated Accounts Still Active. Detects terminated employees that still have active access in saviynt. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26101,7 +26101,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-active-no-employee-record",
 			Name:              "Servicenow Active Accounts Without Employee Record",
-			Description:       "Detects active Servicenow accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Active Accounts Without Employee Record. Detects active Servicenow accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26136,7 +26136,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-duplicate-email",
 			Name:              "Servicenow Duplicate Account Emails",
-			Description:       "Detects duplicate active servicenow accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Duplicate Account Emails. Detects duplicate active servicenow accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26171,7 +26171,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-duplicate-group-name",
 			Name:              "Servicenow Duplicate Group Names",
-			Description:       "Detects duplicate group names in servicenow, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for servicenow group: Servicenow Duplicate Group Names. Detects duplicate group names in servicenow, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26206,7 +26206,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-duplicate-membership-assignment",
 			Name:              "Servicenow Duplicate Membership Assignments",
-			Description:       "Detects duplicate Servicenow group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for servicenow group membership: Servicenow Duplicate Membership Assignments. Detects duplicate Servicenow group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26241,7 +26241,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-duplicate-username",
 			Name:              "Servicenow Duplicate Usernames",
-			Description:       "Detects active Servicenow identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Duplicate Usernames. Detects active Servicenow identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26276,7 +26276,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-empty-groups",
 			Name:              "Servicenow Empty Access Groups",
-			Description:       "Detects empty groups in servicenow that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for servicenow group: Servicenow Empty Access Groups. Detects empty groups in servicenow that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26311,7 +26311,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-group-description-missing",
 			Name:              "Servicenow Groups Missing Description",
-			Description:       "Detects servicenow groups missing descriptions required for access governance and reviews.",
+			Description:       "Flags failed query-result evidence for servicenow group: Servicenow Groups Missing Description. Detects servicenow groups missing descriptions required for access governance and reviews. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26346,7 +26346,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-membership-inactive-user",
 			Name:              "Servicenow Memberships With Inactive Users",
-			Description:       "Detects Servicenow group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for servicenow group membership: Servicenow Memberships With Inactive Users. Detects Servicenow group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26381,7 +26381,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-missing-email",
 			Name:              "Servicenow Active Accounts Missing Email",
-			Description:       "Detects active servicenow accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Active Accounts Missing Email. Detects active servicenow accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26416,7 +26416,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-never-logged-in-30d",
 			Name:              "Servicenow Accounts Never Used After Provisioning",
-			Description:       "Detects active servicenow accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Accounts Never Used After Provisioning. Detects active servicenow accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26451,7 +26451,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-never-logged-in-90d",
 			Name:              "Servicenow Accounts Never Used (90 days)",
-			Description:       "Detects active Servicenow accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Accounts Never Used (90 days). Detects active Servicenow accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26486,7 +26486,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-orphaned-membership-group",
 			Name:              "Servicenow Memberships With Missing Groups",
-			Description:       "Detects orphaned servicenow memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for servicenow group membership: Servicenow Memberships With Missing Groups. Detects orphaned servicenow memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26521,7 +26521,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-orphaned-membership-user",
 			Name:              "Servicenow Group Memberships With Missing Users",
-			Description:       "Detects orphaned servicenow group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for servicenow group membership: Servicenow Group Memberships With Missing Users. Detects orphaned servicenow group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26556,7 +26556,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-personal-email-domain",
 			Name:              "Servicenow Accounts Using Personal Email Domains",
-			Description:       "Detects active servicenow accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Accounts Using Personal Email Domains. Detects active servicenow accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26591,7 +26591,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-stale-login-180d",
 			Name:              "Servicenow Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active servicenow accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Stale Active Accounts (180 days). Detects long-dormant active servicenow accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26626,7 +26626,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-stale-login-365d",
 			Name:              "Servicenow Stale Active Accounts (365 days)",
-			Description:       "Detects active Servicenow accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Stale Active Accounts (365 days). Detects active Servicenow accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26661,7 +26661,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-stale-login-90d",
 			Name:              "Servicenow Stale Active Accounts (90 days)",
-			Description:       "Detects active servicenow accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Stale Active Accounts (90 days). Detects active servicenow accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26696,7 +26696,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-servicenow-terminated-active-account",
 			Name:              "Servicenow Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in servicenow.",
+			Description:       "Flags failed query-result evidence for servicenow user: Servicenow Terminated Accounts Still Active. Detects terminated employees that still have active access in servicenow. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26731,7 +26731,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-active-no-employee-record",
 			Name:              "Slack Active Accounts Without Employee Record",
-			Description:       "Detects active Slack accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Active Accounts Without Employee Record. Detects active Slack accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26766,7 +26766,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-deprovision",
 			Name:              "Slack Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that slack user does not satisfy Slack Accounts Deprovisioned on Termination. Checks whether Slack workspace access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Accounts Deprovisioned on Termination. Checks whether Slack workspace access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26801,7 +26801,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-duplicate-email",
 			Name:              "Slack Duplicate Account Emails",
-			Description:       "Detects duplicate active slack accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Duplicate Account Emails. Detects duplicate active slack accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26836,7 +26836,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-mfa-missing-active",
 			Name:              "Slack Active Accounts Without MFA",
-			Description:       "Detects active slack accounts that do not meet MFA requirements.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Active Accounts Without MFA. Detects active slack accounts that do not meet MFA requirements. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26871,7 +26871,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-missing-email",
 			Name:              "Slack Active Accounts Missing Email",
-			Description:       "Detects active slack accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Active Accounts Missing Email. Detects active slack accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26906,7 +26906,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-personal-email-domain",
 			Name:              "Slack Accounts Using Personal Email Domains",
-			Description:       "Detects active slack accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Accounts Using Personal Email Domains. Detects active slack accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26941,7 +26941,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-privileged-no-mfa",
 			Name:              "Slack Privileged Accounts Without MFA",
-			Description:       "Detects privileged slack accounts missing MFA protections.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Privileged Accounts Without MFA. Detects privileged slack accounts missing MFA protections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -26976,7 +26976,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-privileged-personal-email",
 			Name:              "Slack Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged slack accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Privileged Accounts on Personal Email Domains. Detects privileged slack accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27011,7 +27011,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-slack-terminated-active-account",
 			Name:              "Slack Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in slack.",
+			Description:       "Flags failed query-result evidence for slack user: Slack Terminated Accounts Still Active. Detects terminated employees that still have active access in slack. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27046,7 +27046,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-splunk-active-no-employee-record",
 			Name:              "Splunk Active Accounts Without Employee Record",
-			Description:       "Detects active Splunk accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for splunk user: Splunk Active Accounts Without Employee Record. Detects active Splunk accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27081,7 +27081,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-splunk-duplicate-email",
 			Name:              "Splunk Duplicate Account Emails",
-			Description:       "Detects duplicate active splunk accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for splunk user: Splunk Duplicate Account Emails. Detects duplicate active splunk accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27116,7 +27116,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-splunk-missing-email",
 			Name:              "Splunk Active Accounts Missing Email",
-			Description:       "Detects active splunk accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for splunk user: Splunk Active Accounts Missing Email. Detects active splunk accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27151,7 +27151,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-splunk-personal-email-domain",
 			Name:              "Splunk Accounts Using Personal Email Domains",
-			Description:       "Detects active splunk accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for splunk user: Splunk Accounts Using Personal Email Domains. Detects active splunk accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27186,7 +27186,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-splunk-terminated-active-account",
 			Name:              "Splunk Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in splunk.",
+			Description:       "Flags failed query-result evidence for splunk user: Splunk Terminated Accounts Still Active. Detects terminated employees that still have active access in splunk. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27221,7 +27221,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-stale-accounts-disabled",
 			Name:              "Stale User Accounts Disabled",
-			Description:       "Detects failed policy evidence showing that identity user accounts does not satisfy Stale User Accounts Disabled. User accounts that have not been used for 90 days should be disabled or reviewed to reduce attack surface. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for identity user accounts: Stale User Accounts Disabled. User accounts that have not been used for 90 days should be disabled or reviewed to reduce attack surface. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27259,7 +27259,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-active-no-employee-record",
 			Name:              "Tailscale Active Accounts Without Employee Record",
-			Description:       "Detects active Tailscale accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Active Accounts Without Employee Record. Detects active Tailscale accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27294,7 +27294,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-deprovision",
 			Name:              "Tailscale Accounts Deprovisioned on Termination",
-			Description:       "Detects failed policy evidence showing that tailscale user does not satisfy Tailscale Accounts Deprovisioned on Termination. Checks whether Tailscale network access is revoked when personnel leave the company. Risk: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Accounts Deprovisioned on Termination. Checks whether Tailscale network access is revoked when personnel leave the company. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27329,7 +27329,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-duplicate-email",
 			Name:              "Tailscale Duplicate Account Emails",
-			Description:       "Detects duplicate active tailscale accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Duplicate Account Emails. Detects duplicate active tailscale accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27364,7 +27364,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-duplicate-username",
 			Name:              "Tailscale Duplicate Usernames",
-			Description:       "Detects active Tailscale identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Duplicate Usernames. Detects active Tailscale identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27399,7 +27399,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-missing-email",
 			Name:              "Tailscale Active Accounts Missing Email",
-			Description:       "Detects active tailscale accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Active Accounts Missing Email. Detects active tailscale accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27434,7 +27434,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-never-logged-in-30d",
 			Name:              "Tailscale Accounts Never Used After Provisioning",
-			Description:       "Detects active tailscale accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Accounts Never Used After Provisioning. Detects active tailscale accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27469,7 +27469,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-never-logged-in-90d",
 			Name:              "Tailscale Accounts Never Used (90 days)",
-			Description:       "Detects active Tailscale accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Accounts Never Used (90 days). Detects active Tailscale accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27504,7 +27504,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-personal-email-domain",
 			Name:              "Tailscale Accounts Using Personal Email Domains",
-			Description:       "Detects active tailscale accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Accounts Using Personal Email Domains. Detects active tailscale accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27539,7 +27539,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-privileged-personal-email",
 			Name:              "Tailscale Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged tailscale accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Privileged Accounts on Personal Email Domains. Detects privileged tailscale accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27574,7 +27574,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-privileged-recently-created-7d",
 			Name:              "Tailscale Newly Created Privileged Accounts",
-			Description:       "Detects privileged Tailscale accounts created in the last 7 days for expedited review.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Newly Created Privileged Accounts. Detects privileged Tailscale accounts created in the last 7 days for expedited review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27609,7 +27609,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-privileged-stale-login-30d",
 			Name:              "Tailscale Privileged Accounts Stale (30 days)",
-			Description:       "Detects privileged tailscale accounts with stale login activity.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Privileged Accounts Stale (30 days). Detects privileged tailscale accounts with stale login activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27644,7 +27644,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-stale-login-180d",
 			Name:              "Tailscale Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active tailscale accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Stale Active Accounts (180 days). Detects long-dormant active tailscale accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27679,7 +27679,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-stale-login-365d",
 			Name:              "Tailscale Stale Active Accounts (365 days)",
-			Description:       "Detects active Tailscale accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Stale Active Accounts (365 days). Detects active Tailscale accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27714,7 +27714,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-stale-login-90d",
 			Name:              "Tailscale Stale Active Accounts (90 days)",
-			Description:       "Detects active tailscale accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Stale Active Accounts (90 days). Detects active tailscale accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27749,7 +27749,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-tailscale-terminated-active-account",
 			Name:              "Tailscale Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in tailscale.",
+			Description:       "Flags failed query-result evidence for tailscale user: Tailscale Terminated Accounts Still Active. Detects terminated employees that still have active access in tailscale. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27784,7 +27784,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-active-no-employee-record",
 			Name:              "Vanta Active Accounts Without Employee Record",
-			Description:       "Detects active Vanta accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Active Accounts Without Employee Record. Detects active Vanta accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27819,7 +27819,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-duplicate-email",
 			Name:              "Vanta Duplicate Account Emails",
-			Description:       "Detects duplicate active vanta accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Duplicate Account Emails. Detects duplicate active vanta accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27854,7 +27854,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-missing-email",
 			Name:              "Vanta Active Accounts Missing Email",
-			Description:       "Detects active vanta accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Active Accounts Missing Email. Detects active vanta accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27889,7 +27889,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-personal-email-domain",
 			Name:              "Vanta Accounts Using Personal Email Domains",
-			Description:       "Detects active vanta accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Accounts Using Personal Email Domains. Detects active vanta accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27924,7 +27924,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-privileged-personal-email",
 			Name:              "Vanta Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged vanta accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Privileged Accounts on Personal Email Domains. Detects privileged vanta accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27959,7 +27959,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-privileged-stale-login-30d",
 			Name:              "Vanta Privileged Accounts Stale (30 days)",
-			Description:       "Detects privileged vanta accounts with stale login activity.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Privileged Accounts Stale (30 days). Detects privileged vanta accounts with stale login activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -27994,7 +27994,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-stale-login-180d",
 			Name:              "Vanta Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active vanta accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Stale Active Accounts (180 days). Detects long-dormant active vanta accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28029,7 +28029,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-stale-login-365d",
 			Name:              "Vanta Stale Active Accounts (365 days)",
-			Description:       "Detects active Vanta accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Stale Active Accounts (365 days). Detects active Vanta accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28064,7 +28064,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-stale-login-90d",
 			Name:              "Vanta Stale Active Accounts (90 days)",
-			Description:       "Detects active vanta accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Stale Active Accounts (90 days). Detects active vanta accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28099,7 +28099,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-vanta-terminated-active-account",
 			Name:              "Vanta Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in vanta.",
+			Description:       "Flags failed query-result evidence for vanta user: Vanta Terminated Accounts Still Active. Detects terminated employees that still have active access in vanta. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28134,7 +28134,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-active-no-employee-record",
 			Name:              "Workday Active Accounts Without Employee Record",
-			Description:       "Detects active Workday accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for workday user: Workday Active Accounts Without Employee Record. Detects active Workday accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28169,7 +28169,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-duplicate-email",
 			Name:              "Workday Duplicate Account Emails",
-			Description:       "Detects duplicate active workday accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for workday user: Workday Duplicate Account Emails. Detects duplicate active workday accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28204,7 +28204,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-duplicate-group-name",
 			Name:              "Workday Duplicate Group Names",
-			Description:       "Detects duplicate group names in workday, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for workday group: Workday Duplicate Group Names. Detects duplicate group names in workday, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28239,7 +28239,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-duplicate-membership-assignment",
 			Name:              "Workday Duplicate Membership Assignments",
-			Description:       "Detects duplicate Workday group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for workday group membership: Workday Duplicate Membership Assignments. Detects duplicate Workday group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28274,7 +28274,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-duplicate-username",
 			Name:              "Workday Duplicate Usernames",
-			Description:       "Detects active Workday identities sharing the same username/login.",
+			Description:       "Flags failed query-result evidence for workday user: Workday Duplicate Usernames. Detects active Workday identities sharing the same username/login. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28309,7 +28309,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-empty-groups",
 			Name:              "Workday Empty Access Groups",
-			Description:       "Detects empty groups in workday that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for workday group: Workday Empty Access Groups. Detects empty groups in workday that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28344,7 +28344,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-membership-inactive-user",
 			Name:              "Workday Memberships With Inactive Users",
-			Description:       "Detects Workday group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for workday group membership: Workday Memberships With Inactive Users. Detects Workday group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28379,7 +28379,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-missing-email",
 			Name:              "Workday Active Accounts Missing Email",
-			Description:       "Detects active workday accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for workday user: Workday Active Accounts Missing Email. Detects active workday accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28414,7 +28414,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-orphaned-membership-group",
 			Name:              "Workday Memberships With Missing Groups",
-			Description:       "Detects orphaned workday memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for workday group membership: Workday Memberships With Missing Groups. Detects orphaned workday memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28449,7 +28449,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-orphaned-membership-user",
 			Name:              "Workday Group Memberships With Missing Users",
-			Description:       "Detects orphaned workday group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for workday group membership: Workday Group Memberships With Missing Users. Detects orphaned workday group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28484,7 +28484,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-personal-email-domain",
 			Name:              "Workday Accounts Using Personal Email Domains",
-			Description:       "Detects active workday accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for workday user: Workday Accounts Using Personal Email Domains. Detects active workday accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28519,7 +28519,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-workday-terminated-active-account",
 			Name:              "Workday Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in workday.",
+			Description:       "Flags failed query-result evidence for workday user: Workday Terminated Accounts Still Active. Detects terminated employees that still have active access in workday. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28554,7 +28554,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-active-no-employee-record",
 			Name:              "Zoom Active Accounts Without Employee Record",
-			Description:       "Detects active Zoom accounts whose email does not match any employee record.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Active Accounts Without Employee Record. Detects active Zoom accounts whose email does not match any employee record. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28589,7 +28589,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-duplicate-email",
 			Name:              "Zoom Duplicate Account Emails",
-			Description:       "Detects duplicate active zoom accounts sharing the same email identity.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Duplicate Account Emails. Detects duplicate active zoom accounts sharing the same email identity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28624,7 +28624,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-duplicate-group-name",
 			Name:              "Zoom Duplicate Group Names",
-			Description:       "Detects duplicate group names in zoom, which can cause ambiguous access assignment.",
+			Description:       "Flags failed query-result evidence for zoom group: Zoom Duplicate Group Names. Detects duplicate group names in zoom, which can cause ambiguous access assignment. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28659,7 +28659,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-duplicate-membership-assignment",
 			Name:              "Zoom Duplicate Membership Assignments",
-			Description:       "Detects duplicate Zoom group membership rows for the same member and group.",
+			Description:       "Flags failed query-result evidence for zoom group membership: Zoom Duplicate Membership Assignments. Detects duplicate Zoom group membership rows for the same member and group. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28694,7 +28694,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-empty-groups",
 			Name:              "Zoom Empty Access Groups",
-			Description:       "Detects empty groups in zoom that may indicate stale access governance artifacts.",
+			Description:       "Flags failed query-result evidence for zoom group: Zoom Empty Access Groups. Detects empty groups in zoom that may indicate stale access governance artifacts. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28729,7 +28729,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-membership-inactive-user",
 			Name:              "Zoom Memberships With Inactive Users",
-			Description:       "Detects Zoom group memberships that still reference inactive users.",
+			Description:       "Flags failed query-result evidence for zoom group membership: Zoom Memberships With Inactive Users. Detects Zoom group memberships that still reference inactive users. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28764,7 +28764,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-membership-personal-email-domain",
 			Name:              "Zoom Memberships Using Personal Email Domains",
-			Description:       "Detects Zoom group memberships tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for zoom group membership: Zoom Memberships Using Personal Email Domains. Detects Zoom group memberships tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28799,7 +28799,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-missing-email",
 			Name:              "Zoom Active Accounts Missing Email",
-			Description:       "Detects active zoom accounts missing an email address for identity matching and offboarding controls.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Active Accounts Missing Email. Detects active zoom accounts missing an email address for identity matching and offboarding controls. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28834,7 +28834,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-never-logged-in-30d",
 			Name:              "Zoom Accounts Never Used After Provisioning",
-			Description:       "Detects active zoom accounts older than 30 days with no successful login recorded.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Accounts Never Used After Provisioning. Detects active zoom accounts older than 30 days with no successful login recorded. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28869,7 +28869,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-never-logged-in-90d",
 			Name:              "Zoom Accounts Never Used (90 days)",
-			Description:       "Detects active Zoom accounts older than 90 days that have never logged in.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Accounts Never Used (90 days). Detects active Zoom accounts older than 90 days that have never logged in. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28904,7 +28904,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-orphaned-membership-group",
 			Name:              "Zoom Memberships With Missing Groups",
-			Description:       "Detects orphaned zoom memberships referencing groups that no longer exist.",
+			Description:       "Flags failed query-result evidence for zoom group membership: Zoom Memberships With Missing Groups. Detects orphaned zoom memberships referencing groups that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28939,7 +28939,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-orphaned-membership-user",
 			Name:              "Zoom Group Memberships With Missing Users",
-			Description:       "Detects orphaned zoom group memberships referencing users that no longer exist.",
+			Description:       "Flags failed query-result evidence for zoom group membership: Zoom Group Memberships With Missing Users. Detects orphaned zoom group memberships referencing users that no longer exist. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -28974,7 +28974,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-personal-email-domain",
 			Name:              "Zoom Accounts Using Personal Email Domains",
-			Description:       "Detects active zoom accounts using personal email domains instead of corporate identity domains.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Accounts Using Personal Email Domains. Detects active zoom accounts using personal email domains instead of corporate identity domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29009,7 +29009,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-privileged-personal-email",
 			Name:              "Zoom Privileged Accounts on Personal Email Domains",
-			Description:       "Detects privileged zoom accounts tied to personal email domains.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Privileged Accounts on Personal Email Domains. Detects privileged zoom accounts tied to personal email domains. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29044,7 +29044,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-privileged-recently-created-7d",
 			Name:              "Zoom Newly Created Privileged Accounts",
-			Description:       "Detects privileged Zoom accounts created in the last 7 days for expedited review.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Newly Created Privileged Accounts. Detects privileged Zoom accounts created in the last 7 days for expedited review. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29079,7 +29079,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-privileged-stale-login-30d",
 			Name:              "Zoom Privileged Accounts Stale (30 days)",
-			Description:       "Detects privileged zoom accounts with stale login activity.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Privileged Accounts Stale (30 days). Detects privileged zoom accounts with stale login activity. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29114,7 +29114,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-stale-login-180d",
 			Name:              "Zoom Stale Active Accounts (180 days)",
-			Description:       "Detects long-dormant active zoom accounts with no recent login activity for 180 days.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Stale Active Accounts (180 days). Detects long-dormant active zoom accounts with no recent login activity for 180 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29149,7 +29149,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-stale-login-365d",
 			Name:              "Zoom Stale Active Accounts (365 days)",
-			Description:       "Detects active Zoom accounts with no login activity for at least 365 days.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Stale Active Accounts (365 days). Detects active Zoom accounts with no login activity for at least 365 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29184,7 +29184,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-stale-login-90d",
 			Name:              "Zoom Stale Active Accounts (90 days)",
-			Description:       "Detects active zoom accounts with no recent login activity for 90 days.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Stale Active Accounts (90 days). Detects active zoom accounts with no recent login activity for 90 days. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29219,7 +29219,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "identity-zoom-terminated-active-account",
 			Name:              "Zoom Terminated Accounts Still Active",
-			Description:       "Detects terminated employees that still have active access in zoom.",
+			Description:       "Flags failed query-result evidence for zoom user: Zoom Terminated Accounts Still Active. Detects terminated employees that still have active access in zoom. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29254,7 +29254,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "internal-vm-cross-account-keys",
 			Name:              "Internal VM/serverless with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Internal VM/serverless with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges. An internal resource contains highly privileged cross-account access keys. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Internal VM/serverless with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges. An internal resource contains highly privileged cross-account access keys. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29298,7 +29298,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-cluster-admin-wildcard",
 			Name:              "Kubernetes ClusterRole with Wildcard Permissions",
-			Description:       "Detects failed policy evidence showing that k8s rbac cluster role does not satisfy Kubernetes ClusterRole with Wildcard Permissions. ClusterRole grants wildcard (*) permissions on resources, verbs, or API groups. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s rbac cluster role: Kubernetes ClusterRole with Wildcard Permissions. ClusterRole grants wildcard (*) permissions on resources, verbs, or API groups. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29339,7 +29339,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-cluster-unsupported-version",
 			Name:              "Kubernetes Cluster on Unsupported Minor Version",
-			Description:       "Detects failed policy evidence showing that k8s cluster inventory does not satisfy Kubernetes Cluster on Unsupported Minor Version. Cluster is running an older Kubernetes minor version that is likely outside standard support windows. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s cluster inventory: Kubernetes Cluster on Unsupported Minor Version. Cluster is running an older Kubernetes minor version that is likely outside standard support windows. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29379,7 +29379,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-deployment-multiple-replicas",
 			Name:              "K8s Deployment Multiple Replicas",
-			Description:       "Detects failed policy evidence showing that kubernetes deployment does not satisfy K8s Deployment Multiple Replicas. Production deployments should have multiple replicas for availability. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes deployment: K8s Deployment Multiple Replicas. Production deployments should have multiple replicas for availability. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29421,7 +29421,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-ingress-no-authentication",
 			Name:              "Kubernetes Ingress No Authentication",
-			Description:       "Detects failed policy evidence showing that kubernetes networking ingress does not satisfy Kubernetes Ingress No Authentication. Kubernetes Ingress lacks authentication annotations. Risk: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
+			Description:       "Flags failed resource-state evidence for kubernetes networking ingress: Kubernetes Ingress No Authentication. Kubernetes Ingress lacks authentication annotations. Audit impact: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29460,7 +29460,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-ingress-no-wildcard-host",
 			Name:              "Kubernetes Ingress Avoids Wildcard Hosts",
-			Description:       "Detects failed policy evidence showing that k8s networking ingress does not satisfy Kubernetes Ingress Avoids Wildcard Hosts. Ingress resources should not use wildcard hosts that broaden routing scope. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s networking ingress: Kubernetes Ingress Avoids Wildcard Hosts. Ingress resources should not use wildcard hosts that broaden routing scope. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29501,7 +29501,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-ingress-public",
 			Name:              "Kubernetes Ingress Exposes Sensitive Service",
-			Description:       "Detects failed policy evidence showing that k8s networking ingress does not satisfy Kubernetes Ingress Exposes Sensitive Service. Ingress resource exposes a service to the internet without authentication or with sensitive paths. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s networking ingress: Kubernetes Ingress Exposes Sensitive Service. Ingress resource exposes a service to the internet without authentication or with sensitive paths. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29547,7 +29547,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-missing-pss",
 			Name:              "Kubernetes clusters with at least one namespace missing PSS policy",
-			Description:       "Detects failed policy evidence showing that k8s namespace does not satisfy Kubernetes clusters with at least one namespace missing PSS policy. A namespace in the cluster is missing Pod Security Standards enforcement. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for k8s namespace: Kubernetes clusters with at least one namespace missing PSS policy. A namespace in the cluster is missing Pod Security Standards enforcement. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29594,7 +29594,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-namespace-missing-pss-label",
 			Name:              "Kubernetes Namespace Missing Pod Security Enforcement Label",
-			Description:       "Detects failed policy evidence showing that k8s namespace does not satisfy Kubernetes Namespace Missing Pod Security Enforcement Label. Namespace does not define pod-security.kubernetes.io/enforce, indicating Pod Security Standards are not explicitly enforced. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s namespace: Kubernetes Namespace Missing Pod Security Enforcement Label. Namespace does not define pod-security.kubernetes.io/enforce, indicating Pod Security Standards are not explicitly enforced. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29641,7 +29641,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-network-policy-default-deny",
 			Name:              "Kubernetes Namespace Without Default Deny NetworkPolicy",
-			Description:       "Detects failed policy evidence showing that k8s core namespace does not satisfy Kubernetes Namespace Without Default Deny NetworkPolicy. Namespace does not have a default-deny NetworkPolicy, allowing unrestricted pod-to-pod traffic. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s core namespace: Kubernetes Namespace Without Default Deny NetworkPolicy. Namespace does not have a default-deny NetworkPolicy, allowing unrestricted pod-to-pod traffic. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29676,7 +29676,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-network-policy-selector-present",
 			Name:              "Kubernetes NetworkPolicy Selector Is Present",
-			Description:       "Detects failed policy evidence showing that k8s core namespace does not satisfy Kubernetes NetworkPolicy Selector Is Present. NetworkPolicies should define pod selectors to avoid unintentionally broad scope. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s core namespace: Kubernetes NetworkPolicy Selector Is Present. NetworkPolicies should define pod selectors to avoid unintentionally broad scope. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29717,7 +29717,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-node-public-exposure",
 			Name:              "Kubernetes Node with Public IP",
-			Description:       "Detects failed policy evidence showing that k8s core node does not satisfy Kubernetes Node with Public IP. Kubernetes node has a public IP address, potentially exposing cluster infrastructure to the internet. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s core node: Kubernetes Node with Public IP. Kubernetes node has a public IP address, potentially exposing cluster infrastructure to the internet. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29758,7 +29758,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-create",
 			Name:              "User/service accounts with the privileges to create pods",
-			Description:       "Detects failed policy evidence showing that k8s cluster role or k8s role or k8s rbac risky binding does not satisfy User/service accounts with the privileges to create pods. An identity can create pods in Kubernetes, which could be used for privilege escalation. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for k8s cluster role or k8s role or k8s rbac risky binding: User/service accounts with the privileges to create pods. An identity can create pods in Kubernetes, which could be used for privilege escalation. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29798,7 +29798,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-drop-all-capabilities",
 			Name:              "K8s Pod Drop All Capabilities",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy K8s Pod Drop All Capabilities. Containers should drop all capabilities and add only required ones. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: K8s Pod Drop All Capabilities. Containers should drop all capabilities and add only required ones. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29833,7 +29833,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-image-pinned-by-digest",
 			Name:              "Kubernetes Pod Images Pinned by Digest",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy Kubernetes Pod Images Pinned by Digest. Pod images should be pinned by digest to reduce supply chain drift. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: Kubernetes Pod Images Pinned by Digest. Pod images should be pinned by digest to reduce supply chain drift. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29878,7 +29878,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-image-tag-not-latest",
 			Name:              "Kubernetes Pod Image Tag Is Not Latest",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy Kubernetes Pod Image Tag Is Not Latest. Pods should not use latest or implicit image tags. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: Kubernetes Pod Image Tag Is Not Latest. Pods should not use latest or implicit image tags. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29923,7 +29923,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-liveness-probe-required",
 			Name:              "Kubernetes Pod Requires Liveness Probes",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy Kubernetes Pod Requires Liveness Probes. All containers should define liveness probes for reliable health monitoring. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: Kubernetes Pod Requires Liveness Probes. All containers should define liveness probes for reliable health monitoring. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -29965,7 +29965,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-no-host-network",
 			Name:              "K8s Pod No Host Network",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy K8s Pod No Host Network. Pods should not use host network namespace. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: K8s Pod No Host Network. Pods should not use host network namespace. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30000,7 +30000,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-no-host-pid",
 			Name:              "K8s Pod No Host PID",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy K8s Pod No Host PID. Pods should not share host PID namespace. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: K8s Pod No Host PID. Pods should not share host PID namespace. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30035,7 +30035,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-no-hostpath-volumes",
 			Name:              "Kubernetes Pod Avoids hostPath Volumes",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy Kubernetes Pod Avoids hostPath Volumes. Pods should not mount hostPath volumes because they can expose host resources. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: Kubernetes Pod Avoids hostPath Volumes. Pods should not mount hostPath volumes because they can expose host resources. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30082,7 +30082,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-no-privilege-escalation",
 			Name:              "Kubernetes Pod Disallows Privilege Escalation",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy Kubernetes Pod Disallows Privilege Escalation. Pods should explicitly disable privilege escalation for all containers. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: Kubernetes Pod Disallows Privilege Escalation. Pods should explicitly disable privilege escalation for all containers. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30129,7 +30129,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-no-privileged",
 			Name:              "K8s Pod No Privileged Containers",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy K8s Pod No Privileged Containers. Pods should not run privileged containers. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: K8s Pod No Privileged Containers. Pods should not run privileged containers. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30170,7 +30170,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-no-run-as-root",
 			Name:              "K8s Pod No Run As Root",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy K8s Pod No Run As Root. Pods should not run containers as root user. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: K8s Pod No Run As Root. Pods should not run containers as root user. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30205,7 +30205,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-readiness-probe-required",
 			Name:              "Kubernetes Pod Requires Readiness Probes",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy Kubernetes Pod Requires Readiness Probes. All containers should define readiness probes before receiving traffic. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: Kubernetes Pod Requires Readiness Probes. All containers should define readiness probes before receiving traffic. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30247,7 +30247,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-readonly-root-filesystem",
 			Name:              "K8s Pod Read-Only Root Filesystem",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy K8s Pod Read-Only Root Filesystem. Containers should use read-only root filesystem. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: K8s Pod Read-Only Root Filesystem. Containers should use read-only root filesystem. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30282,7 +30282,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-resource-limits",
 			Name:              "K8s Pod Resource Limits",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy K8s Pod Resource Limits. Containers should have CPU and memory limits defined. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: K8s Pod Resource Limits. Containers should have CPU and memory limits defined. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30324,7 +30324,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-pod-seccomp-runtime-default",
 			Name:              "Kubernetes Pod Uses RuntimeDefault Seccomp",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy Kubernetes Pod Uses RuntimeDefault Seccomp. Pods should run with RuntimeDefault seccomp profiles for all containers. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: Kubernetes Pod Uses RuntimeDefault Seccomp. Pods should run with RuntimeDefault seccomp profiles for all containers. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30371,7 +30371,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-rbac-cluster-admin-used",
 			Name:              "User/ServiceAccount Assigned cluster-admin",
-			Description:       "Detects failed policy evidence showing that k8s rbac risky binding does not satisfy User/ServiceAccount Assigned cluster-admin. A user or service account is bound to the cluster-admin ClusterRole. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s rbac risky binding: User/ServiceAccount Assigned cluster-admin. A user or service account is bound to the cluster-admin ClusterRole. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30414,7 +30414,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-rbac-high-risk-binding",
 			Name:              "Kubernetes High-Risk RBAC Binding",
-			Description:       "Detects failed policy evidence showing that k8s rbac risky binding does not satisfy Kubernetes High-Risk RBAC Binding. RBAC binding grants high-risk permissions that can enable privilege escalation or broad cluster takeover. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s rbac risky binding: Kubernetes High-Risk RBAC Binding. RBAC binding grants high-risk permissions that can enable privilege escalation or broad cluster takeover. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30457,7 +30457,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-rbac-medium-risk-binding",
 			Name:              "Kubernetes Medium-Risk RBAC Binding",
-			Description:       "Detects failed policy evidence showing that k8s rbac risky binding does not satisfy Kubernetes Medium-Risk RBAC Binding. RBAC binding has medium-risk permissions that may allow lateral movement or privilege expansion. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s rbac risky binding: Kubernetes Medium-Risk RBAC Binding. RBAC binding has medium-risk permissions that may allow lateral movement or privilege expansion. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30500,7 +30500,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-rbac-pod-create-privileges",
 			Name:              "User/ServiceAccount Can Create Pods",
-			Description:       "Detects failed policy evidence showing that k8s rbac risky binding does not satisfy User/ServiceAccount Can Create Pods. A user or service account has RBAC permissions to create pods, which can be abused for privilege escalation. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s rbac risky binding: User/ServiceAccount Can Create Pods. A user or service account has RBAC permissions to create pods, which can be abused for privilege escalation. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30543,7 +30543,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-rbac-secret-read-access",
 			Name:              "User/ServiceAccount Can Read Kubernetes Secrets",
-			Description:       "Detects failed policy evidence showing that k8s rbac risky binding does not satisfy User/ServiceAccount Can Read Kubernetes Secrets. A user or service account can get/list/watch Kubernetes Secrets via RBAC bindings. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s rbac risky binding: User/ServiceAccount Can Read Kubernetes Secrets. A user or service account can get/list/watch Kubernetes Secrets via RBAC bindings. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30590,7 +30590,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-rbac-wildcard-permissions-assigned",
 			Name:              "User/ServiceAccount Bound to Wildcard RBAC Permissions",
-			Description:       "Detects failed policy evidence showing that k8s rbac risky binding does not satisfy User/ServiceAccount Bound to Wildcard RBAC Permissions. A user or service account is bound to a role with wildcard verbs or resources. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s rbac risky binding: User/ServiceAccount Bound to Wildcard RBAC Permissions. A user or service account is bound to a role with wildcard verbs or resources. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30633,7 +30633,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-resource-no-deprecated-api",
 			Name:              "Kubernetes Resources Avoid Deprecated APIs",
-			Description:       "Detects failed policy evidence showing that kubernetes audit event does not satisfy Kubernetes Resources Avoid Deprecated APIs. Audit events should not reference deprecated Kubernetes API versions. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes audit event: Kubernetes Resources Avoid Deprecated APIs. Audit events should not reference deprecated Kubernetes API versions. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30673,7 +30673,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-role-wildcard-permissions",
 			Name:              "Kubernetes Role with Wildcard Permissions",
-			Description:       "Detects failed policy evidence showing that k8s role does not satisfy Kubernetes Role with Wildcard Permissions. Role grants wildcard (*) permissions on resources, verbs, or API groups. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s role: Kubernetes Role with Wildcard Permissions. Role grants wildcard (*) permissions on resources, verbs, or API groups. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30716,7 +30716,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-secrets-access",
 			Name:              "User/service account with get/list/watch permissions on secrets in a Kubernetes cluster",
-			Description:       "Detects failed policy evidence showing that k8s cluster role or k8s role or k8s rbac risky binding does not satisfy User/service account with get/list/watch permissions on secrets in a Kubernetes cluster. An identity can read secrets across the Kubernetes cluster. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for k8s cluster role or k8s role or k8s rbac risky binding: User/service account with get/list/watch permissions on secrets in a Kubernetes cluster. An identity can read secrets across the Kubernetes cluster. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30754,7 +30754,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-secrets-in-secrets-not-env",
 			Name:              "K8s Secrets Via Secret Objects",
-			Description:       "Detects failed policy evidence showing that kubernetes pod does not satisfy K8s Secrets Via Secret Objects. Sensitive data should be stored in Secret objects, not environment variables. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes pod: K8s Secrets Via Secret Objects. Sensitive data should be stored in Secret objects, not environment variables. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30792,7 +30792,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-service-account-token-mount",
 			Name:              "Kubernetes Pod Auto-Mounts Service Account Token",
-			Description:       "Detects failed policy evidence showing that k8s core pod does not satisfy Kubernetes Pod Auto-Mounts Service Account Token. Pod automatically mounts a service account token that may not be needed. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s core pod: Kubernetes Pod Auto-Mounts Service Account Token. Pod automatically mounts a service account token that may not be needed. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30837,7 +30837,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-service-external-ip",
 			Name:              "Kubernetes Service with ExternalIP",
-			Description:       "Detects failed policy evidence showing that k8s core service does not satisfy Kubernetes Service with ExternalIP. Kubernetes Service uses externalIPs which can be exploited for CVE-2020-8554 man-in-the-middle attacks. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s core service: Kubernetes Service with ExternalIP. Kubernetes Service uses externalIPs which can be exploited for CVE-2020-8554 man-in-the-middle attacks. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30883,7 +30883,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-service-loadbalancer-internal",
 			Name:              "K8s LoadBalancer Service Internal",
-			Description:       "Detects failed policy evidence showing that kubernetes service does not satisfy K8s LoadBalancer Service Internal. LoadBalancer services should use internal load balancers when possible. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes service: K8s LoadBalancer Service Internal. LoadBalancer services should use internal load balancers when possible. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30924,7 +30924,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-service-no-nodeport",
 			Name:              "Kubernetes Service Avoids NodePort",
-			Description:       "Detects failed policy evidence showing that k8s core service does not satisfy Kubernetes Service Avoids NodePort. NodePort services expose ports on all nodes and should be avoided unless explicitly required. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for k8s core service: Kubernetes Service Avoids NodePort. NodePort services expose ports on all nodes and should be avoided unless explicitly required. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -30965,7 +30965,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-wildcard-permissions",
 			Name:              "Kubernetes role/cluster role assigned permissions that contain wildcards",
-			Description:       "Detects failed policy evidence showing that k8s cluster role or k8s role or k8s rbac risky binding does not satisfy Kubernetes role/cluster role assigned permissions that contain wildcards. A Kubernetes role uses wildcard permissions which grant overly broad access. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for k8s cluster role or k8s role or k8s rbac risky binding: Kubernetes role/cluster role assigned permissions that contain wildcards. A Kubernetes role uses wildcard permissions which grant overly broad access. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31005,7 +31005,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "k8s-workload-not-default-namespace",
 			Name:              "Kubernetes Workloads Avoid Default Namespace",
-			Description:       "Detects failed policy evidence showing that kubernetes deployment does not satisfy Kubernetes Workloads Avoid Default Namespace. Application workloads should not run in the default namespace. Risk: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
+			Description:       "Flags failed resource-state evidence for kubernetes deployment: Kubernetes Workloads Avoid Default Namespace. Application workloads should not run in the default namespace. Audit impact: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31046,7 +31046,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "log4shell-privileged",
 			Name:              "VM/serverless with high privileges vulnerable to CVE-2021-44228 (Log4Shell)",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy VM/serverless with high privileges vulnerable to CVE-2021-44228 (Log4Shell). A privileged resource is vulnerable to Log4Shell. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: VM/serverless with high privileges vulnerable to CVE-2021-44228 (Log4Shell). A privileged resource is vulnerable to Log4Shell. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31091,7 +31091,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "log4shell-public",
 			Name:              "Publicly exposed unprivileged VM/serverless vulnerable to CVE-2021-44228 (Log4Shell)",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Publicly exposed unprivileged VM/serverless vulnerable to CVE-2021-44228 (Log4Shell). A publicly exposed resource is vulnerable to Log4Shell. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Publicly exposed unprivileged VM/serverless vulnerable to CVE-2021-44228 (Log4Shell). A publicly exposed resource is vulnerable to Log4Shell. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31137,7 +31137,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-conditional-access-disabled",
 			Name:              "M365 Conditional Access Policies Disabled",
-			Description:       "Detects failed policy evidence showing that entra conditional access policy does not satisfy M365 Conditional Access Policies Disabled. Identifies Conditional Access policies that are in disabled or report-only state. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra conditional access policy: M365 Conditional Access Policies Disabled. Identifies Conditional Access policies that are in disabled or report-only state. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31173,7 +31173,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-dlp-policy-missing",
 			Name:              "M365 DLP Policy Configured",
-			Description:       "Detects failed policy evidence showing that policy document does not satisfy M365 DLP Policy Configured. Checks whether Data Loss Prevention policies are configured and reviewed. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for policy document: M365 DLP Policy Configured. Checks whether Data Loss Prevention policies are configured and reviewed. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31209,7 +31209,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-email-security-baseline",
 			Name:              "M365 Email Security Baseline Configured",
-			Description:       "Detects failed policy evidence showing that policy document does not satisfy M365 Email Security Baseline Configured. Checks whether anti-phishing, Safe Links/Safe Attachments, and DMARC/DKIM/SPF protections are configured. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for policy document: M365 Email Security Baseline Configured. Checks whether anti-phishing, Safe Links/Safe Attachments, and DMARC/DKIM/SPF protections are configured. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31246,7 +31246,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-file-shared-externally",
 			Name:              "Microsoft 365 File Shared Externally",
-			Description:       "Detects failed policy evidence showing that m365 sharepoint site does not satisfy Microsoft 365 File Shared Externally. SharePoint site or OneDrive file is shared with external users outside the organization. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed resource-state evidence for m365 sharepoint site: Microsoft 365 File Shared Externally. SharePoint site or OneDrive file is shared with external users outside the organization. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31292,7 +31292,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-global-admin-count",
 			Name:              "Excessive Global Administrators",
-			Description:       "Detects failed policy evidence showing that entra role assignment does not satisfy Excessive Global Administrators. Identifies when there are more than 5 Global Administrator accounts. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra role assignment: Excessive Global Administrators. Identifies when there are more than 5 Global Administrator accounts. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31328,7 +31328,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-guest-access-review",
 			Name:              "M365 Guest Users Without Recent Access Review",
-			Description:       "Detects failed policy evidence showing that entra user does not satisfy M365 Guest Users Without Recent Access Review. Identifies guest users who have not had access reviewed in the last 90 days. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra user: M365 Guest Users Without Recent Access Review. Identifies guest users who have not had access reviewed in the last 90 days. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31363,7 +31363,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-guest-admin",
 			Name:              "Microsoft 365 Guest User with Admin Role",
-			Description:       "Detects failed policy evidence showing that m365 directory user does not satisfy Microsoft 365 Guest User with Admin Role. External guest user has been assigned an administrative role in the tenant. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed resource-state evidence for m365 directory user: Microsoft 365 Guest User with Admin Role. External guest user has been assigned an administrative role in the tenant. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31403,7 +31403,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-inactive-admin",
 			Name:              "Microsoft 365 Inactive Admin Account",
-			Description:       "Detects failed policy evidence showing that m365 directory user does not satisfy Microsoft 365 Inactive Admin Account. User with administrative role has not signed in for over 90 days. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed resource-state evidence for m365 directory user: Microsoft 365 Inactive Admin Account. User with administrative role has not signed in for over 90 days. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31443,7 +31443,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-inactive-users",
 			Name:              "M365 Inactive User Accounts",
-			Description:       "Detects failed policy evidence showing that entra user does not satisfy M365 Inactive User Accounts. Identifies enabled user accounts with no sign-in activity in 90 days. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra user: M365 Inactive User Accounts. Identifies enabled user accounts with no sign-in activity in 90 days. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31479,7 +31479,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-legacy-auth-signins",
 			Name:              "M365 Legacy Authentication Sign-ins Detected",
-			Description:       "Detects failed policy evidence showing that entra sign in does not satisfy M365 Legacy Authentication Sign-ins Detected. Identifies sign-ins using legacy authentication protocols that should be blocked. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra sign in: M365 Legacy Authentication Sign-ins Detected. Identifies sign-ins using legacy authentication protocols that should be blocked. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31516,7 +31516,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-mfa-required",
 			Name:              "M365 Users Without MFA Enabled",
-			Description:       "Detects failed policy evidence showing that entra user does not satisfy M365 Users Without MFA Enabled. Identifies Microsoft 365 users who do not have MFA configured. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra user: M365 Users Without MFA Enabled. Identifies Microsoft 365 users who do not have MFA configured. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31552,7 +31552,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-onedrive-sharing-restrictions",
 			Name:              "OneDrive Sharing Restrictions Documented",
-			Description:       "Detects failed policy evidence showing that policy document does not satisfy OneDrive Sharing Restrictions Documented. Checks whether OneDrive sharing settings are restricted and reviewed. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for policy document: OneDrive Sharing Restrictions Documented. Checks whether OneDrive sharing settings are restricted and reviewed. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31588,7 +31588,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-privileged-roles-pim",
 			Name:              "Privileged Roles Without PIM Controls",
-			Description:       "Detects privileged role assignments that should be managed with Privileged Identity Management (PIM).",
+			Description:       "Flags failed query-result evidence for entra role assignment: Privileged Roles Without PIM Controls. Detects privileged role assignments that should be managed with Privileged Identity Management (PIM). Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31625,7 +31625,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-risky-users",
 			Name:              "M365 Users with High Risk Level",
-			Description:       "Detects failed policy evidence showing that entra risky user does not satisfy M365 Users with High Risk Level. Identifies users flagged as high risk by Entra ID Identity Protection. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra risky user: M365 Users with High Risk Level. Identifies users flagged as high risk by Entra ID Identity Protection. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31660,7 +31660,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-sensitivity-labels-missing",
 			Name:              "M365 Sensitivity Labels Applied",
-			Description:       "Detects failed policy evidence showing that policy document does not satisfy M365 Sensitivity Labels Applied. Checks whether sensitivity labels are defined and applied for data classification. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for policy document: M365 Sensitivity Labels Applied. Checks whether sensitivity labels are defined and applied for data classification. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31696,7 +31696,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-sharepoint-anonymous-link",
 			Name:              "SharePoint Anonymous Sharing Link",
-			Description:       "Detects failed policy evidence showing that m365 sharepoint site does not satisfy SharePoint Anonymous Sharing Link. SharePoint site allows anonymous sharing links that don't require authentication. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed resource-state evidence for m365 sharepoint site: SharePoint Anonymous Sharing Link. SharePoint site allows anonymous sharing links that don't require authentication. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31746,7 +31746,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-stale-service-principal",
 			Name:              "M365 Stale Service Principals",
-			Description:       "Detects failed policy evidence showing that entra service principal does not satisfy M365 Stale Service Principals. Identifies service principals (apps) that have not been used in 90 days. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra service principal: M365 Stale Service Principals. Identifies service principals (apps) that have not been used in 90 days. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31781,7 +31781,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "m365-terminated-users-active",
 			Name:              "M365 Accounts Disabled on Termination",
-			Description:       "Detects failed policy evidence showing that entra user does not satisfy M365 Accounts Disabled on Termination. Checks whether Entra ID accounts are disabled when employees are terminated. Risk: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
+			Description:       "Flags failed query-result evidence for entra user: M365 Accounts Disabled on Termination. Checks whether Entra ID accounts are disabled when employees are terminated. Audit impact: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31818,7 +31818,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ml-model-registry-no-versioning",
 			Name:              "ML Model Registry No Versioning",
-			Description:       "Detects failed policy evidence showing that aws sagemaker model package group does not satisfy ML Model Registry No Versioning. ML model registry does not enforce version control and audit trail. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for aws sagemaker model package group: ML Model Registry No Versioning. ML model registry does not enforce version control and audit trail. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31859,7 +31859,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ml-model-untrusted-source",
 			Name:              "ML Model from Untrusted Source",
-			Description:       "Detects failed policy evidence showing that ml model artifact does not satisfy ML Model from Untrusted Source. ML model loaded from external source without security scanning. Risk: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
+			Description:       "Flags failed resource-state evidence for ml model artifact: ML Model from Untrusted Source. ML model loaded from external source without security scanning. Audit impact: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31905,7 +31905,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "mlops-public-vuln",
 			Name:              "Publicly exposed VM/serverless with MLOps with initial access vulnerabilities",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Publicly exposed VM/serverless with MLOps with initial access vulnerabilities. A publicly exposed MLOps resource has vulnerabilities that could enable initial access. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Publicly exposed VM/serverless with MLOps with initial access vulnerabilities. A publicly exposed MLOps resource has vulnerabilities that could enable initial access. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31956,7 +31956,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "network-default-deny",
 			Name:              "Network Firewall Default Deny",
-			Description:       "Detects failed policy evidence showing that firewall does not satisfy Network Firewall Default Deny. Checks whether firewalls have default deny rules and explicit allow rules. Risk: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
+			Description:       "Flags failed query-result evidence for firewall: Network Firewall Default Deny. Checks whether firewalls have default deny rules and explicit allow rules. Audit impact: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -31993,7 +31993,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "network-dns-security",
 			Name:              "DNS Security Extensions Enabled",
-			Description:       "Detects failed policy evidence showing that dns zone does not satisfy DNS Security Extensions Enabled. Checks whether DNSSEC is enabled for domain validation to prevent DNS spoofing. Risk: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
+			Description:       "Flags failed query-result evidence for dns zone: DNS Security Extensions Enabled. Checks whether DNSSEC is enabled for domain validation to prevent DNS spoofing. Audit impact: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32028,7 +32028,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "network-ids-coverage",
 			Name:              "Network IDS/IPS Coverage",
-			Description:       "Detects failed policy evidence showing that network segment does not satisfy Network IDS/IPS Coverage. Checks whether intrusion detection/prevention systems monitor critical network segments. Risk: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
+			Description:       "Flags failed query-result evidence for network segment: Network IDS/IPS Coverage. Checks whether intrusion detection/prevention systems monitor critical network segments. Audit impact: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32065,7 +32065,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "network-segmentation",
 			Name:              "Network Segmentation Enforced",
-			Description:       "Detects failed policy evidence showing that network segment does not satisfy Network Segmentation Enforced. Checks whether critical network segments are properly isolated from general network. Risk: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
+			Description:       "Flags failed query-result evidence for network segment: Network Segmentation Enforced. Checks whether critical network segments are properly isolated from general network. Audit impact: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32102,7 +32102,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "network-unused-ports",
 			Name:              "Unused Network Ports Disabled",
-			Description:       "Detects failed policy evidence showing that server does not satisfy Unused Network Ports Disabled. Identifies servers with unused network services/ports that should be disabled. Risk: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
+			Description:       "Flags failed query-result evidence for server: Unused Network Ports Disabled. Identifies servers with unused network services/ports that should be disabled. Audit impact: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32138,7 +32138,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "notebook-excessive-agency",
 			Name:              "Notebook with excessive agency",
-			Description:       "Detects failed policy evidence showing that ai notebook does not satisfy Notebook with excessive agency. A notebook has excessive permissions that could lead to unintended resource access. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for ai notebook: Notebook with excessive agency. A notebook has excessive permissions that could lead to unintended resource access. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32178,7 +32178,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "okta-admin-dormant",
 			Name:              "Okta Dormant Admin Account",
-			Description:       "Detects failed policy evidence showing that okta user does not satisfy Okta Dormant Admin Account. Okta admin account has not logged in for over 90 days. Risk: Identity policy, authentication, or session controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for okta user: Okta Dormant Admin Account. Okta admin account has not logged in for over 90 days. Audit impact: Identity policy, authentication, or session controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32218,7 +32218,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "okta-app-no-mfa",
 			Name:              "Okta Application Without MFA Policy",
-			Description:       "Detects failed policy evidence showing that okta application does not satisfy Okta Application Without MFA Policy. Okta application does not have an authentication policy requiring MFA. Risk: Identity policy, authentication, or session controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for okta application: Okta Application Without MFA Policy. Okta application does not have an authentication policy requiring MFA. Audit impact: Identity policy, authentication, or session controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32257,7 +32257,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "okta-password-policy-weak",
 			Name:              "Okta Password Policy Does Not Meet Standards",
-			Description:       "Detects failed policy evidence showing that okta policy password does not satisfy Okta Password Policy Does Not Meet Standards. Okta password policy does not enforce sufficient complexity requirements. Risk: Identity policy, authentication, or session controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for okta policy password: Okta Password Policy Does Not Meet Standards. Okta password policy does not enforce sufficient complexity requirements. Audit impact: Identity policy, authentication, or session controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32296,7 +32296,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "okta-suspicious-login",
 			Name:              "Okta Suspicious Login Detected",
-			Description:       "Detects failed policy evidence showing that okta system log does not satisfy Okta Suspicious Login Detected. Login from unusual location, impossible travel, or anomalous behavior pattern detected. Risk: Identity policy, authentication, or session controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for okta system log: Okta Suspicious Login Detected. Login from unusual location, impossible travel, or anomalous behavior pattern detected. Audit impact: Identity policy, authentication, or session controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32339,7 +32339,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "okta-user-mfa-disabled",
 			Name:              "Okta User Without MFA Enrolled",
-			Description:       "Detects failed policy evidence showing that okta user does not satisfy Okta User Without MFA Enrolled. Okta user does not have any multi-factor authentication methods enrolled. Risk: Identity policy, authentication, or session controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for okta user: Okta User Without MFA Enrolled. Okta user does not have any multi-factor authentication methods enrolled. Audit impact: Identity policy, authentication, or session controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32378,7 +32378,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "openssl-vuln-internal",
 			Name:              "Internal VM/serverless vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability)",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Internal VM/serverless vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability). An internal resource is vulnerable to OpenSSL buffer overflow vulnerabilities. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Internal VM/serverless vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability). An internal resource is vulnerable to OpenSSL buffer overflow vulnerabilities. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32423,7 +32423,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "org-bottleneck-critical",
 			Name:              "Single Person Bridges Multiple Teams",
-			Description:       "Detects failed policy evidence showing that org person does not satisfy Single Person Bridges Multiple Teams. One person is the sole communication link between multiple teams. Risk: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
+			Description:       "Flags failed resource-state evidence for org person: Single Person Bridges Multiple Teams. One person is the sole communication link between multiple teams. Audit impact: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32459,7 +32459,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "org-bus-factor-critical",
 			Name:              "Critical System With Bus Factor 1",
-			Description:       "Detects failed policy evidence showing that org system does not satisfy Critical System With Bus Factor 1. A system classified as critical has only one person with active knowledge. Risk: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
+			Description:       "Flags failed resource-state evidence for org system: Critical System With Bus Factor 1. A system classified as critical has only one person with active knowledge. Audit impact: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32495,7 +32495,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "org-customer-relationship-health-low",
 			Name:              "Customer Relationship Structural Health Low",
-			Description:       "Detects failed policy evidence showing that org customer relationship does not satisfy Customer Relationship Structural Health Low. Customer relationship topology health has dropped below the acceptable threshold. Risk: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
+			Description:       "Flags failed resource-state evidence for org customer relationship: Customer Relationship Structural Health Low. Customer relationship topology health has dropped below the acceptable threshold. Audit impact: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32531,7 +32531,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "org-customer-topology-churn-risk",
 			Name:              "Customer Topology Matches Churn Pattern",
-			Description:       "Detects failed policy evidence showing that org customer relationship does not satisfy Customer Topology Matches Churn Pattern. Customer topology is structurally similar to historically churned relationships. Risk: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
+			Description:       "Flags failed resource-state evidence for org customer relationship: Customer Topology Matches Churn Pattern. Customer topology is structurally similar to historically churned relationships. Audit impact: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32567,7 +32567,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "org-customer-touchpoints-low",
 			Name:              "Customer Touchpoint Coverage Too Thin",
-			Description:       "Detects failed policy evidence showing that org customer relationship does not satisfy Customer Touchpoint Coverage Too Thin. Customer relationship has fewer than two active touchpoints. Risk: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
+			Description:       "Flags failed resource-state evidence for org customer relationship: Customer Touchpoint Coverage Too Thin. Customer relationship has fewer than two active touchpoints. Audit impact: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32602,7 +32602,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "org-relationship-decay-customer",
 			Name:              "Customer Relationship Weakening",
-			Description:       "Detects failed policy evidence showing that org customer relationship does not satisfy Customer Relationship Weakening. Primary contact interaction with customer has decayed below threshold before renewal. Risk: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
+			Description:       "Flags failed resource-state evidence for org customer relationship: Customer Relationship Weakening. Primary contact interaction with customer has decayed below threshold before renewal. Audit impact: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32638,7 +32638,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "org-silo-shared-dependency",
 			Name:              "Teams Sharing Dependencies With No Communication",
-			Description:       "Detects failed policy evidence showing that org team pair does not satisfy Teams Sharing Dependencies With No Communication. Two teams depend on the same infrastructure but have zero interaction edges. Risk: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
+			Description:       "Flags failed resource-state evidence for org team pair: Teams Sharing Dependencies With No Communication. Two teams depend on the same infrastructure but have zero interaction edges. Audit impact: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32673,7 +32673,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "org-tenure-risk",
 			Name:              "Long-Tenured Sole Expert Showing Disengagement",
-			Description:       "Detects failed policy evidence showing that org person does not satisfy Long-Tenured Sole Expert Showing Disengagement. A person owning bus-factor-1 systems is showing declining activity and has long tenure. Risk: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
+			Description:       "Flags failed resource-state evidence for org person: Long-Tenured Sole Expert Showing Disengagement. A person owning bus-factor-1 systems is showing declining activity and has long tenure. Audit impact: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32709,7 +32709,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-antivirus-enabled",
 			Name:              "Anti-Malware on Systems in CDE",
-			Description:       "Detects failed policy evidence showing that endpoint does not satisfy Anti-Malware on Systems in CDE. Checks whether anti-malware software is deployed on all systems in the cardholder data environment (PCI DSS 5.1). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for endpoint: Anti-Malware on Systems in CDE. Checks whether anti-malware software is deployed on all systems in the cardholder data environment (PCI DSS 5.1). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32743,7 +32743,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-audit-retention",
 			Name:              "Audit Log Retention 1 Year",
-			Description:       "Detects failed policy evidence showing that log retention does not satisfy Audit Log Retention 1 Year. Checks whether audit trail history is retained for at least one year with 3 months immediately available (PCI DSS 10.7). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for log retention: Audit Log Retention 1 Year. Checks whether audit trail history is retained for at least one year with 3 months immediately available (PCI DSS 10.7). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32777,7 +32777,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-audit-trail-enabled",
 			Name:              "Audit Trails Enabled for CDE Systems",
-			Description:       "Detects failed policy evidence showing that system does not satisfy Audit Trails Enabled for CDE Systems. Checks whether audit trails are enabled and link all access to individual users (PCI DSS 10.1). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for system: Audit Trails Enabled for CDE Systems. Checks whether audit trails are enabled and link all access to individual users (PCI DSS 10.1). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32811,7 +32811,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-cardholder-data-encrypted",
 			Name:              "Cardholder Data Encrypted at Rest",
-			Description:       "Detects failed policy evidence showing that database does not satisfy Cardholder Data Encrypted at Rest. Checks whether cardholder data is encrypted at rest using strong cryptography (PCI DSS 3.4). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for database: Cardholder Data Encrypted at Rest. Checks whether cardholder data is encrypted at rest using strong cryptography (PCI DSS 3.4). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32845,7 +32845,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-firewall-inbound-rules",
 			Name:              "PCI Firewall Inbound Rules Reviewed",
-			Description:       "Detects failed policy evidence showing that firewall rule does not satisfy PCI Firewall Inbound Rules Reviewed. Checks whether firewall and router rule sets are reviewed at least every 6 months (PCI DSS 1.1.7). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for firewall rule: PCI Firewall Inbound Rules Reviewed. Checks whether firewall and router rule sets are reviewed at least every 6 months (PCI DSS 1.1.7). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32879,7 +32879,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-password-complexity",
 			Name:              "PCI Password Complexity Requirements",
-			Description:       "Detects failed policy evidence showing that password policy does not satisfy PCI Password Complexity Requirements. Checks whether passwords meet PCI DSS complexity requirements (min 7 chars, numeric and alpha) (PCI DSS 8.2.3). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for password policy: PCI Password Complexity Requirements. Checks whether passwords meet PCI DSS complexity requirements (min 7 chars, numeric and alpha) (PCI DSS 8.2.3). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32913,7 +32913,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-password-expiry",
 			Name:              "PCI Password Expiry 90 Days",
-			Description:       "Detects failed policy evidence showing that password policy does not satisfy PCI Password Expiry 90 Days. Checks whether passwords are changed at least every 90 days (PCI DSS 8.2.4). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for password policy: PCI Password Expiry 90 Days. Checks whether passwords are changed at least every 90 days (PCI DSS 8.2.4). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32947,7 +32947,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-penetration-test-annual",
 			Name:              "Annual Penetration Testing",
-			Description:       "Detects failed policy evidence showing that penetration test does not satisfy Annual Penetration Testing. Checks whether penetration testing is performed at least annually and after significant changes (PCI DSS 11.3). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for penetration test: Annual Penetration Testing. Checks whether penetration testing is performed at least annually and after significant changes (PCI DSS 11.3). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -32981,7 +32981,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-transmission-encrypted",
 			Name:              "Cardholder Data Encrypted in Transit",
-			Description:       "Detects failed policy evidence showing that tls endpoint does not satisfy Cardholder Data Encrypted in Transit. Checks whether cardholder data is encrypted during transmission using TLS 1.2+ (PCI DSS 4.1). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for tls endpoint: Cardholder Data Encrypted in Transit. Checks whether cardholder data is encrypted during transmission using TLS 1.2+ (PCI DSS 4.1). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33015,7 +33015,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-unique-user-ids",
 			Name:              "Unique User IDs for CDE Access",
-			Description:       "Detects failed policy evidence showing that user account does not satisfy Unique User IDs for CDE Access. Checks whether all users have unique IDs and shared/group accounts are not used (PCI DSS 8.1.1). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for user account: Unique User IDs for CDE Access. Checks whether all users have unique IDs and shared/group accounts are not used (PCI DSS 8.1.1). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33049,7 +33049,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "pci-vulnerability-scan-quarterly",
 			Name:              "Quarterly External Vulnerability Scans",
-			Description:       "Detects failed policy evidence showing that vulnerability scan does not satisfy Quarterly External Vulnerability Scans. Checks whether external vulnerability scans by PCI ASV are performed quarterly (PCI DSS 11.2.2). Risk: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
+			Description:       "Flags failed query-result evidence for vulnerability scan: Quarterly External Vulnerability Scans. Checks whether external vulnerability scans by PCI ASV are performed quarterly (PCI DSS 11.2.2). Audit impact: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33083,7 +33083,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "privileged-inactive-keys",
 			Name:              "User/service account with high privileges and active access key that are inactive for over 90 days",
-			Description:       "Detects failed policy evidence showing that iam user or iam service account does not satisfy User/service account with high privileges and active access key that are inactive for over 90 days. A privileged account has access keys that have been inactive for over 90 days. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user or iam service account: User/service account with high privileges and active access key that are inactive for over 90 days. A privileged account has access keys that have been inactive for over 90 days. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33127,7 +33127,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "privileged-keys-unrotated",
 			Name:              "User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year",
-			Description:       "Detects failed policy evidence showing that iam user or iam service account does not satisfy User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year. A privileged account has active access keys that have not been rotated in over a year. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user or iam service account: User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year. A privileged account has active access keys that have not been rotated in over a year. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33171,7 +33171,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "public-resource-cleartext-admin-keys",
 			Name:              "Publicly exposed resource with cleartext cloud keys granting admin privileges",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Publicly exposed resource with cleartext cloud keys granting admin privileges. A publicly exposed resource contains cleartext cloud credentials with administrative privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Publicly exposed resource with cleartext cloud keys granting admin privileges. A publicly exposed resource contains cleartext cloud credentials with administrative privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33221,7 +33221,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "public-resource-cleartext-keys",
 			Name:              "Publicly exposed resource with cleartext cloud keys granting high privileges",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Publicly exposed resource with cleartext cloud keys granting high privileges. A publicly exposed resource contains cleartext cloud credentials with high privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Publicly exposed resource with cleartext cloud keys granting high privileges. A publicly exposed resource contains cleartext cloud credentials with high privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33271,7 +33271,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "public-resource-cross-account-keys",
 			Name:              "Publicly exposed resource with cleartext cloud keys granting permission to access resources in other subscriptions",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Publicly exposed resource with cleartext cloud keys granting permission to access resources in other subscriptions. A public resource contains cross-account access keys. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Publicly exposed resource with cleartext cloud keys granting permission to access resources in other subscriptions. A public resource contains cross-account access keys. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33321,7 +33321,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "public-resource-keys-data-access",
 			Name:              "Publicly exposed resource with cleartext cloud keys allowing access to sensitive data",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Publicly exposed resource with cleartext cloud keys allowing access to sensitive data. A public resource contains keys that grant access to sensitive data. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Publicly exposed resource with cleartext cloud keys allowing access to sensitive data. A public resource contains keys that grant access to sensitive data. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33371,7 +33371,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "public-saas-keys",
 			Name:              "Publicly exposed resource with cleartext SaaS API keys",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Publicly exposed resource with cleartext SaaS API keys. A public resource contains cleartext SaaS API keys. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Publicly exposed resource with cleartext SaaS API keys. A public resource contains cleartext SaaS API keys. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33416,7 +33416,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "public-vm-cross-account-keys",
 			Name:              "Publicly exposed VM with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges. A publicly exposed VM contains highly privileged cross-account access keys. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges. A publicly exposed VM contains highly privileged cross-account access keys. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33466,7 +33466,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ray-ai-public",
 			Name:              "Publicly exposed VM vulnerable with Ray AI installed (authentication not supported)",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM vulnerable with Ray AI installed (authentication not supported). A VM with Ray AI framework is publicly exposed without authentication. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM vulnerable with Ray AI installed (authentication not supported). A VM with Ray AI framework is publicly exposed without authentication. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33512,7 +33512,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "resolution-time-breach",
 			Name:              "Zendesk Resolution Time SLA Breach",
-			Description:       "Detects failed policy evidence showing that zendesk ticket does not satisfy Zendesk Resolution Time SLA Breach. Flags tickets that breached resolution-time commitments while still unresolved. Risk: Support SLA or customer-response evidence may indicate an unmanaged operational control gap.",
+			Description:       "Flags failed resource-state evidence for zendesk ticket: Zendesk Resolution Time SLA Breach. Flags tickets that breached resolution-time commitments while still unresolved. Audit impact: Support SLA or customer-response evidence may indicate an unmanaged operational control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33548,7 +33548,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "resource-cleartext-keys-admin",
 			Name:              "Resource with cleartext cloud keys granting admin privileges",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Resource with cleartext cloud keys granting admin privileges. A resource contains cleartext cloud credentials that grant administrative privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Resource with cleartext cloud keys granting admin privileges. A resource contains cleartext cloud credentials that grant administrative privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33592,7 +33592,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "resource-cleartext-keys-privileged",
 			Name:              "Resource with cleartext cloud keys granting high privileges",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Resource with cleartext cloud keys granting high privileges. A resource contains cleartext cloud credentials that grant high privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Resource with cleartext cloud keys granting high privileges. A resource contains cleartext cloud credentials that grant high privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33636,7 +33636,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "s3-read-logging-disabled",
 			Name:              "S3 Bucket with object-level read data events logging disabled",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket with object-level read data events logging disabled. An S3 bucket does not have CloudTrail data event logging enabled for read operations. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket with object-level read data events logging disabled. An S3 bucket does not have CloudTrail data event logging enabled for read operations. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33677,7 +33677,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "s3-write-logging-disabled",
 			Name:              "S3 Bucket with object-level write data events logging disabled",
-			Description:       "Detects failed policy evidence showing that aws s3 bucket does not satisfy S3 Bucket with object-level write data events logging disabled. An S3 bucket does not have CloudTrail data event logging enabled for write operations. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws s3 bucket: S3 Bucket with object-level write data events logging disabled. An S3 bucket does not have CloudTrail data event logging enabled for write operations. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33718,7 +33718,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sa-external-principal-assume",
 			Name:              "Service account with high privileges can be assumed by external principal",
-			Description:       "Detects failed policy evidence showing that gcp iam service account does not satisfy Service account with high privileges can be assumed by external principal. A service account with high privileges has a trust policy allowing principals from external organizations to assume it, enabling cross-account privilege escalation. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp iam service account: Service account with high privileges can be assumed by external principal. A service account with high privileges has a trust policy allowing principals from external organizations to assume it, enabling cross-account privilege escalation. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33758,7 +33758,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sa-external-web-identity",
 			Name:              "Service account with high privileges can be assumed by an external web identity",
-			Description:       "Detects failed policy evidence showing that iam service account or iam role does not satisfy Service account with high privileges can be assumed by an external web identity. A highly privileged service account can be assumed by an external web identity provider. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam service account or iam role: Service account with high privileges can be assumed by an external web identity. A highly privileged service account can be assumed by an external web identity provider. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33798,7 +33798,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sa-inactive-assigned",
 			Name:              "Service account with high privileges is inactive for over 90 days and assigned to a resource",
-			Description:       "Detects failed policy evidence showing that iam service account does not satisfy Service account with high privileges is inactive for over 90 days and assigned to a resource. An inactive privileged service account is still assigned to a resource. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam service account: Service account with high privileges is inactive for over 90 days and assigned to a resource. An inactive privileged service account is still assigned to a resource. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33838,7 +33838,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sa-inactive-privileged",
 			Name:              "Service account with high privileges is inactive for over 90 days",
-			Description:       "Detects failed policy evidence showing that iam service account does not satisfy Service account with high privileges is inactive for over 90 days. A service account with high privileges has been inactive for over 90 days. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam service account: Service account with high privileges is inactive for over 90 days. A service account with high privileges has been inactive for over 90 days. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33878,7 +33878,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sa-lateral-admin",
 			Name:              "Service account with lateral movement to admin in another account",
-			Description:       "Detects failed policy evidence showing that iam service account does not satisfy Service account with lateral movement to admin in another account. A service account has an attack path that leads to admin privileges in another cloud account. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam service account: Service account with lateral movement to admin in another account. A service account has an attack path that leads to admin privileges in another cloud account. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33918,7 +33918,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "saas-token-exposed",
 			Name:              "Validated exposure of SaaS API token",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Validated exposure of SaaS API token. A SaaS API token has been validated as exposed and functional. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Validated exposure of SaaS API token. A SaaS API token has been validated as exposed and functional. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -33963,7 +33963,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "same-user-approve-execute",
 			Name:              "Same User Approved and Executed Financial Action",
-			Description:       "Detects failed policy evidence showing that billing approval event does not satisfy Same User Approved and Executed Financial Action. Flags finance actions where approver and executor are the same principal. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for billing approval event: Same User Approved and Executed Financial Action. Flags finance actions where approver and executor are the same principal. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34000,7 +34000,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "secrets-access-audit",
 			Name:              "Secrets Access Auditing Enabled",
-			Description:       "Detects failed policy evidence showing that secret does not satisfy Secrets Access Auditing Enabled. Checks whether all secret access is logged and auditable. Risk: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.",
+			Description:       "Flags failed query-result evidence for secret: Secrets Access Auditing Enabled. Checks whether all secret access is logged and auditable. Audit impact: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34036,7 +34036,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "secrets-least-privilege",
 			Name:              "Secrets Least Privilege Access",
-			Description:       "Detects failed policy evidence showing that secret does not satisfy Secrets Least Privilege Access. Checks whether secrets have minimal necessary access permissions. Risk: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.",
+			Description:       "Flags failed query-result evidence for secret: Secrets Least Privilege Access. Checks whether secrets have minimal necessary access permissions. Audit impact: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34073,7 +34073,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "secrets-rotation",
 			Name:              "Secrets Rotation Policy",
-			Description:       "Detects failed policy evidence showing that secret does not satisfy Secrets Rotation Policy. Checks whether secrets are rotated within the defined rotation period. Risk: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.",
+			Description:       "Flags failed query-result evidence for secret: Secrets Rotation Policy. Checks whether secrets are rotated within the defined rotation period. Audit impact: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34110,7 +34110,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "secrets-vault-storage",
 			Name:              "Secrets Stored in Vault",
-			Description:       "Detects failed policy evidence showing that secret does not satisfy Secrets Stored in Vault. Checks whether secrets are stored in approved secret management systems. Risk: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.",
+			Description:       "Flags failed query-result evidence for secret: Secrets Stored in Vault. Checks whether secrets are stored in approved secret management systems. Audit impact: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34146,7 +34146,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sentinelone-command-control",
 			Name:              "SentinelOne Command and Control Activity",
-			Description:       "Detects failed policy evidence showing that sentinelone threat does not satisfy SentinelOne Command and Control Activity. SentinelOne detected command and control (C2) communication from an endpoint. Risk: Endpoint detection, protection, or response controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for sentinelone threat: SentinelOne Command and Control Activity. SentinelOne detected command and control (C2) communication from an endpoint. Audit impact: Endpoint detection, protection, or response controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34189,7 +34189,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sentinelone-malware",
 			Name:              "SentinelOne Active Malware Threat",
-			Description:       "Detects failed policy evidence showing that sentinelone threat does not satisfy SentinelOne Active Malware Threat. SentinelOne detected an unmitigated malware threat on the endpoint. Risk: Endpoint detection, protection, or response controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for sentinelone threat: SentinelOne Active Malware Threat. SentinelOne detected an unmitigated malware threat on the endpoint. Audit impact: Endpoint detection, protection, or response controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34232,7 +34232,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sentinelone-ransomware",
 			Name:              "SentinelOne Ransomware Activity Detected",
-			Description:       "Detects failed policy evidence showing that sentinelone threat does not satisfy SentinelOne Ransomware Activity Detected. SentinelOne detected ransomware behavior or file encryption activity on endpoint. Risk: Endpoint detection, protection, or response controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for sentinelone threat: SentinelOne Ransomware Activity Detected. SentinelOne detected ransomware behavior or file encryption activity on endpoint. Audit impact: Endpoint detection, protection, or response controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34272,7 +34272,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sentinelone-threat-detected",
 			Name:              "SentinelOne Threat Detected",
-			Description:       "Detects failed policy evidence showing that sentinelone threat does not satisfy SentinelOne Threat Detected. SentinelOne EDR detected threat on endpoint. Risk: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
+			Description:       "Flags failed resource-state evidence for sentinelone threat: SentinelOne Threat Detected. SentinelOne EDR detected threat on endpoint. Audit impact: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34320,7 +34320,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sentinelone-vuln-medium",
 			Name:              "SentinelOne Agent Medium Vulnerabilities Addressed",
-			Description:       "Detects failed policy evidence showing that sentinelone vulnerabilities does not satisfy SentinelOne Agent Medium Vulnerabilities Addressed. Checks whether medium vulnerabilities detected by SentinelOne are addressed within SLA (30 days). Risk: Endpoint detection, protection, or response controls may not be operating effectively.",
+			Description:       "Flags failed resource-state evidence for sentinelone vulnerabilities: SentinelOne Agent Medium Vulnerabilities Addressed. Checks whether medium vulnerabilities detected by SentinelOne are addressed within SLA (30 days). Audit impact: Endpoint detection, protection, or response controls may not be operating effectively.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34358,7 +34358,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "serverless-public-admin",
 			Name:              "Publicly exposed serverless with admin privileges",
-			Description:       "Detects failed policy evidence showing that serverless function does not satisfy Publicly exposed serverless with admin privileges. A publicly exposed serverless function has administrative privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for serverless function: Publicly exposed serverless with admin privileges. A publicly exposed serverless function has administrative privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34404,7 +34404,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "serverless-public-high-priv",
 			Name:              "Publicly exposed serverless with high privileges",
-			Description:       "Detects failed policy evidence showing that serverless function does not satisfy Publicly exposed serverless with high privileges. A publicly exposed serverless function has high privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for serverless function: Publicly exposed serverless with high privileges. A publicly exposed serverless function has high privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34450,7 +34450,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "serverless-unauth-privileged",
 			Name:              "Publicly exposed serverless with high privileges can be invoked by unauthenticated users",
-			Description:       "Detects failed policy evidence showing that serverless function does not satisfy Publicly exposed serverless with high privileges can be invoked by unauthenticated users. A privileged serverless function allows unauthenticated invocations. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for serverless function: Publicly exposed serverless with high privileges can be invoked by unauthenticated users. A privileged serverless function allows unauthenticated invocations. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34500,7 +34500,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "serverless-unauthenticated-invocation",
 			Name:              "Publicly exposed serverless with high privileges can be invoked by unauthenticated users",
-			Description:       "Detects failed policy evidence showing that gcp cloudfunctions function does not satisfy Publicly exposed serverless with high privileges can be invoked by unauthenticated users. Cloud Function or Cloud Run service is publicly accessible without authentication and runs with high privileges, allowing anyone to invoke it and potentially abuse its permissions. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp cloudfunctions function: Publicly exposed serverless with high privileges can be invoked by unauthenticated users. Cloud Function or Cloud Run service is publicly accessible without authentication and runs with high privileges, allowing anyone to invoke it and potentially abuse its permissions. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34541,7 +34541,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sf-close-date-slip",
 			Name:              "Close Date Pushed More Than Twice",
-			Description:       "Detects failed policy evidence showing that salesforce opportunity does not satisfy Close Date Pushed More Than Twice. Flags opportunities with repeated close-date slips while still open. Risk: Customer or opportunity management evidence may indicate an unmanaged business control gap.",
+			Description:       "Flags failed resource-state evidence for salesforce opportunity: Close Date Pushed More Than Twice. Flags opportunities with repeated close-date slips while still open. Audit impact: Customer or opportunity management evidence may indicate an unmanaged business control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34576,7 +34576,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "sf-stale-enterprise-opp",
 			Name:              "Stale Enterprise Opportunity",
-			Description:       "Detects failed policy evidence showing that salesforce opportunity does not satisfy Stale Enterprise Opportunity. Flags enterprise opportunities that are stale outside closed states. Risk: Customer or opportunity management evidence may indicate an unmanaged business control gap.",
+			Description:       "Flags failed resource-state evidence for salesforce opportunity: Stale Enterprise Opportunity. Flags enterprise opportunities that are stale outside closed states. Audit impact: Customer or opportunity management evidence may indicate an unmanaged business control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34612,7 +34612,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "ssh-key-unused",
 			Name:              "SSH key pair is not used by any VM",
-			Description:       "Detects failed policy evidence showing that compute ssh key does not satisfy SSH key pair is not used by any VM. An SSH key pair exists but is not associated with any VM. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute ssh key: SSH key pair is not used by any VM. An SSH key pair exists but is not associated with any VM. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34650,7 +34650,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "storage-key-exposed",
 			Name:              "Validated exposure of storage account key/SAS token",
-			Description:       "Detects failed policy evidence showing that * does not satisfy Validated exposure of storage account key/SAS token. A storage account key or SAS token has been validated as exposed. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for *: Validated exposure of storage account key/SAS token. A storage account key or SAS token has been validated as exposed. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34695,7 +34695,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "stripe-large-refund",
 			Name:              "Large Refund Without Approval",
-			Description:       "Detects failed policy evidence showing that stripe charge does not satisfy Large Refund Without Approval. Flags large refunds without explicit approval metadata. Risk: Billing, payment, refund, or approval evidence may indicate an unmanaged financial process control gap.",
+			Description:       "Flags failed resource-state evidence for stripe charge: Large Refund Without Approval. Flags large refunds without explicit approval metadata. Audit impact: Billing, payment, refund, or approval evidence may indicate an unmanaged financial process control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34730,7 +34730,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "stripe-payment-failure-streak",
 			Name:              "Consecutive Payment Failures",
-			Description:       "Detects subscriptions in past_due state with repeated payment failures.",
+			Description:       "Flags failed resource-state evidence for stripe subscription: Consecutive Payment Failures. Detects subscriptions in past_due state with repeated payment failures. Audit impact: Billing, payment, refund, or approval evidence may indicate an unmanaged financial process control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34766,7 +34766,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "stripe-trial-no-payment-method",
 			Name:              "Trial Ending Without Payment Method",
-			Description:       "Detects failed policy evidence showing that stripe subscription does not satisfy Trial Ending Without Payment Method. Flags trial subscriptions nearing expiration without a default payment method. Risk: Billing, payment, refund, or approval evidence may indicate an unmanaged financial process control gap.",
+			Description:       "Flags failed resource-state evidence for stripe subscription: Trial Ending Without Payment Method. Flags trial subscriptions nearing expiration without a default payment method. Audit impact: Billing, payment, refund, or approval evidence may indicate an unmanaged financial process control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34801,7 +34801,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "telemetry-repo-secret-key",
 			Name:              "Repository Contains Hardcoded Secrets",
-			Description:       "Detects failed policy evidence showing that telemetry secret scan finding does not satisfy Repository Contains Hardcoded Secrets. Source code repository contains hardcoded secrets, API keys, or credentials detected by secret scanning. Risk: Telemetry, logging, or monitoring evidence may be incomplete for detecting control failures.",
+			Description:       "Flags failed resource-state evidence for telemetry secret scan finding: Repository Contains Hardcoded Secrets. Source code repository contains hardcoded secrets, API keys, or credentials detected by secret scanning. Audit impact: Telemetry, logging, or monitoring evidence may be incomplete for detecting control failures.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34839,7 +34839,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "terraform-cloud-no-team-access-control",
 			Name:              "Terraform Cloud Workspace Without Team Access Control",
-			Description:       "Detects failed policy evidence showing that terraform workspace does not satisfy Terraform Cloud Workspace Without Team Access Control. Terraform Cloud workspace lacks team-based access control. Risk: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
+			Description:       "Flags failed resource-state evidence for terraform workspace: Terraform Cloud Workspace Without Team Access Control. Terraform Cloud workspace lacks team-based access control. Audit impact: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34879,7 +34879,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "third-party-sa-admin",
 			Name:              "Third party service account with admin privileges",
-			Description:       "Detects failed policy evidence showing that iam service account or iam role does not satisfy Third party service account with admin privileges. A service account owned by a third party has administrative privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam service account or iam role: Third party service account with admin privileges. A service account owned by a third party has administrative privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34919,7 +34919,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "third-party-sa-privileged",
 			Name:              "Third party service account with high privileges",
-			Description:       "Detects failed policy evidence showing that iam service account or iam role does not satisfy Third party service account with high privileges. A service account owned by a third party has high privileges in the environment. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam service account or iam role: Third party service account with high privileges. A service account owned by a third party has high privileges in the environment. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -34959,7 +34959,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "threat-intel-malicious-domain-resolution",
 			Name:              "DNS Resolution of Threat Intelligence Domain",
-			Description:       "Detects failed policy evidence showing that network dns query does not satisfy DNS Resolution of Threat Intelligence Domain. DNS query detected for domain in threat intelligence feeds. Risk: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
+			Description:       "Flags failed resource-state evidence for network dns query: DNS Resolution of Threat Intelligence Domain. DNS query detected for domain in threat intelligence feeds. Audit impact: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35007,7 +35007,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "threat-intel-malicious-ip-connection",
 			Name:              "Connection to Threat Intelligence IP",
-			Description:       "Detects failed policy evidence showing that network connection does not satisfy Connection to Threat Intelligence IP. Network connection detected to IP address in threat intelligence feeds. Risk: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
+			Description:       "Flags failed resource-state evidence for network connection: Connection to Threat Intelligence IP. Network connection detected to IP address in threat intelligence feeds. Audit impact: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35055,7 +35055,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "tls-version-outdated",
 			Name:              "Services Using Outdated TLS Versions",
-			Description:       "Detects failed policy evidence showing that tls endpoint does not satisfy Services Using Outdated TLS Versions. Identifies services still supporting TLS 1.0 or TLS 1.1 which are deprecated. Risk: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
+			Description:       "Flags failed query-result evidence for tls endpoint: Services Using Outdated TLS Versions. Identifies services still supporting TLS 1.0 or TLS 1.1 which are deprecated. Audit impact: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35091,7 +35091,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "tls-weak-ciphers",
 			Name:              "Services Supporting Weak TLS Cipher Suites",
-			Description:       "Detects failed policy evidence showing that tls endpoint does not satisfy Services Supporting Weak TLS Cipher Suites. Identifies services that support weak or deprecated cipher suites (RC4, DES, 3DES, NULL ciphers). Risk: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
+			Description:       "Flags failed query-result evidence for tls endpoint: Services Supporting Weak TLS Cipher Suites. Identifies services that support weak or deprecated cipher suites (RC4, DES, 3DES, NULL ciphers). Audit impact: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35127,7 +35127,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "unknown-account-trusted",
 			Name:              "Unknown AWS account with trusted access to non-admin IAM role",
-			Description:       "Detects failed policy evidence showing that aws iam role does not satisfy Unknown AWS account with trusted access to non-admin IAM role. An unknown AWS account has trust relationship to assume a role. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws iam role: Unknown AWS account with trusted access to non-admin IAM role. An unknown AWS account has trust relationship to assume a role. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35167,7 +35167,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "uptime-breach-enterprise",
 			Name:              "Enterprise Uptime SLA Breach",
-			Description:       "Detects failed policy evidence showing that service uptime does not satisfy Enterprise Uptime SLA Breach. Flags enterprise services whose 30-day uptime falls below contractual targets. Risk: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
+			Description:       "Flags failed resource-state evidence for service uptime: Enterprise Uptime SLA Breach. Flags enterprise services whose 30-day uptime falls below contractual targets. Audit impact: Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35204,7 +35204,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "user-data-access-unused-password",
 			Name:              "User account with data access to sensitive data and an unused password",
-			Description:       "Detects failed policy evidence showing that iam user does not satisfy User account with data access to sensitive data and an unused password. A user with access to sensitive data has an unused password, suggesting the account may be dormant. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user: User account with data access to sensitive data and an unused password. A user with access to sensitive data has an unused password, suggesting the account may be dormant. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35248,7 +35248,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "user-excessive-admin",
 			Name:              "User account with excessive admin privileges",
-			Description:       "Detects failed policy evidence showing that iam user does not satisfy User account with excessive admin privileges. A user account has more admin privileges than necessary for their role. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user: User account with excessive admin privileges. A user account has more admin privileges than necessary for their role. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35288,7 +35288,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "user-excessive-data-priv",
 			Name:              "User account with excessive data privileges",
-			Description:       "Detects failed policy evidence showing that iam user does not satisfy User account with excessive data privileges. A user account has excessive data access privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user: User account with excessive data privileges. A user account has excessive data access privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35328,7 +35328,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "user-excessive-high-priv",
 			Name:              "User account with excessive high privileges",
-			Description:       "Detects failed policy evidence showing that iam user does not satisfy User account with excessive high privileges. A user account has excessive high-level privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user: User account with excessive high privileges. A user account has excessive high-level privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35368,7 +35368,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "user-lateral-admin",
 			Name:              "User account with lateral movement to admin in another account",
-			Description:       "Detects failed policy evidence showing that iam user does not satisfy User account with lateral movement to admin in another account. A user account has an attack path that leads to admin privileges in another cloud account. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user: User account with lateral movement to admin in another account. A user account has an attack path that leads to admin privileges in another cloud account. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35408,7 +35408,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "user-privileged-access-keys",
 			Name:              "User account with high privileges has active access keys",
-			Description:       "Detects failed policy evidence showing that iam user does not satisfy User account with high privileges has active access keys. A user with high privileges has active access keys, increasing compromise risk. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user: User account with high privileges has active access keys. A user with high privileges has active access keys, increasing compromise risk. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35452,7 +35452,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "user-privileged-unused-password",
 			Name:              "User account with high privileges and an unused password",
-			Description:       "Detects failed policy evidence showing that iam user does not satisfy User account with high privileges and an unused password. A privileged user account has a password that has never been used, suggesting the account may be dormant. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for iam user: User account with high privileges and an unused password. A privileged user account has a password that has never been used, suggesting the account may be dormant. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35496,7 +35496,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vendor-auth-method",
 			Name:              "Vendor Authentication Method Specified",
-			Description:       "Detects failed policy evidence showing that vendor does not satisfy Vendor Authentication Method Specified. Checks whether all vendors have their authentication method documented. Risk: Third-party risk review or vendor ownership evidence may be missing or overdue.",
+			Description:       "Flags failed query-result evidence for vendor: Vendor Authentication Method Specified. Checks whether all vendors have their authentication method documented. Audit impact: Third-party risk review or vendor ownership evidence may be missing or overdue.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35531,7 +35531,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vendor-dpa-exists",
 			Name:              "Vendor Data Processing Agreement Exists",
-			Description:       "Detects failed policy evidence showing that vendors does not satisfy Vendor Data Processing Agreement Exists. Vendors that process personal data on behalf of the organization should have a Data Processing Agreement (DPA) in place. Risk: Third-party risk review or vendor ownership evidence may be missing or overdue.",
+			Description:       "Flags failed resource-state evidence for vendors: Vendor Data Processing Agreement Exists. Vendors that process personal data on behalf of the organization should have a Data Processing Agreement (DPA) in place. Audit impact: Third-party risk review or vendor ownership evidence may be missing or overdue.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35571,7 +35571,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vendor-pci-compliance",
 			Name:              "High Risk Vendors PCI DSS Compliance",
-			Description:       "Detects failed policy evidence showing that vendor does not satisfy High Risk Vendors PCI DSS Compliance. Checks whether high-risk vendors processing cardholder data have PCI DSS compliance documentation. Risk: Third-party risk review or vendor ownership evidence may be missing or overdue.",
+			Description:       "Flags failed query-result evidence for vendor: High Risk Vendors PCI DSS Compliance. Checks whether high-risk vendors processing cardholder data have PCI DSS compliance documentation. Audit impact: Third-party risk review or vendor ownership evidence may be missing or overdue.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35606,7 +35606,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vendor-risk-assessed",
 			Name:              "Vendor Risk Level Assigned",
-			Description:       "Detects failed policy evidence showing that vendors does not satisfy Vendor Risk Level Assigned. All vendors should have a risk level assigned based on data access, criticality, and other factors. Risk: Third-party risk review or vendor ownership evidence may be missing or overdue.",
+			Description:       "Flags failed resource-state evidence for vendors: Vendor Risk Level Assigned. All vendors should have a risk level assigned based on data access, criticality, and other factors. Audit impact: Third-party risk review or vendor ownership evidence may be missing or overdue.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35644,7 +35644,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vendor-security-review-complete",
 			Name:              "Vendor Security Review Completed",
-			Description:       "Detects failed policy evidence showing that vendors does not satisfy Vendor Security Review Completed. High and critical risk vendors should have completed security reviews with SOC2, ISO27001, or equivalent documentation on file. Risk: Third-party risk review or vendor ownership evidence may be missing or overdue.",
+			Description:       "Flags failed resource-state evidence for vendors: Vendor Security Review Completed. High and critical risk vendors should have completed security reviews with SOC2, ISO27001, or equivalent documentation on file. Audit impact: Third-party risk review or vendor ownership evidence may be missing or overdue.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35685,7 +35685,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-cleartext-cloud-keys",
 			Name:              "VM with cleartext cloud keys granting high privileges",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy VM with cleartext cloud keys granting high privileges. Compute instance contains cleartext cloud credentials (service account keys, API keys) that grant high privileges, enabling lateral movement if compromised. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: VM with cleartext cloud keys granting high privileges. Compute instance contains cleartext cloud credentials (service account keys, API keys) that grant high privileges, enabling lateral movement if compromised. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35725,7 +35725,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-cleartext-keys-cross-account",
 			Name:              "VM/serverless with cleartext cloud keys granting permission to access resources in external subscriptions",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy VM/serverless with cleartext cloud keys granting permission to access resources in external subscriptions. A compute resource contains cleartext cloud keys that grant access to resources in other cloud accounts or subscriptions. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: VM/serverless with cleartext cloud keys granting permission to access resources in external subscriptions. A compute resource contains cleartext cloud keys that grant access to resources in other cloud accounts or subscriptions. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35769,7 +35769,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-dormant-sa",
 			Name:              "VM using a service account with high privileges that is inactive for over 90 days",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy VM using a service account with high privileges that is inactive for over 90 days. A VM is using a highly privileged service account that has been inactive for over 90 days. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: VM using a service account with high privileges that is inactive for over 90 days. A VM is using a highly privileged service account that has been inactive for over 90 days. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35809,7 +35809,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-empty-password",
 			Name:              "Internal VM with a local user that has an empty password",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Internal VM with a local user that has an empty password. A virtual machine has a local user account with an empty password. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Internal VM with a local user that has an empty password. A virtual machine has a local user account with an empty password. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35848,7 +35848,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-internet-vuln-privileged",
 			Name:              "Internet-facing VM with high privileges and initial access vulnerabilities",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Internet-facing VM with high privileges and initial access vulnerabilities. An internet-facing VM has both high privileges and vulnerabilities that could enable initial access, creating a critical combined risk. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Internet-facing VM with high privileges and initial access vulnerabilities. An internet-facing VM has both high privileges and vulnerabilities that could enable initial access, creating a critical combined risk. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35899,7 +35899,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-kernel-vuln-container",
 			Name:              "VM with kernel vulnerabilities is running a container",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy VM with kernel vulnerabilities is running a container. A VM with kernel vulnerabilities is running containers, risking container escape. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: VM with kernel vulnerabilities is running a container. A VM with kernel vulnerabilities is running containers, risking container escape. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35938,7 +35938,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-medium-exposure-vuln-data",
 			Name:              "Internet-facing VM/serverless (medium exposure) with initial access vulnerabilities and data access to sensitive data",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Internet-facing VM/serverless (medium exposure) with initial access vulnerabilities and data access to sensitive data. A medium-exposure internet-facing resource has vulnerabilities and data access. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Internet-facing VM/serverless (medium exposure) with initial access vulnerabilities and data access to sensitive data. A medium-exposure internet-facing resource has vulnerabilities and data access. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -35989,7 +35989,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-admin",
 			Name:              "Publicly exposed VM with admin privileges",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM with admin privileges. A publicly exposed virtual machine has administrative privileges, creating a critical attack surface. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM with admin privileges. A publicly exposed virtual machine has administrative privileges, creating a critical attack surface. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36035,7 +36035,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-data-access",
 			Name:              "Publicly exposed VM/serverless with data access to sensitive data",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Publicly exposed VM/serverless with data access to sensitive data. A publicly exposed compute resource has access to sensitive data. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Publicly exposed VM/serverless with data access to sensitive data. A publicly exposed compute resource has access to sensitive data. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36081,7 +36081,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-eol",
 			Name:              "Publicly exposed VM with end-of-life software",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM with end-of-life software. A publicly exposed VM is running end-of-life software that no longer receives security updates. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM with end-of-life software. A publicly exposed VM is running end-of-life software that no longer receives security updates. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36127,7 +36127,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-eol-targeted",
 			Name:              "Publicly exposed VM with end-of-life targeted technology",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM with end-of-life targeted technology. A publicly exposed VM has EOL software that is commonly targeted by attackers. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM with end-of-life targeted technology. A publicly exposed VM has EOL software that is commonly targeted by attackers. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36168,7 +36168,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-high-priv",
 			Name:              "Publicly exposed VM with high privileges",
-			Description:       "Detects failed policy evidence showing that compute instance does not satisfy Publicly exposed VM with high privileges. A publicly exposed virtual machine has high privileges that could enable lateral movement. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance: Publicly exposed VM with high privileges. A publicly exposed virtual machine has high privileges that could enable lateral movement. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36214,7 +36214,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-high-privileges",
 			Name:              "Internet-facing VM with high privileges",
-			Description:       "Detects failed policy evidence showing that gcp compute instance does not satisfy Internet-facing VM with high privileges. Compute instance is exposed to the public internet via external IP and has high privileges through its service account, creating an attractive target for attackers. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for gcp compute instance: Internet-facing VM with high privileges. Compute instance is exposed to the public internet via external IP and has high privileges through its service account, creating an attractive target for attackers. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36256,7 +36256,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-privileged-vuln-common-dep",
 			Name:              "Publicly exposed VM/serverless with high privileges and initial access vulnerabilities affecting a common dependency",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Publicly exposed VM/serverless with high privileges and initial access vulnerabilities affecting a common dependency. A privileged public resource has vulnerabilities in a common dependency. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Publicly exposed VM/serverless with high privileges and initial access vulnerabilities affecting a common dependency. A privileged public resource has vulnerabilities in a common dependency. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36307,7 +36307,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-vuln",
 			Name:              "Publicly exposed VM/serverless with initial access vulnerabilities",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Publicly exposed VM/serverless with initial access vulnerabilities. A publicly exposed compute resource has critical or high severity vulnerabilities that could enable initial access. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Publicly exposed VM/serverless with initial access vulnerabilities. A publicly exposed compute resource has critical or high severity vulnerabilities that could enable initial access. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36358,7 +36358,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-vuln-common-dep",
 			Name:              "Publicly exposed VM/serverless with initial access vulnerabilities affecting a common dependency",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Publicly exposed VM/serverless with initial access vulnerabilities affecting a common dependency. A publicly exposed resource has vulnerabilities in a commonly used dependency. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Publicly exposed VM/serverless with initial access vulnerabilities affecting a common dependency. A publicly exposed resource has vulnerabilities in a commonly used dependency. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36404,7 +36404,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-public-vuln-cross-account-keys",
 			Name:              "Publicly exposed VM/serverless with initial access vulnerabilities and cleartext cloud keys granting permissions in another subscription",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Publicly exposed VM/serverless with initial access vulnerabilities and cleartext cloud keys granting permissions in another subscription. A public vulnerable resource contains cross-account access keys. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Publicly exposed VM/serverless with initial access vulnerabilities and cleartext cloud keys granting permissions in another subscription. A public vulnerable resource contains cross-account access keys. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36459,7 +36459,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-ssh-private-keys",
 			Name:              "VM/serverless with cleartext SSH private keys that can be used to access other resources",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy VM/serverless with cleartext SSH private keys that can be used to access other resources. A compute resource contains SSH private keys that can be used to access other resources. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: VM/serverless with cleartext SSH private keys that can be used to access other resources. A compute resource contains SSH private keys that can be used to access other resources. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36503,7 +36503,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-vuln-cleartext-keys",
 			Name:              "Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys granting high privileges",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys granting high privileges. An internet-facing resource has vulnerabilities and contains cleartext cloud keys with high privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys granting high privileges. An internet-facing resource has vulnerabilities and contains cleartext cloud keys with high privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36558,7 +36558,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-vuln-data-access",
 			Name:              "Internet-facing VM/serverless with initial access vulnerabilities and data access to sensitive data",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Internet-facing VM/serverless with initial access vulnerabilities and data access to sensitive data. An internet-facing resource has vulnerabilities and access to sensitive data. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Internet-facing VM/serverless with initial access vulnerabilities and data access to sensitive data. An internet-facing resource has vulnerabilities and access to sensitive data. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36609,7 +36609,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-vuln-keys-data-access",
 			Name:              "Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys with data access to sensitive data",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys with data access to sensitive data. An internet-facing resource has vulnerabilities and contains keys with sensitive data access. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys with data access to sensitive data. An internet-facing resource has vulnerabilities and contains keys with sensitive data access. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36664,7 +36664,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vm-vuln-lateral-admin",
 			Name:              "Internet-facing VM/serverless with initial access vulnerabilities and a lateral movement finding to admin privileges",
-			Description:       "Detects failed policy evidence showing that compute instance or serverless function does not satisfy Internet-facing VM/serverless with initial access vulnerabilities and a lateral movement finding to admin privileges. An internet-facing resource has vulnerabilities that could enable initial access and an attack path to admin privileges. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for compute instance or serverless function: Internet-facing VM/serverless with initial access vulnerabilities and a lateral movement finding to admin privileges. An internet-facing resource has vulnerabilities that could enable initial access and an attack path to admin privileges. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36715,7 +36715,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vpc-dns-logging",
 			Name:              "VPC has no Route 53 DNS resolver with logging enabled",
-			Description:       "Detects failed policy evidence showing that aws ec2 vpc does not satisfy VPC has no Route 53 DNS resolver with logging enabled. A VPC does not have DNS query logging enabled for security visibility. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws ec2 vpc: VPC has no Route 53 DNS resolver with logging enabled. A VPC does not have DNS query logging enabled for security visibility. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36756,7 +36756,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vpc-external-peering",
 			Name:              "Virtual network is peered with a virtual network from an external subscription",
-			Description:       "Detects failed policy evidence showing that network vpc peering or network vnet peering does not satisfy Virtual network is peered with a virtual network from an external subscription. A VPC/VNet is peered with a network in a different subscription or account. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for network vpc peering or network vnet peering: Virtual network is peered with a virtual network from an external subscription. A VPC/VNet is peered with a network in a different subscription or account. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36797,7 +36797,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vpc-no-dns-resolver-logging",
 			Name:              "VPC has no Route 53 DNS resolver with logging enabled",
-			Description:       "Detects failed policy evidence showing that aws ec2 vpc does not satisfy VPC has no Route 53 DNS resolver with logging enabled. VPC does not have a Route 53 Resolver query logging configuration, limiting visibility into DNS queries for threat detection and incident response. Risk: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
+			Description:       "Flags failed resource-state evidence for aws ec2 vpc: VPC has no Route 53 DNS resolver with logging enabled. VPC does not have a Route 53 Resolver query logging configuration, limiting visibility into DNS queries for threat detection and incident response. Audit impact: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36836,7 +36836,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vuln-aging-report",
 			Name:              "Vulnerability Aging Over 90 Days",
-			Description:       "Detects failed policy evidence showing that vulnerability does not satisfy Vulnerability Aging Over 90 Days. Identifies any vulnerabilities open for more than 90 days regardless of severity. Risk: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
+			Description:       "Flags failed query-result evidence for vulnerability: Vulnerability Aging Over 90 Days. Identifies any vulnerabilities open for more than 90 days regardless of severity. Audit impact: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36871,7 +36871,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vuln-critical-sla",
 			Name:              "Critical Vulnerabilities Exceeding SLA",
-			Description:       "Detects failed policy evidence showing that vulnerability does not satisfy Critical Vulnerabilities Exceeding SLA. Identifies critical vulnerabilities that have not been remediated within the 7-day SLA. Risk: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
+			Description:       "Flags failed query-result evidence for vulnerability: Critical Vulnerabilities Exceeding SLA. Identifies critical vulnerabilities that have not been remediated within the 7-day SLA. Audit impact: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36907,7 +36907,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vuln-epss-high",
 			Name:              "High EPSS Score Vulnerabilities",
-			Description:       "Detects failed policy evidence showing that vulnerability does not satisfy High EPSS Score Vulnerabilities. Identifies vulnerabilities with EPSS score above 0.5, indicating high probability of exploitation. Risk: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
+			Description:       "Flags failed query-result evidence for vulnerability: High EPSS Score Vulnerabilities. Identifies vulnerabilities with EPSS score above 0.5, indicating high probability of exploitation. Audit impact: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36942,7 +36942,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vuln-high-sla",
 			Name:              "High Vulnerabilities Exceeding SLA",
-			Description:       "Detects failed policy evidence showing that vulnerability does not satisfy High Vulnerabilities Exceeding SLA. Identifies high severity vulnerabilities that have not been remediated within the 14-day SLA. Risk: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
+			Description:       "Flags failed query-result evidence for vulnerability: High Vulnerabilities Exceeding SLA. Identifies high severity vulnerabilities that have not been remediated within the 14-day SLA. Audit impact: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -36978,7 +36978,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vuln-known-exploited",
 			Name:              "Known Exploited Vulnerabilities Present",
-			Description:       "Detects failed policy evidence showing that vulnerability does not satisfy Known Exploited Vulnerabilities Present. Identifies vulnerabilities on the CISA KEV (Known Exploited Vulnerabilities) catalog that are present in the environment. Risk: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
+			Description:       "Flags failed query-result evidence for vulnerability: Known Exploited Vulnerabilities Present. Identifies vulnerabilities on the CISA KEV (Known Exploited Vulnerabilities) catalog that are present in the environment. Audit impact: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -37015,7 +37015,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vuln-medium-sla",
 			Name:              "Medium Vulnerabilities Exceeding SLA",
-			Description:       "Detects failed policy evidence showing that vulnerability does not satisfy Medium Vulnerabilities Exceeding SLA. Identifies medium severity vulnerabilities that have not been remediated within the 30-day SLA. Risk: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
+			Description:       "Flags failed query-result evidence for vulnerability: Medium Vulnerabilities Exceeding SLA. Identifies medium severity vulnerabilities that have not been remediated within the 30-day SLA. Audit impact: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -37050,7 +37050,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "vuln-public-facing",
 			Name:              "Critical/High Vulnerabilities on Public-Facing Assets",
-			Description:       "Detects failed policy evidence showing that vulnerability does not satisfy Critical/High Vulnerabilities on Public-Facing Assets. Identifies critical or high severity vulnerabilities on internet-facing assets. Risk: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
+			Description:       "Flags failed query-result evidence for vulnerability: Critical/High Vulnerabilities on Public-Facing Assets. Identifies critical or high severity vulnerabilities on internet-facing assets. Audit impact: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
@@ -37086,7 +37086,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		Definition: RuleDefinition{
 			ID:                "zendesk-sla-breach",
 			Name:              "Zendesk First Response SLA Breach",
-			Description:       "Detects failed policy evidence showing that zendesk ticket does not satisfy Zendesk First Response SLA Breach. Flags high-priority Zendesk tickets that have breached first response SLA. Risk: Support SLA or customer-response evidence may indicate an unmanaged operational control gap.",
+			Description:       "Flags failed resource-state evidence for zendesk ticket: Zendesk First Response SLA Breach. Flags high-priority Zendesk tickets that have breached first response SLA. Audit impact: Support SLA or customer-response evidence may indicate an unmanaged operational control gap.",
 			SourceID:          policyRuleSourceID,
 			EventKinds:        []string{policyRuleEvidenceKind, policyRuleResultEventKind},
 			OutputKind:        policyRuleOutputKind,
