@@ -21,7 +21,7 @@
     {
       "name": "NIST 800-53 r5",
       "controls": [
-        "AC-1"
+        "CP-9"
       ]
     }
   ],

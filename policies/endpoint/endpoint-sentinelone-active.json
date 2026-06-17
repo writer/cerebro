@@ -23,6 +23,13 @@
       "controls": [
         "1.1"
       ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SI-3",
+        "SI-4"
+      ]
     }
   ],
   "enabled": true,

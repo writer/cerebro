@@ -2935,6 +2935,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "CIS AWS Foundations Benchmark v2.0", ControlID: "4.15"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "SI-4"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -2950,7 +2951,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Cloud resource configuration may not satisfy the mapped security or compliance control.",
 		RemediationIntent: "Update the cloud resource configuration, validate the effective state, and retain provider evidence for the changed setting.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"CIS AWS Foundations Benchmark v2.0 4 Monitoring"},
+		ControlFamilies:   []string{"CIS AWS Foundations Benchmark v2.0 4 Monitoring", "NIST 800-53 r5 SI System and Information Integrity"},
 		Enabled:           true,
 	},
 	{
@@ -7676,6 +7677,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.1"},
 				{FrameworkName: "HIPAA", ControlID: "164.312"},
 				{FrameworkName: "PCI DSS v4.0", ControlID: "1.1"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "SC-28"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -7690,7 +7692,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
 		RemediationIntent: "Enable the required backup or retention setting and preserve restore-test or configuration evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"HIPAA 164.312 Technical Safeguards", "ISO 27001:2022 A.5 Organizational Controls", "PCI DSS v4.0 1 Network Security Controls", "SOC 2 CC1 Control Environment"},
+		ControlFamilies:   []string{"HIPAA 164.312 Technical Safeguards", "ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 SC System and Communications Protection", "PCI DSS v4.0 1 Network Security Controls", "SOC 2 CC1 Control Environment"},
 		Enabled:           true,
 	},
 	{
@@ -7711,7 +7713,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC1.1"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.1"},
-				{FrameworkName: "NIST 800-53 r5", ControlID: "AC-1"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CP-9"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -7726,7 +7728,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
 		RemediationIntent: "Enable the required backup or retention setting and preserve restore-test or configuration evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 AC Access Control", "SOC 2 CC1 Control Environment"},
+		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 CP Contingency Planning", "SOC 2 CC1 Control Environment"},
 		Enabled:           true,
 	},
 	{
@@ -7818,7 +7820,8 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC1.1"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.1"},
-				{FrameworkName: "NIST 800-53 r5", ControlID: "AC-1"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CP-4"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CP-10"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -7833,7 +7836,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.",
 		RemediationIntent: "Enable the required backup or retention setting and preserve restore-test or configuration evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 AC Access Control", "SOC 2 CC1 Control Environment"},
+		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 CP Contingency Planning", "SOC 2 CC1 Control Environment"},
 		Enabled:           true,
 	},
 	{
@@ -8536,6 +8539,8 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 				{FrameworkName: "ISO 27701", ControlID: "7.2.8"},
 				{FrameworkName: "SOC 2", ControlID: "P1.1"},
 				{FrameworkName: "CCPA", ControlID: "1798.100"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "RA-2"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CM-8"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -8551,7 +8556,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Required governance, review, approval, or procedural evidence may be missing or incomplete.",
 		RemediationIntent: "Complete the required procedure, attach supporting evidence, and record owner approval.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"CCPA 1798 Consumer Privacy Rights", "GDPR Article Articles", "ISO 27701 7 PII Controller Controls", "SOC 2 P1 Notice and Communication"},
+		ControlFamilies:   []string{"CCPA 1798 Consumer Privacy Rights", "GDPR Article Articles", "ISO 27701 7 PII Controller Controls", "NIST 800-53 r5 CM Configuration Management", "NIST 800-53 r5 RA Risk Assessment", "SOC 2 P1 Notice and Communication"},
 		Enabled:           true,
 	},
 	{
@@ -9901,6 +9906,8 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 				{FrameworkName: "PCI DSS v4.0", ControlID: "1.1"},
 				{FrameworkName: "HIPAA", ControlID: "164.312"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.1"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "AU-2"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "AU-12"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -9915,7 +9922,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 		RemediationIntent: "Update database configuration, validate effective state, and retain provider evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"HIPAA 164.312 Technical Safeguards", "ISO 27001:2022 A.5 Organizational Controls", "PCI DSS v4.0 1 Network Security Controls", "SOC 2 CC1 Control Environment"},
+		ControlFamilies:   []string{"HIPAA 164.312 Technical Safeguards", "ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 AU Audit and Accountability", "PCI DSS v4.0 1 Network Security Controls", "SOC 2 CC1 Control Environment"},
 		Enabled:           true,
 	},
 	{
@@ -9936,7 +9943,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC1.1"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.1"},
-				{FrameworkName: "NIST 800-53 r5", ControlID: "AC-1"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CP-9"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -9951,7 +9958,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 		RemediationIntent: "Update database configuration, validate effective state, and retain provider evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 AC Access Control", "SOC 2 CC1 Control Environment"},
+		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 CP Contingency Planning", "SOC 2 CC1 Control Environment"},
 		Enabled:           true,
 	},
 	{
@@ -10049,6 +10056,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC1.1"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.1"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CP-10"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -10063,7 +10071,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Database configuration may not satisfy encryption, backup, access, or exposure controls.",
 		RemediationIntent: "Update database configuration, validate effective state, and retain provider evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "SOC 2 CC1 Control Environment"},
+		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 CP Contingency Planning", "SOC 2 CC1 Control Environment"},
 		Enabled:           true,
 	},
 	{
@@ -10775,6 +10783,8 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 				{FrameworkName: "SOC 2", ControlID: "CC1.1"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.1"},
 				{FrameworkName: "PCI DSS v4.0", ControlID: "1.1"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "SI-3"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "SI-4"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -10789,7 +10799,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Endpoint posture, protection, or management evidence may not satisfy operational security controls.",
 		RemediationIntent: "Restore endpoint protection, update device posture, and retain agent or MDM evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "PCI DSS v4.0 1 Network Security Controls", "SOC 2 CC1 Control Environment"},
+		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 SI System and Information Integrity", "PCI DSS v4.0 1 Network Security Controls", "SOC 2 CC1 Control Environment"},
 		Enabled:           true,
 	},
 	{
@@ -13321,6 +13331,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC1.1"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.1"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CM-3"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -13335,7 +13346,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 		RemediationIntent: "Update repository controls, remediate the alert or configuration, and retain repository evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "SOC 2 CC1 Control Environment"},
+		ControlFamilies:   []string{"ISO 27001:2022 A.5 Organizational Controls", "NIST 800-53 r5 CM Configuration Management", "SOC 2 CC1 Control Environment"},
 		Enabled:           true,
 	},
 	{
@@ -13672,6 +13683,8 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "CIS GitHub Benchmark", ControlID: "1.1.3"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CM-3"},
+				{FrameworkName: "NIST 800-53 r5", ControlID: "CM-5"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -13687,7 +13700,7 @@ var generatedPolicyRuleCatalog = []policyRuleConfig{
 		RiskStatement:     "Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.",
 		RemediationIntent: "Update repository controls, remediate the alert or configuration, and retain repository evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"CIS GitHub Benchmark 1 1 Controls"},
+		ControlFamilies:   []string{"CIS GitHub Benchmark 1 1 Controls", "NIST 800-53 r5 CM Configuration Management"},
 		Enabled:           true,
 	},
 	{

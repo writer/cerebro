@@ -7,6 +7,12 @@ emitted_kinds:
   - grc.control_test
   - grc.policy
   - grc.document
+  - grc.contract
+  - grc.regulatory_notification
+  - grc.recovery_objective
+  - grc.authorization_package
+  - grc.poam_item
+  - grc.training_attestation
   - grc.vendor
   - grc.vulnerability
   - grc.vulnerable_asset
@@ -40,6 +46,42 @@ coverage_contract:
       type: entity_family
       title: Policies and documents
       families: [policy, document]
+      support: supported
+      high_value: true
+    - id: contracts
+      type: entity_family
+      title: Third-party contracts and obligations
+      families: [contract]
+      support: supported
+      high_value: true
+    - id: regulatory_notifications
+      type: lifecycle_state
+      title: Regulatory notification status
+      families: [regulatory_notification]
+      support: supported
+      high_value: true
+    - id: recovery_objectives
+      type: entity_family
+      title: Recovery objectives and BIA records
+      families: [recovery_objective]
+      support: supported
+      high_value: true
+    - id: authorization_packages
+      type: entity_family
+      title: Authorization packages and ATO records
+      families: [authorization_package]
+      support: supported
+      high_value: true
+    - id: poam_items
+      type: lifecycle_state
+      title: POA&M weakness remediation items
+      families: [poam_item]
+      support: supported
+      high_value: true
+    - id: training_attestations
+      type: lifecycle_state
+      title: Security training attestations
+      families: [training_attestation]
       support: supported
       high_value: true
     - id: vendors
