@@ -7,6 +7,14 @@ package agentplatform
 
 const ContractVersion = "2026-06-16.cerebro-agent-platform"
 
+const (
+	ScopeCosmoSecurityRead         = "cosmo.security.read"
+	ScopeConnectorCredentialsRead  = "cerebro.connector_credentials.read"
+	ScopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
+	ScopeFindingCandidatePromote   = "cerebro.finding_candidates.promote"
+	ScopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
+)
+
 type Contract struct {
 	Version                 string                  `json:"version"`
 	Domains                 []Domain                `json:"domains"`
@@ -224,7 +232,7 @@ var Capabilities = []Capability{
 		DefaultOn:       true,
 		Summary:         "Answers security and compliance questions from graph, findings, evidence, and runtime context.",
 		ConsoleSurfaces: []string{"Ask console", "GRC dashboard", "trace drawer"},
-		RequiredScopes:  []string{"cosmo.security.read"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead},
 		Eval: EvalStatus{
 			Required:      true,
 			Status:        "required",
@@ -251,7 +259,7 @@ var Capabilities = []Capability{
 		DefaultOn:       true,
 		Summary:         "Runs golden and adversarial scenarios with trace-linked rubric outcomes for agent-facing workflows.",
 		ConsoleSurfaces: []string{"Developer evals", "pull request checks"},
-		RequiredScopes:  []string{"cosmo.security.read"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead},
 		Eval: EvalStatus{
 			Required:      true,
 			Status:        "self-covered",
@@ -278,7 +286,7 @@ var Capabilities = []Capability{
 		DefaultOn:       true,
 		Summary:         "Keeps live execution, persisted traces, eval artifacts, and replay fixtures on one ordered event vocabulary.",
 		ConsoleSurfaces: []string{"trace drawer", "Developer evals", "workflow replay"},
-		RequiredScopes:  []string{"cosmo.security.read"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead},
 		Eval: EvalStatus{
 			Required:      true,
 			Status:        "required",
@@ -305,14 +313,14 @@ var Capabilities = []Capability{
 		DefaultOn:       true,
 		Summary:         "Makes connector identity, OAuth token ownership, credential storage, and MCP exposure explicit platform contracts.",
 		ConsoleSurfaces: []string{"Connectors", "connector builder", "MCP status"},
-		RequiredScopes:  []string{"cosmo.security.read", "connector.credentials.read", "connector.credentials.write"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead, ScopeConnectorCredentialsRead, ScopeConnectorCredentialsWrite},
 		ConnectorDependencies: []ConnectorDependency{
 			// #nosec G101 -- static platform metadata only; no secret values.
 			{
 				SourceID:        "catalog-managed",
 				Purpose:         "Connector setup, credential lifecycle, runtime sync, and MCP tool exposure.",
 				AuthModels:      []string{"oauth_authorization_code", "oauth_client_credentials", "api_key", "environment_reference", "external_secret_reference"},
-				RequiredScopes:  []string{"connector.credentials.read", "connector.credentials.write"},
+				RequiredScopes:  []string{ScopeConnectorCredentialsRead, ScopeConnectorCredentialsWrite},
 				TokenOwner:      "declared connector surface",
 				CredentialStore: "tenant-scoped credential broker or declared external reference",
 				OAuthSurface:    "/oauth/* and /.well-known/oauth-*",
@@ -347,7 +355,7 @@ var Capabilities = []Capability{
 		DefaultOn:       true,
 		Summary:         "Runs source sync, graph ingest, claim writes, and finding evaluation through explicit runtime adapters.",
 		ConsoleSurfaces: []string{"Source runtimes", "runtime freshness", "ingest health"},
-		RequiredScopes:  []string{"cosmo.security.read"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead},
 		Eval: EvalStatus{
 			Required:      true,
 			Status:        "required",
@@ -374,7 +382,7 @@ var Capabilities = []Capability{
 		DefaultOn:       true,
 		Summary:         "Packages finding candidate promotion, rejection, and rule evaluation as reviewable capability behavior.",
 		ConsoleSurfaces: []string{"Finding rules", "source runtime finding evaluations", "GRC findings"},
-		RequiredScopes:  []string{"cosmo.security.read", "finding.candidate.promote"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead, ScopeFindingCandidatePromote},
 		Eval: EvalStatus{
 			Required:      true,
 			Status:        "required",
@@ -401,7 +409,7 @@ var Capabilities = []Capability{
 		DefaultOn:       false,
 		Summary:         "Executes explicit containment actions through scoped adapters with audit, cancellation, and result capture.",
 		ConsoleSurfaces: []string{"Runtime response", "workflow actions", "blocklist"},
-		RequiredScopes:  []string{"runtime.response.write"},
+		RequiredScopes:  []string{ScopeRuntimeResponseWrite},
 		Eval: EvalStatus{
 			Required:      true,
 			Status:        "required",

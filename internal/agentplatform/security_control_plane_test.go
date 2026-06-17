@@ -104,6 +104,85 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 	}
 }
 
+func TestSecurityControlPlaneReferencesKnownRegistryEntries(t *testing.T) {
+	snapshot := SecurityControlPlaneSnapshot()
+	verifiers := map[string]bool{}
+	for _, verifier := range snapshot.VerifierLayer {
+		verifiers[verifier.ID] = true
+		if _, ok := DomainByID(verifier.OwnerDomain); !ok {
+			t.Fatalf("verifier %q references unknown owner domain %q", verifier.ID, verifier.OwnerDomain)
+		}
+	}
+	runtimeEvents := runtimeEventNames()
+	for _, profile := range snapshot.AgentProfiles {
+		for _, capabilityID := range profile.CapabilityIDs {
+			if _, ok := capabilityByID(capabilityID); !ok {
+				t.Fatalf("profile %q references unknown capability %q", profile.ID, capabilityID)
+			}
+		}
+		for _, verifierID := range profile.RequiredVerifiers {
+			if !verifiers[verifierID] {
+				t.Fatalf("profile %q references unknown verifier %q", profile.ID, verifierID)
+			}
+		}
+		if actionStageOrder(profile.MaxActionStage) == 0 {
+			t.Fatalf("profile %q references unknown max action stage %q", profile.ID, profile.MaxActionStage)
+		}
+	}
+
+	stageOrders := map[int]string{}
+	stageIDs := map[string]bool{}
+	for _, stage := range snapshot.ActionLadder {
+		if prior := stageOrders[stage.Order]; prior != "" {
+			t.Fatalf("action stage order %d used by %q and %q", stage.Order, prior, stage.ID)
+		}
+		stageOrders[stage.Order] = stage.ID
+		stageIDs[stage.ID] = true
+		for _, event := range stage.RequiredEvents {
+			if !runtimeEvents[event] {
+				t.Fatalf("action stage %q references unknown runtime event %q", stage.ID, event)
+			}
+		}
+		for _, verifierID := range stage.VerifierIDs {
+			if !verifiers[verifierID] {
+				t.Fatalf("action stage %q references unknown verifier %q", stage.ID, verifierID)
+			}
+		}
+	}
+	for _, gate := range snapshot.ConnectorToolGates {
+		if !runtimeEvents[gate.RuntimeEvent] {
+			t.Fatalf("connector gate %q references unknown runtime event %q", gate.ID, gate.RuntimeEvent)
+		}
+	}
+	for _, verifierID := range snapshot.SimulationHarness.VerifierIDs {
+		if !verifiers[verifierID] {
+			t.Fatalf("simulation harness references unknown verifier %q", verifierID)
+		}
+	}
+	for _, scenario := range snapshot.EvalSuite.Scenarios {
+		if _, ok := capabilityByID(scenario.Capability); !ok {
+			t.Fatalf("eval scenario %q references unknown capability %q", scenario.ID, scenario.Capability)
+		}
+	}
+	readableMemoryTypes := map[string]bool{}
+	for _, memoryType := range snapshot.SecurityMemory.ReadableTypes {
+		readableMemoryTypes[memoryType.ID] = true
+		if memoryType.TTL == "" || len(memoryType.Surfaces) == 0 {
+			t.Fatalf("readable memory type must declare TTL and surfaces: %+v", memoryType)
+		}
+	}
+	for _, memoryType := range snapshot.SecurityMemory.WritableTypes {
+		if !readableMemoryTypes[memoryType.ID] {
+			t.Fatalf("writable memory type %q is not readable", memoryType.ID)
+		}
+	}
+	for _, required := range []string{ActionStageObserve, ActionStageRecommend, ActionStageExecute, ActionStageCloseLoop} {
+		if !stageIDs[required] {
+			t.Fatalf("action ladder missing required stage %q", required)
+		}
+	}
+}
+
 func TestBuildEvidencePacketWarnsOnCoverageAndBlocksUnapprovedExecution(t *testing.T) {
 	packet := BuildEvidencePacket(EvidencePacketRequest{
 		TenantID:        "tenant-1",
@@ -111,7 +190,7 @@ func TestBuildEvidencePacketWarnsOnCoverageAndBlocksUnapprovedExecution(t *testi
 		Question:        "Fix externally reachable exposure",
 		ScopeURN:        "urn:cerebro:tenant-1:asset:prod-app",
 		CapabilityIDs:   []string{"graph-reasoning", "runtime-response-actions"},
-		RequestedScopes: []string{"cosmo.security.read", "runtime.response.write"},
+		RequestedScopes: []string{ScopeCosmoSecurityRead, ScopeRuntimeResponseWrite},
 		AllowPreview:    true,
 		Action: EvidencePacketAction{
 			Stage:      ActionStageExecute,
@@ -156,7 +235,7 @@ func TestBuildEvidencePacketKeepsBlockedConfidenceWithoutCoverage(t *testing.T) 
 		Question:        "Fix this issue",
 		ScopeURN:        "urn:cerebro:tenant-1:asset:prod-app",
 		CapabilityIDs:   []string{"graph-reasoning", "runtime-response-actions"},
-		RequestedScopes: []string{"cosmo.security.read", "runtime.response.write"},
+		RequestedScopes: []string{ScopeCosmoSecurityRead, ScopeRuntimeResponseWrite},
 		AllowPreview:    true,
 		Action: EvidencePacketAction{
 			Stage:      ActionStageExecute,

@@ -283,6 +283,134 @@ func TestHandleAgentPlatformPreflightIncludesCoverageContext(t *testing.T) {
 	}
 }
 
+func TestAgentPlatformSecurityControlPlaneEndToEndWorkflow(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-okta-user": {
+			Id:           "writer-okta-user",
+			SourceId:     "okta",
+			TenantId:     "writer",
+			LastSyncedAt: timestamppb.New(now),
+			Config:       map[string]string{"family": "user"},
+		},
+	}}
+	app := New(agentPlatformFullAuthConfig(), Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	controlReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/agent-platform/security-control-plane", nil)
+	if err != nil {
+		t.Fatalf("NewRequest control plane: %v", err)
+	}
+	controlReq.Header.Set("Authorization", "Bearer test-key")
+	controlResp, err := server.Client().Do(controlReq)
+	if err != nil {
+		t.Fatalf("GET control plane: %v", err)
+	}
+	defer func() { _ = controlResp.Body.Close() }()
+	if controlResp.StatusCode != http.StatusOK {
+		t.Fatalf("control plane status = %d, want 200", controlResp.StatusCode)
+	}
+	var controlPlane agentplatform.SecurityControlPlane
+	if err := json.NewDecoder(controlResp.Body).Decode(&controlPlane); err != nil {
+		t.Fatalf("decode control plane: %v", err)
+	}
+	if len(controlPlane.EvalSuite.Scenarios) == 0 || len(controlPlane.ConnectorToolGates) == 0 {
+		t.Fatalf("control plane missing evals or connector gates: %+v", controlPlane)
+	}
+
+	preflightBody := []byte(`{
+		"capability_ids": ["graph-reasoning", "connector-oauth-mcp"],
+		"question": "Explain connector readiness before reasoning over this finding.",
+		"scope_urn": "urn:cerebro:writer:finding:alert-1",
+		"connector_readiness": {"catalog-managed": "connected"}
+	}`)
+	preflightReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/preflight", bytes.NewReader(preflightBody))
+	if err != nil {
+		t.Fatalf("NewRequest preflight: %v", err)
+	}
+	preflightReq.Header.Set("Authorization", "Bearer test-key")
+	preflightReq.Header.Set("Content-Type", "application/json")
+	preflightResp, err := server.Client().Do(preflightReq)
+	if err != nil {
+		t.Fatalf("POST preflight: %v", err)
+	}
+	defer func() { _ = preflightResp.Body.Close() }()
+	if preflightResp.StatusCode != http.StatusOK {
+		t.Fatalf("preflight status = %d, want 200", preflightResp.StatusCode)
+	}
+	var preflight agentplatform.AgentRunPreflight
+	if err := json.NewDecoder(preflightResp.Body).Decode(&preflight); err != nil {
+		t.Fatalf("decode preflight: %v", err)
+	}
+	if !preflight.Enabled || preflight.TenantID != "writer" || preflight.ActorID != "tester" {
+		t.Fatalf("preflight = %+v, want enabled authenticated writer context", preflight)
+	}
+	if len(preflight.ConnectorContext) != 1 || !preflight.ConnectorContext[0].Satisfied {
+		t.Fatalf("connector context = %+v, want one satisfied connector", preflight.ConnectorContext)
+	}
+	if preflight.CoverageContext == nil || preflight.CoverageContext.TenantID != "writer" {
+		t.Fatalf("coverage context = %+v, want writer tenant coverage", preflight.CoverageContext)
+	}
+
+	packetBody := []byte(`{
+		"capability_ids": ["graph-reasoning", "connector-oauth-mcp", "runtime-response-actions"],
+		"question": "Plan a remediation dry run for this alert after checking connector readiness.",
+		"scope_urn": "urn:cerebro:writer:finding:alert-1",
+		"connector_readiness": {"catalog-managed": "connected"},
+		"allow_preview": true,
+		"evidence_urns": ["urn:cerebro:writer:evidence:event-1"],
+		"memory_hints": [{"type": "prior_investigation", "urn": "urn:cerebro:writer:investigation:prev"}],
+		"action": {
+			"stage": "dry_run",
+			"target_urns": ["urn:cerebro:writer:asset:service-1"]
+		}
+	}`)
+	packetReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/evidence-packets", bytes.NewReader(packetBody))
+	if err != nil {
+		t.Fatalf("NewRequest evidence packet: %v", err)
+	}
+	packetReq.Header.Set("Authorization", "Bearer test-key")
+	packetReq.Header.Set("Content-Type", "application/json")
+	packetResp, err := server.Client().Do(packetReq)
+	if err != nil {
+		t.Fatalf("POST evidence packet: %v", err)
+	}
+	defer func() { _ = packetResp.Body.Close() }()
+	if packetResp.StatusCode != http.StatusOK {
+		t.Fatalf("packet status = %d, want 200", packetResp.StatusCode)
+	}
+	var packet agentplatform.AgentEvidencePacket
+	if err := json.NewDecoder(packetResp.Body).Decode(&packet); err != nil {
+		t.Fatalf("decode packet: %v", err)
+	}
+	if packet.TenantID != "writer" || packet.ActorID != "tester" || !packet.Preflight.Enabled {
+		t.Fatalf("packet context/preflight = %+v, want authenticated enabled packet", packet)
+	}
+	if packet.Confidence.Level != "medium" || !containsString(packet.Confidence.Reasons, "coverage_blind_spots") {
+		t.Fatalf("packet confidence = %+v, want medium with coverage blind spots", packet.Confidence)
+	}
+	if !packetHasAgent(packet, "coverage-scout") || !packetHasAgent(packet, "remediation-planner") {
+		t.Fatalf("packet agents = %+v, want coverage and remediation profiles", packet.RecommendedAgents)
+	}
+	if !packetHasVerifierStatus(packet, "connector-tool-gates", "pass") || !packetHasVerifierStatus(packet, "remediation-safety", "pass") {
+		t.Fatalf("packet verifiers = %+v, want connector/remediation pass", packet.VerifierResults)
+	}
+	if packetActionStatus(packet, agentplatform.ActionStageDryRun) != "requested" {
+		t.Fatalf("packet action ladder = %+v, want dry_run requested", packet.ActionLadder)
+	}
+	if !packet.SimulationPlan.Allowed || packet.SimulationPlan.Mode != "graph_or_fixture_only" {
+		t.Fatalf("simulation plan = %+v, want allowed graph-only simulation", packet.SimulationPlan)
+	}
+	if len(packet.SecurityMemory.Hints) != 1 || len(packet.RequiredWriteBack) == 0 {
+		t.Fatalf("packet memory/writeback = memory:%+v write:%+v", packet.SecurityMemory, packet.RequiredWriteBack)
+	}
+}
+
 func TestAgentPlatformEvidencePacketForcesAuthenticatedContext(t *testing.T) {
 	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -444,4 +572,43 @@ func agentPlatformAuthConfig() config.Config {
 			}},
 		},
 	}
+}
+
+func agentPlatformFullAuthConfig() config.Config {
+	cfg := agentPlatformAuthConfig()
+	cfg.Auth.APICredentials[0].Scopes = []string{
+		scopeCosmoSecurityRead,
+		scopeConnectorCredentialsRead,
+		scopeConnectorCredentialsWrite,
+		scopeRuntimeResponseWrite,
+		scopeFindingCandidatePromote,
+	}
+	return cfg
+}
+
+func packetHasAgent(packet agentplatform.AgentEvidencePacket, id string) bool {
+	for _, agent := range packet.RecommendedAgents {
+		if agent.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func packetHasVerifierStatus(packet agentplatform.AgentEvidencePacket, id string, status string) bool {
+	for _, result := range packet.VerifierResults {
+		if result.ID == id && result.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+func packetActionStatus(packet agentplatform.AgentEvidencePacket, stageID string) string {
+	for _, status := range packet.ActionLadder {
+		if status.Stage.ID == stageID {
+			return status.Status
+		}
+	}
+	return ""
 }

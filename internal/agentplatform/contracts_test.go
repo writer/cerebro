@@ -76,6 +76,30 @@ func TestCapabilitiesHaveGovernanceAndEvals(t *testing.T) {
 	}
 }
 
+func TestCapabilityScopesUsePublicContracts(t *testing.T) {
+	knownScopes := map[string]bool{
+		ScopeCosmoSecurityRead:         true,
+		ScopeConnectorCredentialsRead:  true,
+		ScopeConnectorCredentialsWrite: true,
+		ScopeFindingCandidatePromote:   true,
+		ScopeRuntimeResponseWrite:      true,
+	}
+	for _, capability := range Capabilities {
+		for _, scope := range capability.RequiredScopes {
+			if !knownScopes[scope] {
+				t.Fatalf("capability %q references unknown scope %q", capability.ID, scope)
+			}
+		}
+		for _, dependency := range capability.ConnectorDependencies {
+			for _, scope := range dependency.RequiredScopes {
+				if !knownScopes[scope] {
+					t.Fatalf("connector dependency %q for capability %q references unknown scope %q", dependency.SourceID, capability.ID, scope)
+				}
+			}
+		}
+	}
+}
+
 func TestConnectorInfrastructureIsFirstClass(t *testing.T) {
 	infrastructure := ConnectorInfrastructureProfile
 	for _, required := range []string{"oauth_authorization_code", "oauth_client_credentials"} {
@@ -293,7 +317,7 @@ func TestPreflightAgentRunIncludesConnectorOAuthNodes(t *testing.T) {
 func TestDecideCapabilityPreviewGate(t *testing.T) {
 	blocked, ok := DecideCapability(CapabilityDecisionRequest{
 		CapabilityID:    "runtime-response-actions",
-		RequestedScopes: []string{"runtime.response.write"},
+		RequestedScopes: []string{ScopeRuntimeResponseWrite},
 	})
 	if !ok {
 		t.Fatal("runtime-response-actions capability missing")
@@ -304,7 +328,7 @@ func TestDecideCapabilityPreviewGate(t *testing.T) {
 
 	allowed, ok := DecideCapability(CapabilityDecisionRequest{
 		CapabilityID:    "runtime-response-actions",
-		RequestedScopes: []string{"runtime.response.write"},
+		RequestedScopes: []string{ScopeRuntimeResponseWrite},
 		AllowPreview:    true,
 	})
 	if !ok {
