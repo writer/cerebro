@@ -18,14 +18,21 @@ const (
 )
 
 type policyRuleConfig struct {
-	Definition   RuleDefinition
-	Conditions   []string
-	Query        string
-	Resource     string
-	ResourceType string
-	Category     string
-	EvidenceMode string
-	Enabled      bool
+	Definition        RuleDefinition
+	Conditions        []string
+	Query             string
+	Resource          string
+	ResourceType      string
+	Category          string
+	EvidenceMode      string
+	EvidenceType      string
+	AssessmentMethods []string
+	AuditorGuidance   string
+	RiskStatement     string
+	RemediationIntent string
+	ExceptionGuidance []string
+	ControlFamilies   []string
+	Enabled           bool
 }
 
 type policyCatalogRule struct {
@@ -56,6 +63,9 @@ func newPolicyCatalogRule(config policyRuleConfig) Rule {
 	}
 	config.Definition = definition
 	config.Conditions = cloneStringSlice(config.Conditions)
+	config.AssessmentMethods = cloneStringSlice(config.AssessmentMethods)
+	config.ExceptionGuidance = cloneStringSlice(config.ExceptionGuidance)
+	config.ControlFamilies = cloneStringSlice(config.ControlFamilies)
 	return &policyCatalogRule{config: config}
 }
 
@@ -77,6 +87,9 @@ func (r *policyCatalogRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bo
 	if r == nil || runtime == nil {
 		return false
 	}
+	if !r.config.Enabled {
+		return false
+	}
 	if !strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), policyRuleSourceID) {
 		return false
 	}
@@ -85,6 +98,9 @@ func (r *policyCatalogRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bo
 
 func (r *policyCatalogRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
 	if r == nil {
+		return nil, nil
+	}
+	if !r.config.Enabled {
 		return nil, nil
 	}
 	definition := r.config.Definition
@@ -121,13 +137,17 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 	fingerprintResource := firstNonEmpty(resourceURN, resourceID, strings.TrimSpace(event.GetId()))
 	fingerprint := hashFindingFingerprint(definition.ID, tenantID, runtimeID, fingerprintResource)
 	findingAttributes := map[string]string{
-		"policy_id":            definition.ID,
-		"policy_name":          definition.Name,
-		"policy_category":      r.config.Category,
-		"policy_evidence":      r.config.EvidenceMode,
-		"policy_resource":      r.config.Resource,
-		"policy_resource_type": r.config.ResourceType,
-		"policy_status":        firstNonEmpty(attributes["policy_status"], attributes["compliance_status"], attributes["result"], attributes["status"], attributes["outcome"]),
+		"policy_id":               definition.ID,
+		"policy_name":             definition.Name,
+		"policy_category":         r.config.Category,
+		"policy_evidence":         r.config.EvidenceMode,
+		"policy_evidence_type":    r.config.EvidenceType,
+		"policy_resource":         r.config.Resource,
+		"policy_resource_type":    r.config.ResourceType,
+		"policy_auditor_guidance": r.config.AuditorGuidance,
+		"policy_risk_statement":   r.config.RiskStatement,
+		"policy_remediation":      r.config.RemediationIntent,
+		"policy_status":           firstNonEmpty(attributes["policy_status"], attributes["compliance_status"], attributes["result"], attributes["status"], attributes["outcome"]),
 	}
 	for key, value := range attributes {
 		if _, exists := findingAttributes[key]; !exists {
@@ -143,6 +163,9 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 	if strings.TrimSpace(r.config.Query) != "" {
 		findingAttributes["policy_query_present"] = "true"
 	}
+	addPolicyAttributeList(findingAttributes, "policy_assessment_methods", r.config.AssessmentMethods)
+	addPolicyAttributeList(findingAttributes, "policy_control_families", r.config.ControlFamilies)
+	addPolicyAttributeList(findingAttributes, "policy_exception_guidance", r.config.ExceptionGuidance)
 	trimEmptyAttributes(findingAttributes)
 	resourceURNs := nonEmptyStringSlice(resourceURN)
 	eventIDs := nonEmptyStringSlice(event.GetId())
@@ -152,10 +175,10 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 		TenantID:          tenantID,
 		RuntimeID:         runtimeID,
 		RuleID:            definition.ID,
-		Title:             firstNonEmpty(attributes["title"], definition.Name),
+		Title:             firstNonEmpty(attributes["title"], policyFindingTitle(definition.Name)),
 		Severity:          normalizeFindingSeverity(firstNonEmpty(attributes["severity"], definition.Severity)),
 		Status:            findingStatusOpen,
-		Summary:           firstNonEmpty(attributes["summary"], definition.Description),
+		Summary:           firstNonEmpty(attributes["summary"], policyFindingSummary(definition, r.config, attributes)),
 		ResourceURNs:      resourceURNs,
 		EventIDs:          eventIDs,
 		ObservedPolicyIDs: []string{definition.ID},
@@ -168,6 +191,24 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 		FirstObservedAt:   observedAt,
 		LastObservedAt:    observedAt,
 	}
+}
+
+func policyFindingTitle(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "Policy evidence failed"
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.Contains(lower, "failed") || strings.Contains(lower, "noncompliant") || strings.Contains(lower, "not compliant") {
+		return trimmed
+	}
+	return trimmed + " policy failed"
+}
+
+func policyFindingSummary(definition RuleDefinition, config policyRuleConfig, attributes map[string]string) string {
+	subject := firstNonEmpty(attributes["resource_label"], attributes["resource_name"], attributes["resource_id"], config.ResourceType, config.Resource, "the assessed subject")
+	risk := firstNonEmpty(config.RiskStatement, definition.Description)
+	return "Policy evidence shows " + subject + " does not satisfy " + definition.Name + ". " + risk
 }
 
 func policyRuleEventMatchesDefinition(ruleID string, attributes map[string]string) bool {
@@ -206,6 +247,18 @@ func firstCSVValue(value string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[0])
+}
+
+func addPolicyAttributeList(attributes map[string]string, key string, values []string) {
+	trimmed := make([]string, 0, len(values))
+	for _, value := range values {
+		if item := strings.TrimSpace(value); item != "" {
+			trimmed = append(trimmed, item)
+		}
+	}
+	if len(trimmed) != 0 {
+		attributes[key] = strings.Join(trimmed, ",")
+	}
 }
 
 func nonEmptyStringSlice(values ...string) []string {
