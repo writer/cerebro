@@ -346,6 +346,9 @@ func zoneEntryValues(entries []map[string]any) []string {
 func nonEmptyAnyStrings(values []any) []string {
 	result := make([]string, 0, len(values))
 	for _, value := range values {
+		if value == nil {
+			continue
+		}
 		if text := strings.TrimSpace(fmt.Sprint(value)); text != "" {
 			result = append(result, text)
 		}

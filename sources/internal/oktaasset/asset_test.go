@@ -1,6 +1,7 @@
 package oktaasset
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -33,5 +34,26 @@ func TestRecordTimeParsesOktaFractionalTimestamp(t *testing.T) {
 	}
 	if wantID := fmt.Sprintf("okta-identity-provider-idp-1-%d", want.UnixMilli()); event.Id != wantID {
 		t.Fatalf("Event().Id = %q, want %q", event.Id, wantID)
+	}
+}
+
+func TestNetworkZoneAttributesSkipNullASNs(t *testing.T) {
+	var record Record
+	if err := json.Unmarshal([]byte(`{
+		"id": "zone-1",
+		"name": "Blocked networks",
+		"type": "DYNAMIC",
+		"status": "ACTIVE",
+		"asns": [null, 64512, "", "  ", "64513"]
+	}`), &record); err != nil {
+		t.Fatalf("decode record: %v", err)
+	}
+
+	attrs := Attributes(Settings{Domain: "writer.okta.com"}, KindNetworkZone, record)
+	if got := attrs["asn_count"]; got != "2" {
+		t.Fatalf("asn_count = %q, want 2", got)
+	}
+	if got := attrs["asns"]; got != "64512,64513" {
+		t.Fatalf("asns = %q, want 64512,64513", got)
 	}
 }
