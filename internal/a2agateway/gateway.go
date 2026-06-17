@@ -154,6 +154,9 @@ func (h Handler) createEvidencePacketTask(ctx context.Context, params agentplatf
 		return agentplatform.A2ATask{}, err
 	}
 	if !created {
+		if !jobVisible(job, resolved) || job.Kind != agentplatform.A2AWorkJobKind {
+			return agentplatform.A2ATask{}, requestError{code: -32001, message: "TaskNotFoundError", reason: "A2A idempotent task is not visible"}
+		}
 		task, err := taskFromJob(job)
 		if err != nil {
 			return agentplatform.A2ATask{}, err
@@ -167,30 +170,35 @@ func (h Handler) createEvidencePacketTask(ctx context.Context, params agentplatf
 		Message: "A2A agent-evidence-packet task submitted.",
 		Payload: map[string]any{"skill_id": agentplatform.A2AWorkSkillAgentEvidencePacket},
 	}); err != nil {
+		h.failEvidencePacketTask(ctx, job, err)
 		return agentplatform.A2ATask{}, err
 	}
 	startedAt := now
-	if job, err = h.Store.UpdateJob(ctx, job.ID, ports.JobUpdate{
+	updatedJob, err := h.Store.UpdateJob(ctx, job.ID, ports.JobUpdate{
 		Status:          ports.JobStatusRunning,
 		Progress:        uint32Pointer(25),
 		Message:         "Building A2A agent evidence packet.",
 		StartedAt:       &startedAt,
 		AllowedStatuses: []string{ports.JobStatusQueued},
-	}); err != nil {
+	})
+	if err != nil {
+		h.failEvidencePacketTask(ctx, job, err)
 		return agentplatform.A2ATask{}, err
 	}
+	job = updatedJob
 	if _, err := h.Store.AppendJobEvent(ctx, ports.JobEvent{
 		JobID:   job.ID,
 		Type:    "a2a.task.working",
 		Status:  ports.JobStatusRunning,
 		Message: "A2A agent-evidence-packet task is building the evidence artifact.",
 	}); err != nil {
+		h.failEvidencePacketTask(ctx, job, err)
 		return agentplatform.A2ATask{}, err
 	}
 	packet := agentplatform.BuildEvidencePacket(evidenceRequest)
 	task := agentplatform.BuildA2AEvidencePacketTask(job.ID, contextID, params.Message, packet, now)
 	finishedAt := now
-	job, err = h.Store.UpdateJob(ctx, job.ID, ports.JobUpdate{
+	updatedJob, err = h.Store.UpdateJob(ctx, job.ID, ports.JobUpdate{
 		Status:          ports.JobStatusCompleted,
 		Progress:        uint32Pointer(100),
 		Message:         "A2A agent evidence packet completed.",
@@ -199,8 +207,10 @@ func (h Handler) createEvidencePacketTask(ctx context.Context, params agentplatf
 		AllowedStatuses: []string{ports.JobStatusRunning},
 	})
 	if err != nil {
+		h.failEvidencePacketTask(ctx, job, err)
 		return agentplatform.A2ATask{}, err
 	}
+	job = updatedJob
 	if _, err := h.Store.AppendJobEvent(ctx, ports.JobEvent{
 		JobID:   job.ID,
 		Type:    "a2a.task.completed",
@@ -214,6 +224,27 @@ func (h Handler) createEvidencePacketTask(ctx context.Context, params agentplatf
 		return agentplatform.A2ATask{}, err
 	}
 	return agentplatform.A2ATaskWithHistoryLimit(task, params.Configuration.HistoryLength), nil
+}
+
+func (h Handler) failEvidencePacketTask(ctx context.Context, job *ports.Job, cause error) {
+	if h.Store == nil || job == nil || cause == nil {
+		return
+	}
+	finishedAt := time.Now().UTC()
+	_, _ = h.Store.UpdateJob(context.WithoutCancel(ctx), job.ID, ports.JobUpdate{
+		Status:          ports.JobStatusFailed,
+		Message:         "A2A agent evidence packet failed.",
+		Error:           cause.Error(),
+		FinishedAt:      &finishedAt,
+		AllowedStatuses: []string{ports.JobStatusQueued, ports.JobStatusRunning},
+	})
+	_, _ = h.Store.AppendJobEvent(context.WithoutCancel(ctx), ports.JobEvent{
+		JobID:   job.ID,
+		Type:    "a2a.task.failed",
+		Status:  ports.JobStatusFailed,
+		Message: "A2A agent-evidence-packet task failed.",
+		Payload: map[string]any{"state": agentplatform.A2ATaskStateFailed},
+	})
 }
 
 func (h Handler) getTask(ctx context.Context, request agentplatform.A2AJSONRPCRequest) agentplatform.A2AJSONRPCResponse {
