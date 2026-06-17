@@ -24,10 +24,12 @@ Every entry must include a committed `classifier_output` and a normalized
 - projection templates
 - coverage dimensions
 
-`make catalog-check` is the proof gate. It normalizes and classifies every
-definition, rejects contradictory supported/missing feature IDs, requires
-high-value coverage, and dry-runs sourcegen for entries classified as supported.
-The checker prints the catalog status summary that should be used in PR notes.
+`make catalog-check` is the broad catalog proof gate. It normalizes and
+classifies every definition, rejects contradictory supported/missing feature
+IDs, requires high-value coverage, and dry-runs sourcegen for entries classified
+as supported. Use `make sourcegen-check` when the change should prove that every
+built-in connector definition remains sourcegen-ready. The checker prints the
+catalog status summary that should be used in PR notes.
 
 Generateable entries can be promoted one integration at a time from the catalog:
 

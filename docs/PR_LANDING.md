@@ -30,4 +30,7 @@ error instead of a code review.
 
 The post-merge health workflow audits the merged commit's associated PR. It
 fails in strict mode when the PR has an unsuperseded Droid error comment, a
-stale in-progress Droid comment, or no finished Droid review comment.
+stale in-progress Droid comment, or no finished Droid review comment. It also
+reports whether the latest stable release tag includes the merged commit and how
+many commits sit after that tag. Release tag lag is informational unless the
+release workflows themselves are failing.

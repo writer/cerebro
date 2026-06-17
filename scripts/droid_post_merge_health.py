@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -25,6 +27,7 @@ DROID_REVIEW_REQUIRED_PREFIXES = (
     "sources/",
     "tools/",
 )
+STABLE_RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 def request_json(path: str, token: str, repository: str) -> object:
@@ -231,6 +234,64 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
     }
 
 
+def git_output(args: list[str]) -> str:
+    result = subprocess.run(["git", *args], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return result.stdout.strip()
+
+
+def collect_release_status(head_sha: str) -> dict[str, object]:
+    try:
+        head = head_sha or git_output(["rev-parse", "HEAD"])
+        tags = [
+            tag
+            for tag in git_output(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"]).splitlines()
+            if STABLE_RELEASE_TAG.match(tag.strip())
+        ]
+        head_tags = [
+            tag
+            for tag in git_output(["tag", "--points-at", head, "--list", "v*"]).splitlines()
+            if tag.strip()
+        ]
+        if not tags:
+            return {
+                "latest_tag": "",
+                "latest_tag_target": "",
+                "head_tags": head_tags,
+                "head_has_release_tag": bool(head_tags),
+                "latest_tag_on_head": False,
+                "commits_since_latest_tag": None,
+                "status": "missing_release_tags",
+            }
+        latest = tags[0].strip()
+        target = git_output(["rev-parse", f"{latest}^{{}}"])
+        commits_since: int | None
+        try:
+            commits_since = int(git_output(["rev-list", "--count", f"{target}..{head}"]))
+        except (subprocess.CalledProcessError, ValueError):
+            commits_since = None
+        latest_on_head = target == head
+        return {
+            "latest_tag": latest,
+            "latest_tag_target": target,
+            "head_tags": head_tags,
+            "head_has_release_tag": bool(head_tags),
+            "latest_tag_on_head": latest_on_head,
+            "commits_since_latest_tag": commits_since,
+            "status": "current" if latest_on_head else "tag_lag",
+        }
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        return {
+            "latest_tag": "",
+            "latest_tag_target": "",
+            "head_tags": [],
+            "head_has_release_tag": False,
+            "latest_tag_on_head": False,
+            "commits_since_latest_tag": None,
+            "status": "unavailable",
+            "reason": str(exc)[:240],
+        }
+
+
 def summarize(
     branch: str,
     head_sha: str,
@@ -238,6 +299,7 @@ def summarize(
     pull_requests: list[dict[str, object]] | None = None,
     droid_reviews: list[dict[str, object]] | None = None,
     current_run_id: str = "",
+    release_status: dict[str, object] | None = None,
 ) -> dict[str, object]:
     relevant = [
         run
@@ -267,6 +329,7 @@ def summarize(
         "pull_requests": pull_requests or [],
         "droid_reviews": reviews,
         "failed_droid_reviews": failed_reviews,
+        "release_status": release_status or {},
         "healthy": not failures and not failed_reviews and bool(relevant),
     }
 
@@ -278,6 +341,7 @@ def render_markdown(context: dict[str, object]) -> str:
     failed_droid_reviews = (
         context.get("failed_droid_reviews") if isinstance(context.get("failed_droid_reviews"), list) else []
     )
+    release_status = context.get("release_status") if isinstance(context.get("release_status"), dict) else {}
     lines = [
         COMMENT_MARKER,
         "## Droid Post-Merge Health",
@@ -290,8 +354,21 @@ def render_markdown(context: dict[str, object]) -> str:
         f"- Failed runs: `{len(failed)}`",
         f"- Pending runs: `{len(pending)}`",
         f"- Droid review issues: `{len(failed_droid_reviews)}`",
+        f"- Latest release tag: `{release_status.get('latest_tag', '')}`",
+        f"- Latest tag on head: `{release_status.get('latest_tag_on_head', False)}`",
+        f"- Commits since latest release tag: `{release_status.get('commits_since_latest_tag', '')}`",
         "",
     ]
+    if release_status and not release_status.get("latest_tag_on_head"):
+        lines.append("### Release Status")
+        lines.append("")
+        lines.append(
+            "- `{tag}` is not on the selected head yet. This is informational release-train lag unless release workflows are failing.".format(
+                tag=release_status.get("latest_tag", "")
+            )
+        )
+        if release_status.get("reason"):
+            lines.append(f"- Status detail: {release_status.get('reason')}")
     if failed:
         lines.append("### Failures")
         lines.append("")
@@ -345,6 +422,7 @@ def main() -> int:
             "failed_runs": [],
             "pending_runs": [],
             "healthy": False,
+            "release_status": collect_release_status(args.head),
             "notes": ["GitHub token or repository missing."],
         }
     else:
@@ -363,6 +441,7 @@ def main() -> int:
                 pull_requests=pull_requests,
                 droid_reviews=droid_reviews,
                 current_run_id=os.environ.get("GITHUB_RUN_ID", ""),
+                release_status=collect_release_status(args.head),
             )
         except (urllib.error.URLError, TimeoutError, RuntimeError) as exc:
             context = {
@@ -373,6 +452,7 @@ def main() -> int:
                 "failed_runs": [],
                 "pending_runs": [],
                 "healthy": False,
+                "release_status": collect_release_status(args.head),
                 "notes": [str(exc)[:240]],
             }
     markdown = render_markdown(context)

@@ -116,6 +116,64 @@ entries:
 	}
 }
 
+func TestCheckConnectorDefinitionCatalogRequiresSourcegenReady(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/connectorcatalog/catalog/batch.yaml", `
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-app-entitlement
+      tenant_id: builtin_catalog
+      source_id: app_entitlement_demo
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+        verification:
+          path: /healthz
+      resource_families:
+        - id: entitlements
+          path: /v1/entitlements
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: app_entitlement_demo.entitlements, schema_ref: app_entitlement_demo/entitlements/v1}
+          projection: {template: app_entitlement}
+          coverage:
+            - id: entitlements
+              type: app_entitlement
+              title: Entitlements
+              families: [entitlements]
+              support: partial
+              high_value: true
+        - id: assets
+          path: /v1/assets
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: app_entitlement_demo.assets, schema_ref: app_entitlement_demo/assets/v1}
+          projection: {template: asset}
+          coverage:
+            - id: assets
+              type: entity_family
+              title: Assets
+              families: [assets]
+              support: partial
+              high_value: true
+`)
+
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{requireSourcegenReady: true})
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "want generateable") {
+		t.Fatalf("issues = %#v, want sourcegen-ready issue", issues)
+	}
+}
+
 func TestCheckRepositoryRejectsUnprojectedEmittedKind(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "policies/github/test.json", `{

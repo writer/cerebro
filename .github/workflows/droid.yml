@@ -138,6 +138,6 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           # Keep manual @droid reviews as the escalation path after the fast
           # preflight-backed automatic pass has already run.
-          review_model: claude-opus-4-8
+          review_model: claude-sonnet-4-6
           security_model: gpt-5.4
           reasoning_effort: high

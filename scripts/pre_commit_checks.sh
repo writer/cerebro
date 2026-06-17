@@ -19,5 +19,10 @@ if [ -n "$staged_go" ]; then
   fi
 fi
 
-echo "verify: running full local validation, including golangci-lint..."
-make verify
+if [ "${CEREBRO_PRE_COMMIT_FULL_VERIFY:-}" = "1" ]; then
+  echo "verify: running full local validation, including golangci-lint..."
+  make verify
+else
+  echo "changed-check: running validation selected from changed paths..."
+  make changed-check
+fi

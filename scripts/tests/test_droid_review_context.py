@@ -87,6 +87,17 @@ class DroidReviewContextTests(unittest.TestCase):
         self.assertTrue(context["relevant_memory"])
         self.assertEqual(len(context["active_feedback"]), 1)
 
+    def test_default_factory_context_contains_contract_passes(self):
+        passes_doc = json.loads((REPO_ROOT / ".factory" / "review-passes.json").read_text(encoding="utf-8"))
+        memory_doc = json.loads((REPO_ROOT / ".factory" / "review-memory.json").read_text(encoding="utf-8"))
+        files = ["internal/connectorcatalog/catalog/devops-ci-cd.yaml", "internal/compliance/evidence_packet.go"]
+        pass_names = {item["name"] for item in ctx.pass_plan({}, passes_doc, files)}
+        memory_ids = {item["id"] for item in ctx.relevant_memories(memory_doc, files)}
+        self.assertIn("source-definition-contract", pass_names)
+        self.assertIn("compliance-policy-packet", pass_names)
+        self.assertIn("connector-sourcegen-ready", memory_ids)
+        self.assertIn("compliance-packet-single-contract", memory_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
