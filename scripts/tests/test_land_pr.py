@@ -18,6 +18,49 @@ class LandPRTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("missing", reason)
 
+    def test_check_required_statuses_accepts_all_required_checks(self):
+        ok, reason = land_pr.check_required_statuses(
+            [
+                {"name": "build", "bucket": "pass"},
+                {"name": "test", "bucket": "pass"},
+            ],
+            ("build", "test"),
+        )
+        self.assertTrue(ok)
+        self.assertEqual(reason, "")
+
+    def test_check_required_statuses_rejects_failed_or_missing_checks(self):
+        ok, reason = land_pr.check_required_statuses(
+            [
+                {"name": "build", "bucket": "pass"},
+                {"name": "catalog", "bucket": "fail", "link": "https://check"},
+            ],
+            ("build", "catalog", "verify"),
+        )
+        self.assertFalse(ok)
+        self.assertIn("catalog", reason)
+        self.assertIn("verify", reason)
+
+    def test_check_pr_size_rejects_large_pr_without_override(self):
+        ok, reason = land_pr.check_pr_size(
+            {"additions": 5001, "deletions": 0, "changedFiles": 3},
+            max_changed_lines=5000,
+            max_changed_files=50,
+            allow_large_pr=False,
+        )
+        self.assertFalse(ok)
+        self.assertIn("--allow-large-pr", reason)
+
+    def test_check_pr_size_allows_large_pr_with_override(self):
+        ok, reason = land_pr.check_pr_size(
+            {"additions": 5001, "deletions": 0, "changedFiles": 3},
+            max_changed_lines=5000,
+            max_changed_files=50,
+            allow_large_pr=True,
+        )
+        self.assertTrue(ok)
+        self.assertEqual(reason, "")
+
     def test_check_droid_finished_accepts_finished_review(self):
         ok, reason = land_pr.check_droid_finished(
             [
