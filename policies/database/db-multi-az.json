@@ -17,6 +17,12 @@
       "controls": [
         "A.5.1"
       ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "CP-10"
+      ]
     }
   ],
   "enabled": true,

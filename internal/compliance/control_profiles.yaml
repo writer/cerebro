@@ -44,12 +44,24 @@ profiles:
     frameworks:
       - name: DORA
         include_all: true
+  - id: dora-ict-third-party-risk
+    name: DORA ICT Third-Party Risk
+    description: DORA ICT third-party lifecycle, due diligence, contract clauses, monitoring, and exit planning scope.
+    frameworks:
+      - name: DORA
+        families: [TPRM, TPRM-RTS]
   - id: fedramp-rev5-core
     name: FedRAMP Rev. 5 Core
     description: FedRAMP Rev. 5 baseline control coverage mapped to supported NIST SP 800-53 Rev. 5 policy evidence.
     frameworks:
       - name: FedRAMP Rev. 5
         include_all: true
+  - id: fedramp-rev5-continuous-monitoring
+    name: FedRAMP Rev. 5 Continuous Monitoring
+    description: FedRAMP-oriented assessment, vulnerability, and system integrity monitoring evidence scope.
+    frameworks:
+      - name: FedRAMP Rev. 5
+        families: [CA, RA, SI]
   - id: nis2-cybersecurity-risk-management
     name: NIS2 Cybersecurity Risk Management
     description: NIS2 governance, cybersecurity risk-management, and significant incident reporting obligations.
@@ -62,6 +74,12 @@ profiles:
     frameworks:
       - name: CMMC 2.0
         include_all: true
+  - id: cmmc-2-level-1
+    name: CMMC 2.0 Level 1
+    description: CMMC Level 1 foundational safeguarding practices for FCI readiness reviews.
+    frameworks:
+      - name: CMMC 2.0
+        families: [L1]
   - id: cjis-security-policy
     name: CJIS Security Policy
     description: FBI CJIS Security Policy area coverage for criminal justice information protection reviews.
@@ -74,6 +92,12 @@ profiles:
     frameworks:
       - name: NIST CSF 2.0
         include_all: true
+  - id: nist-csf-20-supply-chain
+    name: NIST CSF 2.0 Supply Chain
+    description: NIST CSF 2.0 governance and supplier-risk subcategories for third-party cybersecurity risk reviews.
+    frameworks:
+      - name: NIST CSF 2.0
+        controls: [GV.SC, GV.SC-05, GV.SC-07]
   - id: privacy-ai-governance
     name: Privacy and AI Governance
     description: Privacy and AI governance controls for data handling, governance accountability, and AI system oversight reviews.
