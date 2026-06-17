@@ -76,6 +76,30 @@ func TestResolveControlSelectionSupportsControlPostureFilters(t *testing.T) {
 	}
 }
 
+func TestResolveControlSelectionSupportsReadinessFilter(t *testing.T) {
+	index := testSelectionIndex(t)
+	resolution, issues := ResolveControlSelection(index, ControlSelection{
+		ID:               "controls-needing-enrichment",
+		IncludeReadiness: []string{string(ControlReadinessNeedsEnrichment)},
+	})
+	if len(issues) != 0 {
+		t.Fatalf("ResolveControlSelection() issues = %#v, want none", issues)
+	}
+	if len(resolution.Controls) != 1 || resolution.Controls[0].Control.ID != "IAM-1" {
+		t.Fatalf("Controls = %#v, want custom IAM-1", resolution.Controls)
+	}
+}
+
+func TestResolveControlSelectionValidatesReadinessFilter(t *testing.T) {
+	_, issues := ResolveControlSelection(testSelectionIndex(t), ControlSelection{
+		ID:               "invalid-readiness",
+		IncludeReadiness: []string{"draft"},
+	})
+	if !validationIssuesContain(issues, "include_readiness[0] must be one of auditor_ready, needs_enrichment, placeholder") {
+		t.Fatalf("issues = %#v, want invalid readiness issue", issues)
+	}
+}
+
 func TestResolveControlSelectionRejectsProfileIncludes(t *testing.T) {
 	resolution, issues := ResolveControlSelection(testSelectionIndex(t), ControlSelection{
 		ID:              "composed",

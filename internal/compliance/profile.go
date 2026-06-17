@@ -43,10 +43,13 @@ type ControlCoverageProfile struct {
 }
 
 type ControlCoverageSummary struct {
-	SelectedControls int `json:"selected_controls" yaml:"selected_controls"`
-	MappedControls   int `json:"mapped_controls" yaml:"mapped_controls"`
-	UnmappedControls int `json:"unmapped_controls" yaml:"unmapped_controls"`
-	MappedRules      int `json:"mapped_rules" yaml:"mapped_rules"`
+	SelectedControls        int `json:"selected_controls" yaml:"selected_controls"`
+	MappedControls          int `json:"mapped_controls" yaml:"mapped_controls"`
+	UnmappedControls        int `json:"unmapped_controls" yaml:"unmapped_controls"`
+	MappedRules             int `json:"mapped_rules" yaml:"mapped_rules"`
+	AuditorReadyControls    int `json:"auditor_ready_controls" yaml:"auditor_ready_controls"`
+	NeedsEnrichmentControls int `json:"needs_enrichment_controls" yaml:"needs_enrichment_controls"`
+	PlaceholderControls     int `json:"placeholder_controls" yaml:"placeholder_controls"`
 }
 
 type ControlCoverageControl struct {
@@ -62,6 +65,7 @@ type ControlCoverageControl struct {
 	EvidenceExpectationIDs []string                     `json:"evidence_expectation_ids,omitempty" yaml:"evidence_expectation_ids,omitempty"`
 	AuditPlan              *ControlCoverageAuditPlan    `json:"audit_plan,omitempty" yaml:"audit_plan,omitempty"`
 	EvidencePlan           *ControlCoverageEvidencePlan `json:"evidence_plan,omitempty" yaml:"evidence_plan,omitempty"`
+	AuditReadiness         ControlReadiness             `json:"audit_readiness" yaml:"audit_readiness"`
 	MappedControlRefs      []ControlRef                 `json:"mapped_control_refs,omitempty" yaml:"mapped_control_refs,omitempty"`
 	CoverageStatus         string                       `json:"coverage_status" yaml:"coverage_status"`
 	RuleCount              int                          `json:"rule_count" yaml:"rule_count"`
@@ -262,6 +266,8 @@ func BuildControlCoverageProfile(selection ControlSelection, resolution Selectio
 		if len(mappedRules) != 0 {
 			profile.Summary.MappedControls++
 		}
+		readiness := controlCoverageReadiness(control)
+		addControlReadinessSummary(&profile.Summary, readiness.Status)
 		expectationIDs, _ := evidenceExpectationIDs(control.Evidence)
 		coverageStatus := "unmapped"
 		if len(mappedRules) != 0 {
@@ -280,6 +286,7 @@ func BuildControlCoverageProfile(selection ControlSelection, resolution Selectio
 			EvidenceExpectationIDs: expectationIDs,
 			AuditPlan:              controlCoverageAuditPlan(control.Control),
 			EvidencePlan:           controlCoverageEvidencePlan(control.Evidence, control.Control.FreshnessSLA),
+			AuditReadiness:         readiness,
 			MappedControlRefs:      sortedControlRefs(control.Control.MapsTo),
 			CoverageStatus:         coverageStatus,
 			RuleCount:              len(mappedRules),
@@ -292,6 +299,25 @@ func BuildControlCoverageProfile(selection ControlSelection, resolution Selectio
 	profile.Summary.MappedRules = len(coverage.MappedRules)
 	sortControlCoverageProfile(&profile)
 	return profile
+}
+
+func controlCoverageReadiness(control ResolvedControl) ControlReadiness {
+	readiness := EvaluateControlReadiness(control)
+	if readiness.Status == ControlReadinessPlaceholder {
+		readiness.MissingFields = nil
+	}
+	return readiness
+}
+
+func addControlReadinessSummary(summary *ControlCoverageSummary, status ControlReadinessStatus) {
+	switch status {
+	case ControlReadinessAuditorReady:
+		summary.AuditorReadyControls++
+	case ControlReadinessNeedsEnrichment:
+		summary.NeedsEnrichmentControls++
+	case ControlReadinessPlaceholder:
+		summary.PlaceholderControls++
+	}
 }
 
 func validateControlProfileSet(set ControlProfileSet) []ValidationIssue {

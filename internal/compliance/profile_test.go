@@ -93,6 +93,9 @@ func TestBuildControlCoverageIndexCreditsMappedCustomControls(t *testing.T) {
 	if control.EvidencePlan == nil || len(control.EvidencePlan.Expectations) != 1 || control.EvidencePlan.Expectations[0].ID != "privileged-mfa-state" || !control.EvidencePlan.Expectations[0].Required {
 		t.Fatalf("EvidencePlan = %#v, want required privileged-mfa-state", control.EvidencePlan)
 	}
+	if control.AuditReadiness.Status != ControlReadinessNeedsEnrichment || !stringSliceContains(control.AuditReadiness.MissingFields, "evidence_expectations.description") {
+		t.Fatalf("AuditReadiness = %#v, want needs-enrichment for missing evidence description", control.AuditReadiness)
+	}
 	if len(control.MappedControlRefs) != 1 || control.MappedControlRefs[0].FrameworkName != "SOC 2" || control.MappedControlRefs[0].ControlID != "CC6.1" {
 		t.Fatalf("MappedControlRefs = %#v, want SOC 2 CC6.1", control.MappedControlRefs)
 	}
