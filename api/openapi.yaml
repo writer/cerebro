@@ -2175,6 +2175,32 @@ paths:
       responses:
         '200':
           description: Graph neighborhood and related findings for one entity.
+  /grc/control-packets:
+    get:
+      summary: GRC control evidence packet for a compliance profile
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: profile
+          in: query
+          schema:
+            type: string
+          description: Built-in compliance profile ID. Defaults to soc2-security-core.
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional framework name or ID filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional control ID filter.
+      responses:
+        '200':
+          description: Profile metadata, posture summary, controls, findings, and evidence expectations.
   /grc/audit-packets/{packetID}:
     get:
       summary: GRC audit packet for one finding

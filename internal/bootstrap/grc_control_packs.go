@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/compliance"
+	"github.com/writer/cerebro/internal/grccontrol"
 )
 
 func (a *App) handleGRCControlArchetypes(w http.ResponseWriter, _ *http.Request) {
@@ -34,6 +35,51 @@ func (a *App) handleGRCControlCoverage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleGRCControlEvidencePacket(w http.ResponseWriter, r *http.Request) {
+	scope, err := grcScopeFromRequest(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	runtimes, err := a.grcListRuntimes(r, scope)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{Limit: scope.Limit})
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	result, err := grccontrol.BuildBuiltinEvidencePacket(grccontrol.BuildInput{
+		ProfileID: firstNonEmpty(r.URL.Query().Get("profile"), r.URL.Query().Get("profile_id")),
+		Framework: r.URL.Query().Get("framework"),
+		ControlID: r.URL.Query().Get("control"),
+		Findings:  findings,
+		Evidence:  evidence,
+		SourceIDs: grcRuntimeSourceIDs(runtimes),
+		Now:       time.Now().UTC(),
+	})
+	if err != nil {
+		if errors.Is(err, grccontrol.ErrInvalidRequest) {
+			err = errors.Join(errInvalidHTTPRequest, err)
+		}
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"profile":      result.Profile,
+		"packet":       result.Packet,
+		"controls":     result.Controls,
+		"generated_at": result.Packet.GeneratedAt,
+	})
 }
 
 func (a *App) handleGRCControlPackPreview(w http.ResponseWriter, r *http.Request) {
