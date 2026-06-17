@@ -30,6 +30,11 @@ class ChangedChecksTests(unittest.TestCase):
         names = self.command_names(["scripts/droid_review_context.py"])
         self.assertIn("python-script-tests", names)
 
+    def test_readme_source_paths_select_readme_check(self):
+        names = self.command_names(["tools/controlindex/main.go"])
+        self.assertIn("readme-check", names)
+        self.assertIn("control-index-check", names)
+
     def test_go_files_select_package_tests(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

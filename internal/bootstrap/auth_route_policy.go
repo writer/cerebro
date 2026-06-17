@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 )
@@ -25,9 +26,12 @@ type httpAuthRoutePolicy struct {
 }
 
 var httpAuthRoutePolicies = []httpAuthRoutePolicy{
+	{Method: http.MethodPost, Exact: agentplatform.A2AJSONRPCPath, Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/contract", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/capabilities", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/security-control-plane", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: agentplatform.EventSubscriptionContractPath, Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: agentplatform.IdempotencyContractPath, Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/capability-decisions", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/preflight", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/evidence-packets", Scope: scopeCosmoSecurityRead, Static: true},

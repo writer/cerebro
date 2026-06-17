@@ -134,6 +134,8 @@ func TestBootstrapPublicHTTPRoutesStayMethodScopedAndDocumented(t *testing.T) {
 		`registerHTTPRoute(mux, "GET /healthz", routeSurfacePublicHTTP`,
 		`registerHTTPRoute(mux, "GET /livez", routeSurfacePublicHTTP`,
 		`registerHTTPRoute(mux, "GET /openapi.yaml", routeSurfacePublicHTTP`,
+		`registerHTTPRoute(mux, "GET /.well-known/agent-card.json", routeSurfacePublicHTTP`,
+		`registerHTTPRoute(mux, "GET /.well-known/agent.json", routeSurfacePublicHTTP`,
 		`registerHTTPRoute(mux, "GET /.well-known/device-jwks.json", routeSurfacePublicHTTP`,
 		`registerHTTPRoute(mux, "GET /sources", routeSurfacePlatformHTTP`,
 	} {
@@ -158,6 +160,8 @@ func TestBootstrapPublicHTTPRoutesStayMethodScopedAndDocumented(t *testing.T) {
 		t.Fatalf("read auth.go: %v", err)
 	}
 	for _, public := range []string{
+		`agentplatform.A2AAgentCardPath`,
+		`agentplatform.A2ALegacyAgentCardPath`,
 		`"/.well-known/device-jwks.json"`,
 		`oauthProtectedResourceMetadataPath`,
 		`oauthAuthorizationServerMetadataPath`,

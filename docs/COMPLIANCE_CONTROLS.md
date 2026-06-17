@@ -73,6 +73,19 @@ Use `maps_to` to connect custom controls to controls already covered by generate
 
 Control extension packs are YAML manifests that package custom catalog and profile files together. This gives custom framework work a single generated-coverage entrypoint while keeping the actual control catalog YAML separate and reviewable.
 
+Start a custom pack with the scaffold command:
+
+```bash
+go run ./tools/controlindex \
+  --init-extension customer-controls \
+  --extension-id customer-controls \
+  --framework-id customer \
+  --framework-name "Customer Audit 2026" \
+  --profile-id customer-security-audit
+```
+
+The scaffold writes `extension.yaml`, `controls.yaml`, and `profiles.yaml` into the target directory and refuses to overwrite existing files. The starter controls cover identity, logging and monitoring, vulnerability management, recovery testing, and third-party risk. Each starter control is intentionally rich: it includes objective, intent, applicability, assessment methods, audit procedure, failure modes, remediation guidance, exception guidance, evidence expectations, freshness SLA, owner domain, automation flags, and `maps_to` aliases that can be edited for the custom framework.
+
 ```yaml
 version: "2026-06-17"
 id: customer-controls
@@ -111,6 +124,7 @@ include_owner_domains: [identity]
 include_evidence_types: [identity_configuration]
 include_applicability: [production]
 include_assessment_methods: [examine, test]
+include_readiness: [auditor_ready, needs_enrichment]
 automatable: true
 manual_evidence_allowed: true
 exclude_controls:
@@ -118,7 +132,7 @@ exclude_controls:
     control_id: CC6.2
 ```
 
-Selections can include whole frameworks, families, explicit controls, tags, owner domains, evidence types, applicability labels, assessment methods, automatable controls, and controls that allow or disallow manual evidence. Assessment method filters match both control-level methods and expectation-level methods. Exclusions are applied last. An empty selection resolves to the full merged catalog, which is useful for completeness checks.
+Selections can include whole frameworks, families, explicit controls, tags, owner domains, evidence types, applicability labels, assessment methods, audit-readiness states, automatable controls, and controls that allow or disallow manual evidence. Assessment method filters match both control-level methods and expectation-level methods. Exclusions are applied last. An empty selection resolves to the full merged catalog, which is useful for completeness checks.
 
 ## Control Profiles
 
@@ -160,6 +174,20 @@ profiles:
 
 Use composition for customer audit packets, internal control programs, product-specific compliance views, or custom framework launches that need to combine several built-in control groups with customer-specific controls.
 
+## Control Readiness
+
+Control readiness grades whether a control is auditor-ready or still needs authoring depth. `EvaluateControlReadiness` checks the fields auditors need to understand the control, test it, refresh evidence, and handle exceptions: title, objective, intent, applicability, assessment methods, implementation guidance, audit procedure, failure modes, remediation guidance, exception guidance, freshness SLA, owner domain, automation flags, and evidence expectation detail.
+
+Readiness has three states:
+
+| Status | Meaning |
+| --- | --- |
+| `auditor_ready` | All readiness fields are present. |
+| `needs_enrichment` | The control has enough detail to work from, but one or more audit fields should be filled before auditor reliance. |
+| `placeholder` | The control is mostly an ID or mapped benchmark entry and should be enriched before it is treated as a fully described internal control. |
+
+Use `include_readiness` in a selection or profile to build focused authoring queues, for example a profile that includes only `placeholder` controls for enrichment work or only `auditor_ready` controls for a customer packet.
+
 ## Coverage Resolution
 
 Coverage is resolved in two steps:
@@ -169,7 +197,7 @@ Coverage is resolved in two steps:
 
 The result reports selected control count, mapped rule IDs, controls without rule coverage, rules by control, and controls by rule. This is the foundation for later control posture and auditor evidence packets.
 
-`BuildControlCoverageIndex` applies this process to a full profile set. The checked-in `internal/compliance/control_coverage_index.yaml` is generated from the built-in profiles and builtin rule metadata. It gives reviewers a stable YAML view of selected controls, coverage status, rule counts, mapped rules, mapped equivalent controls, evidence expectations, unmapped controls, and per-profile coverage summaries.
+`BuildControlCoverageIndex` applies this process to a full profile set. The checked-in `internal/compliance/control_coverage_index.yaml` is generated from the built-in profiles and builtin rule metadata. It gives reviewers a stable YAML view of selected controls, coverage status, audit-readiness counts, per-control readiness scores, rule counts, mapped rules, mapped equivalent controls, evidence expectations, unmapped controls, and per-profile coverage summaries.
 
 Regenerate and verify the index with:
 
@@ -235,6 +263,7 @@ The packet builder uses the same matching rules as posture evaluation. Evidence 
 - `MergeControlProfileSets`
 - `ResolveControlProfiles`
 - `BuildControlCoverageIndex`
+- `EvaluateControlReadiness`
 - `EvaluateControlPosture`
 - `SummarizeControlPosture`
 - `BuildControlEvidencePacket`

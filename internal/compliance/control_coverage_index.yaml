@@ -8,6 +8,9 @@ profiles:
         mapped_controls: 31
         unmapped_controls: 0
         mapped_rules: 469
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 31
       controls:
         - framework_id: cjis-security-policy
           framework_name: CJIS Security Policy
@@ -20,6 +23,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -41,6 +47,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-13
@@ -106,6 +115,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
@@ -130,6 +142,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-6
@@ -356,6 +371,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -441,6 +459,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.6.5
@@ -464,6 +485,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -497,6 +521,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -541,6 +568,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -601,6 +631,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -644,6 +677,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -915,6 +951,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -1042,6 +1081,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -1062,6 +1104,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-13
@@ -1241,6 +1286,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -1281,6 +1329,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
@@ -1304,6 +1355,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-6
@@ -1529,6 +1583,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -1554,6 +1611,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -1632,6 +1692,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-7
@@ -1705,6 +1768,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-2
@@ -1730,6 +1796,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -1766,6 +1835,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -1828,6 +1900,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.6.5
@@ -1850,6 +1925,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -1882,6 +1960,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -1923,6 +2004,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -2193,6 +2277,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -2320,6 +2407,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -2353,6 +2443,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: MP-4
@@ -2415,6 +2508,9 @@ profiles:
             - criminal-justice
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6
@@ -7877,11 +7973,17 @@ profiles:
         mapped_controls: 72
         unmapped_controls: 0
         mapped_rules: 354
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 72
       controls:
         - framework_name: CIS AWS Foundations Benchmark v2.0
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.10"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -7890,6 +7992,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.12"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -7899,6 +8004,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.13"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -7907,6 +8015,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.14"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -7915,6 +8026,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.15"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -7924,6 +8038,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.16"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -7933,6 +8050,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.19"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -7941,6 +8061,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.20"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -7949,6 +8072,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.21"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -7957,6 +8083,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -7966,6 +8095,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -7974,6 +8106,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.8"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -7983,6 +8118,9 @@ profiles:
           family_id: "1"
           family_name: Identity and Access Management
           control_id: "1.9"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -7992,6 +8130,9 @@ profiles:
           family_id: "2"
           family_name: Storage
           control_id: 2.1.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8000,6 +8141,9 @@ profiles:
           family_id: "2"
           family_name: Storage
           control_id: 2.1.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -8009,6 +8153,9 @@ profiles:
           family_id: "2"
           family_name: Storage
           control_id: 2.1.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -8018,6 +8165,9 @@ profiles:
           family_id: "2"
           family_name: Storage
           control_id: 2.2.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -8027,6 +8177,9 @@ profiles:
           family_id: "2"
           family_name: Storage
           control_id: 2.3.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -8036,6 +8189,9 @@ profiles:
           family_id: "2"
           family_name: Storage
           control_id: 2.3.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8044,6 +8200,9 @@ profiles:
           family_id: "2"
           family_name: Storage
           control_id: 2.3.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8052,6 +8211,9 @@ profiles:
           family_id: "2"
           family_name: Storage
           control_id: "2.6"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8060,6 +8222,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8068,6 +8233,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.10"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8076,6 +8244,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.11"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8084,6 +8255,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8092,6 +8266,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8100,6 +8277,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.6"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8108,6 +8288,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.7"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8116,6 +8299,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.8"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8124,6 +8310,9 @@ profiles:
           family_id: "3"
           family_name: Logging
           control_id: "3.9"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8132,6 +8321,9 @@ profiles:
           family_id: "4"
           family_name: Monitoring
           control_id: "4.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8140,6 +8332,9 @@ profiles:
           family_id: "4"
           family_name: Monitoring
           control_id: "4.15"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8148,6 +8343,9 @@ profiles:
           family_id: "4"
           family_name: Monitoring
           control_id: "4.16"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8156,6 +8354,9 @@ profiles:
           family_id: "5"
           family_name: Networking
           control_id: "5.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8164,6 +8365,9 @@ profiles:
           family_id: "5"
           family_name: Networking
           control_id: "5.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 4
           mapped_rules:
@@ -8175,6 +8379,9 @@ profiles:
           family_id: "5"
           family_name: Networking
           control_id: "5.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 3
           mapped_rules:
@@ -8185,6 +8392,9 @@ profiles:
           family_id: "5"
           family_name: Networking
           control_id: "5.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -8194,6 +8404,9 @@ profiles:
           family_id: "5"
           family_name: Networking
           control_id: "5.6"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8202,6 +8415,9 @@ profiles:
           family_id: "12"
           family_name: Network Infrastructure Management
           control_id: "12"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 116
           mapped_rules:
@@ -8325,6 +8541,9 @@ profiles:
           family_id: "13"
           family_name: Network Monitoring and Defense
           control_id: "13"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 112
           mapped_rules:
@@ -8444,6 +8663,9 @@ profiles:
           family_id: "4"
           family_name: Secure Configuration of Enterprise Assets and Software
           control_id: "4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8452,6 +8674,9 @@ profiles:
           family_id: "4"
           family_name: Secure Configuration of Enterprise Assets and Software
           control_id: "4.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -8461,6 +8686,9 @@ profiles:
           family_id: "5"
           family_name: Account Management
           control_id: "5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 189
           mapped_rules:
@@ -8657,6 +8885,9 @@ profiles:
           family_id: "5"
           family_name: Account Management
           control_id: "5.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8665,6 +8896,9 @@ profiles:
           family_id: "6"
           family_name: Access Control Management
           control_id: "6"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 204
           mapped_rules:
@@ -8876,6 +9110,9 @@ profiles:
           family_id: "6"
           family_name: Access Control Management
           control_id: "6.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8884,6 +9121,9 @@ profiles:
           family_id: "6"
           family_name: Access Control Management
           control_id: "6.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8892,6 +9132,9 @@ profiles:
           family_id: "7"
           family_name: Continuous Vulnerability Management
           control_id: "7"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 42
           mapped_rules:
@@ -8941,6 +9184,9 @@ profiles:
           family_id: "8"
           family_name: Audit Log Management
           control_id: "8"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 30
           mapped_rules:
@@ -8978,6 +9224,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.4.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8986,6 +9235,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.1.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -8994,6 +9246,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9002,6 +9257,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.3.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9010,6 +9268,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.5.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9018,6 +9279,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.5.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9026,6 +9290,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.5.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9034,6 +9301,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.5.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9042,6 +9312,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.6.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9050,6 +9323,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.6.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9058,6 +9334,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.1.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 8
           mapped_rules:
@@ -9073,6 +9352,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.1.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 9
           mapped_rules:
@@ -9089,6 +9371,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.1.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 8
           mapped_rules:
@@ -9104,6 +9389,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.1.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -9112,6 +9400,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 6
           mapped_rules:
@@ -9125,6 +9416,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 6
           mapped_rules:
@@ -9138,6 +9432,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 5
           mapped_rules:
@@ -9150,6 +9447,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 7
           mapped_rules:
@@ -9164,6 +9464,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 5
           mapped_rules:
@@ -9176,6 +9479,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 6
           mapped_rules:
@@ -9189,6 +9495,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 6
           mapped_rules:
@@ -9202,6 +9511,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.2.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 5
           mapped_rules:
@@ -9214,6 +9526,9 @@ profiles:
           family_id: "5"
           family_name: Policies
           control_id: 5.3.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -11607,6 +11922,9 @@ profiles:
         mapped_controls: 52
         unmapped_controls: 0
         mapped_rules: 457
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 52
       controls:
         - framework_id: cmmc-2
           framework_name: CMMC 2.0
@@ -11619,6 +11937,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -11880,6 +12201,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -12095,6 +12419,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-3
@@ -12217,6 +12544,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-20
@@ -12364,6 +12694,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-3
@@ -12486,6 +12819,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-17
@@ -12760,6 +13096,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-4
@@ -12791,6 +13130,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-6
@@ -13008,6 +13350,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.6.5
@@ -13031,6 +13376,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -13075,6 +13423,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-2
@@ -13115,6 +13466,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-3
@@ -13133,6 +13487,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -13152,6 +13509,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -13193,6 +13553,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -13213,6 +13576,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-7
@@ -13242,6 +13608,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -13295,6 +13664,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -13348,6 +13720,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
@@ -13470,6 +13845,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -13598,6 +13976,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -13633,6 +14014,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -13665,6 +14049,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-7
@@ -13739,6 +14126,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: MP-4
@@ -13757,6 +14147,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: MP-4
@@ -13775,6 +14168,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: MP-4
@@ -13838,6 +14234,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -13902,6 +14301,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -13966,6 +14368,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -14030,6 +14435,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -14094,6 +14502,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -14158,6 +14569,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6
@@ -14462,6 +14876,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
@@ -14482,6 +14899,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -14545,6 +14965,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-5
@@ -14604,6 +15027,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -14667,6 +15093,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -14812,6 +15241,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -14957,6 +15389,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -15102,6 +15537,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-12
@@ -15342,6 +15780,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-13
@@ -15390,6 +15831,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-8
@@ -15408,6 +15852,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -15556,6 +16003,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -15616,6 +16066,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -15676,6 +16129,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
@@ -15699,6 +16155,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
@@ -15722,6 +16181,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
@@ -15745,6 +16207,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -15841,6 +16306,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
@@ -15877,6 +16345,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
@@ -15924,6 +16395,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SR-11
@@ -23633,6 +24107,9 @@ profiles:
         mapped_controls: 23
         unmapped_controls: 0
         mapped_rules: 365
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 23
       controls:
         - framework_id: cmmc-2
           framework_name: CMMC 2.0
@@ -23645,6 +24122,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -23906,6 +24386,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -24121,6 +24604,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-3
@@ -24243,6 +24729,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-20
@@ -24390,6 +24879,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-3
@@ -24512,6 +25004,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -24565,6 +25060,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -24618,6 +25116,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
@@ -24740,6 +25241,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: MP-4
@@ -24758,6 +25262,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: MP-4
@@ -24776,6 +25283,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -24840,6 +25350,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -24904,6 +25417,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -24968,6 +25484,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -25032,6 +25551,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC6.6
@@ -25096,6 +25618,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -25241,6 +25766,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -25386,6 +25914,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -25531,6 +26062,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -25591,6 +26125,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -25651,6 +26188,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
@@ -25674,6 +26214,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
@@ -25697,6 +26240,9 @@ profiles:
             - defense
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
@@ -29808,6 +30354,9 @@ profiles:
         mapped_controls: 8
         unmapped_controls: 0
         mapped_rules: 21
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 8
       controls:
         - framework_id: dora
           framework_name: DORA
@@ -29820,6 +30369,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -29848,6 +30400,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -29869,6 +30424,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SR-11
@@ -29894,6 +30452,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -29926,6 +30487,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -29947,6 +30511,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -29971,6 +30538,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -29999,6 +30569,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -30144,6 +30717,9 @@ profiles:
         mapped_controls: 29
         unmapped_controls: 0
         mapped_rules: 391
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 29
       controls:
         - framework_id: dora
           framework_name: DORA
@@ -30156,6 +30732,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -30218,6 +30797,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -30259,6 +30841,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -30332,6 +30917,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -30410,6 +30998,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -30466,6 +31057,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-5
@@ -30505,6 +31099,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-8
@@ -30534,6 +31131,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -30602,6 +31202,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -30640,6 +31243,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -30703,6 +31309,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -30731,6 +31340,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -30752,6 +31364,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SR-11
@@ -30777,6 +31392,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -30811,6 +31429,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.5.1
@@ -30919,6 +31540,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-1
@@ -30971,6 +31595,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -30997,6 +31624,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-3
@@ -31154,6 +31784,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -31186,6 +31819,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -31207,6 +31843,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -31231,6 +31870,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -31259,6 +31901,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -31280,6 +31925,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-5
@@ -31344,6 +31992,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -31406,6 +32057,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -31554,6 +32208,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -31614,6 +32271,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -31636,6 +32296,9 @@ profiles:
             - financial-services
             - operational-resilience
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-12
@@ -34585,6 +35248,9 @@ profiles:
         mapped_controls: 9
         unmapped_controls: 0
         mapped_rules: 81
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 9
       controls:
         - framework_id: fedramp-rev5
           framework_name: FedRAMP Rev. 5
@@ -34596,6 +35262,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -34614,6 +35283,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-2
@@ -34632,6 +35304,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -34650,6 +35325,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-5
@@ -34708,6 +35386,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -34767,6 +35448,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
@@ -34789,6 +35473,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
@@ -34824,6 +35511,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-7
@@ -34849,6 +35539,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-8
@@ -35279,6 +35972,9 @@ profiles:
         mapped_controls: 48
         unmapped_controls: 0
         mapped_rules: 475
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 48
       controls:
         - framework_id: fedramp-rev5
           framework_name: FedRAMP Rev. 5
@@ -35290,6 +35986,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-1
@@ -35335,6 +36034,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-11
@@ -35353,6 +36055,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-17
@@ -35372,6 +36077,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -35586,6 +36294,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-3
@@ -35707,6 +36418,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-4
@@ -35737,6 +36451,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-6
@@ -35953,6 +36670,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -35991,6 +36711,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-2
@@ -36030,6 +36753,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-3
@@ -36047,6 +36773,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-9
@@ -36065,6 +36794,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -36083,6 +36815,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -36102,6 +36837,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-5
@@ -36124,6 +36862,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-7
@@ -36152,6 +36893,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -36171,6 +36915,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -36194,6 +36941,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-2
@@ -36216,6 +36966,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-4
@@ -36239,6 +36992,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-9
@@ -36263,6 +37019,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -36315,6 +37074,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
@@ -36436,6 +37198,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-1
@@ -36453,6 +37218,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -36482,6 +37250,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-5
@@ -36506,6 +37277,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-8
@@ -36530,6 +37304,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: MP-4
@@ -36547,6 +37324,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
@@ -36566,6 +37346,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-2
@@ -36584,6 +37367,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -36602,6 +37388,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-5
@@ -36660,6 +37449,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -36678,6 +37470,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-12
@@ -36790,6 +37585,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-13
@@ -36837,6 +37635,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-17
@@ -36854,6 +37655,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-20
@@ -36871,6 +37675,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-21
@@ -36888,6 +37695,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-23
@@ -36905,6 +37715,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-28
@@ -36964,6 +37777,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-7
@@ -37108,6 +37924,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-8
@@ -37125,6 +37944,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -37184,6 +38006,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-3
@@ -37206,6 +38031,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-4
@@ -37241,6 +38069,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-7
@@ -37266,6 +38097,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-8
@@ -37283,6 +38117,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SR-11
@@ -37304,6 +38141,9 @@ profiles:
             - cloud
             - federal
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 0
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SR-6
@@ -40796,11 +41636,17 @@ profiles:
         mapped_controls: 14
         unmapped_controls: 20
         mapped_rules: 98
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 34
       controls:
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -40810,18 +41656,27 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.10
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.11
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.12
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -40830,6 +41685,9 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.13
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 6
           mapped_rules:
@@ -40843,6 +41701,9 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.14
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 5
           mapped_rules:
@@ -40855,6 +41716,9 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.15
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -40863,6 +41727,9 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.16
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 22
           mapped_rules:
@@ -40892,18 +41759,27 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.17
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.18
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.19
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -40912,6 +41788,9 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 8
           mapped_rules:
@@ -40927,6 +41806,9 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.20
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 6
           mapped_rules:
@@ -40940,24 +41822,36 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.21
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.22
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.23
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.24
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 7
           mapped_rules:
@@ -40972,78 +41866,117 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.25
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.26
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.27
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.28
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.29
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.30
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.31
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.32
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.33
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.34
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 7
           mapped_rules:
@@ -41058,12 +41991,18 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 7
           mapped_rules:
@@ -41078,6 +42017,9 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 8
           mapped_rules:
@@ -41093,6 +42035,9 @@ profiles:
           family_id: A.8
           family_name: Technology Controls
           control_id: A.8.9
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 21
           mapped_rules:
@@ -41567,6 +42512,9 @@ profiles:
         mapped_controls: 22
         unmapped_controls: 0
         mapped_rules: 462
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 22
       controls:
         - framework_id: nis2
           framework_name: NIS2
@@ -41579,6 +42527,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.5.1
@@ -41687,6 +42638,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.5.1
@@ -41785,6 +42739,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -41817,6 +42774,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -41854,6 +42814,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -41882,6 +42845,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -41960,6 +42926,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -42001,6 +42970,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.6.5
@@ -42024,6 +42996,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-12
@@ -42149,6 +43124,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -42384,6 +43362,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
@@ -42517,6 +43498,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-8
@@ -42546,6 +43530,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
@@ -42566,6 +43553,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -42813,6 +43803,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -42835,6 +43828,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -42870,6 +43866,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -42909,6 +43908,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -42937,6 +43939,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -42971,6 +43976,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -43034,6 +44042,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-5
@@ -43098,6 +44109,9 @@ profiles:
             - cybersecurity
             - eu
             - regulatory
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.6.5
@@ -46235,6 +47249,9 @@ profiles:
         mapped_controls: 53
         unmapped_controls: 0
         mapped_rules: 509
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 53
       controls:
         - framework_id: nist-csf-2.0
           framework_name: NIST CSF 2.0
@@ -46247,6 +47264,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-5
@@ -46286,6 +47306,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-5
@@ -46325,6 +47348,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -46385,6 +47411,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -46445,6 +47474,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-12
@@ -46487,6 +47519,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -46528,6 +47563,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.5.1
@@ -46605,6 +47643,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC2.3
@@ -46625,6 +47666,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -46666,6 +47710,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -46707,6 +47754,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.5.1
@@ -46801,6 +47851,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.5.1
@@ -46895,6 +47948,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -46917,6 +47973,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -46939,6 +47998,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC1.1
@@ -47044,6 +48106,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: SOC 2
               control_id: CC1.1
@@ -47149,6 +48214,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -47177,6 +48245,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -47198,6 +48269,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -47224,6 +48298,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -47244,6 +48321,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -47264,6 +48344,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -47284,6 +48367,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-8
@@ -47308,6 +48394,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -47349,6 +48438,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CA-7
@@ -47390,6 +48482,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -47453,6 +48548,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-5
@@ -47512,6 +48610,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: RA-3
@@ -47575,6 +48676,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -47863,6 +48967,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
@@ -48098,6 +49205,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AC-3
@@ -48359,6 +49469,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.6.5
@@ -48382,6 +49495,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: ISO 27001:2022
               control_id: A.6.5
@@ -48405,6 +49521,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-12
@@ -48531,6 +49650,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-28
@@ -48591,6 +49713,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SC-8
@@ -48609,6 +49734,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -48768,6 +49896,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -48805,6 +49936,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -48844,6 +49978,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CM-3
@@ -48878,6 +50015,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SI-2
@@ -48938,6 +50078,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-8
@@ -48963,6 +50106,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-8
@@ -48988,6 +50134,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -49017,6 +50166,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: CP-10
@@ -49041,6 +50193,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: AU-3
@@ -49069,6 +50224,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-8
@@ -49098,6 +50256,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-8
@@ -49127,6 +50288,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -49159,6 +50323,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -49189,6 +50356,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-5
@@ -49217,6 +50387,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -49292,6 +50465,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: IR-4
@@ -54494,6 +55670,9 @@ profiles:
         mapped_controls: 3
         unmapped_controls: 0
         mapped_rules: 7
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 3
       controls:
         - framework_id: nist-csf-2.0
           framework_name: NIST CSF 2.0
@@ -54506,6 +55685,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -54534,6 +55716,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -54555,6 +55740,9 @@ profiles:
             - cybersecurity
             - framework
             - risk-management
+          audit_readiness:
+            status: placeholder
+            score: 4
           mapped_control_refs:
             - framework_name: NIST 800-53 r5
               control_id: SA-9
@@ -54625,23 +55813,35 @@ profiles:
         mapped_controls: 18
         unmapped_controls: 31
         mapped_rules: 311
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 49
       controls:
         - framework_name: PCI DSS v4.0.1
           family_id: "1"
           family_name: Network Security Controls
           control_id: "1.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "1"
           family_name: Network Security Controls
           control_id: "1.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "1"
           family_name: Network Security Controls
           control_id: "1.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 101
           mapped_rules:
@@ -54750,6 +55950,9 @@ profiles:
           family_id: "1"
           family_name: Network Security Controls
           control_id: 1.3.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 11
           mapped_rules:
@@ -54768,6 +55971,9 @@ profiles:
           family_id: "1"
           family_name: Network Security Controls
           control_id: "1.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 102
           mapped_rules:
@@ -54877,18 +56083,27 @@ profiles:
           family_id: "1"
           family_name: Network Security Controls
           control_id: "1.5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "10"
           family_name: Logging and Monitoring
           control_id: "10.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "10"
           family_name: Logging and Monitoring
           control_id: "10.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 20
           mapped_rules:
@@ -54916,6 +56131,9 @@ profiles:
           family_id: "10"
           family_name: Logging and Monitoring
           control_id: 10.2.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -54924,6 +56142,9 @@ profiles:
           family_id: "10"
           family_name: Logging and Monitoring
           control_id: "10.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 20
           mapped_rules:
@@ -54951,42 +56172,63 @@ profiles:
           family_id: "10"
           family_name: Logging and Monitoring
           control_id: "10.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "10"
           family_name: Logging and Monitoring
           control_id: "10.5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "10"
           family_name: Logging and Monitoring
           control_id: "10.6"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "10"
           family_name: Logging and Monitoring
           control_id: "10.7"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "11"
           family_name: Security Testing
           control_id: "11.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "11"
           family_name: Security Testing
           control_id: "11.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "11"
           family_name: Security Testing
           control_id: "11.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 35
           mapped_rules:
@@ -55029,36 +56271,54 @@ profiles:
           family_id: "11"
           family_name: Security Testing
           control_id: "11.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "11"
           family_name: Security Testing
           control_id: "11.5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "11"
           family_name: Security Testing
           control_id: "11.6"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.10"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: 12.10.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -55067,66 +56327,99 @@ profiles:
           family_id: "12"
           family_name: Security Program
           control_id: "12.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.6"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.7"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.8"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "12"
           family_name: Security Program
           control_id: "12.9"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "6"
           family_name: Secure Systems and Software
           control_id: "6.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "6"
           family_name: Secure Systems and Software
           control_id: "6.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "6"
           family_name: Secure Systems and Software
           control_id: "6.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 40
           mapped_rules:
@@ -55174,12 +56467,18 @@ profiles:
           family_id: "6"
           family_name: Secure Systems and Software
           control_id: "6.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "6"
           family_name: Secure Systems and Software
           control_id: "6.5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 5
           mapped_rules:
@@ -55192,12 +56491,18 @@ profiles:
           family_id: "7"
           family_name: Need-to-Know Access
           control_id: "7.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "7"
           family_name: Need-to-Know Access
           control_id: "7.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 183
           mapped_rules:
@@ -55388,18 +56693,27 @@ profiles:
           family_id: "7"
           family_name: Need-to-Know Access
           control_id: "7.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "8"
           family_name: Identity and Authentication
           control_id: "8.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "8"
           family_name: Identity and Authentication
           control_id: 8.1.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -55408,12 +56722,18 @@ profiles:
           family_id: "8"
           family_name: Identity and Authentication
           control_id: "8.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "8"
           family_name: Identity and Authentication
           control_id: "8.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 31
           mapped_rules:
@@ -55452,6 +56772,9 @@ profiles:
           family_id: "8"
           family_name: Identity and Authentication
           control_id: 8.3.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -55460,6 +56783,9 @@ profiles:
           family_id: "8"
           family_name: Identity and Authentication
           control_id: 8.3.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -55468,6 +56794,9 @@ profiles:
           family_id: "8"
           family_name: Identity and Authentication
           control_id: "8.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 31
           mapped_rules:
@@ -55506,6 +56835,9 @@ profiles:
           family_id: "8"
           family_name: Identity and Authentication
           control_id: 8.4.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -55514,12 +56846,18 @@ profiles:
           family_id: "8"
           family_name: Identity and Authentication
           control_id: "8.5"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: PCI DSS v4.0.1
           family_id: "8"
           family_name: Identity and Authentication
           control_id: "8.6"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 67
           mapped_rules:
@@ -57588,11 +58926,17 @@ profiles:
         mapped_controls: 17
         unmapped_controls: 145
         mapped_rules: 14
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 162
       controls:
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
           control_id: "1798.100"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -57601,6 +58945,9 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Art.30
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -57610,6 +58957,9 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Art.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 4
           mapped_rules:
@@ -57621,96 +58971,144 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 12
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 13
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 14
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 15
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 16
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 17
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 18
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 19
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 20
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 21
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 22
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 23
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 24
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 25
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 27
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 28
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -57719,6 +59117,9 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 30
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -57727,558 +59128,837 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 32
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 33
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 34
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 35
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 37
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 38
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 39
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 44
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 45
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 46
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 48
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 51
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.2.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.2.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.2.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.2.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.2.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.2.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.2.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.2.9
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.10
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.11
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.3.9
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.10
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.4.9
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.5.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.5.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.5.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.1
           family_name: A.1 Controls
           control_id: A.1.5.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.2.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.2.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.2.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.2.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.2.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.2.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.3.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.4.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.4.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.4.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.5.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.5.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.5.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.5.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.5.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.5.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.5.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.2
           family_name: A.2 Controls
           control_id: A.2.5.9
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.10
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.11
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.12
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.13
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.14
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.15
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.16
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.17
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.18
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.19
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.20
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.21
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.22
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.23
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.24
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.25
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.26
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.27
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.28
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.29
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.30
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.31
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
           family_id: A.3
           family_name: A.3 Controls
           control_id: A.3.9
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: "10"
           family_name: Improvement
           control_id: "10.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -58287,6 +59967,9 @@ profiles:
           family_id: "10"
           family_name: Improvement
           control_id: "10.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -58296,6 +59979,9 @@ profiles:
           family_id: "6"
           family_name: Planning
           control_id: "6.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 3
           mapped_rules:
@@ -58306,6 +59992,9 @@ profiles:
           family_id: "6"
           family_name: Planning
           control_id: "6.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 3
           mapped_rules:
@@ -58316,6 +60005,9 @@ profiles:
           family_id: "7"
           family_name: Support
           control_id: "7.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -58324,6 +60016,9 @@ profiles:
           family_id: "7"
           family_name: Support
           control_id: "7.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -58332,6 +60027,9 @@ profiles:
           family_id: "7"
           family_name: Support
           control_id: "7.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -58340,6 +60038,9 @@ profiles:
           family_id: "8"
           family_name: Operation
           control_id: "8.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -58348,6 +60049,9 @@ profiles:
           family_id: "9"
           family_name: Performance Evaluation
           control_id: "9.1"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 3
           mapped_rules:
@@ -58358,6 +60062,9 @@ profiles:
           family_id: "9"
           family_name: Performance Evaluation
           control_id: "9.2"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -58366,6 +60073,9 @@ profiles:
           family_id: "9"
           family_name: Performance Evaluation
           control_id: "9.3"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -58374,6 +60084,9 @@ profiles:
           family_id: "9"
           family_name: Performance Evaluation
           control_id: "9.4"
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -58382,228 +60095,342 @@ profiles:
           family_id: A.10
           family_name: Third-Party and Customer Relationships
           control_id: A.10.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.10
           family_name: Third-Party and Customer Relationships
           control_id: A.10.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.10
           family_name: Third-Party and Customer Relationships
           control_id: A.10.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.2
           family_name: Policies
           control_id: A.2.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.2
           family_name: Policies
           control_id: A.2.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.2
           family_name: Policies
           control_id: A.2.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.3
           family_name: Internal Organization
           control_id: A.3.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.3
           family_name: Internal Organization
           control_id: A.3.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.4
           family_name: Resources
           control_id: A.4.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.4
           family_name: Resources
           control_id: A.4.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.4
           family_name: Resources
           control_id: A.4.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.4
           family_name: Resources
           control_id: A.4.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.4
           family_name: Resources
           control_id: A.4.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.5
           family_name: Impact Assessment
           control_id: A.5.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.5
           family_name: Impact Assessment
           control_id: A.5.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.5
           family_name: Impact Assessment
           control_id: A.5.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.5
           family_name: Impact Assessment
           control_id: A.5.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.1.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.1.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.2.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.2.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.2.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.2.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.2.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.2.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.6
           family_name: Lifecycle
           control_id: A.6.2.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.7
           family_name: Data
           control_id: A.7.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.7
           family_name: Data
           control_id: A.7.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.7
           family_name: Data
           control_id: A.7.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.7
           family_name: Data
           control_id: A.7.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.7
           family_name: Data
           control_id: A.7.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.8
           family_name: Information for Interested Parties
           control_id: A.8.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.8
           family_name: Information for Interested Parties
           control_id: A.8.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.8
           family_name: Information for Interested Parties
           control_id: A.8.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.8
           family_name: Information for Interested Parties
           control_id: A.8.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.9
           family_name: Use of AI Systems
           control_id: A.9.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.9
           family_name: Use of AI Systems
           control_id: A.9.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 42001
           family_id: A.9
           family_name: Use of AI Systems
           control_id: A.9.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
       rules:
@@ -58990,11 +60817,17 @@ profiles:
         mapped_controls: 3
         unmapped_controls: 0
         mapped_rules: 16
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 3
       controls:
         - framework_name: SOC 2
           family_id: A1
           family_name: Availability
           control_id: A1.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 14
           mapped_rules:
@@ -59016,6 +60849,9 @@ profiles:
           family_id: A1
           family_name: Availability
           control_id: A1.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 13
           mapped_rules:
@@ -59036,6 +60872,9 @@ profiles:
           family_id: A1
           family_name: Availability
           control_id: A1.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 6
           mapped_rules:
@@ -59152,11 +60991,17 @@ profiles:
         mapped_controls: 25
         unmapped_controls: 11
         mapped_rules: 918
+        auditor_ready_controls: 0
+        needs_enrichment_controls: 0
+        placeholder_controls: 36
       controls:
         - framework_name: SOC 2
           family_id: CC1
           family_name: Control Environment
           control_id: CC1.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 84
           mapped_rules:
@@ -59248,6 +61093,9 @@ profiles:
           family_id: CC1
           family_name: Control Environment
           control_id: CC1.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -59257,12 +61105,18 @@ profiles:
           family_id: CC1
           family_name: Control Environment
           control_id: CC1.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC1
           family_name: Control Environment
           control_id: CC1.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -59272,18 +61126,27 @@ profiles:
           family_id: CC1
           family_name: Control Environment
           control_id: CC1.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC2
           family_name: Communication and Information
           control_id: CC2.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC2
           family_name: Communication and Information
           control_id: CC2.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -59292,12 +61155,18 @@ profiles:
           family_id: CC2
           family_name: Communication and Information
           control_id: CC2.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC3
           family_name: Risk Assessment
           control_id: CC3.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -59306,6 +61175,9 @@ profiles:
           family_id: CC3
           family_name: Risk Assessment
           control_id: CC3.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -59315,18 +61187,27 @@ profiles:
           family_id: CC3
           family_name: Risk Assessment
           control_id: CC3.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC3
           family_name: Risk Assessment
           control_id: CC3.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC4
           family_name: Monitoring Activities
           control_id: CC4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 20
           mapped_rules:
@@ -59354,6 +61235,9 @@ profiles:
           family_id: CC4
           family_name: Monitoring Activities
           control_id: CC4.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -59362,18 +61246,27 @@ profiles:
           family_id: CC4
           family_name: Monitoring Activities
           control_id: CC4.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC5
           family_name: Control Activities
           control_id: CC5.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC5
           family_name: Control Activities
           control_id: CC5.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -59382,6 +61275,9 @@ profiles:
           family_id: CC5
           family_name: Control Activities
           control_id: CC5.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -59390,6 +61286,9 @@ profiles:
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 238
           mapped_rules:
@@ -59635,6 +61534,9 @@ profiles:
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 427
           mapped_rules:
@@ -60069,6 +61971,9 @@ profiles:
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 29
           mapped_rules:
@@ -60105,6 +62010,9 @@ profiles:
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 5
           mapped_rules:
@@ -60117,18 +62025,27 @@ profiles:
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6.6
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 47
           mapped_rules:
@@ -60183,6 +62100,9 @@ profiles:
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6.7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 7
           mapped_rules:
@@ -60197,6 +62117,9 @@ profiles:
           family_id: CC6
           family_name: Logical and Physical Access
           control_id: CC6.8
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 8
           mapped_rules:
@@ -60212,6 +62135,9 @@ profiles:
           family_id: CC7
           family_name: System Operations
           control_id: CC7
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 21
           mapped_rules:
@@ -60240,6 +62166,9 @@ profiles:
           family_id: CC7
           family_name: System Operations
           control_id: CC7.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 47
           mapped_rules:
@@ -60294,6 +62223,9 @@ profiles:
           family_id: CC7
           family_name: System Operations
           control_id: CC7.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 32
           mapped_rules:
@@ -60333,6 +62265,9 @@ profiles:
           family_id: CC7
           family_name: System Operations
           control_id: CC7.3
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 15
           mapped_rules:
@@ -60355,6 +62290,9 @@ profiles:
           family_id: CC7
           family_name: System Operations
           control_id: CC7.4
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 10
           mapped_rules:
@@ -60372,6 +62310,9 @@ profiles:
           family_id: CC7
           family_name: System Operations
           control_id: CC7.5
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 8
           mapped_rules:
@@ -60387,6 +62328,9 @@ profiles:
           family_id: CC8
           family_name: Change Management
           control_id: CC8.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 5
           mapped_rules:
@@ -60399,12 +62343,18 @@ profiles:
           family_id: CC9
           family_name: Risk Mitigation
           control_id: CC9.1
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: unmapped
           rule_count: 0
         - framework_name: SOC 2
           family_id: CC9
           family_name: Risk Mitigation
           control_id: CC9.2
+          audit_readiness:
+            status: placeholder
+            score: 0
           coverage_status: mapped
           rule_count: 6
           mapped_rules:

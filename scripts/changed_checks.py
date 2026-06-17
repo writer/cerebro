@@ -92,6 +92,9 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
         add_command(commands, seen, "policy-rule-check", ["make", "policy-rule-check"], "Policy authoring or generated rule enrichment changed.")
         add_command(commands, seen, "detection-catalog-check", ["make", "detection-catalog-check"], "Policy rule changes affect the public detection catalog.")
 
+    if any(path_matches(path, prefixes=("internal/compliance/", "tools/controlindex/")) for path in files):
+        add_command(commands, seen, "control-index-check", ["make", "control-index-check"], "Compliance controls, profiles, or control-index tooling changed.")
+
     if any(path_matches(path, prefixes=("proto/",), suffixes=(".proto",)) for path in files):
         add_command(commands, seen, "proto-generate-check", ["make", "proto-generate-check"], "Protobuf contracts changed.")
         add_command(commands, seen, "proto-breaking", ["make", "proto-breaking"], "Protobuf compatibility must be checked.")
@@ -102,8 +105,22 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
 
     if any(path_matches(path, prefixes=("docs/",), exact=("README.md",)) for path in files):
         add_command(commands, seen, "docs-drift-check", ["make", "docs-drift-check"], "Documentation changed.")
-    if "README.md" in files:
-        add_command(commands, seen, "readme-check", ["make", "readme-check"], "README changed.")
+    if any(
+        path_matches(
+            path,
+            prefixes=("internal/config/",),
+            exact=(
+                ".env.example",
+                "README.md",
+                "cmd/cerebro/main.go",
+                "docs/COMPLIANCE_CONTROLS.md",
+                "internal/sourceregistry/registry.go",
+                "tools/controlindex/main.go",
+            ),
+        )
+        for path in files
+    ):
+        add_command(commands, seen, "readme-check", ["make", "readme-check"], "README source-of-truth path changed.")
 
     if any(path_matches(path, prefixes=("scripts/", ".github/workflows/", ".factory/")) for path in files):
         add_command(commands, seen, "python-script-tests", ["python3", "-m", "unittest", "discover", "-s", "scripts/tests"], "Automation, review context, or workflow-adjacent files changed.")

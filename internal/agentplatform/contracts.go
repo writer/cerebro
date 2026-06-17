@@ -16,14 +16,17 @@ const (
 )
 
 type Contract struct {
-	Version                 string                  `json:"version"`
-	Domains                 []Domain                `json:"domains"`
-	Invariants              []Invariant             `json:"invariants"`
-	Capabilities            []Capability            `json:"capabilities"`
-	RuntimeEvents           []RuntimeEvent          `json:"runtime_events"`
-	ProvenanceRequirements  []ProvenanceRequirement `json:"provenance_requirements"`
-	ConnectorInfrastructure ConnectorInfrastructure `json:"connector_infrastructure"`
-	SecurityControlPlane    SecurityControlPlane    `json:"security_control_plane"`
+	Version                 string                    `json:"version"`
+	Domains                 []Domain                  `json:"domains"`
+	Invariants              []Invariant               `json:"invariants"`
+	Capabilities            []Capability              `json:"capabilities"`
+	RuntimeEvents           []RuntimeEvent            `json:"runtime_events"`
+	ProvenanceRequirements  []ProvenanceRequirement   `json:"provenance_requirements"`
+	ConnectorInfrastructure ConnectorInfrastructure   `json:"connector_infrastructure"`
+	SecurityControlPlane    SecurityControlPlane      `json:"security_control_plane"`
+	A2A                     A2AProtocolContract       `json:"a2a"`
+	EventSubscriptions      EventSubscriptionContract `json:"event_subscriptions"`
+	Idempotency             IdempotencyContract       `json:"idempotency"`
 }
 
 type Domain struct {
@@ -214,8 +217,10 @@ var Invariants = []Invariant{
 	{ID: "CONN-01", DomainID: "connectors", Statement: "A connector token must not be consumed outside its declared owner surface."},
 	{ID: "EVAL-01", DomainID: "evals", Statement: "A default-on agent capability must have at least one local regression path."},
 	{ID: "EXEC-01", DomainID: "execution", Statement: "Adapters report cancellation and truncation explicitly instead of hiding partial results."},
+	{ID: "EXT-01", DomainID: "connectors", Statement: "Public outbound subscriptions must use tenant-scoped event allow-lists, signed deliveries, and idempotent webhook attempts."},
 	{ID: "KNOW-01", DomainID: "knowledge", Statement: "Retrieved context must carry source scope and citation status when shown to a user or model."},
 	{ID: "PLAN-01", DomainID: "runtime", Statement: "Agent runs resolve tenant, scope, capability, connector, and write-back preconditions before planning."},
+	{ID: "PROTO-01", DomainID: "runtime", Statement: "External agent protocol discovery must advertise only implemented methods and public-safe metadata."},
 	{ID: "RUN-01", DomainID: "runtime", Statement: "Consumer-visible events use stable names and a single terminal outcome per logical run."},
 	{ID: "STREAM-01", DomainID: "streaming-replay", Statement: "Replay records preserve event order even when payloads are redacted or truncated."},
 }
@@ -300,6 +305,87 @@ var Capabilities = []Capability{
 			State:             "required",
 			Cadence:           "with event schema or replay fixture changes",
 			RequiredApprovers: []string{"platform"},
+		},
+	},
+	{
+		ID:              "a2a-contract-discovery",
+		Name:            "A2A contract discovery",
+		DomainID:        "runtime",
+		Kind:            "agent-protocol",
+		Version:         "1.0.0",
+		Owner:           "cerebro-platform",
+		Risk:            "medium",
+		DefaultOn:       true,
+		Summary:         "Publishes a public Agent Card and authenticated JSON-RPC contract responses for A2A-compatible clients.",
+		ConsoleSurfaces: []string{"Agent platform API", "OpenAPI", "A2A discovery"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead},
+		Eval: EvalStatus{
+			Required:      true,
+			Status:        "required",
+			LocalCommands: []string{"go test ./internal/agentplatform ./internal/bootstrap -run 'Test.*A2A|TestRunAgentPlatformEvalSuiteFixture'"},
+			ScenarioSets:  []string{"a2a-contract-discovery", "a2a-unsupported-methods"},
+			Rubrics:       []string{"public-safe metadata", "method honesty", "auth boundary", "contract discoverability"},
+		},
+		RuntimeEvents: []string{"agent.run.started", "agent.run.completed", "agent.run.failed"},
+		Provenance:    []string{"a2a-agent-card", "agent-run-preflight"},
+		Review: ReviewStatus{
+			State:             "required",
+			Cadence:           "before A2A method or Agent Card changes",
+			RequiredApprovers: []string{"platform", "security"},
+		},
+	},
+	{
+		ID:              "event-subscription-webhooks",
+		Name:            "Outbound event subscription webhooks",
+		DomainID:        "streaming-replay",
+		Kind:            "event-delivery-contract",
+		Version:         "1.0.0",
+		Owner:           "cerebro-platform",
+		Risk:            "high",
+		DefaultOn:       true,
+		Summary:         "Defines public outbound webhook trigger, signing, retry, dead-letter, and delivery idempotency contracts.",
+		ConsoleSurfaces: []string{"Agent platform API", "OpenAPI", "event subscriptions"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead},
+		Eval: EvalStatus{
+			Required:      true,
+			Status:        "required",
+			LocalCommands: []string{"go test ./internal/agentplatform ./internal/bootstrap -run 'Test.*EventSubscription|TestRunAgentPlatformEvalSuiteFixture'"},
+			ScenarioSets:  []string{"event-subscription-contract", "webhook-delivery-idempotency"},
+			Rubrics:       []string{"event allow-list", "signature contract", "retry contract", "idempotent delivery"},
+		},
+		RuntimeEvents: []string{"event.subscription.delivery.queued", "event.subscription.delivery.succeeded", "event.subscription.delivery.failed"},
+		Provenance:    []string{"event-delivery-record"},
+		Review: ReviewStatus{
+			State:             "required",
+			Cadence:           "before event type, signing, or retry policy changes",
+			RequiredApprovers: []string{"platform", "security"},
+		},
+	},
+	{
+		ID:              "public-idempotency-contract",
+		Name:            "Public idempotency contract",
+		DomainID:        "execution",
+		Kind:            "api-contract",
+		Version:         "1.0.0",
+		Owner:           "cerebro-platform",
+		Risk:            "medium",
+		DefaultOn:       true,
+		Summary:         "Documents Idempotency-Key as the public retry contract for mutating API calls and outbound webhook delivery attempts.",
+		ConsoleSurfaces: []string{"OpenAPI", "SDKs", "Agent platform API"},
+		RequiredScopes:  []string{ScopeCosmoSecurityRead},
+		Eval: EvalStatus{
+			Required:      true,
+			Status:        "required",
+			LocalCommands: []string{"go test ./internal/agentplatform ./internal/bootstrap -run 'Test.*Idempotency|TestRunAgentPlatformEvalSuiteFixture'"},
+			ScenarioSets:  []string{"idempotency-public-contract", "idempotency-conflict-contract"},
+			Rubrics:       []string{"header documented", "scope documented", "conflict status", "replay semantics"},
+		},
+		RuntimeEvents: []string{"adapter.execution.started", "adapter.execution.completed", "event.subscription.delivery.queued"},
+		Provenance:    []string{"idempotency-record", "event-delivery-record"},
+		Review: ReviewStatus{
+			State:             "required",
+			Cadence:           "before mutating route or delivery retry semantic changes",
+			RequiredApprovers: []string{"platform", "security"},
 		},
 	},
 	{
@@ -738,6 +824,34 @@ var RuntimeEvents = []RuntimeEvent{
 		PayloadFields:    []string{"trace_id", "terminal_outcome", "error_class", "redaction_status"},
 		ProvenanceFields: []string{"trace_id", "terminal_outcome"},
 	},
+	{
+		Name:             "event.subscription.delivery.queued",
+		DomainID:         "streaming-replay",
+		Stage:            "delivery",
+		SequenceRequired: true,
+		Replayable:       true,
+		PayloadFields:    []string{"event_id", "event_type", "subscription_id", "delivery_id", "attempt", "idempotency_key"},
+		ProvenanceFields: []string{"event_id", "event_type", "subscription_id", "delivery_id"},
+	},
+	{
+		Name:             "event.subscription.delivery.succeeded",
+		DomainID:         "streaming-replay",
+		Stage:            "delivery",
+		SequenceRequired: true,
+		Replayable:       true,
+		PayloadFields:    []string{"event_id", "event_type", "subscription_id", "delivery_id", "attempt", "ack_status"},
+		ProvenanceFields: []string{"event_id", "event_type", "subscription_id", "delivery_id"},
+	},
+	{
+		Name:             "event.subscription.delivery.failed",
+		DomainID:         "streaming-replay",
+		Stage:            "terminal",
+		SequenceRequired: true,
+		Terminal:         true,
+		Replayable:       true,
+		PayloadFields:    []string{"event_id", "event_type", "subscription_id", "delivery_id", "attempt", "error_class", "dead_lettered"},
+		ProvenanceFields: []string{"event_id", "event_type", "subscription_id", "delivery_id", "error_class"},
+	},
 }
 
 var ProvenanceRequirements = []ProvenanceRequirement{
@@ -793,6 +907,30 @@ var ProvenanceRequirements = []ProvenanceRequirement{
 		Surface:          "eval-result",
 		DomainID:         "evals",
 		RequiredFields:   []string{"scenario_id", "score", "rubric_failures", "trace_link"},
+		CitationRequired: false,
+		BudgetRequired:   false,
+		FallbackRequired: false,
+	},
+	{
+		Surface:          "a2a-agent-card",
+		DomainID:         "runtime",
+		RequiredFields:   []string{"protocol_version", "supported_interfaces", "skills", "security_schemes", "capabilities"},
+		CitationRequired: false,
+		BudgetRequired:   false,
+		FallbackRequired: false,
+	},
+	{
+		Surface:          "event-delivery-record",
+		DomainID:         "streaming-replay",
+		RequiredFields:   []string{"event_id", "event_type", "subscription_id", "delivery_id", "attempt", "idempotency_key", "signature_scheme"},
+		CitationRequired: false,
+		BudgetRequired:   false,
+		FallbackRequired: false,
+	},
+	{
+		Surface:          "idempotency-record",
+		DomainID:         "execution",
+		RequiredFields:   []string{"route", "method", "key_scope", "request_hash", "replay_status", "conflict_status"},
 		CitationRequired: false,
 		BudgetRequired:   false,
 		FallbackRequired: false,
@@ -957,6 +1095,9 @@ func Snapshot() Contract {
 		ProvenanceRequirements:  cloneProvenanceRequirements(ProvenanceRequirements),
 		ConnectorInfrastructure: cloneConnectorInfrastructure(ConnectorInfrastructureProfile),
 		SecurityControlPlane:    SecurityControlPlaneSnapshot(),
+		A2A:                     A2AProtocol(),
+		EventSubscriptions:      EventSubscriptions(),
+		Idempotency:             Idempotency(),
 	}
 }
 

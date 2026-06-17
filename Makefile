@@ -67,6 +67,7 @@ DROID_SAST_POST_COMMENT ?= false
 LAND_PR_REPO ?= writer/cerebro
 LAND_PR_ADMIN ?= false
 LAND_PR_KEEP_BRANCH ?= false
+LAND_PR_ALLOW_LARGE ?= false
 
 help: ## Show this help message.
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target>\n"} /^##@/ {printf "\n%s\n", substr($$0, 5); next} /^[A-Za-z0-9_.-]+:.*##/ {printf "  %-34s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -126,8 +127,8 @@ workflow-replay-test: ## Run workflow replay focused tests.
 finding-rule-test: ## Run finding rule focused tests.
 	go test ./internal/findings -run '$(FINDING_RULE_TESTS)' -count=1 -v
 
-agent-platform-eval: ## Run security agent control-plane eval fixtures.
-	go test ./internal/agentplatform -run 'TestRunSecurityAgentEvalSuiteFixture|TestSecurityAgentEvalFixtureCoversControlPlane' -count=1 -v
+agent-platform-eval: ## Run agent platform protocol, webhook, idempotency, and security eval fixtures.
+	go test ./internal/agentplatform -run 'TestRun(SecurityAgent|AgentPlatform)EvalSuiteFixture|Test(SecurityAgentEvalFixtureCoversSecurityScenarios|AgentPlatformEvalFixtureCoversControlPlane)' -count=1 -v
 
 github-findings-e2e: ## Run GitHub findings end-to-end test against configured repo.
 	CEREBRO_RUN_GITHUB_FINDINGS_E2E=1 CEREBRO_GITHUB_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_FINDINGS_REPO="$(GITHUB_FINDINGS_REPO)" go test ./cmd/cerebro -run '^TestGitHubDependabotFindingsEndToEndWithGHCLI$$' -count=1 -v
@@ -336,9 +337,9 @@ droid-feedback: ## Fetch and normalize Droid feedback for DROID_PR.
 	@if [ -z "$(DROID_PR)" ]; then echo "DROID_PR is required, e.g. make droid-feedback DROID_PR=719" >&2; exit 2; fi
 	python3 scripts/droid_feedback_harness.py "$(DROID_PR)" $(if $(DROID_FEEDBACK_OUT),--markdown-out "$(DROID_FEEDBACK_OUT)") --json-out "$(DROID_FEEDBACK_JSON_OUT)"
 
-land-pr: ## Wait for leak/Droid gates, merge PR, then delete the PR branch.
+land-pr: ## Wait for core/Droid gates, merge PR, then delete the PR branch.
 	@if [ -z "$(PR)" ]; then echo "PR is required, e.g. make land-pr PR=719" >&2; exit 2; fi
-	python3 scripts/land_pr.py "$(PR)" --repo "$(LAND_PR_REPO)" $(if $(filter true,$(LAND_PR_ADMIN)),--admin,) $(if $(filter true,$(LAND_PR_KEEP_BRANCH)),--keep-branch,)
+	python3 scripts/land_pr.py "$(PR)" --repo "$(LAND_PR_REPO)" $(if $(filter true,$(LAND_PR_ADMIN)),--admin,) $(if $(filter true,$(LAND_PR_KEEP_BRANCH)),--keep-branch,) $(if $(filter true,$(LAND_PR_ALLOW_LARGE)),--allow-large-pr,)
 
 # ==== Project Hygiene ====
 ##@ Project Hygiene
