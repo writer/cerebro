@@ -117,6 +117,44 @@ func EvaluateControlPosture(input ControlPostureInput) []ControlPosture {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	buckets := buildControlPostureBuckets(input, now)
+	postures := make([]ControlPosture, 0, len(input.Selection.Controls))
+	for _, control := range input.Selection.Controls {
+		key := ControlKey(ControlRef{FrameworkName: control.FrameworkName, ControlID: control.Control.ID})
+		bucket := buckets[key]
+		if bucket == nil {
+			bucket = &controlPostureBucket{control: control}
+		}
+		postures = append(postures, evaluateControlPosture(input.Selection.SelectionID, bucket, now))
+	}
+	sort.Slice(postures, func(i, j int) bool {
+		return ControlKey(ControlRef{FrameworkName: postures[i].Control.FrameworkName, ControlID: postures[i].Control.ControlID}) <
+			ControlKey(ControlRef{FrameworkName: postures[j].Control.FrameworkName, ControlID: postures[j].Control.ControlID})
+	})
+	return postures
+}
+
+func SummarizeControlPosture(selectionID string, postures []ControlPosture) ControlPostureSummary {
+	summary := ControlPostureSummary{
+		SelectionID: strings.TrimSpace(selectionID),
+		Total:       len(postures),
+		ByStatus:    map[ControlPostureStatus]int{},
+	}
+	for _, posture := range postures {
+		summary.ByStatus[posture.Status]++
+	}
+	return summary
+}
+
+type controlPostureBucket struct {
+	control      ResolvedControl
+	mappedRules  []string
+	openFindings []ControlFindingSignal
+	evidence     []ControlEvidenceSignal
+	overrides    []ControlPostureOverride
+}
+
+func buildControlPostureBuckets(input ControlPostureInput, now time.Time) map[string]*controlPostureBucket {
 	context := buildControlPostureContext(input.Selection, input.RuleCoverage)
 	buckets := map[string]*controlPostureBucket{}
 	for _, control := range input.Selection.Controls {
@@ -156,40 +194,7 @@ func EvaluateControlPosture(input ControlPostureInput) []ControlPosture {
 			}
 		}
 	}
-	postures := make([]ControlPosture, 0, len(input.Selection.Controls))
-	for _, control := range input.Selection.Controls {
-		key := ControlKey(ControlRef{FrameworkName: control.FrameworkName, ControlID: control.Control.ID})
-		bucket := buckets[key]
-		if bucket == nil {
-			bucket = &controlPostureBucket{control: control}
-		}
-		postures = append(postures, evaluateControlPosture(input.Selection.SelectionID, bucket, now))
-	}
-	sort.Slice(postures, func(i, j int) bool {
-		return ControlKey(ControlRef{FrameworkName: postures[i].Control.FrameworkName, ControlID: postures[i].Control.ControlID}) <
-			ControlKey(ControlRef{FrameworkName: postures[j].Control.FrameworkName, ControlID: postures[j].Control.ControlID})
-	})
-	return postures
-}
-
-func SummarizeControlPosture(selectionID string, postures []ControlPosture) ControlPostureSummary {
-	summary := ControlPostureSummary{
-		SelectionID: strings.TrimSpace(selectionID),
-		Total:       len(postures),
-		ByStatus:    map[ControlPostureStatus]int{},
-	}
-	for _, posture := range postures {
-		summary.ByStatus[posture.Status]++
-	}
-	return summary
-}
-
-type controlPostureBucket struct {
-	control      ResolvedControl
-	mappedRules  []string
-	openFindings []ControlFindingSignal
-	evidence     []ControlEvidenceSignal
-	overrides    []ControlPostureOverride
+	return buckets
 }
 
 type controlPostureContext struct {

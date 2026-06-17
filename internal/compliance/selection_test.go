@@ -59,6 +59,37 @@ func TestResolveControlSelectionSupportsTagOwnerAndEvidenceFilters(t *testing.T)
 	}
 }
 
+func TestResolveControlSelectionSupportsControlPostureFilters(t *testing.T) {
+	index := testSelectionIndex(t)
+	resolution, issues := ResolveControlSelection(index, ControlSelection{
+		ID:                    "automated-production-tests",
+		IncludeApplicability:  []string{"production"},
+		IncludeAssessments:    []string{"test"},
+		Automatable:           testSelectionBool(true),
+		ManualEvidenceAllowed: testSelectionBool(false),
+	})
+	if len(issues) != 0 {
+		t.Fatalf("ResolveControlSelection() issues = %#v, want none", issues)
+	}
+	if len(resolution.Controls) != 1 || resolution.Controls[0].Control.ID != "IAM-1" {
+		t.Fatalf("Controls = %#v, want custom IAM-1", resolution.Controls)
+	}
+}
+
+func TestResolveControlSelectionMatchesEvidenceAssessmentMethods(t *testing.T) {
+	index := testSelectionIndex(t)
+	resolution, issues := ResolveControlSelection(index, ControlSelection{
+		ID:                 "evidence-examination",
+		IncludeAssessments: []string{"examine"},
+	})
+	if len(issues) != 0 {
+		t.Fatalf("ResolveControlSelection() issues = %#v, want none", issues)
+	}
+	if len(resolution.Controls) != 1 || resolution.Controls[0].Control.ID != "IAM-1" {
+		t.Fatalf("Controls = %#v, want custom IAM-1", resolution.Controls)
+	}
+}
+
 func TestResolveRuleCoverageCreditsMappedCustomFrameworkControls(t *testing.T) {
 	index := testSelectionIndex(t)
 	resolution, issues := ResolveControlSelection(index, ControlSelection{
@@ -112,10 +143,15 @@ frameworks:
         controls:
           - id: IAM-1
             owner_domain: identity
+            applicability: [production, privileged_access]
+            assessment_methods: [test]
+            automatable: true
+            manual_evidence_allowed: false
             tags: [identity]
             evidence_expectations:
               - id: privileged-mfa-state
                 type: identity_configuration
+                assessment_methods: [examine]
             maps_to:
               - framework_id: soc2
                 control_id: CC6.1
@@ -125,4 +161,8 @@ frameworks:
 		t.Fatalf("BuildCatalogIndex() issues = %#v, want none", issues)
 	}
 	return index
+}
+
+func testSelectionBool(value bool) *bool {
+	return &value
 }

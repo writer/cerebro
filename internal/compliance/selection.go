@@ -9,16 +9,20 @@ import (
 )
 
 type ControlSelection struct {
-	ID                   string               `json:"id" yaml:"id"`
-	Name                 string               `json:"name" yaml:"name"`
-	Description          string               `json:"description,omitempty" yaml:"description,omitempty"`
-	Frameworks           []FrameworkSelection `json:"frameworks,omitempty" yaml:"frameworks,omitempty"`
-	IncludeControls      []ControlRef         `json:"include_controls,omitempty" yaml:"include_controls,omitempty"`
-	ExcludeControls      []ControlRef         `json:"exclude_controls,omitempty" yaml:"exclude_controls,omitempty"`
-	IncludeTags          []string             `json:"include_tags,omitempty" yaml:"include_tags,omitempty"`
-	ExcludeTags          []string             `json:"exclude_tags,omitempty" yaml:"exclude_tags,omitempty"`
-	IncludeOwnerDomains  []string             `json:"include_owner_domains,omitempty" yaml:"include_owner_domains,omitempty"`
-	IncludeEvidenceTypes []string             `json:"include_evidence_types,omitempty" yaml:"include_evidence_types,omitempty"`
+	ID                    string               `json:"id" yaml:"id"`
+	Name                  string               `json:"name" yaml:"name"`
+	Description           string               `json:"description,omitempty" yaml:"description,omitempty"`
+	Frameworks            []FrameworkSelection `json:"frameworks,omitempty" yaml:"frameworks,omitempty"`
+	IncludeControls       []ControlRef         `json:"include_controls,omitempty" yaml:"include_controls,omitempty"`
+	ExcludeControls       []ControlRef         `json:"exclude_controls,omitempty" yaml:"exclude_controls,omitempty"`
+	IncludeTags           []string             `json:"include_tags,omitempty" yaml:"include_tags,omitempty"`
+	ExcludeTags           []string             `json:"exclude_tags,omitempty" yaml:"exclude_tags,omitempty"`
+	IncludeOwnerDomains   []string             `json:"include_owner_domains,omitempty" yaml:"include_owner_domains,omitempty"`
+	IncludeEvidenceTypes  []string             `json:"include_evidence_types,omitempty" yaml:"include_evidence_types,omitempty"`
+	IncludeApplicability  []string             `json:"include_applicability,omitempty" yaml:"include_applicability,omitempty"`
+	IncludeAssessments    []string             `json:"include_assessment_methods,omitempty" yaml:"include_assessment_methods,omitempty"`
+	Automatable           *bool                `json:"automatable,omitempty" yaml:"automatable,omitempty"`
+	ManualEvidenceAllowed *bool                `json:"manual_evidence_allowed,omitempty" yaml:"manual_evidence_allowed,omitempty"`
 }
 
 type FrameworkSelection struct {
@@ -91,7 +95,7 @@ func ResolveControlSelection(index *CatalogIndex, selection ControlSelection) (S
 			}
 			selected[ControlKey(ControlRef{FrameworkName: control.FrameworkName, ControlID: control.Control.ID})] = control
 		}
-		if len(selection.IncludeTags) != 0 || len(selection.IncludeOwnerDomains) != 0 || len(selection.IncludeEvidenceTypes) != 0 {
+		if selectionHasControlFilters(selection) {
 			for _, control := range index.Controls() {
 				if controlMatchesSelectionFilters(control, selection) {
 					selected[ControlKey(ControlRef{FrameworkName: control.FrameworkName, ControlID: control.Control.ID})] = control
@@ -246,7 +250,21 @@ func selectionEmpty(selection ControlSelection) bool {
 		len(selection.IncludeControls) == 0 &&
 		len(selection.IncludeTags) == 0 &&
 		len(selection.IncludeOwnerDomains) == 0 &&
-		len(selection.IncludeEvidenceTypes) == 0
+		len(selection.IncludeEvidenceTypes) == 0 &&
+		len(selection.IncludeApplicability) == 0 &&
+		len(selection.IncludeAssessments) == 0 &&
+		selection.Automatable == nil &&
+		selection.ManualEvidenceAllowed == nil
+}
+
+func selectionHasControlFilters(selection ControlSelection) bool {
+	return len(selection.IncludeTags) != 0 ||
+		len(selection.IncludeOwnerDomains) != 0 ||
+		len(selection.IncludeEvidenceTypes) != 0 ||
+		len(selection.IncludeApplicability) != 0 ||
+		len(selection.IncludeAssessments) != 0 ||
+		selection.Automatable != nil ||
+		selection.ManualEvidenceAllowed != nil
 }
 
 func controlMatchesSelectionFilters(control ResolvedControl, selection ControlSelection) bool {
@@ -259,6 +277,18 @@ func controlMatchesSelectionFilters(control ResolvedControl, selection ControlSe
 	if len(selection.IncludeEvidenceTypes) != 0 && !controlHasEvidenceType(control, selection.IncludeEvidenceTypes) {
 		return false
 	}
+	if len(selection.IncludeApplicability) != 0 && !hasAnyFold(control.Control.Applicability, selection.IncludeApplicability) {
+		return false
+	}
+	if len(selection.IncludeAssessments) != 0 && !controlHasAssessmentMethod(control, selection.IncludeAssessments) {
+		return false
+	}
+	if selection.Automatable != nil && !controlBoolMatches(control.Control.Automatable, *selection.Automatable) {
+		return false
+	}
+	if selection.ManualEvidenceAllowed != nil && !controlBoolMatches(control.Control.ManualEvidenceAllowed, *selection.ManualEvidenceAllowed) {
+		return false
+	}
 	return true
 }
 
@@ -269,6 +299,22 @@ func controlHasEvidenceType(control ResolvedControl, evidenceTypes []string) boo
 		}
 	}
 	return false
+}
+
+func controlHasAssessmentMethod(control ResolvedControl, methods []string) bool {
+	if hasAnyFold(control.Control.AssessmentMethods, methods) {
+		return true
+	}
+	for _, expectation := range control.Evidence {
+		if hasAnyFold(expectation.AssessmentMethods, methods) {
+			return true
+		}
+	}
+	return false
+}
+
+func controlBoolMatches(value *bool, want bool) bool {
+	return value != nil && *value == want
 }
 
 func hasAnyFold(values []string, needles []string) bool {
