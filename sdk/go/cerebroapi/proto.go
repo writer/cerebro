@@ -24,9 +24,6 @@ func (c *Client) ListProtoClaims(ctx context.Context, request ListClaimsRequest)
 	if err != nil {
 		return nil, err
 	}
-	if response == nil {
-		return &ListProtoClaimsResponse{}, nil
-	}
 	return &ListProtoClaimsResponse{
 		Claims: ClaimsToProto(response.Claims),
 	}, nil
