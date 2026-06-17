@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -27,10 +28,18 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 		Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 	}
 	rule := newPolicyCatalogRule(policyRuleConfig{
-		Definition:   definition,
-		EvidenceMode: "query",
-		Category:     "compliance",
-		Query:        "SELECT id FROM resources WHERE failing = true",
+		Definition:        definition,
+		EvidenceMode:      "query",
+		EvidenceType:      "query_result",
+		AssessmentMethods: []string{"examine"},
+		AuditorGuidance:   "Review returned rows.",
+		RiskStatement:     "Mapped controls may lack operating evidence.",
+		RemediationIntent: "Restore expected control state.",
+		ExceptionGuidance: []string{"Documented exception."},
+		ControlFamilies:   []string{"SOC 2 CC6 Logical and Physical Access"},
+		Category:          "compliance",
+		Query:             "SELECT id FROM resources WHERE failing = true",
+		Enabled:           true,
 	})
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-policy", SourceId: policyRuleSourceID}
 	event := &cerebrov1.EventEnvelope{
@@ -59,11 +68,26 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 	if finding.Severity != "HIGH" {
 		t.Fatalf("Severity = %q, want HIGH", finding.Severity)
 	}
+	if finding.Title != "Policy Test policy failed" {
+		t.Fatalf("Title = %q, want generated failure title", finding.Title)
+	}
+	if finding.Summary == "" || !strings.Contains(finding.Summary, "Mapped controls may lack operating evidence.") {
+		t.Fatalf("Summary = %q, want generated risk statement", finding.Summary)
+	}
 	if got := len(finding.ControlRefs); got != 1 {
 		t.Fatalf("len(ControlRefs) = %d, want 1", got)
 	}
 	if got := finding.Attributes["policy_query_present"]; got != "true" {
 		t.Fatalf("policy_query_present = %q, want true", got)
+	}
+	if got := finding.Attributes["policy_evidence_type"]; got != "query_result" {
+		t.Fatalf("policy_evidence_type = %q, want query_result", got)
+	}
+	if got := finding.Attributes["policy_assessment_methods"]; got != "examine" {
+		t.Fatalf("policy_assessment_methods = %q, want examine", got)
+	}
+	if got := finding.Attributes["policy_control_families"]; got != "SOC 2 CC6 Logical and Physical Access" {
+		t.Fatalf("policy_control_families = %q, want SOC 2 family", got)
 	}
 }
 
@@ -86,6 +110,7 @@ func TestPolicyCatalogRuleIgnoresPassingEvidence(t *testing.T) {
 			ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
 			Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
+		Enabled: true,
 	})
 	findings, err := rule.Evaluate(context.Background(),
 		&cerebrov1.SourceRuntime{Id: "runtime-policy", SourceId: policyRuleSourceID},
@@ -100,6 +125,49 @@ func TestPolicyCatalogRuleIgnoresPassingEvidence(t *testing.T) {
 			},
 		},
 	)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("len(findings) = %d, want 0", len(findings))
+	}
+}
+
+func TestPolicyCatalogRuleDisabledDoesNotSupportRuntimeOrEmit(t *testing.T) {
+	rule := newPolicyCatalogRule(policyRuleConfig{
+		Definition: RuleDefinition{
+			ID:                "policy-disabled-test",
+			Name:              "Policy Disabled Test",
+			Description:       "Policy disabled test description",
+			SourceID:          policyRuleSourceID,
+			EventKinds:        []string{policyRuleEvidenceKind},
+			OutputKind:        policyRuleOutputKind,
+			Severity:          "LOW",
+			Status:            "disabled",
+			Maturity:          RuleMaturityCandidate,
+			Tags:              []string{"policy", "test"},
+			FalsePositives:    []string{"Approved exception."},
+			Runbook:           "Review policy evidence.",
+			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
+			ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
+			Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
+		},
+		Enabled: false,
+	})
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-policy", SourceId: policyRuleSourceID}
+	if rule.SupportsRuntime(runtime) {
+		t.Fatal("SupportsRuntime() = true, want false for disabled policy rule")
+	}
+	findings, err := rule.Evaluate(context.Background(), runtime, &cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant-1",
+		SourceId: policyRuleSourceID,
+		Kind:     policyRuleEvidenceKind,
+		Attributes: map[string]string{
+			"policy_id": "policy-disabled-test",
+			"result":    "failed",
+		},
+	})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
 	}

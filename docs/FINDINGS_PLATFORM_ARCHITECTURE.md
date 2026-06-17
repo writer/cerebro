@@ -185,6 +185,7 @@ Rules live as small files under `internal/findings/` and register through the bu
 - `internal/findings/*_rule.go` — built-in signal and graph-backed finding rules
 - `internal/findings/policy_rule.go` — generic generated-policy rule adapter for policy evidence/result events
 - `internal/findings/policy_rule_catalog_gen.go` — generated policy rule definitions from `policies/`
+- `internal/compliance/policy_rule_extensions.yaml` — generated policy rule copy, evidence, and audit-guidance extensions
 - `internal/findings/public_detection_catalog.json` — generated public detection catalog
 - `internal/statestore/postgres/findingevaluationruns.go` — persisted evaluation run storage and query filters
 - `internal/bootstrap/app.go` — HTTP and ConnectRPC exposure
@@ -201,7 +202,7 @@ Rules live as small files under `internal/findings/` and register through the bu
    - service selection coverage
    - bootstrap forwarding coverage
 
-For policy catalog changes, edit `policies/`, run `make policy-rule-generate`, then run `make detection-catalog-generate`.
+For policy catalog or policy extension changes, edit `policies/` or `internal/compliance/policy_rule_extensions.yaml`, run `make policy-rule-generate`, then run `make detection-catalog-generate`.
 
 ## What This Does Not Solve Yet
 
