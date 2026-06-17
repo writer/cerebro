@@ -1,0 +1,33 @@
+{
+  "id": "identity-okta-vendor-app-without-grc-record",
+  "name": "Okta Vendor App Missing GRC Vendor Record",
+  "description": "Detects active Okta SaaS or vendor-facing applications that do not have a matching GRC vendor record.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "okta_application",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC9.2"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.19",
+        "A.5.20"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "WITH vendor_apps AS (SELECT app.id AS app_id, COALESCE(app.label, app.name, app.id) AS app_name, app.sign_on_mode, app.status FROM okta_applications app WHERE LOWER(COALESCE(app.status, 'active')) IN ('active', 'enabled') AND NOT LOWER(COALESCE(app.label, app.name, '')) RLIKE '.*(test|sandbox|dev|internal).*' AND (LOWER(COALESCE(app.sign_on_mode, '')) RLIKE '.*(saml|oidc|oauth).*' OR LOWER(COALESCE(app.label, app.name, '')) RLIKE '.*(org2org|vendor|partner|supplier|contractor|external).*')) SELECT va.app_id AS id, va.app_name, va.sign_on_mode FROM vendor_apps va LEFT JOIN vendors v ON LOWER(COALESCE(v.name, '')) = LOWER(va.app_name) WHERE v.id IS NULL",
+  "remediation": "Create or link the GRC vendor record, assign business and security owners, and complete vendor risk review before granting or renewing access.",
+  "tags": [
+    "okta",
+    "identity",
+    "vendor-monitoring",
+    "third-party-risk",
+    "inventory"
+  ]
+}
