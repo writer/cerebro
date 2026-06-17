@@ -38,6 +38,42 @@ profiles:
     frameworks:
       - name: PCI DSS v4.0.1
         families: ["1", "6", "7", "8", "10", "11", "12"]
+  - id: dora-operational-resilience
+    name: DORA Operational Resilience
+    description: Digital operational resilience scope for ICT governance, risk management, incident reporting, resilience testing, third-party risk, and information sharing.
+    frameworks:
+      - name: DORA
+        include_all: true
+  - id: fedramp-rev5-core
+    name: FedRAMP Rev. 5 Core
+    description: FedRAMP Rev. 5 baseline control coverage mapped to supported NIST SP 800-53 Rev. 5 policy evidence.
+    frameworks:
+      - name: FedRAMP Rev. 5
+        include_all: true
+  - id: nis2-cybersecurity-risk-management
+    name: NIS2 Cybersecurity Risk Management
+    description: NIS2 governance, cybersecurity risk-management, and significant incident reporting obligations.
+    frameworks:
+      - name: NIS2
+        include_all: true
+  - id: cmmc-2-core
+    name: CMMC 2.0 Core
+    description: CMMC 2.0 level and domain coverage for FCI, CUI, and higher-level CUI protection reviews.
+    frameworks:
+      - name: CMMC 2.0
+        include_all: true
+  - id: cjis-security-policy
+    name: CJIS Security Policy
+    description: FBI CJIS Security Policy area coverage for criminal justice information protection reviews.
+    frameworks:
+      - name: CJIS Security Policy
+        include_all: true
+  - id: nist-csf-20-core
+    name: NIST CSF 2.0 Core
+    description: NIST Cybersecurity Framework 2.0 functions and categories for cybersecurity risk management posture reviews.
+    frameworks:
+      - name: NIST CSF 2.0
+        include_all: true
   - id: privacy-ai-governance
     name: Privacy and AI Governance
     description: Privacy and AI governance controls for data handling, governance accountability, and AI system oversight reviews.

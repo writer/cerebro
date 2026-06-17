@@ -1,4 +1,4 @@
-version: "2026-06-16"
+version: "2026-06-17"
 frameworks:
   - name: SOC 2
     families:
@@ -2027,6 +2027,1107 @@ frameworks:
         name: CISA Requirements
         controls:
           - id: 1.1
+  - id: dora
+    name: DORA
+    framework_version: "Regulation (EU) 2022/2554"
+    description: Digital Operational Resilience Act control groupings for ICT risk management, incident reporting, resilience testing, and ICT third-party risk.
+    tags: [regulatory, operational-resilience, financial-services]
+    families:
+      - id: GOV
+        name: Governance and ICT Risk Management
+        controls:
+          - id: Art.5
+            title: Governance and organisation
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.1
+              - framework_name: SOC 2
+                control_id: CC3.1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: Art.6
+            title: ICT risk management framework
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: SOC 2
+                control_id: CC3.1
+          - id: Art.8
+            title: Identification
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-2
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+          - id: Art.9
+            title: Protection and prevention
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: Art.10
+            title: Detection
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: Art.11
+            title: Response and recovery
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: Art.12
+            title: Backup policies and restoration
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: Art.13
+            title: Learning and evolving
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+      - id: INCIDENT
+        name: ICT-Related Incident Management and Reporting
+        controls:
+          - id: Art.17
+            title: ICT-related incident management process
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: Art.18
+            title: Classification of ICT-related incidents and cyber threats
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: Art.19
+            title: Reporting of major ICT-related incidents
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+              - framework_name: SOC 2
+                control_id: CC7.4
+      - id: TEST
+        name: Digital Operational Resilience Testing
+        controls:
+          - id: Art.24
+            title: General requirements for digital operational resilience testing
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: Art.25
+            title: Testing of ICT tools and systems
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: Art.26
+            title: Threat-led penetration testing
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+      - id: TPRM
+        name: ICT Third-Party Risk
+        controls:
+          - id: Art.28
+            title: General principles for ICT third-party risk
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+          - id: Art.30
+            title: Key contractual provisions
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: Art.31
+            title: Critical ICT third-party service providers
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+      - id: SHARE
+        name: Information Sharing
+        controls:
+          - id: Art.45
+            title: Information-sharing arrangements
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+  - id: fedramp-rev5
+    name: FedRAMP Rev. 5
+    framework_version: "Rev. 5"
+    description: FedRAMP Rev. 5 baseline control support mapped to the corresponding NIST SP 800-53 Rev. 5 controls represented by Cerebro policy rules.
+    tags: [regulatory, federal, cloud]
+    families:
+      - id: AC
+        name: Access Control
+        controls:
+          - id: AC-1
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+          - id: AC-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+          - id: AC-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+          - id: AC-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-4
+          - id: AC-6
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+          - id: AC-11
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-11
+          - id: AC-17
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-17
+      - id: AU
+        name: Audit and Accountability
+        controls:
+          - id: AU-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+          - id: AU-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-3
+          - id: AU-9
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-9
+          - id: AU-12
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+      - id: CA
+        name: Assessment, Authorization, and Monitoring
+        controls:
+          - id: CA-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+      - id: CM
+        name: Configuration Management
+        controls:
+          - id: CM-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+          - id: CM-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-5
+          - id: CM-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+          - id: CM-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+      - id: CP
+        name: Contingency Planning
+        controls:
+          - id: CP-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+          - id: CP-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-4
+          - id: CP-9
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+          - id: CP-10
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+      - id: IA
+        name: Identification and Authentication
+        controls:
+          - id: IA-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: IA-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+      - id: IR
+        name: Incident Response
+        controls:
+          - id: IR-1
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-1
+          - id: IR-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+          - id: IR-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: IR-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+      - id: MP
+        name: Media Protection
+        controls:
+          - id: MP-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+      - id: PS
+        name: Personnel Security
+        controls:
+          - id: PS-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+      - id: RA
+        name: Risk Assessment
+        controls:
+          - id: RA-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-2
+          - id: RA-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+          - id: RA-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+      - id: SA
+        name: System and Services Acquisition
+        controls:
+          - id: SA-9
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+      - id: SC
+        name: System and Communications Protection
+        controls:
+          - id: SC-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: SC-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+          - id: SC-12
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+          - id: SC-13
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+          - id: SC-17
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-17
+          - id: SC-20
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-20
+          - id: SC-21
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-21
+          - id: SC-23
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-23
+          - id: SC-28
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+      - id: SI
+        name: System and Information Integrity
+        controls:
+          - id: SI-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: SI-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+          - id: SI-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: SI-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: SI-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-8
+      - id: SR
+        name: Supply Chain Risk Management
+        controls:
+          - id: SR-6
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: SR-11
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+  - id: nis2
+    name: NIS2
+    framework_version: "Directive (EU) 2022/2555"
+    description: NIS2 Directive control groupings for governance, cybersecurity risk-management measures, and significant incident reporting.
+    tags: [regulatory, eu, cybersecurity]
+    families:
+      - id: GOV
+        name: Governance
+        controls:
+          - id: Art.20
+            title: Management body governance and training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.1
+              - framework_name: SOC 2
+                control_id: CC3.1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+      - id: RM
+        name: Cybersecurity Risk-Management Measures
+        controls:
+          - id: Art.21(2)(a)
+            title: Risk analysis and information system security policies
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: Art.21(2)(b)
+            title: Incident handling
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: Art.21(2)(c)
+            title: Business continuity and crisis management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+          - id: Art.21(2)(d)
+            title: Supply chain security
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+          - id: Art.21(2)(e)
+            title: Security in acquisition, development, and maintenance
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: Art.21(2)(f)
+            title: Policies and procedures to assess effectiveness
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+          - id: Art.21(2)(g)
+            title: Basic cyber hygiene practices and cybersecurity training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: Art.21(2)(h)
+            title: Cryptography and encryption
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: Art.21(2)(i)
+            title: Human resources security, access control, and asset management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+          - id: Art.21(2)(j)
+            title: Multi-factor authentication and secured communications
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-23
+      - id: REPORT
+        name: Reporting Obligations
+        controls:
+          - id: Art.23
+            title: Significant incident reporting
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+              - framework_name: SOC 2
+                control_id: CC7.4
+  - id: cmmc-2
+    name: CMMC 2.0
+    framework_version: "2.0"
+    description: Cybersecurity Maturity Model Certification level and domain control groupings mapped to Cerebro policy evidence.
+    tags: [regulatory, federal, defense]
+    families:
+      - id: L1
+        name: Level 1 Basic Safeguarding of FCI
+        controls:
+          - id: AC.L1
+            title: Access Control Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+          - id: IA.L1
+            title: Identification and Authentication Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: MP.L1
+            title: Media Protection Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+          - id: PE.L1
+            title: Physical Protection Level 1 domain coverage
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6.6
+          - id: SC.L1
+            title: System and Communications Protection Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: SI.L1
+            title: System and Information Integrity Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+      - id: L2
+        name: Level 2 Broad Protection of CUI
+        controls:
+          - id: AC.L2
+            title: Access Control Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: AC-17
+          - id: AT.L2
+            title: Awareness and Training Level 2 domain coverage
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: AU.L2
+            title: Audit and Accountability Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-3
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+          - id: CA.L2
+            title: Security Assessment Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+          - id: CM.L2
+            title: Configuration Management Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-5
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+          - id: IA.L2
+            title: Identification and Authentication Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+          - id: IR.L2
+            title: Incident Response Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+          - id: MA.L2
+            title: Maintenance Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: MP.L2
+            title: Media Protection Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: PE.L2
+            title: Physical Protection Level 2 domain coverage
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6
+              - framework_name: SOC 2
+                control_id: CC6.6
+          - id: PS.L2
+            title: Personnel Security Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+          - id: RA.L2
+            title: Risk Assessment Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: SC.L2
+            title: System and Communications Protection Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: SI.L2
+            title: System and Information Integrity Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+      - id: L3
+        name: Level 3 Higher-Level Protection of CUI
+        controls:
+          - id: IR.L3
+            title: Incident Response Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: RA.L3
+            title: Risk Assessment Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: SC.L3
+            title: System and Communications Protection Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+          - id: SI.L3
+            title: System and Information Integrity Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: SR.L3
+            title: Supply Chain Risk Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+  - id: cjis-security-policy
+    name: CJIS Security Policy
+    framework_version: "v5.9.5"
+    description: FBI CJIS Security Policy policy-area support for protecting criminal justice information.
+    tags: [regulatory, criminal-justice, federal]
+    families:
+      - id: PA-1
+        name: Information Exchange Agreements
+        controls:
+          - id: PA-1
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+      - id: PA-2
+        name: Awareness and Training
+        controls:
+          - id: PA-2
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+      - id: PA-3
+        name: Incident Response
+        controls:
+          - id: PA-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+      - id: PA-4
+        name: Auditing and Accountability
+        controls:
+          - id: PA-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+      - id: PA-5
+        name: Access Control
+        controls:
+          - id: PA-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+      - id: PA-6
+        name: Identification and Authentication
+        controls:
+          - id: PA-6
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+      - id: PA-7
+        name: Configuration Management
+        controls:
+          - id: PA-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+      - id: PA-8
+        name: Media Protection
+        controls:
+          - id: PA-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+      - id: PA-9
+        name: Physical and Environmental Protection
+        controls:
+          - id: PA-9
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6
+              - framework_name: SOC 2
+                control_id: CC6.6
+      - id: PA-10
+        name: Systems and Communications Protection
+        controls:
+          - id: PA-10
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+      - id: PA-11
+        name: Formal Audits
+        controls:
+          - id: PA-11
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+      - id: PA-12
+        name: Personnel Security
+        controls:
+          - id: PA-12
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+              - framework_name: SOC 2
+                control_id: CC1.4
+      - id: PA-13
+        name: Mobile Devices
+        controls:
+          - id: PA-13
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+      - id: PA-14
+        name: System and Services Acquisition
+        controls:
+          - id: PA-14
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+      - id: PA-15
+        name: System and Information Integrity
+        controls:
+          - id: PA-15
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+      - id: PA-16
+        name: Maintenance
+        controls:
+          - id: PA-16
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+      - id: PA-17
+        name: Planning
+        controls:
+          - id: PA-17
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+              - framework_name: NIST 800-53 r5
+                control_id: IR-1
+      - id: PA-18
+        name: Contingency Planning
+        controls:
+          - id: PA-18
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+      - id: PA-19
+        name: Risk Assessment
+        controls:
+          - id: PA-19
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+  - id: nist-csf-2.0
+    name: NIST CSF 2.0
+    framework_version: "2.0"
+    description: NIST Cybersecurity Framework 2.0 function and category support mapped to Cerebro policy evidence.
+    tags: [framework, cybersecurity, risk-management]
+    families:
+      - id: GV
+        name: Govern
+        controls:
+          - id: GV.OC
+            title: Organizational Context
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC3.1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: GV.RM
+            title: Risk Management Strategy
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: SOC 2
+                control_id: CC3.2
+          - id: GV.RR
+            title: Roles, Responsibilities, and Authorities
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.1
+              - framework_name: SOC 2
+                control_id: CC1.4
+          - id: GV.PO
+            title: Policy
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: GV.OV
+            title: Oversight
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+          - id: GV.SC
+            title: Cybersecurity Supply Chain Risk Management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+      - id: ID
+        name: Identify
+        controls:
+          - id: ID.AM
+            title: Asset Management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+          - id: ID.RA
+            title: Risk Assessment
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: ID.IM
+            title: Improvement
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+      - id: PR
+        name: Protect
+        controls:
+          - id: PR.AA
+            title: Identity Management, Authentication, and Access Control
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: PR.AT
+            title: Awareness and Training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: PR.DS
+            title: Data Security
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: PR.PS
+            title: Platform Security
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: PR.IR
+            title: Technology Infrastructure Resilience
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+      - id: DE
+        name: Detect
+        controls:
+          - id: DE.CM
+            title: Continuous Monitoring
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: DE.AE
+            title: Adverse Event Analysis
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+      - id: RS
+        name: Respond
+        controls:
+          - id: RS.MA
+            title: Incident Management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: RS.AN
+            title: Incident Analysis
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-3
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: RS.CO
+            title: Incident Response Reporting and Communication
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+              - framework_name: SOC 2
+                control_id: CC7.4
+          - id: RS.MI
+            title: Incident Mitigation
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+      - id: RC
+        name: Recover
+        controls:
+          - id: RC.RP
+            title: Incident Recovery Plan Execution
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+          - id: RC.CO
+            title: Incident Recovery Communication
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
   - name: Cerebro AI Governance
     families:
       - id: AI
