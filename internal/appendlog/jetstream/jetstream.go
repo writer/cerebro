@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/securityevents"
+	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -148,37 +149,55 @@ func redactNATSURL(raw string) string {
 
 // Ping verifies that JetStream is reachable.
 func (l *Log) Ping(ctx context.Context) error {
+	ctx, span := telemetry.Start(ctx, "jetstream.ping", jetstreamTelemetryAttrs("ping"))
 	if l == nil || l.js == nil {
-		return errors.New("jetstream is not configured")
+		err := errors.New("jetstream is not configured")
+		jetstreamTelemetryError(ctx, span, "ping", err)
+		return err
 	}
 	_, err := l.js.AccountInfo(ctx)
 	if err != nil {
-		return fmt.Errorf("jetstream account info: %w", err)
+		err = fmt.Errorf("jetstream account info: %w", err)
+		jetstreamTelemetryError(ctx, span, "ping", err)
+		return err
 	}
+	telemetry.End(span, "completed", telemetry.Attrs())
 	return nil
 }
 
 // Append marshals and publishes an event envelope.
 func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error {
+	kind := ""
+	if event != nil {
+		kind = strings.TrimSpace(event.Kind)
+	}
+	ctx, span := telemetry.Start(ctx, "jetstream.append", jetstreamTelemetryAttrs("append").WithField(telemetry.Field{Key: "event.kind", Value: kind}))
 	if l == nil || l.js == nil {
-		return errors.New("jetstream is not configured")
+		err := errors.New("jetstream is not configured")
+		jetstreamTelemetryError(ctx, span, "append", err)
+		return err
 	}
 	if event == nil {
-		return errors.New("event is required")
+		err := errors.New("event is required")
+		jetstreamTelemetryError(ctx, span, "append", err)
+		return err
 	}
-	kind := strings.TrimSpace(event.Kind)
 	if err := validateEventKind(kind); err != nil {
+		jetstreamTelemetryError(ctx, span, "append", err)
 		return err
 	}
 	subject, err := eventSubject(l.subjectPrefix, kind)
 	if err != nil {
+		jetstreamTelemetryError(ctx, span, "append", err)
 		return err
 	}
 	envelope := proto.Clone(event).(*cerebrov1.EventEnvelope)
 	envelope.Kind = kind
 	payload, err := publishPayload(envelope)
 	if err != nil {
-		return fmt.Errorf("marshal event: %w", err)
+		err = fmt.Errorf("marshal event: %w", err)
+		jetstreamTelemetryError(ctx, span, "append", err)
+		return err
 	}
 	msg := nats.NewMsg(subject)
 	msg.Data = payload
@@ -189,26 +208,39 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 		msg.Header.Set(nats.MsgIdHdr, event.Id)
 	}
 	if _, err := l.js.PublishMsg(ctx, msg); err != nil {
-		return fmt.Errorf("publish event: %w", err)
+		err = fmt.Errorf("publish event: %w", err)
+		jetstreamTelemetryError(ctx, span, "append", err)
+		return err
 	}
+	telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "payload_bytes", Value: len(payload)}))
 	return nil
 }
 
 // Replay returns the newest matching stored envelopes in append order.
 func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
-	if l == nil || l.replay == nil {
-		return nil, errors.New("jetstream is not configured")
-	}
 	request := normalizeReplayRequest(req)
+	ctx, span := telemetry.Start(ctx, "jetstream.replay", jetstreamTelemetryAttrs("replay").
+		WithField(telemetry.Field{Key: "replay.limit", Value: normalizeReplayLimit(request.Limit)}).
+		WithField(telemetry.Field{Key: "replay.kind_prefix_count", Value: len(replayKindPrefixes(request))}).
+		WithField(telemetry.Field{Key: "replay.attribute_filter_count", Value: len(request.AttributeEquals)}))
+	if l == nil || l.replay == nil {
+		err := errors.New("jetstream is not configured")
+		jetstreamTelemetryError(ctx, span, "replay", err)
+		return nil, err
+	}
 	if request.RuntimeID == "" && request.KindPrefix == "" && len(request.KindPrefixes) == 0 && request.TenantID == "" && len(request.AttributeEquals) == 0 {
-		return nil, errors.New("at least one replay filter is required")
+		err := errors.New("at least one replay filter is required")
+		jetstreamTelemetryError(ctx, span, "replay", err)
+		return nil, err
 	}
 	stream, err := l.replayStream(ctx)
 	if err != nil {
+		jetstreamTelemetryError(ctx, span, "replay", err)
 		return nil, err
 	}
 	prefix, err := normalizeSubjectPrefix(l.subjectPrefix)
 	if err != nil {
+		jetstreamTelemetryError(ctx, span, "replay", err)
 		return nil, err
 	}
 	subjectPrefixes := replaySubjectPrefixes(prefix, request)
@@ -216,10 +248,13 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	candidateLimit := normalizeReplayCandidateLimit(limit)
 	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
 	if err != nil {
-		return nil, fmt.Errorf("open replay stream %q: %w", stream.Config.Name, err)
+		err = fmt.Errorf("open replay stream %q: %w", stream.Config.Name, err)
+		jetstreamTelemetryError(ctx, span, "replay", err)
+		return nil, err
 	}
 	candidates := make([]replayCandidate, 0, limit)
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
+		telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "events_returned", Value: 0}))
 		return nil, nil
 	}
 	for seq := stream.State.LastSeq; ; seq-- {
@@ -231,12 +266,16 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 				}
 				continue
 			}
-			return nil, fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
+			err = fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
+			jetstreamTelemetryError(ctx, span, "replay", err)
+			return nil, err
 		}
 		if raw != nil && replaySubjectMatchesAnyPrefix(raw.Subject, subjectPrefixes) {
 			event, err := decodeReplayEvent(raw)
 			if err != nil {
-				return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
+				err = fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
+				jetstreamTelemetryError(ctx, span, "replay", err)
+				return nil, err
 			}
 			if matchesReplayRequest(event, request) {
 				candidates = append(candidates, replayCandidate{event: event, seq: seq})
@@ -262,7 +301,25 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	for _, candidate := range candidates {
 		events = append(events, candidate.event)
 	}
+	telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "events_returned", Value: len(events)}))
 	return events, nil
+}
+
+func jetstreamTelemetryAttrs(operation string) telemetry.Attributes {
+	return telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "appendlog.jetstream"},
+		telemetry.Field{Key: "operation", Value: operation},
+		telemetry.Field{Key: "messaging.system", Value: "nats"},
+	)
+}
+
+func jetstreamTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
+	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+	telemetry.CaptureError(ctx, "jetstream.error", err, telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "appendlog.jetstream"},
+		telemetry.Field{Key: "operation", Value: operation},
+	))
+	telemetry.End(span, "failed", attrs)
 }
 
 func countAtLeastUint32(count int, limit uint32) bool {

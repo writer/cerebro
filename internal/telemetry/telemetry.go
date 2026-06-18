@@ -3,8 +3,10 @@ package telemetry
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -70,12 +72,17 @@ func (a Attributes) with(key string, value any) Attributes {
 }
 
 func Start(ctx context.Context, name string, attributes Attributes) (context.Context, *Span) {
+	return StartWithOptions(ctx, name, attributes)
+}
+
+func StartWithOptions(ctx context.Context, name string, attributes Attributes, options ...oteltrace.SpanStartOption) (context.Context, *Span) {
 	parent, _ := ctx.Value(spanContextKey{}).(spanContext)
 	traceID := parent.TraceID
 	if traceID == "" {
 		traceID = randomHex(16)
 	}
-	otelCtx, otelSpan := otel.Tracer("github.com/writer/cerebro/internal/telemetry").Start(ctx, name, oteltrace.WithAttributes(attributes.OTELAttributes()...))
+	spanOptions := append([]oteltrace.SpanStartOption{oteltrace.WithAttributes(attributes.OTELAttributes()...)}, options...)
+	otelCtx, otelSpan := otel.Tracer("github.com/writer/cerebro/internal/telemetry").Start(ctx, name, spanOptions...)
 	if spanContext := otelSpan.SpanContext(); spanContext.IsValid() {
 		traceID = spanContext.TraceID().String()
 	}
@@ -119,6 +126,22 @@ func TraceParent(ctx context.Context) string {
 	return "00-" + current.TraceID + "-" + current.SpanID + "-01"
 }
 
+// EnsureTraceContext makes TraceParent available even when no OTEL provider is
+// installed. It is intentionally quiet: it does not emit span_start/span_end.
+func EnsureTraceContext(ctx context.Context) context.Context {
+	current, _ := ctx.Value(spanContextKey{}).(spanContext)
+	if current.TraceID != "" && current.SpanID != "" {
+		return ctx
+	}
+	if sc := oteltrace.SpanContextFromContext(ctx); sc.IsValid() {
+		return context.WithValue(ctx, spanContextKey{}, spanContext{
+			TraceID: sc.TraceID().String(),
+			SpanID:  sc.SpanID().String(),
+		})
+	}
+	return context.WithValue(ctx, spanContextKey{}, spanContext{TraceID: randomHex(16), SpanID: randomHex(8)})
+}
+
 func ParseTraceParent(header string) (string, string, bool) {
 	parts := strings.Split(strings.TrimSpace(header), "-")
 	if len(parts) != 4 || parts[0] != "00" {
@@ -139,6 +162,70 @@ func Event(ctx context.Context, name string, attributes Attributes) {
 		span.AddEvent(name, oteltrace.WithAttributes(attributes.OTELAttributes()...))
 	}
 	emit("event", &Span{name: name, traceID: current.TraceID, spanID: current.SpanID}, attributes)
+}
+
+// CaptureError records a Sentry-style handled error event without serializing
+// the raw error message. Raw messages often contain DSNs, URLs, or token-shaped
+// values, so errors are grouped with a stable kind and fingerprint instead.
+func CaptureError(ctx context.Context, name string, err error, attributes Attributes) {
+	if err == nil {
+		return
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "error.capture"
+	}
+	kind := ErrorKind(err)
+	attributes = attributes.with("error_kind", kind).
+		with("error_fingerprint", ErrorFingerprint(name, err, attributes)).
+		with("handled", true)
+	if span := oteltrace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+		span.SetStatus(codes.Error, kind)
+	}
+	Event(ctx, name, attributes)
+}
+
+func ErrorKind(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "context_canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "context_deadline_exceeded"
+	}
+	typeName := strings.TrimPrefix(fmt.Sprintf("%T", err), "*")
+	switch typeName {
+	case "errors.errorString":
+		return "error"
+	case "fmt.wrapError", "fmt.wrapErrors":
+		if unwrapped := unwrapOne(err); unwrapped != nil {
+			return ErrorKind(unwrapped)
+		}
+		return "wrapped_error"
+	}
+	return compactErrorKind(typeName)
+}
+
+func ErrorFingerprint(name string, err error, attributes Attributes) string {
+	component := fingerprintAttribute(attributes, "component")
+	operation := fingerprintAttribute(attributes, "operation")
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		strings.TrimSpace(name),
+		ErrorKind(err),
+		component,
+		operation,
+	}, "|")))
+	return hex.EncodeToString(sum[:8])
+}
+
+func fingerprintAttribute(attributes Attributes, key string) string {
+	value, ok := attributes.values[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func End(span *Span, status string, attributes Attributes) {
@@ -229,6 +316,63 @@ func otelAttribute(key string, value any) attribute.KeyValue {
 	default:
 		return attribute.String(key, strings.TrimSpace(fmt.Sprint(v)))
 	}
+}
+
+func unwrapOne(err error) error {
+	type single interface {
+		Unwrap() error
+	}
+	type multi interface {
+		Unwrap() []error
+	}
+	if wrapper, ok := err.(single); ok {
+		return wrapper.Unwrap()
+	}
+	if wrapper, ok := err.(multi); ok {
+		for _, child := range wrapper.Unwrap() {
+			if child != nil {
+				return child
+			}
+		}
+	}
+	return nil
+}
+
+func compactErrorKind(typeName string) string {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" {
+		return "error"
+	}
+	typeName = strings.TrimPrefix(typeName, "github.com/writer/cerebro/")
+	typeName = strings.ReplaceAll(typeName, "/", ".")
+	typeName = strings.ReplaceAll(typeName, "*", "")
+	var out strings.Builder
+	out.Grow(len(typeName))
+	for _, ch := range typeName {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+			out.WriteRune(ch)
+		case ch >= 'A' && ch <= 'Z':
+			if out.Len() > 0 {
+				out.WriteByte('_')
+			}
+			out.WriteRune(ch + ('a' - 'A'))
+		case ch >= '0' && ch <= '9':
+			out.WriteRune(ch)
+		case ch == '.' || ch == '_' || ch == '-':
+			out.WriteByte('_')
+		default:
+			out.WriteByte('_')
+		}
+	}
+	kind := strings.Trim(out.String(), "_")
+	if kind == "" {
+		return "error"
+	}
+	for strings.Contains(kind, "__") {
+		kind = strings.ReplaceAll(kind, "__", "_")
+	}
+	return kind
 }
 
 func emit(kind string, span *Span, attributes Attributes) {

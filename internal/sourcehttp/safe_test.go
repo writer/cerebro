@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -118,11 +121,71 @@ func TestNewRequestNormalizesOriginPathQueryAndBody(t *testing.T) {
 	}
 }
 
+func TestSafeRoundTripperPropagatesTraceWithoutLeakingURLQuery(t *testing.T) {
+	var propagated string
+	ctx, parent := telemetry.Start(context.Background(), "test.parent", telemetry.Attrs())
+	defer telemetry.End(parent, "completed", telemetry.Attrs())
+	req := httptest.NewRequest(http.MethodGet, "https://93.184.216.34/v1/items?token=secret", nil).WithContext(ctx)
+	_, stderr := captureSourceHTTPStderr(t, func() {
+		resp, err := SafeRoundTripper{
+			SourceID: "test_source",
+			Base: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				propagated = req.Header.Get("Traceparent")
+				return &http.Response{
+					StatusCode: http.StatusNoContent,
+					Header:     http.Header{},
+					Body:       io.NopCloser(strings.NewReader("")),
+					Request:    req,
+				}, nil
+			}),
+		}.RoundTrip(req)
+		if err != nil {
+			t.Fatalf("RoundTrip() error = %v", err)
+		}
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+	})
+	if propagated == "" {
+		t.Fatal("traceparent was not propagated")
+	}
+	if strings.Contains(stderr, "token=secret") || strings.Contains(stderr, "/v1/items") {
+		t.Fatalf("telemetry leaked URL path/query: %s", stderr)
+	}
+	if !strings.Contains(stderr, `"name":"source.http.request"`) {
+		t.Fatalf("source HTTP span missing from telemetry: %s", stderr)
+	}
+}
+
 func TestReadLimitedBodyRejectsOversizedResponse(t *testing.T) {
 	_, err := ReadLimitedBody(strings.NewReader(strings.Repeat("x", MaxBodyBytes+1)))
 	if err == nil {
 		t.Fatal("ReadLimitedBody() error = nil, want oversized response error")
 	}
+}
+
+func captureSourceHTTPStderr(t *testing.T, fn func()) (string, string) {
+	t.Helper()
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdout: %v", err)
+	}
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stderr: %v", err)
+	}
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
+	fn()
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+	stdout, _ := io.ReadAll(stdoutReader)
+	stderr, _ := io.ReadAll(stderrReader)
+	return string(stdout), string(stderr)
 }
 
 func TestReadLimitedBodyWithLimitRejectsCustomOversizedResponse(t *testing.T) {

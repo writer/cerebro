@@ -214,37 +214,89 @@ func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		base = http.DefaultTransport
 	}
 	if req != nil {
+		ctx, span := telemetry.Start(req.Context(), "source.http.request", telemetry.Attrs(
+			telemetry.Field{Key: "component", Value: "sourcehttp"},
+			telemetry.Field{Key: "source_id", Value: rt.SourceID},
+			telemetry.Field{Key: "http.request.method", Value: strings.ToUpper(strings.TrimSpace(req.Method))},
+			telemetry.Field{Key: "server.address", Value: requestHost(req)},
+			telemetry.Field{Key: "url.scheme", Value: requestScheme(req)},
+		))
+		finish := func(statusCode int, err error) {
+			attrs := telemetry.Attrs(telemetry.Field{Key: "http.response.status_code", Value: statusCode})
+			if err != nil {
+				attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+				telemetry.CaptureError(ctx, "source.http.error", err, telemetry.Attrs(
+					telemetry.Field{Key: "component", Value: "sourcehttp"},
+					telemetry.Field{Key: "source_id", Value: rt.SourceID},
+					telemetry.Field{Key: "operation", Value: "round_trip"},
+				))
+				telemetry.End(span, "failed", attrs)
+				return
+			}
+			if statusCode >= http.StatusInternalServerError {
+				telemetry.End(span, "failed", attrs.WithField(telemetry.Field{Key: "status_detail", Value: "server_error"}))
+				return
+			}
+			telemetry.End(span, "completed", attrs)
+		}
+		req = req.Clone(ctx)
 		if traceparent := telemetry.TraceParent(req.Context()); traceparent != "" && req.Header.Get("Traceparent") == "" {
-			req = req.Clone(req.Context())
 			req.Header.Set("Traceparent", traceparent)
 		}
-	}
-	if req != nil && req.URL != nil {
-		if privateEndpointHostAllowed(req.URL.Hostname(), rt.PrivateEndpointAllowlist) {
-			if req.URL.Scheme != "https" {
-				return nil, fmt.Errorf("%s private endpoint requests must use https", rt.SourceID)
+		if req.URL != nil {
+			if privateEndpointHostAllowed(req.URL.Hostname(), rt.PrivateEndpointAllowlist) {
+				if req.URL.Scheme != "https" {
+					err := fmt.Errorf("%s private endpoint requests must use https", rt.SourceID)
+					finish(0, err)
+					return nil, err
+				}
+				if port := strings.TrimSpace(req.URL.Port()); port != "" && port != "443" {
+					err := fmt.Errorf("%s private endpoint requests must not use a custom port", rt.SourceID)
+					finish(0, err)
+					return nil, err
+				}
 			}
-			if port := strings.TrimSpace(req.URL.Port()); port != "" && port != "443" {
-				return nil, fmt.Errorf("%s private endpoint requests must not use a custom port", rt.SourceID)
-			}
-		}
-		addrs, err := SafeResolvedHostAddrsWithOptions(req.Context(), rt.SourceID, req.URL.Hostname(), HostResolutionOptions{
-			AllowLoopback:            rt.AllowLoopback,
-			PrivateEndpointAllowlist: rt.PrivateEndpointAllowlist,
-			LookupIPAddrs:            rt.LookupIPAddrs,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if len(addrs) > 0 {
-			pinned, err := pinnedHostTransport(base, req.URL.Hostname(), addrs[0].IP)
+			addrs, err := SafeResolvedHostAddrsWithOptions(req.Context(), rt.SourceID, req.URL.Hostname(), HostResolutionOptions{
+				AllowLoopback:            rt.AllowLoopback,
+				PrivateEndpointAllowlist: rt.PrivateEndpointAllowlist,
+				LookupIPAddrs:            rt.LookupIPAddrs,
+			})
 			if err != nil {
+				finish(0, err)
 				return nil, err
 			}
-			base = pinned
+			if len(addrs) > 0 {
+				pinned, err := pinnedHostTransport(base, req.URL.Hostname(), addrs[0].IP)
+				if err != nil {
+					finish(0, err)
+					return nil, err
+				}
+				base = pinned
+			}
 		}
+		resp, err := base.RoundTrip(req)
+		statusCode := 0
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+		finish(statusCode, err)
+		return resp, err
 	}
 	return base.RoundTrip(req)
+}
+
+func requestHost(req *http.Request) string {
+	if req == nil || req.URL == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(req.URL.Hostname()))
+}
+
+func requestScheme(req *http.Request) string {
+	if req == nil || req.URL == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(req.URL.Scheme))
 }
 
 func pinnedHostTransport(base http.RoundTripper, host string, ip net.IP) (http.RoundTripper, error) {

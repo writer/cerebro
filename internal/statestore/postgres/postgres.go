@@ -13,6 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 // Store is the Postgres-backed current-state store implementation.
@@ -76,12 +77,21 @@ func (s *Store) Close() error {
 
 // Ping verifies that Postgres is reachable.
 func (s *Store) Ping(ctx context.Context) error {
+	ctx, span := telemetry.Start(ctx, "postgres.ping", telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "statestore.postgres"},
+		telemetry.Field{Key: "db.system.name", Value: "postgresql"},
+	))
 	if s == nil || s.db == nil {
-		return errors.New("postgres is not configured")
+		err := errors.New("postgres is not configured")
+		postgresTelemetryError(ctx, span, "ping", err)
+		return err
 	}
 	if err := s.db.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping postgres: %w", err)
+		err = fmt.Errorf("ping postgres: %w", err)
+		postgresTelemetryError(ctx, span, "ping", err)
+		return err
 	}
+	telemetry.End(span, "completed", telemetry.Attrs())
 	return nil
 }
 
@@ -91,20 +101,40 @@ func (s *Store) ensureStatements(ctx context.Context, ready *bool, label string,
 	if *ready {
 		return nil
 	}
+	ctx, span := telemetry.Start(ctx, "postgres.ensure_statements", telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "statestore.postgres"},
+		telemetry.Field{Key: "operation", Value: "ensure_statements"},
+		telemetry.Field{Key: "db.system.name", Value: "postgresql"},
+		telemetry.Field{Key: "schema.label", Value: strings.TrimSpace(label)},
+	))
 	if err := s.ensureSchemaMigrationsLocked(ctx); err != nil {
+		postgresTelemetryError(ctx, span, "ensure_statements", err)
 		return err
 	}
 	version, checksum := schemaMigrationRecord(label, statements)
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("ensure %s tables: %w", label, err)
+			err = fmt.Errorf("ensure %s tables: %w", label, err)
+			postgresTelemetryError(ctx, span, "ensure_statements", err)
+			return err
 		}
 	}
 	if err := s.markSchemaMigrationLocked(ctx, version, checksum); err != nil {
+		postgresTelemetryError(ctx, span, "ensure_statements", err)
 		return err
 	}
 	*ready = true
+	telemetry.End(span, "completed", telemetry.Attrs())
 	return nil
+}
+
+func postgresTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
+	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+	telemetry.CaptureError(ctx, "postgres.error", err, telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "statestore.postgres"},
+		telemetry.Field{Key: "operation", Value: operation},
+	))
+	telemetry.End(span, "failed", attrs)
 }
 
 const schemaMigrationsDDL = `
